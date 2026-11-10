@@ -29,10 +29,20 @@ export type HaleStage =
   | 'intake_extract'
   | 'inbound_screen'
   | 'classify_event'
+  | 'drafter'
   | 'reviewer'
   | 'discovery'
   | 'coach'
   | 'retention'
+  | 'claim_read'
+  | 'reminder'
+  | 'voice'
+  | 'plan'
+  | 'activity'
+  | 'notice'
+  | 'spoken_line'
+  | 'onboarding'
+  | 'compose'
   | 'unattributed';
 
 export interface LlmTraceContext {

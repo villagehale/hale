@@ -73,6 +73,12 @@ export interface RunAgentArgs {
    */
   attachments?: Anthropic.ContentBlockParam[];
   /**
+   * Per-family / per-turn skill addendums after the 1h prefix breakpoint. Concatenated
+   * model text is `skill.instructions` plus these, joined by `\n\n`. Optional addendums
+   * that used to ride inside `skill.instructions` busted the cached prefix.
+   */
+  systemExtras?: readonly string[];
+  /**
    * Ship `strict: true` with every tool whose schema compiles to a grammar. Default TRUE
    * — the saving it buys (#415) is real and every caller but one wants it.
    *
@@ -292,8 +298,13 @@ const DEFAULT_MAX_TOKENS = 2048;
  * (no error, `cache_creation_input_tokens: 0`), so the small Haiku-tier skills are
  * unaffected either way.
  */
-function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
-  return cachedSystemBlocks(skill.instructions, AGENT_CACHE_TTL) as Anthropic.TextBlockParam[];
+function buildSystem(skill: Skill, extras?: readonly string[]): Anthropic.TextBlockParam[] {
+  return cachedSystemBlocks(
+    skill.instructions,
+    AGENT_CACHE_TTL,
+    undefined,
+    extras,
+  ) as Anthropic.TextBlockParam[];
 }
 
 /**
@@ -585,7 +596,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const laneConfig = args.lane ?? pickLane(args.skill.meta.task);
   const lane = laneRequestFields(laneConfig) as WireLaneFields;
   const reaskLane = withoutThinking(laneConfig);
-  const system = buildSystem(args.skill);
+  const system = buildSystem(args.skill, args.systemExtras);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
@@ -759,7 +770,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
  */
 export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
   const lane = wireLane(args.skill.meta.task, args.lane);
-  const system = buildSystem(args.skill);
+  const system = buildSystem(args.skill, args.systemExtras);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 

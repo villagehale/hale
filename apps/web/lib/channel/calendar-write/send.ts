@@ -231,7 +231,10 @@ export function productionCalendarWriteNoticePorts(
       return minted.status === 'minted' ? minted.url : null;
     },
     compose: (input) =>
-      composeCalendarWriteNotice(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
+      composeCalendarWriteNotice(
+        budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'notice' }),
+        input,
+      ),
     async send(familyId, parentUserId, text, optOut) {
       const body = withOptOut(text, optOut);
       const phone = await resolveSendablePhone(database, parentUserId);

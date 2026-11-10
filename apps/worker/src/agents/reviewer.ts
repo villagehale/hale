@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import {
+  AGENT_CACHE_TTL,
   cachedSystem,
   laneRequestFields,
   layoutTools,
@@ -139,7 +140,7 @@ export async function runReviewer(
   // The reviewer's instructions + tool list are the same on every turn of the
   // loop; caching the system block once lets each turn read the stable
   // tools+system prefix instead of reprocessing it.
-  const system = cachedSystem(await loadPrompt('reviewer'));
+  const system = cachedSystem(await loadPrompt('reviewer'), AGENT_CACHE_TTL);
   const lane = laneRequestFields(pickLane('review'));
   const model = lane.model;
   const collected: ToolResult[] = [];

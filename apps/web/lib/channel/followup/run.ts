@@ -1075,7 +1075,7 @@ let followupAnthropic: Anthropic | undefined;
  */
 function followupVoiceClient(): AgentClient {
   // Sweep composer under the nudge cron's maxDuration 300 (audit P1-7).
-  followupAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  followupAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'compose' });
   return followupAnthropic;
 }
 

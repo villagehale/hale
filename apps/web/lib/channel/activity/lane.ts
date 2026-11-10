@@ -557,6 +557,7 @@ async function runActivityOnce(
 
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   let bodies: string[];
+  let extras: string[] = [];
   try {
     const [base, events] = await Promise.all([
       loadCronSkill('activity-finder'),
@@ -566,11 +567,13 @@ async function runActivityOnce(
     // only; activity-finder.md bytes (and the eval recordings keyed on them) stay put.
     bodies = [base.instructions, events.instructions];
     // VIL-435: the day check rides only when the query carries the family-local day.
+    // After the cache breakpoint, so a dated query does not bust the finder prefix.
+    extras = [];
     if (query.today) {
       const day = await loadCronSkill('activity-finder-day');
-      bodies.push(day.instructions);
+      extras.push(day.instructions);
     }
-    skill = { ...base, instructions: bodies.join('\n\n') };
+    skill = { ...base, instructions: [...bodies, ...extras].join('\n\n') };
   } catch (err) {
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }
@@ -595,7 +598,7 @@ async function runActivityOnce(
         .stream({
           model: pickModel(skill.meta.task),
           max_tokens: GROUND_MAX_TOKENS,
-          system: cachedSystemBlocks(bodies),
+          system: cachedSystemBlocks(bodies, '5m', undefined, extras),
           tools: groundTools(query, readPages),
           messages: [{ role: 'user', content: groundUserMessage(query) }],
         })
@@ -633,7 +636,8 @@ async function runActivityOnce(
       ({ value: composed } = await forceToolJson({
         client: resolved,
         lane: pickLane(skill.meta.task),
-        system: skill.instructions,
+        system: bodies.join('\n\n'),
+        systemExtras: extras,
         userMessage: composeUserMessage(query, researchNotes),
         toolName: 'activity_picks',
         toolDescription: 'Return the concrete programs the search actually found.',

@@ -688,6 +688,30 @@ describe('prompt caching', () => {
     expect(req?.messages).toEqual([{ role: 'user', content: 'VARIABLE PER-RUN PAYLOAD' }]);
   });
 
+  it('puts optional extras after the breakpoint and keeps the 1h ttl on the prefix', async () => {
+    const { client, create } = fakeClient(ANSWER);
+    await forceToolJson({
+      client,
+      lane: pickLane('classify'),
+      system: 'STABLE AGENT INSTRUCTIONS',
+      systemExtras: ['household-group addendum'],
+      cacheTtl: '1h',
+      userMessage: 'VARIABLE PER-RUN PAYLOAD',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: JSON_SCHEMA,
+      schema: SCHEMA,
+      maxTokens: 20,
+    });
+    const req = create.mock.calls[0]?.[0];
+    expect(req?.system).toEqual(
+      cachedSystem('STABLE AGENT INSTRUCTIONS', '1h', ['household-group addendum']),
+    );
+    const prefix = JSON.stringify((req?.system as { cache_control?: unknown }[])?.[0]);
+    expect(prefix).toContain('"ttl":"1h"');
+    expect(prefix).not.toContain('household-group addendum');
+  });
+
   it('builds a byte-identical prefix for two different user payloads', () => {
     const common = {
       lane: pickLane('classify'),
