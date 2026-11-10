@@ -44,6 +44,8 @@ export interface CommonTimeInput {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
+/** How long a proposed time runs, and so the plan a pick makes. */
+export const COMMON_TIME_MINUTES = 60;
 const DEFAULT_QUIET_START = 21;
 const DEFAULT_QUIET_END = 8;
 const MAX_PROPOSALS = 3;
@@ -84,7 +86,7 @@ function overlapsAny(spans: readonly Span[], start: Date, end: Date): boolean {
  */
 export function findCommonTimes(input: CommonTimeInput): Date[] {
   const count = Math.min(input.count ?? MAX_PROPOSALS, MAX_PROPOSALS);
-  const durationMs = (input.durationMinutes ?? 60) * 60 * 1000;
+  const durationMs = (input.durationMinutes ?? COMMON_TIME_MINUTES) * 60 * 1000;
   const horizon = input.now.getTime() + (input.days ?? DEFAULT_DAYS) * 24 * HOUR_MS;
   const blocked = input.blocked ?? [];
   const anchorZone = input.families[0]?.timeZone ?? 'UTC';
