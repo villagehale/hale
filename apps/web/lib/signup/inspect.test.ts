@@ -139,6 +139,17 @@ describe('inspectRegistrationPage', () => {
     expect(result).toMatchObject({ action: 'stop', reason: 'price_not_approved' });
   });
 
+  it('stops a charged page even when the listed price matches the approval', () => {
+    const result = inspectRegistrationPage({
+      snapshot: snapshot(SAFE, { priceCents: [1800] }),
+      identity: IDENTITY,
+      sessionId: 'tue-1630',
+      approvedPriceCents: 1800,
+      expectedOrigin: ORIGIN,
+    });
+    expect(result).toMatchObject({ action: 'stop', reason: 'payment' });
+  });
+
   it('stops when the page price differs from the price the parent approved', () => {
     const result = inspectRegistrationPage({
       snapshot: snapshot(SAFE, { priceCents: [2400] }),

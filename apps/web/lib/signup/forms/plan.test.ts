@@ -74,7 +74,7 @@ describe('planBookingStep', () => {
     ]);
   });
 
-  it('submits a show time with the adult name and not the child', () => {
+  it('stops a charged show-time page instead of submitting', () => {
     const result = plan(
       [
         control({ name: 'guest_name', label: 'Ticket holder' }),
@@ -88,6 +88,24 @@ describe('planBookingStep', () => {
       ],
       { priceCents: [1800] },
       { approvedPriceCents: 1800 },
+    );
+    expect(result).toMatchObject({ action: 'stop', reason: 'payment' });
+  });
+
+  it('submits a $0 show time with the adult name and not the child', () => {
+    const result = plan(
+      [
+        control({ name: 'guest_name', label: 'Ticket holder' }),
+        control({ name: 'email', type: 'email', label: 'Email' }),
+        control({
+          name: 'showtime',
+          type: 'select',
+          label: 'Performance time',
+          options: [{ value: 'sat-1100', label: 'Sat 11:00', disabled: false }],
+        }),
+      ],
+      { priceCents: [0] },
+      { approvedPriceCents: 0 },
     );
     expect(result.action).toBe('submit');
     if (result.action !== 'submit') return;
@@ -113,13 +131,15 @@ describe('planBookingStep', () => {
     expect(result.action).toBe('continue');
   });
 
-  it('submits a cart review only after the time slot was already chosen', () => {
-    const review = plan(
+  it('submits a $0 cart review only after the time slot was already chosen', () => {
+    const review = plan([], { priceCents: [0] }, { approvedPriceCents: 0, sessionSelected: true });
+    expect(review).toMatchObject({ action: 'submit', fills: [] });
+    const charged = plan(
       [],
       { priceCents: [1800] },
       { approvedPriceCents: 1800, sessionSelected: true },
     );
-    expect(review).toMatchObject({ action: 'submit', fills: [] });
+    expect(charged).toMatchObject({ action: 'stop', reason: 'payment' });
     const early = plan([], { priceCents: [1800] }, { approvedPriceCents: 1800 });
     expect(early).toMatchObject({ action: 'stop', reason: 'unexpected_field' });
   });

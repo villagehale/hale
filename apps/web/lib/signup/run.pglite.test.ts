@@ -870,8 +870,8 @@ describe('authorized signup runner', () => {
       },
       { browser },
     );
-    expect(result.outcome).toBe('completed');
-    expect(calls).toEqual({ opened: 1, continued: 1, submitted: 1 });
+    expect(result.outcome).toBe('payment');
+    expect(calls).toEqual({ opened: 1, continued: 1, submitted: 0 });
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 

@@ -1,3 +1,4 @@
+import { chargedCartMustStop, freeCartMaySubmit } from '../checkout-gate';
 import type { ShareableSignupField } from '../consent';
 import { LINK_SPEND_CEILING_CENTS, LinkApiError, type LinkCard } from '../link/client';
 import type { SignupPaymentWallet } from '../link/wallet';
@@ -29,10 +30,11 @@ import type { ProviderStorageState } from './vault';
 /**
  * T8 — drives a provider's real registration site with Browser Use Cloud
  * through the parent's saved sign-in. One generic agent task for every
- * provider, no per-site script. With a Stripe Link wallet the agent pays the
- * exact cart total after the parent approves in Link; without one, or when
- * approval times out, it stops at checkout and the parent pays on the live
- * browser this returns. A queue or timed open comes back as `rush`.
+ * provider, no per-site script. VIL-558 go-live: a charged cart (or an
+ * unknown total) stops at checkout and is never paid or submitted. A $0 cart
+ * the agent submitted with a confirmation number is `completed`. Link payment
+ * stays in this file for a later arming; `driveSignup` does not call it while
+ * the cart is charged. A queue or timed open comes back as `rush`.
  *
  * Never sent: a password, a card number, `secretBindings` or a 1Password
  * vault. The Link connection id is the only payment input; Link issues the
@@ -82,6 +84,8 @@ export type BrowserUseEngineDetail =
   | 'unreadable_output'
   | 'no_live_view'
   | 'payment_boundary'
+  /** The agent submitted a charged cart, which go-live must never do. */
+  | 'submit_boundary'
   | 'charge_mismatch'
   | 'charge_unverified'
   /** Paid the right amount but no confirmation was captured: never reported as signed up. */
@@ -464,18 +468,35 @@ async function driveSignup(
     const output = parseSignupOutput(summary.output);
     if (!output) return failure('error', 'unreadable_output', ids);
     if (output.payment_details_entered) return failure('error', 'payment_boundary', ids);
+    const total = output.cart_total_cents;
+    if (output.submitted && chargedCartMustStop(total)) {
+      return failure('error', 'submit_boundary', ids);
+    }
 
     const live = waited.liveViewUrl;
     if (output.outcome === 'rush') {
       return { ...failure('rush', output.detail, ids), opensAt: output.opens_at };
     }
     if (output.outcome === 'reached_checkout') {
-      const total = output.cart_total_cents;
       if (input.approvedPriceCents !== null && total !== null && total > input.approvedPriceCents) {
         return {
           ...failure('needs_human', 'price_change', ids),
           liveViewUrl: live,
           cartTotalCents: total,
+        };
+      }
+      if (freeCartMaySubmit(total) && output.submitted) {
+        if (!output.confirmation_number) {
+          return {
+            ...failure('needs_human', 'unconfirmed', ids),
+            liveViewUrl: live,
+            cartTotalCents: total,
+          };
+        }
+        return {
+          ...failure('completed', 'none', ids),
+          cartTotalCents: total,
+          confirmationNumber: output.confirmation_number,
         };
       }
       if (!live) return failure('error', 'no_live_view', ids);
@@ -490,7 +511,11 @@ async function driveSignup(
         holdExpiresAt: new Date(deps.now().getTime() + holdMinutes * 60_000),
         cartTotalCents: total,
       };
-      if (!input.payment) return checkout;
+      // Go-live: never pay from this run. A charged cart (or a $0 cart the
+      // agent did not submit) stops here so the model can tell the parent.
+      if (chargedCartMustStop(total) || freeCartMaySubmit(total) || !input.payment) {
+        return checkout;
+      }
       return await payAtCheckout(input, deps, input.payment, checkout, tracker, {
         total,
         currency: output.cart_currency,
