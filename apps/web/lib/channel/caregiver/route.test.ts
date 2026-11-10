@@ -193,6 +193,9 @@ beforeEach(() => {
   vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
   vi.stubEnv('F14_ENABLED', '');
   vi.stubEnv('CLAIM_READER_MODE', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
