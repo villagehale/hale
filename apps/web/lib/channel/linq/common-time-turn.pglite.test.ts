@@ -7,7 +7,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { freeBusyScope } from './free-busy-consent';
-import { takeMultiFamilyTurn } from './multi-family';
+import { takeMultiFamilyTurn, unseatMultiFamilyMember } from './multi-family';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupReader, SharedGroupReading } from './shared-group-reading';
 import { fakeSharedGroupComposer } from './shared-group-voice-fake';
@@ -26,6 +26,8 @@ const MEI = '+16415550101';
 const ADA = '+16415550201';
 const BO = '+16415550202';
 const PRIYA = '+16415550301';
+// In the chat, but no family Hale knows.
+const GUEST = '+16415550401';
 // The account name never reaches the group or the writer; only a name the group uses does.
 const ACCOUNT = 'Accountname';
 const ASK = 'Hale, when can all three families do the zoo? Friday is out for us';
@@ -225,7 +227,7 @@ async function turn(
       send: wire.send,
     },
     {
-      listHandles: listOf([MEI, ADA, BO, PRIYA]),
+      listHandles: listOf([MEI, ADA, BO, PRIYA, GUEST]),
       reader: ports.reader,
       composer: fakeSharedGroupComposer(),
       commonTimeWriter: ports.write,
@@ -529,6 +531,136 @@ describe('common time in a shared group', () => {
       '2026-10-31T12:00:00.000Z',
       '2026-11-01T13:00:00.000Z',
     ]);
+  });
+
+  it('a parent who leaves the group no longer shapes proposals; one still in it does', async () => {
+    const { ada } = await threeFamilies();
+    const bo = await seedParent(BO, 'Bo', ZONE, ada);
+    // Bo: Saturday 08:00 to 20:00 New York.
+    await connectCalendar(bo, [{ start: '2026-10-31T12:00:00Z', end: '2026-11-01T00:00:00Z' }]);
+    const { reader } = findTime([FRIDAY]);
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+    await turn({ reader, write: writer().write }, sender(), 'in-1', BO);
+
+    // Linq reports Bo removed from the iMessage group. His family's join stays.
+    const removed = await unseatMultiFamilyMember(db.database, {
+      chatId: CHAT,
+      participantHandle: BO,
+      now: minutesLater(1),
+    });
+    await turn({ reader, write: writer().write }, sender(), 'in-2', MEI, minutesLater(2));
+
+    expect(removed.outcome).toBe('linq_multi_family_unseated');
+    expect(await freeBusyLedger(bo.userId)).toEqual([true, false]);
+    // Ada is still in the group: her busy Thursday still shapes the times; Bo's Saturday
+    // no longer does.
+    const [, , after] = await proposedSlots();
+    expect(after).toEqual([
+      '2026-10-29T23:00:00.000Z',
+      '2026-10-31T12:00:00.000Z',
+      '2026-11-01T13:00:00.000Z',
+    ]);
+  });
+
+  it('a seated parent removed from the group stops being read: that family is asked', async () => {
+    const { ada, priya } = await threeFamilies();
+    await connectCalendar(priya, [{ start: '2026-10-31T12:00:00Z', end: '2026-10-31T14:00:00Z' }]);
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+    await turn({ reader, write: writer().write }, sender(), 'in-1', PRIYA);
+
+    await unseatMultiFamilyMember(db.database, {
+      chatId: CHAT,
+      participantHandle: ADA,
+      now: minutesLater(1),
+    });
+    const { write, calls } = writer();
+    await turn({ reader, write }, sender(), 'in-2', MEI, minutesLater(2));
+
+    expect(await freeBusyLedger(ada.userId)).toEqual([true, false]);
+    // Priya is still in the group, so her say-so still stands.
+    expect(calls[0]?.facts?.checkedFamilies).toBe('family 1, family 3');
+    expect(calls[0]?.facts?.askFamilies).toBe('family 2');
+  });
+
+  it('a grant and a withdrawal stamped in the same instant leave no say-so', async () => {
+    const { ada } = await threeFamilies();
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0');
+    const say = (granted: boolean, at: Date) => ({
+      userId: ada.userId,
+      familyId: ada.familyId,
+      consentType: 'integration_specific' as const,
+      granted,
+      consentScope: freeBusyScope(CHAT),
+      policyVersion: 'test',
+      grantedAt: at,
+    });
+    // The withdrawal is written first, so a tie that let the grant win would read Ada.
+    await db.database.insert(schema.consentRecords).values(say(false, minutesLater(1)));
+    await db.database.insert(schema.consentRecords).values(say(true, minutesLater(1)));
+    const tied = writer();
+    await turn({ reader, write: tied.write }, sender(), 'in-1', MEI, minutesLater(2));
+
+    // Positive control: a later lone grant stands.
+    await db.database.insert(schema.consentRecords).values(say(true, minutesLater(3)));
+    const granted = writer();
+    await turn({ reader, write: granted.write }, sender(), 'in-2', MEI, minutesLater(4));
+
+    expect(tied.calls[0]?.facts?.checkedFamilies).toBe('family 1');
+    expect(tied.calls[0]?.facts?.askFamilies).toBe('family 2, family 3');
+    expect(granted.calls[0]?.facts?.checkedFamilies).toBe('family 1, family 2');
+  });
+
+  it("a family's leave stamps its consent rows on the turn's clock, not the database's", async () => {
+    const { ada } = await threeFamilies();
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+
+    // The turn's clock (NOW, in October) runs behind the database clock.
+    await turn(
+      { reader: saying('leave'), write: writer().write },
+      sender(),
+      'in-1',
+      ADA,
+      minutesLater(1),
+    );
+
+    const rows = await db.database
+      .select({
+        type: schema.consentRecords.consentType,
+        granted: schema.consentRecords.granted,
+        grantedAt: schema.consentRecords.grantedAt,
+      })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.familyId, ada.familyId))
+      .orderBy(schema.consentRecords.grantedAt, schema.consentRecords.consentType);
+    expect(rows).toEqual([
+      { type: 'integration_specific', granted: true, grantedAt: NOW },
+      { type: 'multi_family_group', granted: true, grantedAt: NOW },
+      { type: 'integration_specific', granted: false, grantedAt: minutesLater(1) },
+      { type: 'multi_family_group', granted: false, grantedAt: minutesLater(1) },
+    ]);
+  });
+
+  it("a guest's ask for a time reads no calendar: it is an ordinary answer", async () => {
+    await threeFamilies();
+    const { reader } = findTime([FRIDAY]);
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+    const { write, calls } = writer();
+    const wire = sender();
+
+    const out = await turn({ reader, write }, wire, 'in-1', GUEST);
+
+    expect(out).toMatchObject({ handled: true, outcome: 'shared_reply' });
+    expect(wire.texts).toHaveLength(1);
+    expect(calls).toEqual([]);
+    expect(await proposedSlots()).toHaveLength(1);
+    // Positive control: a parent's ask in the same chat still proposes.
+    const parent = writer();
+    await turn({ reader, write: parent.write }, sender(), 'in-2', MEI);
+    expect(parent.calls).toHaveLength(1);
+    expect(await proposedSlots()).toHaveLength(2);
   });
 
   it('sends nothing when the AI cannot write the line, and names it', async () => {
