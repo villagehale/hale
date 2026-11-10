@@ -1478,6 +1478,13 @@
       "when": 1793665984430,
       "tag": "0226_linq_group_plan_calendar_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1793665985430,
+      "tag": "0227_team_schedule_changes",
+      "breakpoints": true
     }
   ]
 }

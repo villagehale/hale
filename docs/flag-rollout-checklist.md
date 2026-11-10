@@ -101,6 +101,8 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `SIGNUP_BROWSER_RUNTIME` | `apps/web/lib/signup/runtime/acquire.ts:80` (`local`, `vercel_sandbox` or `browserbase`, exact, at :81) | `local`, `vercel_sandbox`, or `browserbase` | no runtime chosen | unset | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `apps/web/lib/signup/runtime/flag.ts:19` | `true` | OFF | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `apps/web/lib/social/flag.ts:12` | `on` (no trim) | OFF | empty, or `off` | Noah |
+| `TEAM_SCHEDULE_CHANGES_ENABLED` | `apps/web/lib/integrations/team-schedule/flag.ts` (compared at `teamScheduleChangesEnabled`) | `true` | OFF | `false` | Barton |
+| `TEAM_SCHEDULE_CHANGES_FAMILY_ALLOWLIST` | `apps/web/lib/integrations/team-schedule/flag.ts` | comma-separated family ids | empty | empty | Barton |
 | `TRAVEL_BRIEF_ENABLED` | `apps/web/lib/channel/lanes.ts:21` via `apps/web/lib/travel/flag.ts:35` (the lane helper, as `travel_brief`); a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows it (:48-53) | `true` | OFF | unset it — off is off for every household; while on, a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows the brief to the listed households | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `apps/web/lib/village/intros/run.ts:103` (gate at :1211; an allowlist cannot arm it) | `true` | OFF | `false` | Noah |
 | `VOICE_DISABLED` | `apps/web/lib/channel/reply-copy/client.ts:12`; also `apps/web/lib/loop/voice/compose.ts:64`, `apps/web/lib/channel/linq/group-onboarding-voice.ts:116`, `apps/web/lib/channel/linq/group-plan-rsvp/voice.ts:64`, `apps/web/lib/channel/linq/shared-group-reading.ts:182`, `apps/web/lib/channel/linq/shared-group-voice.ts:125` | unset (inverted: `true` turns voice off) | voice runs | `true` | Sloane |
@@ -130,6 +132,7 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | `F14_FAMILY_ALLOWLIST` | `F14_ENABLED` |
 | `FOLLOWUP_ASKS_FAMILY_ALLOWLIST` | `FOLLOWUP_ASKS_ENABLED` |
 | `MEMORY_DIGEST_FAMILY_ALLOWLIST` | `MEMORY_DIGEST_APPLY` (apply also needs this list) |
+| `TEAM_SCHEDULE_CHANGES_FAMILY_ALLOWLIST` | `TEAM_SCHEDULE_CHANGES_ENABLED` |
 | `TRAVEL_BRIEF_FAMILY_ALLOWLIST` | `TRAVEL_BRIEF_ENABLED` |
 | `GOOGLE_WRITE_SCOPES_ALLOWLIST` | `GOOGLE_WRITE_SCOPES_ENABLED` (Hale user ids, not family ids; a listed user is armed while the flag is unset) |
 | `VILLAGE_INTROS_FAMILY_ALLOWLIST` | `VILLAGE_INTROS_ENABLED` |
@@ -188,6 +191,7 @@ One extra signal is named on the row.
 Dependencies, as the code reads them:
 
 - `TRAVEL_BRIEF_ENABLED` and `CHECK_IN_ANCHOR_ENABLED` need `F14_ENABLED` for the family.
+- `TEAM_SCHEDULE_CHANGES_ENABLED` needs `EMAIL_ALERT_ENABLED` (it runs inside the Gmail alert join) and migration `0225_team_schedule_changes`.
 - `ANY_PAGE_SPOT_WATCH_ENABLED` needs `WATCHED_SPOTS_ENABLED`, `F14_ENABLED` for the family, and migration `0210_watched_spots_any_page` applied.
 - `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` needs `CALENDAR_ALERT_ENABLED` and `LINQ_GROUP_COPARENT` on; its who-takes poll needs `LINQ_POLLS`.
 - Light `LINQ_GROUP_TURN_AI_ENABLED` with `LINQ_GROUP_ONBOARDING_V2_ENABLED`: the turn reader is the only group turn path, and dark means silent in the group (`apps/web/lib/channel/linq/group-turn-reader.ts:13-17`).
@@ -250,6 +254,7 @@ Code is merged for every row.
 | `REGISTRATION_ASSISTED_RUN_ENABLED` | ActiveNet towns (`apps/web/lib/signup/plan/towns.ts`) join the plan lane in assisted mode: the plan offer, and at the open Hale fills the registration and texts the parent the live browser to submit and pay. Hale never signs in, submits or pays there. Needs `REGISTRATION_PLAN_RUN_ENABLED`. **Arm only after the same CAPTCHA confirmation and one live run on Barton's own ActiveNet account.** | `authorized_signup_step` rows: `plan_finished` outcomes on ActiveNet hosts, and any `submit_boundary` or `payment_boundary` detail (must be zero). | unset | Barton |
 | `REGISTRATION_PLAN_RUN_ENABLED` | A parent's day-before plan runs itself at the open on the auto towns and pays with the card saved on the city account (lane notes under [Every flag](#every-flag)). **Arm only after Browser Use confirms CAPTCHA solving is off for plan runs.** | `authorized_signup_step` rows whose `plan_finished` is not `completed`, and any `plan_payment` row whose amount is not the cart total. | unset | Barton |
 | `SAME_ACTIVITY_MEET_ENABLED` | When a caller reaches this code, a meet reply is prepared only after both households opt in. `deliverSameActivityReply` returns `skipped: 'not_configured'`, so the line stays in process. Nothing in the inbound router calls this path today. | A `channel_messages` row that carries a meet line, or an audit row `same_activity_opt_in_recorded`. | `false` | Noah |
+| `TEAM_SCHEDULE_CHANGES_ENABLED` | From a connected Gmail, a matched coach/league/TeamSnap email can update a kid's calendar (ask, or autonomy after 5 same-kind approvals) and tell the driver. Needs `EMAIL_ALERT_ENABLED`. The allowlist arms listed families while this is off. | A calendar move with no parent ask and no autonomy grant, or a driver text that quotes a URL or phone from the email. | `false` | Barton |
 | `TRAVEL_BRIEF_ENABLED` | A trip can produce a short brief. The family also has to pass `F14_ENABLED`. | A brief for a family that is dark on F14 (the count should stay `dark`). | `false` | Sloane |
 | `WATCHED_SPOTS_ENABLED` | Hale polls a spot the parent asked to watch. | Spot texts with status `failed`, or a text for a spot the parent did not name. | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | Hale asks once how the household covers weekdays. | A second weekday question to the same family. | `false` | Sloane |
