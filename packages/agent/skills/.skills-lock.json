@@ -163,6 +163,10 @@
     "file": "consent-reply.md",
     "sha256": "b72df8e839e92b36cff701496e26439fca7339ac98e3292f4c3e7a39f71a5951"
   },
+  "contact-card-read.md": {
+    "file": "contact-card-read.md",
+    "sha256": "d732f9942d8213c45eedebb5fdf54690c659065b26a67228a28a526709e4d04e"
+  },
   "draft-action.md": {
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
