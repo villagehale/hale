@@ -375,6 +375,29 @@ describe('channelCoachRuntime', () => {
     expect(seen[2]?.instructions).not.toContain(tone.instructions);
   });
 
+  it('appends the age-fit correction skill only on a 1:1 turn with AGE_FIT_CORRECTION_ENABLED on (VIL-568)', async () => {
+    const addendum = (await loadCronSkill('age-fit-correction')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
+  });
+
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {
