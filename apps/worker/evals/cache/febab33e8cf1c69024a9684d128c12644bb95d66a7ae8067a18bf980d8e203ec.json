@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits waitlist_halfway. It says the parent is halfway through Springfield's 36-hour response window and that the clock started from their own message. The deadline of 11:00 p.m. is correctly called 'tonight', since it is 5:00 a.m. on the same day and that is exactly 18 hours left. The email reminder is a handed fact, and mentioning the portal adds no invented claim. Nothing is falsely confirmed, no child is named, there is no question, and it is in English with a friendly tone.",
+    "score": 5
+  }
+}

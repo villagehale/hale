@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Montreal venues a visiting family can simply turn up to: the Biodôme, the Insectarium and the Centre des sciences. They are drop-in attractions that are plausibly open between Christmas and New Year, and there is no session, class or registration-style pick. Each source_name is the venue's own organisation (Espace pour la vie, Montréal Science Centre), not a roundup. Null prices are correct, and no figures appear invented: every time is attributed and hedged. Reasons this is not a 5:\n- The `when` fields lean on a listings site for the winter hours, including the Monday Dec 28 closure. Hale flags this honestly, but the confirmation is not from the venue's own page.\n- The Science Centre hours come from earlier years' postings.\n- The notes say Hale opened Espace pour la vie's schedule page, while pagesRead is 0 and the notes also say it ran out of searches. That inconsistency weakens trust in the verification claims.",
+    "score": 4
+  }
+}

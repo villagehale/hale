@@ -2,8 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -178,9 +178,11 @@ export async function runAuthorizedSignup(
   });
   if (planTurn) return planTurn;
 
-  // No pending offer: nothing to consent to, and the message is someone else's.
+  // No pending offer: nothing to consent to, and the message is someone else's. An offer
+  // made to the other parent is theirs to answer: this parent's yes would register with
+  // their own details on a sign-up the other parent was asked about.
   const offer = await loadPendingOffer(database, input.familyId);
-  if (!offer) return UNCLAIMED;
+  if (!offer || offer.parentUserId !== input.parentUserId) return UNCLAIMED;
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
   // Unreadable (no model, model failure) is not consent and does not claim the message.
@@ -1137,10 +1139,9 @@ async function replyFor(
               }
             : null,
           question: facts.question ?? null,
-          language: await readNoticeLanguage(database, {
+          language: await readParentLanguage(database, {
             familyId: input.familyId,
             parentUserId: input.parentUserId,
-            now: input.now,
           }),
         });
   await writeAudit(database, input, facts.offerId, {

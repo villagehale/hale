@@ -67,6 +67,7 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     timezone: TZ,
     role: 'grandparent',
     smsChannelActive: true,
+    composeAttempts: 0,
     ...over,
   };
 }
@@ -90,6 +91,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     recentInteraction: async () => false,
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
+    },
+    holdForCompose: async () => {
+      throw new Error('a caregiver reminder is never written by the model, so never held');
     },
     auditSuppressed: async (_db, row) => {
       audited.push(row);

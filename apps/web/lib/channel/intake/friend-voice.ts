@@ -18,9 +18,10 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
+import { asHandsetReads, linksOutside } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { HouseholdGroupFact } from './household-group';
@@ -52,20 +53,21 @@ import {
  * (packages/agent/skills/onboarding-friend-short.md). A first attempt that
  * the retry recovers is not a page: the recovery is logged. If the retry
  * also fails, nothing goes out: the miss is logged, #ops is paged, and the
- * next inbound or the morning nudge tries again. That includes the map. A
- * numbered list of the lines code found is still a message Hale wrote, so
- * both openers failing sends nothing. Length is not a reason to refuse a
- * reply; the skill's "short" is tone, not a character cap.
+ * next inbound or the morning nudge tries again. That includes the map: the
+ * model writes each group bubble from that group's lines, a group it cannot
+ * write is not sent, and code never numbers or joins the lines itself.
+ * Length is not a reason to refuse a reply; the skill's "short" is tone, not
+ * a character cap.
  */
 
 /**
  * The reply plus the capture fields, as one forced tool call. The map turn
- * returns an opener, up to three leads and the kids; a cut-off at max_tokens
- * is a failed attempt, so the budget is well over what a good reply uses.
+ * returns an opener, a bubble per group (up to three) and the kids; a cut-off at max_tokens
+ * is a failed attempt, so the budget is well over what a good reply uses. The short
+ * retry has the same budget: its prompt is smaller, its answer is not. A reply that
+ * fills every optional field ran past 600 tokens live (VIL-617).
  */
 const MAX_TOKENS = 1000;
-const SHORT_MAX_TOKENS = 600;
-export const ONBOARDING_REPLY_SHORT_MAX_TOKENS = SHORT_MAX_TOKENS;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
 export const ONBOARDING_REPLY_TOOL = 'reply';
@@ -247,6 +249,16 @@ export interface FriendVoiceInput {
   /** On the retry only: the draft that was not sent and why, so the second try fixes that. */
   retry?: { draft: string; problem: string } | null;
   /**
+   * VIL-641. Code's record that an earlier reply asked for the coarse code after a
+   * first no, so a no now is the second one. Absent when it did not.
+   */
+  coarseCodeAsked?: boolean;
+  /**
+   * The place is declined for good. Code refuses a reply that asks for one. Not
+   * handed to the model: `checklist` already counts the place as answered.
+   */
+  placeDeclined?: boolean;
+  /**
    * How long ago the parent's last inbound was, when this reply is picking it up
    * after a real wait. Absent when that text just arrived. Facts only.
    */
@@ -279,6 +291,8 @@ export interface FriendVoiceResult {
   capture: OnboardingCapture;
   /** The model's `asks` on the reply that went out. False when nothing was sent. */
   asks: boolean;
+  /** The model's `placeAsk` on the reply that went out, when the place was in play. */
+  placeAsk?: PlaceAsk | null;
 }
 
 export interface FriendComposeOptions {
@@ -302,9 +316,32 @@ export interface FriendComposed {
   joinPointer?: JoinPointer | null;
   /** This reply tells the parent something was saved, added or set this turn. */
   claimsSaved?: boolean;
+  /** What this reply asks for about where they live. Null or omitted: the model did not say. */
+  placeAsk?: PlaceAsk | null;
 }
 
 export type OfferedConnector = 'gmail' | 'calendar';
+
+/** `full` is the postal code or ZIP; `coarse` is the smaller ask after a first no. */
+export type PlaceAsk = 'full' | 'coarse' | 'none';
+
+const PLACE_ASKS = ['full', 'coarse', 'none'] as const;
+
+/**
+ * The place is in play: its step, or a turn after the coarse code was asked or the
+ * place was declined. Only then does the turn carry the place skill and `placeAsk`,
+ * so every other turn keeps its bytes.
+ */
+function placeInPlay(
+  input: Pick<FriendVoiceInput, 'step' | 'coarseCodeAsked' | 'placeDeclined'>,
+): boolean {
+  return (
+    input.step === 'place' ||
+    input.step === 'place_card' ||
+    input.coarseCodeAsked === true ||
+    input.placeDeclined === true
+  );
+}
 
 /** What the model says a co-parent yes does with the number code places under the reply. */
 export type JoinPointer = 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing';
@@ -330,9 +367,11 @@ function replyMarks(composed: FriendComposed): {
   offered: readonly OfferedConnector[];
   joinPointer: JoinPointer | null;
   claimsSaved: boolean;
+  placeAsk: PlaceAsk | null;
 } {
   const pointer = composed.joinPointer;
   return {
+    placeAsk: composed.placeAsk ?? null,
     asks: composed.asks === true,
     parentQuestion: composed.parentQuestion === true,
     offered: composed.connectorsOffered ?? [],
@@ -419,45 +458,46 @@ function leadText(value: unknown): string {
   return '';
 }
 
-/** A list the model wrote as JSON text inside a string, split back into its leads. */
+/** A list the model wrote as JSON text inside one string, read back as its elements. */
 function splitLeadString(text: string): string[] {
   const trimmed = text.trim();
   if (trimmed.startsWith('[')) {
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.map(leadText);
+      if (Array.isArray(parsed)) return parsed.map((item) => leadText(item).trim());
     } catch {
-      // Not JSON after all; split it below.
+      // Not JSON after all: the string is one bubble.
     }
   }
-  return trimmed
-    .split(/"\s*,\s*"|\n+/u)
-    .map((part) => part.replace(/^[\s["]+|[\s\]"]+$/gu, '').trim());
+  return [trimmed];
 }
 
-function leadsFrom(value: unknown): string[] | null {
+/**
+ * The model's group bubbles, one per element. A bubble may hold line breaks
+ * (one line per program): those stay inside it and are never split into
+ * separate bubbles.
+ */
+export function readGroupLeads(value: unknown): string[] | null {
   if (value == null) return null;
   if (typeof value === 'string') return splitLeadString(value);
-  if (Array.isArray(value)) return value.flatMap((item) => splitLeadString(leadText(item)));
+  if (Array.isArray(value)) return value.map((item) => leadText(item).trim());
   if (typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).flatMap((item) =>
-      splitLeadString(leadText(item)),
-    );
+    return Object.values(value as Record<string, unknown>).map((item) => leadText(item).trim());
   }
   return null;
 }
 
-const replySchema = z.object({
+const replyFields = z.object({
   reply: z
     .string()
     .nullish()
     .transform((value) => value ?? ''),
-  // Leads come back in more than one shape (a list, one string per line, the
-  // group objects they were written for); their words are the leads.
+  // Group bubbles come back in more than one shape (a list, a JSON list inside
+  // a string, the group objects they were written for); each element is one bubble.
   groupLeads: z
     .unknown()
     .optional()
-    .transform((value) => leadsFrom(value)),
+    .transform((value) => readGroupLeads(value)),
   // A malformed field reads as not given: a decision is never guessed from it.
   // Schedule adds stay strict, so a reply never confirms an add that was dropped.
   postalCode: z.string().nullable().optional().default(null).catch(null),
@@ -481,11 +521,14 @@ const replySchema = z.object({
   nameDeclined: z.boolean().optional().default(false).catch(false),
   nameTakenBack: z.boolean().optional().default(false).catch(false),
   kidsNamesDeclined: z.boolean().optional().default(false).catch(false),
+  placeDeclined: z.boolean().optional().default(false).catch(false),
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
   asks: z.boolean().optional().default(false).catch(false),
-  parentQuestion: z.boolean().optional().default(false).catch(false),
+  // Read with the rest of the turn below: whether a missing value is a question
+  // depends on whether the turn holds a yes.
+  parentQuestion: z.unknown(),
   claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
@@ -499,9 +542,34 @@ const replySchema = z.object({
     .default(null)
     .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
+  placeAsk: z.enum(PLACE_ASKS).nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
 });
+
+const replySchema = replyFields.transform((value) => ({
+  ...value,
+  parentQuestion: readParentQuestion(value),
+}));
+
+/**
+ * Fails closed: a value that is there but not a boolean may hide a question, and a
+ * question must never stand as a yes. A missing value is a question too when the turn
+ * holds a yes, because a consent turn the model did not mark must not keep one.
+ */
+function readParentQuestion(value: {
+  parentQuestion?: unknown;
+  connectGmail: boolean | null;
+  connectCalendar: boolean | null;
+  coparentGroup: boolean | null;
+}): boolean {
+  if (value.parentQuestion === undefined) {
+    return (
+      value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true
+    );
+  }
+  return value.parentQuestion !== false;
+}
 
 const replyJsonSchema = {
   type: 'object',
@@ -557,6 +625,7 @@ const replyJsonSchema = {
     nameDeclined: { type: 'boolean' },
     nameTakenBack: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
+    placeDeclined: { type: 'boolean' },
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
@@ -575,17 +644,27 @@ const replyJsonSchema = {
   required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
-/** Flag off omits the choice field, so the tool the model fills is today's. */
-export function onboardingReplyToolSchema(): {
+/**
+ * Flag off omits the choice field, so the tool the model fills is today's. `placeAsk`
+ * rides only while the place is in play; without a turn it is not.
+ */
+export function onboardingReplyToolSchema(
+  input?: Pick<FriendVoiceInput, 'step' | 'coarseCodeAsked' | 'placeDeclined'>,
+): {
   type: 'object';
   properties: Record<string, unknown>;
   required: readonly string[];
 } {
-  if (!linqGroupOnboardingV2Enabled()) {
-    const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
-    return { ...replyJsonSchema, properties };
-  }
-  return replyJsonSchema;
+  const { coparentGroupMode: _choice, ...flagOff } = replyJsonSchema.properties;
+  const schema = linqGroupOnboardingV2Enabled()
+    ? replyJsonSchema
+    : { ...replyJsonSchema, properties: flagOff };
+  if (!input || !placeInPlay(input)) return schema;
+  return {
+    ...schema,
+    properties: { ...schema.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
+    required: [...schema.required, 'placeAsk'],
+  };
 }
 
 const BANNED_PHRASE =
@@ -786,6 +865,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     next: ASKS_NOTHING.has(input.step) ? null : (missing?.[1] ?? null),
     facts: {
       placeLabel: input.placeLabel,
+      // Absent unless set, so a turn without it keeps its prompt bytes.
+      ...(input.coarseCodeAsked === true ? { coarseCodeAsked: true } : {}),
       agesLabel: input.agesLabel,
       ageMonths: input.ageMonths,
       children: input.children ?? null,
@@ -1202,10 +1283,10 @@ export function peelFriendAsk(prose: string): { lead: string; ask: string } {
 }
 
 /**
- * The activity map as bubbles: the model's opener, then one bubble per group
- * with the model's lead over the real numbered lines. Numbers run across the
- * whole map so a later "number 4" points at one line. A missing lead leaves
- * the lines on their own; a lead is never invented by code.
+ * The activity map as bubbles, every one written by the model: the opener,
+ * then the bubble it wrote for each group, in group order. A group with no
+ * lines has no bubble; speakFriend refuses a map short of any other group.
+ * Code adds no numbers and no lines.
  */
 export function assembleFindShowBubbles(
   opener: string,
@@ -1215,14 +1296,10 @@ export function assembleFindShowBubbles(
   const bubbles: string[] = [];
   const lead = opener.trim();
   if (lead.length > 0) bubbles.push(lead);
-  let from = 1;
   groups.forEach((group, index) => {
-    const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
-    if (lines.length === 0) return;
-    const head = (leads?.[index] ?? '').trim();
-    const numbered = numberedFindLines(lines, from);
-    from += lines.length;
-    bubbles.push(head.length > 0 ? `${head}\n${numbered}` : numbered);
+    if (!group.lines.some((line) => line.trim().length > 0)) return;
+    const written = (leads?.[index] ?? '').trim();
+    if (written.length > 0) bubbles.push(written);
   });
   return bubbles;
 }
@@ -1327,8 +1404,7 @@ function weekdaysOutsideSlots(text: string, slots: readonly string[]): string[] 
 
 /** A phone number in prose: code puts the real one under the reply, never the model. */
 const PHONE = /\+?\d[\d\s().-]{8,}\d/u;
-/** A web address without its scheme ("hale.app/join"). Only the site in the facts may be named. */
-const BARE_DOMAIN = /\b[\w-]+\.(?:app|com|ca|io|org|net|co)(?:\/[^\s,)]*)?/giu;
+
 /** Capitalised words any reply may use: Hale's own names and the services it talks about. */
 const ALLOWED_NAMES = new Set([
   'hale',
@@ -1515,6 +1591,35 @@ function trailerFacts(options: JudgeOptions): string[] {
 }
 
 /**
+ * The link allow-list: the only words a reply's links may be. The fact slots ground names,
+ * dates and places, but they hold third-party text (synced calendar titles and locations,
+ * email subjects and snippets, listing lines, Hale's own earlier turns that repeated
+ * them), so a link is never grounded by one. A link may be the one code handed this
+ * bubble, Hale's own site, a line code appends under the prose, or a bare domain the
+ * parent wrote. A scheme link from the parent's words is still refused: scheme words are
+ * found in the handset reading, so a full-width ':' or '/' is a scheme too.
+ */
+function linkAllowList(input: FriendVoiceInput, options: JudgeOptions): string[] {
+  const theirs = [
+    input.parentWords,
+    ...input.recentTurns.filter((turn) => turn.role === 'parent').map((turn) => turn.body),
+  ].map((words) =>
+    asHandsetReads(words)
+      .split(/\s+/)
+      .filter((word) => !word.includes('://'))
+      .join(' '),
+  );
+  return [
+    ...theirs,
+    ...(options.link ? [options.link] : []),
+    ...trailerFacts(options),
+    HALE_IDENTITY.site,
+    `https://${HALE_IDENTITY.site}`,
+    HALE_IDENTITY.contact,
+  ];
+}
+
+/**
  * `detail` is for the retry and may quote the draft. `kinds` is what a log may
  * carry: fixed codes, never the draft's words.
  */
@@ -1588,7 +1693,7 @@ export function judgeFriendReply(
     ['quote', quotesOutsideSlots(trimmed, slots)],
     ['name', namesOutsideSlots(trimmed, slots)],
     ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    ['domain', mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots)],
+    ['domain', linksOutside(trimmed, linkAllowList(input, options))],
     ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
   const invented = found.flatMap(([, matched]) => matched);
@@ -1600,10 +1705,6 @@ export function judgeFriendReply(
       count: invented.length,
       kinds: found.filter(([, matched]) => matched.length > 0).map(([kind]) => kind),
     };
-  }
-  if (/https?:\/\//i.test(trimmed)) {
-    const allowed = options.link && trimmed.includes(options.link);
-    if (!allowed) return { ok: false, reason: 'invented' };
   }
 
   // "The link" is true only when a link rides this bubble, or when the card is
@@ -1946,6 +2047,7 @@ export async function speakFriend(
     turnCapture: OnboardingCapture,
     step: FriendStep,
     asks: boolean,
+    placeAsk: PlaceAsk | null,
   ): FriendVoiceResult => {
     const capture = withPre(turnCapture);
     const body =
@@ -1961,6 +2063,7 @@ export async function speakFriend(
       step,
       capture,
       asks,
+      placeAsk,
     };
   };
 
@@ -1994,6 +2097,7 @@ export async function speakFriend(
         capture: OnboardingCapture;
         step: FriendStep;
         asks: boolean;
+        placeAsk: PlaceAsk | null;
       }
     | {
         fail: FriendFallback;
@@ -2026,25 +2130,35 @@ export async function speakFriend(
       // there are no parent words to read a yes or a fact from.
       const capture =
         input.parentWords.trim().length > 0
-          ? dropTakeBackName(
-              input.parentWords,
-              settleSchedule(
-                withGroupMode(
-                  withReading(
-                    noYesInAQuestion(
-                      ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                      marks.parentQuestion,
+          ? placeOpenUntilCoarseAsked(
+              dropTakeBackName(
+                input.parentWords,
+                settleSchedule(
+                  withGroupMode(
+                    withReading(
+                      noYesInAQuestion(
+                        ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                        marks.parentQuestion,
+                      ),
+                      input,
                     ),
                     input,
                   ),
-                  input,
                 ),
               ),
+              input,
             )
           : empty;
       const draft = composed.reply.trim();
       if (options.replyDiscardedWhen?.(capture)) {
-        return { prose: '', bubbles: [], capture, step: input.step, asks: marks.asks };
+        return {
+          prose: '',
+          bubbles: [],
+          capture,
+          step: input.step,
+          asks: marks.asks,
+          placeAsk: marks.placeAsk,
+        };
       }
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
@@ -2076,6 +2190,17 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('unbacked_save') },
         };
       }
+      // VIL-641: once the place is declined, a reply that asks for one goes back to
+      // the model, read from its own field. An omitted field is not a refusal.
+      const placeClosed = capture.placeDeclined || input.placeDeclined === true;
+      if (placeClosed && (marks.placeAsk === 'full' || marks.placeAsk === 'coarse')) {
+        noteRefusal({ reason: 'place_closed', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('place_closed') },
+        };
+      }
       const judgeInput = {
         ...judgeInputFor(input, capture),
         nameTakenBack:
@@ -2083,6 +2208,16 @@ export async function speakFriend(
           capture.nameDeclined ||
           (capture.nameConfirmed === false && capture.parentName === null),
       };
+      // A stop closes intake and tidyProse would strip its question, so a stop
+      // that still asks goes back to the model rather than out with the ask cut.
+      if (capture.stopAsking && (marks.asks || draft.normalize('NFKC').includes('?'))) {
+        noteRefusal({ reason: 'stop_still_asking', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('stop_still_asking') },
+        };
+      }
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
       // parent's next message closes the schedule (see settleSchedule).
@@ -2138,9 +2273,16 @@ export async function speakFriend(
       const bubblesFor = (text: string): { bubbles: string[]; judgedText: string } | null => {
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
-          const leads = tidyLeads(composed.groupLeads ?? null, groups);
+          const leads = findShowGroupBubbles(composed.groupLeads ?? null, groups, input);
+          // A map short of a group would go out as the whole map, and the
+          // missing group would no longer be owed. Every group with lines needs
+          // its own usable bubble, or nothing goes.
+          const short = groups.some(
+            (group, index) => group.lines.some((line) => line.trim().length > 0) && !leads?.[index],
+          );
+          if (!leads || short) return null;
           const bubbles = assembleFindShowBubbles(text, groups, leads);
-          return bubbles.length === 0 ? null : { bubbles, judgedText: bubbles.join('\n\n') };
+          return { bubbles, judgedText: bubbles.join('\n\n') };
         }
         if (text.length === 0) return null;
         return {
@@ -2151,6 +2293,14 @@ export async function speakFriend(
       // A draft that fails the judge is not rewritten. The model is asked once
       // more; if that also fails, nothing is sent.
       const assembled = bubblesFor(prose);
+      if (!assembled && input.step === 'find_show') {
+        noteRefusal({ reason: 'no_group_bubble', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('no_group_bubble') },
+        };
+      }
       if (!assembled) return { fail: 'unusable', capture };
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
       // The promises no row can ever back, refused here as dispatch refuses them.
@@ -2169,6 +2319,7 @@ export async function speakFriend(
           capture,
           step: judgeInput.step,
           asks: marks.asks,
+          placeAsk: marks.placeAsk,
         };
       }
       return reject(judged);
@@ -2198,6 +2349,9 @@ export async function speakFriend(
       noteRefusal(
         {
           err: err instanceof Error ? err.name : 'unknown',
+          ...(err instanceof StructuredOutputError
+            ? { outcome: err.outcome, stopReason: err.stopReason }
+            : {}),
           ...(err instanceof z.ZodError
             ? {
                 issues: err.issues
@@ -2233,6 +2387,7 @@ export async function speakFriend(
       first.capture,
       first.step,
       first.asks,
+      first.placeAsk,
     );
   }
   if (firstPrompt === 'short') return failed(first.fail, first.capture);
@@ -2248,7 +2403,7 @@ export async function speakFriend(
     FLEX_QUESTION_STEPS.has(nextStep) ||
     yesToLink(retryBase, first.capture)
       ? ''
-      : ` This message should ${askInWords(nextStep)}.`;
+      : ` This message should ${askInWords(nextStep, retryBase)}.`;
   const retryInput = {
     ...retryBase,
     retry: first.retry ? { ...first.retry, problem: `${first.retry.problem}${askNote}` } : null,
@@ -2257,7 +2412,15 @@ export async function speakFriend(
   if ('prose' in second) {
     console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
-    return finish(second.prose, second.bubbles, 'retry', capture, second.step, second.asks);
+    return finish(
+      second.prose,
+      second.bubbles,
+      'retry',
+      capture,
+      second.step,
+      second.asks,
+      second.placeAsk,
+    );
   }
   return failed(second.fail, mergeCaptures(first.capture, second.capture));
 }
@@ -2295,11 +2458,20 @@ export function retryProblem(
     | 'join'
     | 'other_connector'
     | 'unbacked_save'
-    | 'unbacked_claim',
+    | 'unbacked_claim'
+    | 'no_group_bubble'
+    | 'stop_still_asking'
+    | 'place_closed',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
+    case 'place_closed':
+      return 'They turned the place down twice, so it is settled, and the draft asked for it again. Accept the no and ask `next`, with no code, ZIP or town in it.';
+    case 'no_group_bubble':
+      return "A group bubble could not be sent: it was missing, or named a time, day, price, name or activity that is not in that group's own lines. Write one bubble per group in findGroups, from that group's lines only.";
+    case 'stop_still_asking':
+      return 'It set stopAsking and still asked a question. stopAsking ends the conversation, so that question would never be answered. If the parent asked Hale to stop, write a close that asks nothing; if not, set stopAsking false and ask.';
     case 'join':
       return linqGroupOnboardingV2Enabled()
         ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Set joinPointer to below when the reply points at it. Do not write the digits or a phrase to text. When it is new, say you will start the group and set joinPointer to hale_starts. A plain yes leaves coparentGroupMode null and joinPointer null.'
@@ -2315,7 +2487,7 @@ export function retryProblem(
     case 'question':
       return input && ZERO_QUESTION_STEPS.has(input.step)
         ? 'This message asks nothing. No question mark.'
-        : `Exactly one question: ${askInWords(input?.step)}. Never ask for something already known.`;
+        : `Exactly one question: ${askInWords(input?.step, input)}. Never ask for something already known.`;
     case 'privacy':
       return 'It made a privacy claim that is not true. Google shares the whole inbox or calendar with Hale; Hale keeps and uses only what is about the kids. Do not say Hale only reads, only sees, or never sees some of it.';
     case 'invented':
@@ -2339,7 +2511,10 @@ export function retryProblem(
   }
 }
 
-function askInWords(step: FriendStep | undefined): string {
+export function askInWords(
+  step: FriendStep | undefined,
+  input?: Pick<FriendVoiceInput, 'coarseCodeAsked'>,
+): string {
   switch (step) {
     case 'email':
       return 'ask whether they want to connect their Gmail (one trust line from facts.access first)';
@@ -2357,26 +2532,44 @@ function askInWords(step: FriendStep | undefined): string {
     case 'ages':
       return 'ask how old each kid is';
     case 'place':
-      return 'ask their postal code';
+      return input?.coarseCodeAsked === true
+        ? 'ask the coarse code, or, when they declined it again, ask `next` instead'
+        : 'ask their postal code or ZIP, or, when they just declined it, the coarse code instead, with `placeDeclined` false';
     default:
       return 'ask the open item';
   }
 }
 
-/** The capture fields a retry may build on: facts and a yes or no to a connector. */
+/**
+ * A first no to the place gets the coarse code, so only a no after that ask, or a
+ * place already declined, closes it, whatever the draft marked.
+ */
+function placeOpenUntilCoarseAsked(
+  capture: OnboardingCapture,
+  input: Pick<FriendVoiceInput, 'coarseCodeAsked' | 'placeDeclined'>,
+): OnboardingCapture {
+  if (!capture.placeDeclined || input.coarseCodeAsked === true || input.placeDeclined === true)
+    return capture;
+  return { ...capture, placeDeclined: false };
+}
+
+/** The capture fields a retry may build on: facts, a yes or no to a connector, a declined place. */
 function settledFacts(capture: OnboardingCapture): OnboardingCapture {
   return {
     ...factsOnly(capture),
     nameConfirmed: capture.nameConfirmed,
     connectGmail: capture.connectGmail,
     connectCalendar: capture.connectCalendar,
+    // The parent's second no settles the place whatever the draft said next.
+    placeDeclined: capture.placeDeclined,
   };
 }
 
 /**
  * The input as it stands after a capture that moved the walk on, or null when
- * the capture did not. Only facts and a yes or no to a connector carry over:
- * a decision read from a refused draft (the group chat, a schedule add) does not.
+ * the capture did not. Only facts, a yes or no to a connector and a declined place
+ * carry over: a decision read from a refused draft (the group chat, a schedule add)
+ * does not.
  */
 function advancedInput(
   input: FriendVoiceInput,
@@ -2387,7 +2580,11 @@ function advancedInput(
   const judged = judgeInputFor(input, settled);
   if (judged.step === input.step) return null;
   return {
-    input: { ...judged, checklist: checklistAfter(input.checklist, settled) },
+    input: {
+      ...judged,
+      checklist: checklistAfter(input.checklist, settled),
+      ...(settled.placeDeclined ? { placeDeclined: true } : {}),
+    },
     settled,
   };
 }
@@ -2456,35 +2653,57 @@ export function tidyProse(
     : reply.trim();
 }
 
-/** A lead is the model's words over a group. A copied line, a question or a letter is dropped. */
-function tidyLeads(
+/**
+ * What one group's bubble may say: that group's lines, plus what every bubble
+ * shares (the parent's words, the place, the kids' ages and names, the
+ * parent's name). Another group's lines are not in here.
+ */
+function groupBubbleSlots(group: FriendFindGroup, input: FriendVoiceInput): string[] {
+  const slots = [input.parentWords, input.agesLabel ?? '', input.placeLabel ?? ''];
+  for (const line of group.lines) slots.push(line, ...twelveHourTimes(line));
+  for (const months of input.ageMonths) slots.push(String(months));
+  for (const child of input.children ?? []) if (child.name) slots.push(child.name);
+  if (input.parentName) slots.push(input.parentName);
+  return slots.filter((slot) => slot.length > 0);
+}
+
+/** The facts in a group bubble that its own group's lines do not hold. */
+function groupBubbleInventions(
+  bubble: string,
+  group: FriendFindGroup,
+  input: FriendVoiceInput,
+): string[] {
+  const slots = groupBubbleSlots(group, input);
+  const prose = bubble.replace(/\bfeel free\b/gi, '');
+  return [
+    ...findInventedFacts(bubble, slots),
+    ...mentionsOutsideSlots(bubble, PRICE, slots),
+    ...weekdaysOutsideSlots(bubble, [...slots, ...weekdaysOfDates(slots, input.now)]),
+    ...(PRICE_WORD.test(prose) && !group.lines.some((line) => PRICE_WORD.test(line))
+      ? ['price']
+      : []),
+    ...quotesOutsideSlots(bubble, slots),
+    ...namesOutsideSlots(bubble, slots),
+    ...activitiesOutsideSlots(bubble, group.lines),
+  ];
+}
+
+/**
+ * The model's bubble for each group, checked against that group's own lines.
+ * A bubble that names a time, day, price, name or activity its group does not
+ * hold (storytime's hour in the swim bubble) is dropped, and code writes
+ * nothing in its place. Null when the model did not write one per group.
+ */
+export function findShowGroupBubbles(
   leads: readonly string[] | null,
   groups: readonly FriendFindGroup[],
+  input: FriendVoiceInput,
 ): string[] | null {
-  if (!leads) return null;
-  // One lead per group or none: a lead that sums up every group sits over the
-  // wrong lines. One string with a sentence per group is split back into leads.
-  let perGroup = leads;
-  if (leads.length === 1 && groups.length > 1) {
-    const parts = sentencesOf(leads[0] ?? '');
-    if (parts.length === groups.length) perGroup = parts;
-  }
-  if (perGroup.length !== groups.length) return null;
+  if (!leads || leads.length !== groups.length) return null;
   return groups.map((group, index) => {
-    const raw = (perGroup[index] ?? '').trim();
-    const lead = sentencesOf(raw)
-      .filter((sentence) => !sentence.includes('?'))
-      .join(' ');
-    // Ages, times and counts are the lines' to state: a lead that restates one can only get it wrong.
-    if (lead.length === 0 || /\d/u.test(lead)) return '';
-    // A lead names only what its own lines hold ("swim and Scouts" over two swims is wrong).
-    if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
-    const copied = group.lines.some((line) => {
-      const a = looseText(line);
-      const b = looseText(lead);
-      return a.includes(b) || b.includes(a);
-    });
-    return copied ? '' : lead;
+    const bubble = (leads[index] ?? '').trim();
+    if (bubble.length === 0) return '';
+    return groupBubbleInventions(bubble, group, input).length > 0 ? '' : bubble;
   });
 }
 
@@ -2493,7 +2712,7 @@ function tidyLeads(
  * addendum ride only on the turns that need them, so every other turn keeps its bytes.
  */
 export async function friendVoiceSystem(
-  input: Pick<FriendVoiceInput, 'step' | 'householdGroup'>,
+  input: Pick<FriendVoiceInput, 'step' | 'householdGroup' | 'coarseCodeAsked' | 'placeDeclined'>,
   short: boolean,
 ) {
   const skill = short ? await loadOnboardingFriendShortSkill() : await loadOnboardingFriendSkill();
@@ -2502,10 +2721,54 @@ export async function friendVoiceSystem(
       ? await loadCronSkill('group-onboarding-voice')
       : null;
   const group = input.householdGroup ? await loadCronSkill('household-group') : null;
-  const system = [skill, choice, group]
+  const place = placeInPlay(input) ? await loadCronSkill('onboarding-friend-place') : null;
+  const system = [skill, choice, group, place]
     .flatMap((part) => (part ? [part.instructions] : []))
     .join('\n\n');
   return { skill, system };
+}
+
+/** The parsed tool value as the composer hands it to speakFriend. */
+function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
+  return {
+    reply: value.reply,
+    groupLeads: value.groupLeads,
+    capture: {
+      postalCode: value.postalCode,
+      city: value.city,
+      children: value.children,
+      parentName: value.parentName,
+      parentRole: value.parentRole,
+      parentRoleBasis: value.parentRoleBasis,
+      nameConfirmed: value.nameConfirmed,
+      connectCalendar: value.connectCalendar,
+      connectGmail: value.connectGmail,
+      scheduleAdds: value.scheduleAdds,
+      scheduleDone: value.scheduleDone,
+      coparentGroup: value.coparentGroup,
+      coparentGroupMode: value.coparentGroupMode,
+      nameDeclined: value.nameDeclined,
+      nameTakenBack: value.nameTakenBack,
+      kidsNamesDeclined: value.kidsNamesDeclined,
+      placeDeclined: value.placeDeclined,
+      calendarLater: value.calendarLater,
+      gmailLater: value.gmailLater,
+      stopAsking: value.stopAsking,
+      language: acceptReplyLanguage(value.language),
+    },
+    ahaMention: value.ahaMention,
+    asks: value.asks,
+    parentQuestion: value.parentQuestion,
+    connectorsOffered: value.connectorsOffered,
+    joinPointer: value.joinPointer,
+    claimsSaved: value.claimsSaved,
+    placeAsk: value.placeAsk,
+  };
+}
+
+/** A recorded tool value, read as the live composer reads it. For the eval harness. */
+export function parseReplyTool(raw: unknown): FriendComposed {
+  return composedFromReply(replySchema.parse(raw));
 }
 
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
@@ -2521,43 +2784,12 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
-        inputJsonSchema: onboardingReplyToolSchema(),
+        inputJsonSchema: onboardingReplyToolSchema(input),
         schema: replySchema,
-        maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
+        maxTokens: MAX_TOKENS,
         transport: llmTransport(),
       });
-      return {
-        reply: value.reply,
-        groupLeads: value.groupLeads,
-        capture: {
-          postalCode: value.postalCode,
-          city: value.city,
-          children: value.children,
-          parentName: value.parentName,
-          parentRole: value.parentRole,
-          parentRoleBasis: value.parentRoleBasis,
-          nameConfirmed: value.nameConfirmed,
-          connectCalendar: value.connectCalendar,
-          connectGmail: value.connectGmail,
-          scheduleAdds: value.scheduleAdds,
-          scheduleDone: value.scheduleDone,
-          coparentGroup: value.coparentGroup,
-          coparentGroupMode: value.coparentGroupMode,
-          nameDeclined: value.nameDeclined,
-          nameTakenBack: value.nameTakenBack,
-          kidsNamesDeclined: value.kidsNamesDeclined,
-          calendarLater: value.calendarLater,
-          gmailLater: value.gmailLater,
-          stopAsking: value.stopAsking,
-          language: acceptReplyLanguage(value.language),
-        },
-        ahaMention: value.ahaMention,
-        asks: value.asks,
-        parentQuestion: value.parentQuestion,
-        connectorsOffered: value.connectorsOffered,
-        joinPointer: value.joinPointer,
-        claimsSaved: value.claimsSaved,
-      };
+      return composedFromReply(value);
     },
   };
 }

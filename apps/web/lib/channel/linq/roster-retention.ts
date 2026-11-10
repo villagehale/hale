@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
-import { linqGroupOnboardingV2Enabled } from './config';
 import { isUndefinedTable } from './roster';
 
 /**
@@ -33,10 +32,9 @@ import { isUndefinedTable } from './roster';
  * (counts only, no ids), the convention `runDeletionSweep` keeps for erasures with no
  * surviving family.
  *
- * It runs on the delete sweep only while `LINQ_GROUP_ONBOARDING_V2_ENABLED` is exactly
- * `true`. Flag off is today's sweep: this returns `flag_off` and writes nothing.
- * Apply 0158 and 0159 together before the flag goes on. 0159 is what lets the number
- * column be null; an UPDATE against the 0158 NOT NULL column throws inside the sweep.
+ * It runs on every delete sweep, whatever the group flags say: a flag may turn a send off,
+ * never a retention rule. 0159 is what lets the number column be null; an UPDATE against
+ * the 0158 NOT NULL column throws inside the sweep.
  */
 export const ROSTER_RETENTION_DAYS = 30;
 const ROSTER_RETENTION_MS = ROSTER_RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -56,7 +54,6 @@ const FAMILYLESS_ROSTER_STATUSES: schema.LinqGroupRosterStatus[] = [
 ];
 
 export type RosterRetentionOutcome =
-  | { outcome: 'flag_off' }
   | { outcome: 'not_migrated' }
   | {
       outcome: 'swept';
@@ -72,7 +69,6 @@ export async function sweepRosterRetention(
   database: Database,
   now: Date = new Date(),
 ): Promise<RosterRetentionOutcome> {
-  if (!linqGroupOnboardingV2Enabled()) return { outcome: 'flag_off' };
   const cutoff = new Date(now.getTime() - ROSTER_RETENTION_MS);
   const rosters = schema.linqGroupRosters;
   const members = schema.linqGroupRosterMembers;

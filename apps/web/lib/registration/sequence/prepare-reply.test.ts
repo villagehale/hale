@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { smsEncoding } from '~/lib/channel/sms-segments';
 import { type SpotUrlRefusal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { RegistrationNoteFacts } from './note-compose';
@@ -373,12 +372,11 @@ describe('the bind refusals', () => {
 
   /**
    * Kills three things at once: a reason that never reaches its own refusal (drive each
-   * one from the page that causes it and assert the reason back), a reason that shares
-   * another's sentence, and a writer that runs before the paste has been judged.
+   * one from the page that causes it and assert the reason back), a reason the model is
+   * not handed, and a writer that runs before the paste has been judged.
    */
-  it('reaches every refusal by its own cause, in its own sentence, and writes nothing', async () => {
+  it('reaches every refusal by its own cause, hands the model its reason, and writes nothing', async () => {
     const sequence = await preparing();
-    const sentences = new Set<string>();
 
     // ONE BIND-READ WINDOW PER ITERATION, because four of these ten reasons reach the
     // portal and the read claim is real here (`deps()` spreads the prod wiring). A stub
@@ -398,14 +396,12 @@ describe('the bind refusals', () => {
         deps({ fetchBody: async () => drive.page() }),
       );
 
-      expect(outcome).toMatchObject({ status: 'refused', reason });
-      if (outcome.status !== 'refused') throw new Error('unreachable');
-      expect(outcome.reply.length).toBeGreaterThan(20);
-      expect(outcome.reply).not.toMatch(/https?:\/\//);
-      sentences.add(outcome.reply);
+      expect(outcome).toEqual({ status: 'refused', reason, reply: 'note:course_link_refused' });
     }
 
-    expect(sentences.size).toBe(COURSE_BIND_REFUSALS.length);
+    expect(notes.map((n) => (n.kind === 'course_link_refused' ? n.reason : n.kind))).toEqual([
+      ...COURSE_BIND_REFUSALS,
+    ]);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect(await auditRows('registration_readiness_stated')).toHaveLength(0);
     expect(await auditRows('registration_bind_read_throttled')).toHaveLength(0);
@@ -431,8 +427,9 @@ describe('the bind refusals', () => {
     );
 
     expect(outcome).toMatchObject({ status: 'refused', reason: 'wrong_municipality' });
-    if (outcome.status !== 'refused') throw new Error('unreachable');
-    expect(outcome.reply).toContain('Markham');
+    expect(notes).toEqual([
+      expect.objectContaining({ kind: 'course_link_refused', town: 'Markham' }),
+    ]);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect((await sequenceRow()).courseUrl).toBeNull();
   });
@@ -453,10 +450,14 @@ describe('the bind refusals', () => {
     );
 
     expect(outcome).toMatchObject({ status: 'refused', reason: 'different_season' });
-    if (outcome.status !== 'refused') throw new Error('unreachable');
-    // Both dates, so a parent can see which one Hale thought it was holding.
-    expect(outcome.reply).toMatch(/Sep/);
-    expect(outcome.reply).toMatch(/Aug/);
+    // Both mornings, so a parent can see which one Hale thought it was holding.
+    expect(notes).toEqual([
+      expect.objectContaining({
+        kind: 'course_link_refused',
+        pageOpens: expect.objectContaining({ date: 'Tuesday, September 22, 2026' }),
+        haleHas: expect.objectContaining({ date: 'Tuesday, August 11, 2026' }),
+      }),
+    ]);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect((await sequenceRow()).courseUrl).toBeNull();
   });
@@ -483,6 +484,22 @@ describe('the bind refusals', () => {
     expect(outcome).toMatchObject({ status: 'refused', reason: 'page_unreadable' });
     expect((await sequenceRow()).courseUrl).toBeNull();
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
+  });
+
+  it('sends nothing when the refusal cannot be written — there is no fallback sentence', async () => {
+    const outcome = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        answeredByUserId: parentUserId,
+        rawUrl: oakvilleUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({ fetchBody: serving(fixture('oakville-course')), writeNote: async () => null }),
+    );
+
+    expect(outcome).toEqual({ status: 'refused', reason: 'wrong_municipality', reply: null });
   });
 
   it('declines an already-open course to the coach rather than refusing it', async () => {
@@ -765,9 +782,12 @@ describe('the read throttle', () => {
 
     expect(first.status).toBe('bound');
     expect(net.calls).toHaveLength(1);
-    expect(second).toMatchObject({ status: 'read_throttled' });
-    if (second.status !== 'read_throttled') throw new Error('unreachable');
-    expect(second.reply).toContain('10 minutes');
+    expect(second).toEqual({ status: 'read_throttled', reply: 'note:course_link_throttled' });
+    expect(notes.at(-1)).toMatchObject({
+      kind: 'course_link_throttled',
+      alreadyBound: false,
+      retryMinutes: 10,
+    });
     // The refusal is a receipt, never a silence — and it says nothing about the paste
     // beyond the host the sequence already holds.
     const [receipt] = await auditRows('registration_bind_read_throttled');
@@ -820,8 +840,8 @@ describe('the read throttle', () => {
    * The commonest second paste there is — an SMS resend, a double tap, a parent making
    * sure the first one landed — and the window is spent, so the reply is the throttle's.
    * "I have not opened that link" is FALSE of this one: Hale opened that exact link
-   * seconds ago, bound it, and texted the ack back. Kills a sentence that says it
-   * anyway.
+   * seconds ago, bound it, and texted the ack back. Kills facts that hand the model a
+   * fresh paste (and a resend time) for it anyway.
    */
   it('tells the same link, pasted again inside the window, that it already has it', async () => {
     const net = counting();
@@ -855,11 +875,11 @@ describe('the read throttle', () => {
     expect(first.status).toBe('bound');
     expect(net.calls).toHaveLength(1);
     expect(again.status).toBe('read_throttled');
-    if (again.status !== 'read_throttled') throw new Error('unreachable');
-    expect(again.reply).toContain('I already have that class from you');
-    expect(again.reply).not.toContain('I have not opened that link');
-    expect(again.reply).not.toContain('send it again');
-    expect(again.reply).not.toContain('?');
+    expect(notes.at(-1)).toMatchObject({
+      kind: 'course_link_throttled',
+      alreadyBound: true,
+      retryMinutes: null,
+    });
   });
 
   /** Kills hoisting the claim above the sanitizer and the municipality check: one
@@ -897,11 +917,8 @@ describe('the read throttle', () => {
     expect(await auditRows('registration_bind_read_throttled')).toHaveLength(0);
   });
 
-  /**
-   * Kills a curly dash or apostrophe (which flips the whole body to UCS-2), an
-   * interrogative rewrite, and a plural that says "in 1 minutes".
-   */
-  it('says it in one GSM-7 sentence, in both plurals', async () => {
+  /** Kills a resend time that is the window's length rather than the slot's remainder. */
+  it('hands the slot’s own remainder, not the window’s length', async () => {
     const sequence = await preparing();
     const net = counting();
     // A SECOND class, not the one just bound: the link already bound has its own
@@ -920,7 +937,7 @@ describe('the read throttle', () => {
       );
       if (outcome.status !== 'read_throttled')
         throw new Error(`expected a throttle, got ${outcome.status}`);
-      return outcome.reply;
+      return notes.at(-1);
     };
 
     await handleCourseBind(
@@ -934,24 +951,19 @@ describe('the read throttle', () => {
       },
       deps({ fetchBody: net.fetchBody }),
     );
-    const plural = await throttled(NOW);
-    const singular = await throttled(new Date(NOW.getTime() + BIND_READ_WINDOW_MS - 5_000));
+    const early = await throttled(NOW);
+    const late = await throttled(new Date(NOW.getTime() + BIND_READ_WINDOW_MS - 5_000));
 
-    for (const reply of [plural, singular]) {
-      expect(smsEncoding(reply)).toBe('gsm7');
-      expect(reply).not.toContain('?');
-    }
-    expect(plural).toContain('in 10 minutes');
-    expect(singular).toContain('in 1 minute and');
+    expect(early).toMatchObject({ kind: 'course_link_throttled', retryMinutes: 10 });
+    expect(late).toMatchObject({ kind: 'course_link_throttled', retryMinutes: 1 });
   });
 
   /**
-   * Kills a sentence that asserts the read landed. The claim is spent by the REQUEST,
-   * not by the answer, so the paste that follows a six-second timeout is the one case
-   * where "I just read a course page" is false — and it arrives right after the
-   * sentence that told the same parent the page could not be read.
+   * The claim is spent by the REQUEST, not by the answer, so the paste that follows a
+   * six-second timeout is throttled too — and its write still names the miss: a null
+   * note sends nothing, while the receipt the throttle owes the trail still lands.
    */
-  it('does not claim a read the timed-out request never made', async () => {
+  it('throttles the paste after a timed-out read, and a failed write sends nothing', async () => {
     const sequence = await preparing();
     const timesOut = vi.fn(async (): Promise<string> => {
       throw new Error('bind fetch timed out');
@@ -977,17 +989,13 @@ describe('the read throttle', () => {
         inboundChannelMessageId: inboundId,
         now: NOW,
       },
-      deps({ fetchBody: timesOut }),
+      deps({ fetchBody: timesOut, writeNote: async () => null }),
     );
 
     expect(first).toMatchObject({ status: 'refused', reason: 'page_unreadable' });
     expect(timesOut).toHaveBeenCalledTimes(1);
-    expect(second.status).toBe('read_throttled');
-    if (second.status !== 'read_throttled') throw new Error('unreachable');
-    // The positive control on the negative below: the sentence still says what Hale
-    // spent the window on, in the one verb that is true of a timeout and of a read.
-    expect(second.reply).toContain('I just tried a course page');
-    expect(second.reply).not.toContain('I just read a course page');
+    expect(second).toEqual({ status: 'read_throttled', reply: null });
+    expect(await auditRows('registration_bind_read_throttled')).toHaveLength(1);
   });
 });
 

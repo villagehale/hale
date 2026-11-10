@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own. Autonomy was turned off this turn for send_email and reply_to_email, so saying \"Done\" is true and is not an overclaim. The reply confirms the change in plain words and says each email will be shown for approval first. No invented details, no greeting or sign-off, no question needed. It is a short, exact answer.",
+    "score": 5
+  }
+}

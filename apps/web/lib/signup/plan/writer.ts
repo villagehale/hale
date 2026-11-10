@@ -1,8 +1,8 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { hasLink, withoutLinks } from './links';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -45,6 +45,11 @@ export interface PlanRunFacts {
 
 export interface PlanReplyFacts {
   moment: PlanReplyMoment;
+  /**
+   * `auto`: Hale registers and pays with the card saved on the city account. `assisted`
+   * (ActiveNet): Hale fills the registration and the parent submits and pays on the live browser.
+   */
+  mode: 'auto' | 'assisted';
   childFirstName: string | null;
   opensAt: { local: string; timeZone: string };
   sessions: readonly PlanReplySession[];
@@ -81,8 +86,26 @@ export function planReplyViolations(text: string): string[] {
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
-  if (hasLink(tidy)) out.push('contains a link: Hale adds any link after the text');
+  if (hasLinkShape(tidy)) out.push('contains a link: Hale adds any link after the text');
   return out;
+}
+
+const CJK = String.raw`\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}`;
+const CJK_BEFORE_LATIN = new RegExp(`([${CJK}\u3002])(?=[A-Za-z])`, 'gu');
+const LATIN_BEFORE_CJK = new RegExp(`([A-Za-z])(?=[${CJK}])`, 'gu');
+
+/**
+ * The draft as it is sent: whitespace collapsed, and a space wherever a Latin word touches
+ * Chinese or Japanese. A phone reads "名额。Hale" or "Ada报上名。链接" as a host, so the link
+ * gate rightly refuses them, and these drafts name the child and Hale in Latin letters. A
+ * space only makes text less link-like, and the gate reads exactly what is sent.
+ */
+export function planReplyText(raw: string): string {
+  return raw
+    .replace(CJK_BEFORE_LATIN, '$1 ')
+    .replace(LATIN_BEFORE_CJK, '$1 ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Labels and the question come from a page or a model: no link in them reaches the writer. */
@@ -172,8 +195,9 @@ export function createPlanReplyWriter(
             schema: signupPlanReplySchema,
             maxTokens: SIGNUP_PLAN_REPLY_MAX_TOKENS,
           });
-          const violations = planReplyViolations(value.text);
-          if (violations.length === 0) return value.text.replace(/\s+/g, ' ').trim();
+          const text = planReplyText(value.text);
+          const violations = planReplyViolations(text);
+          if (violations.length === 0) return text;
           note = violations.join('; ');
         } catch (err) {
           return unwritten('model_failed', className(err));

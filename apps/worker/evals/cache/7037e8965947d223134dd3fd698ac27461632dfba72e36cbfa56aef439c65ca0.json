@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a cancellation reason (weather), offers a make-up class at 3pm not in the facts, uses apology theatre and emoji, and omits the new day and time, so it fails the facts badly.",
+    "score": 1
+  }
+}

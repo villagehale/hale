@@ -4,6 +4,7 @@ import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type { DueCommitment } from '~/lib/commitments/ledger';
+import type { WatchCalendarOutcome } from './calendar-check';
 import { ACTIVITY_WATCH_DUE_HOURS } from './commitment';
 import type { DeepSlot } from './deep';
 import type { ActivityPick } from './lane';
@@ -66,6 +67,8 @@ interface Harness {
   heldNotes: string[];
   watched: unknown[];
   deferredWatches: unknown[];
+  calendarChecks: unknown[];
+  closedWatches: unknown[];
 }
 
 function harness(
@@ -84,6 +87,8 @@ function harness(
     conversationId?: string | null;
     /** `users.locale` for the parent the promise was sent to. */
     language?: string;
+    /** What the calendar check answers for a watch. Empty calendar by default. */
+    calendar?: WatchCalendarOutcome;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -95,6 +100,8 @@ function harness(
   const heldNotes: string[] = [];
   const watched: unknown[] = [];
   const deferredWatches: unknown[] = [];
+  const calendarChecks: unknown[] = [];
+  const closedWatches: unknown[] = [];
 
   const deps: ActivityFollowUpDeps = {
     refuseUnbackedSend: async () => overrides.unbacked ?? [],
@@ -124,7 +131,13 @@ function harness(
     composer: {
       async compose(grounding) {
         composed.push(grounding);
-        return overrides.compose ?? { status: 'composed', message: `${PICK.name} runs Saturdays.` };
+        return (
+          overrides.compose ?? {
+            status: 'composed',
+            message: `${PICK.name} runs Saturdays.`,
+            mentionsWatch: false,
+          }
+        );
       },
     },
     buildGate: () => ({
@@ -162,6 +175,16 @@ function harness(
       deferredWatches.push(input);
       return { status: 'deferred' };
     },
+    calendarCheck: {
+      async check(_db, watch) {
+        calendarChecks.push(watch);
+        return overrides.calendar ?? { outcome: 'calendar_empty' };
+      },
+    },
+    closeWatch: async (_db, input) => {
+      closedWatches.push(input);
+      return { status: 'closed', commitmentIds: [input.commitmentId] };
+    },
   };
   return {
     deps,
@@ -174,6 +197,8 @@ function harness(
     heldNotes,
     watched,
     deferredWatches,
+    calendarChecks,
+    closedWatches,
   };
 }
 
@@ -263,6 +288,7 @@ describe('the promise is kept when the news is bad', () => {
       compose: {
         status: 'composed',
         message: 'I went back through the fall listings - nothing yet.',
+        mentionsWatch: false,
       },
     });
 
@@ -459,6 +485,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
         status: 'composed',
         message:
           'Cartwheels has Tiny Gym Sundays 9:30-10:15 from Sept 14, $124 a term - their site says, and registration has been open since July 22.',
+        mentionsWatch: false,
       },
     });
 
@@ -498,6 +525,37 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
       'Tumble n Learn, Cartwheels Gym Centre',
     ]);
     expect(held.unsent_activity_options.every((option) => option.source_url === PAGE)).toBe(true);
+  });
+
+  it('carries the registration row into the text when the extract put it past the cut', async () => {
+    armed();
+    const undated = SLOTS.map((row) => ({ ...row, registration: null }));
+    const registrationRow: DeepSlot = {
+      ...SLOTS[0]!,
+      name: 'Fall registration (covers Tiny Gym), Cartwheels Gym Centre',
+      when: null,
+      price: null,
+    };
+    const h = payable({
+      deep: {
+        status: 'read',
+        slots: [undated[0]!, undated[1]!, undated[2]!, registrationRow],
+        searchResults: 8,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 1,
+        pageVerdict: 'page_has_schedule',
+      },
+    });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    const composed = h.composed[0] as { picks: { name: string }[] };
+    expect(composed.picks.map((pick) => pick.name)).toEqual([
+      undated[0]!.name,
+      undated[1]!.name,
+      registrationRow.name,
+    ]);
   });
 
   it('threads the message the parent actually got - venue page and all', async () => {
@@ -569,7 +627,11 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
         pagesRefused: 0,
         pageVerdict: 'page_has_schedule',
       },
-      compose: { status: 'composed', message: 'I read their fall page and there is nothing up.' },
+      compose: {
+        status: 'composed',
+        message: 'I read their fall page and there is nothing up.',
+        mentionsWatch: false,
+      },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
@@ -649,6 +711,7 @@ describe('a partial answer registers the watch it talks about', () => {
       compose: {
         status: 'composed',
         message: "Cartwheels runs Tiny Gym for under-3s - their site says. I'll keep watching.",
+        mentionsWatch: true,
       },
       ...overrides,
     });
@@ -765,6 +828,7 @@ describe('a partial answer registers the watch it talks about', () => {
       compose: {
         status: 'composed',
         message: "Nothing up for the fall session yet - I'll keep looking and text you.",
+        mentionsWatch: true,
       },
     });
 
@@ -772,6 +836,36 @@ describe('a partial answer registers the watch it talks about', () => {
 
     expect(result).toMatchObject({ sentEmptyHanded: 1, watching: 1 });
     expect(h.composed[0]).toMatchObject({ watch: true });
+  });
+
+  it('a watch row whose sent text never mentions it is logged, counts and codes only', async () => {
+    armed();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const silent = 'Cartwheels runs Tiny Gym for under-3s - their site says.';
+    const h = partialHarness({
+      compose: { status: 'composed', message: silent, mentionsWatch: false },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    const calls = warn.mock.calls.filter(([, msg]) => String(msg).includes('silent watch'));
+    warn.mockRestore();
+
+    expect(result).toMatchObject({ sent: 1, watching: 1 });
+    expect(calls).toEqual([[{ code: 'silent_watch', picks: 1 }, expect.any(String)]]);
+    expect(JSON.stringify(calls)).not.toContain('Cartwheels');
+  });
+
+  it('POSITIVE CONTROL - a watch the text tells the parent about logs nothing', async () => {
+    armed();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const h = partialHarness();
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+    const calls = warn.mock.calls.filter(([, msg]) => String(msg).includes('silent watch'));
+    warn.mockRestore();
+
+    expect(h.watched).toHaveLength(1);
+    expect(calls).toEqual([]);
   });
 
   it('a watch the ledger refused is COUNTED, never swallowed', async () => {
@@ -825,7 +919,11 @@ describe('a watch sends news or nothing', () => {
         pagesRefused: 0,
         pageVerdict: 'page_has_schedule',
       },
-      compose: { status: 'composed', message: 'Tiny Gym runs Saturdays at 9:15 and 10:30.' },
+      compose: {
+        status: 'composed',
+        message: 'Tiny Gym runs Saturdays at 9:15 and 10:30.',
+        mentionsWatch: false,
+      },
     });
   }
 
@@ -899,6 +997,104 @@ describe('a watch sends news or nothing', () => {
 
     expect(result).toMatchObject({ sent: 1, nothingNew: 0 });
     expect(h.deferredWatches).toEqual([]);
+  });
+});
+
+describe('a watch ends when the activity is already on the family calendar', () => {
+  const WATCH: DueCommitment = { ...DUE, heardFacts: ['when:day:sat', 'when:time:9:15'] };
+
+  it('closes the watch and neither searches nor sends when the calendar holds it', async () => {
+    armed();
+    let searched = 0;
+    const h = harness({ due: [WATCH], calendar: { outcome: 'on_calendar' } });
+    h.deps.finder = {
+      async find() {
+        searched += 1;
+        return { found: true, picks: [PICK] };
+      },
+    };
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ due: 1, sent: 0, onCalendar: 1, nothingNew: 0, failed: 0 });
+    expect(h.closedWatches).toEqual([{ commitmentId: WATCH.id, familyId: FAMILY, now: NOW }]);
+    expect(searched).toBe(0);
+    expect(h.composed).toEqual([]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.fulfilled).toEqual([]);
+    expect(h.deferredWatches).toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ commitmentId: WATCH.id, outcome: 'on_calendar' }),
+      expect.any(String),
+    );
+  });
+
+  it('hands the check the watch subject, its heard facts, and the parent it is owed to', async () => {
+    armed();
+    const h = harness({ due: [WATCH], calendar: { outcome: 'on_calendar' } });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.calendarChecks).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        subjectChildId: null,
+        subject: WATCH.topic,
+        heardFacts: WATCH.heardFacts,
+        now: NOW,
+      },
+    ]);
+  });
+
+  it('POSITIVE CONTROL - a calendar without it lets the watch look and send as before', async () => {
+    armed();
+    const h = harness({ due: [WATCH], calendar: { outcome: 'not_on_calendar' } });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sent: 1, onCalendar: 0, calendarUnchecked: 0 });
+    expect(h.closedWatches).toEqual([]);
+    expect(h.transport.bodies()).toHaveLength(1);
+  });
+
+  it.each(['zone_unknown', 'unreadable', 'unsure', 'read_failed'] as const)(
+    'a check with no answer (%s) keeps the watch going and is counted and logged',
+    async (reason) => {
+      armed();
+      const h = harness({ due: [WATCH], calendar: { outcome: 'calendar_unchecked', reason } });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+      expect(result).toMatchObject({ sent: 1, onCalendar: 0, calendarUnchecked: 1 });
+      expect(h.closedWatches).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        { commitmentId: WATCH.id, outcome: 'calendar_unchecked', reason },
+        expect.any(String),
+      );
+    },
+  );
+
+  it("the coach's first promise is never checked against the calendar", async () => {
+    armed();
+    const h = harness({ calendar: { outcome: 'on_calendar' } });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sent: 1, onCalendar: 0 });
+    expect(h.calendarChecks).toEqual([]);
+    expect(h.closedWatches).toEqual([]);
+  });
+
+  it('a held family is not checked - the check comes after the gate', async () => {
+    armed();
+    const h = harness({ due: [WATCH], hold: 'quiet_hours', calendar: { outcome: 'on_calendar' } });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.calendarChecks).toEqual([]);
   });
 });
 
@@ -1058,6 +1254,7 @@ describe('the last read of the string that actually leaves', () => {
       compose: {
         status: 'composed',
         message: `${PICK.name} runs Saturdays. Want me to check back once they're up?`,
+        mentionsWatch: false,
       },
     });
 
@@ -1076,7 +1273,11 @@ describe('the last read of the string that actually leaves', () => {
     armed();
     const h = harness({
       find: { found: true, picks: [PICK] },
-      compose: { status: 'composed', message: `${PICK.name} runs Saturdays. Your spot is booked.` },
+      compose: {
+        status: 'composed',
+        message: `${PICK.name} runs Saturdays. Your spot is booked.`,
+        mentionsWatch: false,
+      },
       unbacked: ['no_scheduled_row'],
     });
 

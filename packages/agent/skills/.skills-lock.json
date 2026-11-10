@@ -1,7 +1,7 @@
 {
   "activity-deep.md": {
     "file": "activity-deep.md",
-    "sha256": "b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca"
+    "sha256": "96f7e289daac854476c384093fc07ffea749e7391cf691273f6e5dde981f79d4"
   },
   "activity-finder-day.md": {
     "file": "activity-finder-day.md",
@@ -13,15 +13,19 @@
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "90f074ed912a23bb83debf43b35b235b1703ba050313cf0bd62927c98ae1d4a6"
+    "sha256": "fb5903ad7e966cf619a770981cc7072882a288f129dc247bde8fcdc5d8419c88"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
-    "sha256": "6c0d3f55ef83e0bbc3f34d0335235f028fe902d26d431b06a71798a9cc42688f"
+    "sha256": "8c2255e22c6e93fa82308ed6b7eaaf245096ca63ab0d9103761d40a94bd5a21a"
   },
   "activity-verdict.md": {
     "file": "activity-verdict.md",
     "sha256": "49c3038cbec9faa0dad50bf3dffe6190588b994eae0e1a4a62500422d44acd4b"
+  },
+  "activity-watch-calendar-read.md": {
+    "file": "activity-watch-calendar-read.md",
+    "sha256": "dd5fde530caca83910ef056b36ad6df9a23f3822689b9f1fb4a4f1504e7eceee"
   },
   "area-read.md": {
     "file": "area-read.md",
@@ -30,6 +34,10 @@
   "autonomy-notice.md": {
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
+  },
+  "browser-use-assisted-signup.md": {
+    "file": "browser-use-assisted-signup.md",
+    "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
   },
   "browser-use-confirmation.md": {
     "file": "browser-use-confirmation.md",
@@ -95,9 +103,13 @@
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
+  "coach-capability-correction.md": {
+    "file": "coach-capability-correction.md",
+    "sha256": "13170b75a276e27731b8434f30e5952c22ca802901be6d01b70f65e50ce02176"
+  },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
-    "sha256": "a306f8314a4dec889237a14c1d41ff9006bccf9f7397695167a20505f0d05155"
+    "sha256": "d528ba51c5b241dfa9c6efcd8bb01334a49ea7709120ae387a9a611ff55ec796"
   },
   "coach-channel-shorten.md": {
     "file": "coach-channel-shorten.md",
@@ -105,7 +117,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
+    "sha256": "6adfb83fe3c3822d30d53dec3116e16ebdf57f4a166d46dcce05f540fb660b2a"
   },
   "coach-fact-source.md": {
     "file": "coach-fact-source.md",
@@ -115,13 +127,17 @@
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
   },
+  "coach-group-lists.md": {
+    "file": "coach-group-lists.md",
+    "sha256": "6356a5810c5a49937f948fa3dc2c8b7b147babbca9b843b41beb8f6489cf2cdb"
+  },
   "coach-local-day.md": {
     "file": "coach-local-day.md",
     "sha256": "2623acdeda6865fb09415b2074c259774232016b10be4b8c014af31e48b9e9f4"
   },
   "coach-nearby-find.md": {
     "file": "coach-nearby-find.md",
-    "sha256": "8ee4c125cb0f2ce1ace5482cd3b6b32fdccefc20d48ec9c54fcc94f9bc3354fb"
+    "sha256": "dc699d224aca4924699a2c2497ab07774e68984f71e199f9f139470c8dd8c246"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -130,6 +146,10 @@
   "coach-plan.md": {
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
+  },
+  "coach-voice-memo.md": {
+    "file": "coach-voice-memo.md",
+    "sha256": "d78ae65ffd6044bd50e7c22fc644b999dac26e689e4b451d2ebea832c1e004c9"
   },
   "connector-disconnect-read.md": {
     "file": "connector-disconnect-read.md",
@@ -173,7 +193,7 @@
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
-    "sha256": "4092659057ae076133c1e473c8310a920f0f0867db37512c5d79b25bfd08f96d"
+    "sha256": "d94ecb2e3d75632a4ee5b6d9d8f173db49c4597c99b52c8635d54c2cc3814f6e"
   },
   "extract-coparent-duty.md": {
     "file": "extract-coparent-duty.md",
@@ -198,6 +218,10 @@
   "flood-line.md": {
     "file": "flood-line.md",
     "sha256": "4aa00a1cfa59796421ef9c5c269fcba15ab9beae7a23cd5d2778aa29c096dfc5"
+  },
+  "followup-process-judge.md": {
+    "file": "followup-process-judge.md",
+    "sha256": "c92b4e4cc6221c6641e38155c87729a4ef63633aa7290e675f4ae3072e50e6f0"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -230,6 +254,10 @@
   "group-conflict-alert.md": {
     "file": "group-conflict-alert.md",
     "sha256": "9e212ec16cc0150bed2fe1ae102c5e396e023d092a122fff70c0db21be539a69"
+  },
+  "group-mention-read.md": {
+    "file": "group-mention-read.md",
+    "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
@@ -309,7 +337,7 @@
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
-    "sha256": "18976791b8e75b73993815253621573bba04a492865b7720bc13adcc003a0ec3"
+    "sha256": "e08fada31d807c6841bb0668f487f1687be77bcf468f9584172b34ebd4974f4c"
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
@@ -383,13 +411,17 @@
     "file": "offer-receipt.md",
     "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
   },
+  "onboarding-friend-place.md": {
+    "file": "onboarding-friend-place.md",
+    "sha256": "75792b8151d9da5d31d755f76d6b495089a61410af6de2956be52e29bae3850b"
+  },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "19b450dbabc8d849d43729e218761d5dcedccb0c1a694eff6cd0211b0f6a6428"
+    "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "e05ab699ac45adcb76d803a2fb56576939c981b53f734de0a1db9ab4be579799"
+    "sha256": "bfd5e3f4398bd07818b56e898c765b5a914f36ee9003dca694e4f2604657df22"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
@@ -419,13 +451,21 @@
     "file": "read-class-availability.md",
     "sha256": "972c8a7766aa8da30bf8dd30a77fe42f5deceeeebea82db99886f54a9a28fa0d"
   },
+  "read-email-coach.md": {
+    "file": "read-email-coach.md",
+    "sha256": "348f845be5660f82cb0f2a2f78248611df0afd6178a66ef92bcab4a10b8a6d7a"
+  },
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
   },
+  "registration-date-moved.md": {
+    "file": "registration-date-moved.md",
+    "sha256": "a342dc7a85379a9a0718ddef6f08f27286281a4c8093d359e41b2a47a5f62510"
+  },
   "registration-date-unconfirmed.md": {
     "file": "registration-date-unconfirmed.md",
-    "sha256": "df670bbb95411f7858b8e3b608d81d3153d800eaa736c2aa0ee8e94315a8fe20"
+    "sha256": "fae715649681313c25d563d4d387d7bb6ab7c210719e5e2be1f9e1d0db84df6d"
   },
   "registration-evening.md": {
     "file": "registration-evening.md",
@@ -441,7 +481,7 @@
   },
   "registration-note.md": {
     "file": "registration-note.md",
-    "sha256": "3ff9e76330bcbd0d9386738d7d926e83e2983a4ac1f45e69077536c02c1e8b81"
+    "sha256": "cff18881826efd412bbfcf53b1f79956a55abd29297288468ae6e7175bb89117"
   },
   "registration-text-check.md": {
     "file": "registration-text-check.md",
@@ -473,7 +513,7 @@
   },
   "shared-group-reading.md": {
     "file": "shared-group-reading.md",
-    "sha256": "49ae89f6cea447333a6636bfc764775e031f568fc40eedae6acf587b886aac3f"
+    "sha256": "0d710370b2c517fbad3ef0945c17ccc4446f49971a5b15ed7b25e764accfcf4f"
   },
   "shared-group-voice.md": {
     "file": "shared-group-voice.md",
@@ -497,7 +537,7 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "ee71e350446bfba4484c994565a6cddb7cf500d90832762463c972d39f495406"
+    "sha256": "7a0319f7e100b646081932352c3096d31580a22f3526f1162e6c4f96bbc13be0"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
@@ -505,7 +545,7 @@
   },
   "spoken-line.md": {
     "file": "spoken-line.md",
-    "sha256": "88ee93d9afa259b40535eb2770985cc793e71b872b0c34ccc740e2b8752fb28c"
+    "sha256": "e98921611445203f0d1a6263b6ba92932c5844bc8467b1db34a44f27bf8faa7c"
   },
   "spot-open-voice.md": {
     "file": "spot-open-voice.md",

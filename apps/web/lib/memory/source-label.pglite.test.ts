@@ -10,7 +10,7 @@ import {
   seedIntegration,
 } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
-import { loadFactSources } from './source-label';
+import { loadFactSources } from '@hale/worker/fact-sources';
 import { handleParentMemory } from './store';
 
 const NOW = new Date('2026-10-09T15:00:00.000Z');
@@ -79,6 +79,10 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
       factValue,
       confidence: 0.9,
       inferredBy: 'memory_inferencer',
+      // Recorded as the household's, so the connector-owner rule is the only thing that
+      // holds a fact back here: an unrecorded routine reaches neither adult once a
+      // co-parent is on record (VIL-599).
+      heard: { in: 'family', userId: null },
       sourceEventId,
       validFrom: NOW,
       memoryKind: 'lasting',

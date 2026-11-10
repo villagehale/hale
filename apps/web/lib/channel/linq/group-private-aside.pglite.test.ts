@@ -1,9 +1,11 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { linqChatBlindIndex, phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { privateAsideOneToOne } from './connect-link-1to1';
 import {
   PRIVATE_ASIDE_AUDIT,
   type PrivateAsideDraftInput,
@@ -87,7 +89,16 @@ async function seedFamily(phone: string, name: string, kid: string, memory: stri
   return { familyId, userId, phone };
 }
 
+/** In the chat (presence, which is what an aside keys on) and joined by the parent's words. */
 async function join(f: { familyId: string; userId: string; phone: string }, at: Date) {
+  await db.database.insert(schema.linqSharedGroupPeople).values({
+    chatId: CHAT,
+    phoneE164Encrypted: encryptString(f.phone),
+    phoneE164Hash: phoneBlindIndex(f.phone),
+    familyId: f.familyId,
+    userId: f.userId,
+    seatedAt: at,
+  });
   await joinFamilyToSharedGroup(db.database, {
     chatId: CHAT,
     familyId: f.familyId,
@@ -136,6 +147,23 @@ function recorder(opts: {
     return 'sent' as const;
   };
   return { model, sendOneToOne, reads, drafts, sent };
+}
+
+/** The same model recorder, sending through the real 1:1 door onto a fake wire. */
+function throughDoor(opts: Parameters<typeof recorder>[0]) {
+  const recorded = recorder(opts);
+  const wire: { to: string; body: string }[] = [];
+  const sendOneToOne = privateAsideOneToOne(db.database, {
+    now: NOW,
+    send: {
+      text: async (input) => {
+        wire.push(input);
+        return { providerMessageId: `msg-${wire.length}`, chatId: `dm-${wire.length}` };
+      },
+      link: async () => ({ providerMessageId: 'unused' }),
+    },
+  });
+  return { ...recorded, sendOneToOne, wire };
 }
 
 const turn = (over: Partial<Parameters<typeof runPrivateAside>[2]> = {}) => ({
@@ -244,14 +272,18 @@ describe('VIL-457 private aside', () => {
 
   it("gives the draft that family's own last aside, holds a repeat back, and sends a real change", async () => {
     const { ada, bao } = await twoFamilies();
-    await runPrivateAside(
-      db.database,
-      recorder({ read: ['f2'], draft: { send: true, about: 'Leo OT Sat 10', text: 'first' } }),
-      turn(),
-    );
+    const first = throughDoor({
+      read: ['f2'],
+      draft: { send: true, about: 'Leo OT Sat 10', text: 'first' },
+    });
+    await runPrivateAside(db.database, first, turn());
+    expect(first.wire.map((w) => w.body)).toEqual(['first']);
 
     // A second message on the same thing: the draft sees the last aside and declines.
-    const repeat = recorder({ read: ['f1', 'f2'], draft: { send: false, about: '', text: '' } });
+    const repeat = throughDoor({
+      read: ['f1', 'f2'],
+      draft: { send: false, about: '', text: '' },
+    });
     const held = await runPrivateAside(
       db.database,
       repeat,
@@ -265,11 +297,11 @@ describe('VIL-457 private aside', () => {
       ],
     });
     expect(repeat.drafts[0]?.lastAside).toBeNull(); // Ada never got one; Bao's is not hers.
-    expect(repeat.drafts[1]?.lastAside).toMatchObject({ about: 'Leo OT Sat 10', text: 'first' });
-    expect(repeat.sent).toHaveLength(0);
+    expect(repeat.drafts[1]?.lastAside).toEqual({ text: 'first', at: expect.any(String) });
+    expect(repeat.wire).toHaveLength(0);
 
     // The time moves: the draft decides it is new and sends.
-    const change = recorder({
+    const change = throughDoor({
       read: ['f2'],
       draft: { send: true, about: 'Leo OT vs Sat 11', text: 'second' },
     });
@@ -284,10 +316,63 @@ describe('VIL-457 private aside', () => {
     });
     expect(change.drafts[0]?.lastAside).toMatchObject({ text: 'first' });
 
-    // Next time the newest delivered aside is the one shown.
-    const next = recorder({ read: ['f2'], draft: { send: false, about: '', text: '' } });
+    // Next time the newest delivered aside is the one shown, and only from this chat.
+    const next = throughDoor({ read: ['f2'], draft: { send: false, about: '', text: '' } });
     await runPrivateAside(db.database, next, turn({ inboundId: 'inbound-4' }));
-    expect(next.drafts[0]?.lastAside).toMatchObject({ about: 'Leo OT vs Sat 11', text: 'second' });
+    expect(next.drafts[0]?.lastAside).toMatchObject({ text: 'second' });
+  });
+
+  it('keeps the aside text and the raw chat id off the family audit row', async () => {
+    const { bao } = await twoFamilies();
+    const r = throughDoor({
+      read: ['f2'],
+      draft: { send: true, about: 'Leo OT Sat 10', text: 'Leo has OT at 10 on Saturday' },
+    });
+    await runPrivateAside(db.database, r, turn());
+    expect(r.wire.map((w) => w.body)).toEqual(['Leo has OT at 10 on Saturday']);
+    const rows = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, bao.familyId),
+          eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT),
+        ),
+      );
+    expect(rows).toEqual([{ after: { chatKey: linqChatBlindIndex(CHAT), delivered: 'sent' } }]);
+  });
+
+  it("one parent's aside is in their own copy and not in the other parent's", async () => {
+    const { bao } = await twoFamilies();
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:Bao-coparent', name: 'Bao co-parent' })
+      .returning({ id: schema.users.id });
+    const coParentId = coParent?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: bao.familyId, userId: coParentId, role: 'co_parent' });
+    const aside = 'Leo has OT at 10 on Saturday';
+    await runPrivateAside(
+      db.database,
+      throughDoor({ read: ['f2'], draft: { send: true, about: 'Leo OT', text: aside } }),
+      turn(),
+    );
+
+    const own = await assembleFamilyExport(db.database, bao.familyId, {
+      actorUserId: bao.userId,
+      now: NOW,
+    });
+    expect(own.requesterOnly.privateAsides).toEqual([
+      { text: aside, sentAt: expect.any(String), withheld: null },
+    ]);
+    const theirs = await assembleFamilyExport(db.database, bao.familyId, {
+      actorUserId: coParentId,
+      now: NOW,
+    });
+    expect(theirs.requesterOnly.privateAsides).toEqual([]);
+    expect(JSON.stringify(theirs)).not.toContain(aside);
+    expect(JSON.stringify(theirs)).not.toContain(CHAT);
   });
 
   it.each([
@@ -316,7 +401,7 @@ describe('VIL-457 private aside', () => {
     expect(await asideRows()).toHaveLength(0);
   });
 
-  it('never addresses a family that left or never joined, and does nothing with no joined family', async () => {
+  it('never addresses a family that left or is not in the chat, and does nothing with no family here', async () => {
     const { ada, bao } = await twoFamilies();
     const outsider = await seedFamily('+14165550333', 'Cy', 'Zoe', 'zoe-private');
     await leaveFamilyFromSharedGroup(db.database, {
@@ -330,16 +415,30 @@ describe('VIL-457 private aside', () => {
     const r = recorder({ read: ['f2'] });
     const out = await runPrivateAside(db.database, r, turn({ senderFamilyId: ada.familyId }));
     expect(out).toEqual({ outcome: 'unknown_ref', refs: ['f2'] });
-    // Only Ada is listed: Bao left and Cy never joined or consented.
+    // Only Ada is listed: Bao's parent said they are out, and Cy is not in this chat.
     expect(r.reads[0]?.families.map((f) => f.ref)).toEqual(['f1']);
     expect(JSON.stringify(r.reads[0])).not.toMatch(/Leo|Zoe/);
     expect(r.sent.map((s) => s.familyId)).not.toContain(outsider.familyId);
     expect(r.sent).toHaveLength(0);
 
-    await db.exec('truncate table linq_multi_family_joins cascade');
+    await db.exec('truncate table linq_shared_group_people cascade');
     expect(await runPrivateAside(db.database, recorder({ read: ['f1'] }), turn())).toEqual({
       outcome: 'no_families',
     });
+  });
+
+  it('never addresses a household whose only person here stopped Hale here', async () => {
+    const { ada, bao } = await twoFamilies();
+    await db.database
+      .update(schema.linqSharedGroupPeople)
+      .set({ stoppedAt: NOW })
+      .where(eq(schema.linqSharedGroupPeople.familyId, bao.familyId));
+    const r = recorder({ read: ['f1'] });
+    await runPrivateAside(db.database, r, turn({ senderFamilyId: ada.familyId }));
+    // Positive control: Ada, still here and not stopped, is offered and hears.
+    expect(r.reads[0]?.families.map((f) => f.ref)).toEqual(['f1']);
+    expect(JSON.stringify(r.reads[0])).not.toMatch(/Leo/);
+    expect(r.sent.map((s) => s.familyId)).toEqual([ada.familyId]);
   });
 
   it("hands the read and draft the plan and this family's event times as facts", async () => {

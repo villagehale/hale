@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgtT8af4onyavLvE3v9cK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS4wUKEAgTGAI4AUIIdGhpbmtpbmcSDC7LPooRlwdGthfRyBoMOPmwr+ngMmYv1aIYIjCf4H2t4H9DIk9LjfqarlNpKglDvo+Souf1Hes4sKROBRxAvgZbGZpTDCDTel5HIYgqgAUCSyWGbQT0pe+EgmCXXrRgUXvGnHnP1OrRuWNA1Rooy/QCQhpu9Z16CWNGgAlfnGM97EOiFS99pX1CFkYVUmkrr3/dCsdrrEzeEci0aRTJqD8AfMQ3aj+nXgrqJeQvU7iWFfEpGB1TEddWDdX9LrN2T5QJQ/RSl2+ftyu4llSCyyKtsmKbw3ol9Q+4wDqV0vW2E1KXR22o+nZFleTmTv0FW4s556ZcDKE6ilenfbbr1lXaqwGRjQT/jJHRE8WIq/tXpjgcRhm89p2H+J2KQYKfxVJeMNstsDO9KbjAT9bmCXBHZH9Fk08oORL9MN0ONvegG7Wi2LMhyRxvkzFiFgpMKy1z1PfDJFlMC/rZju77TBsNNDLwIErHhU45JTDts9FaQ5yVqzdUMx634MCPqgzKE76HUb9sIsgZeFTupAhlibW2EOo2Jdw35yLSjH7qdlXda1J2BXJjHOOwjrNtaYJIzbaJj9dsekFEjDAHmGlYjhozRUAte8vNAAb6Gi1b+LpuK+BLwgBDCTjSPJTsbqP56UgO1uH66pel26qNjzFuLxYi/l2AzYrYwVIN3+MTRGCtJJX6Tc161svjr6sWv/3KWFBz54ATTlg50fINx2ZfqRrvCyoKgElXNLDkzA0MH76gCBu9gQ/mO0runoACzrgci9CDK3BRazzZ4jcDR9GEgXkyveRbA2FlOZXWd8vxoMgCzeTa3bFR8b5QotsyCOJTTE9vQkoIvnOEv85K7VZYGuNPnv6K3A/yT3IN7fV+X4xuiR+LfaJu41JnZy7vIvJgmfrDHnt5VtFVN8ycAn5iWeFW9yCj3PXwV3XzPMiZ3gMt3g/+YuoA9cucmQAENarnGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KMGmBBLM4W7rD4avCmnxyF",
+        "name": "share_experience_card",
+        "input": {
+          "ref": "link-7ca715",
+          "title": "Harbour Art Studio kids classes, ages 6 to 12"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 182,
+      "cache_read_input_tokens": 24743,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 182,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 130,
+      "output_tokens_details": {
+        "thinking_tokens": 31
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1558
+}

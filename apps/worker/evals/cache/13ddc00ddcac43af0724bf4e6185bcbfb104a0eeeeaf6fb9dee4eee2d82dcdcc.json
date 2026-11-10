@@ -1,0 +1,44 @@
+{
+  "value": {
+    "reply": "Got it, no calendar for now. I can't save Mia's carpool from here since there's no matching line on the map yet, so nothing is set for tomorrow. Would a group chat with the other parent help?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "scheduleAdds": [],
+    "connectGmail": null,
+    "connectCalendar": false,
+    "calendarLater": true,
+    "gmailLater": false,
+    "coparentGroup": null,
+    "nameConfirmed": null,
+    "nameDeclined": false,
+    "nameTakenBack": false,
+    "kidsNamesDeclined": false,
+    "placeDeclined": false,
+    "stopAsking": false,
+    "scheduleDone": false,
+    "children": [
+      {
+        "name": "Mia",
+        "ageMonths": 48,
+        "agePrecision": "years"
+      },
+      {
+        "name": "Leo",
+        "ageMonths": 24,
+        "agePrecision": "years"
+      }
+    ],
+    "parentName": "Dana",
+    "parentRole": null,
+    "parentRoleBasis": null,
+    "city": null,
+    "postalCode": null,
+    "language": null,
+    "groupLeads": [],
+    "ahaMention": null
+  },
+  "latencyMs": 3085
+}

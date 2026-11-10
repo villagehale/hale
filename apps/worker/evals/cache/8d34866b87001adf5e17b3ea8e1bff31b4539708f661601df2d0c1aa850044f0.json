@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Mostly kids' classes, swim lessons, library story times, and drop-in play, sorted by how old each child is. How old are Mia and Leo?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1424
+}

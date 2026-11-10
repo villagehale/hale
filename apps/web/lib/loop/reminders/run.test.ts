@@ -2,7 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
 import type { ReminderCompose } from './compose';
-import type { ReminderStatus, SuppressReason } from './schedule';
+import { COMPOSE_HOLD_FIRST_GAP_MS, type ReminderStatus, type SuppressReason } from './schedule';
 
 // The model-written text is an injected port (deps.composeText): these tests drive the
 // WIRING (what facts it gets, what each named outcome does), not the writing (that is
@@ -53,6 +53,7 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     // Irrelevant to a parent (their leg never consults it) and required so no fake can
     // omit the fact a caregiver's leg turns on.
     smsChannelActive: true,
+    composeAttempts: 0,
     ...over,
   };
 }
@@ -77,6 +78,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
   const enqueued: ChannelSendJob[] = [];
   const marked: { id: string; status: ReminderStatus; reason: SuppressReason | null }[] = [];
   const reanchored: { id: string; fireAt: Date }[] = [];
+  const held: { id: string; attempts: number; nextTryAt: Date }[] = [];
   const upserts: { eventRef: string; parentUserId: string; offset: string; fireAt: Date }[] = [];
   const captured: { event: string; distinctId: string; props: Record<string, unknown> }[] = [];
   const audited: {
@@ -105,6 +107,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
+    holdForCompose: async (_db, id, hold) => {
+      held.push({ id, attempts: hold.attempts, nextTryAt: hold.nextTryAt });
+    },
     auditSuppressed: async (_db, row) => {
       audited.push(row);
     },
@@ -130,7 +135,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     recordAgentRun: async () => {},
     ...over,
   };
-  return { deps, enqueued, marked, reanchored, upserts, captured, audited };
+  return { deps, enqueued, marked, held, reanchored, upserts, captured, audited };
 }
 
 afterEach(() => {
@@ -646,16 +651,19 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
   it('hands the writer the redacted facts: date, start and end with AM/PM, place, language', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const loadNameLevel = vi.fn(async () => 'relation' as const);
+    const loadLanguage = vi.fn(async () => 'fr');
     const { deps } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () =>
         liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z'), location: 'Main St pool' }),
-      loadLanguage: async () => 'fr',
+      loadLanguage,
       loadNameLevel,
     });
     await runReminderCron({} as never, deps, NOW_T1H);
 
     expect(loadNameLevel).toHaveBeenCalledWith({}, 'p1');
+    // VIL-572 · the recipient's own proactive language, not the family's alone.
+    expect(loadLanguage).toHaveBeenCalledWith({}, 'fam-1', 'p1');
     expect(composeText).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -903,15 +911,23 @@ describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)
       httpStatus: 400,
       errorType: 'invalid_request_error',
     });
-    const { deps, enqueued, marked, audited } = makeDeps({
+    const { deps, enqueued, marked, held, audited } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent(),
     });
     const result = await runReminderCron({} as never, deps, NOW_T1H);
 
     expect(enqueued).toEqual([]);
-    // Still scheduled, marked so the drain can ask again before the event (VIL-586).
-    expect(marked).toEqual([{ id: 'r1', status: 'scheduled', reason: 'compose_unavailable' }]);
+    // Still scheduled, held so the drain can ask again before the event (VIL-586), and
+    // not before the first gap (VIL-625).
+    expect(marked).toEqual([]);
+    expect(held).toEqual([
+      {
+        id: 'r1',
+        attempts: 1,
+        nextTryAt: new Date(NOW_T1H.getTime() + COMPOSE_HOLD_FIRST_GAP_MS),
+      },
+    ]);
     expect(audited).toEqual([]);
     expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
     expect(error).toHaveBeenCalledWith(

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -48,7 +49,7 @@ function factSlots(facts: CarpoolVoiceFacts): string[] {
 export function carpoolLineUsable(line: string, kind: CarpoolVoiceKind): boolean {
   const body = line.trim();
   if (body.length === 0) return false;
-  if (/https?:\/\//i.test(body)) return false;
+  if (hasLinkShape(body)) return false;
   const questions = (body.match(/\?/g) ?? []).length;
   if (kind === 'ask_driver') return questions === 1;
   return questions === 0;

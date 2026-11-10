@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly answers the waitlist report, with position 12 in Springfield. The clock starts from the parent's own message (Tuesday 11:00 a.m.), and 36 hours later is the correct deadline, Wednesday at 11:00 p.m. It gives the handed reminder promise, asks no question and reads naturally in English. One flaw: it says \"Towns usually give 36 hours\" instead of stating that Springfield gives 36 hours. That is a vague generalization rather than the handed town-specific fact, which keeps it from a 5.",
+    "score": 4
+  }
+}
