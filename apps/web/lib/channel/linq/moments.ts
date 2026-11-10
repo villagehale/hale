@@ -12,6 +12,7 @@ import {
   linqEffectsEnabled,
   parentStoredTimeZone,
 } from './effect';
+import {
   type EditableLinqSend,
   type LinqEditDecider,
   applyLinqEdit,
@@ -22,16 +23,13 @@ import { applyLinqTapback } from './tapback';
 
 /**
  * The product moment on an iMessage reply: a tapback instead of a throwaway
- * ack, or (VIL-472, flag `LINQ_STICKERS_ENABLED`) a sticker the model chose,
- * peeled onto the parent's message, or (VIL-473, flag `LINQ_EFFECTS_ENABLED`) the
- * reply sent with an iMessage effect the model chose. At most one moment per reply:
- * a peeled sticker means the reply goes plain. A miss falls through and the text still
  * ack, (VIL-479, flag `LINQ_MESSAGE_EDIT_ENABLED`) an edit of a bubble Hale just
  * sent when the model says the follow-up only corrects it, or (VIL-472, flag
  * `LINQ_STICKERS_ENABLED`) a sticker the model chose, peeled onto the parent's
- * message. A miss falls through and the text still
- * goes out. SMS and email never call Linq from here. A year-find poll is not a
- * reply moment.
+ * message, or (VIL-473, flag `LINQ_EFFECTS_ENABLED`) the reply sent with an
+ * iMessage effect the model chose. At most one moment per reply: a peeled sticker
+ * means the reply goes plain. A miss falls through and the text still goes out.
+ * SMS and email never call Linq from here. A year-find poll is not a reply moment.
  */
 
 export type LinqMoment =
@@ -117,6 +115,34 @@ export async function considerLinqReply(
     return { handled: true, channelMessageId, threadBody: null };
   }
 
+  if (linqMessageEditEnabled()) {
+    if (!args.edit) {
+      console.info({ reason: 'no_decider' }, 'linq edit: not considered');
+    } else if (args.edit.candidates.length === 0) {
+      console.info({ reason: 'nothing_editable' }, 'linq edit: not considered');
+    } else {
+      const edited = await applyLinqEdit({
+        decider: args.edit.decider,
+        database,
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        conversationId: args.edit.conversationId,
+        chatId: args.route.chatId,
+        now: args.now,
+        read: {
+          audience: args.edit.audience,
+          parentText: args.inboundBody,
+          followUp: args.outboundBody,
+        },
+        candidates: args.edit.candidates,
+        fetch: args.fetch,
+      });
+      if (edited.status === 'edited') {
+        return { handled: true, channelMessageId: edited.channelMessageId, threadBody: null };
+      }
+    }
+  }
+
   if (linqStickersEnabled()) {
     const inboundMessageId = args.route.replyToMessageId;
     if (!args.sticker || !inboundMessageId) {
@@ -182,41 +208,6 @@ export async function considerLinqReply(
   // `linq:effect`, and the cap or audit that reads the key would miss the reply.
   if (args.templateKey) {
     console.info({ reason: 'keyed_reply' }, 'linq effect: not considered');
-  if (linqMessageEditEnabled()) {
-    if (!args.edit) {
-      console.info({ reason: 'no_decider' }, 'linq edit: not considered');
-    } else if (args.edit.candidates.length === 0) {
-      console.info({ reason: 'nothing_editable' }, 'linq edit: not considered');
-    } else if (args.route.channel === 'imessage') {
-      const edited = await applyLinqEdit({
-        decider: args.edit.decider,
-        database,
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        conversationId: args.edit.conversationId,
-        chatId: args.route.chatId,
-        now: args.now,
-        read: {
-          audience: args.edit.audience,
-          parentText: args.inboundBody,
-          followUp: args.outboundBody,
-        },
-        candidates: args.edit.candidates,
-        fetch: args.fetch,
-      });
-      if (edited.status === 'edited') {
-        return { handled: true, channelMessageId: edited.channelMessageId, threadBody: null };
-      }
-    }
-  }
-
-  if (!linqStickersEnabled()) return { handled: false };
-  const inboundMessageId = args.route.replyToMessageId;
-  if (!args.sticker || !inboundMessageId) {
-    console.info(
-      { reason: args.sticker ? 'no_inbound_message_id' : 'no_decider' },
-      'linq sticker: not considered',
-    );
     return { handled: false };
   }
   if (!args.effect) {

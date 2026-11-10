@@ -60,9 +60,9 @@ const SCOPE_SRC = join(WEB_ROOT, 'lib', 'channel', 'coach', 'group-privacy-scope
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-/** Mirrors MAX_STEPS / CHANNEL_COACH_MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
+/** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 2000;
+const MAX_TOKENS = 400;
 const NOW = new Date('2026-10-25T16:00:00.000Z');
 
 const JUDGE_SYSTEM = judgePrompt('group-privacy');
@@ -265,7 +265,7 @@ async function main() {
   console.log(SAMPLING_RULE);
   console.log(samplingLogLine(nOfM, 1));
   const results = [];
-  for (const fixture of GROUP_PRIVACY_FIXTURES) {
+  for (const fixture of fixtures) {
     const drawResults = [];
     for (let draw = 0; draw < subjectDraws; draw += 1) {
       const calls = [];
@@ -294,27 +294,6 @@ async function main() {
             async checkChildContentAccess() {
               return { ok: true, reason: 'ok' };
             },
-  for (const fixture of fixtures) {
-    const calls = [];
-    const failures = [];
-    const tools = groupScopedTools(toolsFor(agent, fixture, calls, skill.meta.tools));
-    // Code check, not a word check: no private tool may reach a group turn.
-    const leakedTools = tools.filter((t) => GROUP_WITHHELD_TOOLS.has(t.name)).map((t) => t.name);
-    if (leakedTools.length > 0) failures.push(`private_tools_offered:${leakedTools.join('+')}`);
-    let reply = BROKEN_REPLY;
-    if (!broken) {
-      const run = await agent.runAgent({
-        skill,
-        context: groupScopedContext(contextFor(fixture)),
-        tools,
-        client: cachedAgentClient(`group-privacy:${fixture.id}`, cachedOnly, getClient, cost),
-        maxSteps: MAX_STEPS,
-        maxTokens: MAX_TOKENS,
-        toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
-        guardDeps: {
-          async writeAudit() {},
-          async checkChildContentAccess() {
-            return { ok: true, reason: 'ok' };
           },
         });
         reply = run.answer ?? '';
@@ -323,13 +302,21 @@ async function main() {
             `no_answer after ${run.steps} steps (calls: ${calls.join(', ') || 'none'})`,
           );
       }
+      const leaked = replyShowsPrivateField(reply, privateCalendarFields(fixture.week.events));
+      if (leaked.length > 0) {
+        failures.push(
+          `private_fields:${leaked.map((field) => `${field.field}:${field.value}`).join(',')}`,
+        );
+      }
       const verdict = await judge(drawTag(fixture.id, draw), {
         groupMessage: `${fixture.senderName}: ${fixture.text}`,
         reply,
         secrets: fixture.secrets,
         watchFor: fixture.watchFor,
       });
-      if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      if (!verdict || verdict.score < JUDGE_MIN) {
+        failures.push(verdict ? `judge:${verdict.score} (${verdict.reason})` : 'judge_cache_miss');
+      }
       drawResults.push({
         reply,
         calls,
@@ -343,25 +330,6 @@ async function main() {
       ? foldSubjectDraws(fixture, drawResults, { defaultBar: 'safety' })
       : primary.failures;
     results.push({ fixture, reply: primary.reply, calls: primary.calls, failures });
-    const leaked = replyShowsPrivateField(reply, privateCalendarFields(fixture.week.events));
-    if (leaked.length > 0) {
-      failures.push(
-        `private_fields:${leaked.map((field) => `${field.field}:${field.value}`).join(',')}`,
-      );
-    }
-    const verdict = await judge(fixture.id, {
-      groupMessage: `${fixture.senderName}: ${fixture.text}`,
-      reply,
-      secrets: fixture.secrets,
-      watchFor: fixture.watchFor,
-    });
-    // The judge decides. A score under the floor fails. A cache miss exits before
-    // this line (failCachedMiss) and is not a pass. The substring check above can
-    // only add a failure.
-    if (!verdict || verdict.score < JUDGE_MIN) {
-      failures.push(verdict ? `judge:${verdict.score} (${verdict.reason})` : 'judge_cache_miss');
-    }
-    results.push({ fixture, reply, calls, failures });
   }
 
   for (const r of results) {

@@ -158,6 +158,7 @@
   "coach-no-group-relay.md": {
     "file": "coach-no-group-relay.md",
     "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
+  },
   "coach-photo-facts.md": {
     "file": "coach-photo-facts.md",
     "sha256": "b07d0bc5b25d4a72f7cd70ec98bcfd5faafc94dc0e46d44bc770fcb495e4278a"
@@ -352,8 +353,7 @@
   },
   "group-reminder-voice.md": {
     "file": "group-reminder-voice.md",
-    "sha256": "57ae14c25a9bd30231671d2044b70133f6c0f103e1a0263ae1bc5ac277a8e35d"
-    "sha256": "a40b19bd250ed7ad6611242ef494e4fde3a09c7363f6a40759f777865c965250"
+    "sha256": "ebc920a5a37b189e4a6b75e490f5e153ed70a846bb0dc2061b54037040121ae0"
   },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
@@ -423,12 +423,13 @@
     "file": "kid-item-classifier.md",
     "sha256": "db282b366f5d1d5ba3066a425d1782eb93417af74d863b7b3f92233bb9f4211b"
   },
-  "linq-effect.md": {
-    "file": "linq-effect.md",
-    "sha256": "2ae86641c1a1b32e9ec7f4249b15a2f63a8c0c72c6306ce86218ac815a10eae4"
   "linq-edit.md": {
     "file": "linq-edit.md",
     "sha256": "04b96842d607bb4835d35798807cf49d787cd3625e89bcffc93c79aec89fced5"
+  },
+  "linq-effect.md": {
+    "file": "linq-effect.md",
+    "sha256": "2ae86641c1a1b32e9ec7f4249b15a2f63a8c0c72c6306ce86218ac815a10eae4"
   },
   "linq-sticker.md": {
     "file": "linq-sticker.md",
@@ -437,6 +438,7 @@
   "match-team-schedule.md": {
     "file": "match-team-schedule.md",
     "sha256": "ed9f91ba8b0dc45106ee55a095b2ae2814d8498f499456f2a223758fb3f18af3"
+  },
   "meaning-screen.md": {
     "file": "meaning-screen.md",
     "sha256": "094fb65d060c1744c45119aa04137fb70d8326c8b4e5d9bd34abb976babb5e9e"
@@ -483,8 +485,7 @@
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "71061a434f3640c9f1963f4ea2766468fd3dc25304314b0d797cd6e727f6e5dd"
-    "sha256": "a434be733d20d4967b48f2829e5251a5e0a64ec5b83ca50ca3f77e3bceab8a8c"
+    "sha256": "460f9751ce664e78eeafdeae0a511c2d9c962a507b0957c75658387680915f68"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
