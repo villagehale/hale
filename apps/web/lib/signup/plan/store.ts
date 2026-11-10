@@ -1,5 +1,5 @@
 import { type AuthorizedSignupPlanResume, type Database, schema } from '@hale/db';
-import { and, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { redactSignupAudit } from '../audit';
@@ -154,6 +154,8 @@ export interface ClaimedPlan {
   messageId: string;
   /** Null on a plan's first sweep; where its run stood when a later sweep picks it up. */
   resume: AuthorizedSignupPlanResume | null;
+  /** The parent took the plan back while its run was going. */
+  takenBack: boolean;
 }
 
 type OfferRow = typeof schema.authorizedSignupOffers.$inferSelect;
@@ -181,6 +183,7 @@ function claimedPlan(row: OfferRow, resume: AuthorizedSignupPlanResume | null): 
     waiverAccepted: row.planWaiverAccepted === true,
     messageId: row.authorizingMessageId,
     resume,
+    takenBack: row.planCancelRequestedAt !== null,
   };
 }
 
@@ -265,14 +268,18 @@ export async function claimResumablePlan(
 
 /**
  * Stores where a running plan stands. `letGo` also ends this sweep's hold, so the next
- * sweep picks the plan up at once.
+ * sweep picks the plan up at once. The first `paying` checkpoint, written before any payment
+ * run exists, is stored only while the plan has not been taken back, in the same statement
+ * {@link cancelSignupPlan} locks: either the take-back lands first and nothing is paid, or
+ * the payment does and the take-back is told so. False when it was refused.
  */
 export async function savePlanResume(
   database: Database,
   input: { offerId: string; familyId: string; resume: AuthorizedSignupPlanResume; letGo: boolean },
-): Promise<void> {
+): Promise<boolean> {
   const offers = schema.authorizedSignupOffers;
-  await database
+  const startsPayment = input.resume.phase === 'paying' && input.resume.runId === null;
+  const rows = await database
     .update(offers)
     .set({
       planResume: input.resume,
@@ -283,8 +290,25 @@ export async function savePlanResume(
         eq(offers.id, input.offerId),
         eq(offers.familyId, input.familyId),
         eq(offers.status, 'submitting'),
+        startsPayment ? isNull(offers.planCancelRequestedAt) : undefined,
       ),
-    );
+    )
+    .returning({ id: offers.id });
+  return rows.length > 0;
+}
+
+/** Read just before payment: the parent took the plan back while its run was going. */
+export async function planTakenBack(
+  database: Database,
+  input: { offerId: string; familyId: string },
+): Promise<boolean> {
+  const offers = schema.authorizedSignupOffers;
+  const [row] = await database
+    .select({ at: offers.planCancelRequestedAt })
+    .from(offers)
+    .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId)))
+    .limit(1);
+  return row?.at != null;
 }
 
 async function isFamilyMember(
@@ -331,41 +355,63 @@ export async function planLapse(
 }
 
 /**
- * A parent of the family takes back a plan before the open: `planned` to `handed_back`,
- * with one audit row. A plan already running is not stopped here; the check before
- * payment ({@link planLapse}) is what stops a running one.
+ * A parent of the family takes back a plan, with one audit row either way.
+ *
+ * - `cancelled`: before the open, `planned` to `handed_back`.
+ * - `cancel_requested`: its run is going (a queue, perhaps checkpointed between sweeps). The
+ *   take-back is marked on the offer; the next sweep lets the run go instead of resuming it,
+ *   and no payment starts after it ({@link savePlanResume}).
+ * - `paying`: the payment had already started. It is marked all the same, but the sweep reads
+ *   what the payment did and tells the parent.
  */
 export async function cancelSignupPlan(
   database: Database,
   input: { offerId: string; familyId: string; actor: string; now: Date },
-): Promise<'cancelled' | 'not_planned'> {
+): Promise<'cancelled' | 'cancel_requested' | 'paying' | 'not_planned'> {
   if (!(await isFamilyMember(database, input.familyId, input.actor))) return 'not_planned';
+  const offers = schema.authorizedSignupOffers;
+  const ours = and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId));
   const rows = await database
-    .update(schema.authorizedSignupOffers)
+    .update(offers)
     .set({ status: 'handed_back', updatedAt: input.now })
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, input.offerId),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-        eq(schema.authorizedSignupOffers.status, 'planned'),
-      ),
-    )
-    .returning({ id: schema.authorizedSignupOffers.id });
-  if (rows.length === 0) return 'not_planned';
+    .where(and(ours, eq(offers.status, 'planned')))
+    .returning({ id: offers.id });
+  if (rows.length > 0) {
+    await writePlanAudit(database, {
+      familyId: input.familyId,
+      actor: input.actor,
+      offerId: input.offerId,
+      after: { step: 'plan_cancelled' },
+    });
+    return 'cancelled';
+  }
+  const [running] = await database
+    .update(offers)
+    .set({
+      planCancelRequestedAt: sql`coalesce(${offers.planCancelRequestedAt}, ${input.now.toISOString()}::timestamptz)`,
+      updatedAt: input.now,
+    })
+    .where(and(ours, eq(offers.status, 'submitting'), isNotNull(offers.planResume)))
+    .returning({ resume: offers.planResume });
+  if (!running?.resume) return 'not_planned';
+  const phase = running.resume.phase;
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.actor,
     offerId: input.offerId,
-    after: { step: 'plan_cancelled' },
+    after: { step: 'plan_cancel_requested', phase },
   });
-  return 'cancelled';
+  return phase === 'paying' ? 'paying' : 'cancel_requested';
 }
 
-/** A family's offer the day-before conversation can still act on, before its open. */
+/**
+ * A family's offer the day-before conversation can still act on: before its open, or
+ * `running` while its run is going and the parent has not taken it back yet.
+ */
 export interface ConversablePlan {
   offerId: string;
   childId: string;
-  status: 'pending' | 'planned';
+  status: 'pending' | 'planned' | 'running';
   registrationUrl: string;
   sessions: SignupSession[];
   approvedPriceCents: number | null;
@@ -375,7 +421,8 @@ export interface ConversablePlan {
 
 /**
  * The offer with a known open still ahead: a `pending` offer the coach recorded with its
- * open time, or a `planned` one the parent may still take back. The earliest open first.
+ * open time, or a `planned` one the parent may still take back. A plan whose run is going
+ * (possibly checkpointed between sweeps) can still be taken back too. The earliest open first.
  */
 export async function loadConversablePlan(
   database: Database,
@@ -388,15 +435,28 @@ export async function loadConversablePlan(
     .where(
       and(
         eq(offers.familyId, input.familyId),
-        inArray(offers.status, ['pending', 'planned']),
-        gt(offers.planOpensAt, input.now),
+        or(
+          and(inArray(offers.status, ['pending', 'planned']), gt(offers.planOpensAt, input.now)),
+          and(
+            eq(offers.status, 'submitting'),
+            isNotNull(offers.planResume),
+            isNull(offers.planCancelRequestedAt),
+          ),
+        ),
       ),
     )
     .orderBy(offers.planOpensAt)
     .limit(1);
-  if (!row?.planOpensAt || (row.status !== 'pending' && row.status !== 'planned')) return null;
+  if (!row?.planOpensAt) return null;
+  const status =
+    row.status === 'submitting'
+      ? 'running'
+      : row.status === 'pending' || row.status === 'planned'
+        ? row.status
+        : null;
+  if (!status) return null;
   const planned =
-    row.status === 'planned' && row.planChoiceIds && row.planMaxPriceCents !== null
+    status !== 'pending' && row.planChoiceIds && row.planMaxPriceCents !== null
       ? {
           choiceIds: row.planChoiceIds,
           maxPriceCents: row.planMaxPriceCents,
@@ -406,7 +466,7 @@ export async function loadConversablePlan(
   return {
     offerId: row.id,
     childId: row.childId,
-    status: row.status,
+    status,
     registrationUrl: row.registrationUrl,
     sessions: row.sessions,
     approvedPriceCents: row.approvedPriceCents,

@@ -95,6 +95,8 @@ export const authorizedSignupOffers = pgTable(
     planResume: jsonb('plan_resume').$type<AuthorizedSignupPlanResume>(),
     /** A sweep is carrying the plan until then. Null once it checkpointed and let go. */
     planLeaseUntil: timestamp('plan_lease_until', { withTimezone: true }),
+    /** The parent took the plan back while its run was going: no payment starts after it. */
+    planCancelRequestedAt: timestamp('plan_cancel_requested_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

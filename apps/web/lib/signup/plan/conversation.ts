@@ -52,7 +52,8 @@ export async function runPlanTurn(
   const reading: PlanReading | null = await reader.read({
     text: input.body,
     offer: {
-      status: plan.status,
+      // A running plan is the approved plan to its reader: it can only be taken back.
+      status: plan.status === 'running' ? 'planned' : plan.status,
       opensAt: plan.opensAt,
       sessions: plan.sessions,
       approvedPriceCents: plan.approvedPriceCents,
@@ -62,7 +63,7 @@ export async function runPlanTurn(
   // A planned offer leaves the ordinary reply free to read any other pending offer. A
   // pending plan offer is this lane's alone: the one-shot sign-up must never book it.
   if (!reading || reading.verdict === 'unrelated') {
-    return plan.status === 'planned' ? null : unclaimed();
+    return plan.status === 'pending' ? unclaimed() : null;
   }
 
   if (reading.verdict === 'unclear') {
@@ -87,8 +88,9 @@ export async function runPlanTurn(
       actor: input.parentUserId,
       now: input.now,
     });
-    // Claimed by the sweep between the read and now: the check before payment stops it.
-    if (cancelled === 'not_planned') return null;
+    // Gone between the read and now. Or already paying: the take-back is marked, and the
+    // sweep tells the parent what the payment did; this lane does not say it was cancelled.
+    if (cancelled === 'not_planned' || cancelled === 'paying') return null;
     return reply(database, input, deps, plan, 'cancelled', {});
   }
 

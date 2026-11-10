@@ -5,10 +5,12 @@ import type { BrowserUseEngineDeps } from './engine';
 import {
   type BrowserUsePlanInput,
   type PlanEngineStep,
+  type PlanPayingToken,
   type PlanResumeToken,
   planFacts,
   releasePlanRun,
   runBrowserUsePlanSignup,
+  settleBrowserUsePlanPayment,
 } from './plan-engine';
 
 // Fake Browser Use responses only, in the shape the recorded v4 fixtures carry.
@@ -171,6 +173,7 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
     waitUntil: new Date(NOW.getTime() + 60 * 60_000),
     onCheckpoint: async (token) => {
       checkpoints.push(token);
+      return true;
     },
     ...overrides,
   };
@@ -361,6 +364,7 @@ describe('a plan run longer than one sweep', () => {
     const { input } = plan({
       onCheckpoint: async (token) => {
         order.push(`${token.phase}:${token.runId ?? 'none'} after ${runPosts(log).length} runs`);
+        return true;
       },
     });
     await runBrowserUsePlanSignup(input, deps);
@@ -372,9 +376,28 @@ describe('a plan run longer than one sweep', () => {
     ]);
   });
 
+  it('a plan taken back before its paying checkpoint is stored is never paid', async () => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const { input, steps } = plan({
+      onCheckpoint: async (token) => token.phase !== 'paying',
+    });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      liveViewUrl: null,
+      confirmationNumber: null,
+      amountChargedCents: null,
+    });
+    expect(runPosts(log)).toHaveLength(1);
+    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
+    expect(browserStops(log).map((r) => r.path)).toEqual(['/browsers/browser-1']);
+  });
+
   it('a resumed payment waits on its own run and never creates another', async () => {
     const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
-    const resume: PlanResumeToken = {
+    const resume: PlanPayingToken = {
       phase: 'paying',
       runId: 'run-2',
       sessionId: 'bu-session-1',
@@ -384,8 +407,18 @@ describe('a plan run longer than one sweep', () => {
       holdExpiresAt: null,
       costUsd: '0.0400',
     };
-    const { input, steps, cap } = plan({ resume });
-    const result = await runBrowserUsePlanSignup(input, deps);
+    const steps: PlanEngineStep[] = [];
+    // No identity, consent or saved session: a payment under way is read before any of them.
+    const result = await settleBrowserUsePlanPayment(
+      {
+        resume,
+        waitUntil: new Date(NOW.getTime() + 60 * MIN),
+        onStep: async (step) => {
+          steps.push(step);
+        },
+      },
+      deps,
+    );
 
     expect(result).toMatchObject({
       outcome: 'completed',
@@ -395,25 +428,29 @@ describe('a plan run longer than one sweep', () => {
       costUsd: '0.0500',
     });
     expect(runPosts(log)).toEqual([]);
-    expect(cap).not.toHaveBeenCalled();
+    expect(cancels(log)).toEqual([]);
     expect(steps.map((s) => s.step)).toEqual(['payment']);
   });
 
   it('a payment whose run id was never written is not paid again: unconfirmed, for the parent', async () => {
     const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
-    const { input } = plan({
-      resume: {
-        phase: 'paying',
-        runId: null,
-        sessionId: 'bu-session-1',
-        browserId: 'browser-1',
-        choiceIndex: 1,
-        cartTotalCents: 9800,
-        holdExpiresAt: null,
-        costUsd: '0.0400',
+    const result = await settleBrowserUsePlanPayment(
+      {
+        resume: {
+          phase: 'paying',
+          runId: null,
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          choiceIndex: 1,
+          cartTotalCents: 9800,
+          holdExpiresAt: null,
+          costUsd: '0.0400',
+        },
+        waitUntil: new Date(NOW.getTime() + 60 * MIN),
+        onStep: async () => undefined,
       },
-    });
-    const result = await runBrowserUsePlanSignup(input, deps);
+      deps,
+    );
 
     expect(result).toMatchObject({
       outcome: 'needs_human',

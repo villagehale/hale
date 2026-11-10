@@ -5,8 +5,11 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import type {
+  BrowserUsePlanCheckpoint,
   BrowserUsePlanInput,
   BrowserUsePlanResult,
+  PlanPayingToken,
+  PlanPaymentInput,
   PlanResumeToken,
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
@@ -176,6 +179,13 @@ function engineLike(result: BrowserUsePlanResult, cartTotalCents = 9800) {
       return result;
     }),
     release: vi.fn(async (_resume: PlanResumeToken) => null),
+    settlePayment: vi.fn(
+      async (
+        _input: PlanPaymentInput,
+      ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> => {
+        throw new Error('no payment under way');
+      },
+    ),
   };
   return { runner, inputs, caps };
 }
@@ -452,6 +462,7 @@ describe('carrying out plans at the open', () => {
         return PAID;
       }),
       release: vi.fn(async () => null),
+      settlePayment: vi.fn(async () => PAID),
     };
     const first = runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
     // A second sweep while the first family's registration is running claims nothing of theirs.
@@ -556,6 +567,7 @@ describe("a plan runs only while the parent's yes still stands", () => {
         return inner.run(input);
       }),
       release: inner.release,
+      settlePayment: inner.settlePayment,
     };
     const { deps: d, notices } = deps(runner);
     const result = await runDueSignupPlans(db.database, { now: NOW }, d);
@@ -603,6 +615,7 @@ function queueing(offerId: string, sweeps: number) {
       return finish.run(input);
     }),
     release: vi.fn(async (_resume: PlanResumeToken) => '0.120000'),
+    settlePayment: finish.settlePayment,
   };
   return { runner, resumes };
 }
@@ -797,6 +810,248 @@ describe('a queue longer than one sweep', () => {
     expect(runner.release).toHaveBeenCalledTimes(1);
     expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
     expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+  });
+});
+
+const PAYING: PlanPayingToken = {
+  phase: 'paying',
+  runId: 'pay-run-1',
+  sessionId: 'bu-session-pay',
+  browserId: 'browser-pay',
+  choiceIndex: 1,
+  cartTotalCents: 9800,
+  holdExpiresAt: null,
+  costUsd: '0.0400',
+};
+
+/** An earlier sweep stored `paying` and let go: the payment run may already have charged. */
+async function payingFamily(resume: PlanPayingToken = PAYING) {
+  const family = await plannedFamily();
+  await db.database
+    .update(schema.authorizedSignupOffers)
+    .set({ status: 'submitting', planResume: resume, planLeaseUntil: null })
+    .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+  return family;
+}
+
+/** Reads the payment run the way the engine does and reports `result`. */
+function settling(result: BrowserUsePlanResult) {
+  const { runner } = engineLike(PAID);
+  const settled: PlanPaymentInput[] = [];
+  runner.settlePayment.mockImplementation(async (input: PlanPaymentInput) => {
+    settled.push(input);
+    await input.onStep({
+      step: 'payment',
+      outcome: result.outcome,
+      detail: result.detail,
+      amountChargedCents: result.amountChargedCents,
+      confirmed: result.confirmationNumber !== null,
+    });
+    return result;
+  });
+  return { runner, settled };
+}
+
+const UNCONFIRMED: BrowserUsePlanResult = {
+  ...PAID,
+  outcome: 'needs_human',
+  detail: 'unconfirmed',
+  confirmationNumber: null,
+  amountChargedCents: null,
+  runId: null,
+};
+
+const revoke = (family: { parentUserId: string }) =>
+  db.database
+    .update(schema.parentChannels)
+    .set({ revokedAt: NOW })
+    .where(eq(schema.parentChannels.userId, family.parentUserId));
+
+describe('a payment already under way when a later sweep picks the plan up', () => {
+  it('a yes that lapsed while paying: the paid run is read and recorded, never cancelled unread', async () => {
+    const family = await payingFamily();
+    await revoke(family);
+    const { runner, settled } = settling(PAID);
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: at(11) }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'completed',
+      detail: 'none',
+      notice: 'sent',
+    });
+    expect(settled.map((s) => s.resume)).toEqual([PAYING]);
+    expect(runner.release).not.toHaveBeenCalled();
+    expect(runner.run.mock.calls.some(([i]) => i.correlationId === family.offerId)).toBe(false);
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('completed');
+    expect(row?.browserUseCostUsd).toBe(PAID.sessionCostUsd);
+    // The notice carries the real charge; whether it may be sent is the notifier's own check.
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      outcome: 'completed',
+      amountChargedCents: 9800,
+      confirmationNumber: 'R-55120',
+    });
+    expect((await steps(family.offerId)).map((s) => s.step)).toEqual([
+      'plan_approved',
+      'plan_resumed',
+      'plan_payment',
+      'plan_finished',
+    ]);
+    expect((await steps(family.offerId)).at(-1)).toMatchObject({
+      outcome: 'completed',
+      amountChargedCents: 9800,
+      confirmed: true,
+    });
+  });
+
+  it('a yes that lapsed while paying, run id never stored: unconfirmed for the parent, not cancelled', async () => {
+    const family = await payingFamily({ ...PAYING, runId: null });
+    await revoke(family);
+    const { runner, settled } = settling(UNCONFIRMED);
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: at(11) }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'needs_human',
+      detail: 'unconfirmed',
+      notice: 'sent',
+    });
+    expect(settled).toHaveLength(1);
+    expect(runner.release).not.toHaveBeenCalled();
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'unconfirmed',
+      cartTotalCents: 9800,
+    });
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+  });
+
+  it('a payment run still going stays checkpointed: nothing released, nothing told yet', async () => {
+    const family = await payingFamily();
+    const { runner } = settling(PAID);
+    runner.settlePayment.mockImplementation(async () => ({
+      outcome: 'checkpointed' as const,
+      resume: PAYING,
+    }));
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: at(11) }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'checkpointed',
+      phase: 'paying',
+    });
+    expect(runner.release).not.toHaveBeenCalled();
+    expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
+    expect((await offerRow(family.offerId))?.status).toBe('submitting');
+  });
+});
+
+describe('a parent takes back a plan that is already running', () => {
+  it('a take-back between sweeps is recorded, and the next sweep lets the run go instead of resuming it', async () => {
+    const family = await plannedFamily();
+    const { runner } = queueing(family.offerId, 99);
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect((await offerRow(family.offerId))?.status).toBe('submitting');
+
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        now: at(5),
+      }),
+    ).toBe('cancel_requested');
+    expect((await steps(family.offerId)).at(-1)).toMatchObject({
+      step: 'plan_cancel_requested',
+      phase: 'signup',
+    });
+
+    const result = await runDueSignupPlans(db.database, { now: at(11) }, d);
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect(runner.run.mock.calls.filter(([i]) => i.correlationId === family.offerId)).toHaveLength(
+      1,
+    );
+    expect(runner.release).toHaveBeenCalledTimes(1);
+    expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+  });
+
+  it('a take-back that reaches a running sweep before payment leaves the card unused', async () => {
+    const family = await plannedFamily();
+    const { runner: inner } = engineLike(PAID);
+    const paying = { ...PAYING, runId: null };
+    const runner = {
+      ...inner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        if (input.correlationId === family.offerId) {
+          await input.onCheckpoint(QUEUED);
+          expect(
+            await cancelSignupPlan(db.database, {
+              offerId: family.offerId,
+              familyId: family.familyId,
+              actor: family.parentUserId,
+              now: NOW,
+            }),
+          ).toBe('cancel_requested');
+          // Taken back first: the paying checkpoint is refused, so no payment run is made.
+          expect(await input.onCheckpoint(paying)).toBe(false);
+        }
+        return inner.run(input);
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect((await steps(family.offerId)).map((s) => s.step)).not.toContain('plan_payment');
+    expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('handed_back');
+    expect(row?.planResume).toEqual(QUEUED);
+  });
+
+  it('a take-back once payment has started says so, and the sweep reports what the payment did', async () => {
+    const family = await payingFamily();
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        now: at(5),
+      }),
+    ).toBe('paying');
+    expect((await steps(family.offerId)).at(-1)).toMatchObject({
+      step: 'plan_cancel_requested',
+      phase: 'paying',
+    });
+    const { runner, settled } = settling(PAID);
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: at(11) }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'completed',
+      notice: 'sent',
+    });
+    expect(settled).toHaveLength(1);
+    expect(runner.release).not.toHaveBeenCalled();
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      outcome: 'completed',
+      amountChargedCents: 9800,
+    });
   });
 });
 

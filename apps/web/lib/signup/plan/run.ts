@@ -10,6 +10,7 @@ import type {
   BrowserUsePlanResult,
   PlanEngineDetail,
   PlanEngineOutcome,
+  PlanPaymentInput,
   PlanResumeToken,
 } from '../browser-use/plan-engine';
 import { browserUseProxyFor } from '../browser-use/proxy';
@@ -31,6 +32,7 @@ import {
   loadPlanConsent,
   planFieldsToType,
   planLapse,
+  planTakenBack,
   savePlanResume,
   writePlanAudit,
 } from './store';
@@ -59,6 +61,8 @@ export interface PlanSignupRunner {
   run(input: BrowserUsePlanInput): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>;
   /** Cancels a checkpointed run and stops its browser. The session's cost so far, when read. */
   release(resume: PlanResumeToken): Promise<string | null>;
+  /** Reads what a payment an earlier sweep started did. Never cancels it, never pays again. */
+  settlePayment(input: PlanPaymentInput): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>;
 }
 
 /** What the parent is told afterwards. `liveViewUrl` is credential-grade: parent only. */
@@ -129,7 +133,9 @@ export type PlanSweepResult =
  *
  * A run still going when the sweep's budget runs out is checkpointed, not cancelled: the
  * offer stays `submitting` with its resume token, the browser keeps the family's place in
- * line, and the next sweep picks it up before it claims any new plan.
+ * line, and the next sweep picks it up before it claims any new plan. A payment already
+ * under way is read before any check: the card may be charged, so it is recorded and
+ * reported, never cancelled unread. A plan the parent took back while it ran is let go.
  */
 export async function runDueSignupPlans(
   database: Database,
@@ -287,7 +293,66 @@ async function runOnePlan(
       holdExpiresAt: null,
     });
 
-  const lapse = await planLapse(database, plan);
+  const carry = async (
+    go: () => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
+  ): Promise<PlanRunSummary> => {
+    let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
+    engineRan = true;
+    try {
+      result = await go();
+    } catch (err) {
+      console.warn(
+        { offerId: plan.offerId, error: err instanceof Error ? err.name : 'unknown' },
+        'signup plans: browser use engine threw',
+      );
+      const ids = err instanceof BrowserUseEngineThrew ? err : null;
+      return end({
+        outcome: 'error',
+        detail: 'engine_threw',
+        choiceIndex: null,
+        cartTotalCents: null,
+        amountChargedCents: null,
+        confirmationNumber: null,
+        liveViewUrl: null,
+        holdExpiresAt: null,
+        sessionCostUsd: ids?.sessionCostUsd ?? null,
+        // A throw that names no session may still have started one: keep its hold.
+        started: ids ? ids.sessionId !== null || ids.runId !== null : true,
+      });
+    }
+    if (result.outcome === 'checkpointed') {
+      await savePlanResume(database, {
+        offerId: plan.offerId,
+        familyId: plan.familyId,
+        resume: result.resume,
+        letGo: true,
+      });
+      await audit({ step: 'plan_checkpointed', phase: result.resume.phase, host });
+      return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
+    }
+    const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
+    return end({
+      outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,
+      detail: result.outcome === 'completed' && !completed ? 'unconfirmed' : result.detail,
+      choiceIndex: result.choiceIndex,
+      cartTotalCents: result.cartTotalCents,
+      amountChargedCents: result.amountChargedCents,
+      confirmationNumber: result.confirmationNumber,
+      liveViewUrl: result.liveViewUrl,
+      holdExpiresAt: result.holdExpiresAt,
+      costUsd: result.costUsd,
+      sessionCostUsd: result.sessionCostUsd,
+      started: result.sessionId !== null || result.runId !== null,
+    });
+  };
+  const onStep: BrowserUsePlanInput['onStep'] = (step) =>
+    audit({ ...step, step: `plan_${step.step}`, host });
+
+  // The card may already be charged: read the payment before any check may end the plan.
+  if (held?.phase === 'paying') {
+    return carry(() => runner.settlePayment({ resume: held, waitUntil: sweep.waitUntil, onStep }));
+  }
+  const lapse = plan.takenBack ? 'taken_back' : await planLapse(database, plan);
   if (lapse) {
     console.info({ offerId: plan.offerId, lapse }, 'signup plans: the yes no longer stands');
     return handBack('authorization_lapsed', 'cancelled');
@@ -337,10 +402,8 @@ async function runOnePlan(
   }
 
   const cap = deps.checkSpendingCap ?? signupSpendingCap(plan.maxPriceCents);
-  let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
-  engineRan = true;
-  try {
-    result = await runner.run({
+  return carry(() =>
+    runner.run({
       correlationId: plan.offerId,
       registrationUrl: allowed.href,
       identity,
@@ -358,7 +421,9 @@ async function runOnePlan(
       checkSpendingCap: (amountCents) =>
         cap(plan.familyId, { amountUsd: amountCents / 100, category: 'registration' }),
       stillAuthorized: async () => {
-        const late = await planLapse(database, plan);
+        const late = (await planTakenBack(database, plan))
+          ? 'taken_back'
+          : await planLapse(database, plan);
         if (late)
           console.info(
             { offerId: plan.offerId, lapse: late },
@@ -366,7 +431,7 @@ async function runOnePlan(
           );
         return late === null;
       },
-      onStep: (step) => audit({ ...step, step: `plan_${step.step}`, host }),
+      onStep,
       resume: held,
       waitUntil: sweep.waitUntil,
       onCheckpoint: (resume) =>
@@ -376,49 +441,6 @@ async function runOnePlan(
           resume,
           letGo: false,
         }),
-    });
-  } catch (err) {
-    console.warn(
-      { offerId: plan.offerId, error: err instanceof Error ? err.name : 'unknown' },
-      'signup plans: browser use engine threw',
-    );
-    const ids = err instanceof BrowserUseEngineThrew ? err : null;
-    return end({
-      outcome: 'error',
-      detail: 'engine_threw',
-      choiceIndex: null,
-      cartTotalCents: null,
-      amountChargedCents: null,
-      confirmationNumber: null,
-      liveViewUrl: null,
-      holdExpiresAt: null,
-      sessionCostUsd: ids?.sessionCostUsd ?? null,
-      // A throw that names no session may still have started one: keep its hold.
-      started: ids ? ids.sessionId !== null || ids.runId !== null : true,
-    });
-  }
-  if (result.outcome === 'checkpointed') {
-    await savePlanResume(database, {
-      offerId: plan.offerId,
-      familyId: plan.familyId,
-      resume: result.resume,
-      letGo: true,
-    });
-    await audit({ step: 'plan_checkpointed', phase: result.resume.phase, host });
-    return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
-  }
-  const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
-  return end({
-    outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,
-    detail: result.outcome === 'completed' && !completed ? 'unconfirmed' : result.detail,
-    choiceIndex: result.choiceIndex,
-    cartTotalCents: result.cartTotalCents,
-    amountChargedCents: result.amountChargedCents,
-    confirmationNumber: result.confirmationNumber,
-    liveViewUrl: result.liveViewUrl,
-    holdExpiresAt: result.holdExpiresAt,
-    costUsd: result.costUsd,
-    sessionCostUsd: result.sessionCostUsd,
-    started: result.sessionId !== null || result.runId !== null,
-  });
+    }),
+  );
 }

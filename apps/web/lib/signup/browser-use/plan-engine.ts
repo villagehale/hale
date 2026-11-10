@@ -51,7 +51,7 @@ export type PlanEngineOutcome = BrowserUseEngineOutcome | 'not_open' | 'cancelle
  * later sweep picks it up from here.
  */
 export type PlanResumeToken = AuthorizedSignupPlanResume;
-type PayingToken = Extract<PlanResumeToken, { phase: 'paying' }>;
+export type PlanPayingToken = Extract<PlanResumeToken, { phase: 'paying' }>;
 
 export interface BrowserUsePlanCheckpoint {
   outcome: 'checkpointed';
@@ -107,8 +107,15 @@ export interface BrowserUsePlanInput
   /**
    * Stores where the run stands: as soon as a run exists, and before a payment run is
    * created, so a sweep the platform kills mid-run is resumed rather than run again.
+   * False when the `paying` checkpoint was refused because the plan was taken back first:
+   * nothing is paid.
    */
-  onCheckpoint: (resume: PlanResumeToken) => Promise<void>;
+  onCheckpoint: (resume: PlanResumeToken) => Promise<boolean>;
+}
+
+/** What reading a payment already under way needs: no identity, consent or saved session. */
+export interface PlanPaymentInput extends Pick<BrowserUsePlanInput, 'onStep' | 'waitUntil'> {
+  resume: PlanPayingToken;
 }
 
 export interface BrowserUsePlanResult extends Omit<BrowserUseSignupResult, 'outcome' | 'detail'> {
@@ -154,18 +161,40 @@ function planResult(
   return { ...base, outcome, detail, choiceIndex };
 }
 
-export async function runBrowserUsePlanSignup(
+export function runBrowserUsePlanSignup(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  return tracked(input.resume, deps, (tracker) => drivePlan(input, deps, tracker));
+}
+
+/**
+ * A later sweep reads a payment an earlier one started, before any of the plan's checks:
+ * the card may already be charged, so its outcome is read and reported, never cancelled
+ * unread. Without a stored run id it never pays again.
+ */
+export function settleBrowserUsePlanPayment(
+  input: PlanPaymentInput,
+  deps: BrowserUseEngineDeps,
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  return tracked(input.resume, deps, (tracker) =>
+    resumePayment(input, deps, tracker, input.resume),
+  );
+}
+
+async function tracked(
+  resume: PlanResumeToken | null,
+  deps: BrowserUseEngineDeps,
+  drive: (tracker: BrowserTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   const tracker: BrowserTracker = {
-    browserId: input.resume?.browserId ?? null,
-    runId: input.resume?.runId ?? null,
-    sessionId: input.resume?.sessionId ?? null,
+    browserId: resume?.browserId ?? null,
+    runId: resume?.runId ?? null,
+    sessionId: resume?.sessionId ?? null,
   };
   let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
   try {
-    result = await drivePlan(input, deps, tracker);
+    result = await drive(tracker);
   } catch (error) {
     const sessionId = tracker.sessionId ?? null;
     const sessionCostUsd = await stopAndReadCost(deps, {
@@ -338,9 +367,18 @@ async function payWithSavedCard(
   deps: BrowserUseEngineDeps,
   tracker: BrowserTracker,
   checkout: BrowserUsePlanResult,
-  pay: { currency: string | null; paying: PayingToken },
+  pay: { currency: string | null; paying: PlanPayingToken },
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  await input.onCheckpoint(pay.paying);
+  if (!(await input.onCheckpoint(pay.paying))) {
+    return {
+      ...checkout,
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      liveViewUrl: null,
+      checkoutUrl: null,
+      holdExpiresAt: null,
+    };
+  }
   let run: { id: string };
   try {
     run = await deps.api.createRun({
@@ -370,10 +408,10 @@ async function payWithSavedCard(
 
 /** A later sweep picks up a payment. Without a stored run id it never pays again. */
 async function resumePayment(
-  input: BrowserUsePlanInput,
+  input: Pick<BrowserUsePlanInput, 'onStep' | 'waitUntil'>,
   deps: BrowserUseEngineDeps,
   tracker: BrowserTracker,
-  paying: PayingToken,
+  paying: PlanPayingToken,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   const checkout: BrowserUsePlanResult = {
     ...planResult(
@@ -395,7 +433,7 @@ async function resumePayment(
 }
 
 async function reportPayment(
-  input: BrowserUsePlanInput,
+  input: Pick<BrowserUsePlanInput, 'onStep'>,
   result: BrowserUsePlanResult,
 ): Promise<BrowserUsePlanResult> {
   await input.onStep({
@@ -409,11 +447,11 @@ async function reportPayment(
 }
 
 async function awaitPayment(
-  input: BrowserUsePlanInput,
+  input: Pick<BrowserUsePlanInput, 'onStep' | 'waitUntil'>,
   deps: BrowserUseEngineDeps,
   tracker: BrowserTracker,
   checkout: BrowserUsePlanResult,
-  paying: PayingToken & { runId: string },
+  paying: PlanPayingToken & { runId: string },
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   const runId = paying.runId;
   const handsOn = (

@@ -45,17 +45,17 @@ describe('authorized signup plan migration', () => {
 });
 
 describe('authorized signup plan resume migration', () => {
-  it('survives a second pass and holds a resume token and a lease', async () => {
+  it('survives a second pass and holds a resume token, a lease and a take-back', async () => {
     expect(RESUME_MIGRATION).toBeDefined();
     await db.applyMigration(RESUME_MIGRATION as string);
     await db.applyMigration(RESUME_MIGRATION as string);
     await insertOffer('submitting');
     await db.exec(
-      `update authorized_signup_offers set plan_resume = '{"phase":"signup","runId":"run-1","sessionId":null,"browserId":null}'::jsonb, plan_lease_until = now() where status = 'submitting'`,
+      `update authorized_signup_offers set plan_resume = '{"phase":"signup","runId":"run-1","sessionId":null,"browserId":null}'::jsonb, plan_lease_until = now(), plan_cancel_requested_at = now() where status = 'submitting'`,
     );
     const read = (await db.exec(
-      `select plan_resume->>'runId' as run_id, plan_lease_until is not null as leased from authorized_signup_offers where status = 'submitting'`,
+      `select plan_resume->>'runId' as run_id, plan_lease_until is not null as leased, plan_cancel_requested_at is not null as taken_back from authorized_signup_offers where status = 'submitting'`,
     )) as { rows: unknown[] }[];
-    expect(read[0]?.rows).toEqual([{ run_id: 'run-1', leased: true }]);
+    expect(read[0]?.rows).toEqual([{ run_id: 'run-1', leased: true, taken_back: true }]);
   });
 });
