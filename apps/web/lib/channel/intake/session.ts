@@ -84,6 +84,17 @@ export interface TranscriptEntry {
    * inbounds. A question mark in `body` is not a substitute.
    */
   asked?: boolean;
+  /**
+   * INBOUND only: this text was read as a crisis and took the crisis path. A reply
+   * the crisis writer could not send is never followed up with an onboarding ask.
+   */
+  crisis?: boolean;
+  /**
+   * INBOUND only: the turn that read this text sent nothing and said so
+   * (`first_touch_unsent`). Mid-onboarding, this is the only thing that lets the
+   * first-reply sweep follow up: an unmarked text is never assumed to be owed.
+   */
+  unsent?: boolean;
 }
 
 interface IntakeData {
@@ -171,6 +182,10 @@ export interface FirstTouchGiven {
   nameDeclined?: boolean;
   /** True once they declined the kids'-names ask. */
   kidsNamesDeclined?: boolean;
+  /** True once they declined to give any place, the coarse code included. */
+  placeDeclined?: boolean;
+  /** VIL-641. True once a reply that asked for the coarse code, after a first no, went out. */
+  coarseCodeAsked?: boolean;
   /** True once they said later to the calendar. */
   calendarLater?: boolean;
   /** True once they said later to email. */
@@ -411,6 +426,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     parentRole?: unknown;
     nameDeclined?: unknown;
     kidsNamesDeclined?: unknown;
+    placeDeclined?: unknown;
+    coarseCodeAsked?: unknown;
     calendarLater?: unknown;
     gmailLater?: unknown;
     scheduleDone?: unknown;
@@ -432,6 +449,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     row.connectGmail === true || row.connectGmail === false ? row.connectGmail : null;
   const nameDeclined = row.nameDeclined === true;
   const kidsNamesDeclined = row.kidsNamesDeclined === true;
+  const placeDeclined = row.placeDeclined === true;
+  const coarseCodeAsked = row.coarseCodeAsked === true;
   const calendarLater = row.calendarLater === true;
   const gmailLater = row.gmailLater === true;
   const scheduleDone = row.scheduleDone === true;
@@ -451,6 +470,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     !parentRole &&
     !nameDeclined &&
     !kidsNamesDeclined &&
+    !placeDeclined &&
+    !coarseCodeAsked &&
     !calendarLater &&
     !gmailLater &&
     !scheduleDone &&
@@ -468,6 +489,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     ...(parentRole ? { parentRole } : {}),
     ...(nameDeclined ? { nameDeclined } : {}),
     ...(kidsNamesDeclined ? { kidsNamesDeclined } : {}),
+    ...(placeDeclined ? { placeDeclined } : {}),
+    ...(coarseCodeAsked ? { coarseCodeAsked } : {}),
     ...(calendarLater ? { calendarLater } : {}),
     ...(gmailLater ? { gmailLater } : {}),
     ...(scheduleDone ? { scheduleDone } : {}),
@@ -824,6 +847,36 @@ export function appendTranscript(
  * channel_messages. Pre-family sends have no ledger row they could occupy. */
 export function transcriptHasOutbound(transcript: readonly TranscriptEntry[]): boolean {
   return transcript.some((entry) => entry.direction === 'out');
+}
+
+/**
+ * The place item is settled: a place is stored, or the parent declined to give one.
+ * Every onboarding checklist reads `postal` from here, so a declined place is never
+ * asked again and never holds provisioning back.
+ */
+export function placeSettled(
+  touch:
+    | {
+        place?: FirstTouchPersisted['place'];
+        given?: Pick<FirstTouchGiven, 'placeDeclined'> | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  return touch?.place != null || touch?.given?.placeDeclined === true;
+}
+
+/**
+ * The first-reply sweep owes the parent's last text a reply. Opt-in: the opening text
+ * that heard nothing at all (no outbound anywhere, so no turn may have lived to mark
+ * it), or a later text whose turn marked it `unsent`. A text with no marker is never
+ * owed, so a crisis text written before `crisis` was recorded is not followed up. A
+ * text that took the crisis path is never owed an onboarding reply, marker or not.
+ */
+export function transcriptOwesReply(transcript: readonly TranscriptEntry[]): boolean {
+  const last = transcript.at(-1);
+  if (last?.direction !== 'in' || last.crisis === true) return false;
+  return last.unsent === true || !transcriptHasOutbound(transcript);
 }
 
 /** What a recovery sweep reads from the blob: it must not decrypt the phone until it

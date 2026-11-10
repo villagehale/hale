@@ -10,15 +10,19 @@ import {
   lastInboundFact,
   pageOncePerDay,
   speakFriend,
+  turnsFromTranscript,
 } from '~/lib/channel/intake/friend-voice';
 import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
   type FirstTouchPersisted,
+  type TranscriptEntry,
   appendTranscript,
   decodeIntakeForRecovery,
   loadOpenSession,
+  placeSettled,
   saveSession,
   transcriptHasOutbound,
+  transcriptOwesReply,
 } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -45,11 +49,15 @@ import { placeZone } from './sitting-reminder';
 /**
  * VIL-332 — one first reply for a new parent whose first text got none.
  *
- * The invariant, owned by code: an open pre-family session whose transcript holds an
- * inbound and no outbound is owed one reply, whatever state the turn left it in. The
+ * The invariant, owned by code: an open pre-family session is owed one reply when
+ * {@link transcriptOwesReply} says so, whatever state the turn left it in: the opening
+ * text that heard nothing (no outbound anywhere, unchanged since VIL-332), and a text
+ * mid-onboarding whose turn sent nothing and marked it `unsent` (`first_touch_unsent`).
+ * Mid-onboarding the follow-up is opt-in: an unmarked text is never owed. A text that
+ * took the crisis path is never owed an onboarding ask (`TranscriptEntry.crisis`). The
  * transcript is the record (pre-family outbound has no channel_messages row to occupy —
- * family_id is NOT NULL there), so it is what this sweep reads; never a marker a turn
- * writes. `first_reply_recovered_at` is this sweep's claim and nothing else, and only
+ * family_id is NOT NULL there), so it is what this sweep reads.
+ * `first_reply_recovered_at` is this sweep's claim and nothing else, and only
  * {@link claimFirstReplyRecovery} writes it.
  *
  * Not VIL-324's 8am Still here: that is next-morning only. This runs every minute from
@@ -139,8 +147,8 @@ export interface FirstReplyRecoveryRow {
   firstReplyRecoveredAt: Date | null;
   familyId: string | null;
   lastProviderId: string | null;
-  hasInbound: boolean;
-  hasOutbound: boolean;
+  /** {@link transcriptOwesReply}: an unanswered opening text, or a text marked unsent. */
+  owesReply: boolean;
 }
 
 export function firstReplyRecoveryEligible(row: FirstReplyRecoveryRow): boolean {
@@ -149,9 +157,7 @@ export function firstReplyRecoveryEligible(row: FirstReplyRecoveryRow): boolean 
   if (row.firstReplyRecoveredAt !== null) return false;
   if (row.familyId !== null) return false;
   if (!row.lastProviderId) return false;
-  if (!row.hasInbound) return false;
-  if (row.hasOutbound) return false;
-  return true;
+  return row.owesReply;
 }
 
 /**
@@ -204,8 +210,7 @@ export async function runFirstReplyRecoveryCron(
         firstReplyRecoveredAt: row.firstReplyRecoveredAt,
         familyId: row.familyId,
         lastProviderId: row.lastProviderId,
-        hasInbound: recovery.transcript.some((entry) => entry.direction === 'in'),
-        hasOutbound: transcriptHasOutbound(recovery.transcript),
+        owesReply: transcriptOwesReply(recovery.transcript),
       })
     ) {
       result.skipped += 1;
@@ -258,7 +263,9 @@ export async function runFirstReplyRecoveryCron(
       const body = await firstTouchRecoveryBody(deps, row.id, {
         language,
         parentWords: inbound?.body ?? '',
+        transcript,
         place: recoveryPlace(row.recovery.firstTouch, row.sourceCode),
+        placeSettled: recoverySettled(row.recovery.firstTouch, row.sourceCode),
         knownVenue: recoveryVenuePlace(row.sourceCode) != null,
         ...(waited ? { lastInbound: waited } : {}),
       });
@@ -315,22 +322,24 @@ async function firstTouchRecoveryBody(
   input: {
     language: ReplyLanguage | null;
     parentWords: string;
+    transcript: readonly TranscriptEntry[];
     place: RecoveryPlace;
+    placeSettled: boolean;
     knownVenue: boolean;
     lastInbound?: LastInboundFact;
   },
 ): Promise<string> {
-  const placed = input.place != null;
+  // Mid-onboarding, the model reads the thread so far and does not introduce Hale again.
   const spoken = await speakFriend(
     deps.friendVoice,
     {
-      step: placed ? 'ages' : 'place',
+      step: input.placeSettled ? 'ages' : 'place',
       language: input.language,
       address: 'tu',
-      introduce: true,
+      introduce: !transcriptHasOutbound(input.transcript),
       parentWords: input.parentWords,
       ...(input.lastInbound ? { lastInbound: input.lastInbound } : {}),
-      recentTurns: [],
+      recentTurns: turnsFromTranscript(input.transcript),
       placeLabel: input.place ? input.place.city || input.place.areaCoarse : null,
       agesLabel: null,
       ageMonths: [],
@@ -351,6 +360,11 @@ function recoveryPlace(
   sourceCode: string | null,
 ): RecoveryPlace {
   return touch?.place ?? recoveryVenuePlace(sourceCode);
+}
+
+/** A place is stored or venue-given, or the parent declined one: the next ask is the ages. */
+function recoverySettled(touch: FirstTouchPersisted | null, sourceCode: string | null): boolean {
+  return placeSettled({ place: recoveryPlace(touch, sourceCode), given: touch?.given ?? null });
 }
 
 function recoveryVenuePlace(sourceCode: string | null): ReturnType<typeof placeFromVenue> {
@@ -462,7 +476,9 @@ async function recordFirstReplyOutbound(
     database,
     session,
     {
-      state: place ? 'awaiting_ages' : 'awaiting_place',
+      state: recoverySettled(session.firstTouch, session.sourceCode)
+        ? 'awaiting_ages'
+        : 'awaiting_place',
       ladderLanguage: language,
       firstTouch: session.firstTouch
         ? { ...session.firstTouch, place }
