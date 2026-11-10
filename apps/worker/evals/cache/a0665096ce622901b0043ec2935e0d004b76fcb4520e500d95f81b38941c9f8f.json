@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in Chinese, says registration not completed due to sign-in wall, no spot claimed, parent completes in browser, mentions 15 minutes as time to finish rather than a held spot, no promise to retry, no link written in text. Minor issue: says the 15 minutes is not a reserved spot, which is accurate. Mentions the price and session correctly. Slight concern: phrasing '这只是完成报名的时间' is clear. Overall meets requirements.",
+    "score": 5
+  }
+}
