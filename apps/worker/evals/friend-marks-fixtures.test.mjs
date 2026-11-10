@@ -110,9 +110,15 @@ describe('friendMarksMisses', () => {
       friendMarksMisses(first, value, { ...ok, meaning: { score: 2, reason: 'promised nearby' } }),
     ).toEqual(['meaning:2 (promised nearby)']);
     expect(friendMarksMisses(first, value, { sent: open })).toEqual(['meaning:not_judged']);
-    expect(friendMarksMisses(first, { ...value, placeDeclined: true }, ok)).toEqual([
-      'placeDeclined:true',
-    ]);
+    // Code holds a first no open whatever the draw marked: what is kept is graded.
+    expect(friendMarksMisses(first, { ...value, placeDeclined: true }, ok)).toEqual([]);
+    expect(
+      friendMarksMisses(
+        first,
+        { ...value, placeDeclined: true },
+        { ...ok, sent: { ...open, placeDeclined: true } },
+      ),
+    ).toEqual(['sent:placeDeclined:true']);
     const sent = { source: 'composed', placeDeclined: true };
     const moved = { asks: true, placeDeclined: true, reply: 'Pas de souci. Tes enfants?' };
     expect(friendMarksMisses(second, moved, { ...ok, sent })).toEqual([]);

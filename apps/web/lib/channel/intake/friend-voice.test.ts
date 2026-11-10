@@ -2234,6 +2234,7 @@ describe('a garbled parentQuestion', () => {
     const placeAsk = blank({
       step: 'place',
       parentWords: 'not even that, sorry',
+      coarseCodeAsked: true,
       checklist: {
         postal: false,
         kids: false,
@@ -2476,6 +2477,60 @@ describe('a declined place, closed in code', () => {
       expect(asked.placeAsk).toBe('coarse');
     } finally {
       info.mockRestore();
+    }
+  });
+
+  it('keeps the place open on a first no even when the draft marks it declined', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const coarse = 'No problem. Would you share just the first three characters?';
+      const marked = () =>
+        sequenced([draft({ reply: coarse, placeDeclined: true, placeAsk: 'coarse' })]);
+      const first = marked();
+      const sent = await speakFriend(
+        first.composer,
+        { ...secondNo, coarseCodeAsked: undefined, parentWords: "I'd rather not" },
+        { page: async () => undefined },
+      );
+      expect(first.seen).toHaveLength(1);
+      expect(sent.source).toBe('composed');
+      expect(sent.body).toBe(coarse);
+      expect(sent.capture.placeDeclined).toBe(false);
+
+      const closing = sequenced([draft({ placeDeclined: true, placeAsk: 'none' })]);
+      const closed = await speakFriend(closing.composer, secondNo, { page: async () => undefined });
+      expect(closed.capture.placeDeclined).toBe(true);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('briefs the rewrite of a first no to ask the coarse code, and only a second no to move on', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const twoQuestions = draft({
+        reply: 'Totally fair. Could you tell me the city? Or the first three characters?',
+        placeAsk: 'coarse',
+      });
+      const rewriteBrief = async (input: FriendVoiceInput) => {
+        const { composer, seen } = sequenced([twoQuestions, draft({ placeAsk: 'coarse' })]);
+        await speakFriend(composer, input, { page: async () => undefined });
+        expect(seen).toHaveLength(2);
+        return seen[1]?.retry?.problem ?? '';
+      };
+      const firstNo = await rewriteBrief({
+        ...secondNo,
+        coarseCodeAsked: undefined,
+        parentWords: "I'd rather not",
+      });
+      expect(firstNo).toMatch(/coarse code/);
+      expect(firstNo).not.toMatch(/`next`/);
+      const second = await rewriteBrief(secondNo);
+      expect(second).toMatch(/`next`/);
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
     }
   });
 

@@ -76,7 +76,7 @@ function inputFor(voice, fixture) {
   // With askNote the retry is briefed as speakFriend briefs it: the problem, for this
   // step, then what the message should ask. Older fixtures keep their recorded bytes.
   const problem = fixture.retry.askNote
-    ? `${voice.retryProblem(fixture.retry.reason, undefined, input)} This message should ${voice.askInWords(input.step)}.`
+    ? `${voice.retryProblem(fixture.retry.reason, undefined, input)} This message should ${voice.askInWords(input.step, input)}.`
     : voice.retryProblem(fixture.retry.reason);
   return { ...input, retry: { draft: fixture.retry.draft, problem } };
 }

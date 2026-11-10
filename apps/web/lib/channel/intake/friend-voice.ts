@@ -2130,20 +2130,23 @@ export async function speakFriend(
       // there are no parent words to read a yes or a fact from.
       const capture =
         input.parentWords.trim().length > 0
-          ? dropTakeBackName(
-              input.parentWords,
-              settleSchedule(
-                withGroupMode(
-                  withReading(
-                    noYesInAQuestion(
-                      ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                      marks.parentQuestion,
+          ? placeOpenUntilCoarseAsked(
+              dropTakeBackName(
+                input.parentWords,
+                settleSchedule(
+                  withGroupMode(
+                    withReading(
+                      noYesInAQuestion(
+                        ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                        marks.parentQuestion,
+                      ),
+                      input,
                     ),
                     input,
                   ),
-                  input,
                 ),
               ),
+              input,
             )
           : empty;
       const draft = composed.reply.trim();
@@ -2400,7 +2403,7 @@ export async function speakFriend(
     FLEX_QUESTION_STEPS.has(nextStep) ||
     yesToLink(retryBase, first.capture)
       ? ''
-      : ` This message should ${askInWords(nextStep)}.`;
+      : ` This message should ${askInWords(nextStep, retryBase)}.`;
   const retryInput = {
     ...retryBase,
     retry: first.retry ? { ...first.retry, problem: `${first.retry.problem}${askNote}` } : null,
@@ -2484,7 +2487,7 @@ export function retryProblem(
     case 'question':
       return input && ZERO_QUESTION_STEPS.has(input.step)
         ? 'This message asks nothing. No question mark.'
-        : `Exactly one question: ${askInWords(input?.step)}. Never ask for something already known.`;
+        : `Exactly one question: ${askInWords(input?.step, input)}. Never ask for something already known.`;
     case 'privacy':
       return 'It made a privacy claim that is not true. Google shares the whole inbox or calendar with Hale; Hale keeps and uses only what is about the kids. Do not say Hale only reads, only sees, or never sees some of it.';
     case 'invented':
@@ -2508,7 +2511,10 @@ export function retryProblem(
   }
 }
 
-export function askInWords(step: FriendStep | undefined): string {
+export function askInWords(
+  step: FriendStep | undefined,
+  input?: Pick<FriendVoiceInput, 'coarseCodeAsked'>,
+): string {
   switch (step) {
     case 'email':
       return 'ask whether they want to connect their Gmail (one trust line from facts.access first)';
@@ -2526,10 +2532,25 @@ export function askInWords(step: FriendStep | undefined): string {
     case 'ages':
       return 'ask how old each kid is';
     case 'place':
-      return 'ask their postal code or ZIP, or, when they just declined it, ask `next` instead';
+      return input?.coarseCodeAsked === true
+        ? 'ask the coarse code, or, when they declined it again, ask `next` instead'
+        : 'ask their postal code or ZIP, or, when they just declined it, the coarse code instead, with `placeDeclined` false';
     default:
       return 'ask the open item';
   }
+}
+
+/**
+ * A first no to the place gets the coarse code, so only a no after that ask, or a
+ * place already declined, closes it, whatever the draft marked.
+ */
+function placeOpenUntilCoarseAsked(
+  capture: OnboardingCapture,
+  input: Pick<FriendVoiceInput, 'coarseCodeAsked' | 'placeDeclined'>,
+): OnboardingCapture {
+  if (!capture.placeDeclined || input.coarseCodeAsked === true || input.placeDeclined === true)
+    return capture;
+  return { ...capture, placeDeclined: false };
 }
 
 /** The capture fields a retry may build on: facts, a yes or no to a connector, a declined place. */

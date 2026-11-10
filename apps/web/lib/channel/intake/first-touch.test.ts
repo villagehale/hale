@@ -1281,7 +1281,11 @@ describe('friend voice onboarding', () => {
     deps.friendVoice = {
       async compose(input, options) {
         steps.push(input.step);
-        return scripted.compose(input, options);
+        const composed = await scripted.compose(input, options);
+        // The first no gets the coarse code; only a no after that closes the place.
+        return input.step === 'place' && /rather not/i.test(input.parentWords)
+          ? { ...composed, placeAsk: 'coarse' }
+          : composed;
       },
     };
     let finds = 0;

@@ -556,8 +556,11 @@ export function friendMarksMisses(
       misses.push(`meaning:${meaning.score} (${meaning.reason})`);
     }
   }
-  // The first no leaves the place open: the coarse code is still to be offered.
-  if (fixture.placeOpen && value?.placeDeclined === true) misses.push('placeDeclined:true');
+  // The first no leaves the place open: the coarse code is still to be offered. Through
+  // code, what code kept is graded above, not the draw's field.
+  if (fixture.placeOpen && !fixture.throughCode && value?.placeDeclined === true) {
+    misses.push('placeDeclined:true');
+  }
   if (fixture.groupBubbles != null && keptGroupBubbles < fixture.groupBubbles) {
     misses.push(`groupBubbles:${keptGroupBubbles}`);
   }
