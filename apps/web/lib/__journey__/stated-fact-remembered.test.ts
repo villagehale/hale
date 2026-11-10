@@ -12,6 +12,7 @@ import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import { defaultHealthReplyDeps, loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { checkpointToldKey } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
+import { FIXTURE_CITY, FIXTURE_COUNTRY, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
@@ -55,8 +56,9 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
  */
 
 const TZ = 'America/Toronto';
-/** Halton Hills. Ontario rows only; no Toronto programs, no municipal windows. */
-const AREA = 'L7G';
+/** Documented in lib/testing/fixture-postal.ts. Ontario FSA (not Toronto), so the
+ * provincial health rows apply and municipal windows do not. */
+const AREA = FIXTURE_FSA;
 
 /** 08-13 10:00:25 Toronto — the nudge lands. */
 const TOLD_AT = new Date('2026-08-13T14:00:25.890Z');
@@ -107,8 +109,9 @@ async function seed(): Promise<World> {
     .insert(schema.families)
     .values({
       displayName: 'The Founder Family',
+      country: FIXTURE_COUNTRY,
       areaCoarse: AREA,
-      city: 'Halton Hills',
+      city: FIXTURE_CITY,
       province: 'ON',
       onboardingStage: 'sms_active',
     } as never)

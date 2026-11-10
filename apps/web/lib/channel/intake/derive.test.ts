@@ -1,5 +1,6 @@
 import { ageInMonths, deriveStage } from '@hale/types';
 import { describe, expect, it } from 'vitest';
+import { FIXTURE_FSA, FIXTURE_POSTAL } from '~/lib/testing/fixture-postal';
 import {
   crisisRegionForPlace,
   deriveDateOfBirth,
@@ -21,9 +22,9 @@ describe('parseIntakePostal', () => {
       postalCode: 'M5V 2T6',
       areaCoarse: 'M5V',
     });
-    expect(parseIntakePostal('l7g-4s8')).toMatchObject({
-      postalCode: 'L7G 4S8',
-      areaCoarse: 'L7G',
+    expect(parseIntakePostal('k7l-1a1')).toMatchObject({
+      postalCode: FIXTURE_POSTAL,
+      areaCoarse: FIXTURE_FSA,
     });
   });
 
