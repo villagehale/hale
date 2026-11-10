@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { SealedBlobRejected, decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { haleContactCardDay } from '../linq/contact-card';
 import type { IntakeCollected } from './extract';
 
@@ -77,6 +77,8 @@ export interface TranscriptEntry {
   channel?: 'sms' | 'imessage';
   /** Linq chat id when `channel` is imessage. Replay writes it onto the ledger row. */
   chatId?: string | null;
+  /** INBOUND only: the door's group bit (`channel_messages.in_group`). Absent is unknown. */
+  inGroup?: boolean;
   /**
    * The model set `asks` on this outbound. Absent on older rows and on
    * inbounds. A question mark in `body` is not a substitute.
@@ -344,6 +346,12 @@ function decodeLadderNext(value: unknown): IntakeLadderStep | null {
 
 function decodeLadderLanguage(value: unknown): ReplyLanguage | null {
   return acceptReplyLanguage(typeof value === 'string' ? value : null);
+}
+
+/** The blob itself will not open: the cipher refused it, or it opened to text that is not
+ * JSON. Anything else thrown while decoding is a fault in the code, never a corrupt row. */
+export function isUnreadableIntakeBlob(err: unknown): boolean {
+  return err instanceof SealedBlobRejected || err instanceof SyntaxError;
 }
 
 function decodeData(blob: string): IntakeData {

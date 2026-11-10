@@ -3,12 +3,14 @@ import {
   type PlanReplyFacts,
   planOpensAtLocal,
   planReplyBody,
+  planReplyText,
   planReplyUserMessage,
   planReplyViolations,
 } from './writer';
 
 const FACTS: PlanReplyFacts = {
   moment: 'offer',
+  mode: 'auto',
   childFirstName: 'Ada',
   opensAt: { local: 'Tuesday, December 1, 2026 at 7:00 a.m.', timeZone: 'America/New_York' },
   sessions: [],
@@ -34,6 +36,20 @@ describe('the plan reply gate', () => {
     expect(planReplyViolations(text)).toContain(
       'contains a link: Hale adds any link after the text',
     );
+  });
+
+  it('sends a Chinese draft that runs Latin names into its full stops, spaced, and still refuses a host', () => {
+    const raw =
+      '我没能登录你的市政账户。Hale留了一个打开的浏览器。替Ada报名还没有完成。链接在后面。';
+    expect(planReplyViolations(raw)).not.toEqual([]);
+    const sent = planReplyText(raw);
+    expect(sent).toBe(
+      '我没能登录你的市政账户。 Hale 留了一个打开的浏览器。替 Ada 报名还没有完成。链接在后面。',
+    );
+    expect(planReplyViolations(sent)).toEqual([]);
+    // Positive control: a host is still a host once spaced.
+    expect(planReplyViolations(planReplyText('去例子.com报名'))).not.toEqual([]);
+    expect(planReplyViolations(planReplyText('付款在evil.app完成'))).not.toEqual([]);
   });
 
   it.each([

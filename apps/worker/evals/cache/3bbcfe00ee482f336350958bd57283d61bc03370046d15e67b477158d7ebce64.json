@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It acknowledges the replacement page and correctly says the course name, day and time could not be read, since they are null. It keeps the handed opening date, time and clock name right, with Tuesday, September 15 correct against now. It warns to leave time because prerequisite is true. It carries no link, asks nothing, names no child and invents nothing. It omits the going-by-the-page line, which is correct because haleHad is null. The tone is natural English. 'Using the residents date' is slightly stiff but accurate to the facts.",
+    "score": 5
+  }
+}

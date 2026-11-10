@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reply": "Nice to meet you, Dana. Next up, would you like me to read your Gmail so I can flag things for the kids as they come in?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "parentName": "Dana",
+    "nameConfirmed": true,
+    "nameDeclined": false,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1707
+}

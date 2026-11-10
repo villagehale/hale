@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -51,13 +52,11 @@ export function dutyNightUserMessage(facts: DutyNightFacts): string {
   return JSON.stringify(facts);
 }
 
-const URL_SHAPE = /https?:\/\/\S+/i;
-
 /** Structural refusals only: empty, or any link (none is ever handed). */
 export function dutyNightRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  if (URL_SHAPE.test(text)) return ['other_link'];
+  if (hasLinkShape(text)) return ['other_link'];
   return [];
 }
 

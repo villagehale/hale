@@ -43,7 +43,18 @@ describe('catalog history cutover', () => {
       '0207_family_sweep_marks',
       '0209_agent_commitments_heard_facts',
       '0210_watched_spots_any_page',
-      '0212_messages_provider_message_id',
+      '0212_message_source',
+      '0213_parent_proactive_language',
+      '0214_activity_bookings_address',
+      '0216_group_lists',
+      '0217_capability_denials',
+      '0205_opt_out_held_crisis_read_sealed',
+      '0220_event_reminders_compose_backoff',
+      '0218_family_memory_facts_source_user',
+      '0221_family_events_calendar_standing',
+      '0222_parent_calendar_blocks_standing',
+      '0223_authorized_signup_plan_resume',
+      '0224_messages_provider_message_id',
     ]);
   });
 });

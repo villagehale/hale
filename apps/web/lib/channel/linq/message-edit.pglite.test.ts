@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundRouteDeps } from '~/lib/channel/inbound-route';
 import { type TestDb, createTestDb, migrationFiles, seedFamily } from '~/lib/testing/pglite';
+import { appendMessage } from '~/lib/coach/conversation';
 import { handleLinqInboundRequest } from './inbound';
 
 /**
@@ -175,5 +176,47 @@ describe('linq message.edited webhook', () => {
     });
     await db.database.insert(schema.messages).values([row(null), row(null), row(OUT_ID)]);
     await expect(db.database.insert(schema.messages).values(row(OUT_ID))).rejects.toThrow();
+  });
+
+  it('appendMessage stores the bubble id beside a source, and leaves it null when absent', async () => {
+    const family = await seedFamily(db.database);
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId: family.familyId })
+      .returning({ id: schema.conversations.id });
+    if (!conversation) throw new Error('conversation missing');
+    const scope = { childId: null, topic: null };
+    const sourced = await appendMessage(
+      conversation.id,
+      'assistant',
+      'Swim is at 4.',
+      db.database,
+      {
+        ...scope,
+        source: { kind: 'read_email' },
+        providerMessageId: OUT_ID,
+      },
+    );
+    const plain = await appendMessage(conversation.id, 'assistant', 'See you there.', db.database, {
+      ...scope,
+      providerMessageId: 'b5d0f1d6-4d0e-4c39-9a52-0f6f7c1f2a10',
+    });
+    const none = await appendMessage(conversation.id, 'user', 'Thanks', db.database, scope);
+
+    const rows = await db.database
+      .select({
+        id: schema.messages.id,
+        providerMessageId: schema.messages.providerMessageId,
+        source: schema.messages.source,
+      })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversation.id));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(sourced)).toMatchObject({
+      providerMessageId: OUT_ID,
+      source: { kind: 'read_email' },
+    });
+    expect(byId.get(plain)?.providerMessageId).toBe('b5d0f1d6-4d0e-4c39-9a52-0f6f7c1f2a10');
+    expect(byId.get(none)?.providerMessageId).toBeNull();
   });
 });

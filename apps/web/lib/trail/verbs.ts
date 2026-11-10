@@ -144,6 +144,8 @@ export const AUDIT_VERBS = [
   'channel_sms_revoked',
   // VIL-553. A text whose stop check failed during a model outage, read again later.
   'opt_out_hold_read',
+  // VIL-572. One parent's texting language became the one Hale writes to them in.
+  'parent_language_changed',
   'sms_reply_received',
   'sms_reply_sent',
   // Only ever written for the synthetic canary household — but rule #6 admits no
@@ -218,6 +220,12 @@ export const AUDIT_VERBS = [
   'linq_multi_family_member_stopped',
   'linq_multi_family_refused',
   'linq_multi_family_reply_sent',
+  'linq_multi_family_common_time_proposed',
+  'linq_multi_family_common_time_unsent',
+  'linq_multi_family_common_time_picked',
+  'linq_multi_family_common_time_placed',
+  'linq_multi_family_common_time_place_failed',
+  'linq_multi_family_free_busy_shared',
   'linq_multi_family_ask_sent',
   'linq_multi_family_ask_capped',
   'linq_multi_family_send_capped',
@@ -280,6 +288,8 @@ export const AUDIT_VERBS = [
   'weekday_care_recorded',
   'followup_daycare_asked',
   'email_alert_sent',
+  // VIL-619 · the one-time scrub of the email previews older alerts kept.
+  'email_alert_snippets_scrubbed',
   'email_alert_event_added',
   'activity_booking_recorded',
   'activity_booking_cancelled',
@@ -481,6 +491,9 @@ export const AUDIT_VERBS = [
   'registration_morning_unwritten',
   'registration_heads_up_unwritten',
   'registration_leg_unwritten',
+  'registration_date_moved',
+  'registration_date_moved_sent',
+  'registration_date_moved_unwritten',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -559,6 +572,9 @@ export const AUDIT_VERBS = [
   'commitment_fulfilled',
   'commitment_cancelled',
   'commitment_deferred',
+  // ── stale denials (VIL-303) ─────────────────────────────────────────────
+  'capability_denial_recorded',
+  'capability_denial_corrected',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -726,6 +742,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
   opt_out_hold_read: {
     sentence: 'Hale read a text it had held to check whether you asked it to stop',
+    family: 'note',
+  },
+  parent_language_changed: {
+    sentence: 'Hale started writing to you in the language you text it in',
     family: 'note',
   },
   sms_reply_received: { sentence: 'you texted Hale', family: 'note' },
@@ -949,6 +969,32 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale replied in a shared thread from what was already said',
     family: 'done',
   },
+  linq_multi_family_common_time_proposed: {
+    sentence: 'Hale suggested times that work for the families in a shared thread',
+    family: 'done',
+  },
+  linq_multi_family_common_time_unsent: {
+    sentence:
+      'Hale held its suggested times for a shared thread because it could not write them well',
+    family: 'problem',
+  },
+  linq_multi_family_common_time_picked: {
+    sentence: 'Someone in a shared thread picked one of the times Hale suggested',
+    family: 'note',
+  },
+  linq_multi_family_common_time_placed: {
+    sentence: 'Hale updated a plan from a shared thread on your calendar',
+    family: 'done',
+  },
+  linq_multi_family_common_time_place_failed: {
+    sentence: 'Hale could not update a plan from a shared thread on your calendar',
+    family: 'problem',
+  },
+  linq_multi_family_free_busy_shared: {
+    sentence:
+      'A parent let Hale use the busy times on their own calendar to find a time in a shared thread',
+    family: 'note',
+  },
   linq_multi_family_ask_sent: {
     sentence: 'Hale asked one family in a shared thread',
     family: 'note',
@@ -1097,6 +1143,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Hale having looked at their email at all.
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
+    family: 'done',
+  },
+  // A count only, across the family's threads: no row says which adult had alerts.
+  email_alert_snippets_scrubbed: {
+    sentence: 'Hale deleted the email previews it had kept from earlier alerts',
     family: 'done',
   },
   // The parent's YES to the sentence at the end of that text. YOU, not Hale: this is the
@@ -1770,6 +1821,18 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale did not send a registration reminder text',
     family: 'note',
   },
+  registration_date_moved: {
+    sentence: 'Hale saw the registration page move an opening date and moved its reminders',
+    family: 'note',
+  },
+  registration_date_moved_sent: {
+    sentence: 'Hale texted you that a registration opening date moved',
+    family: 'done',
+  },
+  registration_date_moved_unwritten: {
+    sentence: 'Hale did not send the text about a moved registration date',
+    family: 'note',
+  },
   registration_outcome_recorded: {
     sentence: 'you told Hale how a registration went',
     family: 'done',
@@ -2016,6 +2079,17 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'looked again and had nothing new to tell you yet',
     family: 'note',
   },
+  // ── stale denials (VIL-303) ─────────────────────────────────────────────
+  // The no was said to one parent, so History hides both (INTERNAL_TRAIL_VERBS). The
+  // sentences stay for the access export, which still lists every family audit row.
+  capability_denial_recorded: {
+    sentence: 'told a parent it could not do something yet, and noted it to follow up',
+    family: 'note',
+  },
+  capability_denial_corrected: {
+    sentence: 'let a parent know it can now do something it had said it could not',
+    family: 'done',
+  },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   interest_stamp_inferred: {
     sentence: 'noticed a possible stamp from something it saw',
@@ -2092,9 +2166,14 @@ export const INTERNAL_TRAIL_VERBS = [
   'crisis_unanswered',
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
+  // VIL-572. About the one parent whose language changed.
+  'parent_language_changed',
   'group_decision_sync_closed_unsent',
   // VIL-156. About one adult's Google account, which another household may share.
   'integration_google_revoke_cancelled',
+  // VIL-303. A no Hale said to one parent, and its correction to that same parent.
+  'capability_denial_recorded',
+  'capability_denial_corrected',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

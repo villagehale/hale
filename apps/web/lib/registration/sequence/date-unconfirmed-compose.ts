@@ -3,6 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { Moment } from './note-compose.js';
 
@@ -10,7 +11,12 @@ import type { Moment } from './note-compose.js';
  * VIL-423 · the reminder a ladder leg becomes when the send-time date check could not
  * corroborate the stored opening (date-check.ts, `enforce`). The facts carry no date, so
  * the text cannot state the unconfirmed one: it says the page did not confirm it and
- * hands the page. A text that cannot be written is nothing sent.
+ * points at the page. A text that cannot be written is nothing sent.
+ *
+ * THE LINK IS DATA, NOT COPY, as in the spot-open and plan writers. The writer is handed
+ * no link and a draft carrying any link shape is refused; code appends the window's page
+ * on its own line (`dateUnconfirmedBody`). A retyped link could slip a character, or be
+ * swapped for a look-alike host.
  */
 
 export const REGISTRATION_DATE_UNCONFIRMED_SKILL = 'registration-date-unconfirmed';
@@ -19,8 +25,6 @@ export interface DateUnconfirmedFacts {
   now: Moment;
   window: string;
   who: string;
-  /** The window's registration page: the one link the text carries. */
-  link: string;
   why: 'page_unreadable' | 'page_unconfirmed';
   /** True for a household that has not yet said yes: the text asks once. */
   offer: boolean;
@@ -28,17 +32,16 @@ export interface DateUnconfirmedFacts {
 
 export type DateUnconfirmedInput = DateUnconfirmedFacts & { language: ReplyLanguage };
 
-const URL_SHAPE = /https?:\/\/\S+/gi;
-
-/** Structural refusals only: empty, the handed link missing, or another link. */
-export function dateUnconfirmedRefusals(body: string, facts: DateUnconfirmedFacts): string[] {
+/** Structural refusals only: empty, or any link (the writer is handed none). */
+export function dateUnconfirmedRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  const refusals: string[] = [];
-  if (!text.includes(facts.link)) refusals.push('link_missing');
-  const urls = text.match(URL_SHAPE) ?? [];
-  if (urls.some((url) => !url.startsWith(facts.link))) refusals.push('other_link');
-  return refusals;
+  return hasLinkShape(text) ? ['link'] : [];
+}
+
+/** What goes on the wire: the writer's text, then the window's page on its own line. */
+export function dateUnconfirmedBody(text: string, link: string): string {
+  return `${text.trim()}\n${link}`;
 }
 
 const outputSchema = z.object({ text: z.string() });
@@ -85,7 +88,7 @@ export async function composeDateUnconfirmed(
         maxTokens: DATE_UNCONFIRMED_MAX_TOKENS,
       });
       const text = value.text.trim();
-      const refusals = dateUnconfirmedRefusals(text, facts);
+      const refusals = dateUnconfirmedRefusals(text);
       if (refusals.length === 0) return text;
       console.warn({ familyId, attempt, refusals }, 'registration date unconfirmed: draft refused');
     } catch (err) {

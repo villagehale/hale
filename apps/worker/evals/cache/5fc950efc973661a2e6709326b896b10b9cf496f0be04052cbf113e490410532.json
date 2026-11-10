@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own. Autonomy for send_email and reply_to_email was turned off this turn, so the reply is accurate. It confirms the change plainly in the parent's language, adds nothing invented, and stops.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a reason (weather), offers a make-up class at 3pm not in the facts, and adds apology theatre and emoji. It also omits the event date and kid name, so it fails several of the watchFor constraints.",
+    "score": 1
+  }
+}

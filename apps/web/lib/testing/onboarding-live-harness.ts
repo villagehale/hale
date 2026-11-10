@@ -295,6 +295,7 @@ export async function runOnboardingReplay(
       receivedAt: now,
       transport: 'imessage',
       chatId: LIVE_CHAT,
+      isGroup: false,
     };
     const started = Date.now();
     const outcome = await routeInboundText(

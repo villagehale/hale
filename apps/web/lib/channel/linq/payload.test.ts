@@ -46,6 +46,7 @@ describe('parseLinqWebhook', () => {
         receivedAt: new Date('2026-02-05T19:31:13.074Z'),
         otherHandles: [],
         isGroup: false,
+        mentions: [],
       },
     });
   });
@@ -73,6 +74,40 @@ describe('parseLinqWebhook', () => {
     expect(said.kind === 'message' && said.message.isGroup).toBe(false);
     const parsedGroup = parseLinqWebhook(group, FALLBACK);
     expect(parsedGroup.kind === 'group' && parsedGroup.message.isGroup).toBe(true);
+  });
+
+  it('reads iMessage mentions on a text part, including is_me', () => {
+    const body = received();
+    (body.data as { chat: { is_group: boolean } }).chat.is_group = true;
+    const data = body.data as { parts: unknown[] };
+    data.parts = [
+      {
+        type: 'text',
+        value: 'Kevin Dana one of you confirm the address?',
+        mentions: [
+          { handle: '+14155551234', is_me: false, range: [0, 5] },
+          { handle: '+14155559876', is_me: true, range: [6, 10] },
+        ],
+      },
+    ];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('group');
+    if (parsed.kind !== 'group') return;
+    expect(parsed.message.mentions).toEqual([
+      { handle: '+14155551234', isMe: false },
+      { handle: '+14155559876', isMe: true },
+    ]);
+    expect(parsed.message.text).toBe('Kevin Dana one of you confirm the address?');
+  });
+
+  it('treats a null mentions field as nobody named', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'text', value: 'plain', mentions: null }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.mentions).toEqual([]);
   });
 
   it('counts a media part and keeps the text beside it', () => {

@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrY1ob4uNfBa6VEt7qVP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AoKEAgTGAI4AUIIdGhpbmtpbmcSDLPmkBh/jynAsMQ9exoMg0cryQi6rw/Nv44/IjBl5FqzJimfoU8oS1A3WYMZd9PO/haK7rvkhfDikILBP90+SV9jFzvqMx4KsgCHHQsq8Qkt1q5dWUkoJ9tBDVk30PciompWbmFQLuPH5WreUrQL1TlKAn8prz+pXmdCMVfjL2UMhnMf+jRTJ3iKP+2BGopq9Di78Flh2zIMn7kCU4xikbEkFrwCvVU04uNo0zdm3PDNzKnPX9+drj/5KR9t+tq7lediUuG2zw0xVUmRpuBydP6kiYxLJr1eVRsrMoAn1y9rXlnQW1G1yf2Ty8Td0dzReblIdU9oIViCR2QR6vmM3EjI2xLA9JqoQS2HbxLW8wBcBVepMtZWGOoxf8IXkHaHoka7FnpQSzZF9OfYKd6QaZ7Z4Z+EXivFSWbgmQFsHlcXWlh5Y/wr2q/teeOHbntsoNd7hZ1CaVUF63SbVHoXJ8RE8ewkrxs0WOw45YCL/GmeRUnrn75OE2Yn+SwiveBfMfZw4ufSoG2u3Ga6yJbSnzioonAqmkKhUO6tpAYLPcJ9URpm2NExBs+qJ61A/qRgmxkI2HJptus0xitzOhFBll4wbUQGBadOyrt0ZBhpsdnTDRi82gZjbl+zj7Gl0plFrFgUUH2nOquJ4bvBeDDOrGcVSvl2E9JiKQw/aKZ2pKGT9MrsTYaSxTv+A1cOqc9Ik5T/jxDyXEXAdkw7xk8XGM9Gge+HDyP1WaquyPMscE5Z2Qqgo4iTesldYSFZkws78oHR1nz+FBYOnQNTVG8uNeN0MEbwByX74d1SrPG4GdY/KPIvUS7GXWSMHC3lM/nNZ5wUniQdpwERu9z1L59mG8OYEGKHNOCbDULbnBWagFVqUAlFbNf1lEWnt8ODJH3Q1UcmClIBvuQUkRBWMp+cIp2uqNTwmwM2NneG+i7uFKMohKcrwTFM2N+FfL7YvrRilLZTjQBS/e0aJAlR+2y7c2P6LCnn2GgB7fqkn/0qO7Rxa1OLYrcpvrlo9AN4JisHwTbSLt7YH2sv4OgKMecUaBS4i7BIDM/g+zPOXkXulMZQNBGUUPq6frk6hlnV6sdfkjmWs5909sbhxGB2tpuVkmfdpbag/8psK1N28DZsMWLJCl34c1FAzDvpG4C6cc6OE8xsxOhvqyAK81FvO584pQE/4kSWbQTAExctEeaVBd14vYWDRXCKyNL11bhuuwmEzemHkq9Fmc+fUYlVg3hhBrI8ZMZUffPI435RFVDyNyTv79PdA8Jk+lQVU85tFCIHWNfCEMNXt7fRtb1hA3VVxJb3nQFDXtI+BwzUqPIoTgyyTKlCenDLkrMvgYwRHKbBaiG2DbBXesALW6EHk95DKkB1oSK9h6ZWzZWE6yNX//WxgAVgZCp/lPasFB0O6dDdbquw7LaskAWgtTkcpHA0OOEYBGyqleho0kv9xAWh61zxuj3n2JDQBfJ5yzvWZjCUdXr/5DD/7oetiwIImUQ1WsFqveNjMYNbLKOlbvHKunVfbRVbWR08DFWoKARcEfGw6GC/HA6uSoNP5eGY+a3cMeP3IME/FPegT0qrbjAeSK5nSOjLCI7EQRF2srtDbufJXfQJTy/2xLFrFpd/Pmm2z6WO0998Z74kH4/PBb83Ff7mJmc40QAnV1pAxs16K0CIpLHgo7g+KriV9UNWYb3PLbGA+8eKPj5FHRlCWPRa+8yZeCtCe8uNRgtDnBM/4XyB7FKWWNA5DfuLPNEfG5v4lCsPFdl9H+knI+LwIrwm/fpiyas0fFsyutGVGwkseEJEvRgB"
+      },
+      {
+        "type": "text",
+        "text": "Picture day moved to Friday, Nov 13. Retakes are Wednesday, Dec 2, and order forms go home in backpacks this week."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 740,
+      "cache_read_input_tokens": 18727,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 740,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 360,
+      "output_tokens_details": {
+        "thinking_tokens": 310
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

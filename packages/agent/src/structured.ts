@@ -32,7 +32,8 @@ import {
  * tool: forced where the model accepts it (Haiku 5.5), otherwise `auto` with one call
  * and ONE identical re-ask when the reply came back in prose — the same one re-ask a JSON
  * output gets when it comes back with no text. Truncation, refusal, a
- * missing answer and unparseable JSON are each a named {@link StructuredOutputError};
+ * missing answer, unparseable JSON and call markup inside a tool answer's string are each
+ * a named {@link StructuredOutputError};
  * Zod stays the gate for every bound the grammar does not carry.
  *
  * The client is injected so tests drive the mechanics with a fake; answer QUALITY is
@@ -76,7 +77,12 @@ export interface ForceToolJsonResult<TValue> {
   usage: Anthropic.Usage;
 }
 
-export type StructuredOutcome = 'truncated' | 'refusal' | 'no_answer' | 'unparseable';
+export type StructuredOutcome =
+  | 'truncated'
+  | 'refusal'
+  | 'no_answer'
+  | 'unparseable'
+  | 'tool_markup';
 
 /** A structured call that produced no answer to parse, named by why. */
 export class StructuredOutputError extends Error {
@@ -220,6 +226,10 @@ export function readStructuredAnswer(
   if (request.tools) {
     const toolUse = findToolUse(response, stage);
     if (!toolUse) fail(stage, 'no_answer', response, `model returned no ${stage} tool call`);
+    const leak = markupAt(toolUse.input, fieldNames(request.tools));
+    if (leak !== null) {
+      fail(stage, 'tool_markup', response, `tool-call markup inside the string at ${leak}`);
+    }
     return toolUse.input;
   }
   const text = response.content
@@ -233,6 +243,44 @@ export function readStructuredAnswer(
   } catch {
     return fail(stage, 'unparseable', response, 'the JSON output did not parse');
   }
+}
+
+/**
+ * A plain tool's input can come back with the call's own markup written INTO a string:
+ * the field closed early (`true</parentQuestion>`) and the next one opened inside it
+ * (`<parameter name="connectorsOffered">[]`), so that next field is lost. Refused, never
+ * stripped: stripping keeps the answer but not the swallowed field. Only a closing tag
+ * that names one of the tool's own fields counts, so a `</b>` in a reply is left alone.
+ */
+const PARAMETER_TAG = /<\/?(?:\w+:)?parameter[\s>]/;
+const CLOSING_TAG = /<\/([A-Za-z_][\w-]*)>/g;
+
+function fieldNames(node: unknown, names = new Set<string>()): Set<string> {
+  if (!node || typeof node !== 'object') return names;
+  for (const [key, child] of Object.entries(node)) {
+    if (key === 'properties' && child && typeof child === 'object') {
+      for (const name of Object.keys(child)) names.add(name);
+    }
+    fieldNames(child, names);
+  }
+  return names;
+}
+
+/** The dotted path of the first string holding call markup, or null. */
+function markupAt(value: unknown, fields: ReadonlySet<string>, path: string[] = []): string | null {
+  if (typeof value === 'string') {
+    const closesAField = [...value.matchAll(CLOSING_TAG)].some((match) =>
+      fields.has(match[1] as string),
+    );
+    return PARAMETER_TAG.test(value) || closesAField ? path.join('.') : null;
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value)) {
+      const found = markupAt(child, fields, [...path, key]);
+      if (found !== null) return found;
+    }
+  }
+  return null;
 }
 
 function sumUsage(a: Anthropic.Usage, b: Anthropic.Usage): Anthropic.Usage {

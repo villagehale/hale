@@ -18,7 +18,8 @@
 //   HALE_SPEND_LEDGER=... node --env-file=../../.env evals/run-registration-note-eval.mjs --live --max-usd 1   # PAID
 //
 // --live and --cached-only also score the broken drafts: each claims something the facts
-// do not, and the judge must score every one 2 or lower, or the run fails.
+// do not, and the judge must score every one 2 or lower, or the run fails. They score the
+// handed drafts too: each does what its kind asks, and the judge must pass every one.
 
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -37,6 +38,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -53,52 +55,7 @@ const TEXT_SCHEMA = {
   required: ['text'],
 };
 
-const JUDGE_SYSTEM = [
-  'You score one message Hale would send a parent about a registration window for their',
-  'child or children. You are given the facts Hale handed the writer, including `kind`',
-  '(which message it is) and `language`, and the message. Score 1 to 5.',
-  'A 5 does what its kind asks, states only what the facts give, keeps every handed date,',
-  'time, name, number, price and link right, phrases the day correctly against now, sounds',
-  'like a friend texting in the handed language, and names no child the facts did not hand.',
-  'Kinds: readiness_checklist names what opens, when and for whom, the four things to have',
-  'done on that portal (the account, each child added with a birthday, the address, a saved',
-  'card) and asks once whether Hale should know when that is done. check_in_ask asks how it',
-  'went: got in, waitlisted (and their number) or missed. waitlist_halfway and waitlist_final',
-  "say the clock is the town's response window started from the parent's own message;",
-  'waitlist_final also says to check email and the portal. outcome_* answers what the parent',
-  'just reported and asks nothing; outcome_waitlisted with a deadline promises a reminder',
-  'before it, and with no deadline says there is no clock to set. readiness_answer: a yes is',
-  'attributed to the parent ("you told me"), never verified; a no names the four things',
-  'again and says Hale will ask again the evening before, without asking now.',
-  'already_approved says it is already a yes and asks nothing. course_bound restates what the',
-  'page showed, says Hale is going by the page when haleHad is set, warns to leave time when',
-  'regForm or prerequisite is true, carries no link and asks nothing. approval_card names',
-  'each listed text with its timing, says plainly Hale never registers for them, includes',
-  'the handed link, gives the course-link tip only when courseLinkTip is true, and asks',
-  "nothing. Its opensOn is already this family's own date: moving it by residentsFirstDays",
-  'is a wrong date.',
-  'Score 2 or lower for any claim the facts do not make (that something is booked, paid,',
-  'registered, held, checked or confirmed; a place, a time, a child, a link or a price not',
-  'in the facts; a later message, reminder or record the facts do not promise), a wrong',
-  'day, time or number, a question or an invitation to reply where the kind asks none, the',
-  'wrong language, or a named child the facts did not hand. Do not require particular',
-  'words. The promises a kind is handed are not invented: outcome_missed flags the next',
-  'window early; outcome_waitlisted with a deadline reminds before it; readiness_answer no',
-  'asks again the evening before; already_approved runs the morning with them;',
-  'approval_card sends the listed texts and may say approving starts them, and its',
-  'course-link tip says that if the parent sends the course page link, the morning text',
-  'will carry it. A non-null residentsFirstDays comes from their postal code. Telling a',
-  'parent to watch their',
-  'email for an offer is handed, and so is outcome_waitlisted with responseHours null saying',
-  'the town publishes no response window. On approval_card a non-null residentsFirstDays',
-  'means the family does get the residents-first date, and near_band means just outside the',
-  'band within the margin on an approximate birthday, and the general public opening',
-  'residentsFirstDays days after opensOn is a handed fact. On course_bound, saying the',
-  'course details could not be read when they are null is right. Restating a handed fact in',
-  'plain words is never an invented claim. An approval_card may tell the parent to approve;',
-  'only a question there is wrong. French may use tu or vous.',
-  'Call the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('registration-note');
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 // Generic towns and portals only: this repo is public.
@@ -140,6 +97,7 @@ export const NOTE_FIXTURES = [
       now: { date: 'Wednesday, September 16, 2026', time: '5:00 a.m.' },
       town: 'Springfield',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       language: 'en',
     },
@@ -151,6 +109,7 @@ export const NOTE_FIXTURES = [
       now: { date: 'Wednesday, September 16, 2026', time: '9:00 p.m.' },
       town: 'Springfield',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       hoursLeft: 2,
       language: 'en',
@@ -172,6 +131,7 @@ export const NOTE_FIXTURES = [
       town: 'Springfield',
       position: 12,
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       language: 'en',
     },
@@ -184,6 +144,7 @@ export const NOTE_FIXTURES = [
       town: 'Riverton',
       position: null,
       responseHours: null,
+      clockFrom: null,
       deadline: null,
       language: 'fr',
     },
@@ -334,6 +295,29 @@ export const NOTE_BROKEN = [
     facts: BY_ID['waitlist-final'],
     text: 'About 2 hours left on the Springfield waitlist offer: it runs out tomorrow at 9 a.m. Check your email and the portal.',
   },
+  {
+    // Scored 5 under the rubric before it judged where the clock starts.
+    id: 'broken-waitlisted-clock-unsaid',
+    facts: BY_ID['outcome-waitlisted-clock'],
+    text: "Got it, you're on the waitlist at spot 12 for Springfield. Springfield gives a 36-hour window to accept an offer, so this one runs out Wednesday, September 16 at 11:00 p.m. I'll remind you before it closes. Keep an eye on your email in case an offer comes through.",
+  },
+  {
+    // The near miss: the right deadline, but the clock starts when an offer arrives.
+    id: 'broken-waitlisted-clock-at-offer',
+    facts: BY_ID['outcome-waitlisted-clock'],
+    text: "Got it, you're number 12 on Springfield's waitlist. Once an offer comes in, you'll have 36 hours to accept it, until Wednesday, September 16 at 11:00 p.m. I'll remind you before then, so keep an eye on your email for the offer.",
+  },
+];
+
+/** Drafts that do what their kind asks. The judge must score each JUDGE_MIN or higher. */
+export const NOTE_HANDED = [
+  {
+    // Scored 2 under the rubric that read "window to accept an offer" as the clock
+    // starting at the offer, while drafts with the same wording scored 4 and 5.
+    id: 'handed-waitlist-halfway-offer-window',
+    facts: BY_ID['waitlist-halfway'],
+    text: "You're on Springfield's waitlist, and half of the 36-hour window to accept an offer has passed. Your clock started from your message yesterday at 11:00 a.m., so it runs out tonight at 11:00 p.m. Keep an eye on your email and the portal in case an offer comes through before then.",
+  },
 ];
 
 /** --broken, offline: the composer's own gate must refuse every planted draft. */
@@ -368,10 +352,10 @@ function worst(model, inTokens, maxOut) {
 async function main() {
   const raw = process.argv.slice(2);
   const modeArgs = raw.filter((a, i) => a !== '--max-usd' && raw[i - 1] !== '--max-usd');
-  const knownIds = [...NOTE_FIXTURES, ...NOTE_BROKEN].map((f) => f.id);
+  const knownIds = [...NOTE_FIXTURES, ...NOTE_BROKEN, ...NOTE_HANDED].map((f) => f.id);
   const { mode, only } = parseEvalArgsOrExit('registration-note', knownIds, modeArgs);
   if (only) {
-    for (const list of [NOTE_FIXTURES, NOTE_BROKEN]) {
+    for (const list of [NOTE_FIXTURES, NOTE_BROKEN, NOTE_HANDED]) {
       list.splice(0, list.length, ...list.filter((f) => only.includes(f.id)));
     }
   }
@@ -409,7 +393,7 @@ async function main() {
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 600, judgeMaxOut);
       calls += note.NOTE_MAX_ATTEMPTS + 1;
     }
-    for (const b of NOTE_BROKEN) {
+    for (const b of [...NOTE_BROKEN, ...NOTE_HANDED]) {
       const msg = JSON.stringify({ facts: b.facts, text: b.text });
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += 1;
@@ -481,12 +465,22 @@ async function main() {
       `${low ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | judge ${verdict.score}`,
     );
   }
+  let kept = 0;
+  for (const h of NOTE_HANDED) {
+    const verdict = await judge(h.id, { facts: h.facts, text: h.text });
+    const high = verdict.score >= JUDGE_MIN;
+    if (high) kept += 1;
+    console.info(`${high ? 'HANDED-PASSES (good)' : 'HANDED-FAILED (bad)'} ${h.id} | judge ${verdict.score}`);
+    if (!high) console.info(`     reason: ${verdict.reason}`);
+  }
   const brokenOk = caught === NOTE_BROKEN.length && brokenOffline(note);
+  const handedOk = kept === NOTE_HANDED.length;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
+  console.info(`handed calibration (must pass): ${handedOk ? 'PASS' : 'FAIL'}`);
   console.info(
     `registration-note | ${NOTE_FIXTURES.length - failed} of ${NOTE_FIXTURES.length} passed | live calls: ${cost.liveCalls} | spent $${totalUsd(cost).toFixed(6)}`,
   );
-  if (failed > 0 || !brokenOk) process.exit(1);
+  if (failed > 0 || !brokenOk || !handedOk) process.exit(1);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

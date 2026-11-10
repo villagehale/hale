@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { HALE_CONTACT_FIRST_NAME, haleContactCardDay } from '~/lib/channel/linq/contact-card';
+import { linqChatAuditKey } from '~/lib/channel/linq/family-audit';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -269,6 +270,7 @@ export async function provisionFromIntake(
         category: 'intake',
         providerMessageId: entry.providerId,
         providerChatId: entry.channel === 'imessage' ? (entry.chatId ?? null) : null,
+        inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
         status:
           entry.direction === 'in' ? 'delivered' : entry.channel === 'imessage' ? 'sent' : 'queued',
         // Verbatim bodies are stored for INBOUND only, matching the ledger's rule:
@@ -344,7 +346,7 @@ export async function provisionFromIntake(
               occurredAt: new Date(input.linqContactCardClaim.at),
               after: {
                 ...(input.linqContactCardClaim.chatId
-                  ? { chatId: input.linqContactCardClaim.chatId }
+                  ? linqChatAuditKey(input.linqContactCardClaim.chatId)
                   : {}),
                 sharedOn: haleContactCardDay(new Date(input.linqContactCardClaim.at)),
                 ...(input.linqContactCardClaim.outcome === 'shared'

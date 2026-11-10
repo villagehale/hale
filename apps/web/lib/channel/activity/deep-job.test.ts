@@ -198,7 +198,11 @@ function harness(
         async compose(grounding) {
           composed.push(grounding);
           return (
-            overrides.compose ?? { status: 'composed', message: 'Tiny Gym runs Sundays 9:30.' }
+            overrides.compose ?? {
+              status: 'composed',
+              message: 'Tiny Gym runs Sundays 9:30.',
+              mentionsWatch: false,
+            }
           );
         },
       },

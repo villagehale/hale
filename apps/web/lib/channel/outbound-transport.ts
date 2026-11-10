@@ -582,10 +582,14 @@ export function createChatReplyTransport(
     async send(input) {
       if (input.mediaUrls) throw new LinqSendError('media_unsupported', 400, true);
       if (!deps.chatId) throw new LinqSendError('missing_chat_id', 400, true);
+      // VIL-475 — record the mention the live send would carry, so a Preview
+      // proof shows it; group capture already records sendLinqChatMessage input.
+      const mention = deps.mentionFor ? await deps.mentionFor(input.body) : undefined;
       const providerMessageId = captured('chat_message', {
         chatId: deps.chatId,
         text: input.body,
         replyTo: deps.replyToMessageId ? { messageId: deps.replyToMessageId } : undefined,
+        ...(mention ? { mention } : {}),
       });
       return { providerMessageId, transport: 'imessage', chatId: deps.chatId };
     },
@@ -621,4 +625,11 @@ export async function checkLinqIMessageCapability(
 ): ReturnType<typeof linq.checkLinqIMessageCapability> {
   refuseCaptureWithoutGroups();
   return linq.checkLinqIMessageCapability(input);
+}
+
+export async function uploadLinqAttachment(
+  input: In<typeof linq.uploadLinqAttachment>,
+): ReturnType<typeof linq.uploadLinqAttachment> {
+  refuseCaptureWithoutGroups();
+  return linq.uploadLinqAttachment(input);
 }

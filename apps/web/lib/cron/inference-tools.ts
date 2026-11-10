@@ -1,13 +1,13 @@
-import { type RegisteredTool, defineTool } from '@hale/agent';
+import { type GuardResult, type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import {
   episodesForContext,
   factsForContext,
-  namesAny,
+  namesAnyIn,
   teenRoster,
 } from '@hale/worker/memory-context';
-import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import {
@@ -45,6 +45,14 @@ const WINDOW_DAYS = 7;
 const RECENT_LIMIT = 30;
 /** How many current facts the snapshot carries to diff against. */
 const CURRENT_FACT_LIMIT = 100;
+
+/**
+ * VIL-599 · the nightly writer cannot say which adult a fact came from: the family's
+ * conversation is one thread whose turns name no author, and an event names no speaker.
+ * Its facts are held back from every adult while another is on record, until a write
+ * made at the turn (which knows the speaker) replaces them.
+ */
+const NIGHTLY_HEARD = 'unrecorded' as const;
 
 const memoryFactType = z.enum([
   'preference',
@@ -106,7 +114,7 @@ function redactEventsForTeens(
 ): MemorySnapshot['recentEvents'] {
   return events.map((e) =>
     (e.childId !== null && stageByChild.get(e.childId) === 'teenager') ||
-    stringLeaves(e.payload).some((text) => namesAny(text, teenNames))
+    namesAnyIn(e.payload, teenNames)
       ? {
           eventId: null,
           childId: null,
@@ -118,32 +126,76 @@ function redactEventsForTeens(
   );
 }
 
-/**
- * Every string value and object key in a payload. A name match runs on these, never on
- * JSON text: JSON writes a newline as `\n`, so the escape's letter would touch the name
- * and hide it from a word-boundary match.
- */
-function stringLeaves(value: unknown): string[] {
-  if (typeof value === 'string') return [value];
-  if (Array.isArray(value)) return value.flatMap(stringLeaves);
-  if (value !== null && typeof value === 'object') {
-    return Object.entries(value).flatMap(([key, v]) => [key, ...stringLeaves(v)]);
-  }
-  return [];
+interface ChildRow {
+  id: string;
+  name: string;
+  dateOfBirth: string;
 }
 
-/** The id names one of THIS family's events: a source is never another family's row. */
-async function familyEventExists(
+/**
+ * The family's children and its recent events as the inferencer sees them, teen-redacted.
+ * `read_recent_memory` shows these, and `save_memory` reads them again, so a source is
+ * only ever an event this run showed: never another family's, never one the redaction
+ * withheld, never one outside the window.
+ */
+async function loadSnapshotEvents(
   database: Database,
   familyId: string,
+  now: Date,
+): Promise<{
+  childRows: ChildRow[];
+  stageByChild: Map<string, FamilyStage>;
+  recentEvents: MemorySnapshot['recentEvents'];
+}> {
+  const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const childRows = await database
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const stageByChild = new Map<string, FamilyStage>(
+    childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
+  );
+
+  const rows = await database
+    .select({
+      id: schema.events.id,
+      childId: schema.events.childId,
+      eventType: schema.events.eventType,
+      payload: schema.events.payload,
+      receivedAt: schema.events.receivedAt,
+    })
+    .from(schema.events)
+    .where(and(eq(schema.events.familyId, familyId), gte(schema.events.receivedAt, since)))
+    .orderBy(desc(schema.events.receivedAt))
+    .limit(RECENT_LIMIT);
+
+  const recentEvents = redactEventsForTeens(
+    rows.map((e) => ({
+      eventId: e.id,
+      childId: e.childId,
+      eventType: e.eventType,
+      payload: e.payload,
+      receivedAt: e.receivedAt.toISOString(),
+    })),
+    stageByChild,
+    childRows.filter((c) => stageByChild.get(c.id) === 'teenager').map((c) => c.name),
+  );
+  return { childRows, stageByChild, recentEvents };
+}
+
+async function snapshotShowsEvent(
+  database: Database,
+  familyId: string,
+  now: Date,
   eventId: string,
 ): Promise<boolean> {
-  const [row] = await database
-    .select({ id: schema.events.id })
-    .from(schema.events)
-    .where(and(eq(schema.events.familyId, familyId), eq(schema.events.id, eventId)))
-    .limit(1);
-  return row !== undefined;
+  const { recentEvents } = await loadSnapshotEvents(database, familyId, now);
+  return recentEvents.some((event) => event.eventId === eventId);
 }
 
 export function buildInferenceTools(database: Database, now: Date = new Date()): RegisteredTool[] {
@@ -155,36 +207,19 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
     monetary: false,
     touchesChildContent: false,
     handler: async (_input, ctx) => {
-      const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-      const childRows = await database
-        .select({
-          id: schema.children.id,
-          name: schema.children.name,
-          dateOfBirth: schema.children.dateOfBirth,
-        })
-        .from(schema.children)
-        .where(eq(schema.children.familyId, ctx.familyId));
-      const stageByChild = new Map<string, FamilyStage>(
-        childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
+      const { childRows, stageByChild, recentEvents } = await loadSnapshotEvents(
+        database,
+        ctx.familyId,
+        now,
       );
-
-      const recentEvents = await database
-        .select({
-          id: schema.events.id,
-          childId: schema.events.childId,
-          eventType: schema.events.eventType,
-          payload: schema.events.payload,
-          receivedAt: schema.events.receivedAt,
-        })
-        .from(schema.events)
-        .where(and(eq(schema.events.familyId, ctx.familyId), gte(schema.events.receivedAt, since)))
-        .orderBy(desc(schema.events.receivedAt))
-        .limit(RECENT_LIMIT);
 
       const [recentEpisodes, currentFacts] = await Promise.all([
         episodesForContext(database, ctx.familyId, { now, limit: RECENT_LIMIT }),
-        factsForContext(database, ctx.familyId, { now, limit: CURRENT_FACT_LIMIT }),
+        factsForContext(database, ctx.familyId, {
+          now,
+          reader: 'memory_writer',
+          limit: CURRENT_FACT_LIMIT,
+        }),
       ]);
 
       const snapshot: MemorySnapshot = {
@@ -192,17 +227,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
           const stage = stageByChild.get(c.id) as FamilyStage;
           return { childId: c.id, name: stage === 'teenager' ? null : c.name, stage };
         }),
-        recentEvents: redactEventsForTeens(
-          recentEvents.map((e) => ({
-            eventId: e.id,
-            childId: e.childId,
-            eventType: e.eventType,
-            payload: e.payload,
-            receivedAt: e.receivedAt.toISOString(),
-          })),
-          stageByChild,
-          childRows.filter((c) => stageByChild.get(c.id) === 'teenager').map((c) => c.name),
-        ),
+        recentEvents,
         recentEpisodes: recentEpisodes.map((e) => ({
           childId: e.childId,
           episodeType: e.episodeType,
@@ -275,22 +300,18 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
     // The input names a child, so the guarded invoker refuses a childId outside this
     // family or a 13+ child's before the handler runs (rule #1), as for save_child_fact.
     touchesChildContent: true,
+    childContentGate: (input, ctx) => teenNameGate(database, ctx.familyId, now, input),
     handler: async (input, ctx) => {
       // The 0.7 floor is a code-level invariant, not just a prompt rule: a fact
       // below it is dropped here, never written (mirrors the worker inferencer).
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
-      if (
-        await factNamesTeen(database, ctx.familyId, now, [
-          input.factKey,
-          flattenFactValue(input.factValue),
-        ])
-      ) {
-        return { saved: false as const, reason: 'names_teen' };
-      }
       const sourceEventId = input.sourceEventId ?? undefined;
-      if (sourceEventId && !(await familyEventExists(database, ctx.familyId, sourceEventId))) {
+      if (
+        sourceEventId &&
+        !(await snapshotShowsEvent(database, ctx.familyId, now, sourceEventId))
+      ) {
         return { saved: false as const, reason: 'unknown_source_event' };
       }
 
@@ -316,6 +337,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         inferredBy: 'memory_inferencer',
         source: 'inferred',
         sourceEventId,
+        heard: NIGHTLY_HEARD,
         now,
         memoryClass: input.memoryClass,
         disposition: input.disposition,
@@ -429,6 +451,9 @@ async function loadDistillTurns(
         inArray(schema.messages.conversationId, conversationIds),
         gte(schema.messages.createdAt, since),
         isNull(schema.messages.deletedAt),
+        // VIL-616: a reply written after `read_email` may repeat a stranger's name,
+        // number or code. The router marks its row, and no fact is learned from it.
+        sql`coalesce(${schema.messages.source} ->> 'kind', '') <> 'read_email'`,
       ),
     )
     .orderBy(desc(schema.messages.createdAt))
@@ -478,16 +503,20 @@ async function loadDistillReceipts(
  * A save whose text names a 13+ child is refused (rule #1), whoever it is filed
  * under. A text turn carries no child id, and a model can file a teen's news under a
  * younger sibling, so the name is checked on every save. The guarded invoker's age
- * gate has already refused a save filed under the teen.
+ * gate has already refused a save filed under the teen. This runs as the saves'
+ * `childContentGate`, BEFORE the audit row, so a refused save's words never reach
+ * audit_log (VIL-618).
  */
-async function factNamesTeen(
+async function teenNameGate(
   database: Database,
   familyId: string,
   now: Date,
-  texts: readonly string[],
-): Promise<boolean> {
+  values: unknown,
+): Promise<GuardResult> {
   const { names } = await teenRoster(database, familyId, now);
-  return names.length > 0 && texts.some((text) => namesAny(text, names));
+  return namesAnyIn(values, names)
+    ? { ok: false, reason: 'names_teen' }
+    : { ok: true, reason: 'names_no_teen' };
 }
 
 function flattenFactValue(factValue: unknown): string {
@@ -543,7 +572,7 @@ function redactTimelineForDistill(
   return turns.map((turn) => {
     const isTeen =
       (turn.childId !== null && stageByChild.get(turn.childId) === 'teenager') ||
-      namesAny(turn.content, teenNames);
+      namesAnyIn(turn.content, teenNames);
     if (isTeen) {
       return {
         childId: null,
@@ -628,12 +657,10 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
     // hallucinated uuid, another family's, or a teen's) is refused rather than
     // persisted as a fact scoped to that child (rule #1/#5).
     touchesChildContent: true,
+    childContentGate: (input, ctx) => teenNameGate(database, ctx.familyId, now, input),
     handler: async (input, ctx) => {
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
-      }
-      if (await factNamesTeen(database, ctx.familyId, now, [input.factKey, input.summary])) {
-        return { saved: false as const, reason: 'names_teen' };
       }
 
       const decision = await decideDistilledFact(
@@ -663,6 +690,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         confidence: input.confidence,
         inferredBy: 'chat_distiller',
         source: 'inferred',
+        heard: NIGHTLY_HEARD,
         now,
         memoryClass: input.memoryClass,
         disposition: input.disposition,

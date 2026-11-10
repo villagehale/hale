@@ -44,6 +44,7 @@ import { considerSocialForward } from '~/lib/social/forward';
 import { considerCarpoolTapback, considerCarpoolTurn } from './carpool';
 import type { CarpoolReader } from './carpool-reading';
 import type { CarpoolComposer } from './carpool-voice';
+import { type CommonTimePlanPorts, productionCommonTimePlanPorts } from './common-time-plan';
 import {
   linqGroupCarpoolEnabled,
   linqGroupCoparentEnabled,
@@ -85,10 +86,12 @@ import {
 } from './group-coparent';
 import {
   holdTrueStrangerOnce,
+  retryMemberWelcome,
   seatParticipantAdded,
   shouldHoldGroupStranger,
   unseatParticipantRemoved,
 } from './group-members';
+import { groupMentionFactsFor } from './group-mention-reader';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
 import type { GroupPickupClaimReader } from './group-pickup-claim';
 import { considerGroupPlanRsvp, considerGroupPollCardVote } from './group-plan-rsvp/inbound';
@@ -224,6 +227,8 @@ export async function handleLinqInboundRequest(
     privateAsideModel?: PrivateAsideModel;
     /** VIL-471 test seam. Production sends the native card through sendChoicePoll. */
     groupPollCard?: GroupPollCardPort;
+    /** VIL-459 test seam. Production places a picked common time with the real invite sender. */
+    commonTimePlan?: CommonTimePlanPorts;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -663,6 +668,15 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
       },
       {
         ...multiFamilyPorts(deps),
+        commonTimePlan:
+          deps.commonTimePlan ??
+          productionCommonTimePlanPorts(
+            deps.database,
+            privateAsideOneToOne(deps.database, {
+              now: deps.now?.() ?? new Date(),
+              send: deps.oneToOne,
+            }),
+          ),
         optOut: async (text) => {
           const intent = await optOutIntentOf(text);
           return intent === 'stop' || intent === 'start' ? intent : 'none';
@@ -778,7 +792,20 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 }
 
 async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
-  if ((await optOutIntentOf(message.text)) !== 'stop') {
+  const stopping = (await optOutIntentOf(message.text)) === 'stop';
+  if (!stopping && !linqGroupOnboardingV2Enabled()) {
+    const welcome = await retryMemberWelcome(deps.database, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      voice: deps.groupVoice,
+    });
+    if (welcome.outcome === 'welcome_retried') {
+      deps.log.info(welcome, 'linq inbound: group member welcome');
+    }
+  }
+  if (!stopping) {
     const rsvp = await tryGroupPlanRsvpTurn(deps, {
       chatId: message.chatId,
       senderHandle: message.senderHandle,
@@ -926,11 +953,18 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       await deps.countOutcome('ignored');
       return json({ outcome: 'group_turn_reader_off' });
     }
+    const mentionFacts = optOut
+      ? null
+      : await groupMentionFactsFor(deps.database, {
+          chatId: message.chatId,
+          mentions: message.mentions,
+        });
     const reading = optOut
       ? null
       : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
           text: message.text,
           haleNames: ['Hale'],
+          ...(mentionFacts ? { mentions: mentionFacts } : {}),
           ...(await groupTurnReadContext(deps.database, {
             familyId: mapped.status === 'same_family' ? mapped.familyId : null,
             chatId: message.chatId,
@@ -1377,6 +1411,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
             mediaCount: 0,
             receivedAt: deps.now?.() ?? new Date(),
             otherHandles: [],
+            mentions: [],
           },
           { familyId: mapped.familyId, userId: mapped.userId },
         );
@@ -1419,6 +1454,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
             mediaCount: 0,
             receivedAt: deps.now?.() ?? new Date(),
             otherHandles: [],
+            mentions: [],
           },
           { familyId: mapped.familyId, userId: mapped.userId },
         );
@@ -1524,6 +1560,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         isFromMe: signal.isFromMe,
         now,
         send: deps.sendGroupText,
+        voice: deps.groupVoice,
       });
       await deps.countOutcome(seated.outcome === 'group_member_seated' ? 'intake' : 'ignored');
       return json({

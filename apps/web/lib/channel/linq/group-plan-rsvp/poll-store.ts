@@ -65,6 +65,8 @@ export interface GroupPollStore {
   /** The options of a native card Hale sent, in the order Linq returned them. */
   cardOptions(providerMessageId: string): Promise<NativeCardOption[]>;
   loadPollTally(pollId: string): Promise<GroupPollTally>;
+  /** The member keys that have a vote on this poll. */
+  pollVoterKeys(pollId: string): Promise<string[]>;
   recordPollVote(input: RecordPollVoteInput): Promise<{ changed: boolean }>;
   /** Clears the pick only while it is still `optionKey` (a stale removal is a no-op). */
   clearPollVote(input: {
@@ -233,6 +235,14 @@ export function createPostgresGroupPollStore(database: Database): GroupPollStore
         .from(schema.linqGroupPollVotes)
         .where(eq(schema.linqGroupPollVotes.pollId, pollId));
       return tallyGroupPoll(poll.options, votes, poll.expected);
+    },
+
+    async pollVoterKeys(pollId) {
+      const rows = await database
+        .select({ memberKey: schema.linqGroupPollVotes.memberKey })
+        .from(schema.linqGroupPollVotes)
+        .where(eq(schema.linqGroupPollVotes.pollId, pollId));
+      return rows.map((row) => row.memberKey);
     },
 
     async recordPollVote(input) {

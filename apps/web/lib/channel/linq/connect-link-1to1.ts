@@ -17,6 +17,7 @@ import {
   composeOnboardingLine,
   sendGroupOnboardingLine,
 } from './group-onboarding-voice';
+import { PRIVATE_ASIDE_TEMPLATE } from './private-aside-ledger';
 import { isUndefinedTable } from './roster';
 import { familyLanguage, firstName, primaryParentId } from './roster-ask';
 import { LinqSendError } from './transport';
@@ -61,7 +62,6 @@ export function defaultOneToOneSend(): OneToOneSend {
 
 const LINK_TEMPLATE = 'linq:connect_link_1to1';
 const QUIET_TEMPLATE = 'linq:group_quiet_notice';
-const PRIVATE_ASIDE_TEMPLATE = 'linq:private_aside';
 const PROVIDERS = ['gcal', 'gmail'] as const;
 
 type OneToOneSent =
@@ -76,6 +76,8 @@ async function sendOneToOne(
     ledgerUserId: string;
     to: string;
     body: string;
+    /** Keep the sent text on the row: only for a model-written line nothing else holds. */
+    recordBody: boolean;
     templateKey: string;
     dedupeKey: string;
     now: Date;
@@ -94,6 +96,7 @@ async function sendOneToOne(
       dedupeKey: input.dedupeKey,
       status: acceptedStatus('imessage'),
       sentAt: input.now,
+      body: input.recordBody ? input.body : null,
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
@@ -117,7 +120,7 @@ async function sendOneToOne(
     if (!(err instanceof LinqSendError)) throw err;
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: err.code, dedupeKey: null })
+      .set({ status: 'failed', errorCode: err.code, dedupeKey: null, body: null })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.warn(
       { familyId: input.familyId, templateKey: input.templateKey, code: err.code },
@@ -150,6 +153,7 @@ export function privateAsideOneToOne(
       ledgerUserId: parent,
       to,
       body: aside.text,
+      recordBody: true,
       templateKey: PRIVATE_ASIDE_TEMPLATE,
       dedupeKey: aside.dedupeKey,
       now: input.now,
@@ -309,6 +313,7 @@ export async function deliverConnectLinkOneToOne(
     ledgerUserId: input.userId,
     to: phone,
     body: composed.body,
+    recordBody: false,
     templateKey: LINK_TEMPLATE,
     dedupeKey,
     now: input.now,
@@ -527,6 +532,7 @@ export async function noticeIfGroupQuiet(
     ledgerUserId: primary,
     to: phone,
     body: composed.body,
+    recordBody: false,
     templateKey: QUIET_TEMPLATE,
     dedupeKey,
     now: input.now,

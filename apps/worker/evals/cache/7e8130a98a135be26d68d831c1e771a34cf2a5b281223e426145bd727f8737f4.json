@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits outcome_waitlisted with no deadline and no response window: it acknowledges the waitlist and says the town publishes no response window, so there is nothing to time. Telling the parent to watch their email for an offer is a handed promise. It notes that no list position is known, which matches the null position. It asks nothing, is in French, names no child and adds no invented claims. The tone is warm and natural, if slightly formal.",
+    "score": 5
+  }
+}

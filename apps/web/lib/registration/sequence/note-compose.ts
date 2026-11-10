@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkBeyond } from '~/lib/format/link-shape';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -43,12 +44,16 @@ export type RegistrationNoteFacts =
             kind: 'waitlist_halfway';
             town: string;
             responseHours: number | null;
+            /** Where the count started: the parent's own message. Null with `deadline`. */
+            clockFrom: Moment | null;
             deadline: Moment | null;
           }
         | {
             kind: 'waitlist_final';
             town: string;
             responseHours: number | null;
+            /** Where the count started: the parent's own message. Null with `deadline`. */
+            clockFrom: Moment | null;
             deadline: Moment | null;
             hoursLeft: number;
           }
@@ -59,6 +64,8 @@ export type RegistrationNoteFacts =
             town: string;
             position: number | null;
             responseHours: number | null;
+            /** Where the count started: the parent's own message. Null with `deadline`. */
+            clockFrom: Moment | null;
             deadline: Moment | null;
           }
         | { kind: 'readiness_answer'; ready: boolean; portal: string; account: string; who: string }
@@ -106,15 +113,12 @@ export type RegistrationNoteKind = RegistrationNoteFacts['kind'];
 
 export type RegistrationNoteInput = RegistrationNoteFacts & { language: ReplyLanguage };
 
-const URL_SHAPE = /https?:\/\/\S+/gi;
-
 /** Structural refusals only: empty, or a link that was not handed. */
 export function noteRefusals(body: string, facts: RegistrationNoteFacts): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  const link = facts.kind === 'approval_card' ? facts.link : null;
-  const urls = text.match(URL_SHAPE) ?? [];
-  return urls.some((url) => link === null || !url.startsWith(link)) ? ['other_link'] : [];
+  const handed = facts.kind === 'approval_card' ? [facts.link] : [];
+  return hasLinkBeyond(text, handed) ? ['other_link'] : [];
 }
 
 const outputSchema = z.object({ text: z.string() });

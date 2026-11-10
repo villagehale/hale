@@ -3,6 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { localClockFact, localDateFact } from '~/lib/loop/reminders/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -79,8 +80,6 @@ export function groupReminderVoiceUserMessage(facts: GroupReminderFacts): string
   return JSON.stringify(facts);
 }
 
-const URL_SHAPE = /https?:\/\/\S+|www\.\S+/i;
-
 /**
  * Structural refusals only, never wording: empty, or a link. Length is the skill's to
  * judge; `GROUP_REMINDER_VOICE_MAX_TOKENS` keeps a draft far inside one Linq text part.
@@ -88,7 +87,7 @@ const URL_SHAPE = /https?:\/\/\S+|www\.\S+/i;
 export function groupReminderRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return URL_SHAPE.test(text) ? ['link'] : [];
+  return hasLinkShape(text) ? ['link'] : [];
 }
 
 const outputSchema = z.object({ text: z.string() });

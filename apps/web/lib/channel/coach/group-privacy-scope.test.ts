@@ -1,6 +1,7 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
+import { findReplyNotJudged } from './find-reasoning-judge';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
@@ -31,6 +32,7 @@ const PRIVATE_CONTEXT = {
     digestFreshness: 'fresh',
   },
   sourceNote: { eyebrow: 'Email', body: INBOX_LINE, when: 'today' },
+  location: { city: null, province: null, country: 'Canada' },
 };
 
 afterEach(() => vi.unstubAllEnvs());
@@ -78,6 +80,7 @@ describe('VIL-439 group privacy scope', () => {
         nearbySaid: async () => null,
         guardDeps: { async writeAudit() {} },
         client: () => ({ messages: {} }) as never,
+        judgeFindReply: findReplyNotJudged,
         runAgent: async (args) => {
           seen.push(JSON.stringify(args.context));
           return {
@@ -241,6 +244,7 @@ describe('VIL-439 review: group tools and group history', () => {
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as never,
+      judgeFindReply: findReplyNotJudged,
       runAgent: async (args) => {
         seenTools.push(args.tools.map((t) => t.name));
         return {

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Here's what I found near Springfield for Mia and Leo. Swim lessons at the community pool are for ages 3 to 5, so that one fits Mia, and there are two free library and playgroup options that work for both of them. What should I call you?",
+    "asks": true,
+    "parentQuestion": "false</parentQuestion>\n<parameter name=\"connectorsOffered\">[]",
+    "joinPointer": null,
+    "claimsSaved": false,
+    "groupLeads": [
+      "Swim lessons at the community pool are for ages 3 to 5, so that one fits Mia. It runs Saturdays at 10:00.",
+      "Library storytime is free and open to all ages on Tuesdays at 10:30, so both kids can go. The drop-in playgroup is also free for ages 0 to 6, on weekday mornings, which suits Leo well."
+    ]
+  },
+  "latencyMs": 2819
+}
