@@ -10,6 +10,10 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
+import {
+  releasePlanRun,
+  settleBrowserUsePlanPayment,
+} from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
@@ -190,7 +194,13 @@ export function signupPlanDepsFromEnv(database: Database): PlanRunDeps {
   const built = browserUseSignupRunnerFromEnv();
   const engine = built.deps;
   return {
-    runner: engine ? { run: (input) => runBrowserUsePlanForMode(input, engine) } : null,
+    runner: engine
+      ? {
+          run: (input) => runBrowserUsePlanForMode(input, engine),
+          release: (resume) => releasePlanRun(resume, engine),
+          settlePayment: (input) => settleBrowserUsePlanPayment(input, engine),
+        }
+      : null,
     notifyParent: createPlanNotifier(database, {
       writer: createPlanReplyWriter(() => resolveReplyClient(undefined)),
       transport: createOutboundTransport(),
