@@ -29,6 +29,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | --- | --- | --- | --- | --- | --- |
 | `ACTIVITY_REVIEWS_ENABLED` | `apps/web/lib/reviews/capture.ts:44` | `true` | OFF | `false` | Noah |
 | `ACTIVITY_REVIEWS_SURFACE` | `apps/web/lib/reviews/aggregate.ts:27` | `true` | OFF | `false` | Sloane |
+| `AGE_FIT_CORRECTION_ENABLED` | `apps/web/lib/channel/intake/age-fit-correction.ts:17` | `true` | OFF | `false` | Sloane |
 | `ANTHROPIC_SPEND_ALERT_USD` | `apps/web/lib/monitoring/spend.ts:40` (default at :16, fallback at :42) | a number of USD (config, not a flag) | 200 USD (code default) | n/a (config) | unassigned |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | `apps/web/lib/channel/spots/flag.ts:31` | `true` | OFF | `false` | Noah |
 | `AUTHORIZED_SIGNUP_ENABLED` | `apps/web/lib/signup/flag.ts:12` | `on` | OFF | empty, or `off` | Noah |
@@ -202,6 +203,7 @@ Code is merged for every row.
 | Flag | What it does | Extra signal this week | Kill | Owner |
 | --- | --- | --- | --- | --- |
 | `ACTIVITY_REVIEWS_ENABLED` | How an activity went is reduced to a verdict. This pass sends nothing. | Verdicts filed for a family that did not answer. | `false` | Noah |
+| `AGE_FIT_CORRECTION_ENABLED` | The 1:1 coach and the onboarding friend take a parent's correction that a named program does not fit a child, and stop offering that program. Dark leaves those skills' bytes unchanged. The model writes the reply. | A reply that keeps offering a program the parent just said does not fit. | `false` | Sloane |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | A parent can ask Hale to watch a full class on any city's or provider's public program page, not only the two PerfectMind portals. A model reads the page, and code checks each fact against the page text. A bot-check page or a reading the page text does not back sends nothing. | `class availability read` log lines by `outcome` and `reason` (a high `refused`/`challenge_page` or `unknown` share means pages Hale cannot read), spot texts for a page-watch the parent did not ask about, and model spend on the watched-spots cron. | `false` | Noah |
 | `AUTONOMOUS_EXECUTE_ENABLED` | Hale acts on its own on an action type the parent opted into and approved five times in a row (rule #4), and only after the turn-on text for that grant has been delivered. Off, each such action is held for approval as `action.gated.lane_off`; a parent's own approval still executes. On, a kind whose text has not been delivered is held as `action.gated.autonomy_notice_pending`, including overnight. The count of parents already at five approvals of a kind, run before it is ever set, is in the VIL-131 pull request: 0. | `action.executed` against `action.gated.*` per action type, and any `action.gated.lane_off` row while the value is `true`. | unset | Barton |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | One capped page of booking-shaped mail from the last 90 days is recorded, and the parent is not alerted. | Log line `gmail sweep: envelope outcome`. Backfill must not insert a `channel_messages` row. | `false` | Noah |

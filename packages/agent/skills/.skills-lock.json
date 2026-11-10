@@ -27,6 +27,10 @@
     "file": "activity-watch-calendar-read.md",
     "sha256": "dd5fde530caca83910ef056b36ad6df9a23f3822689b9f1fb4a4f1504e7eceee"
   },
+  "age-fit-correction.md": {
+    "file": "age-fit-correction.md",
+    "sha256": "35c45345b8d8022cf6da70c34b3b8a3f726a8ba9f632fe1fdd6063e9d2f08ea5"
+  },
   "area-read.md": {
     "file": "area-read.md",
     "sha256": "c2ede60463df19cbe14bc9a8743a83c04a63f6b9695f27242f0ce29cd09ff014"

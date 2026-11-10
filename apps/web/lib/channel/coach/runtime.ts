@@ -40,6 +40,10 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import {
+  ageFitCorrectionEnabled,
+  appendAgeFitCorrectionSkill,
+} from '~/lib/channel/intake/age-fit-correction';
 import { loadHouseholdGroupFact } from '~/lib/channel/intake/household-group';
 import {
   linqExperiencesEnabled,
@@ -528,12 +532,20 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       });
       const declined: DeferredCapability[] = [];
       const corrected: DeferredCapability[] = [];
+      // VIL-568: age-fit correction rides only on a 1:1 turn with the flag on.
+      // Dark and group turns keep the skill bytes they already had.
+      const withAgeFit = appendAgeFitCorrectionSkill(
+        skill,
+        turn.audience !== 'group' && ageFitCorrectionEnabled()
+          ? await loadCronSkill('age-fit-correction')
+          : null,
+      );
       // VIL-447: list reply tone rides last, and only on a group turn with the flag on.
       // Dark and 1:1 turns keep the skill bytes they already had.
       const coachSkill =
         turn.audience === 'group' && groupSharedListsEnabled()
-          ? await appendGroupListsReply(skill)
-          : skill;
+          ? await appendGroupListsReply(withAgeFit)
+          : withAgeFit;
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
