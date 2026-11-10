@@ -10,6 +10,7 @@ import {
   structuredToolChoice,
   withoutThinking,
 } from './model.js';
+import { cachedSystem } from './prompt-cache.js';
 
 /**
  * Single-shot structured output, validated against the caller's Zod schema. The one
@@ -96,15 +97,6 @@ export class StructuredOutputError extends Error {
     super(message);
     this.name = 'StructuredOutputError';
   }
-}
-
-/**
- * The stable system prompt behind one ephemeral cache breakpoint. Wire order is
- * tools → system → messages, so the breakpoint caches the tool definitions and the
- * instructions together; the per-turn payload goes in the user message, after it.
- */
-export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }];
 }
 
 /**

@@ -1,5 +1,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { cachedSystem, laneRequestFields, pickLane, withHistoryBreakpoint } from '@hale/agent';
+import {
+  cachedSystem,
+  laneRequestFields,
+  layoutTools,
+  pickLane,
+  withHistoryBreakpoint,
+} from '@hale/agent';
 import {
   REQUIRED_CHECKS,
   type ReviewerToolName,
@@ -168,7 +174,7 @@ export async function runReviewer(
     ),
   });
 
-  const tools: Anthropic.Tool[] = [...checkTools(input.draft.actionType), verdictTool];
+  const tools: Anthropic.Tool[] = layoutTools([...checkTools(input.draft.actionType), verdictTool]);
   const messages: Anthropic.MessageParam[] = [
     {
       role: 'user',
