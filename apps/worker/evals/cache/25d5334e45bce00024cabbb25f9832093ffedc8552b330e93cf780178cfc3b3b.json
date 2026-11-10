@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada is registered and that the parent just needs to pay, but run.confirmed is false and the run is only ready_for_parent; Hale never submitted, so claiming registration is a serious factual error. It also omits the required note that the parent must check, tick any waiver, submit and pay within about 15 minutes, and misses the two-places note for queueing on their own phone.",
+    "score": 1
+  }
+}

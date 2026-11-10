@@ -68,6 +68,28 @@ describe('withoutLiveViewLinks', () => {
     expect(stored).toContain(LIVE_VIEW_LINK_WITHHELD);
   });
 
+  // The URL parser drops a tab, CR or LF anywhere in a link, so one inside the path
+  // or query still opens the session: the whole token must go (VIL-613).
+  it.each([
+    [
+      'a tab inside the path',
+      'Finish here: https://live.browser-use.com/s/fixture-live-\tview-token',
+    ],
+    [
+      'a tab inside the query',
+      'Finish here: https://live.browser-use.com/?wss=fixture-live-\tview-token&ui=false',
+    ],
+    [
+      'a CR and LF inside the path',
+      'Finish here: https://live.browser-use.com/s/fixture-live-\r\nview-token',
+    ],
+  ])('removes the whole token with %s', (_label, text) => {
+    const stored = withoutLiveViewLinks(text);
+    expect(stored).not.toContain('view-token');
+    expect(stored).not.toContain('fixture-live');
+    expect(stored).toBe(`Finish here: ${LIVE_VIEW_LINK_WITHHELD}`);
+  });
+
   it('keeps the words around the link', () => {
     expect(withoutLiveViewLinks(`点这里:${LIVE}这个窗口大约保留5分钟`)).toBe(
       `点这里:${LIVE_VIEW_LINK_WITHHELD}这个窗口大约保留5分钟`,

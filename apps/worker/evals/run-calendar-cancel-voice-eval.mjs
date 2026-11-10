@@ -33,6 +33,7 @@ import {
   dryReportLine,
   isDryRun,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -106,16 +107,7 @@ function refusals(body, request, starts, { textDestination, asciiDigits }) {
   return found;
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text Hale sends a parent to say an event it put on',
-  'their calendar is cancelled. Hale was handed the event summary and its time, nothing else.',
-  'You are given the request, the message, and watchFor notes. Score 1-5.',
-  'A 5 names the event exactly, says when it was going to be and that it is cancelled, and',
-  'suggests taking it off their calendar - one or two calm sentences.',
-  'A LOW score is any of: an invented reason or reschedule; anything about a child beyond',
-  'the summary; a number not handed; hype, emoji, apology theatre; a link.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('calendar-cancel-voice');
 
 const BROKEN = 'so sorry!! we had to cancel bc of weather, rescheduled to 5pm 😢 www.example.com';
 

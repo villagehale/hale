@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind is check_in_ask. The message asks how registration went for the Riverton fall recreation programs and offers the three outcomes: got in, waitlisted (with their number) or missed. It is in French, as handed, and vous is allowed. It names no child, adds no claims and uses no wrong dates. The tone is friendly. It is slightly formal for a text between friends, but acceptable.",
+    "score": 5
+  }
+}

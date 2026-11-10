@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts are mostly correct. The date, the time, the link and Léa are all right, and the three texts are named with their timing. It says plainly that Hale never registers, it gives no course-link tip, and saying it opens for everyone fits residentsFirstDays being null. However, it ends with a question (\"Approuvez-vous ce plan ?\"), and approval_card asks nothing. Only a question is wrong there.",
+    "score": 2
+  }
+}

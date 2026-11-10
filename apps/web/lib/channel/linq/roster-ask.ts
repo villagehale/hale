@@ -8,6 +8,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqGroupOnboardingV2Enabled } from './config';
 import type { OneToOneSend } from './connect-link-1to1';
+import { recordSeatRefusal } from './family-audit';
 import type { RoleWordKey } from './group-onboarding-line-input';
 import {
   type GroupLineOutcome,
@@ -308,15 +309,18 @@ export async function askMember(
         })
         .onConflictDoNothing();
     }
-    await database.insert(schema.auditLog).values({
+    await recordSeatRefusal(database, {
       familyId: roster.familyId,
       actor: 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_rosters',
       targetId: roster.id,
-      after: { reason: 'other_family' },
+      reason: 'other_family',
     });
     await settleRosterStatus(database, roster.id, input.now);
+    console.info(
+      { outcome: 'group_member_refused', reason: 'other_family' },
+      'linq roster: member not asked',
+    );
     return { outcome: 'group_member_refused', reason: 'other_family' };
   }
 

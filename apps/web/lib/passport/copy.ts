@@ -1,6 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { activityKeyOf } from './signals';
 import { EMPTY_INTENT, type ParentIntent } from './store';
@@ -53,7 +54,6 @@ const intentJsonSchema = {
 const HALE_DID_IT =
   /\b(i|i've|i have|i'd|hale|we|we've)\b[^.?\n]{0,48}\b(booked|registered|enrolled|signed up)\b/i;
 const DID_FOR_THEM = /\b(booked|enrolled|registered)\s+(you|your|them|her|him)\b/i;
-const LINK = /https?:\/\/|www\./i;
 
 export interface PassportLineFacts {
   job: 'confirm' | 'acknowledge';
@@ -84,7 +84,7 @@ export function lineViolations(
   const tidy = text.replace(/\s+/g, ' ').trim();
   if (!tidy) out.push('the line was empty');
   if (tidy.length > 320) out.push('the line is too long');
-  if (LINK.test(tidy)) out.push('the line contains a link');
+  if (hasLinkShape(tidy)) out.push('the line contains a link');
   if (HALE_DID_IT.test(tidy) || DID_FOR_THEM.test(tidy)) {
     out.push('the line says Hale booked, registered, or enrolled the child');
   }

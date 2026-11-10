@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { type CompanionView, companionForChild } from '@hale/types';
+import { type CompanionView, companionForChild, familyCountryOf } from '@hale/types';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
@@ -51,9 +51,9 @@ export async function companionForFamily(
   database: Database,
   now: Date = new Date(),
 ): Promise<ChildCompanionView[]> {
-  // The children roster and the done-episodes map are independent family-scoped
-  // reads — fetch them together rather than serializing the two latencies.
-  const [rows, doneByChild] = await Promise.all([
+  // The children roster, the done-episodes map and the family's country (which picks
+  // the health schedule, D6) are independent family-scoped reads, fetched together.
+  const [rows, doneByChild, [family]] = await Promise.all([
     database
       .select({
         id: schema.children.id,
@@ -67,7 +67,14 @@ export async function companionForFamily(
       .where(eq(schema.children.familyId, familyId))
       .orderBy(schema.children.dateOfBirth),
     loadDoneByChild(database, familyId),
+    database
+      .select({ country: schema.families.country })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1),
   ]);
+  if (!family) throw new Error('companionForFamily: no family row');
+  const country = familyCountryOf(family.country);
 
   // Resolve each child's private-bucket avatar key to a signed URL (with the
   // cache-buster) so the hub header renders the photo; only children WITH a photo
@@ -79,7 +86,7 @@ export async function companionForFamily(
       lastName: row.lastName,
       avatarUrl: await resolveChildAvatarUrl(row.avatarPath, row.avatarUpdatedAt),
       ...companionForChild(
-        { dateOfBirth: row.dateOfBirth, name: row.name },
+        { dateOfBirth: row.dateOfBirth, name: row.name, country },
         now,
         doneForChild(doneByChild, row.id),
       ),

@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't ask again. Next up: want me to check your inbox for kid stuff like school notes and class emails? I only read what's needed to find those.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameDeclined": true,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1547
+}

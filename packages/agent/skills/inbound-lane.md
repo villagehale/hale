@@ -33,13 +33,23 @@ Return strict JSON matching this shape (via the forced `lane` tool):
   "lane": "in_domain" | "off_domain_general" | "safety_critical" | "provider_access",
   "category": string,   // one value from the closed list below
   "reason": string,     // one short phrase — what in the text decided it
-  "language": string    // BCP-47 tag of the language this message is written in
+  "language": string,   // BCP-47 tag of the language this message is written in
+  "language_request": string | null  // see below
 }
 ```
 
 `language` is the BCP-47 tag of the language this message is written in, as you
 judge it. Return that tag. There is no allowed list. Do not translate the
 message, and do not copy the parent's words into this field.
+
+`language_request` is the BCP-47 tag of a language the parent ASKS Hale to write
+to them in from now on ("text me in French from now on", "can you switch to
+English"). It is null for everything else, which is almost every message: a
+message simply written in some language is not an ask, and neither is a
+question about a word or a class in another language ("how do you say swim
+lessons in French?", "is the French immersion class still open?"). The ask can
+be in any language, and the language asked for need not be the one it is
+written in. A request does not change the lane; choose the lane as below.
 
 `category` must be one of these exact strings and NOTHING else. It is stored as
 a demand signal — a count of what parents keep asking Hale for — so it is a

@@ -47,7 +47,7 @@ import {
 } from '~/lib/channel/linq/contact-card';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
-import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { liftPreviewLink, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
@@ -70,6 +70,8 @@ import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
 import {
   failurePageCrisisPager,
+  noteCrisisReplyLeaving,
+  noteCrisisReplySent,
   pageOps,
   reportFirstHelloFailure,
 } from '~/lib/monitoring/failure-page';
@@ -159,6 +161,7 @@ import {
   createSession,
   linqContactCardShareBlocked,
   loadOpenSession,
+  placeSettled,
   saveSession,
   transcriptHasOutbound,
 } from './session';
@@ -289,10 +292,10 @@ export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused' | 'vo
 
 export type IntakeOutcome =
   /**
-   * A new parent's opening turn sent nothing: the model could not write it. Never a
-   * step, because a step says Hale replied (rule #11). The session stays recoverable —
-   * awaiting_details with an inbound and no outbound — so the parent's own re-text
-   * re-runs the opening and the first-reply sweep owes it one reply.
+   * A pre-family turn sent nothing: the model could not write it. Never a step,
+   * because a step says Hale replied (rule #11). The parent's own re-text re-runs the
+   * turn. On the opening the session stays awaiting_details with an inbound and no
+   * outbound, so the first-reply sweep also owes it one reply.
    */
   | { status: 'first_touch_unsent'; reason: FriendFallback }
   | { status: 'greeted' }
@@ -301,7 +304,8 @@ export type IntakeOutcome =
   | { status: 'follow_up_asked' }
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
-  | { status: 'provisioned'; familyId: string }
+  /** `mapOwed` names an activity map that did not reach the parent and is retried next turn. */
+  | { status: 'provisioned'; familyId: string; mapOwed?: 'unsent' | 'send_failed' }
   /**
    * One ladder beat. `step` is the job this reply settled. `closed` is the
    * co-parent ask, after which the next text belongs to the coach. `held` is set
@@ -839,6 +843,45 @@ async function quietStopTyping(deps: IntakeDeps): Promise<void> {
   }
 }
 
+/**
+ * The map's bubbles in order, stopping at the first that does not land. A
+ * transport that throws is a bubble that did not land: the map stays owed and
+ * the turn goes on, instead of the error leaving the parent's turn unsaved.
+ */
+async function sendMapBubbles(
+  database: Database,
+  ctx: SendContext,
+  bubbles: readonly string[],
+  deps: IntakeDeps,
+  transcript: TranscriptEntry[],
+): Promise<'delivered' | 'send_failed'> {
+  const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  for (const [index, bubble] of toSend.entries()) {
+    let landed = false;
+    let err: string | null = null;
+    try {
+      landed =
+        (await sendAndRecord(database, ctx, bubble, deps, transcript)).channelMessageId != null;
+    } catch (caught) {
+      err = caught instanceof Error ? caught.name : 'unknown';
+    }
+    if (!landed) {
+      console.error(
+        {
+          reason: 'map_send_failed',
+          ...(err ? { err } : {}),
+          landed: index,
+          bubbles: toSend.length,
+        },
+        'intake: activity map not delivered, still owed',
+      );
+      return 'send_failed';
+    }
+    deps.keepTyping?.();
+  }
+  return toSend.length > 0 ? 'delivered' : 'send_failed';
+}
+
 async function sendAndRecord(
   database: Database,
   ctx: SendContext,
@@ -856,8 +899,14 @@ async function sendAndRecord(
     return { transcript, channelMessageId: null };
   }
   await quietStopTyping(deps);
-  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body });
-  const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
+  // VIL-573 · on iMessage a link goes once, after the text, as its own bubble.
+  const lifted =
+    ctx.session.familyId && ctx.session.userId && ctx.pipe.channel === 'imessage' && ctx.pipe.chatId
+      ? liftPreviewLink(body)
+      : null;
+  const text = lifted ? lifted.text : body;
+  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body: text });
+  const wireBody = sent.linkOmitted ? plainTextWithoutLinks(text) : text;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
   const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
   await finishCardWithinReplyBudget(
@@ -879,27 +928,28 @@ async function sendAndRecord(
       ctx.now,
       templateKey,
     );
+    let threaded = wireBody;
+    if (lifted) {
+      const link = await sendLinkOnce({
+        transport: deps.transport,
+        to: ctx.phoneE164,
+        channel,
+        chatId,
+        url: lifted.url,
+        database,
+        familyId: ctx.session.familyId,
+        parentUserId: ctx.session.userId,
+        now: ctx.now,
+      });
+      if (link.status !== 'not_sent') threaded = `${wireBody}\n${lifted.url}`;
+    }
     // What the parent reads back, and what the coach re-reads next turn. The body as
     // SENT: intake appends no CASL footer, so the wire and the thread are one string.
     await deps.threadMessage(database, {
       familyId: ctx.session.familyId,
       parentUserId: ctx.session.userId,
-      body: wireBody,
+      body: threaded,
     });
-    if (channel === 'imessage' && chatId && !sent.linkOmitted) {
-      const preview = linkPreviewUrl(wireBody);
-      if (preview) {
-        await sendLinqLinkPreview({
-          channel: 'imessage',
-          chatId,
-          url: preview,
-          database,
-          familyId: ctx.session.familyId,
-          parentUserId: ctx.session.userId,
-          now: ctx.now,
-        });
-      }
-    }
     return { transcript, channelMessageId: id };
   }
   return { transcript: [...transcript, entry], channelMessageId: null };
@@ -921,6 +971,7 @@ async function recordInbound(
     at: inbound.receivedAt.toISOString(),
     channel: ctx.pipe.channel,
     chatId: ctx.pipe.chatId,
+    ...(inbound.isGroup === undefined ? {} : { inGroup: inbound.isGroup }),
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(
@@ -957,6 +1008,7 @@ export async function writeChannelMessage(
       templateKey: templateKey ?? null,
       providerMessageId: entry.providerId,
       providerChatId: channel === 'imessage' ? (entry.chatId ?? null) : null,
+      inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
       status: entry.direction === 'in' ? 'delivered' : acceptedStatus(channel),
       // Verbatim bodies for INBOUND only — an outbound is reconstructable from the
       // copy module, and storing rendered child data is a liability (rule #1).
@@ -1047,6 +1099,8 @@ async function offScriptReply(
   body: string;
   source: 'composed' | 'safety' | 'identity';
   held?: HealthHeld;
+  /** A crisis reply: its send takes the reply mark, so a held copy is not answered again. */
+  crisis?: true;
 } | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
@@ -1090,7 +1144,9 @@ async function offScriptReply(
       ...crisisPage(page.database, deps, turn, page.familyId, page.parentUserId),
       writer: deps.saidLine,
     });
-    return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
+    return crisis.status === 'sent'
+      ? { body: crisis.body, source: 'safety', crisis: true }
+      : HELD_SILENT;
   }
   if (outcome.status === 'safety') {
     // #868, VIL-589: the model words the line for where this family is; the code checks
@@ -1450,6 +1506,20 @@ async function crisisReply(
   return { body: crisis.status === 'sent' ? crisis.body : null };
 }
 
+/**
+ * Marks the pre-family inbound just recorded. `crisis`: it took the crisis path, and no
+ * sweep follows it with an ask. `unsent`: its turn sent nothing, and only this marker
+ * lets the first-reply sweep answer it.
+ */
+function markedLastInbound(
+  transcript: TranscriptEntry[],
+  mark: 'crisis' | 'unsent',
+): TranscriptEntry[] {
+  const last = transcript.at(-1);
+  if (last?.direction !== 'in') return transcript;
+  return [...transcript.slice(0, -1), { ...last, [mark]: true }];
+}
+
 /** Who hears about a crisis that got no reply, and which inbound, household and parent it was. */
 function crisisPage(
   database: Database,
@@ -1616,13 +1686,14 @@ function givenFromStored(
   capture: {
     nameDeclined: boolean;
     kidsNamesDeclined: boolean;
+    placeDeclined?: boolean;
     calendarLater: boolean;
     gmailLater: boolean;
     scheduleDone: boolean;
     coparentGroup: boolean | null;
     coparentGroupMode: CoparentGroupMode | null;
   },
-  extra: { scheduled?: FirstTouchScheduled[] } = {},
+  extra: { scheduled?: FirstTouchScheduled[]; coarseCodeAsked?: boolean } = {},
 ): FirstTouchGiven | null {
   const scheduled = [...(prior?.scheduled ?? []), ...(extra.scheduled ?? [])];
   const given: FirstTouchGiven = {
@@ -1633,6 +1704,8 @@ function givenFromStored(
     parentRole: stored.parentRole,
     nameDeclined: prior?.nameDeclined === true || capture.nameDeclined,
     kidsNamesDeclined: prior?.kidsNamesDeclined === true || capture.kidsNamesDeclined,
+    placeDeclined: prior?.placeDeclined === true || capture.placeDeclined === true,
+    coarseCodeAsked: prior?.coarseCodeAsked === true || extra.coarseCodeAsked === true,
     calendarLater: prior?.calendarLater === true || capture.calendarLater,
     gmailLater: prior?.gmailLater === true || capture.gmailLater,
     scheduleDone: prior?.scheduleDone === true || capture.scheduleDone,
@@ -1648,6 +1721,8 @@ function givenFromStored(
     !given.parentRole &&
     !given.nameDeclined &&
     !given.kidsNamesDeclined &&
+    !given.placeDeclined &&
+    !given.coarseCodeAsked &&
     !given.calendarLater &&
     !given.gmailLater &&
     !given.scheduleDone &&
@@ -1753,6 +1828,7 @@ async function friendOnboardingTurn(
   let transcript = recorded.transcript;
   const safety = await crisisReply(database, session, inbound, language, deps);
   if (safety) {
+    transcript = markedLastInbound(transcript, 'crisis');
     if (safety.body) {
       ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
     }
@@ -1794,7 +1870,7 @@ async function friendOnboardingTurn(
   const priorGiven = session.firstTouch?.given ?? null;
   // Pre-family: the map, the schedule and the co-parent ask come after provisioning.
   const checklist: OnboardingChecklist = {
-    postal: place != null,
+    postal: placeSettled({ place, given: priorGiven }),
     kids: kidsKnown(session.collected.children, priorGiven),
     ages: agesKnown(session.collected.children),
     name: Boolean(priorGiven?.parentName) || priorGiven?.nameDeclined === true,
@@ -1839,6 +1915,8 @@ async function friendOnboardingTurn(
         parentName: priorGiven?.parentName ?? null,
         parentRole: priorGiven?.parentRole ?? null,
         checklist,
+        ...(priorGiven?.coarseCodeAsked ? { coarseCodeAsked: true } : {}),
+        ...(priorGiven?.placeDeclined ? { placeDeclined: true } : {}),
       },
     ),
     {
@@ -1848,9 +1926,11 @@ async function friendOnboardingTurn(
       // reply, written next. This draft is read for its facts only.
       replyDiscardedWhen: (capture) => {
         const next = storedFromCapture(prior, capture);
-        const nextPlace = next.place ? persistPlace(next.place) : null;
         const kids = withKnownAges(next.collectedChildren);
-        return Boolean(kids && kids.length > 0 && nextPlace && intakeLocationFor(nextPlace));
+        const settled = settledLocation(next.place ? persistPlace(next.place) : null, {
+          placeDeclined: priorGiven?.placeDeclined === true || capture.placeDeclined,
+        });
+        return Boolean(kids && kids.length > 0 && settled);
       },
     },
   );
@@ -1861,9 +1941,12 @@ async function friendOnboardingTurn(
     children: stored.collectedChildren,
     postalCode: stored.postalCode,
   };
-  const given = givenFromStored(priorGiven, stored, spoken.capture);
+  // Kept only when the reply that asked it is the one going out.
+  const given = givenFromStored(priorGiven, stored, spoken.capture, {
+    coarseCodeAsked: friendOutbound(spoken) != null && spoken.placeAsk === 'coarse',
+  });
   const children = withKnownAges(collected.children);
-  const location = nextPlace ? intakeLocationFor(nextPlace) : null;
+  const settled = settledLocation(nextPlace, given);
   const baseTouch: FirstTouchPersisted = {
     language,
     place: nextPlace,
@@ -1871,7 +1954,7 @@ async function friendOnboardingTurn(
     given,
     clarify: session.firstTouch?.clarify ?? null,
   };
-  if (children && children.length > 0 && location && nextPlace) {
+  if (children && children.length > 0 && settled) {
     if (opening) await reportOpening(deps, session, inbound, language);
     return provision(
       database,
@@ -1882,17 +1965,19 @@ async function friendOnboardingTurn(
         now,
       },
       deps,
-      { collected, children, location, transcript },
+      { collected, children, location: settled.location, transcript },
     );
   }
   const voiced = friendOutbound(spoken);
-  if (!voiced && opening) {
+  // Nothing went out, on the opening or a later turn: never a step (rule #11). The
+  // first-reply sweep answers the text once, or the parent's next text re-runs this turn.
+  if (!voiced) {
     await saveSession(
       database,
       session,
       {
-        state: 'awaiting_details',
-        transcript,
+        state: opening ? 'awaiting_details' : settled ? 'awaiting_ages' : 'awaiting_place',
+        transcript: markedLastInbound(transcript, 'unsent'),
         collected,
         lastProviderId: inbound.providerId,
         ladderLanguage: language,
@@ -1900,17 +1985,15 @@ async function friendOnboardingTurn(
       },
       now,
     );
-    await reportOpening(deps, session, inbound, language);
+    if (opening) await reportOpening(deps, session, inbound, language);
     return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
   }
-  if (voiced) {
-    ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
-  }
-  const waitingAges = nextPlace != null;
+  ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
+  const waitingAges = settled != null;
   const clarifyKey = waitingAges ? 'ages' : 'place';
   const priorCount = session.firstTouch?.clarify?.[clarifyKey] ?? 0;
   const partial = knownAgeChildren(collected.children);
-  if (waitingAges && priorCount >= REASK_CAP && partial.length > 0 && location && nextPlace) {
+  if (settled && priorCount >= REASK_CAP && partial.length > 0) {
     return provision(
       database,
       {
@@ -1925,13 +2008,13 @@ async function friendOnboardingTurn(
         now,
       },
       deps,
-      { collected, children: partial, location, transcript },
+      { collected, children: partial, location: settled.location, transcript },
     );
   }
   const stuck =
     !opening &&
     ((session.state === 'awaiting_ages' && !agesKnown(collected.children)) ||
-      (session.state !== 'awaiting_ages' && !nextPlace));
+      (session.state !== 'awaiting_ages' && !settled));
   await saveSession(
     database,
     session,
@@ -2277,16 +2360,8 @@ async function friendColdTurn(
     // Deliver the map before any reply-dependent write. A send that does not
     // land leaves the debt and creates no reminders.
     const recordedMap = await recordInbound(database, ctx, inbound, session.transcript);
-    let delivered = false;
-    for (const bubble of bubbles) {
-      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recordedMap.transcript);
-      if (!sentMap.channelMessageId) {
-        delivered = false;
-        break;
-      }
-      delivered = true;
-    }
-    if (!delivered) {
+    const delivered = await sendMapBubbles(database, ctx, bubbles, deps, recordedMap.transcript);
+    if (delivered !== 'delivered') {
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
       return { status: 'first_touch_unsent', reason: 'unusable' };
     }
@@ -2297,7 +2372,7 @@ async function friendColdTurn(
   const needsName = await parentNeedsName(database, userId);
   const given = session.firstTouch?.given ?? null;
   const checklist: OnboardingChecklist = {
-    postal: session.firstTouch?.place != null,
+    postal: placeSettled(session.firstTouch),
     kids: kidsKnown(session.collected.children, given),
     ages: agesKnown(session.collected.children),
     name: nameKnown(given, needsName),
@@ -2393,7 +2468,13 @@ async function friendColdTurn(
     if (corrected?.ageMonths != null) {
       await writeFact(
         database,
-        ageCorrectionFact({ familyId, childId: null, ageMonths: corrected.ageMonths, now }),
+        ageCorrectionFact({
+          familyId,
+          parentUserId: userId,
+          childId: null,
+          ageMonths: corrected.ageMonths,
+          now,
+        }),
       );
     }
   }
@@ -2648,6 +2729,20 @@ function intakeLocationFor(
   return parseIntakePostal(place.postalCode ?? place.areaCoarse);
 }
 
+/**
+ * Where provisioning puts the family once the place item is settled: the stored
+ * place's location, or none when the parent declined to give one. Null while the
+ * place is still open. Both provision calls read only this, so a declined place
+ * never holds a family back; whatever needs a place asks for one when it does.
+ */
+function settledLocation(
+  place: FirstTouchPersisted['place'],
+  given: Pick<FirstTouchGiven, 'placeDeclined'> | null,
+): { location: IntakeLocation | null } | null {
+  if (!placeSettled({ place, given })) return null;
+  return { location: place ? intakeLocationFor(place) : null };
+}
+
 async function handleDetails(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
@@ -2876,11 +2971,13 @@ async function provision(
   gathered: {
     collected: IntakeCollected;
     children: ProvisionChild[];
-    location: IntakeLocation;
+    /** Null when the parent declined to give a place: no find runs, nothing is nearby. */
+    location: IntakeLocation | null;
     transcript: TranscriptEntry[];
   },
 ): Promise<IntakeOutcome> {
   const { session, phoneE164, inbound, now } = args;
+  const { location } = gathered;
   const firstInbound = gathered.transcript.find((e) => e.direction === 'in');
 
   const language = session.ladderLanguage ?? null;
@@ -2892,7 +2989,7 @@ async function provision(
     phoneE164,
     phoneHash: session.phoneHash,
     children,
-    location: gathered.location,
+    location,
     sourceCode: session.sourceCode,
     firstMessage: firstInbound?.body ?? inbound.body,
     transcript: gathered.transcript,
@@ -2922,29 +3019,34 @@ async function provision(
   const ctx = sendContext({ session: provisioned, phoneE164, inbound, now });
 
   deps.keepTyping?.();
-  const radar = await deps.radar.compose({
-    familyId,
-    children: gathered.collected.children,
-    areaCoarse: gathered.location.areaCoarse,
-    place: await activityPlaceOfPostal(
-      gathered.location.postalCode ?? gathered.location.areaCoarse,
-    ),
-    timeZone: gathered.location.timezone,
-    language,
-    ...(discoveryOn ? { activityMap: true } : {}),
-  });
+  // No place, no find: nothing is searched and nothing nearby is said.
+  const radar = location
+    ? await deps.radar.compose({
+        familyId,
+        children: gathered.collected.children,
+        areaCoarse: location.areaCoarse,
+        place: await activityPlaceOfPostal(location.postalCode ?? location.areaCoarse),
+        timeZone: location.timezone,
+        language,
+        ...(discoveryOn ? { activityMap: true } : {}),
+      })
+    : null;
+  if (!radar) console.info({ outcome: 'no_place' }, 'intake: provisioned without a place');
   const placeLabel =
     session.firstTouch?.place?.city ||
     session.firstTouch?.place?.areaCoarse ||
-    gathered.location.areaCoarse;
-  const findLines = linesOfFind(radar.message);
-  let outboundBody = radar.message;
+    location?.areaCoarse ||
+    null;
+  const findBody = radar?.message ?? '';
+  const findLines = linesOfFind(findBody);
+  let outboundBody = findBody;
   let outboundAsked = false;
-  let outboundKey: string | undefined = radar.weekendPickOffered
+  let outboundKey: string | undefined = radar?.weekendPickOffered
     ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY
     : undefined;
   let friendCold: ColdStartProgress | null = null;
   let connectorSent = false;
+  let mapOwed: 'unsent' | 'send_failed' | null = null;
   {
     const given = session.firstTouch?.given ?? null;
     if (given?.parentName) {
@@ -2976,17 +3078,17 @@ async function provision(
       parentName: given?.parentName ?? null,
       parentRole: given?.parentRole ?? null,
       checklist,
-      now,
-      timeZone: gathered.location.timezone,
+      // Dated facts need the family's own clock; with no place there is none to read.
+      ...(location ? { now, timeZone: location.timezone } : {}),
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
     // model round-trip, not two; the sends stay in order.
     const thread = gathered.transcript;
     const step: FriendStep =
-      gap === 'name' && empty && discoveryOn ? 'find_empty' : friendStepForGap(gap, false);
+      gap === 'name' && empty && discoveryOn && radar ? 'find_empty' : friendStepForGap(gap, false);
     const groups = (
-      radar.groups && radar.groups.length > 0
+      radar?.groups && radar.groups.length > 0
         ? radar.groups
         : [{ category: 'learning_sports_arts', lines: findLines }]
     ).map((group) => ({ category: group.category, lines: [...group.lines] }));
@@ -3020,24 +3122,17 @@ async function provision(
         },
       ),
     ]);
-    const mapUnsent = map?.source === 'unsent';
-    if (map && !mapUnsent) {
-      let delivered = false;
-      for (const bubble of map.bubbles) {
-        if (bubble.trim().length === 0) continue;
-        const sentMap = await sendAndRecord(database, ctx, bubble, deps, []);
-        if (!sentMap.channelMessageId) {
-          delivered = false;
-          break;
-        }
-        delivered = true;
-        deps.keepTyping?.();
-      }
-      const offered = (radar.groups?.flatMap((group) => group.picks ?? []) ?? []).map(
+    // A map that did not all land is owed, exactly as one the model could not write.
+    if (map?.source === 'unsent') mapOwed = 'unsent';
+    else if (map) {
+      const delivered = await sendMapBubbles(database, ctx, map.bubbles, deps, []);
+      const offered = (radar?.groups?.flatMap((group) => group.picks ?? []) ?? []).map(
         withSourceUrl,
       );
-      if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
+      if (delivered !== 'delivered') mapOwed = 'send_failed';
+      else if (offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
+    const mapUnsent = mapOwed != null;
     outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
     outboundAsked = !mapUnsent && spoken.asks;
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
@@ -3067,7 +3162,7 @@ async function provision(
       friendCold = {
         step: step === 'names' || step === 'find_empty' || mapUnsent ? 'names' : 'follow',
         group: ctx.pipe.isGroup,
-        findBody: radar.message,
+        findBody,
         activity: null,
         day: null,
         nameLineSent: !mapUnsent,
@@ -3111,19 +3206,22 @@ async function provision(
 
   // The find is the watch. There is no separate yes. The parent's own kids-and-postal
   // text is the verbatim. Consent is written before the stage flip (watch-consent.ts).
-  await recordWatchConsent(
-    database,
-    {
-      familyId,
-      userId,
-      granted: true,
-      verbatimReply: inbound.body,
-      interpretation: 'implied by the live find',
-      channelMessageId: null,
-      question: IMPLIED_WATCH_BASIS,
-    },
-    now,
-  );
+  // No place means no find, so nothing implies a watch and the stage stays put.
+  if (radar) {
+    await recordWatchConsent(
+      database,
+      {
+        familyId,
+        userId,
+        granted: true,
+        verbatimReply: inbound.body,
+        interpretation: 'implied by the live find',
+        channelMessageId: null,
+        question: IMPLIED_WATCH_BASIS,
+      },
+      now,
+    );
+  }
 
   // The radar can be the first surface ever to tell this family about a health
   // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked
@@ -3134,7 +3232,7 @@ async function provision(
   // the message is already with the parent — but it is never silent: a marker that did
   // not land is logged as "this checkpoint may be raised again", which is exactly what
   // a lost one costs (lib/health/told.ts).
-  if (radar.checkpointTold) {
+  if (radar?.checkpointTold) {
     await recordCheckpointTold(database, {
       familyId,
       ref: radar.checkpointTold,
@@ -3150,7 +3248,7 @@ async function provision(
   // Not branched on, for the same reason either: the parent already has the text. A
   // write that did not land is logged as "this debt is invisible", which is exactly what
   // a lost row costs (lib/commitments/ledger.ts).
-  if (radar.firstFindPromised) {
+  if (radar?.firstFindPromised) {
     await recordCommitment(database, {
       familyId,
       kind: 'first_find',
@@ -3194,7 +3292,7 @@ async function provision(
       familyId,
       userId,
       lastProviderId: inbound.providerId,
-      findWon: radar.findWon,
+      findWon: radar?.findWon ?? false,
       ladderNext: discoveryOn ? null : ladderNext,
       ladderLanguage: language,
       ...(discoveryOn && session.firstTouch
@@ -3204,7 +3302,7 @@ async function provision(
               coldStart: friendCold ?? {
                 step: 'pick',
                 group: ctx.pipe.isGroup,
-                findBody: radar.message,
+                findBody,
                 activity: null,
                 day: null,
                 nameLineSent: false,
@@ -3227,7 +3325,7 @@ async function provision(
     source_code: session.sourceCode,
     ...intakeShape(gathered.transcript, now),
   });
-  return { status: 'provisioned', familyId };
+  return { status: 'provisioned', familyId, ...(mapOwed ? { mapOwed } : {}) };
 }
 
 /**
@@ -3343,7 +3441,11 @@ async function handleLadder(
     );
     if (offScript) {
       if (offScript.body) {
+        // A crisis reply is answered once the transport accepted it, never before (VIL-602):
+        // the recovery pass then releases a held copy of this text with no second reply.
+        if (offScript.crisis) await noteCrisisReplyLeaving(database, inbound.providerId, now);
         await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+        if (offScript.crisis) await noteCrisisReplySent(database, inbound.providerId, now);
       }
       held = offScript.held;
       heldForQuestion = true;
@@ -3608,7 +3710,7 @@ async function helpBody(
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
   const checklist: OnboardingChecklist = {
-    postal: session?.firstTouch?.place != null,
+    postal: placeSettled(session?.firstTouch),
     kids: kidsKnown(children, given),
     ages: agesKnown(children),
     name: Boolean(given?.parentName) || given?.nameDeclined === true,
@@ -3673,7 +3775,8 @@ async function settleOptOutHold(
     // did not land leaves a possibly unread stop with no row for the sweep, so it pages.
     const name = err instanceof Error ? err.name : 'unknown';
     if (reading === null) {
-      await pageOps(database, { site: 'opt_out_hold_unwritten', facts: { err: name } });
+      console.error({ err: name }, 'opt-out hold: write failed');
+      await pageOps(database, { site: 'opt_out_hold_unwritten', facts: {} });
     } else {
       console.warn({ err: name }, 'opt-out hold: release failed - the row is read again');
     }

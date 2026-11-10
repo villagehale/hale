@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so only the slots are scored. Both fetches were refused, and the single slot is honestly grounded in a search snippet: the name and the 4-month-to-3-year age band come from the snippet, and the slot notes that the page could not be opened. When, price and registration are null rather than invented, and no figure is borrowed from elsewhere. The slot makes no negative claim that the schedule is unposted. The sourceUrl points to the page that was not opened, but the ageFit field states plainly that the page was not read, so this is attribution rather than a claim to have read it. This is the expected snippet-grounded result with null when and price.",
+    "score": 5
+  }
+}

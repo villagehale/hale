@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly states the cancelled event, Soccer practice, on Tue Sep 22 at 5:00-6:00pm, in English, with no invented reason, reschedule, or kid name. However, it says the cancellation covers 3 sessions 'starting that day', which is a slightly ambiguous rendering of the facts (the facts say sessions: 3 without clarifying the span), and it is otherwise clear and brief.",
+    "score": 4
+  }
+}

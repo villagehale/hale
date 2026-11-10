@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to watch a full class but sent no link. The capability list says Hale can only watch a class from a course-page link the parent pastes, and that asking for the link is the right answer. The reply asks for exactly that in one short question. It could say a touch more about what Hale will do once it has the link, but the request is clear enough.",
+    "score": 5
+  }
+}

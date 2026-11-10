@@ -102,6 +102,7 @@ describe('readInboundMedia', () => {
         { kind: 'file', url: 'https://cdn.example/form.pdf', mime: 'application/pdf' },
       ],
       fetchImpl as unknown as typeof fetch,
+      undefined,
       fetchImpl as unknown as ContactFetch,
     );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -129,6 +130,7 @@ describe('readInboundMedia', () => {
         { kind: 'contact', url: 'https://cdn.example/redirect.vcf', mime: 'text/vcard' },
       ],
       fetchImpl as unknown as typeof fetch,
+      undefined,
       fetchImpl as unknown as ContactFetch,
     );
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -147,6 +149,7 @@ describe('readInboundMedia', () => {
     const read = await readInboundMedia(
       [{ kind: 'contact', url: 'https://cdn.example/huge.vcf', mime: 'text/vcard' }],
       fetchImpl as unknown as typeof fetch,
+      undefined,
       fetchImpl as unknown as ContactFetch,
     );
     expect(read.contacts).toEqual([]);
@@ -178,6 +181,7 @@ describe('readInboundMedia', () => {
         { kind: 'contact', url: 'https://cdn.example/ok-hop.vcf', mime: 'text/vcard' },
       ],
       fetchImpl as unknown as typeof fetch,
+      undefined,
       fetchImpl as unknown as ContactFetch,
     );
     const called = fetchImpl.mock.calls.map(([url]) => url);
@@ -193,5 +197,38 @@ describe('readInboundMedia', () => {
       { name: 'Jane', phones: [{ number: '+14165550100', e164: '+14165550100', label: null }] },
     ]);
     expect(read.unwatched).toHaveLength(6);
+  });
+
+  it('hears a voice memo when given an ear, and names one it could not hear (VIL-495)', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null));
+    const hear = vi.fn(async (part: { url: string }) =>
+      part.url.endsWith('/a.m4a') ? 'pick up at four' : null,
+    );
+    const read = await readInboundMedia(
+      [
+        { kind: 'audio', url: 'https://cdn.example/a.m4a', mime: 'audio/x-m4a' },
+        { kind: 'audio', url: 'https://cdn.example/b.m4a', mime: 'audio/x-m4a' },
+        { kind: 'audio', url: null, mime: 'audio/x-m4a' },
+      ],
+      fetchImpl as unknown as typeof fetch,
+      hear,
+    );
+    expect(read.unwatched).toEqual([
+      { kind: 'audio', heard: 'pick up at four' },
+      { kind: 'audio' },
+      { kind: 'audio' },
+    ]);
+    expect(hear).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('without an ear, a voice memo is named and nothing is fetched', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null));
+    const read = await readInboundMedia(
+      [{ kind: 'audio', url: 'https://cdn.example/a.m4a', mime: 'audio/x-m4a' }],
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(read.unwatched).toEqual([{ kind: 'audio' }]);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

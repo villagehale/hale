@@ -83,6 +83,27 @@ describe('spotOpenFacts — a seat', () => {
   });
 
   it.each([
+    ['a phone number', 'Call 555 0100 to claim', '05:00 PM'],
+    [
+      'a value over the schedule cap',
+      'Saturday Sunday Monday Tuesday Wednesday Thursday Friday',
+      '09:30 AM',
+    ],
+  ])('withholds a schedule the bytes carry when it is %s, and keeps the seat', (_n, day, time) => {
+    const prepared = spotOpenFacts({
+      kind: 'seat_opened',
+      portalLabel: PORTAL,
+      label: 'Tue swim',
+      model: model({ SpotsLeft: 2, StartDay: day, StartTime: time }),
+      evidence: ['"SpotsLeft":2', `"StartDay":${JSON.stringify(day)}`, `"StartTime":"${time}"`],
+      language: 'en',
+    });
+
+    expect(prepared.ok && prepared.facts.schedule).toBeNull();
+    expect(prepared.ok && prepared.facts.spotsLeft).toBe(2);
+  });
+
+  it.each([
     ['a count the bytes do not carry', 2, ['"SpotsLeft":3'], 'unbacked_count'],
     ['no seat at all', 0, ['"SpotsLeft":0'], 'no_seat'],
   ])('refuses %s', (_name, spotsLeft, evidence, reason) => {
@@ -136,14 +157,34 @@ describe('spotOpenRefusals', () => {
     expect(spotOpenRefusals(draft, facts({ label: 'Swimmer 3' }))).toEqual([]);
   });
 
+  it('passes clock abbreviations and sentence ends, which are not links', () => {
+    const draft = "Riverton's portal shows room in Tue swim, Saturdays at 9:30 a.m. Book it today.";
+    expect(spotOpenRefusals(draft, facts())).toEqual([]);
+  });
+
   it.each([
     ['a count the page did not publish', "Riverton's portal shows 3 spots left.", 'unbacked_digit'],
     ['a link', "Riverton's portal has room: https://example.com/x", 'link'],
     ['a bare web address', "Book at riverton.ca, there's room.", 'link'],
+    ['a host on any other TLD', 'A spot opened at evil.io - book at bit.ly/x', 'link'],
+    ['a host in capitals', 'Room now at EVIL.IO', 'link'],
+    ['a host on a two-part country TLD', 'Book at riverton.co.uk now.', 'link'],
+    ['a host on a non-Latin TLD', 'Book at riverton.рф now.', 'link'],
     ['a question', "Riverton's portal shows 2 spots. Want me to grab one?", 'asks_a_question'],
     ['nothing', '   ', 'empty'],
   ])('refuses %s', (_name, draft, refusal) => {
     expect(spotOpenRefusals(draft, facts())).toContain(refusal);
+  });
+
+  it('backs no digit with a schedule that does not parse as a day and a time', () => {
+    const draft = "Riverton's portal shows 2 spots in Tue swim. Call 555 0100 to claim.";
+    expect(spotOpenRefusals(draft, facts({ schedule: 'Call 555 0100 to claim' }))).toEqual([
+      'unbacked_digit',
+    ]);
+    // Positive control: a real schedule still backs the time it carries.
+    expect(
+      spotOpenRefusals("Riverton's portal shows 2 spots in Tue swim, Saturdays at 9:30.", facts()),
+    ).toEqual([]);
   });
 
   it('refuses any count on a waitlist text', () => {

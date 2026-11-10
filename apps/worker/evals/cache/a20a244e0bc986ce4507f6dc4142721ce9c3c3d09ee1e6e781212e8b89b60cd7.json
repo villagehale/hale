@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgsAuEpz2ugqFCzpz1nk1",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvgYKEAgTGAI4AUIIdGhpbmtpbmcSDF46nJIIGrpt2fpxcxoMuvZYuIum39inBdTAIjBlba9vhiOI88WeX3GXyJPhzVVdGsmszi7HvDpQ9Is7nAIrxJrR2BuiEqeV4r/s+KUq2wU2+96GQcRx/OK+crVc5h4c20dgjqdLocnyJwJ7RRoYpXemufw2GP0fZPBYJX4QqMqRzj+bkduIzF4+lbF9OMjmkX7hczS8DqFCI8/N90Qx7UrcUkY2dmkwWuyRSt66qjcNDKffLYfyLmHKTJzf8YAXgjKLYYdZu6mzxSzaZFWPJxGi2DPg72HLljpZ6WyoTNrRqKajAqj1YuLUy9yrWi8cyaTq5ufrbM9SyKzN6oKWenO1aDR3yxZJVJAbNvRnvnzW2KmIQkOm453WkeA4ufYBpVQD4/Ei8DcYh2TIXJI4wNsz1eR6xOYuyM6GWYXujmc35ipyiehIbFqqeBxZu+/gl+wSwBdfJ+dCFqr/jS/SeF/7UE9wCKeTzIKjsDxG445KzcX02a5NLLH9H5uFIKixZ5buF+XV8Z8GrHaugorvZTHaqG1DMdFg9iiKB7u14ZOZYEp/xCGTKIZJWgHgUcSDd9vDNY1WthGvt8cWrmB2VzK+qTlcXGp6hYTJ68ImkC1b2paRnTuS5k7Mds5YGQ4NLdHyErkxC2ALXM66VHXEsomk2R2stjjnxTpJg/CDL3dfg2SUSFCDsvrE8aAUJjGEvbls6zkP/r08XpxmKbTCmbxe+VeaaxBCiKsncejFiPpbfNgA7yWCs/qnJOpnJPlPD5NqLiJflUgndGJO2WgBqFZL55bxVAyJnVPLKabKPRk+7nfRjbn7PXwqXkvH+zvIRjR0ZVIjQV2I82KmKx8ZDLOO6CVWbhKYbwssLRT9o4/13hUZrdwMxf+HP8eByzPXiyFtY2JPxaZuiT1MnO4wlwt999G+DY40Q1Qh6DA18ZdtHKz6yR6CVHJzGWHVkW1v5afnvqe3ur6+TDIyi9lMfBsEg1fpkZRprMON1B0GpKtbadDLZ3CMfgMWwULWXp2vuamBF2xMLQ56j4ulQSuDvH4rqIubCx+fwPB56JmzDn+Q6GcJ6y6LzEecyhgB"
+      },
+      {
+        "type": "text",
+        "text": "Two things on today, both free and a fit for a 26-month-old, going by their own sites. Riverbend Community Centre's program page lists Little Movers drop-in Mondays 9:30 to 11:30 a.m. [link-c6988f] Willow Branch Library's events page lists Toddler story time Mondays 10:30 a.m. [link-ce743d] You could catch Little Movers first and still make story time if the two are close enough."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 281,
+      "cache_read_input_tokens": 20302,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 281,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 237,
+      "output_tokens_details": {
+        "thinking_tokens": 93
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -43,6 +43,7 @@ const MIN_REGISTERED_TOOLS = 15;
 function channelTools(): RegisteredTool[] {
   return buildChannelCoachTools({
     familyId: '11111111-1111-4111-8111-111111111111',
+    familyCountry: 'CA',
     reader: {
       timeZone: async () => 'America/Toronto',
       weekPlanSummary: async () => null,
@@ -74,6 +75,7 @@ function channelTools(): RegisteredTool[] {
       fetchBody: async () => ({ ok: false, reason: 'not_configured' }) as never,
       reader: { householdNames: async () => [] },
       watchConsentGranted: async () => false,
+      readClassAvailability: async () => ({ status: 'unknown', reason: 'extract_failed' }),
     },
     onDraft: () => {},
     onOffer: () => {},

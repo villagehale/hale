@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately reflects auto mode facts: correct opening time, sessions in order, $110 max, waiver ticked as parent asked, two-places note included, no claim of a spot. Minor issue: it says Hale will join the line then, which is fine, and it lists stop conditions that aren't in the given facts (captcha, security code) but these are plausible constraints; no invented prices or sessions. Tone is warm and plain.",
+    "score": 4
+  }
+}

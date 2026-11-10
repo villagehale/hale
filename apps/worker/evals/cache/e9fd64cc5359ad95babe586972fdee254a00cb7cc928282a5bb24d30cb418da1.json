@@ -1,0 +1,19 @@
+{
+  "value": {
+    "pages_read": [
+      "https://www.lakeviewparks.example/programs/early-childhood"
+    ],
+    "slots": [
+      {
+        "name": "PARENT/TOT TUMBLING, Lakeview Park District Early Childhood Programs, Winter 2027",
+        "age_fit": "18 - 36 months, with an adult",
+        "when": "Wednesdays 9:30 - 10:15 a.m., January 13 to March 3 (8 weeks)",
+        "price": "Resident $72 / Non-resident $108",
+        "registration": "Winter registration opens Monday, December 7 at 8:00 a.m. for park district residents and Monday, December 14 at 8:00 a.m. for non-residents. Register online, by phone or at the Community Center front desk.",
+        "source_name": "Lakeview Park District",
+        "source_url": "https://www.lakeviewparks.example/programs/early-childhood"
+      }
+    ]
+  },
+  "latencyMs": 5189
+}

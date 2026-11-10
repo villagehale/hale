@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a $120 price that the facts do not give, since price is null. It also says nothing about the course details being unreadable, even though the course name, day and time are all null. The date and time are right, and the prerequisite warning to leave time is correct. Adding a price not in the facts caps the score at 2.",
+    "score": 2
+  }
+}

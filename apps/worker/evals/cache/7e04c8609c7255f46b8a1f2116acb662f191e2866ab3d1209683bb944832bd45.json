@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Totally fair, no pressure. A rough area works too: just the first three characters of your postal code, or the first five digits of a ZIP, so I can find things nearby without knowing your street. What would you like to share?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse"
+  },
+  "latencyMs": 1498
+}

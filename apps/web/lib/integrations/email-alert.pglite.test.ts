@@ -2,13 +2,39 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  coachEmailReader,
+  productionCoachEmailReaderDeps,
+} from '~/lib/channel/coach/read-email-tool';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
-import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  appendMessage,
+  createConversation,
+  loadTranscript,
+  loadTranscriptWithAttachments,
+  resolveNoteConversation,
+} from '~/lib/coach/conversation';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import * as passportCopy from '~/lib/passport/copy';
+import type {
+  ExtractedEvent,
+  ExtractionKind,
+  FamilyChildRef,
+  SentinelClassification,
+} from '~/lib/sentinel';
 import { type ScriptedNoticeWriter, scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import {
+  type TestDb,
+  createTestDb,
+  seedChild,
+  seedFamily,
+  seedIntegration,
+} from '~/lib/testing/pglite';
 import {
   EMAIL_ALERT_TEMPLATE_KEY,
   type EmailAlertOutcome,
@@ -23,6 +49,9 @@ import {
 import type { EmailAlertNotice } from './email-alert-notice';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, sessionKey } from './going';
+import { type GoogleDisconnectPorts, disconnectGoogle } from './google-disconnect';
+import { CONNECTOR_SCOPES } from './google-oauth';
+import { saveConnection } from './store';
 
 /**
  * The join between the sentinel and the outbound chokepoint, against the REAL DDL.
@@ -107,7 +136,12 @@ const TRIAGED_OUT: SentinelClassification = {
 interface Harness {
   ports: EmailAlertPorts;
   transport: FakeTransport;
-  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  threaded: Array<{
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    source?: schema.MessageSource | null;
+  }>;
   classifyCalls: number;
   /** The writer port: what it was told, and what it answered. */
   writer: ScriptedNoticeWriter;
@@ -121,12 +155,13 @@ function harness(
     phone?: string | null;
     sendThrows?: LinqSendError;
     notice?: EmailAlertNotice;
+    children?: readonly FamilyChildRef[];
   } = {},
 ): Harness {
   const transport = new FakeTransport();
   const threaded: Harness['threaded'] = [];
   const writer = scriptedNoticeWriter({
-    children: [{ id: CHILD_ID, name: 'Robin', ageInMonths: 40 }],
+    children: over.children ?? [{ id: CHILD_ID, name: 'Robin', ageInMonths: 40 }],
     ...(over.notice === undefined ? {} : { answer: over.notice }),
   });
   const h: Harness = {
@@ -263,6 +298,12 @@ describe('alertParentForEmail', () => {
     expect(h.writer.seen).toHaveLength(1);
     expect(h.transport.sent[0]?.body).toBe('Saturday swim is off this week.');
     expect(h.threaded[0]?.body).toBe('Saturday swim is off this week.');
+    expect(h.threaded[0]?.source).toEqual({
+      kind: 'gmail',
+      eventId: null,
+      gmailMessageId: 'm1',
+      private: false,
+    });
   });
 
   it('hands the writer the EXTRACTION, never the snippet', async () => {
@@ -644,7 +685,11 @@ describe('the offer at the end', () => {
    * row. One without the other is the bug coming back.
    */
   const future = (
-    over: Partial<ExtractedEvent> & { kind?: ExtractionKind; teenContent?: boolean } = {},
+    over: Partial<ExtractedEvent> & {
+      kind?: ExtractionKind;
+      teenContent?: boolean;
+      teenAttributed?: boolean;
+    } = {},
   ) =>
     classified({
       kind: 'new_event',
@@ -705,6 +750,9 @@ describe('the offer at the end', () => {
       // The pipeline genericized the title, so there is no occasion left to add — and
       // adding one would re-disclose what the teen gate just removed (rule #1).
       ['a 13+ child', future({ teenContent: true })],
+      // A confident logistics read of a 13+ child's email keeps its title for the text,
+      // but an offer row would hold a teen's occasion past it.
+      ['a 13+ child read as logistics', future({ teenAttributed: true })],
       // A title that survives sanitising as nothing at all.
       ['a title outside the alphabet', future({ title: '。。。' })],
     ];
@@ -737,6 +785,7 @@ describe('the offer at the end', () => {
         kind: 'reminder_only',
         event,
         teenContent: false,
+        teenAttributed: false,
         matchedEventRef: null,
         booked: false,
         from,
@@ -757,6 +806,28 @@ describe('the offer at the end', () => {
     ).resolves.toMatchObject({ alert: 'sent' });
     expect(h.writer.seen[0]).toMatchObject({ fromParentsOwnCalendar: true, offer: null });
     await expect(offerRows()).resolves.toHaveLength(0);
+  });
+
+  it('drafts no offer for a 13+ child’s email, and one for the same email otherwise', () => {
+    const draft = (teenAttributed: boolean) =>
+      emailAlertOfferDraft({
+        kind: 'new_event',
+        event: {
+          title: 'Picture day',
+          childRef: null,
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+          location: null,
+        },
+        teenContent: false,
+        teenAttributed,
+        matchedEventRef: null,
+        booked: false,
+        from: ENVELOPE.from,
+        now: NOW,
+      });
+    expect(draft(true)).toBeNull();
+    expect(draft(false)).toMatchObject({ kind: 'new_event', title: 'Picture day' });
   });
 });
 
@@ -882,6 +953,13 @@ describe('nothing is sent unless the writer says it is about the kids', () => {
         title: 'a message about school',
       },
     });
+    expect(h.threaded[0]?.source).toEqual({
+      kind: 'gmail',
+      eventId: null,
+      gmailMessageId: 'm1',
+      private: true,
+    });
+    expect(h.transport.sent[0]?.body).not.toContain(ENVELOPE.snippet);
   });
 });
 
@@ -1317,4 +1395,435 @@ describe('the going count in the alert path', () => {
       othersGoing: h.writer.seen[0]?.otherHaleFamiliesGoing ?? null,
     };
   }
+});
+
+describe('the notice is the whole text, and the thread keeps the email for the coach', () => {
+  const WRITTEN = 'Saturday swim is off this week.';
+
+  async function connectGmail(): Promise<void> {
+    const integrationId = await seedIntegration(
+      db.database,
+      family.familyId,
+      family.parentUserId,
+      'gmail',
+    );
+    await db.database
+      .update(schema.integrations)
+      .set({ scopes: [...CONNECTOR_SCOPES.gmail] })
+      .where(eq(schema.integrations.id, integrationId));
+  }
+
+  async function storedRows() {
+    const conversationId = (await resolveNoteConversation(
+      family.familyId,
+      channelSmsNoteKey(family.parentUserId),
+      db.database,
+    )) as string;
+    const rows = await db.database
+      .select({ content: schema.messages.content, source: schema.messages.source })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId));
+    return { conversationId, rows };
+  }
+
+  async function readEmail(conversationId: string, body = 'the email body') {
+    const fetched: string[] = [];
+    const reader = coachEmailReader({
+      ...productionCoachEmailReaderDeps(db.database),
+      accessToken: async () => 'token-1',
+      fetchBody: async (id) => {
+        fetched.push(id);
+        return body;
+      },
+    });
+    const result = await reader.read({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      conversationId,
+      gmailMessageId: 'm1',
+    });
+    return { result, fetched };
+  }
+
+  // VIL-616: a later turn has every tool, so the sender's words never ride into it. The
+  // transcript keeps only the pointer `read_email` needs, and Hale's own alert text.
+  // VIL-619: the row keeps no sender words either, only whether the email is private.
+  it('stores no sender words on the row, and a later turn replays only the pointer', async () => {
+    const h = harness({ notice: { send: true, text: WRITTEN } });
+    h.ports.threadMessage = threadProactiveMessage;
+    await expect(alert(h)).resolves.toBe('sent');
+
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+    expect(h.transport.sent[0]?.body).not.toContain(ENVELOPE.snippet);
+
+    const { conversationId, rows: stored } = await storedRows();
+    expect(stored).toEqual([
+      {
+        content: WRITTEN,
+        source: { kind: 'gmail', eventId: null, gmailMessageId: 'm1', private: false },
+      },
+    ]);
+    const row = JSON.stringify(stored);
+    expect(row).not.toContain(ENVELOPE.snippet);
+    expect(row).not.toContain(ENVELOPE.subject);
+    expect(row).not.toContain('info@riverside.example');
+
+    const transcript = await loadTranscript(conversationId, db.database);
+    expect(transcript.map((turn) => turn.role)).toEqual(['assistant', 'tool']);
+    expect(transcript[0]?.content).toBe(WRITTEN);
+    expect(JSON.parse(transcript[1]?.content as string)).toEqual({
+      kind: 'gmail',
+      gmailMessageId: 'm1',
+      eventId: null,
+    });
+
+    const trail = JSON.stringify(await auditRows());
+    expect(trail).not.toContain(ENVELOPE.snippet);
+    expect(trail).not.toContain(ENVELOPE.subject);
+  });
+
+  // The age floor, not the model's teen flag: a confident logistics read of a 13+ child's
+  // email has teenContent false and teenAttributed true, and is still a teen's email.
+  it.each([
+    { teenAttributed: false, private: false, read: true },
+    { teenAttributed: true, private: true, read: false },
+  ])(
+    'teenAttributed $teenAttributed with teenContent false: private $private, read_email read $read',
+    async ({ teenAttributed, private: isPrivate, read }) => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      await connectGmail();
+      const h = harness({
+        notice: { send: true, text: WRITTEN },
+        classification: classified({ kind: 'new_event', teenContent: false, teenAttributed }),
+      });
+      h.ports.threadMessage = threadProactiveMessage;
+      await expect(alert(h)).resolves.toBe('sent');
+
+      const { conversationId, rows: stored } = await storedRows();
+      expect(stored.map((row) => row.source)).toEqual([
+        { kind: 'gmail', eventId: null, gmailMessageId: 'm1', private: isPrivate },
+      ]);
+      const { result, fetched } = await readEmail(conversationId);
+      expect(result).toEqual(
+        read
+          ? { read: true, body: 'the email body', truncated: false }
+          : { read: false, reason: 'private' },
+      );
+      expect(fetched).toEqual(read ? ['m1'] : []);
+    },
+  );
+
+  // VIL-619 · CODE decides too. The model attributed this email to nobody, but its snippet
+  // names the family's 13+ child. The 12-year-old row is the positive control: the same
+  // email about a younger child keeps its pointer, its read and its offer.
+  it.each([
+    { ageInMonths: 160, private: true },
+    { ageInMonths: 150, private: false },
+  ])(
+    'an email naming a child aged $ageInMonths months with teenAttributed false: private $private',
+    async ({ ageInMonths, private: isPrivate }) => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      await connectGmail();
+      const h = harness({
+        notice: { send: true, text: WRITTEN },
+        children: [{ id: CHILD_ID, name: 'Leo', ageInMonths }],
+        classification: classified({
+          kind: 'new_event',
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+          teenContent: false,
+          teenAttributed: false,
+        }),
+      });
+      h.ports.threadMessage = threadProactiveMessage;
+      await expect(alert(h)).resolves.toBe('sent');
+
+      const { conversationId, rows: stored } = await storedRows();
+      expect(stored.map((row) => row.source)).toEqual([
+        { kind: 'gmail', eventId: null, gmailMessageId: 'm1', private: isPrivate },
+      ]);
+      const transcript = await loadTranscript(conversationId, db.database);
+      expect(transcript.map((turn) => turn.role)).toEqual(
+        isPrivate ? ['assistant'] : ['assistant', 'tool'],
+      );
+      const { result, fetched } = await readEmail(conversationId);
+      expect(result.read).toBe(!isPrivate);
+      expect(fetched).toEqual(isPrivate ? [] : ['m1']);
+      const offers = await db.database
+        .select()
+        .from(schema.emailAlertOffers)
+        .where(eq(schema.emailAlertOffers.familyId, family.familyId));
+      expect(offers).toHaveLength(isPrivate ? 0 : 1);
+      expect(h.writer.seen[0]?.offer).toBe(isPrivate ? null : 'add_to_week');
+    },
+  );
+
+  // VIL-619 · RE-CHECKED AT READ. The alert went out while the child was 12, so the row is
+  // not private. By the read they are 13 and the body names them: the body is withheld.
+  // The child still 12 at the read is the positive control.
+  it.each([
+    { ageAtRead: 157, read: false },
+    { ageAtRead: 150, read: true },
+  ])(
+    'a child who is $ageAtRead months old at the read, 12 at the alert: read $read',
+    async ({ ageAtRead, read }) => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      await connectGmail();
+      await seedChild(db.database, family.familyId, 'Leo', ageAtRead);
+      const h = harness({
+        notice: { send: true, text: WRITTEN },
+        children: [{ id: CHILD_ID, name: 'Leo', ageInMonths: 155 }],
+        classification: classified({ kind: 'new_event', teenContent: false }),
+      });
+      h.ports.threadMessage = threadProactiveMessage;
+      await expect(alert(h)).resolves.toBe('sent');
+
+      const { conversationId, rows: stored } = await storedRows();
+      expect(stored.map((row) => row.source)).toEqual([
+        { kind: 'gmail', eventId: null, gmailMessageId: 'm1', private: false },
+      ]);
+      const body = 'Leo has a dentist visit on Thursday at 4pm.';
+      const { result } = await readEmail(conversationId, body);
+      expect(result).toEqual(
+        read ? { read: true, body, truncated: false } : { read: false, reason: 'private' },
+      );
+    },
+  );
+
+  it('a 13+ child keeps the snippet off the row and off the model transcript', async () => {
+    const h = harness({
+      notice: { send: true, text: 'Something about school was rescheduled.' },
+      classification: classified({
+        kind: 'new_event',
+        title: 'a message about school',
+        teenContent: true,
+      }),
+    });
+    h.ports.threadMessage = threadProactiveMessage;
+    await expect(alert(h)).resolves.toBe('sent');
+
+    const conversationId = await resolveNoteConversation(
+      family.familyId,
+      channelSmsNoteKey(family.parentUserId),
+      db.database,
+    );
+    const stored = await db.database
+      .select({ content: schema.messages.content, source: schema.messages.source })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId as string));
+    expect(stored[0]?.content).toBe('Something about school was rescheduled.');
+    expect(stored[0]?.source).toEqual({
+      kind: 'gmail',
+      eventId: null,
+      gmailMessageId: 'm1',
+      private: true,
+    });
+    const transcript = await loadTranscript(conversationId as string, db.database);
+    expect(transcript).toEqual([
+      { role: 'assistant', content: 'Something about school was rescheduled.' },
+    ]);
+    expect(JSON.stringify(transcript)).not.toContain(ENVELOPE.snippet);
+  });
+
+  it('flag on: no passport sentence is composed or joined, and the stamp is unasked', async () => {
+    vi.stubEnv('INTEREST_PASSPORT_ENABLED', 'true');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    const line = vi.spyOn(passportCopy, 'composePassportLine');
+    const integrationId = await seedIntegration(
+      db.database,
+      family.familyId,
+      family.parentUserId,
+      'gmail',
+    );
+    const childId = await seedChild(db.database, family.familyId, 'Mia', 40, undefined, NOW);
+    const h = harness({
+      notice: { send: true, text: WRITTEN },
+      classification: classified({
+        kind: 'booking_confirmation',
+        title: 'Little Dragons Karate',
+        childRef: childId,
+        originalTime: null,
+        newTime: null,
+      }),
+    });
+    const result = await alertParentForEmail(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId,
+        messageId: 'm-karate',
+        threadId: 't-m-karate',
+        labelIds: ['INBOX'],
+        envelope: {
+          subject: 'Registration confirmed: Little Dragons Karate, Fall session, 12 weeks',
+          from: 'Little Dragons <hello@dragons.example>',
+          snippet: 'You are registered for Little Dragons Karate.',
+          receivedAt: '2026-09-17T14:00:00.000Z',
+        },
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      h.ports,
+    );
+    expect(result.alert).toBe('sent');
+    expect(line).not.toHaveBeenCalled();
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+    expect(h.threaded[0]?.body).toBe(WRITTEN);
+    const rows = await db.database
+      .select({ askedAt: schema.kidInterests.askedAt })
+      .from(schema.kidInterests)
+      .where(eq(schema.kidInterests.familyId, family.familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.askedAt).toBeNull();
+  });
+});
+
+/**
+ * VIL-619 · ENDING THE ADULT'S ACCESS LEAVES NO SENDER WORDS BEHIND. Neither door edits the
+ * thread: a disconnect ends the keys and a departure ends the seat, and the adult's thread
+ * rows stay for the audit trail. So what is left there is whatever the alert stored, and
+ * it must already hold none of the sender's words.
+ */
+describe('after a Gmail disconnect or a co-parent departure', () => {
+  const WRITTEN = 'Saturday swim is off this week.';
+
+  const disconnectPorts: GoogleDisconnectPorts = {
+    revoker: { revoke: async () => ({ outcome: 'revoked' }) },
+    google: { request: async () => ({ ok: true, status: 204, json: async () => ({}) }) },
+    tokenFetch: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: 'ya29.fresh' }),
+    }),
+    env: {},
+    now: () => NOW,
+  };
+
+  async function alertTo(parentUserId: string): Promise<void> {
+    await saveConnection(db.database, {
+      familyId: family.familyId,
+      userId: parentUserId,
+      provider: 'gmail',
+      scopes: [...CONNECTOR_SCOPES.gmail],
+      tokens: { accessToken: 'ya29.mail', refreshToken: '1//mail-r' },
+      googleAccountKey: `account-of-${parentUserId}`,
+    });
+    const h = harness({ notice: { send: true, text: WRITTEN } });
+    h.ports.threadMessage = threadProactiveMessage;
+    await expect(alertPair(h, 'm1', { parentUserId })).resolves.toMatchObject({ alert: 'sent' });
+  }
+
+  async function threadOf(parentUserId: string): Promise<string> {
+    const conversationId = (await resolveNoteConversation(
+      family.familyId,
+      channelSmsNoteKey(parentUserId),
+      db.database,
+    )) as string;
+    const rows = await db.database
+      .select({ content: schema.messages.content, source: schema.messages.source })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId));
+    expect(rows).toHaveLength(1);
+    return JSON.stringify(rows);
+  }
+
+  function expectNoSenderWords(thread: string): void {
+    expect(thread).toContain(WRITTEN);
+    expect(thread).not.toContain(ENVELOPE.snippet);
+    expect(thread).not.toContain(ENVELOPE.subject);
+    expect(thread).not.toContain('info@riverside.example');
+  }
+
+  it('a Gmail disconnect leaves the parent’s thread with no sender words', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    await alertTo(family.parentUserId);
+
+    await expect(
+      disconnectGoogle(
+        db.database,
+        { familyId: family.familyId, userId: family.parentUserId, via: 'sms', named: 'gmail' },
+        disconnectPorts,
+      ),
+    ).resolves.toMatchObject({ status: 'disconnected' });
+
+    expectNoSenderWords(await threadOf(family.parentUserId));
+  });
+
+  it('a co-parent departure leaves the departing adult’s thread with no sender words', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const [co] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${family.familyId}:co`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    const coParentUserId = co?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: family.familyId, userId: coParentUserId, role: 'co_parent' });
+    await alertTo(coParentUserId);
+
+    await expect(
+      departCoParent(
+        db.database,
+        { familyId: family.familyId, actorUserId: coParentUserId, now: NOW },
+        disconnectPorts,
+      ),
+    ).resolves.toMatchObject({ outcome: 'departed' });
+
+    expectNoSenderWords(await threadOf(coParentUserId));
+  });
+});
+
+describe('coach transcript before messages.source exists', () => {
+  let old: TestDb;
+
+  beforeAll(async () => {
+    // 0212 is the next file after this name. The column is not added here.
+    old = await createTestDb('0210_watched_spots_any_page.sql');
+  });
+
+  afterAll(async () => {
+    await old.close();
+  });
+
+  it('reads and appends a coach turn when the source column is absent', async () => {
+    const columns = await old.client.query<{ column_name: string }>(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'source'",
+    );
+    expect(columns.rows).toEqual([]);
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { familyId, parentUserId } = await seedFamily(old.database);
+    const conversationId = await createConversation(familyId, old.database);
+    await appendMessage(conversationId, 'user', 'What did it say', old.database);
+    await appendMessage(conversationId, 'assistant', 'Saturday swim is off.', old.database);
+
+    const transcript = await loadTranscript(conversationId, old.database);
+    expect(transcript).toEqual([
+      { role: 'user', content: 'What did it say' },
+      { role: 'assistant', content: 'Saturday swim is off.' },
+    ]);
+    const withFiles = await loadTranscriptWithAttachments(conversationId, old.database);
+    expect(withFiles).toEqual(transcript);
+
+    const threaded = await threadProactiveMessage(old.database, {
+      familyId,
+      parentUserId,
+      body: 'Notice only.',
+      source: { kind: 'gmail', eventId: null, gmailMessageId: 'm-old', private: false },
+    });
+    expect(JSON.stringify(error.mock.calls)).toContain('messages_source_unavailable');
+
+    const after = await loadTranscript(threaded, old.database);
+    expect(after).toEqual([{ role: 'assistant', content: 'Notice only.' }]);
+  });
+
+  it('migration 0212 applies twice and leaves one jsonb source column', async () => {
+    await old.applyMigration('0212_message_source.sql');
+    await expect(old.applyMigration('0212_message_source.sql')).resolves.toBeUndefined();
+    const columns = await old.client.query<{ data_type: string }>(
+      "SELECT data_type FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'source'",
+    );
+    expect(columns.rows).toEqual([{ data_type: 'jsonb' }]);
+  });
 });

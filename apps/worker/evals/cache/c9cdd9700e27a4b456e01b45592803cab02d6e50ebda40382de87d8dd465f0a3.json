@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CgtT8BDRVYBAEu6KWPc1k",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS4AkKEAgTGAI4AUIIdGhpbmtpbmcSDOqt0ONUZ59WHfaEARoMbu7AWvwUJHLX3rSRIjAEFlWUmG5iXjyXmZjy1XYfIKBtPSyq+IF8gBzf6y5kZAIXLyi+fqZPf80t9+/beBsq/QirRF+GP9B1DdQlzNPzuRmNsexnAPjShCeSivVhha/kwBGgmcKH5/lhfncGBbRmkfsR9McPFMF6NoTdbYTJhg4k9UFbuUpcweJ4Uq4/E1jxdxo2q5u1+xO7zSnxWJNuwXoyvZWWQSbaqgKaz3a4o9zEWIihBzDUz1oWaEFbAKkbhNVNudfQ1yDR25lsHKwVYsOfEKuFAqwIS48PHBXLLOE5+dTHGhobSzYLhg/i/QUV9qdxF0TscyVllkt4G/CrJSqWS3XQVhW3DJgQjcmtWkgPgoelkl4jDTHVTd5y7vIXvouU/6v+9Cw7vUL1WKGPnZ/cpzRy4p/d/OfndjJUBItRhM3sQKZZpn+Y8kG2IrSRj+Moa3Y5INwaqrnL3a5K0t2oKEjhOIHNGOP++m/gNxBpGlIVUYI82gWPs9n6Pc3cNh/OKb88bAqQW64YdHKEzMEUR84u/xM0eq+CUeShRYIIabQaHVEKpbkXSreD6fgHTAbJXUwSMrURAKxtKWaGQwYwhtRyE2c7MWh11khcM40a09Uvk3bjWudlADDLOGPDfUntQoDcrKxw6uqhXClJfQd/Z3i0ton8py7FafF0poSiaux994/s0gcElAoUuRt7rE4INrWPMAlNqgYDP5Jr3H95/BuGERED0KRmnQ7Slual68FnRC1JNbay9U/RMbQ7rs+2Pr1ZNecMHcKLvBkmhG1RiFfqRWHf7Go3aGFBvTMqOqioJVepcvpCVf05MbeAEhtNI/1l4zbayDPVfZPA601Maza1hSwkKvm22Nknf2VJCYnQwP7U4S/8O2g2/hE4Z48n6PMkeFn5SpRzFZnCcvtuti7yhQKN4ZGa90jKXUv2CsAjpKZGsG8NdlkMHtJ1ti7R3jDma0fFIX6/rM0lOd8BOFe0R7m3Z+LKQh+VwWBN4dWqvl573UQABTU2F1FF5dhSMhF7HwWQLqEcD4cRChEsx0mNcWUkI5nbuK/FveNXQCZCJ670/KbkRTyeM6zqZ1UT3REzqJGb0Oq2yRzlRQ0IrCHAC3Q3XEyFDgbG0WgdLXPBTI10ZPaEsN+4UFve8VHZTeGsCS8yaqcgFj+4mQ3jHlUS1g6F4fhez0UELXKqGkCvSrXN3sBU2U7izJMsr+mdxSdYl21i7JMxmRvoS1TUaoJH+jjC2jBobLB6Ta9b2OGUHolYynGBs5pA4IrOxN5ZEJAaSR+T6v0igJ4j0M/np4mxYRHXQNZ8ZbcK2KRs2DsGGT6kVEdgMgMQnsdwEGSwh4YVL/8BwrDFoIiyEFqHrrtR9bM/euyOLKOR1j+La9w+s2C0MDCF3SR0/GIu9ebUd3FiBaEJGw50/WTOMq9cLRLq6Y0xmci4EWT7a6pmm0dsK2MrU5/aYJHKm4y82XvKqQ7MOf2NzEc6SvRhSHCS4zV3Rh+wuDHBcp6n8gjxdkFFKxWY/0M/l2lZBq++Ro/fx9Pt6Q7+oSNiXgXPEE4QtQmdvAVsOlsrS8MhbgTfGouRh3BeKp/ZDa+Y8HSF+p/lP8OTUpBZKuFAEZ4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01HNM31QTW3LCFbeG9wBCDFJ",
+        "name": "search_village",
+        "input": {
+          "query": "Harbour Art Studio art class"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 749,
+      "cache_creation_input_tokens": 23715,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 23715,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 252,
+      "output_tokens_details": {
+        "thinking_tokens": 194
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4532
+}

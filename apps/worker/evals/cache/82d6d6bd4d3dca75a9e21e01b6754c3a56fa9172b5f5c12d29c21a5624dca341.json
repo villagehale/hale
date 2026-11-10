@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Totally fair, you don't have to share it. Who are the kids you're looking for things for?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "asksNext": true
+  },
+  "latencyMs": 1326
+}

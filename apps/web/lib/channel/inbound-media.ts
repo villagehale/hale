@@ -28,13 +28,17 @@ export interface InboundMediaPart {
 
 export interface ReadInboundMedia {
   blocks: Anthropic.ContentBlockParam[];
-  /** What this turn carried that the model did not see as bytes. */
-  unwatched: Array<{ kind: InboundMediaKind }>;
+  /** What this turn carried that the model did not see as bytes. A voice memo that was
+   * transcribed (VIL-495) carries the parent's words as `heard`. */
+  unwatched: Array<{ kind: InboundMediaKind; heard?: string }>;
   /** Contact cards read off `.vcf` parts. Empty when this turn had none. */
   contacts: CoachContact[];
   /** A file held more cards than `contacts` keeps. */
   contactsTruncated: boolean;
 }
+
+/** VIL-495 · the words in one voice memo, or null when it could not be heard. */
+export type HearVoiceMemo = (part: InboundMediaPart & { url: string }) => Promise<string | null>;
 
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|heic|heif)(?:$|\?)/i;
 const VIDEO_EXT = /\.(mp4|mov|webm|m4v)(?:$|\?)/i;
@@ -218,17 +222,19 @@ function headerMime(header: string | null): string | null {
 }
 
 /**
- * Fetch the images on this turn into model blocks, and `.vcf` parts into contact
- * fields. Videos and other files are not fetched. A failed fetch is named in the
- * return (unwatched), never thrown, and the URL is not logged.
+ * Fetch the images on this turn into model blocks, `.vcf` parts into contact
+ * fields, and hear its voice memos when a `hear` port is given (VIL-495). Videos
+ * and other files are not fetched. A failed fetch is named in the return
+ * (unwatched), never thrown, and the URL is not logged.
  */
 export async function readInboundMedia(
   parts: readonly InboundMediaPart[],
   fetchImpl: typeof fetch = fetch,
+  hear?: HearVoiceMemo,
   contactFetch: ContactFetch = publicContactFetch,
 ): Promise<ReadInboundMedia> {
   const blocks: Anthropic.ContentBlockParam[] = [];
-  const unwatched: Array<{ kind: InboundMediaKind }> = [];
+  const unwatched: Array<{ kind: InboundMediaKind; heard?: string }> = [];
   const contacts: CoachContact[] = [];
   let contactsTruncated = false;
   for (const part of parts.slice(0, MAX_PARTS)) {
@@ -246,6 +252,12 @@ export async function readInboundMedia(
         }
         contacts.push(card);
       }
+      continue;
+    }
+    if (part.kind === 'audio') {
+      const url = httpsMediaUrl(part.url);
+      const heard = hear && url ? await hear({ ...part, url }) : null;
+      unwatched.push(heard ? { kind: 'audio', heard } : { kind: 'audio' });
       continue;
     }
     if (part.kind !== 'image') {

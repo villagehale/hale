@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { isGsm7 } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import type { GmailDraftOperation } from '~/lib/integrations/gmail-draft-service';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -12,7 +13,6 @@ export const MAX_NOTICE_CHARS = 160;
 /** The first failure is told what it did wrong. The second failure sends nothing. */
 export const MAX_NOTICE_ATTEMPTS = 2;
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
 const KEYWORD_YES = /\breply\s+yes\b|\byes to\b/i;
 const CLAIMS_SENT = /\b(i sent|i've sent|i emailed|email sent|sent the email|sent it|i mailed)\b/i;
 const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
@@ -50,7 +50,7 @@ export function noticeProblems(raw: string): string[] {
   if (!text) problems.push('empty');
   if (text.length > MAX_NOTICE_CHARS) problems.push('too_long');
   if (text && !isGsm7(text)) problems.push('not_gsm7');
-  if (LINK_SHAPE.test(text)) problems.push('link');
+  if (hasLinkShape(text)) problems.push('link');
   if (KEYWORD_YES.test(text)) problems.push('keyword_yes');
   if (CLAIMS_SENT.test(text)) problems.push('claims_sent');
   if (APP_POINTER.test(text)) problems.push('app_pointer');
