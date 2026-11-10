@@ -1,3 +1,9 @@
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import {
+  type ConnectAction,
+  type ConnectProvider,
+  sharedMeaningScreen,
+} from '~/lib/channel/meaning-screen/read';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
@@ -216,4 +222,42 @@ export function matchConnectorDisconnectRequest(body: string): ConnectorProvider
     if (pattern.test(body)) return provider;
   }
   return null;
+}
+
+function asConnector(provider: ConnectProvider): ConnectorProvider | null {
+  if (provider === 'gcal' || provider === 'gmail' || provider === 'gdrive') return provider;
+  return null;
+}
+
+async function connectIntent(
+  body: string,
+): Promise<{ action: ConnectAction; provider: ConnectProvider } | null> {
+  const reading = await sharedMeaningScreen().read({ screen: 'connect_intent', text: body });
+  if (!reading) return null;
+  return { action: reading.action, provider: reading.provider };
+}
+
+/** Production connect matcher. Off, the regex. On, a Haiku read; unread is a miss. */
+export async function matchConnectorRequestSweep(body: string): Promise<ConnectorProvider | null> {
+  if (!modelReadSweepEnabled()) return matchConnectorRequest(body);
+  const reading = await connectIntent(body);
+  if (!reading || reading.action !== 'connect') return null;
+  return asConnector(reading.provider);
+}
+
+/** Production fresh-link matcher. Off, the regex. On, a Haiku read; unread is a miss. */
+export async function matchFreshConnectorFollowUpSweep(body: string): Promise<boolean> {
+  if (!modelReadSweepEnabled()) return matchFreshConnectorFollowUp(body);
+  const reading = await connectIntent(body);
+  return reading?.action === 'fresh_link';
+}
+
+/** Production disconnect matcher. Off, the regex. On, a Haiku read; unread is a miss. */
+export async function matchConnectorDisconnectRequestSweep(
+  body: string,
+): Promise<ConnectorProvider | null> {
+  if (!modelReadSweepEnabled()) return matchConnectorDisconnectRequest(body);
+  const reading = await connectIntent(body);
+  if (!reading || reading.action !== 'disconnect') return null;
+  return asConnector(reading.provider);
 }

@@ -69,11 +69,6 @@
     "version": null,
     "sha256": "27cea18015ddf86912a654ec57b02449f94ec644b414675bc439ad94a4eb37a8"
   },
-  "judges/carpool": {
-    "name": "judges/carpool",
-    "version": null,
-    "sha256": "80e4c5d204a3a01025497410ed1970d6820b913d113bc3650bd997bc3aedaa8f"
-  },
   "judges/coach-capability-correction": {
     "name": "judges/coach-capability-correction",
     "version": null,
@@ -169,6 +164,16 @@
     "version": null,
     "sha256": "b1457d0a4fe5b63f2bcc0519a156ed6b5cfc08bc29b91ad80ccc4632fe80bfff"
   },
+  "judges/group-plan-rsvp-calendar-read": {
+    "name": "judges/group-plan-rsvp-calendar-read",
+    "version": null,
+    "sha256": "2eb03a45d0ae30711dae7ef2650f2276a40b4f6bd04a8c06a52562db11a3377f"
+  },
+  "judges/group-plan-rsvp-calendar-voice": {
+    "name": "judges/group-plan-rsvp-calendar-voice",
+    "version": null,
+    "sha256": "04cab4419f96665b5293ca43458e82a9c3e08d5958ce1fc26e2e4b6525110497"
+  },
   "judges/group-plan-rsvp-read": {
     "name": "judges/group-plan-rsvp-read",
     "version": 2,
@@ -249,6 +254,11 @@
     "version": null,
     "sha256": "56ea5732dc885267a97abf0af90f43e1f5683935c99138bb6b7ebf66c78962cc"
   },
+  "judges/linq-edit": {
+    "name": "judges/linq-edit",
+    "version": null,
+    "sha256": "0979ef98474ff9236d06afdea2ec2416a01007d74d046818d62cfd192b1a51bb"
+  },
   "judges/linq-sticker": {
     "name": "judges/linq-sticker",
     "version": null,
@@ -278,6 +288,11 @@
     "name": "judges/nudge-ask",
     "version": null,
     "sha256": "d69dc1963baf19b20603b6269bdd2c9ff7568913edbc7d9af01e025854885cf0"
+  },
+  "judges/offer-receipt": {
+    "name": "judges/offer-receipt",
+    "version": null,
+    "sha256": "8de36a431c303f079a6603d6f473c84aac02ee6e355f2855b9040866e1fe13e8"
   },
   "judges/opt-out-read": {
     "name": "judges/opt-out-read",
@@ -406,8 +421,8 @@
   },
   "reviewer": {
     "name": "reviewer",
-    "version": 1,
-    "sha256": "d7cb3b908395a69a90f70de37c61e690f55d5090440970ab4102d521ba945c94"
+    "version": null,
+    "sha256": "8570b61c9110a90780ac527d0a622461bbe48383ddf0a20471f0b60bf42b2443"
   },
   "routine": {
     "name": "routine",

@@ -376,7 +376,7 @@ describe('authorized signup sandbox', () => {
     expect(logged).not.toContain('@');
   }, 60_000);
 
-  it('books zoo-style tickets on the local mock when the approved price matches', async () => {
+  it('stops zoo-style tickets before a non-zero submit, even when the approved price matches', async () => {
     const seeded = await offer({
       path: '/tickets',
       activityKey: 'zoo-tickets',
@@ -386,12 +386,9 @@ describe('authorized signup sandbox', () => {
       approvedPriceCents: 1800,
     });
     const result = await book(seeded);
-    expect(result.outcome).toBe('completed');
-    expect(posts).toHaveLength(1);
-    const body = posts[0] ?? '';
-    expect(body).toMatch(/guest_name=Test(?:\+|%20)Parent/);
-    expect(body).toContain('showtime=sat-1100');
-    expect(body).not.toContain('Ada');
+    expect(result.outcome).toBe('payment');
+    expect(posts).toHaveLength(0);
+    expect(result.reply).toContain('outcome=payment');
     const logged = await trail(seeded.familyId);
     expect(logged).not.toContain('Ada');
     expect(logged).not.toContain('Test Parent');
@@ -435,7 +432,7 @@ describe('authorized signup sandbox', () => {
     expect(logged).not.toContain('@');
   }, 60_000);
 
-  it('walks a multi-step ticket cart for the authorized date and time', async () => {
+  it('walks a multi-step ticket cart then stops before a non-zero submit', async () => {
     const seeded = await offer({
       path: '/tickets-cart',
       activityKey: 'museum-tickets',
@@ -447,12 +444,9 @@ describe('authorized signup sandbox', () => {
       endsAt: '2026-10-10T16:00:00.000Z',
     });
     const result = await book(seeded);
-    expect(result.outcome).toBe('completed');
-    const posted = posts.join('\n');
-    expect(posted).toContain('visit_date=2026-10-10');
-    expect(posted).toContain('showtime=sat-1100');
-    expect(posted).toMatch(/guest_name=Test(?:\+|%20)Parent/);
-    expect(posted).not.toContain('Ada');
+    expect(result.outcome).toBe('payment');
+    expect(result.reply).toContain('outcome=payment');
+    expect(posts.join('\n')).not.toContain('showtime=sat-1100');
     const logged = await trail(seeded.familyId);
     expect(logged).not.toContain('Ada');
     expect(logged).not.toContain('Test Parent');

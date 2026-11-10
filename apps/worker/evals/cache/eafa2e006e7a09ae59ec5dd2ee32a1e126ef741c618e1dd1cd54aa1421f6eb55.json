@@ -1,0 +1,33 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "POINTE-À-CALLIÈRE ... Hours and Rates 350 Place Royale Old Montréal (Québec)",
+        "name": "Pointe-à-Callière, Montréal Archaeology and History Complex",
+        "age_evidence": "Child (0-4) Free",
+        "age_fit": "Children 0-4 free; Child (5-12) $10; family ticket available",
+        "when": "Regular hours: Tuesday to Friday 10 am - 5 pm; Saturday and Sunday 11 am - 5 pm. Holiday schedule Winter 2026-2027: December 31 10 am - 5 pm (closed December 25 and January 1). Hours for December 27-30 not separately posted beyond these regular hours.",
+        "when_evidence": "Opening Hours - Museum Tuesday to Friday 10 am - 5 pm Saturday and Sunday 11 am - 5 pm",
+        "schedule_kind": "hours",
+        "price_evidence": "Child (0-4) Free Family** $60",
+        "price": "Child (0-4) free; Child (5-12) $10; Adult $30; Family ticket $60",
+        "source_name": "Pointe-à-Callière",
+        "source_url": "https://pacmusee.qc.ca/en/plan-your-visit/hours-and-rates/",
+        "indoor_outdoor": "indoor"
+      },
+      {
+        "name_evidence": "Make Your Visit Easier | Montreal Science Centre ... The Montréal Science Centre is located in the Old Port of Montréal",
+        "name": "Montréal Science Centre, Old Port of Montréal",
+        "age_evidence": "Children under 13 years of age visiting the Montréal Science Centre must be accompanied by an adult.",
+        "age_fit": "Children under 13 must be accompanied by an adult; page does not state a toddler-specific age band",
+        "when": "Regular hours: Monday through Friday 9 a.m. - 4 p.m.; Saturday and Sunday 10 a.m. - 5 p.m. Holiday hours for December 27-30 not confirmed on this page.",
+        "when_evidence": "Opening Hours : Monday through Friday: 9 a.m. – 4 p.m. Saturday and Sunday: 10 a.m. – 5 p.m.",
+        "schedule_kind": "hours",
+        "source_name": "Montréal Science Centre",
+        "source_url": "https://www.montrealsciencecentre.com/visitor-info",
+        "indoor_outdoor": "indoor"
+      }
+    ]
+  },
+  "latencyMs": 5523
+}

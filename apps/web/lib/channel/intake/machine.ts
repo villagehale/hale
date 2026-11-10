@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { ageInMonths } from '@hale/types';
 import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
@@ -66,7 +67,6 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
 import {
   failurePageCrisisPager,
@@ -96,10 +96,12 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
+import { acceptCalendarDate } from './calendar-date';
 import {
   type PostalContext,
   crisisRegionForPlace,
   deriveDateOfBirth,
+  fillAgesFromDates,
   parseIntakePostal,
   summarizeChildren,
 } from './derive';
@@ -1889,6 +1891,7 @@ async function friendOnboardingTurn(
           postalCode: place.postalCode,
           municipality: place.municipality as FirstTouchPlace['municipality'],
           city: place.city,
+          ...(place.country ? { country: place.country } : {}),
         }
       : null,
     parentName: priorGiven?.parentName ?? null,
@@ -1926,7 +1929,8 @@ async function friendOnboardingTurn(
       // reply, written next. This draft is read for its facts only.
       replyDiscardedWhen: (capture) => {
         const next = storedFromCapture(prior, capture);
-        const kids = withKnownAges(next.collectedChildren);
+        next.collectedChildren = fillAgesFromDates(next.collectedChildren, now);
+        const kids = withKnownAges(next.collectedChildren, now);
         const settled = settledLocation(next.place ? persistPlace(next.place) : null, {
           placeDeclined: priorGiven?.placeDeclined === true || capture.placeDeclined,
         });
@@ -1936,6 +1940,7 @@ async function friendOnboardingTurn(
   );
   language = spoken.capture.language ?? language;
   const stored = storedFromCapture(prior, spoken.capture);
+  stored.collectedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const nextPlace = stored.place ? persistPlace(stored.place) : null;
   const collected: IntakeCollected = {
     children: stored.collectedChildren,
@@ -1945,7 +1950,7 @@ async function friendOnboardingTurn(
   const given = givenFromStored(priorGiven, stored, spoken.capture, {
     coarseCodeAsked: friendOutbound(spoken) != null && spoken.placeAsk === 'coarse',
   });
-  const children = withKnownAges(collected.children);
+  const children = withKnownAges(collected.children, now);
   const settled = settledLocation(nextPlace, given);
   const baseTouch: FirstTouchPersisted = {
     language,
@@ -1992,7 +1997,7 @@ async function friendOnboardingTurn(
   const waitingAges = settled != null;
   const clarifyKey = waitingAges ? 'ages' : 'place';
   const priorCount = session.firstTouch?.clarify?.[clarifyKey] ?? 0;
-  const partial = knownAgeChildren(collected.children);
+  const partial = knownAgeChildren(collected.children, now);
   if (settled && priorCount >= REASK_CAP && partial.length > 0) {
     return provision(
       database,
@@ -2142,12 +2147,14 @@ async function retryFailedLinqContactCard(
 }
 
 function childAgesChanged(
-  prior: readonly { ageMonths: number | null }[],
-  next: readonly { ageMonths: number | null }[],
+  prior: readonly { ageMonths: number | null; dateOfBirth?: string | null }[],
+  next: readonly { ageMonths: number | null; dateOfBirth?: string | null }[],
 ): boolean {
-  return next.some(
-    (child, index) => child.ageMonths != null && child.ageMonths !== prior[index]?.ageMonths,
-  );
+  return next.some((child, index) => {
+    const before = prior[index];
+    if (child.dateOfBirth && child.dateOfBirth !== before?.dateOfBirth) return true;
+    return child.ageMonths != null && child.ageMonths !== before?.ageMonths;
+  });
 }
 
 function childNamesChanged(
@@ -2172,11 +2179,13 @@ async function syncOnboardingChildren(
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[],
   next: readonly {
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[],
   now: Date,
 ): Promise<void> {
@@ -2200,7 +2209,11 @@ async function syncOnboardingChildren(
     const patch: { name?: string; dateOfBirth?: string; dobPrecision?: string } = {};
     const first = kidFirstName(child.name);
     if (first && row.name !== first) patch.name = first;
-    if (child.ageMonths != null && child.ageMonths !== before?.ageMonths) {
+    const exact = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+    if (exact && exact !== before?.dateOfBirth) {
+      patch.dateOfBirth = exact;
+      patch.dobPrecision = 'exact';
+    } else if (child.ageMonths != null && child.ageMonths !== before?.ageMonths && !exact) {
       patch.dateOfBirth = deriveDateOfBirth(child.ageMonths, child.agePrecision ?? 'years', now);
       patch.dobPrecision = 'derived';
     }
@@ -2449,7 +2462,7 @@ async function friendColdTurn(
     },
     spoken.capture,
   );
-  const mergedChildren = stored.collectedChildren;
+  const mergedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const agesChanged = childAgesChanged(session.collected.children, mergedChildren);
   if (agesChanged || childNamesChanged(session.collected.children, mergedChildren)) {
     await syncOnboardingChildren(
@@ -2719,6 +2732,7 @@ function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['
     postalCode: place.postalCode,
     municipality: place.municipality,
     city: place.city,
+    ...(place.country ? { country: place.country } : {}),
   };
 }
 
@@ -2765,23 +2779,37 @@ async function handleDetails(
  * child we know only the name of cannot reach provisioning at all, and no branch
  * downstream has to decide what date to invent for them.
  */
-function withKnownAges(children: readonly ExtractedChild[]): ProvisionChild[] | null {
+function withKnownAges(children: readonly ExtractedChild[], now: Date): ProvisionChild[] | null {
   const known: ProvisionChild[] = [];
   for (const child of children) {
-    if (child.ageMonths === null || child.agePrecision === null) return null;
-    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+    const provisioned = provisionChildFromExtracted(child, now);
+    if (!provisioned) return null;
+    known.push(provisioned);
   }
   return known;
 }
 
 /** Children whose age was actually told. Siblings still missing an age are left out. */
-function knownAgeChildren(children: readonly ExtractedChild[]): ProvisionChild[] {
+function knownAgeChildren(children: readonly ExtractedChild[], now: Date): ProvisionChild[] {
   const known: ProvisionChild[] = [];
   for (const child of children) {
-    if (child.ageMonths === null || child.agePrecision === null) continue;
-    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+    const provisioned = provisionChildFromExtracted(child, now);
+    if (provisioned) known.push(provisioned);
   }
   return known;
+}
+
+function provisionChildFromExtracted(child: ExtractedChild, now: Date): ProvisionChild | null {
+  const dateOfBirth = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+  const ageMonths = child.ageMonths ?? (dateOfBirth ? ageInMonths(dateOfBirth, now) : null);
+  const agePrecision = child.agePrecision ?? (dateOfBirth ? 'months' : null);
+  if (ageMonths === null || agePrecision === null) return null;
+  return {
+    name: child.name,
+    ageMonths,
+    agePrecision,
+    ...(dateOfBirth ? { dateOfBirth } : {}),
+  };
 }
 
 /**
@@ -2985,18 +3013,41 @@ async function provision(
   const children = discoveryOn
     ? gathered.children.map((child) => ({ ...child, name: kidFirstName(child.name) }))
     : gathered.children;
-  const { familyId, userId } = await provisionFromIntake(database, {
-    phoneE164,
-    phoneHash: session.phoneHash,
-    children,
-    location,
-    sourceCode: session.sourceCode,
-    firstMessage: firstInbound?.body ?? inbound.body,
-    transcript: gathered.transcript,
-    now,
-    language,
-    linqContactCardClaim: session.linqContactCardClaim,
-  });
+  let familyId: string;
+  let userId: string;
+  if (session.familyId && session.userId) {
+    familyId = session.familyId;
+    userId = session.userId;
+  } else {
+    const provisioned = await provisionFromIntake(database, {
+      phoneE164,
+      phoneHash: session.phoneHash,
+      children,
+      location,
+      sourceCode: session.sourceCode,
+      firstMessage: firstInbound?.body ?? inbound.body,
+      transcript: gathered.transcript,
+      now,
+      language,
+      linqContactCardClaim: session.linqContactCardClaim,
+    });
+    familyId = provisioned.familyId;
+    userId = provisioned.userId;
+    // VIL-532: the channel row commits inside provisionFromIntake. Link the
+    // session before radar / voice, which can throw, so a retry does not insert
+    // a second SMS channel and does not leave the family unlinked.
+    await saveSession(
+      database,
+      session,
+      {
+        collected: gathered.collected,
+        familyId,
+        userId,
+        lastProviderId: inbound.providerId,
+      },
+      now,
+    );
+  }
 
   const locationRequest = session.firstTouch?.locationRequest;
   if (locationRequest) {
@@ -3221,23 +3272,6 @@ async function provision(
       },
       now,
     );
-  }
-
-  // The radar can be the first surface ever to tell this family about a health
-  // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked
-  // AFTER the send, against the row that carried it, so a compose that never left the
-  // building suppresses nothing.
-  //
-  // The outcome is not branched on because there is nothing this turn can do with it —
-  // the message is already with the parent — but it is never silent: a marker that did
-  // not land is logged as "this checkpoint may be raised again", which is exactly what
-  // a lost one costs (lib/health/told.ts).
-  if (radar?.checkpointTold) {
-    await recordCheckpointTold(database, {
-      familyId,
-      ref: radar.checkpointTold,
-      channelMessageId: sent.channelMessageId,
-    });
   }
 
   // MEM-10 · the forward beat is a promise with a clock on it, and until now the only

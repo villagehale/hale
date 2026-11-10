@@ -1,13 +1,17 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
-import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
+import {
+  type CalendarPlacementPayload,
+  type FamilyCountry,
+  kidClashNoticeEnabled,
+} from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
+import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
 import {
   type SaidSignupToolPorts,
   noteActivitySignupTool,
@@ -33,6 +37,7 @@ import {
   type GmailDraftToolPorts,
   prepareGmailDraftTool,
 } from './gmail-draft-tool';
+import { type KidClashCandidate, kidClashFacts } from './kid-clash';
 import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
 
 /**
@@ -222,7 +227,7 @@ export interface ChannelCoachToolArgs {
    */
   offeredThisTurn?: () => readonly OfferedCandidate[];
   /** Live-web pages this turn found, appended when the reply names the pick. */
-  recordActivityLinks?: (links: readonly { title: string; url: string }[]) => void;
+  recordActivityLinks?: (links: readonly NamedLink[]) => void;
   /**
    * The live web-search lane and the family facts phase 0 needs, or null in a test that
    * is not exercising them. The two travel together on purpose: a finder with no reader
@@ -496,6 +501,45 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     return event;
   }
 
+  /**
+   * VIL-79 · the live kid-clash read for one local day, at decision time. Same reads as
+   * lookup_week (Hale's household events + connected Google blocks), nothing stored.
+   * Facts only — the coach words any mention itself. A failed read is logged and gives
+   * no facts rather than blocking the draft (a clash never blocks; see kid-clash.ts).
+   * Dark unless KID_CLASH_NOTICE_ENABLED is exactly `true`.
+   */
+  async function liveKidClashes(date: string, timeZone: string, candidate: KidClashCandidate) {
+    if (!kidClashNoticeEnabled()) return [];
+    try {
+      // The readers select by START inside the window, so an overnight item that began
+      // the evening before (or a candidate running past midnight) would be missed. Read a
+      // day either side; kidClashFacts then keeps only true overlaps (Devin #927).
+      const DAY = 24 * 60 * 60 * 1000;
+      const dayStart = zonedLocalInstant(date, '00:00', timeZone);
+      const dayEnd = zonedLocalInstant(date, '23:59', timeZone);
+      const candEnd = candidate.endsAt ?? candidate.startsAt;
+      const start = new Date(Math.min(dayStart.getTime(), candidate.startsAt.getTime()) - DAY);
+      const end = new Date(Math.max(dayEnd.getTime(), candEnd.getTime()) + DAY);
+      const dayKeys = [start, candidate.startsAt, end].map((d) => d.toISOString().slice(0, 10));
+      const [events, connected] = await Promise.all([
+        reader.eventsInWeek(familyId, start, end),
+        reader.connectedWeek(familyId, start, end, [...new Set([date, ...dayKeys])]),
+      ]);
+      return kidClashFacts(candidate, events, connected.blocks).map((fact) => ({
+        childId: fact.childId,
+        what: fact.what,
+        when: fact.allDay
+          ? dayLabel(new Date(fact.startsAt), timeZone)
+          : localWhen(new Date(fact.startsAt), timeZone),
+        until: !fact.allDay && fact.endsAt ? localWhen(new Date(fact.endsAt), timeZone) : null,
+        allDay: fact.allDay,
+      }));
+    } catch (error) {
+      console.warn({ familyId, err: (error as Error).name }, 'kid clash read failed');
+      return [];
+    }
+  }
+
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
@@ -582,11 +626,16 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       refuseMismatchedWeekday(input, timeZone, 'propose_calendar_move');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
       claimDraftBudget();
+      const length = event.endsAt ? event.endsAt.getTime() - event.startsAt.getTime() : null;
+      const movedEndsAt = length !== null ? new Date(startsAt.getTime() + length) : null;
 
       const payload: CalendarPlacementPayload = {
         title: event.title,
         startsAt: startsAt.toISOString(),
-        endsAt: null,
+        // The moved item keeps its own real length (one with no end stays an instant),
+        // and the SAME end is what the clash check reads below — the saved window and
+        // the reported clash window can never disagree (Devin #927).
+        endsAt: movedEndsAt?.toISOString() ?? null,
         location: event.location,
         childId: event.childId,
         privacySensitive: event.sensitive,
@@ -600,11 +649,17 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
+      const clashes = await liveKidClashes(input.date, timeZone, {
+        startsAt,
+        endsAt: movedEndsAt,
+        eventId: event.eventId,
+      });
       return {
         drafted: true as const,
         actionId,
         newWhen: localWhen(startsAt, timeZone),
         when: longWhen(startsAt, timeZone),
+        ...(kidClashNoticeEnabled() ? { clashes } : {}),
         ...(await approvalPlace('calendar_move')),
       };
     },
@@ -732,10 +787,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
+      const clashes = await liveKidClashes(input.date, timeZone, { startsAt, endsAt: null });
       return {
         drafted: true as const,
         actionId,
         when: longWhen(startsAt, timeZone),
+        ...(kidClashNoticeEnabled() ? { clashes } : {}),
         ...(await approvalPlace('calendar_add')),
       };
     },
@@ -756,7 +813,10 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    *   + save_memory, no skill prose                      3/3                     2/3
    *   + save_memory, 6-line section at the end           2/3                     1/3
    *
-   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
+   * That is the budget this lane already runs at (CHANNEL_COACH_MAX_TOKENS 2000,
+   * thinking, tools and text sharing it — see runtime.ts), and a turn that stops
+   * reaching for the live web is a parent handed nothing about the fall.
+   * That is the budget this lane already runs at (MAX_TOKENS 2000, thinking and text
    * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
    * parent handed nothing about the fall.
    *

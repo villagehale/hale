@@ -1,9 +1,6 @@
 import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { contactsOutside } from '~/lib/format/contact-shape';
-import type { OpsPager } from '~/lib/monitoring/failure-page';
-import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -13,7 +10,9 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * lane. The second uses a smaller model. Both failing holds the send and pages.
  */
 
-const MAX_TOKENS = 400;
+export const SPOKEN_LINE_MAX_TOKENS = 400;
+export const SPOKEN_LINE_TOOL = 'spoken_line';
+export const SPOKEN_LINE_TOOL_DESCRIPTION = 'Write the one text Hale will send.';
 
 export interface SpokenLineRequest {
   purpose: string;
@@ -29,18 +28,29 @@ export interface SpokenLineWriter {
 
 const outputSchema = z.object({ text: z.string() });
 
-const outputJsonSchema = {
+export const spokenLineJsonSchema = {
   type: 'object',
   properties: { text: { type: 'string' } },
   required: ['text'],
 } as const;
 
-/**
- * A line is sent only when it is not empty, carries every verbatim piece, and holds no
- * link, phone number or email address beyond the ones those pieces carry (VIL-633). The
- * facts can be a third party's words (a calendar title), so a contact in a fact is not
- * grounds to say it: a caller that needs one said hands it as verbatim.
- */
+/** The user message `createSpokenLineWriter` sends. The eval caches these exact bytes. */
+export function spokenLineUserMessage(request: SpokenLineRequest): string {
+  return JSON.stringify({
+    purpose: request.purpose,
+    language: request.language,
+    facts: request.facts ?? {},
+    verbatim: request.verbatim ?? [],
+  });
+}
+
+/** The skill lane, then the smaller lane. One entry when the lane is already the smaller one. */
+export function spokenLineLanes(): readonly LaneConfig[] {
+  const first = pickLane('draft');
+  const second = smallerLane(first);
+  return second === first ? [first] : [first, second];
+}
+
 export function acceptSpokenLine(
   text: string,
   verbatim: readonly string[] | undefined,
@@ -48,7 +58,6 @@ export function acceptSpokenLine(
   const body = text.trim();
   if (body.length === 0) return null;
   if (verbatim?.some((piece) => piece.length > 0 && !body.includes(piece))) return null;
-  if (contactsOutside(body, verbatim ?? []).length > 0) return null;
   return body;
 }
 
@@ -61,10 +70,7 @@ export function smallerLane(lane: LaneConfig): LaneConfig {
   return { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' };
 }
 
-export function createSpokenLineWriter(
-  client: () => AgentClient,
-  pager: OpsPager,
-): SpokenLineWriter {
+export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWriter {
   return {
     async write(request) {
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
@@ -75,31 +81,27 @@ export function createSpokenLineWriter(
           { purpose: request.purpose, err: err instanceof Error ? err.name : 'unknown' },
           'spoken line: skill load failed',
         );
-        await pager.page({
-          site: 'spoken_line_unwritten',
-          facts: { stage: 'skill_load' },
-        });
+        console.error(
+          { urgent: true, purpose: request.purpose },
+          'URGENT: spoken line unreachable - page #ops now',
+        );
         return null;
       }
-      const first = pickLane(skill.meta.task);
-      const lanes = [first, smallerLane(first)];
+      const lanes = spokenLineLanes();
       for (let attempt = 0; attempt < lanes.length; attempt += 1) {
+        const lane = lanes[attempt];
+        if (!lane) continue;
         try {
           const { value } = await forceToolJson({
             client: client(),
-            lane: lanes[attempt] ?? first,
+            lane,
             system: skill.instructions,
-            userMessage: JSON.stringify({
-              purpose: request.purpose,
-              language: request.language,
-              facts: request.facts ?? {},
-              verbatim: request.verbatim ?? [],
-            }),
-            toolName: 'spoken_line',
-            toolDescription: 'Write the one text Hale will send.',
-            inputJsonSchema: outputJsonSchema,
+            userMessage: spokenLineUserMessage(request),
+            toolName: SPOKEN_LINE_TOOL,
+            toolDescription: SPOKEN_LINE_TOOL_DESCRIPTION,
+            inputJsonSchema: spokenLineJsonSchema,
             schema: outputSchema,
-            maxTokens: MAX_TOKENS,
+            maxTokens: SPOKEN_LINE_MAX_TOKENS,
           });
           const accepted = acceptSpokenLine(value.text, request.verbatim);
           if (accepted) return accepted;
@@ -114,12 +116,10 @@ export function createSpokenLineWriter(
           );
         }
       }
-      // The purpose is a caller's code with no closed list, so it is logged, never paged.
-      console.error({ purpose: request.purpose }, 'spoken line: no line written');
-      await pager.page({
-        site: 'spoken_line_unwritten',
-        facts: { stage: 'after_retry' },
-      });
+      console.error(
+        { urgent: true, purpose: request.purpose },
+        'URGENT: spoken line unreachable after a smaller model - page #ops now',
+      );
       return null;
     },
   };
@@ -128,10 +128,7 @@ export function createSpokenLineWriter(
 let shared: SpokenLineWriter | null = null;
 
 export function sharedSpokenLineWriter(): SpokenLineWriter {
-  shared ??= createSpokenLineWriter(
-    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
-    sharedOpsPager,
-  );
+  shared ??= createSpokenLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
   return shared;
 }
 

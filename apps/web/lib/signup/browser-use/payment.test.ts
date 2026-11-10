@@ -199,132 +199,70 @@ const runBodies = (log: Logged[]) =>
 const linkCalls = (log: Logged[]) =>
   log.filter((entry) => entry.path.startsWith('/spend_requests'));
 
-describe("payment with the parent's own Link wallet", () => {
-  it('asks Link for the exact cart total, then types the one-time card by alias and completes', async () => {
-    const { deps, log, wallet } = setup({ statuses: ['pending_approval', 'approved'] });
+describe('VIL-558 go-live: charged carts stop, $0 may submit', () => {
+  it('stops a charged cart at checkout and never asks Link, even with a wallet', async () => {
+    const { deps, log, wallet } = setup();
     const result = await runBrowserUseSignup(input(wallet), deps);
     expect(result).toMatchObject({
-      outcome: 'completed',
-      confirmationNumber: 'R-55120',
-      amountChargedCents: 9800,
+      outcome: 'reached_checkout',
+      detail: 'none',
       cartTotalCents: 9800,
-      liveViewUrl: null,
-      runId: 'run-2',
-      costUsd: '0.0600',
+      confirmationNumber: null,
+      liveViewUrl: LIVE,
     });
-
-    const create = log.find((entry) => entry.method === 'POST' && entry.path === '/spend_requests');
-    expect(create?.headers.get('authorization')).toBe('Bearer liwltoken_fixture');
-    const spend = create?.body as Record<string, unknown>;
-    expect(spend).toMatchObject({
-      credential_type: 'card',
-      amount: 9800,
-      currency: 'cad',
-      merchant_name: 'register.example-rec.test',
-      merchant_url: 'https://register.example-rec.test/checkout',
-      request_approval: true,
-      idempotency_key: 'hale-signup-offer-fixture-9800',
-    });
-    expect(String(spend.context).length).toBeGreaterThanOrEqual(100);
-    expect(String(spend.context)).not.toContain('Ada');
-
-    const [signupRun, paymentRun] = runBodies(log);
-    expect(signupRun).not.toHaveProperty('secretBindings');
-    expect(paymentRun).toMatchObject({ sessionId: 'bu-session-1' });
-    const bindings = paymentRun?.secretBindings as {
-      alias: string;
-      source: { value: string };
-      allowedDomains: string[];
-    }[];
-    expect(bindings.map((binding) => binding.alias)).toEqual([
-      'card_number',
-      'card_expiry',
-      'card_exp_month',
-      'card_exp_year',
-      'card_cvc',
-      'card_postal_code',
-    ]);
-    expect(bindings[0]?.source.value).toBe(CARD);
-    expect(bindings[1]?.source.value).toBe('06/29');
-    expect(bindings[0]?.allowedDomains).toEqual(['register.example-rec.test', 'js.stripe.com']);
-    for (const body of runBodies(log)) {
-      expect(String(body.task)).not.toContain(CARD);
-      expect(String(body.task)).not.toContain(CVC);
-    }
-    expect(String(paymentRun?.task)).toMatch(/"amount_cents":\s*9800/);
+    expect(linkCalls(log)).toHaveLength(0);
+    expect(runBodies(log)).toHaveLength(1);
     expect(JSON.stringify(result)).not.toContain(CARD);
   });
 
-  it('returns the live checkout link and cancels the request when the parent does not approve in time', async () => {
-    const { deps, log, wallet } = setup({ statuses: ['pending_approval'] });
+  it('refuses a charged cart the agent submitted', async () => {
+    const { deps, log, wallet } = setup({ signup: { submitted: true } });
     const result = await runBrowserUseSignup(input(wallet), deps);
     expect(result).toMatchObject({
-      outcome: 'payment_not_approved',
-      detail: 'approval_timeout',
-      liveViewUrl: LIVE,
-      checkoutUrl: 'https://register.example-rec.test/checkout',
-      confirmationNumber: null,
+      outcome: 'error',
+      detail: 'submit_boundary',
+      liveViewUrl: null,
     });
-    expect(runBodies(log)).toHaveLength(1);
-    expect(linkCalls(log).some((entry) => entry.path === '/spend_requests/lsrq_1/cancel')).toBe(
-      true,
-    );
-    expect(linkCalls(log).some((entry) => entry.path.includes('include=card'))).toBe(false);
-  });
-
-  it('hands the checkout back when the parent declines in Link', async () => {
-    const { deps, log, wallet } = setup({ statuses: ['denied'] });
-    const result = await runBrowserUseSignup(input(wallet), deps);
-    expect(result).toMatchObject({
-      outcome: 'payment_not_approved',
-      detail: 'payment_denied',
-      liveViewUrl: LIVE,
-    });
+    expect(linkCalls(log)).toHaveLength(0);
     expect(runBodies(log)).toHaveLength(1);
   });
 
-  it('never asks Link above the approved price or the $500 ceiling', async () => {
-    const over = setup({ signup: { cart_total_cents: 55000 } });
-    const ceiling = await runBrowserUseSignup(
-      input(over.wallet, { approvedPriceCents: 60000 }),
-      over.deps,
-    );
-    expect(ceiling).toMatchObject({ outcome: 'reached_checkout', detail: 'payment_ceiling' });
-    expect(linkCalls(over.log)).toHaveLength(0);
-
-    const changed = setup({ signup: { cart_total_cents: 9900 } });
-    const price = await runBrowserUseSignup(input(changed.wallet), changed.deps);
-    expect(price).toMatchObject({ outcome: 'needs_human', detail: 'price_change' });
-    expect(linkCalls(changed.log)).toHaveLength(0);
+  it('completes a $0 class the agent submitted after the parent approved', async () => {
+    const { deps, log, wallet } = setup({
+      signup: {
+        cart_total_cents: 0,
+        submitted: true,
+        confirmation_number: 'FREE-1',
+      },
+    });
+    const result = await runBrowserUseSignup(input(wallet, { approvedPriceCents: 0 }), deps);
+    expect(result).toMatchObject({
+      outcome: 'completed',
+      detail: 'none',
+      cartTotalCents: 0,
+      confirmationNumber: 'FREE-1',
+      liveViewUrl: null,
+    });
+    expect(linkCalls(log)).toHaveLength(0);
+    expect(runBodies(log)).toHaveLength(1);
   });
 
-  it('does not pay when the cart currency is unclear', async () => {
-    const { deps, log, wallet } = setup({ signup: { cart_currency: null } });
-    const result = await runBrowserUseSignup(input(wallet), deps);
-    expect(result).toMatchObject({ outcome: 'reached_checkout', detail: 'currency_unknown' });
+  it('hands a $0 cart that was not submitted back at checkout', async () => {
+    const { deps, log, wallet } = setup({ signup: { cart_total_cents: 0, submitted: false } });
+    const result = await runBrowserUseSignup(input(wallet, { approvedPriceCents: 0 }), deps);
+    expect(result).toMatchObject({
+      outcome: 'reached_checkout',
+      cartTotalCents: 0,
+      liveViewUrl: LIVE,
+    });
     expect(linkCalls(log)).toHaveLength(0);
   });
 
-  it('hands to the parent when the charge is not exactly the cart total', async () => {
-    const { deps, wallet } = setup({ payment: { amount_charged_cents: 9900 } });
+  it('turns a cart above the approved price into needs_human before any payment', async () => {
+    const { deps, log, wallet } = setup({ signup: { cart_total_cents: 9900 } });
     const result = await runBrowserUseSignup(input(wallet), deps);
-    expect(result).toMatchObject({
-      outcome: 'needs_human',
-      detail: 'charge_mismatch',
-      liveViewUrl: LIVE_PAY,
-      amountChargedCents: 9900,
-    });
-  });
-
-  it('cancels the one-time card when the provider declines it', async () => {
-    const { deps, log, wallet } = setup({
-      payment: { outcome: 'declined', confirmation_number: null, amount_charged_cents: null },
-    });
-    const result = await runBrowserUseSignup(input(wallet), deps);
-    expect(result).toMatchObject({ outcome: 'payment_not_approved', detail: 'card_declined' });
-    expect(linkCalls(log).some((entry) => entry.path === '/spend_requests/lsrq_1/cancel')).toBe(
-      true,
-    );
+    expect(result).toMatchObject({ outcome: 'needs_human', detail: 'price_change' });
+    expect(linkCalls(log)).toHaveLength(0);
   });
 
   it('stops at checkout with no Link call when the parent has no wallet', async () => {

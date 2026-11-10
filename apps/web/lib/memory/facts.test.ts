@@ -3,7 +3,6 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-tools';
-import { recordCheckpointDone } from '~/lib/health/reply';
 import { recordRegistrationOutcome } from '~/lib/registration/sequence/reply';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { closeFacts, writeFact } from './facts';
@@ -95,6 +94,27 @@ describe('memory inferencer save_memory', () => {
     expect(fact?.validFrom).toEqual(RUN_AT);
   });
 
+  it('stores record: place on a non-English key when extraction sets it', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const save = toolNamed(buildInferenceTools(db.database, RUN_AT), 'save_memory');
+
+    await save.handler(
+      {
+        factType: 'logistic',
+        factKey: 'ville',
+        factValue: 'Georgetown',
+        confidence: 0.9,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+        record: 'place',
+      },
+      ctx(familyId),
+    );
+
+    const [fact] = await liveFact(familyId, 'ville');
+    expect(fact?.factValue).toMatchObject({ record: 'place', text: 'Georgetown' });
+  });
+
   it('ignores a source time the model invented in the future', async () => {
     const { familyId } = await seedFamily(db.database);
     const save = toolNamed(buildInferenceTools(db.database, RUN_AT), 'save_memory');
@@ -156,24 +176,6 @@ describe('chat distiller save_child_fact', () => {
 });
 
 describe('the non-agent fact writers', () => {
-  it('a health checkpoint marked done twice leaves ONE live fact', async () => {
-    const { familyId, parentUserId } = await seedFamily(db.database);
-    const child = await seedChild(db.database, familyId, 'Ella', 30);
-    const input = {
-      familyId,
-      parentUserId,
-      childId: child,
-      checkpointId: 'cp-18mo',
-      ref: '18mo-visit',
-    };
-
-    await recordCheckpointDone(db.database, input);
-    await recordCheckpointDone(db.database, input);
-
-    const live = (await liveFacts(familyId)).filter((f) => f.validUntil === null);
-    expect(live).toHaveLength(1);
-  });
-
   it('a registration outcome recorded twice leaves ONE live fact', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database);
     const input = {

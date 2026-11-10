@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgrqGpP67ywybFXP2diZ4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1wUKEAgTGAI4AUIIdGhpbmtpbmcSDJiYNV0TBQ2Ck2il8RoMTXnTjO0f0dz49aWcIjB2a1j3furbZ1cSS8TACzm8AKq2QkEamKNjsM2VrHry1azBFzJshq5urjMBU6qXbmIq9AQo41WgasBsvYeXByiUd0g6G+ZfvNFaGQkMUasYYcO0n6G4vpFWrYrEA+92m7xKyYrILUwFsSPYnP0p6OTXd9a0x78nTCikOx159mCENsE2eEZmi/QeK9EMQX7p2lafc3YmPpeojUz/xsrbS65zySuC71HA5G0bYX/4zkEcdR4LwQqzyU5e1fkMcwcuqnWH/2fCvoMZtMIKlKj4WCTQ9C9daWqLsm0xqzzUOXjenvQ1dNqgnO9DfPD+UppBbUYHyzXCEPQhqxXexXNY3ldVUAIMpHWygXyz1XgJr9XLud8KG/meonSs4biJ5g0wtewDKfEzWqs6Ejj9aGE5IvioMXl4eNQ1ZtL3JDno5StGnfUCN/aRptQ2y4XrI40F329+/hTtplZdP0BfOGN3PQGSjpGeOPfacSzArJku8iHBCddTLN3CqVCrWW/CbA6lBZimSV9U2DzDfo8rjT7BBS7NfZBK8cRbb2FIWx/59P8A0RVqA9hERH+0/IflwzAeZ7ow8J+qqGSy5T2K0BtV0tO4GMm2T/vCXpwbe7gF3fa8TZZnw7YhUekrZ/tRBhjUIj9tM+5/es3jC+4GNKlhlHeyNfLoFWpjB19TTwqSVH7/Wnhnph2Y543QN8LS8LHankye0fO/jcjwHbuWbaWG3F9mH46FERr8YyRU3h6sxyn15fv/AZcjT1DYqHP18KnmDKmTaKeXZDt0MBuUYQTyQWhofUCkY2owpgoJUFrbiLboqSfQlWB5dLL1/aFwrXig5OldkB6h0VpwHpW9YaxUqG2Z0lPMDhaEA2wfXc+Q4LkaIFELSSHCZgk3FmuITfOFHndLAuer1zbsGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01EX2nTf9N9KPeGedMcnax4X",
+        "name": "submit_verdict",
+        "input": {
+          "verdict": "approve",
+          "rationale": "The time window and idempotency checks both returned ok. The calendar check found an overlap with one existing event at the same time. Under policy that is information for the parent to see before confirming, not a failure. The action is internal-only and reversible (it has a reversal handle). It is not medical or legal, and it contains no sensitive data. The parent should see the overlap when they confirm."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 765,
+      "cache_read_input_tokens": 1595,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 765,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 231,
+      "output_tokens_details": {
+        "thinking_tokens": 40
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2397
+}

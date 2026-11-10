@@ -50,6 +50,12 @@ import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-deci
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import { sharedLinqEffectDecider } from '~/lib/channel/linq/effect';
+import {
+  linqMessageEditEnabled,
+  listEditableLinqSends,
+  sharedLinqEditDecider,
+} from '~/lib/channel/linq/edit';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -68,7 +74,7 @@ import {
   releaseGroupOnLeave,
 } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
-import { considerLinqReply } from '~/lib/channel/linq/moments';
+import { LinqMomentDeliveredError, considerLinqReply } from '~/lib/channel/linq/moments';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -175,9 +181,19 @@ import {
   armHoldingLine,
   holdingLineNotArmed,
 } from './holding-line';
-import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import {
+  type OpenQuestion,
+  type OpenQuestionKind,
+  type OpenQuestionReader,
+  latestAsked,
+} from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
-import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
+import {
+  type ReplyConfidence,
+  type ReplyReading,
+  type ReplyResolver,
+  warrantsClarifying,
+} from './resolve';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
 
@@ -1083,7 +1099,15 @@ async function routeChannelMessageInner(
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
   // thread, and the coach re-reads that thread on the attempt that finally works.
   if (!redriven) {
-    await appendMessage(conversationId, 'user', context.body, deps.database);
+    // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
+    // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
+    const inboundProviderId =
+      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
+    await appendMessage(conversationId, 'user', context.body, deps.database, {
+      childId: null,
+      topic: null,
+      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+    });
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -1251,6 +1275,10 @@ async function routeChannelMessageInner(
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
         audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
         parentAttachments: (context.media ?? []).map((part) => part.kind),
+      },
+      effectRead: {
+        // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
       },
     });
 
@@ -1989,18 +2017,17 @@ async function resolveNaturalReply(
   // every inbound text.
   if (questions.length === 0) return { status: 'carry_on', questions };
 
-  // Calendar offers are read by the calendar model, including when the reply is not
-  // English. A draft the reviewer has not cleared does not count as a competing YES
-  // (VIL-513): it used to force the general resolver, which returned not_answerable
-  // and the coach drafted the same add again.
-  const calendarQuestions = questionsForCalendarReader(questions);
-  const read = calendarQuestions
-    ? await deps.calendarOffers.readParent({
-        text: turn.body,
-        questions: calendarQuestions,
-        now: turn.now,
-      })
-    : await deps.replyResolver.read({ text: turn.body, questions });
+  // VIL-302 · the words are read against everything open FIRST, so a reply that names an
+  // older ask ("no thanks to the intro") is placed on it. Only when that read cannot tell
+  // which ask a reply answers (`ambiguous`) are the words read again against the newest
+  // ask: a bare "yes" after a search offer is the search. Narrowing first is unsafe: shown
+  // only the newest ask, the real model put a decline of an older intro on the newest
+  // offer (the `vil-302-declines-*` eval fixtures). If the newest ask is itself two
+  // offers, the second read is still `ambiguous`, and Hale asks which.
+  const whole = await readOpenQuestions(deps, turn, questions);
+  const latest =
+    whole.status === 'unresolved' && whole.reason === 'ambiguous' ? latestAsked(questions) : null;
+  const read = latest ? await readOpenQuestions(deps, turn, latest) : whole;
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
   const reading = approvalForCalendarYes(questions, read);
@@ -2103,6 +2130,29 @@ async function resolveNaturalReply(
       handler: owner.name,
     },
   };
+}
+
+/**
+ * One model read of the parent's words against these questions.
+ *
+ * Calendar offers are read by the calendar model, including when the reply is not
+ * English. A draft the reviewer has not cleared does not count as a competing YES
+ * (VIL-513): it used to force the general resolver, which returned not_answerable
+ * and the coach drafted the same add again.
+ */
+async function readOpenQuestions(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  questions: readonly OpenQuestion[],
+): Promise<ReplyReading> {
+  const calendarQuestions = questionsForCalendarReader(questions);
+  return calendarQuestions
+    ? deps.calendarOffers.readParent({
+        text: turn.body,
+        questions: calendarQuestions,
+        now: turn.now,
+      })
+    : deps.replyResolver.read({ text: turn.body, questions });
 }
 
 /**
@@ -3257,6 +3307,8 @@ async function sendReply(
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaPart['kind'][];
     };
+    /** What the VIL-473 effect read sees beside the two bodies. Absent: no effect. */
+    effectRead?: { audience: 'direct' | 'group' };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -3301,17 +3353,53 @@ async function sendReply(
   }
   const voiced = await voiceMemoFor(deps, args);
   if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+    let edit:
+      | {
+          decider: ReturnType<typeof sharedLinqEditDecider>;
+          candidates: Awaited<ReturnType<typeof listEditableLinqSends>>;
+          audience: 'direct' | 'group';
+          conversationId: string;
+        }
+      | undefined;
+    if (linqMessageEditEnabled() && args.conversationId) {
+      try {
+        edit = {
+          decider: sharedLinqEditDecider(),
+          candidates: await listEditableLinqSends(deps.database, {
+            familyId: args.job.family_id,
+            conversationId: args.conversationId,
+            chatId: args.route.chatId,
+            now: deps.now(),
+            inboundAt: new Date(args.job.received_at),
+          }),
+          audience: args.job.in_group === false ? 'direct' : 'group',
+          conversationId: args.conversationId,
+        };
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq edit: candidates unread; the follow-up still goes out',
+        );
+      }
+    }
     try {
       const moment = await considerLinqReply(deps.database, {
         route: args.route,
         inboundBody: args.inboundBody,
         outboundBody: args.body,
         templateKey: args.templateKey ?? null,
+        medicalReplySource: args.medicalSource ?? null,
+        replySource: args.replySource ?? null,
+        relatedConversationId: args.conversationId,
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(edit ? { edit } : {}),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
+          : {}),
+        ...(args.effectRead
+          ? { effect: { decider: sharedLinqEffectDecider(), ...args.effectRead } }
           : {}),
       });
       if (moment.handled) {
@@ -3325,12 +3413,55 @@ async function sendReply(
         return moment.channelMessageId;
       }
     } catch (err) {
+      // The deadline already ended this attempt. A plain send here would be a
+      // second reply once the drain re-drives the turn.
+      if (isTurnTimeout(err) || turnSignalAborted()) throw err;
+      // Linq already has the reply (or may), and its outbound row and audit row
+      // did not land. Another POST would put a plain copy beside it. The turn is
+      // claimed and threaded, then the error goes on up: like a plain reply whose
+      // ledger insert throws, the turn is recorded as broke_after_answering and
+      // never answered twice.
+      if (err instanceof LinqMomentDeliveredError) {
+        deps.log.error(
+          { providerMessageId: err.providerMessageId },
+          'linq moment: the reply landed; the ledger did not',
+        );
+        if (args.claim) {
+          try {
+            await args.claim();
+          } catch (claimErr) {
+            deps.log.warn(
+              { code: claimErr instanceof Error ? claimErr.name : 'unknown' },
+              'linq moment: the reply landed; the answer was not claimed',
+            );
+          }
+        }
+        if (args.conversationId && err.threadBody) {
+          try {
+            await appendMessage(args.conversationId, 'assistant', err.threadBody, deps.database);
+          } catch (threadErr) {
+            deps.log.warn(
+              { code: threadErr instanceof Error ? threadErr.name : 'unknown' },
+              'linq moment: the reply landed; the thread was not updated',
+            );
+          }
+        }
+        await mirrorActivityDecision(deps, args);
+        throw err;
+      }
+      // VIL-479 (Devin BUG_0003): a turn that expired while the edit read ran is over.
+      // It must not edit a bubble, and it must not send the follow-up either.
+      if (isTurnTimeout(err)) throw err;
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
     }
+    assertTurnLive();
   }
+  // A moment that declined, or never ran, still must not send after the deadline.
+  // A voice memo already posted is the reply; do not throw away its claim.
+  if (!voiced) assertTurnLive();
   const sent = voiced ?? (await deps.transport.send({ route: args.route, body: args.body }));
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
   // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,
@@ -3402,6 +3533,12 @@ async function sendReply(
       childId: null,
       topic: null,
       source: args.threadSource ?? null,
+      ...(!voiced &&
+      linqMessageEditEnabled() &&
+      args.route.channel === 'imessage' &&
+      sent.providerMessageId
+        ? { providerMessageId: sent.providerMessageId }
+        : {}),
     });
   }
 

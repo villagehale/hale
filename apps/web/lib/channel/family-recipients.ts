@@ -40,6 +40,7 @@ export interface FamilyTextRecipient {
   /** THIS recipient's own wall clock — what the gate's quiet-hours check reads. */
   timeZone: string;
   role: FamilyTextRole;
+  language?: string;
 }
 
 /**
@@ -62,6 +63,7 @@ export async function loadFamilyTextRecipients(
     .select({
       parentUserId: schema.users.id,
       timeZone: schema.users.timezone,
+      language: schema.users.locale,
       role: schema.familyMembers.role,
     })
     .from(schema.familyMembers)
@@ -95,5 +97,10 @@ export async function loadFamilyTextRecipients(
           ? -1
           : 1,
     )
-    .map((row) => ({ parentUserId: row.parentUserId, timeZone: row.timeZone, role: row.role }));
+    .map((row) => ({
+      parentUserId: row.parentUserId,
+      timeZone: row.timeZone,
+      role: row.role,
+      language: row.language,
+    }));
 }

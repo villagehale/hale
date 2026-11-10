@@ -1,13 +1,8 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
-import {
-  followUpProcessViolation,
-  judgeFollowUpProcess,
-} from '~/lib/channel/coach/find-reasoning-judge';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
 import type { EmptySearch } from './lane';
@@ -55,6 +50,8 @@ export const MAX_FOLLOWUP_ATTEMPTS = 3;
 
 const MAX_TOKENS = 1000;
 
+const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
+
 /**
  * Told to the model only when options were held back. It is an instruction, not a
  * sentence to send: the parent-facing words are the model's, in whatever language the
@@ -69,16 +66,11 @@ export type FollowUpFallback =
   | 'model_unreachable'
   | 'model_failed'
   | 'gates_exhausted'
-  | 'process_unjudged'
   | 'quiet_hours'
   | 'coparent_ask';
 
-/**
- * `mentionsWatch` is the model's own `commits_to_return` for the text it wrote: whether it
- * tells the parent Hale will come back. Delivery logs a watch row whose text does not.
- */
 export type FollowUpComposeOutcome =
-  | { status: 'composed'; message: string; mentionsWatch: boolean }
+  | { status: 'composed'; message: string; commitsToReturn?: boolean }
   | { status: 'deferred'; reason: FollowUpFallback; violations: readonly string[] };
 
 /**
@@ -127,7 +119,7 @@ export interface FollowUpGrounding {
   /**
    * IS THERE A CONTINUATION ROW BEHIND THIS MESSAGE — the sweep has already registered a
    * fresh `activity_followup` promise against the text about to go out, so the message
-   * MAY say so, and without one it may not.
+   * must SAY so.
    *
    * The two halves are one fact on purpose. On 2026-08-22 the sweep fulfilled its
    * promise, sent "Want me to check back once they're up?", and wrote nothing down: the
@@ -149,6 +141,12 @@ export interface FollowUpGrounding {
    * every message with a find is composed from exactly the payload it always was.
    */
   searched?: EmptySearch;
+  /**
+   * A minimum age the opened page stated, when nothing on it fits this stage.
+   * The quote and the page it was read from. Omitted from the request when absent,
+   * so a follow-up that has a pick keeps the recording it already has.
+   */
+  pageAge?: { quote: string; sourceUrl: string } | null;
 }
 
 export interface FollowUpComposer {
@@ -175,6 +173,24 @@ const noteJsonSchema = {
   },
   required: ['message', 'commits_to_return'],
 } as const;
+
+/**
+ * Evidence the composer is shown.
+ *
+ * A null occurrence page or season is the page not having named one. The key stays
+ * off the request, which is the same question the follow-up recordings already
+ * answer. A url or a season the page did name stays, and that request is a new one.
+ */
+function composerEvidence(
+  evidence: NonNullable<FollowUpPick['evidence']>,
+): NonNullable<FollowUpPick['evidence']> {
+  const { occurrenceUrl, season, ...rest } = evidence;
+  return {
+    ...rest,
+    ...(occurrenceUrl != null ? { occurrenceUrl } : {}),
+    ...(season != null ? { season } : {}),
+  };
+}
 
 /**
  * Shared with the eval, which REPLICATES this request shape. It carries the picks and the
@@ -218,18 +234,31 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     // is not silence — `picks_empty` is the one fact this message is about, and an omitted
     // key reads to a model as a field it may fill in (rule #11).
     ...(grounding.picks.length === 0
-      ? {
-          picks_empty: true,
-          ...(grounding.searched
-            ? { searched: { town: grounding.searched.town, notes: grounding.searched.notes } }
-            : {}),
-        }
+      ? { picks_empty: true }
       : { page_evidence: grounding.pageEvidence }),
+    ...(grounding.searched &&
+    (grounding.picks.length === 0 || grounding.searched.references?.length)
+      ? {
+          searched: {
+            town: grounding.searched.town,
+            ...(grounding.searched.references ? { references: grounding.searched.references } : {}),
+            ...(grounding.searched.checkedSources
+              ? { checkedSources: grounding.searched.checkedSources }
+              : {}),
+          },
+        }
+      : {}),
     watch: grounding.watch,
   };
   if (grounding.moreRemaining > 0) {
     payload.more_remaining = grounding.moreRemaining;
     payload.more_remaining_instruction = MORE_REMAINING_INSTRUCTION;
+  }
+  if (grounding.picks.length === 0 && grounding.pageAge) {
+    payload.page_age = {
+      quote: grounding.pageAge.quote,
+      source_url: grounding.pageAge.sourceUrl,
+    };
   }
   payload.picks = grounding.picks.map((pick) => ({
     name: pick.name,
@@ -239,6 +268,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     registration: pick.registration ?? null,
     source_name: pick.sourceName,
     source: pick.source,
+    ...(pick.evidence ? { evidence: composerEvidence(pick.evidence) } : {}),
   }));
   return JSON.stringify(payload);
 }
@@ -444,7 +474,7 @@ export function followUpViolations(
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  if (hasLinkShape(text)) {
+  if (LINK_SHAPE.test(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
   if (claimsVerification(text)) {
@@ -467,20 +497,31 @@ export function followUpViolations(
       'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
     );
   }
-  // A PROMISE WITH NO ROW BEHIND IT IS FALSE. The first live re-recording of this
-  // composer, handed a complete find and `watch: false`, wrote "I'll keep looking and
-  // text you what it says" anyway — the 2026-08-20 defect verbatim. The other direction
-  // is not a gate: when a row exists, whether the watch is worth a sentence is the
-  // model's call, and forcing one ended follow-ups on bookkeeping (VIL-571).
+  // BOTH DIRECTIONS, and the second one is not symmetry for its own sake. The first live
+  // re-recording of this composer, handed a complete find and `watch: false`, wrote
+  // "I'll keep looking and text you what it says" anyway — a promise to come back with
+  // no row behind it, which is the 2026-08-20 defect verbatim, produced by the very
+  // change that was fixing it. A sentence claiming a commitment is only true when the
+  // commitment exists, and `watch` is the one value that knows.
   // AND THE COMING-BACK SENTENCE CARRIES THE SAME ATTRIBUTION AS THE GAP SENTENCE.
   if (waitsOnAPageItCouldNotRead(text)) {
     violations.push(
       'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     );
   }
-  if (commitsToReturn && !grounding.watch) {
+  if (grounding.watch !== commitsToReturn) {
+    // THE EXAMPLE IS PAGE-STATE-AWARE OR THE TWO CORRECTIONS FIGHT: under
+    // `page_has_schedule` the page contradicts the very sentence this one used to hand
+    // the model as the remedy, and a composer bounced between two contradictory fixes
+    // spends its three attempts and sends nothing.
     violations.push(
-      'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
+      grounding.watch
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
+            grounding.pageEvidence === 'page_has_schedule'
+              ? 'it can get to the details'
+              : 'the details post'
+          }.`
+        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     );
   }
   return violations;
@@ -526,16 +567,11 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
 
         violations = followUpViolations(value.message, grounding, value.commits_to_return);
         if (violations.length === 0) {
-          // THE FIND AND THE NEXT STEP, NOT THE RESEARCH LOG (VIL-571). Read by a model,
-          // in any language, only once the mechanical gates pass; a judge that could not
-          // read the draft sends nothing rather than letting it through unread.
-          const body = plainText(value.message);
-          const judged = await judgeFollowUpProcess(() => resolved, body);
-          if (judged.verdict === 'unjudged') return deferred('process_unjudged', [judged.reason]);
-          if (judged.verdict === 'clean') {
-            return { status: 'composed', message: body, mentionsWatch: value.commits_to_return };
-          }
-          violations = [followUpProcessViolation(judged.sentences)];
+          return {
+            status: 'composed',
+            message: plainText(value.message),
+            commitsToReturn: value.commits_to_return,
+          };
         }
         console.error(
           { attempt, picks: grounding.picks.length, violations: violations.length },
@@ -549,7 +585,7 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
 
 function deferred(reason: FollowUpFallback, violations: readonly string[]): FollowUpComposeOutcome {
   console.error(
-    { reason, violations: violations.length },
+    { reason, violations },
     'activity follow-up: deferring rather than sending a canned line',
   );
   return { status: 'deferred', reason, violations };

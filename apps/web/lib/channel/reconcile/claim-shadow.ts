@@ -54,8 +54,9 @@ export type ClaimShadowLane =
   | 'activity_followup'
   | 'followup_ask'
   | 'spot_open'
+  | 'registration_sequence'
   | 'dispatch'
-  /** A gated sweep that names no lane: today only the registration leg. */
+  /** A gated sweep that names no lane. */
   | 'sweep_unlabelled';
 
 export type ClaimShadowStart = 'off' | 'busy' | 'started';

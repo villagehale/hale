@@ -1,17 +1,22 @@
-import type { AgentClient } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import {
   type FollowUpGrounding,
   type FollowUpPick,
-  MAX_FOLLOWUP_ATTEMPTS,
   claimsVerification,
-  createFollowUpComposer,
   followUpUserMessage,
   followUpViolations,
   topPickLeads,
   waitsOnAPageItCouldNotRead,
 } from './followup-note';
+import { asksTheParent } from './followup-note';
 import type { ActivityPick } from './lane';
+
+it('does not mistake a checked source URL query for an approval question', () => {
+  expect(
+    asksTheParent('Current dates remain unconfirmed. https://example.org/events?topic=kids#dates'),
+  ).toBe(false);
+  expect(asksTheParent('Would you like that? https://example.org/events?topic=kids')).toBe(true);
+});
 
 /**
  * THE TWO GATES THE FOLLOW-UP TEXT CANNOT SHIP WITHOUT PASSING.
@@ -372,6 +377,28 @@ describe('the payload the composer is handed', () => {
     ]);
     expect(payload.picks_empty).toBe(true);
     expect(payload.picks).toEqual([]);
+    expect(payload.page_age).toBeUndefined();
+  });
+
+  it('an empty read that states ages 8+ hands the writer that quote and its page', () => {
+    const payload = JSON.parse(
+      followUpUserMessage(
+        grounding({
+          picks: [],
+          pageEvidence: 'page_has_schedule',
+          watch: true,
+          pageAge: {
+            quote: 'FOIL FUNDAMENTALS (ages 8 - 12)',
+            sourceUrl: 'https://www.northfield-fencing.example/youth-programs',
+          },
+        }),
+      ),
+    );
+    expect(payload.page_age).toEqual({
+      quote: 'FOIL FUNDAMENTALS (ages 8 - 12)',
+      source_url: 'https://www.northfield-fencing.example/youth-programs',
+    });
+    expect(payload.page_evidence).toBeUndefined();
   });
 
   it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
@@ -542,15 +569,12 @@ describe('the uncertain sentence', () => {
 });
 
 describe('a continuation row must be spoken for', () => {
-  /**
-   * THE MODEL DECIDES WHETHER THE WATCH IS WORTH SAYING. A follow-up that hands over the
-   * find and leaves the watch unspoken is not a false message: the row exists either way,
-   * and a forced "Hale will keep watching" was ending texts on bookkeeping.
-   */
-  it('a watch row the message does not mention is the model’s call, not a refusal', () => {
+  it('THE DEFECT MIRRORED: a watch row with no sentence claiming it is refused', () => {
     const silent = `${PICK.name} runs a toddler class for under-3s - their site says.`;
 
-    expect(gates(silent, grounding({ watch: true }), false)).toEqual([]);
+    expect(gates(silent, grounding({ watch: true }), false).join(' ')).toContain(
+      'Hale has already committed to going back',
+    );
   });
 
   it('POSITIVE CONTROL - with no watch row, the same silent message is fine', () => {
@@ -595,9 +619,11 @@ describe("the coming-back fact is the model's, in any language", () => {
     ['zh', zhWatch],
     ['ar', arWatch],
   ])(
-    'a %s message the model says commits to nothing still passes when the row exists',
+    'a %s message the model says commits to nothing is refused when the row exists',
     (_label, body) => {
-      expect(gates(body, grounding({ watch: true }), false)).toEqual([]);
+      expect(gates(body, grounding({ watch: true }), false).join(' ')).toContain(
+        'Hale has already committed to going back',
+      );
     },
   );
 
@@ -613,7 +639,7 @@ describe("the coming-back fact is the model's, in any language", () => {
   it('reads no words: the same English body is judged only by the fact it is handed', () => {
     const body = `${PICK.name} runs Saturdays - their site says. I'll keep watching and text you when they post.`;
     expect(gates(body, grounding({ watch: true }), true)).toEqual([]);
-    expect(gates(body, grounding({ watch: false }), true)).not.toEqual([]);
+    expect(gates(body, grounding({ watch: true }), false)).not.toEqual([]);
   });
 });
 
@@ -627,10 +653,149 @@ describe('an empty search tells the composer where it looked', () => {
     moreRemaining: 0,
   };
 
-  it('carries the area and the research only when there are no picks', () => {
+  it('keeps uncertain references beside supported picks without exposing research notes', () => {
+    const reference = {
+      name: 'Family workshop',
+      sourceName: 'Example Library',
+      sourceUrl: 'https://library.example/workshop',
+      ageFit: null,
+      when: null,
+      price: null,
+      status: 'unconfirmed' as const,
+      evidence: {
+        program: 'Family workshop',
+        age: null,
+        sessions: [],
+        schedule: null,
+        price: null,
+        history: null,
+        windowConfirmed: false,
+      },
+    };
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [PICK],
+        searched: {
+          ...searched,
+          notes: 'Rejected research says $999 and ages 12-18.',
+          references: [reference],
+          checkedSources: [reference.sourceUrl],
+        },
+      }),
+    );
+    expect(payload.picks.map((pick: ActivityPick) => pick.name)).toEqual([PICK.name]);
+    expect(payload.page_evidence).toBe(base.pageEvidence);
+    expect(payload).not.toHaveProperty('picks_empty');
+    expect(payload.searched).toEqual({
+      town: searched.town,
+      references: [reference],
+      checkedSources: [reference.sourceUrl],
+    });
+    expect(JSON.stringify(payload)).not.toContain('$999');
+    expect(payload.searched).not.toHaveProperty('notes');
+    expect(
+      followUpUserMessage({ ...base, picks: [PICK], searched: { ...searched, references: [] } }),
+    ).toBe(followUpUserMessage({ ...base, picks: [PICK] }));
+  });
+
+  it('never returns rejected research facts to the writer through empty-search notes', () => {
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [],
+        searched: {
+          ...searched,
+          notes: 'Cartwheels costs $140',
+          references: [],
+          checkedSources: ['https://gym.example/classes'],
+        },
+      }),
+    );
+    expect(payload.searched).toEqual({
+      town: searched.town,
+      references: [],
+      checkedSources: ['https://gym.example/classes'],
+    });
+    expect(JSON.stringify(payload)).not.toContain('$140');
+  });
+
+  it('keeps fact evidence alongside main’s language and held-option handoff', () => {
+    const evidence = {
+      program: 'Family storytime',
+      age: 'ages 2-5',
+      sessions: ['October 23 at 10:30'],
+      schedule: null,
+      price: null,
+      history: null,
+      windowConfirmed: true,
+    };
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        language: 'fr-CA',
+        moreRemaining: 2,
+        picks: [{ ...PICK, evidence }],
+      }),
+    );
+    expect(payload.language).toBe('fr-CA');
+    expect(payload.more_remaining).toBe(2);
+    expect(payload.picks[0].evidence).toEqual(evidence);
+  });
+
+  it('omits a null occurrence page and season, and keeps one the page named', () => {
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [
+          {
+            ...PICK,
+            evidence: {
+              program: 'Family storytime',
+              age: 'ages 2-5',
+              sessions: [],
+              schedule: null,
+              price: null,
+              history: null,
+              windowConfirmed: false,
+              occurrenceUrl: null,
+              season: null,
+            },
+          },
+        ],
+      }),
+    );
+    expect(payload.picks[0].evidence).not.toHaveProperty('occurrenceUrl');
+    expect(payload.picks[0].evidence).not.toHaveProperty('season');
+    const named = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [
+          {
+            ...PICK,
+            evidence: {
+              program: 'Family storytime',
+              age: 'ages 2-5',
+              sessions: [],
+              schedule: null,
+              price: null,
+              history: null,
+              windowConfirmed: false,
+              occurrenceUrl: 'https://gym.example/fall',
+              season: 'automne',
+            },
+          },
+        ],
+      }),
+    );
+    expect(named.picks[0].evidence.occurrenceUrl).toBe('https://gym.example/fall');
+    expect(named.picks[0].evidence.season).toBe('automne');
+  });
+
+  it('carries the area, not unvalidated research, when there are no picks', () => {
     const empty = JSON.parse(followUpUserMessage({ ...base, picks: [], searched }));
     expect(empty.picks_empty).toBe(true);
-    expect(empty.searched).toEqual(searched);
+    expect(empty.searched).toEqual({ town: searched.town });
   });
 
   it('leaves a message with a find composed from the payload it always had', () => {
@@ -644,147 +809,5 @@ describe('an empty search tells the composer where it looked', () => {
     };
     const withFind = followUpUserMessage({ ...base, picks: [pick], searched });
     expect(withFind).toBe(followUpUserMessage({ ...base, picks: [pick] }));
-  });
-});
-
-/**
- * The compose loop's mechanics around the process judge (VIL-571). Whether a real model
- * flags the right sentences is the cached find-reasoning-judge eval; this client never
- * leaves the process. It answers the composer with the next scripted draft and the judge
- * with the next scripted verdict, and records what each was asked.
- */
-function scriptedClient(drafts: string[], verdicts: unknown[], commitsToReturn = false) {
-  const asked = { composer: [] as string[], judge: [] as string[] };
-  const client = () =>
-    ({
-      messages: {
-        async create(req: {
-          messages?: Array<{ content?: string }>;
-          tools?: Array<{ name: string }>;
-          output_config?: { format?: { schema?: { required?: string[] } } };
-        }) {
-          const user = req.messages?.[0]?.content ?? '';
-          const isJudge =
-            req.tools?.[0]?.name === 'followup_process' ||
-            (req.output_config?.format?.schema?.required ?? []).includes('process_sentences');
-          const body = isJudge
-            ? verdicts[asked.judge.push(user) - 1]
-            : {
-                message: drafts[asked.composer.push(user) - 1],
-                commits_to_return: commitsToReturn,
-              };
-          const content = req.tools
-            ? [{ type: 'tool_use', id: 'tool-1', name: req.tools[0]?.name, input: body }]
-            : [{ type: 'text', text: JSON.stringify(body) }];
-          return {
-            content,
-            usage: { input_tokens: 5, output_tokens: 5 },
-            stop_reason: req.tools ? 'tool_use' : 'end_turn',
-          };
-        },
-      },
-    }) as unknown as AgentClient;
-  return { client, asked };
-}
-
-describe('a follow-up says the find, not the research log', () => {
-  const find = `${PICK.name} runs Saturdays 9:15, $142 - their site says.`;
-  const log = 'I also checked two other gyms and neither had room.';
-  const flagged = { reason: 'listings set aside', process_sentences: [log] };
-  const clean = { reason: 'a find', process_sentences: [] };
-
-  it('a draft the judge says reports the search is redrafted with the sentence named', async () => {
-    const { client, asked } = scriptedClient([`${find} ${log}`, find], [flagged, clean]);
-
-    const outcome = await createFollowUpComposer(client).compose(grounding());
-
-    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
-    expect(asked.judge).toEqual([
-      JSON.stringify({ draft: `${find} ${log}` }),
-      JSON.stringify({ draft: find }),
-    ]);
-    expect(JSON.parse(asked.composer[1] ?? '{}').rejectedLastAttempt.join(' ')).toContain(log);
-  });
-
-  it('POSITIVE CONTROL - a clean first draft is sent after one judge read', async () => {
-    const { client, asked } = scriptedClient([find], [clean]);
-
-    const outcome = await createFollowUpComposer(client).compose(grounding());
-
-    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
-    expect(asked.composer).toHaveLength(1);
-    expect(asked.judge).toHaveLength(1);
-  });
-
-  it('sends nothing when every redraft still reports the search', async () => {
-    const drafts = Array.from({ length: MAX_FOLLOWUP_ATTEMPTS }, () => `${find} ${log}`);
-    const verdicts = drafts.map(() => flagged);
-    const { client } = scriptedClient(drafts, verdicts);
-
-    const outcome = await createFollowUpComposer(client).compose(grounding());
-
-    expect(outcome.status).toBe('deferred');
-    expect(outcome.status === 'deferred' && outcome.reason).toBe('gates_exhausted');
-  });
-
-  it('sends nothing, under a named reason, when the judge cannot read the draft', async () => {
-    const { client } = scriptedClient([find], [{ reason: 'x', process_sentences: 'none' }]);
-
-    const outcome = await createFollowUpComposer(client).compose(grounding());
-
-    expect(outcome).toEqual({
-      status: 'deferred',
-      reason: 'process_unjudged',
-      violations: ['judge_failed'],
-    });
-  });
-
-  it('never hands the composer a sentence the draft does not contain', async () => {
-    const invented = 'Add their booking link and say the spot is held.';
-    const { client, asked } = scriptedClient(
-      [`${find} ${log}`, find],
-      [{ reason: 'two', process_sentences: [` ${log} `, invented] }, clean],
-    );
-
-    const outcome = await createFollowUpComposer(client).compose(grounding());
-
-    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
-    const rejected = JSON.parse(asked.composer[1] ?? '{}').rejectedLastAttempt.join(' ');
-    expect(rejected).toContain(log);
-    expect(rejected).not.toContain(invented);
-  });
-
-  it('sends nothing when every sentence the judge names is invented', async () => {
-    const { client, asked } = scriptedClient(
-      [find],
-      [{ reason: 'x', process_sentences: ['I searched nine sites before this one.'] }],
-    );
-
-    const outcome = await createFollowUpComposer(client).compose(grounding());
-
-    expect(outcome).toEqual({
-      status: 'deferred',
-      reason: 'process_unjudged',
-      violations: ['not_verbatim'],
-    });
-    expect(asked.composer).toHaveLength(1);
-  });
-});
-
-describe('the composed text says whether it mentions the watch', () => {
-  const find = `${PICK.name} runs Saturdays 9:15, $142 - their site says.`;
-  const clean = { reason: 'a find', process_sentences: [] };
-
-  it('a watch the text never mentions is reported as not mentioned', async () => {
-    const { client } = scriptedClient([find], [clean], false);
-    const outcome = await createFollowUpComposer(client).compose(grounding({ watch: true }));
-    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
-  });
-
-  it('POSITIVE CONTROL - a text that says Hale will come back is reported as mentioning it', async () => {
-    const body = `${find} I'll keep watching for the fall times and text you.`;
-    const { client } = scriptedClient([body], [clean], true);
-    const outcome = await createFollowUpComposer(client).compose(grounding({ watch: true }));
-    expect(outcome).toEqual({ status: 'composed', message: body, mentionsWatch: true });
   });
 });

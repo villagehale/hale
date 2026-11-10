@@ -1,5 +1,7 @@
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { speak } from '~/lib/channel/spoken-line';
 
 /**
@@ -100,18 +102,6 @@ export async function groupActivityHowItWent(
 }
 
 /**
- * Sloane, locked. The group does not guess who is travelling.
- * `Trip: {city}, {days}. A couple of things on for {kids}:`
- */
-export function groupTravelBriefOpening(
-  city: string,
-  days: string,
-  kids: string,
-): Promise<string | null> {
-  return speak({ purpose: 'group_travel_opening', language: null, facts: { city, days, kids } });
-}
-
-/**
  * Sloane, locked. Said in the group when a parent leaves.
  * An unknown name is `Your co-parent` / `Votre co-parent`.
  */
@@ -169,4 +159,11 @@ const BOTH_FREE_ASK =
 
 export function matchBothFreeAsk(body: string): boolean {
   return BOTH_FREE_ASK.test(body);
+}
+
+/** Production matcher. Off, the regex. On, a Haiku read; unread is a miss. */
+export async function matchBothFreeAskSweep(body: string): Promise<boolean> {
+  if (!modelReadSweepEnabled()) return matchBothFreeAsk(body);
+  const reading = await sharedMeaningScreen().read({ screen: 'both_free', text: body });
+  return reading?.hit === true;
 }

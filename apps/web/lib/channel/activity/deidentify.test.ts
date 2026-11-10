@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { FIXTURE_CITY, FIXTURE_POSTAL } from '~/lib/testing/fixture-postal';
 import {
   MAX_QUERY_FIELD_CHARS,
   deidentifyActivityQuery,
   deidentifyActivitySubject,
   refusalSentence,
 } from './deidentify';
-
 /**
  * PHASE 0 — the rule-#1 gate in front of a cross-border search.
  *
@@ -18,7 +18,7 @@ import {
 const HOUSEHOLD = ['Noah', 'Chloé', 'Sam'];
 
 const base = {
-  town: 'Halton Hills',
+  town: FIXTURE_CITY,
   stage: 'toddler' as const,
   householdNames: HOUSEHOLD,
 };
@@ -39,6 +39,25 @@ describe('a name never crosses the border', () => {
     expect(label).toBeTypeOf('string');
   });
 
+  it.each([
+    ['a name in a script written without spaces', ['小明'], '小明的游泳课'],
+    ['a name typed without its accent', ['Zoé'], 'swim lessons for Zoe'],
+  ])('refuses %s, by the matcher the intake searches use', (_label, householdNames, subject) => {
+    expect(deidentifyActivityQuery({ ...base, householdNames, subject })).toEqual({
+      ok: false,
+      refusal: 'names_a_person',
+    });
+  });
+
+  it('POSITIVE CONTROL - the same households let a subject without the name through', () => {
+    for (const [householdNames, subject] of [
+      [['小明'], '幼儿游泳课'],
+      [['Zoé'], 'toddler swim lessons'],
+    ] as const) {
+      expect(deidentifyActivityQuery({ ...base, householdNames, subject }).ok).toBe(true);
+    }
+  });
+
   it('POSITIVE CONTROL - lets an ordinary subject through the same call', () => {
     const result = deidentifyActivityQuery({ ...base, subject: 'toddler gymnastics' });
     expect(result).toEqual({
@@ -46,7 +65,7 @@ describe('a name never crosses the border', () => {
       query: {
         subject: 'toddler gymnastics',
         window: null,
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
       },
     });
@@ -67,11 +86,11 @@ describe('what is stripped rather than refused', () => {
   it('strips an exact age, a postal code and a phone number', () => {
     const result = deidentifyActivityQuery({
       ...base,
-      subject: 'gymnastics for 18 months, L7G 4S6, call 416-555-0100',
+      subject: `gymnastics for 18 months, ${FIXTURE_POSTAL}, call 416-555-0100`,
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.query.subject).not.toMatch(/18 months|L7G|416/);
+    expect(result.query.subject).not.toMatch(/18 months|K7L|416/);
     // POSITIVE CONTROL on the same string: the useful part survives the scrub.
     expect(result.query.subject).toContain('gymnastics');
   });
@@ -91,21 +110,18 @@ describe('what is stripped rather than refused', () => {
  */
 describe('a street-level location never crosses the border', () => {
   it.each([
-    ['the audit probe', 'toddler gym near 42 Wallace St Georgetown', ['42', 'Wallace']],
+    ['the audit probe', `toddler gym near 42 Wallace St ${FIXTURE_CITY}`, ['42', 'Wallace']],
     ['an avenue', 'swim lessons at 121 Maple Ave', ['121', 'Maple']],
     [
       'a street and the postal code beside it',
-      'drop-in at 12 Guelph Street L7G 4A1',
-      ['12 Guelph', 'L7G'],
+      `drop-in at 12 Guelph Street ${FIXTURE_POSTAL}`,
+      ['12 Guelph', 'K7L'],
     ],
+    ['a street and the postal code beside it', 'drop-in at 12 Guelph Street L7G 4A1', ['12 Guelph', 'L7G']],
     ['a named school', 'after school care at St. Brigid Catholic School', ['Brigid', 'Catholic']],
     // The forms below crossed intact while the four formal suffixes were the whole rule,
     // and each names the building a child is in five days a week just as precisely.
-    [
-      'a lowercase head-noun',
-      'gym near St. Catherine of Alexandria school',
-      ['Catherine', 'Alexandria'],
-    ],
+    ['a lowercase head-noun', 'gym near St. Catherine of Alexandria school', ['Catherine', 'Alexandria']],
     ['a suffix-less elementary', 'swim lessons by Holy Cross Elementary', ['Holy', 'Cross']],
     ['a Montessori', 'toddler music at Pineview Montessori', ['Pineview', 'Montessori']],
     ['an academy', 'after-care at Georgetown Christian Academy', ['Christian', 'Academy']],
@@ -144,21 +160,15 @@ describe('a street-level location never crosses the border', () => {
       query: {
         subject: 'Cartwheel Gym parent and tot classes',
         window: 'fall term',
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
       },
     });
   });
 
   it('POSITIVE CONTROL - "after school" is an activity, not a school', () => {
-    const result = deidentifyActivityQuery({
-      ...base,
-      subject: 'after school program for toddlers',
-    });
-    expect(result).toMatchObject({
-      ok: true,
-      query: { subject: 'after school program for toddlers' },
-    });
+    const result = deidentifyActivityQuery({ ...base, subject: 'after school program for toddlers' });
+    expect(result).toMatchObject({ ok: true, query: { subject: 'after school program for toddlers' } });
   });
 });
 
@@ -229,6 +239,5 @@ describe('the shape of what may be sent', () => {
     expect(deidentifyActivitySubject('gymnastics for Noah', HOUSEHOLD)).toEqual({
       ok: false,
       refusal: 'names_a_person',
-    });
-  });
+    });  });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single pick is real and local: Halton Hills Gymnastics Centre in Georgetown, sourced from the venue's own page. It fits the stage (under 4, with a parent) and carries specific days, a start date and a price taken verbatim from the page. The message leads with it by name and attributes it ('their site says') without claiming confirmation. It is plain text with no link and no question. With watch false, it correctly makes no coming-back promise, and it makes no negative claim, so pageEvidence is not engaged. All times, dates and prices match the pick, and the closure note is accurate. Deduction: the same page lists the coached Parent and Tot class (18 months to 3.11 years, 30 min, Fall session Sept 12 to Dec 18, Tue/Wed/Thu/Sat/Mon/Fri). That class directly matches the requested subject, yet it was neither picked nor mentioned, so a real, relevant find goes unspoken.",
+    "score": 4
+  }
+}

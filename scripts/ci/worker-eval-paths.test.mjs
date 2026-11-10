@@ -259,6 +259,8 @@ describe('ci.yml wiring', () => {
       'eval:medical-symptom',
       'eval:turn-apology',
       'eval:holding-line',
+      'eval:holding-line-judge',
+      'eval:holding-line-judge:dry',
       'eval:followup-voice',
       'eval:identity-ask',
       'eval:reminder',
@@ -292,5 +294,14 @@ describe('ci.yml wiring', () => {
     expect(at).toBeGreaterThan(-1);
     expect(evals.slice(Math.max(0, at - 250), at)).not.toContain('continue-on-error');
     expect(jobBlock('verify')).not.toContain('eval:name-takeback');
+  });
+
+  it('runs the holding-line judge eval as a hard cached-only gate', () => {
+    const evals = jobBlock('worker-evals');
+    const at = evals.indexOf('run: pnpm --filter @hale/worker eval:holding-line-judge\n');
+    expect(at).toBeGreaterThan(-1);
+    const stepStart = evals.lastIndexOf('- name:', at);
+    expect(evals.slice(stepStart, at)).toContain('Holding-line judge (cached-only)');
+    expect(evals.slice(stepStart, at)).not.toContain('continue-on-error');
   });
 });

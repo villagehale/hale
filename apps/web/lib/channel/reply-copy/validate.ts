@@ -6,7 +6,9 @@
  * list lines never come through here. Group sync and the list lines stay fixed.
  */
 
-import { placeTokensIn } from '~/lib/channel/place-token';
+import { placeTokensIn } from '@hale/types';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 
 export type ReplyCopyLanguage = string;
 export type ReplyCopyRole = 'prose' | 'opening' | 'closing';
@@ -105,7 +107,8 @@ const FREE = new Set([
   'the',
 ]);
 
-const BANNED: RegExp[] = [
+/** Meaning: claims and self-labels. Screened by Haiku when the sweep is on. */
+const MEANING_BANNED: RegExp[] = [
   /\bbooked\b/i,
   /\benrolled\b/i,
   /\bsigned up\b/i,
@@ -115,8 +118,10 @@ const BANNED: RegExp[] = [
   /\bautomation\b/i,
   /\bAI\b/,
   /\bA\.I\.\b/,
-  /[{}]/,
 ];
+
+/** Shape: injection braces. Not meaning. */
+const SHAPE_BANNED: RegExp[] = [/[{}]/];
 
 const WORD = /[A-Za-z][A-Za-z'.-]*/g;
 
@@ -171,14 +176,26 @@ function inventedName(text: string, facts: readonly string[]): boolean {
   return false;
 }
 
+export interface ValidateReplyCopyOptions {
+  /** Skip the banned-phrase word list. Used when the Haiku screen already ran. */
+  skipMeaning?: boolean;
+}
+
 /**
  * Null when the text may send. Otherwise the first rule it broke, in a fixed
  * order, so a test can pin one failure at a time.
  */
-export function validateReplyCopy(text: string, check: ReplyCopyCheck): ReplyCopyFailure | null {
+export function validateReplyCopy(
+  text: string,
+  check: ReplyCopyCheck,
+  options: ValidateReplyCopyOptions = {},
+): ReplyCopyFailure | null {
   const trimmed = text.trim();
   if (!trimmed) return 'empty';
-  if (BANNED.some((pattern) => pattern.test(trimmed))) return 'banned';
+  if (SHAPE_BANNED.some((pattern) => pattern.test(trimmed))) return 'banned';
+  if (!options.skipMeaning && MEANING_BANNED.some((pattern) => pattern.test(trimmed))) {
+    return 'banned';
+  }
   const questions = trimmed.match(/\?/g)?.length ?? 0;
   if (questions > 1) return 'question';
   if (!check.questionAllowed && questions > 0) return 'question';
@@ -196,4 +213,17 @@ export function validateReplyCopy(text: string, check: ReplyCopyCheck): ReplyCop
     }
   }
   return null;
+}
+
+/** Production gate. Off, the banned-phrase list. On, a Haiku read; unread refuses. */
+export async function validateReplyCopySweep(
+  text: string,
+  check: ReplyCopyCheck,
+): Promise<ReplyCopyFailure | null> {
+  const shape = validateReplyCopy(text, check, { skipMeaning: true });
+  if (shape) return shape;
+  if (!modelReadSweepEnabled()) return validateReplyCopy(text, check);
+  const reading = await sharedMeaningScreen().read({ screen: 'copy_reply_banned', text });
+  if (!reading) return 'banned';
+  return reading.hit ? 'banned' : null;
 }

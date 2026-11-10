@@ -37,7 +37,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
-import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { deliveredAsk } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
@@ -58,8 +58,6 @@ import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
 import { childBelongsToFamily } from '~/lib/companion/log-write';
-import { loadOpenCheckupOffer } from '~/lib/health/offer';
-import { defaultHealthReplyDeps } from '~/lib/health/reply';
 import { createCalendarOfferReader } from '~/lib/integrations/calendar-offer-read';
 import {
   emailAlertOfferSubject,
@@ -72,6 +70,7 @@ import { rememberWorkstreamTurn, workstreamExtractClient } from '~/lib/memory/wo
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import { registrationLinkHandler } from '~/lib/registration/sequence/link-handler';
 import {
   defaultPrepareReplyDeps,
   readinessQuestion,
@@ -82,7 +81,7 @@ import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
-import { introAskDedupeKey } from '~/lib/village/intros/run';
+import { introAskDedupeKey, introCardDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
@@ -424,6 +423,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
  * "something went wrong" line until someone writes it a sentence.
  */
 const SPINE_REFUSALS: Record<string, SpineRefusal> = {
+  registration_date_changed: 'already_resolved',
   action_not_awaiting_approval: 'already_resolved',
   action_not_reviewer_approved: 'not_reviewer_approved',
   undo_window_expired: 'undo_window_expired',
@@ -493,7 +493,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // And its sibling, for the same reason and with the same freedom of position: it
     // owns the daycare check-in's kind and claims nothing.
     daycareFollowupHandler(),
-    healthReplyHandler({ ...defaultHealthReplyDeps(), ask }),
+    healthReplyHandler(),
     emailAlertAddHandler({ writeReceipt: createOfferReceiptWriter(screenClient) }),
     planReplyHandler(defaultPlanReplyDeps()),
     // A reply to a pending sign-up offer, read by the consent model (no word list). Placed before the
@@ -502,6 +502,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // Exact "what do you know" / "forget …" / "correct …" only, and only when
     // FAMILY_MEMORY_KINDS_ENABLED is exactly true. Flag off claims nothing.
     familyMemoryKindsHandler(),
+    registrationLinkHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     parentCallNameHandler(parentCallNameVoice(defaultCallNameComposer())),
@@ -793,7 +794,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.
-    recordStatedState: (db, input) => recordStatedState(db, input, defaultHealthReplyDeps()),
+    recordStatedState,
     // VIL-360 · the ask's own last-word reader, plus the same-door rule the evening
     // check-in keeps. Composed HERE rather than in the router because both halves are
     // ledger reads and the router's question is the single one they answer together.
@@ -870,8 +871,8 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
       introOptInOpen: async (database, { familyId, parentUserId }) => {
         // ASKED AND UNANSWERED, read from two different places because they are two
-        // different facts: the ask is an outbound ledger row (so a card that was composed
-        // and never sent is not a question), and the answer is a consent row of EITHER
+        // different facts: the ask is a DELIVERED outbound ledger row (so a card that was
+        // composed, queued or failed is not a question), and the answer is a consent row of EITHER
         // polarity (a decline is an answer, and re-asking a family that said no would be
         // the worst version of this feature).
         //
@@ -879,11 +880,11 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // question is asked once per household, but only the parent it was TEXTED to has it
         // open — otherwise a co-parent who never saw it could answer it, and Hale would
         // write a consent row in their name for a question it never put to them.
-        const [askedParentUserId, answered] = await Promise.all([
-          introAskRecipient(database, familyId),
+        const [ask, answered] = await Promise.all([
+          deliveredAsk(database, introAskDedupeKey(familyId)),
           discoverabilityAsked(database, parentUserId),
         ]);
-        return askedParentUserId === parentUserId && !answered;
+        return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.sentAt } : null;
       },
       introProposal: async (database, familyId, now) => {
         // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
@@ -891,7 +892,13 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // card that never existed), and offering one of those to the resolver would invite
         // it to resolve a question that is already closed.
         const proposal = await intros.answerableProposal(database, familyId, now);
-        return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+        if (proposal?.standing !== 'unanswered') return null;
+        // Open, and dated, only once the card reached this side. The proposal's own
+        // per-side stamp is written when the provider accepts the send, and a receipt
+        // can still say it never arrived.
+        const side = proposal.familyAId === familyId ? 'a' : 'b';
+        const card = await deliveredAsk(database, introCardDedupeKey(proposal.id, side));
+        return card && { id: proposal.id, askedAt: card.sentAt };
       },
       planOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
@@ -905,10 +912,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // The health nudge's booking offer. Its TTL is applied inside the reader, so an
       // offer past its week can never be listed, named in a clarifying sentence, or
       // resolved — the same discipline the plan offer keeps one line above.
-      checkupOffer: async (database, familyId, now) => {
-        const offer = await loadOpenCheckupOffer(database, familyId, now);
-        return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
-      },
+      checkupOffer: async () => null,
       // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
       // offers above keep: an expired offer is still an open ledger row, it has simply
       // stopped being answerable — and listing one would let a YES two days later text a
@@ -985,20 +989,4 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
     },
     options,
   );
-}
-
-/** Who the one discoverability ask actually went to, or null if it never went. The
- * dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
-async function introAskRecipient(database: Database, familyId: string): Promise<string | null> {
-  const [row] = await database
-    .select({ parentUserId: schema.channelMessages.parentUserId })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.dedupeKey, introAskDedupeKey(familyId)),
-        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
-      ),
-    )
-    .limit(1);
-  return row?.parentUserId ?? null;
 }

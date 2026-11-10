@@ -1,6 +1,6 @@
 import { type FamilyStage, companionForChild, milestoneStatusLabel } from '@hale/types';
 import { describe, expect, it } from 'vitest';
-import { findBannedPhrases } from '~/lib/health/framing';
+import { findBannedPhrases } from '~/lib/companion/banned-phrases';
 
 /**
  * VIL-260 · WS5 — the framing lint, pointed at DEVELOPMENT copy.

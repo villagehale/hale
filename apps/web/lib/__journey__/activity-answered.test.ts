@@ -1,4 +1,9 @@
 import { join } from 'node:path';
+let liveSourceText = '';
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async () => liveSourceText,
+}));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
@@ -34,6 +39,7 @@ import { searchVillageTool } from '~/lib/coach/tools';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { FIXTURE_COUNTRY, FIXTURE_FIND_TOWN, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
 import { isStage } from '~/lib/testing/structured-reply';
@@ -82,8 +88,8 @@ import { isStage } from '~/lib/testing/structured-reply';
  */
 
 const TZ = 'America/Toronto';
-/** Georgetown, Halton Hills — the incident family's real FSA. */
-const AREA = 'L7G';
+/** Documented in lib/testing/fixture-postal.ts — not a Hale household. */
+const AREA = FIXTURE_FSA;
 const PHONE = '+14165550100';
 const APP_KEY = Buffer.alloc(32, 7).toString('base64');
 
@@ -100,19 +106,20 @@ const SWEEP_AT = new Date('2026-08-21T19:00:00.000Z');
 /** 18 months at the incident — a toddler, the beachhead stage. */
 const CHILD_DOB = '2025-02-20';
 
+const GYM_NAME = 'Riverside Gymnastics Centre';
 const GYM_RESULT = {
-  name: 'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre',
+  name: `Parent & Tot Gymnastics, ${GYM_NAME}`,
   age_fit: '18 months - 3 years',
   when: 'Saturdays 9:15am, fall session from Sept 13',
   price: '$142 for 12 weeks',
-  source_name: 'Halton Hills Gymnastics Centre',
+  source_name: GYM_NAME,
 };
 const EARLYON_RESULT = {
-  name: 'EarlyON drop-in, Georgetown (Links2Care)',
+  name: 'Family drop-in, Riverside Community Centre',
   age_fit: 'ages 0-6',
   when: 'Weekday mornings, fall schedule from Sept 8',
   price: 'free',
-  source_name: 'Links2Care',
+  source_name: 'Riverside Community Centre',
 };
 
 // A recording waits on live model calls, which outlast the 5s default; replay keeps it.
@@ -136,6 +143,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
       .insert(schema.families)
       .values({
         displayName: 'Test family',
+        country: FIXTURE_COUNTRY,
         provinceOrState: 'ON',
         areaCoarse: AREA,
         onboardingStage: 'sms_active',
@@ -216,12 +224,28 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     async function turn(req: any) {
       if (isStage(req, 'activity_picks', 'picks')) {
         return {
-          content: [{ type: 'text', text: JSON.stringify({ picks: picksByCall[call] ?? [] }) }],
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                picks: (picksByCall[call] ?? []).map((pick) => ({
+                  ...pick,
+                  name_evidence: pick.name,
+                  age_evidence: pick.age_fit,
+                  when_evidence: pick.when,
+                  price_evidence: pick.price,
+                  schedule_kind: 'recurring',
+                  source_url: 'https://venue.example/fall',
+                })),
+              }),
+            },
+          ],
           usage: { input_tokens: 10, output_tokens: 10 },
           stop_reason: 'end_turn',
         };
       }
       call += 1;
+      liveSourceText = `${JSON.stringify(picksByCall[call] ?? [])}\nHalton Hills, Ontario, Canada`;
       searched.push(req.messages?.[0]?.content as string);
       return {
         content: [
@@ -632,7 +656,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     const transport = new FakeTransport();
     const coach = coachFor(
       [
-        // The radar read still happens first — it is the verified tier and it is free.
+        // Village is empty in this fixture; the activity lane supplies the evidence.
         { tool: 'search_village', input: { query: 'fall' } },
         {
           tool: 'find_activities',
@@ -659,16 +683,20 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     const reply = transport.bodies()[0] ?? '';
     // A NAME, a WHEN, and whose facts they are — the thing the incident reply had none of.
-    expect(reply).toContain('Halton Hills Gymnastics Centre');
+    expect(reply).toContain(GYM_NAME);
     expect(reply).toContain('Sept 13');
     expect(reply).toContain('their site says');
     expect(reply).not.toMatch(/come back to you/i);
 
     // Rule #1, at the border: the query that left carried a TOWN and a BAND and no child.
     const sent = web.searched[0] ?? '';
-    expect(JSON.parse(sent)).toMatchObject({ town: 'Halton Hills', stage: 'toddler' });
+    expect(JSON.parse(sent)).toMatchObject({ town: FIXTURE_FIND_TOWN, stage: 'toddler' });
+    expect(JSON.parse(sent)).toMatchObject({
+      town: 'Halton Hills, Ontario, Canada',
+      stage: 'toddler',
+    });
     expect(sent).not.toContain('Noah');
-    expect(sent).not.toContain('L7G');
+    expect(sent).not.toContain(AREA);
     expect(sent).not.toMatch(/\b18 months\b/);
 
     // Rule #6: the tool call is on the audit log, which is the ledger the incident was
@@ -843,17 +871,21 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     // THE SWEEP, a day later. It re-runs the search on the STORED subject and comes back.
     const sweepWeb = webPort([[GYM_RESULT]]);
     const sweepTransport = new FakeTransport();
+    const composer = composerModel();
     const result = await runActivityFollowUpSweep(
       database,
-      sweepDeps(sweepTransport, sweepWeb.client),
+      sweepDeps(sweepTransport, sweepWeb.client, {
+        composer: createFollowUpComposer(composer.client),
+      }),
       SWEEP_AT,
     );
+    expect(composer.misses, 'missing exact follow-up writer recording').toEqual([]);
 
     expect(result).toMatchObject({ due: 1, sent: 1, sentEmptyHanded: 0 });
-    expect(sweepTransport.bodies()[0]).toContain('Halton Hills Gymnastics Centre');
+    expect(sweepTransport.bodies()[0]).toContain(GYM_NAME);
     expect(JSON.parse(sweepWeb.searched[0] ?? '{}')).toMatchObject({
       subject: 'Cartwheel Gym fall spots and other toddler fall programs',
-      town: 'Halton Hills',
+      town: FIXTURE_FIND_TOWN,
     });
 
     // The debt is discharged, and stops standing.
@@ -865,12 +897,16 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
   it('the promise is kept even when the second look finds nothing', async () => {
     await turnTwoPromises();
 
+    const composer = composerModel();
     const sweepTransport = new FakeTransport();
     const result = await runActivityFollowUpSweep(
       database,
-      sweepDeps(sweepTransport, webPort([[]]).client),
+      sweepDeps(sweepTransport, webPort([[]]).client, {
+        composer: createFollowUpComposer(composer.client),
+      }),
       SWEEP_AT,
     );
+    expect(composer.misses, 'missing exact empty-result writer recording').toEqual([]);
 
     // Coming back empty-handed and SAYING SO is keeping the promise. A sweep that only
     // texted on success would leave this family waiting forever for the answer to a
@@ -960,6 +996,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     // It read a page rather than re-running the snippet search — `deepRead`, not `sent`
     // alone, is the difference between this sweep and the one it replaced.
+    expect(composer.misses, 'missing exact deep follow-up writer recording').toEqual([]);
     expect(result).toMatchObject({ due: 1, sent: 1, deepRead: 1, deepUnread: 0 });
 
     // ── the projection boundary ──────────────────────────────────────────────

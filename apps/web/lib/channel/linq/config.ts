@@ -126,6 +126,21 @@ export function linqGroupPlanRsvpEnabled(): boolean {
 }
 
 /**
+ * VIL-503 — after a household says yes to a tracked plan, Hale may ask before
+ * writing that household's calendar. Exactly `true`, and only on a Vercel
+ * Preview deploy. Unset, empty, `on`, `false`, and every production deploy
+ * stay dark, so copying the env var cannot turn it on in Prod. Dark leaves
+ * the RSVP tally as it was: no ask, no calendar copy. The plan RSVP flag
+ * still has to be on for a plan to exist.
+ */
+export function linqGroupPlanRsvpCalendarEnabled(): boolean {
+  return (
+    process.env.VERCEL_ENV === 'preview' &&
+    trimmed('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED') === 'true'
+  );
+}
+
+/**
  * VIL-471 — parent-made polls in a Linq group, read in the same group turn as
  * plan RSVPs. Exactly `true` enables it. Unset, empty, `on`, and `false` stay
  * dark. Default off. The native poll card additionally needs LINQ_POLLS.
@@ -164,6 +179,25 @@ export function linqGroupLeaveEnabled(): boolean {
 }
 
 /**
+ * iMessage screen and bubble effects (VIL-473). Exactly `true` (trimmed)
+ * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ * Production may light it the same way as any other environment.
+ * Off means the model is never asked and every send stays a plain bubble.
+ */
+export function linqEffectsEnabled(): boolean {
+  return trimmed('LINQ_EFFECTS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-478 — Hale sets the `ice` colour background once, when it opens a household
+ * group. Exactly `true` (trimmed) enables it. Unset, empty, `on`, and `false` stay
+ * dark. Default off. Production may light it the same way as any other environment.
+ */
+export function linqGroupBackgroundEnabled(): boolean {
+  return trimmed('LINQ_GROUP_BACKGROUND_ENABLED') === 'true';
+}
+
+/**
  * VIL-459 — in a group several families share, "when can we all do it?" gets times read
  * from each consenting family's free/busy. Exactly `true` enables it. Default off: off,
  * the ask is an ordinary shared-group answer and no family's calendar is read.
@@ -173,15 +207,14 @@ export function linqGroupCommonTimeEnabled(): boolean {
 }
 
 /**
- * VIL-475 — iMessage @mentions in Linq group chats. On only when the value is
- * exactly `true` and `VERCEL_ENV` is exactly `preview`. Unset, empty, `on`,
- * `false`, and any other environment — including production — stay dark.
- * Default off. Setting the flag in production cannot turn it on.
+ * VIL-475 — iMessage @mentions in Linq group chats. On when the value is exactly
+ * `true` (trimmed). Unset, empty, `on`, and `false` stay dark. Default off.
+ * Production may light it the same way as any other environment.
  *
  * On, inbound `mentions` become facts for the group-turn reader, and a group
  * reply may carry one outbound `mention` when the model names a seated member.
  * Off leaves today's parse unused and every send without a mention field.
  */
 export function linqGroupMentionsEnabled(): boolean {
-  return trimmed('LINQ_GROUP_MENTIONS_ENABLED') === 'true' && process.env.VERCEL_ENV === 'preview';
+  return trimmed('LINQ_GROUP_MENTIONS_ENABLED') === 'true';
 }

@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { z } from 'zod';
+import { coachEvalNOfMEnabled } from './lib/coach-eval-n-of-m-flag.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -38,8 +39,16 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
-import { READ_EMAIL_FIXTURES } from './read-email-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import {
+  SAMPLING_RULE,
+  drawTag,
+  foldSubjectDraws,
+  judgeSamplesPerDraw,
+  samplingLogLine,
+  subjectDrawCount,
+} from './lib/n-of-m.mjs';
+import { READ_EMAIL_FIXTURES } from './read-email-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -220,78 +229,100 @@ async function main() {
   const nearby = await agent.loadSkill(join(SKILLS, 'coach-nearby-find.md'));
   const addendum = await agent.loadSkill(join(SKILLS, `${readEmail.READ_EMAIL_SKILL}.md`));
   const judgeModel = await readJudgeModel();
+  const nOfM = coachEvalNOfMEnabled();
+  const subjectDraws = subjectDrawCount(nOfM);
+  const judgeDraws = judgeSamplesPerDraw(nOfM, JUDGE_SAMPLES_MEDIAN);
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'read-email', cachedOnly, getClient, cost, {
-    samples: JUDGE_SAMPLES_MEDIAN,
+    samples: judgeDraws,
   });
 
   console.log(
-    `read-email eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(coach.meta.task)} judge=${judgeModel} x${JUDGE_SAMPLES_MEDIAN}`,
+    `read-email eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(coach.meta.task)} judge=${judgeModel} x${judgeDraws}`,
   );
+  console.log(SAMPLING_RULE);
+  console.log(samplingLogLine(nOfM, JUDGE_SAMPLES_MEDIAN));
   const results = [];
   for (const fixture of READ_EMAIL_FIXTURES) {
-    const calls = [];
-    const failures = [];
-    const isGroup = fixture.audience === 'group';
-    const lit = !isGroup && fixture.gmail;
-    // Runtime order: coach + group appendix (group only) + coach-nearby-find, then the
-    // read-email addendum and verb when lit.
-    const base = {
-      ...coach,
-      instructions: [
-        coach.instructions,
-        ...(isGroup ? [group.instructions] : []),
-        nearby.instructions,
-      ].join('\n\n'),
-    };
-    const skill = readEmail.augmentCoachSkillForReadEmail(base, lit ? addendum : null);
-    const built = [
-      ...stubTools(agent, skill.meta.tools, calls),
-      ...(lit ? [readEmailFor(fixture, readEmail, calls)] : []),
-    ];
-    const tools = isGroup ? scope.groupScopedTools(built) : built;
-    const offered = tools.map((t) => t.name);
-    if (!lit && offered.includes('read_email')) failures.push('read_email_offered_unlit');
-    const context = contextFor(fixture, transcriptFor(fixture, emailSourceTurns));
+    const drawResults = [];
+    for (let draw = 0; draw < subjectDraws; draw += 1) {
+      const calls = [];
+      const failures = [];
+      const isGroup = fixture.audience === 'group';
+      const lit = !isGroup && fixture.gmail;
+      // Runtime order: coach + group appendix (group only) + coach-nearby-find, then the
+      // read-email addendum and verb when lit.
+      const base = {
+        ...coach,
+        instructions: [
+          coach.instructions,
+          ...(isGroup ? [group.instructions] : []),
+          nearby.instructions,
+        ].join('\n\n'),
+      };
+      const skill = readEmail.augmentCoachSkillForReadEmail(base, lit ? addendum : null);
+      const built = [
+        ...stubTools(agent, skill.meta.tools, calls),
+        ...(lit ? [readEmailFor(fixture, readEmail, calls)] : []),
+      ];
+      const tools = isGroup ? scope.groupScopedTools(built) : built;
+      const offered = tools.map((t) => t.name);
+      if (!lit && offered.includes('read_email')) failures.push('read_email_offered_unlit');
+      const context = contextFor(fixture, transcriptFor(fixture, emailSourceTurns));
 
-    let reply = BROKEN_REPLY;
-    if (!broken) {
-      const run = await agent.runAgent({
-        skill,
-        context: isGroup ? scope.groupScopedContext(context) : context,
-        tools,
-        client: cachedAgentClient(`read-email:${fixture.id}`, cachedOnly, getClient, cost),
-        maxSteps: MAX_STEPS,
-        maxTokens: MAX_TOKENS,
-        toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
-        guardDeps: {
-          async writeAudit() {},
-          async checkChildContentAccess() {
-            return { ok: true, reason: 'ok' };
+      let reply = BROKEN_REPLY;
+      if (!broken) {
+        const run = await agent.runAgent({
+          skill,
+          context: isGroup ? scope.groupScopedContext(context) : context,
+          tools,
+          client: cachedAgentClient(
+            `read-email:${drawTag(fixture.id, draw)}`,
+            cachedOnly,
+            getClient,
+            cost,
+          ),
+          maxSteps: MAX_STEPS,
+          maxTokens: MAX_TOKENS,
+          toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
+          guardDeps: {
+            async writeAudit() {},
+            async checkChildContentAccess() {
+              return { ok: true, reason: 'ok' };
+            },
           },
-        },
-      });
-      reply = run.answer ?? '';
-      if (!run.answer)
-        failures.push(`no_answer after ${run.steps} steps (calls: ${calls.join(',')})`);
-    }
+        });
+        reply = run.answer ?? '';
+        if (!run.answer)
+          failures.push(`no_answer after ${run.steps} steps (calls: ${calls.join(',')})`);
+      }
 
-    for (const name of fixture.expect.mustCall ?? []) {
-      if (!calls.includes(name)) failures.push(`did_not_call:${name}`);
+      for (const name of fixture.expect.mustCall ?? []) {
+        if (!calls.includes(name)) failures.push(`did_not_call:${name}`);
+      }
+      for (const name of fixture.expect.mustNotCall ?? []) {
+        if (calls.includes(name)) failures.push(`called:${name}`);
+      }
+      for (const secret of fixture.secrets ?? []) {
+        if (reply.includes(secret)) failures.push(`secret_in_reply:${secret}`);
+      }
+      const verdict = await judge(`${drawTag(fixture.id, draw)}${broken ? ':broken' : ''}`, {
+        thread: isGroup ? 'family group chat' : '1:1 with one parent',
+        parentMessage: fixture.text,
+        reply,
+        rule: fixture.rule,
+      });
+      if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      drawResults.push({
+        reply,
+        calls,
+        failures,
+        score: verdict.score,
+        passed: failures.length === 0,
+      });
     }
-    for (const name of fixture.expect.mustNotCall ?? []) {
-      if (calls.includes(name)) failures.push(`called:${name}`);
-    }
-    for (const secret of fixture.secrets ?? []) {
-      if (reply.includes(secret)) failures.push(`secret_in_reply:${secret}`);
-    }
-    const verdict = await judge(`${fixture.id}${broken ? ':broken' : ''}`, {
-      thread: isGroup ? 'family group chat' : '1:1 with one parent',
-      parentMessage: fixture.text,
-      reply,
-      rule: fixture.rule,
-    });
-    if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-    results.push({ fixture, reply, calls, failures });
+    const primary = drawResults[0];
+    const failures = nOfM ? foldSubjectDraws(fixture, drawResults) : primary.failures;
+    results.push({ fixture, reply: primary.reply, calls: primary.calls, failures });
   }
 
   for (const r of results) {

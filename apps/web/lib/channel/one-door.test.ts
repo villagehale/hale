@@ -37,7 +37,9 @@ const PROVIDER_TOKENS = [
   'createLinqChat(',
   'createLinqPhoneTransport(',
   'sendLinqParts(',
+  'sendLinqEffect(',
   'reactToLinqMessage(',
+  'editLinqMessage(',
   'shareLinqContactCard(',
   'requestLinqLocation(',
   'retrieveLinqLocation(',
@@ -62,8 +64,12 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'reads a shared locality after the parent accepts the location card; retrieveLinqLocation drops the street before return, and the next bubble is the intake transport, not a send from this file',
   'apps/web/lib/channel/linq/contact-card.ts':
     'Hale Name and Photo share at most once per Toronto day per chat after the first outbound; the claim and the linq_contact_card_shared audit sit beside the share',
+  'apps/web/lib/channel/linq/edit.ts':
+    'VIL-479 edits one text part of a bubble Hale already sent; editLinqMessage runs only after the model writes the replacement, the original channel_messages row is the audit target (linq_message_edited), a linq:edit receipt is inserted after Linq accepts, and a refusal sends the follow-up instead',
   'apps/web/lib/channel/linq/tapback.ts':
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
+  'apps/web/lib/channel/linq/effect.ts':
+    "an iMessage effect on Hale's reply when the model chooses one; the ledger row is written by moments.ts when the send is accepted",
   'apps/web/lib/channel/linq/link-preview.ts':
     'a link part after a text that does not carry the URL; writes its own channel_messages row and linq_link_preview audit when a family id is passed, and sendLinkOnce ledgers its URL-as-text fallback (linq:link_text, sms_reply_sent)',
   'apps/web/lib/channel/linq/group.ts':
@@ -105,7 +111,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/connect/fresh-link.ts':
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
   'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
-    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
+    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent (or the live plan host in a shared chat) before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no phone

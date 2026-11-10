@@ -5,6 +5,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { parseModelMode } from '~/lib/pipeline/model-mode';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { acceptCalendarDate } from './calendar-date';
 
 /**
  * VIL-237 · M2 — the intake extraction stage: names + ages + postal code read out of
@@ -48,6 +49,11 @@ export interface ExtractedChild {
   ageMonths: number | null;
   /** Null exactly when {@link ageMonths} is — an unstated age has no granularity. */
   agePrecision: AgePrecision | null;
+  /**
+   * Calendar day YYYY-MM-DD when the parent named a birth date. Absent when they
+   * only gave an age. Stored as the civil date with no timezone conversion (VIL-531).
+   */
+  dateOfBirth?: string | null;
 }
 
 export interface IntakeCollected {
@@ -82,6 +88,7 @@ const extractOutputSchema = z.object({
         .nullable()
         .optional()
         .default(DEFAULT_AGE_PRECISION),
+      date_of_birth: z.string().nullable().optional().default(null),
     }),
   ),
   postal_code: z.string().nullable().optional().default(null),
@@ -106,6 +113,7 @@ const extractOutputJsonSchema = {
             type: ['string', 'null'],
             enum: ['years', 'months', null],
           },
+          date_of_birth: { type: ['string', 'null'] },
         },
       },
     },
@@ -127,6 +135,7 @@ export function extractionUserMessage(input: {
         name: c.name,
         age_months: c.ageMonths,
         age_precision: c.agePrecision,
+        date_of_birth: c.dateOfBirth ?? null,
       })),
       postal_code: input.alreadyKnown.postalCode,
     },
@@ -174,16 +183,22 @@ export function createIntakeExtractor(
       const { value } = call;
 
       return {
-        // A child with neither a name nor an age is not a child — it is a failed read,
-        // and letting it through would provision an empty row (rule: don't mask).
+        // A child with neither a name nor an age nor a birth date is not a child —
+        // it is a failed read, and letting it through would provision an empty row
+        // (rule: don't mask).
         children: value.children
-          .filter((c) => c.name !== null || c.age_months !== null)
-          .map((c) => ({
-            name: c.name,
-            ageMonths: c.age_months,
-            // An unstated age has no granularity to carry, whatever the model said.
-            agePrecision: c.age_months === null ? null : (c.age_precision ?? DEFAULT_AGE_PRECISION),
-          })),
+          .filter((c) => c.name !== null || c.age_months !== null || c.date_of_birth !== null)
+          .map((c) => {
+            const dateOfBirth = acceptCalendarDate(c.date_of_birth);
+            return {
+              name: c.name,
+              ageMonths: c.age_months,
+              // An unstated age has no granularity to carry, whatever the model said.
+              agePrecision:
+                c.age_months === null ? null : (c.age_precision ?? DEFAULT_AGE_PRECISION),
+              ...(dateOfBirth ? { dateOfBirth } : {}),
+            };
+          }),
         postalCode: value.postal_code,
       };
     },

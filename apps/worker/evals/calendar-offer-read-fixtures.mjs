@@ -20,6 +20,14 @@ const THURSDAY_OFFER = {
   answerable: { yes: true, no: true },
 };
 
+/** VIL-302 · the offer a coach search reply made, the newest ask Hale is holding. */
+const SEARCH_OFFER = {
+  id: '4d2a9c17-58e3-4b06-a1f4-93c7e0b25d68',
+  kind: 'email_alert_add',
+  description: 'An offer to put Toddler Swim on your week, starting 2026-08-22T14:00:00.000Z',
+  answerable: { yes: true, no: true },
+};
+
 export const CALENDAR_OFFER_FIXTURES = [
   {
     id: 'parent-zh-sunday',
@@ -75,5 +83,43 @@ export const CALENDAR_OFFER_FIXTURES = [
     questions: [],
     expect: { status: 'none' },
     why: 'Thursday has already started. The skill says that is not an offer.',
+  },
+  {
+    id: 'vil-302-bare-yes-newest-offer',
+    role: 'parent',
+    text: 'yes',
+    now: '2026-08-20T18:18:00.000Z',
+    timeZone: 'America/New_York',
+    questions: [SEARCH_OFFER],
+    expect: { status: 'resolved', questionId: SEARCH_OFFER.id, polarity: 'yes' },
+    why: 'VIL-302, 2026-08-20. An intro was asked earlier; the search offer is the newest ask, so the router reads the bare yes against it alone. One open offer and a plain yes: it is that offer.',
+  },
+  {
+    id: 'vil-302-names-an-older-ask',
+    role: 'parent',
+    text: 'yes to meeting the other family',
+    now: '2026-08-20T18:18:00.000Z',
+    timeZone: 'America/New_York',
+    questions: [SEARCH_OFFER],
+    expect: { status: 'unresolved', reason: 'no_target' },
+    why: 'VIL-302. The same narrowed read, but the parent named the older intro ask. Not about this offer, so it must be none, and the router then reads it against everything open.',
+  },
+  {
+    id: 'vil-302-declines-an-older-ask',
+    role: 'parent',
+    text: 'no thanks to the intro',
+    now: '2026-08-20T18:18:00.000Z',
+    timeZone: 'America/New_York',
+    questions: [SEARCH_OFFER],
+    // RECORDED HAZARD, not an aspiration (the french-consent pattern in the reply-resolver
+    // corpus). Shown only the newest offer, the real model reads "no thanks to the intro"
+    // as a high-confidence NO to that offer: it took "the intro" to mean the offer. That
+    // reading would drop a find the parent never declined. It is why the router reads the
+    // whole open list FIRST and narrows to the newest ask only when the whole-list read is
+    // `ambiguous` (route.ts, resolveNaturalReply): words that name an older ask get placed
+    // on the whole list and never reach this narrowed read. If this fixture starts failing
+    // because the model says none, the narrowed read became safer; it is not a regression.
+    expect: { status: 'resolved', questionId: SEARCH_OFFER.id, polarity: 'no' },
+    why: 'VIL-302 hazard. A no naming the older intro ask, read against the newest offer alone, is misread as a no to the offer. The router must never send this read first.',
   },
 ];

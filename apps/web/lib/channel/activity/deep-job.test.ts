@@ -201,7 +201,7 @@ function harness(
             overrides.compose ?? {
               status: 'composed',
               message: 'Tiny Gym runs Sundays 9:30.',
-              mentionsWatch: false,
+              commitsToReturn: false,
             }
           );
         },

@@ -1,12 +1,19 @@
 // The family-local day · coach eval (VIL-435, hard rule #8: no LLM mocking).
 //
 // The subject is the REAL agent loop (`runAgent`) over the REAL coach skill, composed the
-// way runtime.ts composes a 1:1 nearby-find turn: coach-channel-sms + coach-nearby-find,
-// then coach-find-private when `nearbyFindTurn` says so, then the coach-local-day
-// addendum through the REAL `augmentCoachSkillForLocalDay`. The day facts come from the
+// way runtime.ts composes a 1:1 nearby-find turn: coach-channel-sms + coach-nearby-find +
+// coach-home-place, then coach-find-private when `nearbyFindTurn` says so, then the
+// coach-local-day addendum through the REAL `augmentCoachSkillForLocalDay`. The day facts come from the
 // REAL `familyLocalNow` and `localDayContext`, and `find_activities` is the REAL tool
 // over a fixture finder (the live web search is not what this suite grades). A judge
 // reads each reply against the case's rubric, by meaning; nothing here matches words.
+// way runtime.ts composes a 1:1 nearby-find turn: coach-channel-sms + coach-nearby-find,
+// then coach-find-private and coach-find-day (this suite is nearby-find turns; production
+// gates those addenda with a model read), then the
+// coach-local-day addendum through the REAL `augmentCoachSkillForLocalDay`. The day facts
+// come from the REAL `familyLocalNow` and `localDayContext`, and `find_activities` is the
+// REAL tool over a fixture finder (the live web search is not what this suite grades). A
+// judge reads each reply against the case's rubric, by meaning; nothing here matches words.
 //
 //   node evals/run-coach-local-day-eval.mjs --max-usd 1.5   # live, then caches
 //   node evals/run-coach-local-day-eval.mjs --broken        # calibration: must FAIL
@@ -51,9 +58,9 @@ const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-/** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
+/** Mirrors MAX_STEPS / CHANNEL_COACH_MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-local-day');
 
@@ -201,17 +208,21 @@ async function main() {
     join(COACH, 'local-day.ts'),
   );
   const { familyLocalNow } = await importTs(join(COACH, 'local-now.ts'));
-  const { augmentCoachSkillForFindPrivate, nearbyFindTurn } = await importTs(
-    join(COACH, 'find-private.ts'),
-  );
+  const { augmentCoachSkillForFindPrivate } = await importTs(join(COACH, 'find-private.ts'));
   const { findActivitiesTool } = await importTs(
     join(WEB_ROOT, 'lib', 'channel', 'activity', 'tools.ts'),
   );
   const coach = await agent.loadSkill(join(SKILLS, 'coach-channel-sms.md'));
   const nearby = await agent.loadSkill(join(SKILLS, 'coach-nearby-find.md'));
+  const homePlace = await agent.loadSkill(join(SKILLS, 'coach-home-place.md'));
   const findPrivate = await agent.loadSkill(join(SKILLS, 'coach-find-private.md'));
+  const findDay = await agent.loadSkill(join(SKILLS, 'coach-find-day.md'));
   const localDaySkill = await agent.loadSkill(join(SKILLS, 'coach-local-day.md'));
-  const base = { ...coach, instructions: `${coach.instructions}\n\n${nearby.instructions}` };
+  // Production appends nearby-find then home-place on every channel turn (VIL-542).
+  const base = {
+    ...coach,
+    instructions: `${coach.instructions}\n\n${nearby.instructions}\n\n${homePlace.instructions}`,
+  };
   const judgeModel = await readJudgeModel('sonnet');
   // Median of three on the real replies (one tail draw must not decide a case); the
   // broken replies are a one-off calibration of the rubric, so one draw each.
@@ -236,12 +247,8 @@ async function main() {
     const failures = [];
     const localNow = familyLocalNow(new Date(fixture.now), fixture.timeZone);
     const localDay = localDayContext(localNow, fixture.forecast);
-    const transcript = [{ role: 'user', content: fixture.text }];
     const skill = augmentCoachSkillForLocalDay(
-      augmentCoachSkillForFindPrivate(
-        base,
-        nearbyFindTurn(fixture.text, transcript) ? findPrivate : null,
-      ),
+      augmentCoachSkillForFindPrivate(augmentCoachSkillForFindPrivate(base, findPrivate), findDay),
       localDaySkill,
     );
     let reply = fixture.broken;

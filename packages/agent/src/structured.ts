@@ -47,6 +47,12 @@ export interface StructuredRequestArgs {
   lane: LaneConfig;
   system: string;
   userMessage: string;
+  /**
+   * Native image/document blocks for this turn (VIL-413). Absent or empty: the
+   * user content stays the string, so every existing structured call keeps its
+   * request bytes.
+   */
+  attachments?: Anthropic.ContentBlockParam[];
   toolName: string;
   toolDescription: string;
   inputJsonSchema: Anthropic.Tool.InputSchema;
@@ -124,6 +130,13 @@ export type StructuredRequest = Omit<LaneRequestFields, 'output_config'> & {
   messages: Anthropic.MessageParam[];
 };
 
+function userContent(args: StructuredRequestArgs): Anthropic.MessageParam['content'] {
+  if (!args.attachments || args.attachments.length === 0) {
+    return args.userMessage;
+  }
+  return [{ type: 'text', text: args.userMessage }, ...args.attachments];
+}
+
 export function structuredRequest(args: StructuredRequestArgs): StructuredRequest {
   const grammar = strictToolSchema(args.inputJsonSchema as JsonSchemaNode);
   const { output_config, ...fields } = laneRequestFields(args.lane);
@@ -131,7 +144,7 @@ export function structuredRequest(args: StructuredRequestArgs): StructuredReques
     ...fields,
     max_tokens: args.maxTokens,
     system: cachedSystem(args.system),
-    messages: [{ role: 'user' as const, content: args.userMessage }],
+    messages: [{ role: 'user' as const, content: userContent(args) }],
   };
   if (grammar) {
     return {

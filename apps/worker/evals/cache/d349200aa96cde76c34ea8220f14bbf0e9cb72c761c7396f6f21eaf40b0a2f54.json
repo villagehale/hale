@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty, yet the message names two venues and quotes $140 per term. That price appears nowhere in the picks, and the page itself says pricing varies term by term and sits behind the registration login, so stating it flatly writes around the gap. The parent asked about Cartwheels specifically, and adding Halton Hills Gymnastics drifts toward the substitution the watch notes warn against. On the positive side, the attribution ('their site says', 'lists') is right, 'I could not pin down' is correctly first person under page_has_schedule, the watch promise is first person, and there is no question. The unsupported price and the mismatch with the empty picks pull this down.",
+    "score": 2
+  }
+}

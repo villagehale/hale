@@ -27,6 +27,20 @@ export const GROUP_WITHHELD = [
 
 export function groupScopedContext<T extends AgentContext>(context: T): T {
   const { providerWatch: _withheld, ...rest } = context as T & { providerWatch?: unknown };
+  // VIL-482 (Devin SEC_0002): a .vcf on a group turn gives the model the card's name
+  // only. Phones, emails, org, title, and place are one person's private details and
+  // a group line is read by everyone, so they never reach a group prompt. The card is
+  // marked `groupNameOnly` (no empty `phones`), so the model cannot read the missing
+  // fields as "the card has no number" and say so in the group (Design CHANGES #985).
+  const contacts = (rest as { arrivedContacts?: unknown }).arrivedContacts;
+  if (Array.isArray(contacts)) {
+    Object.assign(rest, {
+      arrivedContacts: contacts.map((card: { name?: string | null }) => ({
+        name: card?.name ?? null,
+      })),
+      arrivedContactsGroupNameOnly: true,
+    });
+  }
   return {
     ...(rest as T),
     memoryFacts: [],
@@ -52,6 +66,42 @@ type WeekResult = {
   mail: { items: unknown[]; [key: string]: unknown };
   [key: string]: unknown;
 };
+
+export interface PrivateCalendarField {
+  field: 'what' | 'where';
+  value: string;
+}
+
+/**
+ * Who / what / where of a connected-calendar block. The time is not one of them:
+ * saying the hour is taken does not name the block.
+ */
+export function privateCalendarFields(
+  events: readonly { kind?: string; what?: unknown; where?: unknown }[],
+): PrivateCalendarField[] {
+  const fields: PrivateCalendarField[] = [];
+  for (const event of events) {
+    if (event.kind !== 'calendar') continue;
+    for (const field of ['what', 'where'] as const) {
+      const value = typeof event[field] === 'string' ? event[field].trim() : '';
+      if (value.length < 2) continue;
+      fields.push({ field, value });
+      for (const part of value.split(/\s*[-–—/]\s*/)) {
+        const piece = part.trim();
+        if (piece.length >= 2 && piece !== value) fields.push({ field, value: piece });
+      }
+    }
+  }
+  return fields;
+}
+
+/** Private who/what/where values that actually appear in the reply. */
+export function replyShowsPrivateField(
+  reply: string,
+  fields: readonly PrivateCalendarField[],
+): PrivateCalendarField[] {
+  return fields.filter((field) => reply.includes(field.value));
+}
 
 export function groupSafeWeek<T extends WeekResult>(week: T): T {
   return {

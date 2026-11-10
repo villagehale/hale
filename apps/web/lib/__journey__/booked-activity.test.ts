@@ -225,6 +225,7 @@ function alertPorts(
     transport,
     threadMessage: threadProactiveMessage,
     timeZone: async () => FAMILY_TIMEZONE,
+    rereadEnvelope: async () => null,
   };
 }
 

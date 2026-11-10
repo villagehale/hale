@@ -14,6 +14,7 @@ import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
 import {
+  CHANNEL_COACH_MAX_TOKENS,
   type ChannelCoachPorts,
   channelCoachRuntime,
   productionChannelCoachPorts,
@@ -75,6 +76,10 @@ interface Recorded {
   costUsd: number;
 }
 
+function readingFindTurn(findTurn = true): NonNullable<ChannelCoachPorts['readFindTurn']> {
+  return async () => ({ findTurn });
+}
+
 function ports(overrides: Partial<ChannelCoachPorts> = {}) {
   const recorded: Recorded[] = [];
   const contextInputs: unknown[] = [];
@@ -120,6 +125,23 @@ describe('channelCoachRuntime', () => {
     const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
+  });
+
+  /** VIL-536: thinking and tool calls share this ceiling with the reply. 400 was spent
+   * before the model spoke on a broad grouped-map ask; 2000 is the room the reply keeps. */
+  it('hands the loop a completion budget thinking and tools cannot spend alone', async () => {
+    let seen: number | undefined;
+    const p = ports({
+      runAgent: async (args) => {
+        seen = args.maxTokens;
+        return answering('Move swim to Tue 4:30? YES to confirm.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(seen).toBe(CHANNEL_COACH_MAX_TOKENS);
+    expect(CHANNEL_COACH_MAX_TOKENS).toBe(2000);
   });
 
   /**
@@ -292,7 +314,11 @@ describe('channelCoachRuntime', () => {
   });
 
   it('reads a photo into the loop and names a video it did not watch', async () => {
-    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const seen: Array<{
+      context: Record<string, unknown>;
+      attachments?: unknown[];
+      instructions: string;
+    }> = [];
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
     const p = ports({
       readInboundMedia: (parts) =>
@@ -304,6 +330,7 @@ describe('channelCoachRuntime', () => {
         seen.push({
           context: args.context as Record<string, unknown>,
           attachments: args.attachments as unknown[],
+          instructions: args.skill.instructions,
         });
         return answering('Got the flyer.')(args);
       },
@@ -322,6 +349,81 @@ describe('channelCoachRuntime', () => {
 
     expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
     expect(seen[0]?.context.arrivedMedia).toEqual([{ kind: 'video' }]);
+    expect(seen[0]?.instructions).not.toContain('arrivedContacts');
+  });
+
+  it('reads a .vcf into the loop as contact fields, not as an attachment', async () => {
+    const seen: Array<{
+      context: Record<string, unknown>;
+      attachments?: unknown[];
+      instructions: string;
+    }> = [];
+    const vcf = ['BEGIN:VCARD', 'FN:Jane Smith', 'TEL;TYPE=CELL:+14165550100', 'END:VCARD'].join(
+      '\n',
+    );
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(parts, fetch, undefined, async () => new Response(vcf, { status: 200 })),
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+          instructions: args.skill.instructions,
+        });
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn('this is my mom'),
+        inboundMedia: [
+          { kind: 'contact', url: 'https://cdn.example/Jane.vcf', mime: 'text/vcard' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.attachments).toBeUndefined();
+    expect(seen[0]?.context.arrivedMedia).toBeUndefined();
+    expect(seen[0]?.context.arrivedContacts).toEqual([
+      {
+        name: 'Jane Smith',
+        phones: [{ number: '+14165550100', e164: '+14165550100', label: 'cell' }],
+      },
+    ]);
+    expect(seen[0]?.context.arrivedContactsTruncated).toBeUndefined();
+    expect(seen[0]?.instructions).toContain('arrivedContacts');
+  });
+
+  it('tells the loop when a contact file had more cards than it kept', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const p = ports({
+      readInboundMedia: async () => ({
+        blocks: [],
+        unwatched: [],
+        contacts: [{ name: 'Ada', phones: [] }],
+        contactsTruncated: true,
+      }),
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [
+          { kind: 'contact', url: 'https://cdn.example/book.vcf', mime: 'text/vcard' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.arrivedContacts).toEqual([{ name: 'Ada', phones: [] }]);
+    expect(seen[0]?.arrivedContactsTruncated).toBe(true);
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
   });
 
   it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {
@@ -373,6 +475,52 @@ describe('channelCoachRuntime', () => {
     expect(seen[0]?.instructions).not.toContain(tone.instructions);
     expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
     expect(seen[2]?.instructions).not.toContain(tone.instructions);
+  });
+
+  it('appends the age-fit correction skill only on a 1:1 turn with AGE_FIT_CORRECTION_ENABLED on (VIL-568)', async () => {
+    const addendum = (await loadCronSkill('age-fit-correction')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
+  });
+
+  it('appends the no-group-relay skill only on a 1:1 turn with GROUP_1TO1_NO_GROUP_RELAY_ENABLED on (VIL-577)', async () => {
+    const addendum = (await loadCronSkill('coach-no-group-relay')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
   });
 
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
@@ -1072,6 +1220,150 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
   });
 });
 
+describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
+  const FLYER = {
+    kind: 'flyer' as const,
+    title: 'Fall swim',
+    venue: 'Harbor Rec',
+    whenText: 'Tuesdays 4:30',
+    registrationUrl: 'https://harbor-rec.example/register',
+    childName: null,
+    notes: 'ages 6-8',
+    confidence: 0.9,
+  };
+
+  function photoTurn() {
+    return {
+      ...turn('can you read this'),
+      inboundMedia: [
+        { kind: 'image' as const, url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+      ],
+    };
+  }
+
+  function photoPorts(overrides: Partial<ChannelCoachPorts> = {}) {
+    return ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+        ),
+      ...overrides,
+    });
+  }
+
+  it('dark: does not extract, leaves the skill bytes, and still attaches the image', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const extract = vi.fn();
+    const seen: Array<{
+      context: Record<string, unknown>;
+      instructions: string;
+      attachments?: unknown[];
+    }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => false,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: args.skill.instructions,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(extract).not.toHaveBeenCalled();
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]?.instructions).not.toContain(addendum);
+  });
+
+  it('lit: hands the facts and the addendum, and the image still reaches the model', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const toolsTurns: ChannelTurn[] = [];
+    const seen: Array<{
+      context: Record<string, unknown>;
+      instructions: string;
+      attachments?: unknown[];
+    }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: async () => FLYER,
+      buildTools: (incoming) => {
+        toolsTurns.push(incoming);
+        return [];
+      },
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: args.skill.instructions,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Fall swim is Tuesdays.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(seen[0]?.context.photoFacts).toEqual(FLYER);
+    expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(toolsTurns[0]?.photoFacts).toEqual(FLYER);
+  });
+
+  it('lit: an extract failure still attaches the image and sends no canned line', async () => {
+    const extract = vi.fn(async () => {
+      throw new Error('down');
+    });
+    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+    const { reply } = await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(extract).toHaveBeenCalled();
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(reply).toBe('Got the flyer.');
+  });
+});
+
+describe('productionChannelCoachPorts · inbound photo facts (VIL-413)', () => {
+  const PDF = [
+    { kind: 'file' as const, url: 'https://cdn.example/form.pdf', mime: 'application/pdf' },
+  ];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('fetches a PDF only while the flag is exactly true', async () => {
+    const pdf = Buffer.from('%PDF-1.4\n%%EOF');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(pdf, { status: 200 }));
+    const read = productionChannelCoachPorts({} as Database).readInboundMedia;
+
+    const dark = await read?.(PDF, 'direct');
+    expect(dark?.unwatched).toEqual([{ kind: 'file' }]);
+    expect(dark?.blocks).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    vi.stubEnv('INBOUND_PHOTO_FACTS_ENABLED', 'true');
+    const lit = await read?.(PDF, 'direct');
+    expect(lit?.blocks[0]).toMatchObject({ type: 'document' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('productionChannelCoachPorts · whose voice memo is heard (VIL-495)', () => {
   const MEMO = [
     { kind: 'audio' as const, url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' },
@@ -1099,7 +1391,12 @@ describe('productionChannelCoachPorts · whose voice memo is heard (VIL-495)', (
     const p = ports({
       readInboundMedia: async (_parts, audience) => {
         audiences.push(audience);
-        return { blocks: [], unwatched: [{ kind: 'audio' }] };
+        return {
+          blocks: [],
+          unwatched: [{ kind: 'audio' }],
+          contacts: [],
+          contactsTruncated: false,
+        };
       },
     });
     for (const audience of ['group', 'direct'] as const) {
@@ -1359,6 +1656,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
 
 describe('find reasoning stays off the reply (VIL-524)', () => {
   const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
 
   it('does not append the private skill or call the judge on a calendar edit', async () => {
     let instructions = '';
@@ -1383,6 +1681,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const draft = 'All three finds are at the library: Storytime Saturday at 10.';
     let instructions = '';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: send,
       runAgent: async (args) => {
         instructions = args.skill.instructions;
@@ -1399,6 +1698,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'All three finds share one page…';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'withhold' }),
       runAgent: answering(draft),
     });
@@ -1452,6 +1752,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
   it("the judge reads the draft with a teen's name already redacted", async () => {
     const drafts: string[] = [];
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async (draft) => {
         drafts.push(draft);
         return { verdict: 'send' };
@@ -1471,12 +1772,35 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       'EarlyON Saturday at 10.',
     );
     expect(gate).toEqual({ verdict: 'unjudged', reason: 'client_unavailable' });
+    vi.unstubAllEnvs();
+  });
+
+  it('production wires a find-turn reader, not a word list', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const ports = productionChannelCoachPorts({} as Database);
+    const readFindTurn = ports.readFindTurn;
+    expect(typeof readFindTurn).toBe('function');
+    if (readFindTurn === undefined) throw new Error('expected readFindTurn');
+    const reading = await readFindTurn({
+      text: "what's on this weekend",
+      transcript: [],
+    });
+    expect(reading).toEqual({ findTurn: false });
+    expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("what's on this weekend");
+    logged.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it('the scripted pass-through sends the draft and names that', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
-    const p = ports({ judgeFindReply: findReplyNotJudged, runAgent: answering(draft) });
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: findReplyNotJudged,
+      runAgent: answering(draft),
+    });
     const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
     expect(reply).toBe(draft);
     expect(error).toHaveBeenCalledWith(
@@ -1490,6 +1814,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
       runAgent: answering(draft),
     });
@@ -1509,6 +1834,109 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       expect.any(String),
     );
     error.mockRestore();
+  });
+});
+
+describe('the day a find is for (VIL-567)', () => {
+  const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
+
+  it("hands the model today on the family's clock, not the UTC day", async () => {
+    const seen: Record<string, unknown>[] = [];
+    // 02:30Z Monday is still Sunday evening for a family on Pacific time.
+    const p = ports({
+      now: () => new Date('2026-11-09T02:30:00.000Z'),
+      loadTimeZone: async () => 'America/Los_Angeles',
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(seen[0]?.localNow).toEqual({
+      date: '2026-11-08',
+      weekday: 'Sunday',
+      time: '18:30',
+      timeZone: 'America/Los_Angeles',
+    });
+  });
+
+  it('a bare find after a question about today gets the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      loadTranscript: async () => [
+        { role: 'user' as const, content: 'is there anything on today?' },
+        { role: 'assistant' as const, content: 'Nothing on your calendar today.' },
+        { role: 'user' as const, content: 'find me something to do' },
+      ],
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  it('a find with their own Gmail connected keeps the day addendum and the email addendum, email last', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      voiceMemosEnabled: () => true,
+      emailReader: {
+        connected: async () => true,
+        read: async () => ({ read: true as const, body: 'unused', truncated: false }),
+      },
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do today'), []);
+    const voiceAt = instructions.indexOf('A reply can be a voice memo');
+    const findPrivateAt = instructions.indexOf('Keep the finding to yourself');
+    const findDayAt = instructions.indexOf('The day a find is for');
+    const readEmailAt = instructions.indexOf('An email Hale told them about');
+    expect(voiceAt).toBeGreaterThan(-1);
+    expect(findPrivateAt).toBeGreaterThan(voiceAt);
+    expect(findDayAt).toBeGreaterThan(findPrivateAt);
+    expect(readEmailAt).toBeGreaterThan(findDayAt);
+  });
+
+  it('a calendar edit does not get the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(instructions).not.toContain('The day a find is for');
+  });
+
+  it('a find in any language gets the day addendum when the reader says it is one', async () => {
+    const seen: string[] = [];
+    let instructions = '';
+    const p = ports({
+      readFindTurn: async ({ text }) => {
+        seen.push(text);
+        return { findTurn: true };
+      },
+      judgeFindReply: send,
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Patinoire familiale à 13h.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('trouve-moi quelque chose à faire'), []);
+    expect(seen).toEqual(['trouve-moi quelque chose à faire']);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
   });
 });
 
@@ -1621,5 +2049,93 @@ describe('deferred capabilities', () => {
     const group = await run({ owed, audience: 'group' });
     expect(group.seen?.context).not.toHaveProperty('capabilityCorrections');
     expect(group.seen?.tools).not.toContain('note_capability_correction');
+  });
+});
+
+describe('a reply written after read_email (VIL-628)', () => {
+  const PHONE = '555-0142';
+  const EMAIL = `Field trip is Friday. Call ${PHONE} to get the deposit back.`;
+  const ANSWER = `The trip is Friday. Call ${PHONE} for the deposit.`;
+
+  async function respond(opts: {
+    read: boolean;
+    body?: string;
+    facts?: string[];
+    parentStated?: string[];
+    watched?: string;
+    answer?: string;
+  }) {
+    const { parentStated } = opts;
+    const p = ports({
+      ...(parentStated ? { loadParentStatedFacts: async () => parentStated } : {}),
+      ...(opts.watched
+        ? {
+            loadProviderWatch: async () => [
+              {
+                provider: 'Swim school',
+                kind: 'schedule',
+                checkedAt: '2026-11-01T00:00:00.000Z',
+                items: [{ text: `Office ${opts.watched}` }] as never,
+              },
+            ],
+          }
+        : {}),
+      loadContext: async (input) =>
+        ({
+          question: input.question,
+          transcript: input.transcript,
+          location: { city: null, province: null, country: 'United States' },
+          memoryFacts: (opts.facts ?? []).map((factValue) => ({ factKey: 'note', factValue })),
+        }) as never,
+      emailReader: {
+        connected: async () => true,
+        read: async () => ({ read: true, body: EMAIL, truncated: false }),
+      },
+      runAgent: async (args) => {
+        const read = args.tools.find((tool) => tool.name === 'read_email');
+        if (!read) throw new Error('read_email was not offered');
+        if (opts.read) {
+          await invokeTool(read, { gmailMessageId: 'gm-1' }, args.toolContext, args.guardDeps);
+        }
+        return answering(opts.answer ?? ANSWER)(args);
+      },
+    });
+    return channelCoachRuntime(p).respond(turn(opts.body ?? 'what did the school say?'), []);
+  }
+
+  it('drops a phone only the email gave', async () => {
+    const { reply, emailRead } = await respond({ read: true });
+    expect(emailRead).toBe(true);
+    expect(reply).toBe('The trip is Friday. Call for the deposit.');
+  });
+
+  it('a turn that read no email is untouched (positive control)', async () => {
+    expect((await respond({ read: false })).reply).toBe(ANSWER);
+  });
+
+  it('the same number in the parent’s own message survives (positive control)', async () => {
+    expect((await respond({ read: true, body: `is ${PHONE} right?` })).reply).toBe(ANSWER);
+  });
+
+  it('a number the family’s inferred facts hold is still dropped: they can come from email', async () => {
+    const { reply } = await respond({ read: true, facts: [`school office ${PHONE}`] });
+    expect(reply).toBe('The trip is Friday. Call for the deposit.');
+  });
+
+  it('a number only the provider watch holds is dropped: it is scraped from a page', async () => {
+    expect((await respond({ read: true, watched: PHONE })).reply).toBe(
+      'The trip is Friday. Call for the deposit.',
+    );
+  });
+
+  it('a number the parent once told Hale (memory_source parent_message) survives (positive control)', async () => {
+    const { reply } = await respond({ read: true, parentStated: [`school office ${PHONE}`] });
+    expect(reply).toBe(ANSWER);
+  });
+
+  it("Hale's own site survives a read turn (positive control)", async () => {
+    const answer =
+      'The trip is Friday. Your settings are at app.villagehale.com and villagehale.com.';
+    expect((await respond({ read: true, answer })).reply).toBe(answer);
   });
 });

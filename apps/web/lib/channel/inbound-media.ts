@@ -1,19 +1,23 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { linqVoiceMemosEnabled } from '~/lib/channel/linq/config';
+import { createPublicFetch } from '~/lib/channel/public-fetch';
+import { type CoachContact, MAX_CONTACT_CARDS, parseContactCards } from '~/lib/channel/vcard';
 import { attachmentContentBlock } from '~/lib/coach/attachment-blocks';
 
 /**
  * A Linq attachment, small enough to store on the inbound row and re-drive.
  *
  * Bytes are never stored. A photo is fetched when the coach runs, and only then.
- * A video, a voice memo, or a file is named so the model can write the reply; it is
- * not downloaded. `audio` (VIL-476) exists only while LINQ_VOICE_MEMOS_ENABLED is
- * `true`; dark, audio reads as `file`, exactly as before.
+ * A `.vcf` (`contact`, VIL-482) is fetched then too, and read into name and number —
+ * the card itself is not handed to the model. A video, a voice memo, or any other
+ * file is named so the model can write the reply; it is not downloaded. `audio`
+ * (VIL-476) exists only while LINQ_VOICE_MEMOS_ENABLED is `true`; dark, audio reads
+ * as `file`, exactly as before.
  */
 
-export type InboundMediaKind = 'image' | 'video' | 'audio' | 'file';
+export type InboundMediaKind = 'image' | 'video' | 'audio' | 'file' | 'contact';
 
-const KINDS: readonly InboundMediaKind[] = ['image', 'video', 'audio', 'file'];
+const KINDS: readonly InboundMediaKind[] = ['image', 'video', 'audio', 'file', 'contact'];
 
 export interface InboundMediaPart {
   kind: InboundMediaKind;
@@ -27,6 +31,10 @@ export interface ReadInboundMedia {
   /** What this turn carried that the model did not see as bytes. A voice memo that was
    * transcribed (VIL-495) carries the parent's words as `heard`. */
   unwatched: Array<{ kind: InboundMediaKind; heard?: string }>;
+  /** Contact cards read off `.vcf` parts. Empty when this turn had none. */
+  contacts: CoachContact[];
+  /** A file held more cards than `contacts` keeps. */
+  contactsTruncated: boolean;
 }
 
 /** VIL-495 · the words in one voice memo, or null when it could not be heard. */
@@ -35,9 +43,18 @@ export type HearVoiceMemo = (part: InboundMediaPart & { url: string }) => Promis
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|heic|heif)(?:$|\?)/i;
 const VIDEO_EXT = /\.(mp4|mov|webm|m4v)(?:$|\?)/i;
 const AUDIO_EXT = /\.(m4a|mp3|aac|caf|wav|aiff?|amr)(?:$|\?)/i;
+const CONTACT_EXT = /\.vcf(?:$|[?#])/i;
+const CONTACT_MIMES = new Set([
+  'text/vcard',
+  'text/x-vcard',
+  'text/directory',
+  'application/vcard',
+]);
 const IMAGE_BLOCK_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 /** Anthropic's image block cap, with room under it. */
 const IMAGE_BYTE_CAP = 4_000_000;
+/** A contact photo can make a `.vcf` large. The parser drops the photo itself. */
+const CONTACT_BYTE_CAP = 2_000_000;
 const FETCH_TIMEOUT_MS = 8_000;
 const MAX_PARTS = 8;
 
@@ -54,6 +71,58 @@ export function httpsMediaUrl(raw: string | null | undefined): string | null {
   return parsed.toString();
 }
 
+/**
+ * Devin SEC_0001: a `.vcf` URL comes from the webhook payload, so the fetch must not
+ * reach a loopback, private, link-local, or metadata host. IP literals in those ranges
+ * and internal-looking names are refused. Redirects are followed by hand so every hop
+ * is checked again.
+ */
+export function publicMediaUrl(raw: string | null | undefined): string | null {
+  const url = httpsMediaUrl(raw);
+  if (!url) return null;
+  const host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host.includes('.') && !host.includes(':')) return null;
+  if (host === 'localhost' || /\.(localhost|local|internal|lan|home|corp|intranet)$/.test(host)) {
+    return null;
+  }
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      a >= 224
+    ) {
+      return null;
+    }
+    return url;
+  }
+  if (host.includes(':')) {
+    // Any IPv6 literal: loopback, ULA, link-local, and v4-mapped forms are all refused;
+    // a real media host is a DNS name.
+    return null;
+  }
+  // Numeric-looking hosts that are not dotted quads (e.g. 2130706433, 0x7f.1) are refused.
+  if (/^[\d.x]+$/i.test(host) || /^0x/i.test(host)) return null;
+  return url;
+}
+
+const MAX_CONTACT_REDIRECTS = 3;
+
+/** Fetch-shaped, so a test can hand in a stub; production pins the vetted address. */
+export type ContactFetch = (
+  url: string,
+  init: { redirect: 'manual'; signal: AbortSignal },
+) => Promise<Response>;
+
+const publicContactFetch: ContactFetch = createPublicFetch({ maxBytes: CONTACT_BYTE_CAP });
+
 export function classifyInboundMedia(
   mime: string | null,
   url: string | null,
@@ -64,9 +133,11 @@ export function classifyInboundMedia(
   if (normalized.startsWith('image/')) return 'image';
   if (normalized.startsWith('video/')) return 'video';
   if (voiceMemos && normalized.startsWith('audio/')) return 'audio';
+  if (CONTACT_MIMES.has(normalized)) return 'contact';
   if (IMAGE_EXT.test(filename ?? '') || IMAGE_EXT.test(url ?? '')) return 'image';
   if (VIDEO_EXT.test(filename ?? '') || VIDEO_EXT.test(url ?? '')) return 'video';
   if (voiceMemos && (AUDIO_EXT.test(filename ?? '') || AUDIO_EXT.test(url ?? ''))) return 'audio';
+  if (CONTACT_EXT.test(filename ?? '') || CONTACT_EXT.test(url ?? '')) return 'contact';
   return 'file';
 }
 
@@ -150,32 +221,78 @@ function headerMime(header: string | null): string | null {
   return mime || null;
 }
 
+const PDF_EXT = /\.pdf(?:$|\?)/i;
+const PDF_MIME = 'application/pdf';
+
+function sniffedPdf(bytes: Buffer): boolean {
+  return bytes.length >= 5 && bytes.toString('ascii', 0, 5) === '%PDF-';
+}
+
+function looksLikePdf(part: InboundMediaPart): boolean {
+  const mime = (part.mime ?? '').toLowerCase();
+  return mime === PDF_MIME || PDF_EXT.test(part.url ?? '');
+}
+
+export type ReadInboundMediaOptions = {
+  /**
+   * VIL-413 — fetch a PDF file into a document block. Off (the default): files
+   * stay named and unwatched, so a dark turn does not download them.
+   */
+  documents?: boolean;
+};
+
 /**
+ * Fetch the images on this turn into model blocks, `.vcf` parts into contact
+ * fields, and hear its voice memos when a `hear` port is given (VIL-495). Videos
+ * and other files are not fetched. A failed fetch is named in the return
  * Fetch the images on this turn into model blocks, and hear its voice memos when a
- * `hear` port is given (VIL-495). Videos and files are not fetched. A failed fetch is
- * named in the return (unwatched), never thrown, and the URL is not logged.
+ * `hear` port is given (VIL-495). Videos and files are not fetched unless
+ * `documents` is on and the file is a PDF. A failed fetch is named in the return
+ * (unwatched), never thrown, and the URL is not logged.
  */
 export async function readInboundMedia(
   parts: readonly InboundMediaPart[],
   fetchImpl: typeof fetch = fetch,
   hear?: HearVoiceMemo,
+  contactFetch: ContactFetch = publicContactFetch,
+  options?: ReadInboundMediaOptions,
 ): Promise<ReadInboundMedia> {
   const blocks: Anthropic.ContentBlockParam[] = [];
   const unwatched: Array<{ kind: InboundMediaKind; heard?: string }> = [];
+  const contacts: CoachContact[] = [];
+  let contactsTruncated = false;
   for (const part of parts.slice(0, MAX_PARTS)) {
+    if (part.kind === 'contact') {
+      const read = await readContactPart(part, contactFetch);
+      if (read.truncated) contactsTruncated = true;
+      if (read.cards.length === 0) {
+        unwatched.push({ kind: 'contact' });
+        continue;
+      }
+      for (const card of read.cards) {
+        if (contacts.length >= MAX_CONTACT_CARDS) {
+          contactsTruncated = true;
+          break;
+        }
+        contacts.push(card);
+      }
+      continue;
+    }
     if (part.kind === 'audio') {
       const url = httpsMediaUrl(part.url);
       const heard = hear && url ? await hear({ ...part, url }) : null;
       unwatched.push(heard ? { kind: 'audio', heard } : { kind: 'audio' });
       continue;
     }
-    if (part.kind !== 'image') {
+    const asDocument = options?.documents === true && part.kind === 'file' && looksLikePdf(part);
+    if (part.kind !== 'image' && !asDocument) {
       unwatched.push({ kind: part.kind });
       continue;
     }
+    const unreadKind: InboundMediaKind = asDocument ? 'file' : 'image';
     const url = httpsMediaUrl(part.url);
     if (!url) {
-      unwatched.push({ kind: 'image' });
+      unwatched.push({ kind: unreadKind });
       continue;
     }
     try {
@@ -186,17 +303,29 @@ export async function readInboundMedia(
       // A stub Response has an empty url. A real redirect that lands off https does not.
       const finalUrl = response.url ? httpsMediaUrl(response.url) : url;
       if (!response.ok || !finalUrl) {
-        unwatched.push({ kind: 'image' });
+        unwatched.push({ kind: unreadKind });
         continue;
       }
       const declared = Number(response.headers.get('content-length'));
       if (Number.isFinite(declared) && declared > IMAGE_BYTE_CAP) {
-        unwatched.push({ kind: 'image' });
+        unwatched.push({ kind: unreadKind });
         continue;
       }
       const bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.byteLength === 0 || bytes.byteLength > IMAGE_BYTE_CAP) {
-        unwatched.push({ kind: 'image' });
+        unwatched.push({ kind: unreadKind });
+        continue;
+      }
+      if (asDocument) {
+        const mime =
+          sniffedPdf(bytes) || headerMime(response.headers.get('content-type')) === PDF_MIME
+            ? PDF_MIME
+            : null;
+        if (!mime) {
+          unwatched.push({ kind: 'file' });
+          continue;
+        }
+        blocks.push(attachmentContentBlock(bytes, mime));
         continue;
       }
       const mime =
@@ -209,10 +338,80 @@ export async function readInboundMedia(
     } catch (err) {
       console.info(
         { reason: 'fetch_failed', err: err instanceof Error ? err.name : 'unknown' },
-        'inbound media: image unread',
+        asDocument ? 'inbound media: document unread' : 'inbound media: image unread',
       );
-      unwatched.push({ kind: 'image' });
+      unwatched.push({ kind: unreadKind });
     }
   }
-  return { blocks, unwatched };
+  return { blocks, unwatched, contacts, contactsTruncated };
+}
+
+const EMPTY_CONTACTS = { cards: [], truncated: false };
+
+async function readContactPart(
+  part: InboundMediaPart,
+  fetchImpl: ContactFetch,
+): Promise<{ cards: CoachContact[]; truncated: boolean }> {
+  const first = publicMediaUrl(part.url);
+  if (!first) {
+    unreadContact(httpsMediaUrl(part.url) ? 'private_host' : 'not_https');
+    return EMPTY_CONTACTS;
+  }
+  let url: string = first;
+  try {
+    const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+    let response = await fetchImpl(url, { redirect: 'manual', signal });
+    for (let hop = 0; response.status >= 300 && response.status < 400; hop++) {
+      const location = response.headers.get('location');
+      const next: string | null =
+        location && hop < MAX_CONTACT_REDIRECTS
+          ? publicMediaUrl(new URL(location, url).toString())
+          : null;
+      if (!next) {
+        unreadContact('redirect');
+        return EMPTY_CONTACTS;
+      }
+      url = next;
+      response = await fetchImpl(url, { redirect: 'manual', signal });
+    }
+    // Belt and braces: a fetch that followed anyway must still land on a public https host.
+    if (response.url && !publicMediaUrl(response.url)) {
+      unreadContact('redirect');
+      return EMPTY_CONTACTS;
+    }
+    if (!response.ok) {
+      unreadContact('http_status');
+      return EMPTY_CONTACTS;
+    }
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > CONTACT_BYTE_CAP) {
+      unreadContact('too_large');
+      return EMPTY_CONTACTS;
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > CONTACT_BYTE_CAP) {
+      unreadContact(bytes.byteLength === 0 ? 'empty' : 'too_large');
+      return EMPTY_CONTACTS;
+    }
+    const text = bytes.toString('utf8').replace(/^\uFEFF/, '');
+    const parsed = parseContactCards(text);
+    if (parsed.cards.length === 0) {
+      unreadContact('unreadable');
+      return EMPTY_CONTACTS;
+    }
+    if (parsed.truncated) {
+      console.info({ reason: 'truncated' }, 'inbound media: contact truncated');
+    }
+    return parsed;
+  } catch (err) {
+    console.info(
+      { reason: 'fetch_failed', err: err instanceof Error ? err.name : 'unknown' },
+      'inbound media: contact unread',
+    );
+    return EMPTY_CONTACTS;
+  }
+}
+
+function unreadContact(reason: string): void {
+  console.info({ reason }, 'inbound media: contact unread');
 }

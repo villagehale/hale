@@ -1,4 +1,5 @@
 import type { AuthorizedSignupPlanResume } from '@hale/db';
+import { chargedCartMustStop, freeCartMaySubmit } from '../checkout-gate';
 import { BrowserUseApiError } from './client';
 import {
   ACTION_MODEL,
@@ -302,6 +303,10 @@ async function drivePlan(
     const output = parsePlanOutput(summary.output);
     if (!output) return stop('error', 'unreadable_output');
     if (output.payment_details_entered) return stop('error', 'payment_boundary');
+    const total = output.cart_total_cents;
+    if (output.submitted && chargedCartMustStop(total)) {
+      return stop('error', 'submit_boundary');
+    }
     const live = waited.liveViewUrl;
 
     if (output.outcome !== 'reached_checkout') {
@@ -316,25 +321,46 @@ async function drivePlan(
     if (choiceIndex === null || choiceIndex >= input.choices.length) {
       return { ...stop('needs_human', 'choice_unreadable'), liveViewUrl: live };
     }
-    const total = output.cart_total_cents;
     await input.onStep({ step: 'checkout', choiceIndex, cartTotalCents: total });
+    if (total !== null && total > input.maxPriceCents) {
+      return {
+        ...stop('needs_human', 'price_change', choiceIndex),
+        liveViewUrl: live,
+        cartTotalCents: total,
+      };
+    }
+    if (freeCartMaySubmit(total) && output.submitted) {
+      if (!output.confirmation_number) {
+        return {
+          ...stop('needs_human', 'unconfirmed', choiceIndex),
+          liveViewUrl: live,
+          cartTotalCents: total,
+        };
+      }
+      return {
+        ...stop('completed', 'none', choiceIndex),
+        cartTotalCents: total,
+        confirmationNumber: output.confirmation_number,
+      };
+    }
     if (!live) return stop('error', 'no_live_view', choiceIndex);
     const holdMinutes = Math.min(
       output.hold_minutes ?? DEFAULT_CART_HOLD_MINUTES,
       CHECKOUT_KEEP_ALIVE_SECONDS / 60,
     );
     const checkout: BrowserUsePlanResult = {
-      ...stop('needs_human', 'none', choiceIndex),
+      ...stop('reached_checkout', 'none', choiceIndex),
       liveViewUrl: live,
       checkoutUrl: sameProviderHttpsUrl(output.checkout_url, input.registrationUrl),
       holdExpiresAt: new Date(deps.now().getTime() + holdMinutes * 60_000),
       cartTotalCents: total,
     };
-    if (total === null || total <= 0 || total > input.maxPriceCents) {
-      return { ...checkout, detail: 'price_change' };
-    }
+    // Go-live: a charged cart is never paid with the saved card. The parent
+    // finishes on the live browser. $0 that was not submitted stops the same way.
+    if (chargedCartMustStop(total) || freeCartMaySubmit(total)) return checkout;
     if (!output.saved_card_on_file) return { ...checkout, detail: 'no_saved_card' };
     if (output.security_code_required) return { ...checkout, detail: 'security_code' };
+    if (total === null) return checkout;
     const cap = await input.checkSpendingCap(total);
     await input.onStep({ step: 'spending_cap', amountCents: total, ok: cap.ok });
     if (!cap.ok) return { ...checkout, detail: 'spending_cap' };

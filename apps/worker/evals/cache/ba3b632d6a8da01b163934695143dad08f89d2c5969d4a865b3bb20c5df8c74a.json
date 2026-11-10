@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is strong in most respects. It leads with a real, local, stage-fitting program by name: Halton Hills Gymnastics Centre's Parent and Tot, 18 months to 3.11 years. It attributes with \"their site says\", has no link and no question, and correctly makes the first-person watch promise, since watch=true. Under page_has_schedule it uses the earned first-person \"I could not pin down the price\" rather than \"not posted yet\".\n\nThere are real problems, though:\n- The picks list is empty while a genuine find exists, so every date and duration in the message appears nowhere in the picks. That is an extraction failure the rubric scores down.\n- \"Registration begins Oct 26\" refers to the Winter session on the page, but the message reads as if it applied generally or to fall, which could mislead the parent.\n- The message names only the price gap and quietly skips that no class day or time was pinned down, writing around that gap.",
+    "score": 3
+  }
+}

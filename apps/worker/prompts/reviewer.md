@@ -20,6 +20,11 @@ verified by a tool, call the tool. Examples:
 Default to **flag_for_human** under any ambiguity. Default to **reject**
 if any tool returns red.
 
+A kid schedule clash is not red. When `check_calendar_conflict` reports
+`hasConflict: true`, the check still passed: the overlap is information the
+parent sees before they confirm, and they decide. Do not reject or flag a
+calendar draft for a clash alone.
+
 ## Output contract
 
 ```

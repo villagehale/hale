@@ -89,6 +89,10 @@ export type AnalyticsEvent =
   // gate's decision on the same body. Lane, outcome and verdict enums, counts and the
   // hashed family only (lib/channel/reconcile/claim-shadow.ts).
   | 'agent_claim_shadow'
+  // VIL-581 · the claim reader could not finish a read, so the send was not decided
+  // from that body. Class is the named failure (unreachable, no_time_zone, …);
+  // hashed family only (lib/analytics/server-capture.ts, lane `claim_read`).
+  | 'agent_claim_read_failed'
   // An inbound webhook that threw before it could answer — a parent experiences that
   // as silence (VIL-331). Carries the route and the error class only, and is fired
   // from a leg that never touches the database, because the failure it exists to

@@ -1,0 +1,43 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Junior (3-4 years)",
+        "name": "Junior swim lessons (ages 3-4), Goldfish Swim School - Oakville",
+        "age_evidence": "Junior (3-4 years)",
+        "age_fit": "3-4 years",
+        "when": "Weekly 30-minute lesson; Goldfish Oakville is open Mon 9:30 AM - 8:30 PM, Tue 11:00 AM - 8:00 PM, Wed 10:30 AM - 8:00 PM, Thu 9:00 AM - 8:00 PM, Sat 8:30 AM - 3:00 PM, Sun 8:30 AM - 7:00 PM (closed Friday); specific fall class times not posted",
+        "when_evidence": "Weekly Swim Lessons One 30 minute lesson a week Flexible scheduling & up to 12 free make-up lessons",
+        "schedule_kind": "hours",
+        "price_evidence": "Weekly Swim Lessons Starting at $32.50 Per Lesson",
+        "price": "Starting at $32.50 per lesson",
+        "source_name": "Goldfish Swim School - Oakville",
+        "source_url": "https://goldfishswimschool.com/oakville/",
+        "indoor_outdoor": "indoor"
+      },
+      {
+        "name_evidence": "Mini (4-35 months)",
+        "name": "Mini swim lessons (4-35 months), Goldfish Swim School - Oakville",
+        "age_evidence": "Mini (4-35 months)",
+        "age_fit": "4-35 months",
+        "when": "Weekly 30-minute lesson; Goldfish Oakville is open Mon 9:30 AM - 8:30 PM, Tue 11:00 AM - 8:00 PM, Wed 10:30 AM - 8:00 PM, Thu 9:00 AM - 8:00 PM, Sat 8:30 AM - 3:00 PM, Sun 8:30 AM - 7:00 PM (closed Friday); specific fall class times not posted",
+        "when_evidence": "Weekly Swim Lessons One 30 minute lesson a week Flexible scheduling & up to 12 free make-up lessons",
+        "schedule_kind": "hours",
+        "price_evidence": "Weekly Swim Lessons Starting at $32.50 Per Lesson",
+        "price": "Starting at $32.50 per lesson",
+        "source_name": "Goldfish Swim School - Oakville",
+        "source_url": "https://goldfishswimschool.com/oakville/",
+        "indoor_outdoor": "indoor"
+      },
+      {
+        "name_evidence": "The Town of Oakville offers lessons according to the Lifesaving Society Swim for Life program. Age guidelines Children must be the age required for the level they are taking by the program start date. Children who are five years-old do not need to complete all preschool levels before moving to the Swimmer programs.",
+        "name": "Preschool learn-to-swim lessons (Swim for Life), Town of Oakville Aquatics",
+        "age_evidence": "Children who are five years-old do not need to complete all preschool levels before moving to the Swimmer programs.",
+        "source_name": "Town of Oakville",
+        "source_url": "https://www.oakville.ca/parks-recreation-culture/programs-activities/swimming/aquatics-programs/",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 6525
+}

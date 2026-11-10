@@ -1,7 +1,7 @@
 import type { CandidateAccess } from '@hale/db';
+import type { HealthChild } from '~/lib/channel/child-roster';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
-import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import { nextWatchedCycle } from '~/lib/registration/discovery-targets';
 import type {
   PastRegistrationCycle,
@@ -728,72 +728,16 @@ function accessFor(
   };
 }
 
-/** The youngest child on file. Ties keep the first, which is how the health matcher's
- * own first-wins reduce breaks them — so the two can never disagree about who that is. */
-function youngestOf(children: readonly HealthChild[]): HealthChild | null {
-  return children.reduce<HealthChild | null>(
-    (best, child) => (best === null || child.ageMonths < best.ageMonths ? child : best),
-    null,
-  );
-}
-
-/**
- * The age block, and the reason no family's first message is a shrug.
- *
- * Geography can be empty: an FSA no civic adapter covers, a town publishing no
- * registration windows, a family four milliseconds old with no discovered candidates.
- * An age never is, and Ontario publishes an administrative calendar against it.
- *
- * The YOUNGEST child, and only them, expressed by running the shared matcher over a
- * one-child roster. That is the same multi-kid discipline the weekend pick follows (one
- * message, one thing) — and it keeps the region gate, the teen wording, the clamped
- * tolerance and the suppression set in the ONE module that owns them (lib/health/match),
- * so this stage cannot hold a different opinion than the 48h nudge about what applies to
- * a child.
- */
-function decideCheckpoint(input: DecideRadarInput): CheckpointLine | null {
-  const youngest = youngestOf(input.healthChildren);
-  if (youngest === null) return null;
-
-  const [match] = matchHealthCheckpoints({
-    children: [youngest],
-    areaCoarse: input.areaCoarse,
-    suppressedRefs: input.suppressedCheckpointRefs,
-    now: input.now,
-  });
-  if (!match) return null;
-
-  const task = match.teenOnly ? match.checkpoint.teenSafeTask : match.checkpoint.task;
-  // The matcher never admits a 13+ child to a row with no generic wording, so this is
-  // its invariant restated for the type. Silence is the fail-closed answer either way.
-  if (task === null) return null;
-
-  return {
-    checkpointRef: { id: match.checkpoint.id },
-    ref: match.ref,
-    task,
-    kidNames: match.kidNames,
-  };
-}
-
 export function decideRadar(input: DecideRadarInput): RadarDecision {
   const weekendPick = decideWeekendPick(input);
   const registrationLine = decideRegistration(input);
-  // THE CEILING IS DECIDED HERE, and only here. Two blocks reach a parent, never three
-  // (radar-voice.ts MAX_BLOCKS, and the same rule in the skill), and the checkpoint is
-  // the rung that yields — a registration date closes and a weekend passes, while an
-  // administrative window stays open for months.
-  //
-  // It yields at DECIDE rather than at render because the decision is what marks the
-  // checkpoint told (lib/health/told.ts): a checkpoint that survives into the decision
-  // is one the message says out loud, so a family can never be silenced about a
-  // checkpoint the render dropped on its way out of the door.
-  const checkpoint = weekendPick && registrationLine ? null : decideCheckpoint(input);
+  // Hale sends no health checkpoint, vaccine or checkup reminder (Barton, 2026-10-12).
+  // The field stays on the decision as null so compose and tests keep one shape.
   return {
     weekendPick,
     registrationLine,
     registrationAbsence: decideRegistrationAbsence(input, registrationLine),
-    checkpoint,
+    checkpoint: null,
     offerQuestion: true,
     // Nothing to point at this weekend: discovery may still be running, so Hale owes
     // this family a pick later. Flag only — this stage sends nothing.

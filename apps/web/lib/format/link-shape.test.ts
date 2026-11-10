@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asHandsetReads,
   foreignLinks,
   hasLinkBeyond,
   hasLinkShape,
+  linkHostname,
   linksOutside,
   withoutLinks,
+  wordSpans,
 } from './link-shape';
 
 const EVASIONS: readonly (readonly [string, string])[] = [
@@ -56,7 +59,17 @@ const EVASIONS: readonly (readonly [string, string])[] = [
   ['a Han name with a Latin ending', '例子。com'],
   ['an ideographic full stop with a path after it', '你好。我们/x'],
   ['a Latin and digit name before an ideographic full stop', 'see evil1。中国'],
-  ['a Latin name before an ideographic full stop (fails closed)', '我是Hale。你住在哪里'],
+  ['a Latin name with a Han ending after an ideographic full stop', 'evil。在线'],
+  ['a Latin name with a Han ending after a dot', 'evil.在线'],
+  ['a Han name with a Han ending', '例子。在线'],
+  ['a mixed name with a Han ending', '请到Hale报名。在线'],
+  ['a Han ending glued to more letters', 'evil。在线abc'],
+  ['a Latin word before a dot and a Han run (fails closed)', '早上7:00 AM.到时候需要你自己去报名'],
+  ['a Katakana ending with a long-vowel mark', 'evil。セール'],
+  ['another Katakana ending with a long-vowel mark', 'evil。グーグル'],
+  ['a Katakana ending with no long-vowel mark', 'evil。ファッション'],
+  ['a Han ending that starts a longer run', 'evil。在线报名'],
+  ['a Han ending that starts a longer run inside a sentence', '请访问evil。在线报名吧'],
 ];
 
 describe('hasLinkShape: the evasion table', () => {
@@ -74,6 +87,15 @@ describe('hasLinkShape: the evasion table', () => {
     ['a price', 'It costs $12.50 a week.'],
     ['a Chinese full stop after a number', '请拨打988。全天都有人接听。'],
     ['a Chinese full stop between sentences', '你好。我们明天见'],
+    // A Han run after the stop is an ending only when the root zone delegates it.
+    [
+      'a Latin word before a Chinese full stop',
+      '开放:Monday, January 12 at 7:00 AM。到时候需要你自己去报名,',
+    ],
+    ['a Latin word before a Chinese full stop, then prose', 'AM。到时候需要你自己去报名'],
+    ['a Japanese full stop before Katakana prose', 'はい。コーヒーを飲みます'],
+    ["Hale's name before a Chinese full stop", '我是Hale。你住在哪里'],
+    ["Hale's name inside the run before a Chinese full stop", 'Hale这边不会代办。报名页面在这里'],
     ['an Arabic sentence', 'حسناً، لن نراسلك بعد الآن.'],
     ['an ellipsis', 'Maybe...we will see.'],
   ])('passes %s', (_label, text) => {
@@ -81,15 +103,24 @@ describe('hasLinkShape: the evasion table', () => {
   });
 });
 
-describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => {
-  const LINK = 'https://app.example.test/approve/abc123';
-
+describe.each([
+  ['a path link', 'https://app.example.test/approve/abc123'],
+  ['a host-only link', 'https://app.example.test'],
+])('hasLinkBeyond and foreignLinks: only the handed link, exactly, for %s', (_kind, LINK) => {
   it('passes the handed link, mid-sentence or ending one', () => {
     for (const text of [
       `Tap ${LINK} to say yes.`,
       `Tap here: ${LINK}.`,
       `Tap here (${LINK}).`,
       `点这里:${LINK}这个窗口`,
+      `报名页面在这里:${LINK}(场次:周六上午9:30)。`,
+      `报名页面在这里:${LINK}（场次）`,
+      `报名页面在这里:${LINK}。到时候`,
+      `报名页面在这里:${LINK}（场次`,
+      `报名页面在这里(${LINK}）。`,
+      `[${LINK}]`,
+      `Tap ${LINK}!`,
+      `"${LINK}", then reply`,
     ]) {
       expect(hasLinkBeyond(text, [LINK])).toBe(false);
       expect(foreignLinks(text, { handed: [LINK], email: null, words: [] })).toEqual([]);
@@ -100,6 +131,17 @@ describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => 
     ['the handed link with a host glued on', `Tap ${LINK}.evil.test now`],
     ['the handed link as a user name', `Tap ${LINK}@evil.test now`],
     ['the handed link with more path', `Tap ${LINK}/more now`],
+    ['the handed link with a full-width dot and more', `Tap ${LINK}．app now`],
+    ['the handed link with a port', `Tap ${LINK}:8080 now`],
+    ['the handed link with a query', `Tap ${LINK}?next=x now`],
+    ['the handed link, a bracket, then a host', `Tap ${LINK}(evil.app)`],
+    ['the handed link, a bang, then a user-info host', `Tap ${LINK}!@evil now`],
+    ['the handed link, a quote, then a user-info host', `Tap ${LINK}'@evil now`],
+    ['the handed link, a comma, then more host', `Tap ${LINK},evil now`],
+    ['the handed link, a backslash, then a user-info host', `Tap ${LINK}\\@evil.app now`],
+    ['the handed link as a single-label user name', `Tap ${LINK}@evil now`],
+    ['the handed link, an escaped slash, then a user-info host', `Tap ${LINK}%2F@evil.app now`],
+    ['the handed link with a dotted host glued on', `Tap ${LINK}.evil.tld now`],
     ['another scheme link', `Tap ${LINK} or https://evil.test/x`],
     ['a scheme-less domain beside it', `Tap ${LINK} or bit.ly/x`],
     ['any link when none was handed', `Tap ${LINK}`],
@@ -129,8 +171,64 @@ describe('linksOutside: an allowed word counts only whole', () => {
       ['villagehale.com'],
     ],
     ['a spaced-dot host', 'See bit . ly/x', []],
+    [
+      'a trusted host with a glued path past a linkifier stop',
+      'See villagehale.com/<evil.app>',
+      ['villagehale.com'],
+    ],
+    [
+      'a trusted host with a quote then another host',
+      'See villagehale.com/"evil.app"',
+      ['villagehale.com'],
+    ],
   ])('refuses %s', (_label, text, allowed) => {
     expect(linksOutside(text, allowed)).not.toEqual([]);
+  });
+});
+
+describe('linkHostname: the host the browser parser reads, or null', () => {
+  it.each([
+    ['a query that carries another scheme', 'evil.app/x?r=https://villagehale.com', 'evil.app'],
+    [
+      'a backslash, which the parser reads as a slash',
+      'https://evil.app\\@villagehale.com',
+      'evil.app',
+    ],
+    ['a port before the path', 'villagehale.com:443/x', 'villagehale.com'],
+    ['a scheme-less host', 'Evil.App/slip', 'evil.app'],
+    ['a host and a query', 'https://villagehale.com/x?y=1', 'villagehale.com'],
+  ])('%s', (_label, word, host) => {
+    expect(linkHostname(word)).toBe(host);
+  });
+
+  it.each([
+    ['a user part, whose host a reader mistakes', 'https://villagehale.com:443@evil.app/login'],
+    ['an address', 'parents@evil.app'],
+    ['a word the parser refuses', 'go:https://evil.app'],
+  ])('null for %s', (_label, word) => {
+    expect(linkHostname(word)).toBeNull();
+  });
+});
+
+describe('wordSpans: the shared word reading, with where each word sits', () => {
+  it('drops the prose edges and points at the word in the reading', () => {
+    const read = asHandsetReads('See (evil [。] example), then 9:00.');
+    const spans = wordSpans(read);
+    expect(spans.map((span) => span.word)).toEqual(['See', 'evil.example', 'then', '9:00']);
+    for (const span of spans) expect(read.slice(span.from, span.to)).toBe(span.word);
+  });
+
+  it('splits at a phone linkifier stop, so a glued host is its own word', () => {
+    const read = 'See villagehale.com/<evil.app> or villagehale.com/"evil.app" now.';
+    expect(wordSpans(read).map((span) => span.word)).toEqual([
+      'See',
+      'villagehale.com/',
+      'evil.app',
+      'or',
+      'villagehale.com/',
+      'evil.app',
+      'now',
+    ]);
   });
 });
 
@@ -159,6 +257,12 @@ describe("foreignLinks: words from Hale's own records are not links", () => {
 
   it.each(EVASIONS)('still refuses %s, and names it', (_label, text) => {
     expect(foreignLinks(text, FAMILY)).not.toEqual([]);
+  });
+
+  it('passes the zh-rush-timed-open first draft: the handed link, then a bracket', () => {
+    const draft = `这个报名要等到指定时间才开放:周一(1月12日)早上7:00。到时候需要你自己去报名,Hale这边不会代办。报名页面在这里:${LINK}(场次:周六上午9:30)。为了到时候能快点填完,可以提前备好这些信息:孩子名字 Lena,孩子姓氏 Ferreira,家长名字 Sam,家长邮箱 sam@example.test。`;
+    expect(foreignLinks(draft, FAMILY)).toEqual([]);
+    expect(foreignLinks(draft, { ...FAMILY, handed: [] })).not.toEqual([]);
   });
 
   it("passes the parent's email from the facts, and the same shape from anywhere else is a link", () => {
@@ -196,7 +300,6 @@ describe("foreignLinks: words from Hale's own records are not links", () => {
     expect(foreignLinks('已经放到日历上。Ana、Sam,还没有。', FAMILY)).toEqual([]);
     expect(foreignLinks('没有空位了。Hale不会自动加入候补', FAMILY)).toEqual([]);
     expect(foreignLinks('Hale这边不会代办。报名页面在这里', FAMILY)).toEqual([]);
-    expect(hasLinkShape('Hale这边不会代办。报名页面在这里')).toBe(true);
     expect(
       foreignLinks('已经放到日历上。Ana、Sam,还没有。', { handed: [], email: null, words: [] }),
     ).not.toEqual([]);
@@ -209,18 +312,18 @@ describe("foreignLinks: words from Hale's own records are not links", () => {
     ['a trusted name followed by a host', '日历上。Ana.app'],
     ['a trusted name glued to more letters', '日历上。Anax'],
     ['a trusted name with a path', '日历上。Ana/x'],
-    ['an untrusted Latin word inside the CJK run', 'evil这边不会代办。报名页面'],
   ])('still refuses %s', (_label, text) => {
     expect(foreignLinks(text, FAMILY)).not.toEqual([]);
   });
 
-  it('accepts a trusted word inside the CJK run before the stop, as the pure-CJK form already passes', () => {
-    // Documented acceptance: a CJK label with a CJK run after it, and no '/', is not read
-    // as a host. Stripping Hale's name extends that to '请到Hale报名。在线'; the strip is
-    // what lets "Hale这边不会代办。…" through.
-    expect(hasLinkShape('请到报名。在线')).toBe(false);
-    expect(foreignLinks('请到Hale报名。在线', FAMILY)).toEqual([]);
-    expect(hasLinkShape('请到Hale报名。在线')).toBe(true);
+  it('never reads a full stop before a trusted name that is a delegated ending as a sentence end', () => {
+    expect(foreignLinks('详情见例子。Ai', { ...FAMILY, words: ['Ai'] })).toEqual(['详情见例子.Ai']);
+    expect(foreignLinks('详情见例子。Ana', { ...FAMILY, words: ['Ana'] })).toEqual([]);
+  });
+
+  it("trusts no member's name inside the run before the stop", () => {
+    expect(foreignLinks('请到Evil报名。在线', { ...FAMILY, words: ['Evil'] })).not.toEqual([]);
+    expect(foreignLinks('请到Evil报名。我们', { ...FAMILY, words: ['Evil'] })).toEqual([]);
   });
 
   it('names exactly the offending words', () => {
@@ -228,7 +331,7 @@ describe("foreignLinks: words from Hale's own records are not links", () => {
   });
 
   it('names only the host a phone would make inside unspaced CJK writing', () => {
-    expect(foreignLinks('早上7:00 AM。到时候需要你自己去报名,Hale这边不会代办', FAMILY)).toEqual([
+    expect(foreignLinks('早上7:00 AM.到时候需要你自己去报名,Hale这边不会代办', FAMILY)).toEqual([
       'AM.到时候需要你自己去报名',
     ]);
     expect(foreignLinks('报名页面在这里:evil.app/x,到时候', FAMILY)).toEqual(['evil.app']);

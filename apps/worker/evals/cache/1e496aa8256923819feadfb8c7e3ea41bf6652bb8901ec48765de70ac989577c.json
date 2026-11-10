@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names two swim lessons, so asking which one is right, and both are accurately recalled from the week. But the reply asks two questions in one text (which swim, and what day it should have said). The opening 'That email was mine, so I'll fix it' is also padding. The shape is off.",
+    "score": 3
+  }
+}

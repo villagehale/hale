@@ -297,7 +297,7 @@ describe('matchIntroPairs across a municipality', () => {
   });
 
   it('stores family A’s own FSA on the pair, not the municipality', () => {
-    // The proposal row's `fsa` column is a real FSA and stays one. It records where the
+    // The proposal row's `fsa` column stays the family's own code. It records where the
     // pair was anchored; it is not a claim that both households live in it.
     expect(pairOf('L7G', 'L7J')[0]?.fsa).toBe('L7G');
     expect(pairOf('L7J', 'L7G')[0]?.fsa).toBe('L7J');

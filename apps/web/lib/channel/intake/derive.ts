@@ -1,5 +1,7 @@
+import { ageInMonths } from '@hale/types';
 import { matchPostalToken } from '~/lib/channel/off-domain/place';
 import { deriveAreaCoarse } from '~/lib/family/location-input';
+import { acceptCalendarDate } from './calendar-date';
 import type { AgePrecision, ExtractedChild } from './extract';
 import { timezoneForIntakePostal } from './postal-zone';
 
@@ -9,7 +11,7 @@ import { timezoneForIntakePostal } from './postal-zone';
  */
 
 /**
- * Where a postal token places a family. The FSA is always known; the full code only
+ * Where a postal token places a family. The coarse prefix is always known; the full code only
  * when the parent volunteered one. Decision D2: the FSA is what discovery actually
  * runs on (the M1 matcher keys on it), so the second half is a later just-in-time ask
  * and never a precondition for setting a family up.
@@ -72,6 +74,30 @@ export function crisisRegionForPlace(
  * back out of the date.
  */
 const MIDPOINT_CORRECTION_MONTHS: Record<AgePrecision, number> = { years: 6, months: 0 };
+
+/**
+ * VIL-531 / VIL-532. A named birth date is the age: fill `ageMonths` from the
+ * civil day so intake does not ask how old they are, and so provisioning can
+ * store that day instead of a midpoint derived from the spoken age.
+ */
+export function fillAgesFromDates(
+  children: readonly ExtractedChild[],
+  now: Date,
+): ExtractedChild[] {
+  return children.map((child) => {
+    const dateOfBirth = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+    if (!dateOfBirth) return child;
+    if (child.ageMonths != null) {
+      return { ...child, dateOfBirth };
+    }
+    return {
+      ...child,
+      dateOfBirth,
+      ageMonths: ageInMonths(dateOfBirth, now),
+      agePrecision: child.agePrecision ?? 'months',
+    };
+  });
+}
 
 /**
  * The stored date_of_birth for a child whose parent gave only an AGE. The row is

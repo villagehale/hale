@@ -1,0 +1,14 @@
+{
+  "value": {
+    "intent": "driver_swap",
+    "driverName": "Priya",
+    "driverIsSender": true,
+    "eventLabel": "Saturday soccer",
+    "pickupDate": "2026-10-31",
+    "pickupTime": null,
+    "pickupPlace": null,
+    "kids": null,
+    "confidence": "high"
+  },
+  "latencyMs": 1487
+}

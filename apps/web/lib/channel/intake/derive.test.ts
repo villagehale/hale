@@ -1,8 +1,10 @@
 import { ageInMonths, deriveStage } from '@hale/types';
 import { describe, expect, it } from 'vitest';
+import { FIXTURE_FSA, FIXTURE_POSTAL } from '~/lib/testing/fixture-postal';
 import {
   crisisRegionForPlace,
   deriveDateOfBirth,
+  fillAgesFromDates,
   intakeFamilyName,
   parseIntakePostal,
   summarizeChildren,
@@ -21,9 +23,9 @@ describe('parseIntakePostal', () => {
       postalCode: 'M5V 2T6',
       areaCoarse: 'M5V',
     });
-    expect(parseIntakePostal('l7g-4s8')).toMatchObject({
-      postalCode: 'L7G 4S8',
-      areaCoarse: 'L7G',
+    expect(parseIntakePostal('k7l-1a1')).toMatchObject({
+      postalCode: FIXTURE_POSTAL,
+      areaCoarse: FIXTURE_FSA,
     });
   });
 
@@ -75,6 +77,21 @@ describe('parseIntakePostal', () => {
   });
 });
 
+describe('parseIntakePostal', () => {
+  it('preserves ZIP+4 context and rejects incomplete ZIPs or prose', () => {
+    expect(parseIntakePostal(' 05401-1234 ')).toMatchObject({
+      postalCode: '05401-1234',
+      areaCoarse: '054',
+      country: 'United States',
+      countryCode: 'US',
+      timezone: 'America/New_York',
+    });
+    for (const value of ['054', '0540', '054012', 'SW1A 1AA', 'W1A', 'ZIP 05401', null]) {
+      expect(parseIntakePostal(value)).toBeNull();
+    }
+  });
+});
+
 describe('deriveDateOfBirth', () => {
   const now = new Date('2026-07-30T12:00:00.000Z');
 
@@ -112,6 +129,19 @@ describe('deriveDateOfBirth', () => {
    * the intake→storage→derivation chain lands on preschool rather than the
    * school-age band a four-year-old used to be searched in.
    */
+  it('fills age from a named birth date without converting the civil day (VIL-531)', () => {
+    const now = new Date('2026-11-02T18:00:00.000Z');
+    const filled = fillAgesFromDates(
+      [{ name: 'Lin', ageMonths: null, agePrecision: null, dateOfBirth: '2016-05-01' }],
+      now,
+    );
+    expect(filled[0]?.dateOfBirth).toBe('2016-05-01');
+    expect(filled[0]?.ageMonths).toBe(ageInMonths('2016-05-01', now));
+    expect(filled[0]?.agePrecision).toBe('months');
+    // The Preview bug: deriving a DOB from months on a Nov 2 UTC clock stored May 2.
+    expect(deriveDateOfBirth(filled[0]?.ageMonths ?? 0, 'months', now)).not.toBe('2016-05-01');
+  });
+
   it('lands a spoken "four years old" in the preschool stage, not school-age', () => {
     const dob = deriveDateOfBirth(48, 'years', now);
     expect(ageInMonths(dob, now)).toBe(54);

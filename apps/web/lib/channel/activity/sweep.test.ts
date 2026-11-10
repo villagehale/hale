@@ -103,7 +103,7 @@ function harness(
   const calendarChecks: unknown[] = [];
   const closedWatches: unknown[] = [];
 
-  const deps: ActivityFollowUpDeps = {
+  const deps = {
     refuseUnbackedSend: async () => overrides.unbacked ?? [],
     loadDue: async () => overrides.due ?? [DUE],
     resolveRecipient: async () => ({
@@ -135,7 +135,7 @@ function harness(
           overrides.compose ?? {
             status: 'composed',
             message: `${PICK.name} runs Saturdays.`,
-            mentionsWatch: false,
+            commitsToReturn: false,
           }
         );
       },
@@ -171,21 +171,21 @@ function harness(
       watched.push(input);
       return overrides.recordWatch ?? { status: 'recorded', commitmentId: 'commitment-2' };
     },
-    deferWatch: async (_db, input) => {
+    deferWatch: async (_db: Database, input: unknown) => {
       deferredWatches.push(input);
       return { status: 'deferred' };
     },
     calendarCheck: {
-      async check(_db, watch) {
+      async check(_db: Database, watch: unknown) {
         calendarChecks.push(watch);
         return overrides.calendar ?? { outcome: 'calendar_empty' };
       },
     },
-    closeWatch: async (_db, input) => {
+    closeWatch: async (_db: Database, input: { commitmentId: string }) => {
       closedWatches.push(input);
       return { status: 'closed', commitmentIds: [input.commitmentId] };
     },
-  };
+  } as ActivityFollowUpDeps;
   return {
     deps,
     transport,
@@ -281,6 +281,85 @@ describe('a promise with finds', () => {
 });
 
 describe('the promise is kept when the news is bad', () => {
+  it('preserves uncertain references when the same search also returns supported picks', async () => {
+    armed();
+    const reference = {
+      name: 'Family workshop',
+      sourceName: 'Example Library',
+      sourceUrl: 'https://library.example/workshop',
+      ageFit: null,
+      when: null,
+      price: null,
+      status: 'unconfirmed' as const,
+      evidence: {
+        program: 'Family workshop',
+        age: null,
+        sessions: [],
+        schedule: null,
+        price: null,
+        history: null,
+        windowConfirmed: false,
+      },
+    };
+    const h = harness({
+      find: {
+        found: true,
+        picks: [PICK],
+        references: [reference],
+        checkedSources: [reference.sourceUrl],
+      },
+    });
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    expect(result).toMatchObject({ sent: 1, sentEmptyHanded: 0 });
+    expect(h.composed[0]).toMatchObject({
+      picks: [PICK],
+      searched: {
+        town: 'Halton Hills, Ontario, Canada',
+        notes: '',
+        references: [reference],
+        checkedSources: [reference.sourceUrl],
+      },
+    });
+    expect(h.transport.sent[0]?.body).toContain(reference.sourceUrl);
+  });
+
+  it('appends only checked HTTP sources to an unconfirmed follow-up, without treating URL queries as questions', async () => {
+    armed();
+    const url = 'https://venue.example/programs?topic=kids#dates';
+    const h = harness({
+      find: {
+        found: false,
+        reason: 'no_picks',
+        searched: {
+          town: 'Halton Hills',
+          notes: 'The current session could not be established.',
+          checkedSources: [
+            url,
+            url,
+            'javascript:alert(1)',
+            'https://app.villagehale.com/a/retired',
+          ],
+          references: [],
+        },
+      },
+      compose: {
+        status: 'composed',
+        message: 'I could not establish a current session from the page. I will keep looking.',
+      },
+    });
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    expect(result.sent).toBe(1);
+    expect(h.transport.sent[0]?.body).toContain(url);
+    expect(h.transport.sent[0]?.body.split(url)).toHaveLength(2);
+    expect(h.transport.sent[0]?.body).not.toContain('javascript:');
+    expect(h.transport.sent[0]?.body).not.toContain('villagehale.com/a/');
+    expect(h.composed[0]).toMatchObject({
+      searched: {
+        checkedSources: [url, url, 'javascript:alert(1)', 'https://app.villagehale.com/a/retired'],
+      },
+    });
+  });
+
   it('sends the empty-handed message and STILL closes the row', async () => {
     armed();
     const h = harness({
@@ -288,7 +367,7 @@ describe('the promise is kept when the news is bad', () => {
       compose: {
         status: 'composed',
         message: 'I went back through the fall listings - nothing yet.',
-        mentionsWatch: false,
+        commitsToReturn: false,
       },
     });
 
@@ -485,7 +564,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
         status: 'composed',
         message:
           'Cartwheels has Tiny Gym Sundays 9:30-10:15 from Sept 14, $124 a term - their site says, and registration has been open since July 22.',
-        mentionsWatch: false,
+        commitsToReturn: false,
       },
     });
 
@@ -630,7 +709,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
       compose: {
         status: 'composed',
         message: 'I read their fall page and there is nothing up.',
-        mentionsWatch: false,
+        commitsToReturn: false,
       },
     });
 
@@ -711,7 +790,7 @@ describe('a partial answer registers the watch it talks about', () => {
       compose: {
         status: 'composed',
         message: "Cartwheels runs Tiny Gym for under-3s - their site says. I'll keep watching.",
-        mentionsWatch: true,
+        commitsToReturn: true,
       },
       ...overrides,
     });
@@ -828,7 +907,7 @@ describe('a partial answer registers the watch it talks about', () => {
       compose: {
         status: 'composed',
         message: "Nothing up for the fall session yet - I'll keep looking and text you.",
-        mentionsWatch: true,
+        commitsToReturn: true,
       },
     });
 
@@ -843,7 +922,7 @@ describe('a partial answer registers the watch it talks about', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const silent = 'Cartwheels runs Tiny Gym for under-3s - their site says.';
     const h = partialHarness({
-      compose: { status: 'composed', message: silent, mentionsWatch: false },
+      compose: { status: 'composed', message: silent, commitsToReturn: false },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
@@ -922,7 +1001,7 @@ describe('a watch sends news or nothing', () => {
       compose: {
         status: 'composed',
         message: 'Tiny Gym runs Saturdays at 9:15 and 10:30.',
-        mentionsWatch: false,
+        commitsToReturn: false,
       },
     });
   }
@@ -1254,7 +1333,7 @@ describe('the last read of the string that actually leaves', () => {
       compose: {
         status: 'composed',
         message: `${PICK.name} runs Saturdays. Want me to check back once they're up?`,
-        mentionsWatch: false,
+        commitsToReturn: false,
       },
     });
 
@@ -1276,7 +1355,7 @@ describe('the last read of the string that actually leaves', () => {
       compose: {
         status: 'composed',
         message: `${PICK.name} runs Saturdays. Your spot is booked.`,
-        mentionsWatch: false,
+        commitsToReturn: false,
       },
       unbacked: ['no_scheduled_row'],
     });

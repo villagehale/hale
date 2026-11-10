@@ -1,11 +1,18 @@
 import type { Database } from '@hale/db';
+import { captureAgentError } from '~/lib/analytics/server-capture';
 import { type ClaimShadowContext, loadClaimShadowContext } from './candidate-rows';
 import { buildClaimCandidates } from './candidates';
-import { type ClaimReadFailure, type ClaimReader, defaultClaimReader } from './claim-reader';
+import {
+  CLAIM_READ_MAX_BUDGET_MS,
+  type ClaimReadFailure,
+  type ClaimReader,
+  defaultClaimReader,
+} from './claim-reader';
 import { type ClaimReadVerdict, type ReadClaimResolution, verifyClaimRead } from './claim-verdict';
 import { claimReaderEnforces } from './flag';
 import { type ReconcileView, type RegistrationWatchMint, registrationWatchMint } from './reconcile';
 import { type Segment, claimReadLocale } from './sentences';
+import { loadReconcileView } from './view';
 
 /**
  * VIL-581 PR 3 · the claim reader as part of the DECISION, for a family the flag
@@ -68,6 +75,10 @@ export interface ClaimEnforcerPorts {
   ) => Promise<ClaimShadowContext>;
 }
 
+async function reportClaimReadFailed(familyId: string, reason: ClaimEnforceFailure): Promise<void> {
+  await captureAgentError({ lane: 'claim_read', reason, familyId });
+}
+
 export function createClaimEnforcer(ports: ClaimEnforcerPorts): ClaimEnforcer {
   return {
     enforces: ports.enforces,
@@ -79,7 +90,10 @@ export function createClaimEnforcer(ports: ClaimEnforcerPorts): ClaimEnforcer {
         view: input.view,
         ...(input.pending ? { pending: input.pending } : {}),
       });
-      if (context.status === 'skipped') return { status: 'failed', reason: context.reason };
+      if (context.status === 'skipped') {
+        await reportClaimReadFailed(input.familyId, context.reason);
+        return { status: 'failed', reason: context.reason };
+      }
       const candidates = buildClaimCandidates(input.familyId, context.rows, context.timeZone);
       const outcome = await ports.reader.read({
         body: input.body,
@@ -91,7 +105,10 @@ export function createClaimEnforcer(ports: ClaimEnforcerPorts): ClaimEnforcer {
         signal: input.signal,
         budgetMs: input.budgetMs,
       });
-      if (outcome.status === 'failed') return { status: 'failed', reason: outcome.reason };
+      if (outcome.status === 'failed') {
+        await reportClaimReadFailed(input.familyId, outcome.reason);
+        return { status: 'failed', reason: outcome.reason };
+      }
       const verdict = verifyClaimRead(outcome, {
         candidates,
         locale: claimReadLocale(context.language),
@@ -120,6 +137,46 @@ export const refusedResolutions = (verdict: ClaimReadVerdict) =>
     (r): r is Extract<ReadClaimResolution, { status: 'refused' }> => r.status === 'refused',
   );
 
+/**
+ * VIL-581 · dispatch failures that should come back. A drain retry can recover a
+ * provider blip; a missing zone, an oversize body, or a lane that cannot call will
+ * fail the same way on the next tick.
+ */
+export function isRetryableClaimReadFailure(reason: ClaimEnforceFailure): boolean {
+  switch (reason) {
+    case 'unreachable':
+    case 'rate_limited':
+    case 'incident':
+    case 'no_budget':
+    case 'truncated':
+    case 'unparseable':
+    case 'provider_rejected':
+      return true;
+    case 'refused':
+    case 'lane_unavailable':
+    case 'oversize':
+    case 'no_time_zone':
+      return false;
+  }
+}
+
+export type DispatchClaimDecision =
+  | { status: 'off' }
+  | { status: 'clean' }
+  | { status: 'unbacked' }
+  | { status: 'failed'; reason: ClaimEnforceFailure; retry: boolean };
+
+/** The dispatch seam holds no database; wiring.ts binds this port to its handle. */
+export interface DispatchClaimEnforce {
+  enforces(familyId: string): boolean;
+  decide(input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+  }): Promise<DispatchClaimDecision>;
+}
+
 let shared: ClaimEnforcer | undefined;
 
 /** One per process. Nothing here opens a connection or reads a required env: it is a
@@ -131,4 +188,40 @@ export function defaultClaimEnforcer(): ClaimEnforcer {
     loadContext: loadClaimShadowContext,
   });
   return shared;
+}
+
+export function bindDispatchClaimEnforce(
+  database: Database,
+  enforcer: ClaimEnforcer = defaultClaimEnforcer(),
+): DispatchClaimEnforce {
+  return {
+    enforces: (familyId) => enforcer.enforces(familyId),
+    async decide(input) {
+      if (!enforcer.enforces(input.familyId)) return { status: 'off' };
+      const view = await loadReconcileView(database, {
+        familyId: input.familyId,
+        now: input.now,
+      });
+      const read = await enforcer.read(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        now: input.now,
+        body: input.body,
+        view,
+        signal: new AbortController().signal,
+        budgetMs: CLAIM_READ_MAX_BUDGET_MS,
+      });
+      if (read.status === 'failed') {
+        return {
+          status: 'failed',
+          reason: read.reason,
+          retry: isRetryableClaimReadFailure(read.reason),
+        };
+      }
+      if (refusedResolutions(read.verdict).length > 0 || read.mints.length > 0) {
+        return { status: 'unbacked' };
+      }
+      return { status: 'clean' };
+    },
+  };
 }

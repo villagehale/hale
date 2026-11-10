@@ -7,7 +7,8 @@ name: Eval sweep
 #
 # Cached-only means zero API calls (a cache miss FAILS LOUDLY instead of spending),
 # so this job needs no secrets. Do not add any — an eval that can reach the API is
-# an eval that can quietly bill on a schedule.
+# an eval that can quietly bill on a schedule. Does not set HALE_EVERY_EVAL_KNOWN_OK,
+# so suites that CI currently allows on main still fail here.
 
 on:
   schedule:
@@ -47,27 +48,4 @@ jobs:
         run: pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
 
       - name: Run every eval suite (cached-only)
-        run: |
-          cd apps/worker
-          table=""
-          fails=0
-          for f in evals/run-*.mjs; do
-            name=$(basename "$f" .mjs)
-            echo "::group::$name"
-            if node "$f" --cached-only; then
-              table="${table}PASS  ${name}"$'\n'
-            else
-              table="${table}FAIL  ${name}"$'\n'
-              fails=$((fails + 1))
-            fi
-            echo "::endgroup::"
-          done
-          printf '%s\n' "==== eval sweep ===="
-          printf '%s' "$table"
-          printf 'failing suites: %s\n' "$fails"
-          {
-            printf '### Eval sweep\n\n```\n'
-            printf '%s' "$table"
-            printf '```\n\nfailing suites: %s\n' "$fails"
-          } >> "$GITHUB_STEP_SUMMARY"
-          test "$fails" -eq 0
+        run: scripts/ci/run-every-eval.sh

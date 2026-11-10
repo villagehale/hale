@@ -61,7 +61,9 @@ export type CapturedLinqKind =
   | 'location_request'
   | 'roster'
   | 'voice_memo'
-  | 'capability_check';
+  | 'capability_check'
+  | 'chat_background'
+  | 'message_edit';
 
 export type CapturedLinqCall = {
   chatId: string;
@@ -111,6 +113,7 @@ function newMessageId(): string {
 
 const CHAT_PATH = /^\/chats\/([^/?]+)(\/[a-z_]+(?:\/[a-z_]+)?)?$/;
 const REACTION_PATH = /^\/messages\/([^/]+)\/reactions$/;
+const MESSAGE_EDIT_PATH = /^\/messages\/([^/]+)$/;
 
 /**
  * One partner call, captured. Answers the Linq shapes the callers read:
@@ -159,6 +162,24 @@ export async function captureLinqCall(
       status: 200,
       payload: { address: handles[0], available: true, selected_service: 'iMessage' },
     };
+  }
+
+  const edited = MESSAGE_EDIT_PATH.exec(path);
+  if (edited && method === 'PATCH') {
+    const messageId = decodeURIComponent(edited[1] ?? '');
+    if (!messageId.startsWith('preview-')) throw new PreviewGroupCaptureRefused('not_fake_chat');
+    const chatId = await sink.chatOfMessage(messageId);
+    if (!isFakeChatId(chatId)) throw new PreviewGroupCaptureRefused('not_fake_chat');
+    await sink.record({
+      chatId,
+      kind: 'message_edit',
+      method,
+      path,
+      body,
+      handles: null,
+      providerMessageId: messageId,
+    });
+    return { status: 200, payload: { id: messageId, message: { id: messageId } } };
   }
 
   const reaction = REACTION_PATH.exec(path);
@@ -217,6 +238,9 @@ export async function captureLinqCall(
     'POST:/leave': 'chat_leave',
     'POST:/location/request': 'location_request',
     'GET:/location': 'location_request',
+    // VIL-478 · the household group's colour swatch: recorded like any other effect,
+    // never refused, so a Preview run proves the call (Devin #991).
+    'POST:/background': 'chat_background',
   };
   if (sub === '/polls' && method === 'POST') {
     const providerMessageId = newMessageId();

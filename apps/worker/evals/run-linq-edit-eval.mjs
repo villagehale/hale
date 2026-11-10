@@ -1,0 +1,305 @@
+// VIL-479 · Linq edit eval (hard rule #8: no LLM mocking).
+//
+// SUBJECT: packages/agent/skills/linq-edit.md, called the way the runtime calls it
+// (apps/web/lib/channel/linq/edit.ts): the same user message, tool, schema, lane and
+// max_tokens, imported from that file. The send gate (`linqEditRefusals`) is the
+// runtime's own. A judge scores each edit-or-new-bubble decision on facts, safety,
+// privacy and tone against a situation; nothing here names the replacement wording.
+//
+// The cache is recorded on this branch and CI replays it cached-only as a hard gate.
+// A miss never spends; it prints the price and fails, unless the fixture is on
+// LINQ_EDIT_NEEDS_RERECORD (writer key moved; paid re-record is batched).
+//
+//   node evals/run-linq-edit-eval.mjs --dry           # worst-case price to record; no API, nothing written
+//   node evals/run-linq-edit-eval.mjs --estimate      # same as --dry
+//   node evals/run-linq-edit-eval.mjs --cached-only   # replay; a miss prints the price and exits 1
+//   node evals/run-linq-edit-eval.mjs --broken        # calibration: a known-bad stand-in must FAIL (exit 1)
+//   node --env-file=../../.env evals/run-linq-edit-eval.mjs --record --max-usd 0.10   # live, then caches
+
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { register } from 'tsx/esm/api';
+import {
+  JUDGE_MIN,
+  JUDGE_SCHEMA,
+  PRICE,
+  REPO_ROOT,
+  cacheGet,
+  cacheKey,
+  cachedToolCall,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  makeJudge,
+  readJudgeModel,
+  totalUsd,
+} from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
+import { LINQ_EDIT_FIXTURES, LINQ_EDIT_NEEDS_RERECORD } from './linq-edit-fixtures.mjs';
+
+const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
+const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
+const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'linq-edit.md');
+const EDIT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'linq', 'edit.ts');
+
+register({ tsconfig: WEB_TSCONFIG });
+const importTs = (absPath) => import(pathToFileURL(absPath).href);
+
+/**
+ * cachedToolCall keys on the request but not on the tool description, so the description
+ * goes in the tag: a reworded description re-records instead of replaying old decisions.
+ */
+export function linqEditRecordingTag(fixtureId, toolDescription) {
+  const description = createHash('sha256').update(toolDescription).digest('hex').slice(0, 12);
+  return `linq-edit:${fixtureId}:${description}`;
+}
+
+/** Same key cachedToolCall uses for a linq-edit writer draw. */
+export function linqEditWriterCacheKey({
+  fixtureId,
+  toolDescription,
+  lane,
+  system,
+  userMessage,
+  toolName,
+  toolSchema,
+}) {
+  const tag = linqEditRecordingTag(fixtureId, toolDescription);
+  const canonical = JSON.stringify({
+    model: lane.model,
+    system,
+    userMessage,
+    toolName,
+    toolSchema,
+    lane,
+  });
+  return { tag, key: cacheKey(tag, canonical) };
+}
+
+/**
+ * Listed writer misses are the batched re-record, not a surprise. A listed id
+ * that still hits is stale. An unlisted miss is still a hard fail.
+ */
+export function linqEditRerecordGate({ pending, stale, listed, knownIds }) {
+  const listedSet = new Set(listed);
+  const known = new Set(knownIds);
+  const expectedPending = pending.filter((id) => listedSet.has(id));
+  const unexpectedMiss = pending.filter((id) => !listedSet.has(id));
+  const staleListed = stale.filter((id) => listedSet.has(id));
+  const unknown = listed.filter((id) => !known.has(id));
+  const lines = [];
+  if (expectedPending.length > 0) {
+    lines.push(`need-rerecord (French tu/vous on linq-edit.md): ${expectedPending.join(', ')}`);
+  }
+  if (unexpectedMiss.length > 0) {
+    lines.push(`FAIL unexpected writer cache miss: ${unexpectedMiss.join(', ')}`);
+  }
+  if (staleListed.length > 0) {
+    lines.push(
+      `FAIL need-rerecord case still hits cache, remove it from LINQ_EDIT_NEEDS_RERECORD: ${staleListed.join(', ')}`,
+    );
+  }
+  if (unknown.length > 0) {
+    lines.push(`FAIL LINQ_EDIT_NEEDS_RERECORD lists unknown case ids: ${unknown.join(', ')}`);
+  }
+  return {
+    ok: unexpectedMiss.length === 0 && staleListed.length === 0 && unknown.length === 0,
+    expectedPending,
+    unexpectedMiss,
+    staleListed,
+    unknown,
+    lines,
+  };
+}
+
+/** makeJudge's live ceiling for a Haiku judge. The worst case is priced at it. */
+const JUDGE_MAX_TOKENS = 4096;
+
+const JUDGE_SYSTEM = judgePrompt('linq-edit');
+
+/** Known-bad on purpose: a bubble the model was not shown. The send gate refuses it. */
+const BROKEN_DECISION = {
+  edit: { messageId: 'not-shown', partIndex: 0, text: 'Swim is at 5.' },
+};
+
+function estimateTokens(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  let latin = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (ch.codePointAt(0) <= 0x024f) latin += 1;
+    else other += 1;
+  }
+  return Math.ceil(latin / 4) + other;
+}
+
+function priced(model, input, output) {
+  const price = PRICE[model];
+  if (!price) throw new Error(`no list price for ${model}`);
+  return (input / 1e6) * price.input + (output / 1e6) * price.output;
+}
+
+function judgePayload(fixture, userMessage, decision) {
+  return { input: JSON.parse(userMessage), decision, situation: fixture.situation };
+}
+
+function asDecision(value) {
+  const edit = value?.edit;
+  if (!edit || typeof edit !== 'object') return { edit: null };
+  return {
+    edit: {
+      messageId: typeof edit.messageId === 'string' ? edit.messageId : '',
+      partIndex: typeof edit.partIndex === 'number' ? edit.partIndex : -1,
+      text: typeof edit.text === 'string' ? edit.text : '',
+    },
+  };
+}
+
+/** Every fixture, writer and judge, each at its max_tokens ceiling. No cache reads. */
+function worstCaseUsd({ lane, skill, edit, judgeModel }) {
+  let usd = 0;
+  for (const fixture of LINQ_EDIT_FIXTURES) {
+    const userMessage = edit.linqEditUserMessage(fixture.input);
+    const writerInput =
+      estimateTokens(skill.instructions) +
+      estimateTokens(userMessage) +
+      estimateTokens({
+        name: edit.LINQ_EDIT_TOOL,
+        input_schema: edit.LINQ_EDIT_TOOL_SCHEMA,
+      });
+    usd += priced(lane.model, writerInput, edit.LINQ_EDIT_MAX_TOKENS);
+    const judgeInput =
+      estimateTokens(JUDGE_SYSTEM) +
+      estimateTokens(judgePayload(fixture, userMessage, BROKEN_DECISION)) +
+      estimateTokens(JUDGE_SCHEMA);
+    usd += priced(judgeModel, judgeInput, JUDGE_MAX_TOKENS);
+  }
+  return usd;
+}
+
+function priceLine(usd, lane, judgeModel) {
+  return `linq-edit: worst case to record ${LINQ_EDIT_FIXTURES.length} fixtures (writer ${lane.model} + judge ${judgeModel}), every call at max_tokens, no cache reads. live API calls: 0. nothing written. $${usd.toFixed(4)} USD`;
+}
+
+async function main() {
+  const dry = process.argv.includes('--dry') || process.argv.includes('--estimate');
+  const broken = process.argv.includes('--broken');
+  const cachedOnly = process.argv.includes('--cached-only');
+  const record = process.argv.includes('--record');
+  if ([dry, broken, cachedOnly, record].filter(Boolean).length !== 1) {
+    console.error(
+      'linq-edit: pass exactly one of --dry/--estimate, --cached-only, --broken or --record. Only --record calls the API.',
+    );
+    process.exit(2);
+  }
+
+  const agent = await importTs(AGENT_SRC);
+  const edit = await importTs(EDIT_SRC);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const lane = agent.pickLane(skill.meta.task);
+  const judgeModel = await readJudgeModel();
+  const usd = worstCaseUsd({ lane, skill, edit, judgeModel });
+
+  if (dry) {
+    console.info(priceLine(usd, lane, judgeModel));
+    return;
+  }
+
+  if (broken) {
+    let rejected = 0;
+    for (const fixture of LINQ_EDIT_FIXTURES) {
+      const refusals = edit.linqEditRefusals(BROKEN_DECISION, fixture.input.editable);
+      if (refusals.length > 0) rejected += 1;
+      console.info(
+        `${refusals.length > 0 ? 'FAIL' : 'PASS'}  ${fixture.id.padEnd(26)} ${refusals.map((r) => `unsendable:${r}`).join(' ')}`,
+      );
+    }
+    console.info(
+      `linq-edit --broken: ${rejected}/${LINQ_EDIT_FIXTURES.length} rejected by the send gate. live API calls: 0.`,
+    );
+    process.exit(rejected > 0 ? 1 : 0);
+  }
+
+  if (cachedOnly) console.info(priceLine(usd, lane, judgeModel));
+  if (record) installEvalSpendCap();
+  const getClient = lazyAnthropic('linq-edit');
+  const cost = makeCost();
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'linq-edit', cachedOnly, getClient, cost);
+
+  console.info(
+    `linq-edit eval | mode=${record ? 'record' : 'cached-only'} | subject=${lane.model} judge=${judgeModel}`,
+  );
+  const results = [];
+  const pending = [];
+  const stale = [];
+  const listed = new Set(LINQ_EDIT_NEEDS_RERECORD);
+  for (const fixture of LINQ_EDIT_FIXTURES) {
+    const userMessage = edit.linqEditUserMessage(fixture.input);
+    if (cachedOnly) {
+      const { key } = linqEditWriterCacheKey({
+        fixtureId: fixture.id,
+        toolDescription: edit.LINQ_EDIT_TOOL_DESCRIPTION,
+        lane,
+        system: skill.instructions,
+        userMessage,
+        toolName: edit.LINQ_EDIT_TOOL,
+        toolSchema: edit.LINQ_EDIT_TOOL_SCHEMA,
+      });
+      const hit = await cacheGet(key);
+      if (!hit) {
+        pending.push(fixture.id);
+        continue;
+      }
+      if (listed.has(fixture.id)) stale.push(fixture.id);
+    }
+    const { value } = await cachedToolCall({
+      tag: linqEditRecordingTag(fixture.id, edit.LINQ_EDIT_TOOL_DESCRIPTION),
+      lane,
+      system: skill.instructions,
+      userMessage,
+      toolName: edit.LINQ_EDIT_TOOL,
+      toolSchema: edit.LINQ_EDIT_TOOL_SCHEMA,
+      toolDescription: edit.LINQ_EDIT_TOOL_DESCRIPTION,
+      maxTokens: edit.LINQ_EDIT_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    const decision = asDecision(value);
+    const failures = edit
+      .linqEditRefusals(decision, fixture.input.editable)
+      .map((r) => `unsendable:${r}`);
+    const verdict = await judge(fixture.id, judgePayload(fixture, userMessage, decision));
+    if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    results.push({ fixture, decision, failures });
+  }
+  const rerecord = linqEditRerecordGate({
+    pending,
+    stale,
+    listed: LINQ_EDIT_NEEDS_RERECORD,
+    knownIds: LINQ_EDIT_FIXTURES.map((fixture) => fixture.id),
+  });
+  for (const line of rerecord.lines) console.info(line);
+  for (const r of results) {
+    const chosen = r.decision.edit
+      ? `edit=${r.decision.edit.messageId}#${r.decision.edit.partIndex}`
+      : 'edit=null';
+    console.info(
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(26)} ${chosen}`,
+    );
+    for (const f of r.failures) console.info(`      · ${f}`);
+  }
+  console.info(
+    `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
+  );
+  const passed = results.every((r) => r.failures.length === 0);
+  process.exit(passed && rerecord.ok ? 0 : 1);
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error('linq-edit eval harness error:', err instanceof Error ? err.message : err);
+    process.exit(2);
+  });
+}

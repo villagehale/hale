@@ -94,6 +94,33 @@ export async function latestCommonTimeProposal(
 }
 
 /**
+ * VIL-643: true when this chat has already sent a proposal built from at least one
+ * family's busy times, so a later proposal does not say so again.
+ */
+export async function chatAlreadyProposedFromBusy(
+  database: Database,
+  input: { chatId: string; familyIds: readonly string[] },
+): Promise<boolean> {
+  if (input.familyIds.length === 0) return false;
+  const a = schema.auditLog;
+  const rows = await database
+    .select({ after: a.after })
+    .from(a)
+    .where(
+      and(
+        inArray(a.familyId, [...input.familyIds]),
+        eq(a.actionTaken, COMMON_TIME_PROPOSED),
+        sql`${a.after}->>'chatKey' = ${linqChatAuditKey(input.chatId).chatKey}`,
+      ),
+    );
+  return rows.some((row) => {
+    const after = row.after as { checked?: unknown; notice?: unknown };
+    if (after.notice !== 'sent' && after.notice !== 'already_sent') return false;
+    return typeof after.checked === 'number' && after.checked > 0;
+  });
+}
+
+/**
  * Linked parents' own lines in this chat after the proposal (never the ask), oldest first.
  * Read per family, so a busy chat never pushes one family's yes out of the read.
  */

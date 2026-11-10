@@ -9,6 +9,16 @@
 export const BROWSER_USE_API_KEY_ENV = 'BROWSER_USE_API_KEY';
 export const BROWSER_USE_API_BASE = 'https://api.browser-use.com/api/v4';
 
+/**
+ * Hale never solves or gets around a CAPTCHA (VIL-558). Browser Use's solver
+ * is on by default. V4 exposes `solveCaptchas` only on `POST /browsers`
+ * (RunBrowserSettings has no such field and rejects extra properties), so
+ * every browser Hale creates sends this as `false`. Agent runs still provision
+ * their own browser; arming a plan run waits on Browser Use confirming the
+ * solver is off for Hale's project.
+ */
+export const BROWSER_USE_SOLVE_CAPTCHAS = false;
+
 export type BrowserUseRunStatus =
   | 'queued'
   | 'dispatching'
@@ -181,10 +191,7 @@ export function browserUseApi(options: {
         timeout: input.timeoutMinutes,
         proxyCountryCode: input.proxyCountryCode,
         enableRecording: false,
-        // Hale never solves or gets around a CAPTCHA (VIL-558). The solver is on by
-        // default. V4 run browserSettings has no such field, so only a browser Hale
-        // creates itself can carry it.
-        solveCaptchas: false,
+        solveCaptchas: BROWSER_USE_SOLVE_CAPTCHAS,
       });
       return { id: browser.id, cdpUrl: browser.cdpUrl ?? null };
     },

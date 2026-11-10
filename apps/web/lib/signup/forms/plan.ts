@@ -5,6 +5,7 @@ import type {
   SignupIdentity,
   SignupStopReason,
 } from '../types';
+import { chargedPricesMustStop } from '../checkout-gate';
 import { classifyField } from './adapters';
 import { noteStops, pageStops, waitlistControl } from './safety';
 
@@ -117,6 +118,9 @@ export function planBookingStep(input: BookingStepInput): Inspection {
   }
 
   if (sessionControl && continues(input.snapshot.submitLabel)) mode = 'continue';
+  if (mode === 'submit' && chargedPricesMustStop(input.snapshot.priceCents)) {
+    return stop('payment');
+  }
   return { action: mode, fills, sessionControl: sessionControl?.name ?? null };
 }
 

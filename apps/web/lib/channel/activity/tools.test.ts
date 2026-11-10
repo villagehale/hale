@@ -1,5 +1,7 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
+import { attachLinks, linkRef } from '~/lib/channel/coach/activity-links';
+import type { NamedLink } from '~/lib/channel/coach/tools';
 import type { NamedArea, NamedAreaReader } from '~/lib/channel/named-area';
 import type { ActivityPromise } from './commitment';
 import type { ActivityFinder, ActivityPick } from './lane';
@@ -61,6 +63,92 @@ const call = (tool: ReturnType<typeof findActivitiesTool>, input: unknown) =>
   invokeTool(tool, input, { familyId: FAMILY, actor: PARENT }, guardDeps());
 
 describe('find_activities', () => {
+  it('hands historical references and exact source links to Coach without recommending them', async () => {
+    const url = 'https://venue.example/old?program=Kids#Details';
+    const reference = {
+      name: 'Past workshop',
+      sourceName: 'Example',
+      sourceUrl: url,
+      ageFit: 'ages 2-5',
+      when: null,
+      price: null,
+      status: 'historical' as const,
+      evidence: {
+        program: 'Past workshop',
+        age: 'ages 2-5',
+        sessions: ['October 2020'],
+        schedule: null,
+        price: null,
+        history: 'October 2020',
+        windowConfirmed: false,
+      },
+    };
+    const links: NamedLink[] = [];
+    const tool = findActivitiesTool({
+      reader: reader(),
+      onPromise: () => {},
+      onLinks: (value) => links.push(...value),
+      finder: {
+        find: async () => ({
+          found: false,
+          reason: 'no_picks',
+          searched: {
+            town: 'Halton Hills',
+            notes: '',
+            references: [reference],
+            checkedSources: [url],
+          },
+        }),
+      },
+    });
+    const output = await call(tool, { subject: 'workshop', window: 'October 2026' });
+    const { sourceUrl: _sourceUrl, ...facts } = reference;
+    expect(output).toMatchObject({
+      found: false,
+      references: [{ ...facts, ref: linkRef(url) }],
+      checkedSources: [{ ref: linkRef(url) }],
+    });
+    expect(JSON.stringify(output)).not.toContain(url);
+    expect(output).not.toHaveProperty('picks');
+    const refs = links.map(({ url }) => ({ url, ref: linkRef(url) }));
+    expect(attachLinks(`I could not confirm a current date. [${linkRef(url)}]`, refs).urls).toEqual(
+      [url],
+    );
+    expect(attachLinks('I could not confirm a current date.', refs).urls).toEqual([]);
+  });
+
+  it('hands a supported pick to Coach by ref without leaking either URL field', async () => {
+    const url = 'https://venue.example/current?Program=Kids#Details';
+    const links: NamedLink[] = [];
+    const tool = findActivitiesTool({
+      reader: reader(),
+      onPromise: () => {},
+      onLinks: (value) => links.push(...value),
+      finder: { find: async () => ({ found: true, picks: [{ ...PICK, url, sourceUrl: url }] }) },
+    });
+    const output = await call(tool, { subject: 'gymnastics' });
+    expect(output).toMatchObject({ found: true, picks: [{ ref: linkRef(url) }] });
+    expect(JSON.stringify(output)).not.toContain(url);
+    expect(links).toContainEqual({ title: PICK.name, url });
+  });
+  it('keeps a non-GTA city, operator and requested month in the same query', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader({
+        place: async () => ({ status: 'known', town: 'London, Ontario, Canada' }),
+      }),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+    await call(tool, { subject: 'London Public Library storytimes', window: 'October 2026' });
+    expect(seen[0]).toEqual({
+      subject: 'London Public Library storytimes',
+      window: 'October 2026',
+      town: 'London, Ontario, Canada',
+      stage: 'toddler',
+    });
+  });
+
   it('attaches the town and the age band from the record, never from the model', async () => {
     const seen: unknown[] = [];
     const tool = findActivitiesTool({
@@ -470,7 +558,16 @@ describe('find_activities family slice (VIL-518)', () => {
   const FIT = {
     children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
     homeArea: 'halton_hills' as const,
-    preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
+    preferences: [
+      {
+        childId: CHILD,
+        key: 'indoor',
+        value: { prefers: 'indoor' },
+        source: 'parent_message' as const,
+        seenOn: '2026-10-01',
+      },
+    ],
+    recheck: [],
   };
 
   it('hands the family slice back beside the picks, and never sends it to the search', async () => {
@@ -500,5 +597,31 @@ describe('find_activities family slice (VIL-518)', () => {
       expect(result).toContain('Halton Hills Gymnastics');
       expect(result).not.toContain('"family"');
     }
+  });
+});
+
+describe('find_activities description: record over thread history (VIL-519, Design lock)', () => {
+  const description = findActivitiesTool({
+    reader: reader({}),
+    finder: fakeFinder([]),
+    onPromise: () => {},
+  }).description;
+
+  it('makes the family record win over older thread mentions of place and age', () => {
+    expect(description).toContain('the record wins');
+    expect(description).toContain('not from the old mention');
+  });
+
+  it('forbids profile / memory meta to the parent', () => {
+    expect(description).toContain(
+      'Never tell the parent about a record, profile, memory or mismatch',
+    );
+  });
+
+  it('keeps recheck to one question the model writes, and never a reason to pick', () => {
+    expect(description).toContain('must not choose the subject you search');
+    expect(description).toContain('no set sentence');
+    expect(description).not.toContain('if it would change this pick');
+    expect(description).not.toContain('loves_swimming');
   });
 });

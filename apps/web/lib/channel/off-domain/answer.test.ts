@@ -803,7 +803,7 @@ describe('the sanitize phase', () => {
       scripted(
         {
           sanitize: reading({
-            question: 'will it rain near L7G 4S6, text me at 416-555-0142 or pat@example.com',
+            question: 'will it rain near K7L 1A1, text me at 416-555-0142 or pat@example.com',
             needs_search: 'yes',
           }),
           search: searchFound(),
@@ -814,7 +814,7 @@ describe('the sanitize phase', () => {
     ).compose('anything', family);
 
     const downstream = JSON.stringify([seen.search, seen.compose]);
-    expect(downstream).not.toContain('L7G');
+    expect(downstream).not.toContain('K7L');
     expect(downstream).not.toContain('555-0142');
     expect(downstream).not.toContain('pat@example.com');
     expect(seen.search[0]?.messages?.[0]?.content).toBe(

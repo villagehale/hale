@@ -1,5 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { normalizeToken } from '~/lib/channel/normalize-token';
 import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { writeFact } from '~/lib/memory/facts';
@@ -122,6 +124,17 @@ export function matchCheckInReply(body: string): CheckInIntent | null {
   return null;
 }
 
+/** Production matcher. Off, the word list. On, a Haiku read; unread is a miss. */
+async function checkInIntent(body: string): Promise<CheckInIntent | null> {
+  if (!modelReadSweepEnabled()) return matchCheckInReply(body);
+  const reading = await sharedMeaningScreen().read({ screen: 'registration_outcome', text: body });
+  if (!reading) return null;
+  if (reading.outcome === 'registered') return { outcome: 'registered' };
+  if (reading.outcome === 'missed') return { outcome: 'missed' };
+  if (reading.outcome === 'waitlisted') return { outcome: 'waitlisted', position: reading.position };
+  return null;
+}
+
 /** The one window this family is currently being asked about, assembled for the pure
  * handler: the live sequence, the state the schedule reasons over, and the shortlist
  * the reply copy is rendered from. */
@@ -189,7 +202,7 @@ export async function handleSequenceReply(
     return { status: 'ignored', reason: 'no_open_window' };
   }
 
-  const intent = matchCheckInReply(input.body);
+  const intent = await checkInIntent(input.body);
   if (intent === null) {
     if (sequence.reaskedAt !== null) return { status: 'ignored', reason: 'reask_spent' };
     await deps.recordReask(database, sequence.sequenceId, input.now);

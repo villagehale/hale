@@ -8,7 +8,7 @@ import {
   type ReplyCopyCheck,
   type ReplyCopyFailure,
   type ReplyCopyLanguage,
-  validateReplyCopy,
+  validateReplyCopySweep,
 } from './validate';
 
 /**
@@ -211,12 +211,12 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
         if (!parsed) {
           reason = 'parse';
         } else if ('opening' in parsed) {
-          const openFail = validateReplyCopy(parsed.opening, checkFor(request, 'opening'));
-          const closeFail = validateReplyCopy(parsed.closing, checkFor(request, 'closing'));
+          const openFail = await validateReplyCopySweep(parsed.opening, checkFor(request, 'opening'));
+          const closeFail = await validateReplyCopySweep(parsed.closing, checkFor(request, 'closing'));
           if (openFail || closeFail) reason = openFail ?? closeFail;
           else kept = { text: parsed.opening, closing: parsed.closing };
         } else {
-          const failure = validateReplyCopy(parsed.text, checkFor(request, 'prose'));
+          const failure = await validateReplyCopySweep(parsed.text, checkFor(request, 'prose'));
           if (failure) reason = failure;
           else kept = { text: parsed.text, closing: null };
         }

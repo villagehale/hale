@@ -1,42 +1,61 @@
 import type { Skill } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import {
+  augmentCoachSkillForFindPrivate,
+  createFindTurnReader,
+  findTurnUserMessage,
+  toFindTurnReading,
+} from './find-private';
 
 const BASE: Skill = {
   meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },
   instructions: 'be terse',
 };
 
-describe('nearbyFindTurn', () => {
-  it('is a nearby-find ask', () => {
-    expect(nearbyFindTurn("what's on this weekend", [])).toBe(true);
-    expect(nearbyFindTurn('what is on thursday', [])).toBe(true);
-    expect(nearbyFindTurn('anything going on Saturday', [])).toBe(true);
-    expect(nearbyFindTurn("who's around this weekend", [])).toBe(true);
-    expect(nearbyFindTurn('trick or treat nearby', [])).toBe(true);
+describe('toFindTurnReading', () => {
+  it('is a find only when the model named find', () => {
+    expect(toFindTurnReading({ intent: 'find' })).toEqual({ findTurn: true });
+    expect(toFindTurnReading({ intent: 'not_find' })).toEqual({ findTurn: false });
+    expect(toFindTurnReading({ intent: 'unclear' })).toEqual({ findTurn: false });
+  });
+});
+
+describe('findTurnUserMessage', () => {
+  it('shows the model the earlier user turns, not only this text', () => {
+    const payload = JSON.parse(
+      findTurnUserMessage('the library one', [
+        { role: 'user', content: "what's on this weekend" },
+        { role: 'assistant', content: 'Storytime is on.' },
+      ]),
+    ) as { text: string; prior: string[] };
+    expect(payload.text).toBe('the library one');
+    expect(payload.prior).toEqual(["what's on this weekend"]);
   });
 
-  it('is not a calendar edit or a calendar read', () => {
-    expect(nearbyFindTurn('move swim to tuesday', [])).toBe(false);
-    expect(nearbyFindTurn('move swim to this weekend', [])).toBe(false);
-    expect(nearbyFindTurn("what's on the calendar today", [])).toBe(false);
-    expect(nearbyFindTurn('cancel piano', [])).toBe(false);
-  });
-
-  it('stays on for the turn right after a find ask', () => {
-    const transcript = [{ role: 'user' as const, content: "what's on this weekend" }];
-    expect(nearbyFindTurn('the library one', transcript)).toBe(true);
-  });
-
-  it('drops off when the next turn edits the calendar', () => {
-    const transcript = [{ role: 'user' as const, content: "what's on this weekend" }];
-    expect(nearbyFindTurn('move swim to tuesday', transcript)).toBe(false);
-  });
-
-  it('ignores the current ask when the transcript already ends with it', () => {
+  it('does not duplicate this text when the transcript already ends with it', () => {
     const body = 'move swim to tuesday';
-    expect(nearbyFindTurn(body, [{ role: 'user', content: body }])).toBe(false);
+    const payload = JSON.parse(findTurnUserMessage(body, [{ role: 'user', content: body }])) as {
+      text: string;
+      prior: string[];
+    };
+    expect(payload.text).toBe(body);
+    expect(payload.prior).toEqual([]);
+  });
+});
+
+describe('createFindTurnReader', () => {
+  it('names a missing client and is not a find, without the parent text', async () => {
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const reader = createFindTurnReader(() => {
+      throw new Error('no key');
+    });
+    await expect(reader.read({ text: "what's on this weekend", transcript: [] })).resolves.toEqual({
+      findTurn: false,
+    });
+    expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("what's on this weekend");
+    logged.mockRestore();
   });
 });
 
@@ -57,6 +76,18 @@ describe('augmentCoachSkillForFindPrivate', () => {
   });
 });
 
+describe('coach-find-turn skill', () => {
+  it('reads intent in any language and gives no line to send', async () => {
+    const skill = await loadCronSkill('coach-find-turn');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(skill.meta.task).toBe('screen');
+    expect(skill.meta.tools).toEqual([]);
+    expect(prose).toContain('any language');
+    expect(prose).not.toContain('>');
+    expect(prose).not.toMatch(/"[^"]{12,}"/);
+  });
+});
+
 describe('coach-find-private skill', () => {
   it('forbids result-set narration and gives no line to send', async () => {
     const skill = await loadCronSkill('coach-find-private');
@@ -73,5 +104,19 @@ describe('coach-find-private skill', () => {
     const nearby = await loadCronSkill('coach-nearby-find');
     expect(nearby.instructions).not.toContain('VIL-524');
     expect(nearby.instructions).not.toContain('Keep your thinking to yourself');
+  });
+});
+
+describe('coach-find-day skill', () => {
+  it('reads the day from the thread and leads with what runs that day, with no line to send', async () => {
+    const skill = await loadCronSkill('coach-find-day');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(skill.meta.task).toBe('converse');
+    expect(skill.meta.tools).toEqual([]);
+    expect(prose).toContain('localNow');
+    expect(prose).toContain('window');
+    expect(prose).toContain('earlier in the thread');
+    expect(prose).not.toContain('>');
+    expect(prose).not.toMatch(/"[^"]{12,}"/);
   });
 });
