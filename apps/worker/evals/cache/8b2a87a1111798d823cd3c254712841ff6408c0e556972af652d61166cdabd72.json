@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real Seattle programs, each sourced from the operator's own page: Seattle University, the YMCA of Greater Seattle and Ballard Pool (Seattle Parks and Recreation). All fit the preschool stage. The message leads with the strongest pick by name and attributes it with \"their site says\". The days and times it gives match the picks, and it states no price. Under no_page_read, the gap is correctly phrased in the first person (\"I could not get into their pages\"). Because watch is true, the first-person \"I'll keep watching and text you\" is earned. The message is plain text with no link and no question. One minor nit: the source also mentioned Feb/Mar dates, which the message does not flag.",
+    "score": 5
+  }
+}
