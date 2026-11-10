@@ -1,10 +1,10 @@
 import { type InboundMediaPart, mediaPartFromLinq } from '~/lib/channel/inbound-media';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
-import { linqMessageEditEnabled } from './edit';
 import { lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { describeInboundAppCard } from './app-card-inbound';
 import { linqExperiencesEnabled } from './config';
+import { linqMessageEditEnabled } from './edit';
 import { LINQ_WEBHOOK_VERSION } from './signature';
 
 /**
