@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { parseIntakePostal } from '~/lib/channel/intake/derive';
@@ -8,6 +8,7 @@ import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
   type FirstTouchPersisted,
   type IntakeSession,
+  type TranscriptEntry,
   appendTranscript,
   decodeIntakeForRecovery,
   loadOpenSession,
@@ -55,6 +56,24 @@ function localHourFromHm(hm: string): number {
 
 export const SITTING_REMINDER_HOUR_LOCAL = localHourFromHm(PROACTIVE_QUIET_HOURS.end);
 
+/**
+ * VIL-562 · a cron timeout after the claim strands the nudge: `sitting_reminder_sent_at`
+ * is set and the next tick never loads the row. Off unless this is exactly `true`
+ * (no trim). On, a claim older than {@link SITTING_REMINDER_STALE_CLAIM_MS} with no
+ * outbound since is cleared so the next morning can try again. A send that did
+ * land is left claimed.
+ */
+export const SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV = 'SITTING_REMINDER_STALE_RELEASE_ENABLED';
+
+export function sittingReminderStaleReleaseEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV] === 'true';
+}
+
+/** Past the route's 60s maxDuration, short of a day so the next morning can retry. */
+export const SITTING_REMINDER_STALE_CLAIM_MS = 50 * 60 * 1000;
+
 const SITTING_STATES = [
   'awaiting_details',
   'awaiting_place',
@@ -81,6 +100,8 @@ export interface SittingReminderResult {
   /** VIL-562 · owed rows with no postal place, so no zone to find their morning in. Not
    * claimed, still owed. */
   zoneUnknown?: number;
+  /** VIL-562 · stranded claims released because the cron died after taking them. */
+  staleReleased?: number;
 }
 
 export interface SittingSessionRow {
@@ -182,6 +203,14 @@ export async function runSittingReminderCron(
 ): Promise<SittingReminderResult> {
   const result: SittingReminderResult = { evaluated: 0, sent: 0, skipped: 0, failed: 0 };
   let zoneUnknown = 0;
+
+  if (sittingReminderStaleReleaseEnabled()) {
+    const staleReleased = await releaseStaleSittingClaims(database, now);
+    if (staleReleased > 0) {
+      result.staleReleased = staleReleased;
+      console.info({ staleReleased }, 'sitting reminder: stranded claim released');
+    }
+  }
 
   // Every candidate, every run: each row's slot is its own zone's morning, so no row can
   // be hidden behind others that are out of slot. The route's maxDuration bounds the work.
@@ -336,6 +365,53 @@ async function releaseSittingReminder(database: Database, sessionId: string): Pr
     .update(schema.smsIntakeSessions)
     .set({ sittingReminderSentAt: null })
     .where(eq(schema.smsIntakeSessions.id, sessionId));
+}
+
+/**
+ * Claims the cron took and then died on, with no outbound recorded after the claim.
+ * Fail closed on an unreadable blob: a send we cannot prove is not released.
+ */
+async function releaseStaleSittingClaims(database: Database, now: Date): Promise<number> {
+  const staleBefore = new Date(now.getTime() - SITTING_REMINDER_STALE_CLAIM_MS);
+  const claimed = await database
+    .select({
+      id: schema.smsIntakeSessions.id,
+      sittingReminderSentAt: schema.smsIntakeSessions.sittingReminderSentAt,
+      dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
+    })
+    .from(schema.smsIntakeSessions)
+    .where(
+      and(
+        isNull(schema.smsIntakeSessions.closedAt),
+        isNotNull(schema.smsIntakeSessions.sittingReminderSentAt),
+        lte(schema.smsIntakeSessions.sittingReminderSentAt, staleBefore),
+        or(...SITTING_STATES.map((state) => eq(schema.smsIntakeSessions.state, state))),
+      ),
+    );
+
+  let released = 0;
+  for (const row of claimed) {
+    if (!row.sittingReminderSentAt) continue;
+    let transcript: TranscriptEntry[];
+    try {
+      transcript = decodeIntakeForRecovery(row.dataEncrypted).transcript;
+    } catch {
+      continue;
+    }
+    if (outboundSince(transcript, row.sittingReminderSentAt)) continue;
+    await releaseSittingReminder(database, row.id);
+    released += 1;
+  }
+  return released;
+}
+
+function outboundSince(transcript: readonly TranscriptEntry[], since: Date): boolean {
+  const sinceMs = since.getTime();
+  return transcript.some((entry) => {
+    if (entry.direction !== 'out') return false;
+    const at = Date.parse(entry.at);
+    return Number.isFinite(at) && at >= sinceMs;
+  });
 }
 
 /** The reminder is an intake outbound: it lives on the session transcript, not a family ledger. */
