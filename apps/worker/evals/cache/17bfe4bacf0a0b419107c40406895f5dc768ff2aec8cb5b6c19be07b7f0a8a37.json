@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "No find in the draft; the search-count and ranking sentence is process, the rest is an empty answer and next step.",
+    "process_sentences": [
+      "I opened eleven pages across four sites and ranked what was left by distance."
+    ]
+  },
+  "latencyMs": 1724
+}

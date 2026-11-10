@@ -1,0 +1,21 @@
+{
+  "value": {
+    "reply": "Done, I'll set Mia's Swim Kids 3 as a weekly reminder for Saturdays at 11. Next up: would a group chat with the other parent help? It's a shared space for kid plans and reminders, with nothing private in it.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": true,
+    "scheduleAdds": [
+      {
+        "line": 1,
+        "child": "Mia",
+        "cadence": "weekly",
+        "date": "2026-11-07",
+        "time": "11:00",
+        "weeks": 8
+      }
+    ]
+  },
+  "latencyMs": 1669
+}

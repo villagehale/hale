@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A yes readiness_answer. It credits the parent for the claim ('You've let me know') rather than verifying it, and it invents nothing. It names Max, the portal and the account correctly, asks nothing, and is in English with a friendly tone. It is slightly stiff but fully correct.",
+    "score": 5
+  }
+}

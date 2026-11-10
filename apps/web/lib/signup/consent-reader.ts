@@ -1,6 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { SignupOffer } from './types';
 
@@ -71,8 +72,6 @@ export function signupConsentUserMessage(input: { text: string; offer: SignupOff
   });
 }
 
-const LINK = /https?:\/\/|www\./i;
-
 /**
  * Structural checks only. A consent naming a session outside the offer is not
  * consent to anything, so it becomes `unclear` and is never booked.
@@ -98,7 +97,7 @@ export function toSignupConsentReading(
 
 function cleanQuestion(value: string | null): string | null {
   const text = value?.replace(/\s+/g, ' ').trim() ?? '';
-  if (!text || text.length > MAX_QUESTION_CHARS || LINK.test(text)) return null;
+  if (!text || text.length > MAX_QUESTION_CHARS || hasLinkShape(text)) return null;
   return text;
 }
 

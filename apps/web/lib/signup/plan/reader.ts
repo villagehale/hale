@@ -1,9 +1,9 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { SignupSession } from '../types';
-import { hasLink, withoutLinks } from './links';
 import { MAX_PLAN_CHOICES } from './store';
 
 /**
@@ -93,7 +93,7 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
 
 function cleanQuestion(value: string | null): string | null {
   const text = value?.replace(/\s+/g, ' ').trim() ?? '';
-  if (!text || text.length > MAX_QUESTION_CHARS || hasLink(text)) return null;
+  if (!text || text.length > MAX_QUESTION_CHARS || hasLinkShape(text)) return null;
   return text;
 }
 

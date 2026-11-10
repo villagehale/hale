@@ -36,6 +36,7 @@ import {
   SIGNUP_PLAN_REPLY_BROKEN,
   SIGNUP_PLAN_REPLY_FIXTURES,
 } from './signup-plan-reply-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -46,30 +47,7 @@ const ATTEMPTS = 2;
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text Hale sends a parent about a registration plan:',
-  'registration for a kids activity opens at a set time, and with the parent yes the day',
-  'before Hale joins the open, takes the first ranked session with a spot and pays up to',
-  "the parent's maximum with the card saved on their city account. A model wrote the whole",
-  'text from the facts. Any link is added by code AFTER the text, so the text itself has',
-  'none; it may say a link follows. You are given the facts (moment, opensAt, sessions,',
-  'maxPriceCents, waiverAccepted, question, refusal, run, language), the text and watchFor',
-  'notes. Score 1-5 on FACTS, PRIVACY and TONE, not wording.',
-  'A 5: does exactly what watchFor describes using only the facts; on the offer and the',
-  'approval (moment offer or approved), tells the parent that also queueing on their own',
-  'phone holds two places in line; no other moment needs that note, so never mark it down',
-  'for leaving it out;',
-  'says registered or a spot only when run.confirmed is true; in facts.language (French: tu);',
-  'short, plain and warm, like a friend.',
-  'A LOW score (1-2) is any of: saying registered, booked, a spot or a held, reserved or kept',
-  'spot when run.confirmed is not true (a cart in an open browser holds no spot); leaving out',
-  'the two-places note on the offer or the approval; any promise or hint that Hale will try',
-  'again, keep watching, or grab a spot later; on sold_out, hinting a spot may still open;',
-  'an invented time, price, session, reason or next step; a link written in the text;',
-  'reason codes, ids or system talk; asking the parent to reply with a keyword; an email,',
-  'phone or postal code; the wrong language; in French, vous; garbled characters.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('signup-plan-reply');
 
 function fixtureFor(id) {
   const fixture = SIGNUP_PLAN_REPLY_FIXTURES.find((item) => item.id === id);
@@ -153,10 +131,10 @@ async function main() {
         cost,
       });
       const draft = writer.signupPlanReplySchema.safeParse(call.value);
-      const raw = draft.success ? draft.data.text : '';
-      const violations = writer.planReplyViolations(raw);
+      const sent = writer.planReplyText(draft.success ? draft.data.text : '');
+      const violations = writer.planReplyViolations(sent);
       if (violations.length === 0) {
-        text = raw.replace(/\s+/g, ' ').trim();
+        text = sent;
         break;
       }
       violation = violations.join('; ');

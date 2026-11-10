@@ -46,6 +46,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { expandMatrixCases } from './lib/model-matrix-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const PROMPTS = join(WORKER_ROOT, 'prompts');
 const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
@@ -147,17 +148,9 @@ const VERDICT_SCHEMA = {
 
 // --- judges -----------------------------------------------------------------
 
-const CLASSIFY_JUDGE = [
-  'You score a classifier RATIONALE for one inbound signal, 1-5. A 5 gives a clear,',
-  'correct reason for the event type that matches the signal content. A LOW score is',
-  'a vague, circular, or wrong rationale. Reply with the score tool.',
-].join(' ');
+const CLASSIFY_JUDGE = judgePrompt('model-matrix-classify');
 
-const DRAFT_JUDGE = [
-  'You score ONE drafted family message for TONE & APPROPRIATENESS, 1-5. A 5 is warm,',
-  'clear, correct for the recipient, and contains no placeholder or invented specifics.',
-  'A LOW score is robotic, off-purpose, or contains a fabricated detail. Reply with the score tool.',
-].join(' ');
+const DRAFT_JUDGE = judgePrompt('model-matrix-draft');
 
 const MODEL_KEYS = ['haiku', 'sonnet', 'opus'];
 

@@ -1,3 +1,5 @@
+import { noticeTitleFor } from '~/lib/integrations/calendar-notice-title';
+
 /**
  * Kid-event title checks with no send path.
  *
@@ -54,6 +56,19 @@ export function classifyKidCalendarItem(input: {
     if (hasWord(title, token)) return true;
   }
   return KID_WORDS.some((word) => hasWord(title, word));
+}
+
+/**
+ * The title a household calendar block may keep and the group may hear (VIL-651): only the
+ * title of an event the parent organized, or their own, cleaned the way the 1:1 notice
+ * cleans it. Anyone else's event, and a row stored before its standing was kept, has none:
+ * its organizer can rename it at any time, so its title is their words, not the family's.
+ */
+export function spokenBlockTitle(
+  standing: string | null,
+  title: string | null | undefined,
+): string | null {
+  return noticeTitleFor(standing, title) || null;
 }
 
 /** Title column value. Null unless the row is kid-related. */

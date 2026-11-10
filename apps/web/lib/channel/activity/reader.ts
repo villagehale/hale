@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import {
+  type FactReader,
   type FactSource,
   correctedAgeMonths,
   factsForContext,
@@ -29,7 +30,12 @@ export interface ActivityFamilyReader {
   place(database: Database, familyId: string): Promise<ActivityPlace>;
   stage(database: Database, familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(database: Database, familyId: string): Promise<string[]>;
-  familyFit?(database: Database, familyId: string, now?: Date): Promise<FamilyFit>;
+  familyFit?(
+    database: Database,
+    familyId: string,
+    reader: FactReader,
+    now?: Date,
+  ): Promise<FamilyFit>;
   /** Today on the family's own clock, `YYYY-MM-DD (Weekday)`, or null when the zone is
    * unknown (VIL-435). */
   today?(database: Database, familyId: string): Promise<string | null>;
@@ -101,16 +107,18 @@ export interface BoundActivityReader {
   today?(familyId: string): Promise<string | null>;
 }
 
+/** `factReader`: who the turn is for, so a pick is never ranked on another adult's 1:1. */
 export function bindActivityReader(
   database: Database,
   reader: ActivityFamilyReader,
+  factReader: FactReader,
 ): BoundActivityReader {
   return {
     place: (familyId) => reader.place(database, familyId),
     stage: (familyId, childId) => reader.stage(database, familyId, childId),
     householdNames: (familyId) => reader.householdNames(database, familyId),
     ...(reader.familyFit
-      ? { familyFit: (familyId: string) => reader.familyFit!(database, familyId) }
+      ? { familyFit: (familyId: string) => reader.familyFit!(database, familyId, factReader) }
       : {}),
     ...(reader.today ? { today: (familyId: string) => reader.today!(database, familyId) } : {}),
   };
@@ -190,7 +198,7 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
         .filter((name) => name !== '');
     },
 
-    familyFit: async (database, familyId, now = new Date()) => {
+    familyFit: async (database, familyId, factReader, now = new Date()) => {
       const self = productionActivityFamilyReader();
       const [place, corrections, childRows] = await Promise.all([
         self.place(database, familyId),
@@ -220,6 +228,7 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
       const factRows = (
         await factsForContext(database, familyId, {
           now,
+          reader: factReader,
           limit: FAMILY_FIT_PREFERENCE_LIMIT,
           factTypes: FIT_FACT_TYPES,
           excludeKinds: ['one_off'],

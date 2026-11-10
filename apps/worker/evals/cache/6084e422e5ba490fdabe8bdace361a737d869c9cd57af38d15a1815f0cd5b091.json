@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgsKCZrsSEhAsj8yTFmFs",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Bed-escaping is really common at this age. Try the silent return: keep bedtime boring and the same every night. When they get up, walk them back to bed calmly with almost no talking or eye contact, and do it as many times as it takes. The point is that getting up is dull and bedtime doesn't change."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 133,
+      "cache_read_input_tokens": 20939,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 133,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 96,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

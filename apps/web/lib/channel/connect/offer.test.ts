@@ -51,6 +51,23 @@ describe('offerConnectorLink', () => {
     await db.close();
   });
 
+  // VIL-617: a link minted on a Preview deploy lands on that deploy's app host when its
+  // APP_URL names one, not on production. The default host is pinned by the test below.
+  it('builds the link on the app host APP_URL names', async () => {
+    vi.stubEnv('APP_URL', 'https://hale-preview.example.test');
+    const outcome = await offerConnectorLink(db.database, {
+      familyId,
+      parentUserId,
+      provider: 'gmail',
+      now: NOW,
+    });
+
+    if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
+    expect(outcome.url).toMatch(
+      /^https:\/\/hale-preview\.example\.test\/connect\?t=[A-Za-z0-9_-]+&to=gmail$/,
+    );
+  });
+
   it('mints a link for a verified parent, with the audit row beside it (rule #6)', async () => {
     const outcome = await offerConnectorLink(db.database, {
       familyId,
@@ -141,7 +158,8 @@ describe('offerConnectorLink', () => {
     );
 
     expect(outcome).toEqual({ calendar: 'sent', gmail: 'sent' });
-    const [calendarBody, gmailBody] = transport.bodies();
+    // Each card is its prose, then its link as its own text.
+    const [, calendarBody, , gmailBody] = transport.bodies();
     const calendarToken = calendarBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     const gmailToken = gmailBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     if (!calendarToken || !gmailToken) throw new Error('expected a token in each card');
@@ -259,7 +277,7 @@ describe('connectorLinkHandler', () => {
     expect(verdict.outcome).toBe('sent');
     expect(verdict.reply).toContain('https://app.villagehale.com/connect?t=');
     expect(verdict.reply).toContain('Google Calendar');
-    expect(verdict.reply).toContain('minutesValid=15');
+    expect(verdict.reply).toContain('minutesValid: 15');
   });
 
   it('asks the model for a French line when the household is French', async () => {
@@ -325,9 +343,9 @@ describe('connectorLinkHandler', () => {
       );
       if (!verdict.claimed) throw new Error('expected the handler to claim');
       expect(verdict.outcome).toBe('sent');
-      expect(verdict.reply).toContain('service=Gmail');
+      expect(verdict.reply).toContain('service: Gmail');
       expect(verdict.reply).toContain('to=gmail');
-      expect(verdict.reply).toContain('minutesValid=15');
+      expect(verdict.reply).toContain('minutesValid: 15');
       expect(verdict.reply).not.toMatch(/text me the words/i);
       expect(verdict.reply).not.toContain('old-gmail');
       const tokens = await db.database.select().from(schema.channelSigninTokens);
@@ -347,7 +365,7 @@ describe('connectorLinkHandler', () => {
       turn('give me a fresh one', conversationId),
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
-    expect(verdict.reply).toContain('service=Google Calendar');
+    expect(verdict.reply).toContain('service: Google Calendar');
     expect(verdict.reply).toContain('to=gcal');
     expect(verdict.reply).not.toContain('old-gcal');
   });

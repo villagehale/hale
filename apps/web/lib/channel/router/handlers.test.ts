@@ -1291,7 +1291,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed) throw new Error('unreachable');
     expect(verdict.outcome).toBe('read_throttled');
-    expect(verdict.reply).toContain('in 7 minutes');
+    expect(verdict.reply).toBe('note:course_link_throttled');
     expect(prepare.bound).toEqual([]);
     expect(prepare.readiness).toEqual([]);
   });

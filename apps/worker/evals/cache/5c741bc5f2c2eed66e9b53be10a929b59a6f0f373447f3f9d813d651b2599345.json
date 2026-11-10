@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits waitlist_halfway. It names Springfield's 36-hour window and correctly says it ends 'tonight at 11:00 p.m.': at 5:00 a.m. on Wednesday, Sept 16, 18 hours remain, which is exactly halfway. It says the clock started from the parent's own message, and it asks no question. Watching email for the offer is a handed instruction. Two small issues: describing the window as one 'to accept a waitlist offer' is a slight interpretation of the town's response window, and the portal check belongs more to waitlist_final. The tone is also a bit stiff for a friendly text.",
+    "score": 4
+  }
+}

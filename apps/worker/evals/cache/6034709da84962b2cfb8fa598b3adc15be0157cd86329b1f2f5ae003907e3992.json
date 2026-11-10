@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text omits that the reminder is for Priya, its day and time, and that it arrives as a private text; it only says 'Reminder set!' with no content, so mustSay items are missing."
+  }
+}

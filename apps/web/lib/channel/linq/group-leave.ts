@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte } from 'drizzle-orm';
 import * as door from '~/lib/channel/outbound-transport';
 import { cancelGroupReminders } from '~/lib/loop/reminders/group/store';
 import { linqGroupLeaveEnabled } from './config';
+import { auditRowNamesChat, linqChatAuditKey } from './family-audit';
 import { listLinqParticipantHandles } from './transport';
 
 /**
@@ -105,7 +106,7 @@ export async function releaseGroupOnLeave(
     actionTaken: 'linq_group_left_on_ask',
     targetTable: 'families',
     targetId: input.familyId,
-    after: { claimReleased: released.length > 0, chatId: input.chatId },
+    after: { claimReleased: released.length > 0, ...linqChatAuditKey(input.chatId) },
   });
   return { released: released.length > 0 };
 }
@@ -136,7 +137,7 @@ export async function leftChatSince(
     .where(
       and(
         eq(schema.auditLog.actionTaken, 'linq_group_left_on_ask'),
-        sql`${schema.auditLog.after} ->> 'chatId' = ${input.chatId}`,
+        auditRowNamesChat(input.chatId),
         gte(schema.auditLog.occurredAt, input.since),
       ),
     )

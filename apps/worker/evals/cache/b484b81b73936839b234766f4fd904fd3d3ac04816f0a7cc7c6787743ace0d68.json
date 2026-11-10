@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "I can't save the carpool just yet. Calendar reminders are only for the map activities we're going over, and I don't have a way to add it here. Is there another parent or caregiver who shares Mia's plans and could use a group chat so you both see the same kid plans and reminders, with nothing private?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1554
+}

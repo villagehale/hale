@@ -86,6 +86,7 @@ describe('a parent correction of age or home wins over the older record (VIL-519
       factValue: value,
       confidence: 0.9,
       inferredBy: 'memory_inferencer',
+      heard: 'unrecorded',
       validFrom: DAYS(seenDaysAgo),
       memoryKind: 'lasting',
       memorySource: source,
@@ -117,7 +118,7 @@ describe('a parent correction of age or home wins over the older record (VIL-519
     expect(ctx.memoryFacts.map((f) => f.factKey)).toContain('home_city');
     const place = await reader.place(db.database, familyId);
     expect(place).toEqual({ status: 'known', town: 'Regina, Canada' });
-    expect((await reader.familyFit?.(db.database, familyId, NOW))?.homeArea).toBe('Regina, Canada');
+    expect((await reader.familyFit?.(db.database, familyId, 'every_adult', NOW))?.homeArea).toBe('Regina, Canada');
   });
 
   it('a remembered home from before the record, or before a later settings edit, still loses', async () => {
@@ -163,7 +164,11 @@ describe('a parent correction of age or home wins over the older record (VIL-519
     });
     expect(result.corrected).toBe(1);
 
-    const facts = await factsForContext(db.database, familyId, { now: NOW, limit: 20 });
+    const facts = await factsForContext(db.database, familyId, {
+      now: NOW,
+      reader: 'every_adult',
+      limit: 20,
+    });
     expect(facts.map((row) => [row.factKey, row.factValue])).toEqual([
       ['home_city', { text: 'Regina', record: 'place' }],
     ]);
@@ -240,6 +245,7 @@ describe('a parent correction of age or home wins over the older record (VIL-519
     );
     const teenFacts = await factsForContext(db.database, teenFamily.familyId, {
       now: NOW,
+      reader: 'every_adult',
       limit: 20,
     });
     expect(teenFacts.map((row) => row.factKey)).not.toContain('age');
@@ -255,7 +261,11 @@ describe('a parent correction of age or home wins over the older record (VIL-519
       2,
       'parent_message',
     );
-    const facts = await factsForContext(db.database, younger.familyId, { now: NOW, limit: 20 });
+    const facts = await factsForContext(db.database, younger.familyId, {
+      now: NOW,
+      reader: 'every_adult',
+      limit: 20,
+    });
     expect(facts.map((row) => row.factKey)).toContain('age');
   });
 
@@ -267,7 +277,7 @@ describe('a parent correction of age or home wins over the older record (VIL-519
     const ctx = await coach(familyId);
     expect(ctx.children.find((c) => c.id === kid)?.ageMonths).toBe(61);
     expect(ctx.memoryFacts.map((f) => f.factKey)).toContain('age');
-    const fit = await reader.familyFit?.(db.database, familyId, NOW);
+    const fit = await reader.familyFit?.(db.database, familyId, 'every_adult', NOW);
     expect(fit?.children.find((c) => c.childId === kid)?.ageYears).toBe(5);
   });
 
@@ -284,7 +294,7 @@ describe('a parent correction of age or home wins over the older record (VIL-519
     ctx = await coach(familyId);
     expect(ctx.children.find((c) => c.id === kid)?.ageMonths).toBeNull();
     expect(ctx.memoryFacts.map((f) => f.factKey)).toEqual(['age_now']);
-    const fit = await reader.familyFit?.(db.database, familyId, NOW);
+    const fit = await reader.familyFit?.(db.database, familyId, 'every_adult', NOW);
     expect(fit?.children.find((c) => c.childId === kid)?.ageYears).toBeNull();
   });
 });

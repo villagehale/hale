@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Great, I'll set that up. Do you already have an iMessage group with Mia's other parent, or should I start a new one with them?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "coparentGroup": true,
+    "coparentGroupMode": null
+  },
+  "latencyMs": 1916
+}

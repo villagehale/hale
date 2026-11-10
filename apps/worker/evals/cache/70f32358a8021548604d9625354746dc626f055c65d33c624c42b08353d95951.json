@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgsFi2FxhSLGZpgP87jqg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSgQgKEAgTGAI4AUIIdGhpbmtpbmcSDHIzZ+Wc2AETnng1bxoMCM6Zpwuv++VD/AwfIjAY+qyNs6KPkubqV1Aoej/8HAUp+eCAQc/4W2ziUYDcrU+f5XxqbgIJEiq3KG89oRQqngfQfruuJ9hoYvG8mRPThgOj9VYWJAAivkltovjALs9F/3mKaBaivc/Hc/rFY0uWLQ7M0XOG+Z5ALEIbwXq+uUI5aTsgiAA2dyuwn+jxxtiUlx9PSsbUoub+LCLZTo4OsykfKTc9wWZdxFDtwVrPPADet3jf2V5WEcUWvYqBlNMXIgmaYcJ6JQKuW5GvxEPdZN33fN8CMwnLEhYK4Pjyw8uPVhsVWeR5Fl3zi9CnCUUXK9kjgT6FWS2ryXPi6VbITL5S4PuUpgnCJm6ZZkqAeDrZL8uaz3/JXKgqU5FricsP8UgULUBBk94lKOT8PX5hOz5v0JAWqNF2towSS8GoohdeMmMc5eluGUWc9TeHeM9He883yE6PwmpamHU6K9uyFp1XOy26aKyrSLuG1AjmnmSJqC+Z/iiow/8qRAInDTO3y/yjVQNHWzhmsT8uvyOdG9QghJ/rpSlfkM69CkaM9F6dmFCyTgaYCofsKvK4iYnmPiHtEv9wxgrCn+7JaVtKFkjzgPOPWECFlPncixx8jDmgmGIL8PmgEkDorpzBkHKjgqwUDSY0wsQ3BA4P0UmXDocVI9TMR6PZtz92utO+gLKul/S1TUaO4H+uDKLIbkkjqbk/BX9abYEVHVijLDi7C7S+t3k62A943d9sVl9vT8GhNGD69GNgE/2jdnKRk6E/c4sDTCjB44rbRHWEPYFZPmr89MRqgjufQTnWnOkUmQzQvFgl1EDTz/4xe2x1kZnt19IpbbwxW0bENHqfcPl+IjeXoYQYGs9NfpYtZJugDW8ZCOvg5wb+nAN9tQuMVWM4BuNcflyHNlfmxEgVyaEF9gF7TAkP/pagg7LAPRP7sGRXxUc/EbiTqbsQ3ou6ZhhUe+2qas39orWLxQBSp8bCF2DbCONyHxmcR1w6fbZi7pcsn8zCNX5FB1ApchxGmRyNEZYncU0nev4p1x4gWlOY+c/jFVOW/GhMvbR5iL5poYu+ZI3/zWuMsXDf30fRTDJB2j15IgYhBL7BFuVExjCDDb2P7YV8e/wo6KZ8E28lrw0ukjSTzAa82V9cCslqCQ353Vsj0a1UTkcrz8HVKK4E40mpvuouCb9RNQyIMMLVC05MqlebLl42/BIJn9BRUR7iz9ZeDnK2ftkrfe1x+0ZusYQguxeFRJTpHKIB4Uq6je6jawpGAhzylfo/wPeJMuvjHMv6JoF4by8SpT0MVhtUqcObrFswG8njFgHpC99g3hgB"
+      },
+      {
+        "type": "text",
+        "text": "Toddler story time at Willow Branch Library is today at 10:30 a.m., free, and listed for 18 months to 3 years, per the library's events page. [link-ce743d] Little Movers drop-in at Riverbend Community Centre also runs today until 11:30, free, for ages 1 to 4, per their program page. [link-c6988f] Both are what their sites say, not something I've confirmed."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 276,
+      "cache_read_input_tokens": 20557,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 276,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 286,
+      "output_tokens_details": {
+        "thinking_tokens": 153
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

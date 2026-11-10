@@ -114,6 +114,8 @@ export function scriptedTurn(input: FriendVoiceInput): {
     if (input.step === 'schedule') capture.scheduleDone = true;
     if (input.step === 'coparent') capture.coparentGroup = false;
   }
+  // The coarse code turned down too: the place is settled without one.
+  if (/^not even that$/i.test(words) && input.step === 'place') capture.placeDeclined = true;
   if (/^later$/i.test(words)) {
     if (input.step === 'names') capture.nameDeclined = true;
     if (input.step === 'calendar') capture.calendarLater = true;
@@ -121,7 +123,10 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   const postalKnown =
-    Boolean(capture.postalCode) || Boolean(input.placeLabel) || input.checklist?.postal === true;
+    Boolean(capture.postalCode) ||
+    capture.placeDeclined ||
+    Boolean(input.placeLabel) ||
+    input.checklist?.postal === true;
   const kidsKnown =
     capture.children.some((child) => child.name) ||
     capture.kidsNamesDeclined ||
@@ -147,7 +152,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
   const name = capture.parentName ?? input.parentName;
 
   if (input.step === 'find_show') {
-    return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
+    return {
+      reply: 'Here is what is on near you for their ages.',
+      capture,
+      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
+    };
   }
   // Reminders just recorded: confirm them, ask nothing.
   if (capture.scheduleAdds.length > 0) {

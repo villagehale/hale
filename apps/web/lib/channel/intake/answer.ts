@@ -6,6 +6,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
@@ -61,10 +62,6 @@ import {
  */
 
 const MAX_TOKENS = 300;
-
-/** No links, held structurally: this stage has no tool it could have gotten one from,
- * so a URL here is a URL it invented. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /**
  * The doctrine's standing rule (skill audit P0 #4), and doubly true here: a parent three
@@ -263,7 +260,7 @@ export function refusals(
 ): IntakeAnswerRefusal[] {
   const found: IntakeAnswerRefusal[] = [];
   const joined = `${answer} ${returnLine}`;
-  if (LINK_SHAPE.test(joined)) found.push('carries_link');
+  if (hasLinkShape(joined)) found.push('carries_link');
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
   if (returnLine === input.pendingAsk.trim()) found.push('return_repeats_the_ask');
@@ -287,12 +284,8 @@ function unavailable(reason: IntakeAnswerFallback, detail?: string): IntakeAnswe
 }
 
 /**
- * Read the model's pair.
- *
- * The health-line tripwire runs BEFORE every other gate because it SUBSTITUTES where
- * the rest refuse: a parent who turns out to be describing a hurt child must get the
- * reviewed 811/911 line, never the flat signup question a refusal would send them
- * (skill audit P0 #3, the same ordering off-domain/answer.ts uses).
+ * Read the model's pair. The health-line tripwire is not here: it runs over every
+ * outcome in {@link screenedForTheHealthLine}, after this has refused or passed.
  */
 export function readPair(
   raw: { answer: string; returnLine: string },
@@ -300,10 +293,6 @@ export function readPair(
 ): IntakeAnswerOutcome {
   const answer = plainText(raw.answer);
   const returnLine = plainText(raw.returnLine);
-  if (reachesForTheHealthLine(`${answer} ${returnLine}`)) {
-    console.error('intake answer: composer reached for a referral; sent the fixed line');
-    return { status: 'safety' };
-  }
   // Read before the gates, not after: an empty answer is the model declining, which is
   // a correct outcome, and grading a declined turn against the gates would log a
   // refusal for a stage that did its job.
@@ -465,19 +454,52 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
         return unavailable('model_failed', message(err));
       }
 
-      // VIL-326 / VIL-327: a program date, a raising-kids question, a current fact or a
-      // care-find is answered from what search returned, never from model memory, and
-      // a miss owes the line saying so. Cheer-up is the model's warmth (#868).
-      switch (value.askKind) {
-        case 'program_dates':
-          return answerFromOfficialPages(client, input);
-        case 'current_source':
-          return answerFromCurrentSource(client, input);
-        case 'cheer_up':
-          return { status: 'unavailable', reason: 'cheer_up' };
-        case 'answer_here':
-          return readPair(value, input);
-      }
+      return screenedForTheHealthLine(value, await answerTheRead(client, value, input));
     },
   };
+}
+
+/**
+ * VIL-326 / VIL-327: a program date, a raising-kids question, a current fact or a
+ * care-find is answered from what search returned, never from model memory, and a miss
+ * owes the line saying so. Cheer-up is the model's warmth (#868).
+ */
+async function answerTheRead(
+  client: AgentClient,
+  value: z.infer<typeof answerSchema>,
+  input: IntakeAnswerInput,
+): Promise<IntakeAnswerOutcome> {
+  switch (value.askKind) {
+    case 'program_dates':
+      return answerFromOfficialPages(client, input);
+    case 'current_source':
+      return answerFromCurrentSource(client, input);
+    case 'cheer_up':
+      return { status: 'unavailable', reason: 'cheer_up' };
+    case 'answer_here':
+      return readPair(value, input);
+  }
+}
+
+/**
+ * THE HEALTH-LINE TRIPWIRE, OVER EVERY OUTCOME the model read can lead to (VIL-629).
+ *
+ * It SUBSTITUTES where the gates refuse: a parent who turns out to be describing a hurt
+ * child must get the health line, never the flat signup question a refusal or an owed
+ * line would send them (skill audit P0 #3). It used to sit inside {@link readPair}, so
+ * it ran only on an `answer_here` read: a sick-child text the model read as a date, a
+ * look-up or a bad day went down that path with a 911 in the read or in the restated
+ * search notes, unscreened. Here it reads the model's own two fields on every read, and
+ * the body any path built, after the path has run, so no path can be added without it.
+ */
+function screenedForTheHealthLine(
+  read: { answer: string; returnLine: string },
+  outcome: IntakeAnswerOutcome,
+): IntakeAnswerOutcome {
+  const body = outcome.status === 'answered' ? outcome.body : '';
+  if (!reachesForTheHealthLine(`${plainText(read.answer)} ${plainText(read.returnLine)} ${body}`)) {
+    return outcome;
+  }
+  console.error('intake answer: composer reached for a referral; sent the fixed line');
+  return { status: 'safety' };
 }

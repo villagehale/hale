@@ -32,6 +32,9 @@ import {
   CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_PAGE_ROUTE,
   OPS_PAGE_ROUTE,
+  type OpsPage,
+  claimCrisisReply,
+  confirmCrisisReply,
   failurePageCrisisPager,
   failurePageOpsPager,
   noteCrisisUnanswered,
@@ -154,6 +157,9 @@ function claimsThrow(database: Database): Database {
   });
 }
 
+/** A page off its site's vocabulary, as a caller outside the type system could send. */
+const offList = (page: unknown): OpsPage => page as OpsPage;
+
 async function claims(route: string) {
   return db.database
     .select({
@@ -168,11 +174,14 @@ async function claims(route: string) {
 
 describe('pageOps: the one primitive', () => {
   it('pages once per site per hour; another site, or the next hour, pages again', async () => {
-    const page = { site: 'spoken_line_unwritten' as const, facts: { purpose: 'group_welcome' } };
+    const page = {
+      site: 'spoken_line_unwritten' as const,
+      facts: { stage: 'after_retry' as const },
+    };
     expect(await pageOps(db.database, page, { post, now: BASE })).toBe('paged');
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain('site spoken_line_unwritten.');
-    expect(posted[0]).toContain('purpose group_welcome.');
+    expect(posted[0]).toContain('stage after_retry.');
 
     expect(await pageOps(db.database, page, { post, now: new Date(BASE.getTime() + 60_000) })).toBe(
       'already_paged',
@@ -191,7 +200,7 @@ describe('pageOps: the one primitive', () => {
   });
 
   it('a post that did not leave releases the claim, so the next occurrence pages', async () => {
-    const page = { site: 'group_plan_unwritten' as const, facts: { change: 'moved' } };
+    const page = { site: 'group_plan_unwritten' as const, facts: { change: 'moved' as const } };
     const refused = async () => 'failed' as const;
     expect(await pageOps(db.database, page, { post: refused, now: BASE })).toBe('page_failed');
     expect(await claims(OPS_PAGE_ROUTE)).toEqual([]);
@@ -210,60 +219,89 @@ describe('pageOps: the one primitive', () => {
   it('a fact named page cannot overwrite the site in the log', async () => {
     await pageOps(
       db.database,
-      { site: 'opt_out_unread', facts: { page: 'spoken_line_unwritten', stage: 'x' } },
+      offList({
+        site: 'group_conflict_unwritten',
+        facts: { page: 'spoken_line_unwritten', stage: 'skill_load' },
+      }),
       { post, now: new Date(BASE.getTime() + 70 * HOUR) },
     );
     const urgent = vi
       .mocked(console.error)
-      .mock.calls.find((call) => call[1] === 'URGENT: opt_out_unread - paging #ops');
-    expect(urgent?.[0]).toMatchObject({ page: 'opt_out_unread', stage: 'x' });
+      .mock.calls.find((call) => call[1] === 'URGENT: group_conflict_unwritten - paging #ops');
+    expect(urgent?.[0]).toMatchObject({ page: 'group_conflict_unwritten', stage: 'skill_load' });
   });
 
-  it('a phone-shaped fact never reaches the page', async () => {
+  it("a value outside its site's list never travels, however code-shaped", async () => {
+    // A short name or a postal code reads as a code; only the site's own list may travel.
     await pageOps(
       db.database,
-      { site: 'opt_out_hold_unwritten', facts: { err: 'x5555550123', 'Bad Key': 'kept' } },
+      offList({ site: 'group_conflict_unwritten', facts: { stage: 'robin' } }),
       { post, now: BASE },
     );
-    expect(posted[0]).toContain('err redacted.');
-    expect(posted[0]).not.toContain('5555550123');
-    expect(posted[0]).not.toContain('kept');
-  });
-
-  it('a fact that is not a short code is redacted and counted, in the page and the log', async () => {
     await pageOps(
       db.database,
-      {
+      offList({ site: 'intake_health_unwritten', facts: { basis: 'k1a', reason: 'write_failed' } }),
+      { post, now: BASE },
+    );
+    const urgent = vi
+      .mocked(console.error)
+      .mock.calls.find((call) => call[1] === 'URGENT: group_conflict_unwritten - paging #ops');
+    expect(posted[0]).not.toContain('robin');
+    expect(JSON.stringify(urgent?.[0])).not.toContain('robin');
+    expect(posted[0]).toContain('stage redacted.');
+    expect(posted[0]).toContain('redacted 1.');
+    expect(posted[1]).not.toContain('k1a');
+    expect(posted[1]).toContain('basis redacted.');
+    // Positive control: a value on the site's list travels.
+    expect(posted[1]).toContain('reason write_failed.');
+  });
+
+  it('a reference travels only as a row id: anything else is redacted', async () => {
+    const ref = '0b7e8a52-4f1c-4d7e-9a3b-2c6d5e4f3a21';
+    await pageOps(
+      db.database,
+      { site: 'erasure_intake_undecodable', facts: { number: 'released' }, ref },
+      { post, now: new Date(BASE.getTime() + 90 * HOUR) },
+    );
+    await pageOps(
+      db.database,
+      offList({
+        site: 'erasure_intake_undecodable',
+        facts: { number: 'released' },
+        ref: '+15555550199',
+      }),
+      { post, now: new Date(BASE.getTime() + 91 * HOUR) },
+    );
+    expect(posted[0]).toContain(`ref ${ref}.`);
+    expect(posted[1]).not.toContain('5555550199');
+    expect(posted[1]).toContain('ref redacted.');
+  });
+
+  it("a key outside its site's list never travels, and is counted", async () => {
+    await pageOps(
+      db.database,
+      offList({
         site: 'opt_out_hold_unwritten',
-        facts: {
-          phone: '555-555-0199',
-          email: 'a@b.com',
-          spaced: 'two words',
-          err: 'PostgresError',
-        },
-      },
+        facts: { err: 'PostgresError', phone: '555-555-0199', area: 'm5v' },
+      }),
       { post, now: new Date(BASE.getTime() + 80 * HOUR) },
     );
     const urgent = vi
       .mocked(console.error)
       .mock.calls.find((call) => call[1] === 'URGENT: opt_out_hold_unwritten - paging #ops');
-    for (const leak of ['555', '0199', 'a@b', 'b.com', 'b_com', 'two']) {
-      expect(posted[0]).not.toContain(leak);
-      expect(JSON.stringify(urgent?.[0])).not.toContain(leak);
+    for (const leak of ['postgres', 'phone', '555', '0199', 'area', 'm5v']) {
+      expect(posted[0]?.toLowerCase()).not.toContain(leak);
+      expect(JSON.stringify(urgent?.[0]).toLowerCase()).not.toContain(leak);
     }
-    expect(posted[0]).toContain('phone redacted.');
-    expect(posted[0]).toContain('email redacted.');
     expect(posted[0]).toContain('redacted 3.');
-    expect(urgent?.[0]).toMatchObject({ phone: 'redacted', email: 'redacted', redacted: '3' });
-    // Positive control: a code, whatever its case, still travels.
-    expect(posted[0]).toContain('err postgreserror.');
+    expect(urgent?.[0]).toMatchObject({ page: 'opt_out_hold_unwritten', redacted: '3' });
   });
 
   it('a claim that throws is deduped in this process, per site and hour', async () => {
     const failing = claimsThrow(db.database);
     // An hour no other test uses: the in-process memo outlives one test.
     const at = new Date(BASE.getTime() + 50 * HOUR);
-    const page = { site: 'opt_out_hold_unwritten' as const, facts: { err: 'Error' } };
+    const page = { site: 'opt_out_hold_unwritten' as const, facts: {} };
     const outcomes = [];
     for (let i = 0; i < 3; i += 1) outcomes.push(await pageOps(failing, page, { post, now: at }));
     expect(outcomes).toEqual(['paged', 'already_paged', 'already_paged']);
@@ -315,9 +353,7 @@ describe('each site family pages through the primitive', () => {
       failurePageOpsPager(() => db.database, { post, now: BASE }),
     );
     expect(await writer.write({ purpose: 'group_welcome', language: 'en' })).toBeNull();
-    expect(posted).toEqual([
-      'Hale: ops page. site spoken_line_unwritten. purpose group_welcome. stage skill_load.',
-    ]);
+    expect(posted).toEqual(['Hale: ops page. site spoken_line_unwritten. stage skill_load.']);
   }, 30_000);
 
   it('positive control: a spoken line the model wrote pages nobody', async () => {
@@ -685,6 +721,38 @@ describe('crisis claims', () => {
     // Positive control: the same age with no held text goes.
     expect((await claims(CRISIS_ANSWERED_ROUTE)).map((row) => row.identifier)).toEqual([
       keyOf('pm-still-held'),
+    ]);
+  });
+
+  it('one key rule in code and SQL: a held id ending in whitespace keeps its claim and mark', async () => {
+    const now = new Date('2026-11-20T12:00:00.000Z');
+    const old = new Date(now.getTime() - 8 * 24 * HOUR);
+    // Whitespace other than a space: JS trim strips it, SQL btrim does not.
+    const heldId = 'pm-held-tab\t';
+    await db.database.insert(schema.optOutHeldMessages).values({
+      providerMessageId: heldId,
+      phoneHash: 'hash-tab',
+      heldAt: old,
+      nextReadAt: new Date(now.getTime() + HOUR),
+    });
+    for (const id of [heldId, 'pm-gone-tab\t']) {
+      await failurePageCrisisPager(db.database, { post, now: old }).record(alert(id));
+      expect(await claimCrisisReply(db.database, id, old)).toBe('claimed');
+      await confirmCrisisReply(db.database, id, old);
+    }
+    await db.database
+      .update(schema.rateLimits)
+      .set({ count: ALERTED_COUNT, windowStart: old })
+      .where(eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE));
+
+    await pageFailureAlerts(db.database, { post, now });
+
+    const keyOf = (id: string) => createHash('sha256').update(id).digest('hex').slice(0, 32);
+    expect(
+      (await claims(CRISIS_UNANSWERED_PAGE_ROUTE)).map((row) => row.identifier.split(':')[0]),
+    ).toEqual([keyOf(heldId)]);
+    expect((await claims(CRISIS_ANSWERED_ROUTE)).map((row) => row.identifier)).toEqual([
+      keyOf(heldId),
     ]);
   });
 

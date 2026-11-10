@@ -26,8 +26,8 @@ import { users } from './users.js';
  * `watched_spots` and `email_alert_offers` both hit. And nothing here was promised out
  * loud, which is what that ledger records.
  *
- * WHAT IT MAY HOLD (rule #1). The extraction's own title, its own instant, its own place,
- * and the sender's bare domain. Never the subject line, never the snippet, never the quote
+ * WHAT IT MAY HOLD (rule #1). The extraction's own title, its own instant, its own place
+ * and the street address the email gave for it, and the sender's bare domain. Never the subject line, never the snippet, never the quote
  * evidence. Confirmation numbers, order ids, amounts and child names have NO COLUMN and
  * are therefore unwritable. A 13+ child's confirmation writes NO ROW AT ALL: the pipeline
  * has genericised the title by the time the alert path sees it, so recording it would let
@@ -81,6 +81,13 @@ export const activityBookings = pgTable(
      * ticket, and `civic_sessions` already exists for that job. */
     firstSessionAt: timestamp('first_session_at', { withTimezone: true }).notNull(),
     location: text('location'),
+    /**
+     * The place's street address, only as the confirmation email wrote it word for word
+     * (`sourcedAddress` in the sentinel's extraction) and only beside a `location` it does
+     * not repeat (migration 0214). NULL when the email gave none: nothing completes or
+     * looks one up. It travels with `location`: a receipt naming a new place replaces both.
+     */
+    address: text('address'),
     /**
      * THE SESSION, as one string — `provider_host`, the folded title and the first
      * instant, computed ONCE at write time by `lib/integrations/going.ts`'s `sessionKey`

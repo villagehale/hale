@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits approval_card. It names the window, the date (Saturday, September 12, 2026), the time (9 h 00), Léa, and the link exactly as handed. It lists all three texts with their timings: seven days before, the evening before, and fifteen minutes before. It says plainly that Hale will never register for the parent. It correctly leaves out the course-link tip, since courseLinkTip is false. Saying the town publishes no age band is a plain restatement of published:false. The message asks no question, invents nothing, and reads as natural French.",
+    "score": 5
+  }
+}

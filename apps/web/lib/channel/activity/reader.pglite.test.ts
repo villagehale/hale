@@ -42,6 +42,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       factValue: value,
       confidence: opts.confidence ?? 0.9,
       inferredBy: 'test',
+      heard: 'unrecorded',
       validFrom: seen,
       memoryKind: 'lasting',
       memorySource: opts.source ?? 'parent_message',
@@ -59,7 +60,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       .set({ dateOfBirth: '2021-06-01' })
       .where(eq(schema.children.id, child));
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.children[0]?.ageYears).toBe(5);
     expect(JSON.stringify(fit.preferences)).not.toContain('"age"');
     expect(JSON.stringify(fit.recheck)).not.toContain('"age"');
@@ -81,7 +82,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       .set({ areaCoarse: 'L3P' })
       .where(eq(schema.families.id, familyId));
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.homeArea).toBe('Markham');
     expect(fit.preferences.map((p) => p.key)).toEqual(['ville_market']);
     expect(JSON.stringify(fit)).not.toContain('Georgetown');
@@ -92,7 +93,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     await fact(familyId, null, 'setting', 'outdoor', { seenDaysAgo: 10 });
     await fact(familyId, null, 'setting', 'indoor', { seenDaysAgo: 1 });
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     const settings = fit.preferences.filter((p) => p.key === 'setting');
     expect(settings).toEqual([
       {
@@ -116,7 +117,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
         .set({ dateOfBirth: '2021-06-01' })
         .where(eq(schema.children.id, child));
 
-      const fit = await reader.familyFit!(db.database, familyId, NOW);
+      const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
       expect(fit.children[0]?.ageYears).toBe(5);
       expect(fit.preferences).toEqual([]);
       expect(fit.recheck).toEqual([]);
@@ -134,7 +135,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     }
     await fact(familyId, null, 'stroller', true, { source: 'parent_message', confidence: 0.7 });
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.preferences.map((p) => p.key)).toEqual(['stroller']);
   });
 
@@ -149,7 +150,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       });
     }
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.preferences[0]).toMatchObject({ key: 'not_scary', source: 'parent_message' });
     expect(fit.preferences).toHaveLength(FAMILY_FIT_PREFERENCE_LIMIT);
   });
@@ -164,7 +165,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       seenDaysAgo: 400,
     });
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.recheck).toEqual([]);
     expect(JSON.stringify(fit)).not.toMatch(/swim/i);
   });
@@ -175,7 +176,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     await fact(familyId, null, 'stroller', true, { source: 'inferred', seenDaysAgo: 30 });
     await fact(familyId, null, 'language', 'french', { source: 'legacy', seenDaysAgo: 400 });
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.preferences.map((p) => p.key)).toEqual(['stroller']);
     expect(fit.preferences[0]?.source).toBe('inferred');
     expect(fit.recheck).toEqual([]);
@@ -200,7 +201,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       seenDaysAgo: 20,
     });
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.preferences.map((p) => p.key)).toEqual(['indoor']);
     expect(JSON.stringify(fit)).not.toContain('Georgetown');
 
@@ -235,13 +236,14 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       factValue: { record: 'place', text: 'Georgetown' },
       confidence: 0.9,
       inferredBy: 'test',
+      heard: 'unrecorded',
       validFrom: DAYS(1),
       memoryKind: 'lasting',
       memorySource: 'parent_message',
       sourcedAt: DAYS(1),
     });
 
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.preferences.map((p) => [p.key, p.value])).toEqual([
       ['school', 'likes the after-school club'],
     ]);
@@ -257,13 +259,14 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       factValue: true,
       confidence: 0.9,
       inferredBy: 'test',
+      heard: 'unrecorded',
       validFrom: DAYS(5),
       memoryKind: 'temporary',
       memorySource: 'parent_message',
       sourcedAt: DAYS(5),
       expiresAt: DAYS(1),
     });
-    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    const fit = await reader.familyFit!(db.database, familyId, 'every_adult', NOW);
     expect(fit.preferences).toEqual([]);
     expect(fit.recheck).toEqual([]);
   });

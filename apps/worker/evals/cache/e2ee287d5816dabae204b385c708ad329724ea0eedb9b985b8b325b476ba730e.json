@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly states the move from Thu Sep 17 to Fri Sep 18, the 3:30-4:30pm time, and names Leo's soccer in English. It does not mention pickup, Coach Dave, or the side gate, so it satisfies the watchFor constraint. It is brief and does not add reasons, offers, or emoji.",
+    "score": 5
+  }
+}

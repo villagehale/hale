@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RecordAgentRunInput } from '~/lib/agent-run';
+import { GENERIC_DESCRIPTOR } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import {
   type ReminderFactEvent,
@@ -228,6 +229,7 @@ describe('reminderFacts — overlaps, the clash stated as a fact (VIL-551)', () 
   const at = (startsAt: string, endsAt: string | null, title: string, eventRef: string) =>
     ev({ eventRef, title, startsAt, endsAt });
   const swim = at('2026-10-26T14:00:00Z', '2026-10-26T15:00:00Z', 'Swim', 'e1'); // 10-11 AM
+  const swimTimes = { startsAt: swim.startsAt, endsAt: swim.endsAt };
 
   it('names, on each event, the other events whose times run into it', () => {
     const [a, b] = facts([swim, at('2026-10-26T14:30:00Z', '2026-10-26T15:30:00Z', 'Art', 'e2')])
@@ -254,6 +256,26 @@ describe('reminderFacts — overlaps, the clash stated as a fact (VIL-551)', () 
       at('2026-10-26T04:00:00Z', '2026-10-27T04:00:00Z', 'PD Day', 'e4'), // all day
     ]).events;
     for (const event of plain) expect(event).not.toHaveProperty('overlaps');
+  });
+
+  it('a teen event a sibling’s overlaps names is the generic descriptor, never its title', () => {
+    const [teen, sibling] = reminderFacts({
+      events: [
+        ev({ eventRef: 'e1', title: 'therapy', childId: 'c-teen', ...swimTimes }),
+        ev({ eventRef: 'e2', title: 'Swim', childId: 'c-kid', ...swimTimes }),
+      ],
+      children: [TEEN, KID],
+      level: 'first_name',
+      timeZone: TZ,
+      offset: '-P1D',
+      now: NOW,
+      planLink: null,
+      language: 'en',
+    }).events;
+    // Positive control: the two do overlap, and the sibling's own title still reaches the teen's.
+    expect(teen?.overlaps).toEqual(['Swim']);
+    expect(sibling?.overlaps).toEqual([GENERIC_DESCRIPTOR]);
+    expect(JSON.stringify(sibling)).not.toMatch(/therapy|Rowan/);
   });
 });
 
