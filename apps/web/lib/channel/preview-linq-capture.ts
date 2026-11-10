@@ -61,7 +61,8 @@ export type CapturedLinqKind =
   | 'location_request'
   | 'roster'
   | 'voice_memo'
-  | 'capability_check';
+  | 'capability_check'
+  | 'chat_background';
 
 export type CapturedLinqCall = {
   chatId: string;
@@ -217,6 +218,9 @@ export async function captureLinqCall(
     'POST:/leave': 'chat_leave',
     'POST:/location/request': 'location_request',
     'GET:/location': 'location_request',
+    // VIL-478 · the household group's colour swatch: recorded like any other effect,
+    // never refused, so a Preview run proves the call (Devin #991).
+    'POST:/background': 'chat_background',
   };
   if (sub === '/polls' && method === 'POST') {
     const providerMessageId = newMessageId();
