@@ -201,7 +201,9 @@ describe('#868 failed-read hold', () => {
       phoneHashes: [phoneBlindIndex(phone)],
       providerMessageIds: [key],
       undecodableNumbers: [],
-      undecodableSessions: 0,
+      undecodableSessions: [],
+      intakeInboundIds: [],
+      presignupSessionIds: [],
     });
     expect(await isSenderHeld(db, phoneBlindIndex(phone))).toBe(true);
     // The operator path never takes a message hold: those go only when their text is read.
