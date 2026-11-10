@@ -3,6 +3,7 @@ import { type CalendarStanding, type Database, type FamilyEventNotes, schema } f
 import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { REMINDER_HORIZON_MS, type SuppressReason } from '~/lib/loop/reminders/schedule';
 import { zonedMidnight } from '~/lib/memory/period';
+import { calendarStandingOf } from './calendar-standing';
 import {
   EVENT_NOTES_CONCURRENCY,
   EVENT_NOTES_FAILED,
@@ -190,31 +191,6 @@ function selfDeclined(item: Record<string, unknown>): boolean {
   return false;
 }
 
-/**
- * VIL-633 · Anyone can put an invite on a parent's calendar, and an unanswered one is
- * mirrored, so its title is a stranger's words until the parent says yes. The parent's own
- * event is one they organized, or one with no organizer named and no one else on it. The
- * attendee list a guest sees can be cut to just their own row (maxAttendees, or a sender
- * who hides the guest list), so a lone `self` row proves nothing: what counts is that
- * row's answer, and only 'accepted' is a yes.
- */
-function standingOf(item: Record<string, unknown>): CalendarStanding {
-  const organizer = item.organizer as { self?: unknown } | null | undefined;
-  const named = typeof organizer === 'object' && organizer !== null;
-  if (named && organizer.self === true) return 'organizer';
-  const attendees = Array.isArray(item.attendees)
-    ? item.attendees.filter(
-        (row): row is { self?: unknown; responseStatus?: unknown } =>
-          typeof row === 'object' && row !== null,
-      )
-    : [];
-  const self = attendees.find((row) => row.self === true);
-  if (self?.responseStatus === 'accepted') {
-    return named || attendees.some((row) => row.self !== true) ? 'accepted' : 'own';
-  }
-  return !named && attendees.length === 0 ? 'own' : 'invited';
-}
-
 function isBusyBlock(item: Record<string, unknown>, allDay: boolean): boolean {
   const eventType = readString(item.eventType);
   if (eventType !== undefined && BUSY_EVENT_TYPES.has(eventType)) return true;
@@ -275,7 +251,7 @@ export function classifyCalendarMirrorItem(
       location,
       ...(transparency === 'transparent' || transparency === 'opaque' ? { transparency } : {}),
       ...(description ? { description } : {}),
-      standing: standingOf(item),
+      standing: calendarStandingOf(item),
     },
   };
 }

@@ -40,6 +40,12 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-423. One household delivery writes the verb its caller names: a ladder leg, or
+  // the note about a moved opening date.
+  'apps/web/lib/registration/sequence/run.ts': [
+    'registration_sequence_leg_sent',
+    'registration_date_moved_sent',
+  ],
   // VIL-559. The crisis pager writes its audit row from CRISIS_UNANSWERED_AUDIT_ACTION.
   'apps/web/lib/monitoring/failure-page.ts': ['crisis_unanswered'],
   // VIL-472. One recorder writes the tapback and the sticker moment.
