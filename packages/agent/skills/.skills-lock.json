@@ -203,6 +203,10 @@
     "file": "extract-social-spot.md",
     "sha256": "c9b12e20d74011b952cdfc1340cdf7f83fef9368fe8c8997624fc4258537aa0d"
   },
+  "extract-split-duty.md": {
+    "file": "extract-split-duty.md",
+    "sha256": "f504d5105d5ec7167fc0535e6e5bba9cc5bb67556a550c4e63e6b675b06c846d"
+  },
   "extract-travel-booking.md": {
     "file": "extract-travel-booking.md",
     "sha256": "093b7bc5296211420219f72cb09d29cc84166854913360b3e3b5cb814b39a7dd"
@@ -489,7 +493,7 @@
   },
   "reply-copy.md": {
     "file": "reply-copy.md",
-    "sha256": "de3971106af2e78179023dba7a3d9f05afb0bdb467be10400d63ce5bf1987319"
+    "sha256": "a02bf37293acf9f11d2fc829ae62c417ec10fadb2c65fda5585e15b02f7a7b88"
   },
   "reply-intent.md": {
     "file": "reply-intent.md",
