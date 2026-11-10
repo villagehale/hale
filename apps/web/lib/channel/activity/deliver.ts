@@ -462,7 +462,18 @@ export async function deliverFollowUp(
     heardFacts: [...new Set([...(input.heardFacts ?? []), ...followUpFacts(input.picks)])].sort(),
     now,
   });
-  if (recorded.status === 'recorded') return { ...sent, watchRecorded: true };
+  if (recorded.status === 'recorded') {
+    // A SILENT WATCH: Hale will text again on this, and the text that just went out never
+    // told the parent so. Not refused (whether to mention it is the model's call), but
+    // counted, because an unannounced later text strains "the parent opens the thread".
+    if (!composed.mentionsWatch) {
+      console.warn(
+        { code: 'silent_watch', picks: input.picks.length },
+        'activity follow-up: silent watch - row written, sent text never mentions it',
+      );
+    }
+    return { ...sent, watchRecorded: true };
+  }
   console.error(
     { commitmentId: input.commitmentId, reason: recorded.reason },
     'activity follow-up: the parent was told Hale is still watching and no row was written',

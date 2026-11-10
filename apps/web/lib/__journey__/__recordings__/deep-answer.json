@@ -3739,5 +3739,210 @@
       },
       "diagnostics": null
     }
+  },
+  "8b64fabc8fa0e64f455e819d1b104354364a5287102856602215715f8a7a33e9": {
+    "key": "8b64fabc8fa0e64f455e819d1b104354364a5287102856602215715f8a7a33e9",
+    "recordedAt": "2026-11-09T23:06:31.976Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"Tiny Gym at Cartwheels Gym Centre is for walking to 3.5 years, Sundays 9:30-10:15, Sept 14 to Oct 26, $124 - their site says. Registration has been open since July 22.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011CgtCADVu2Ub8t4m3Kbcuv",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"Draft names a find with time, price, dates and source; no search bookkeeping sentences.\",\"process_sentences\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 90,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 918,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 46,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "72137d2ced5853c20ca91d8fa1a07ad5fa6c5895b00dc96e91e03da75d8baea8": {
+    "key": "72137d2ced5853c20ca91d8fa1a07ad5fa6c5895b00dc96e91e03da75d8baea8",
+    "recordedAt": "2026-11-09T23:06:36.032Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"Cartwheels Gym Centre runs Tiny Gym for walking to 3.5 years, Sundays 9:30-10:15, Sept 14 to Oct 26 - their site says, and registration has been open since July 22. I could not pin down the price, so I'll keep watching and text you when I have it.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011CgtCAYCo5seBVBZRkDj4C",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"The draft names a find and only states gaps and next steps; no sentence describes the search process.\",\"process_sentences\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 112,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 918,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 45,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "564c88d161abac5462beba80f4b85561c99e27e3f849b78db2eac31aaac63b6f": {
+    "key": "564c88d161abac5462beba80f4b85561c99e27e3f849b78db2eac31aaac63b6f",
+    "recordedAt": "2026-11-09T23:06:39.790Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"Parent and Tot 1, 2 and 3 at Gellert Community Centre (4 months to 3 years) runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons - the Town of Halton Hills site says. Registration opens Tuesday, September 1.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011CgtCAoNMZhN7tY2oXaFfd",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"Draft reports a find with time, price, dates, and source; no search process sentences.\",\"process_sentences\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 121,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 918,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 43,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "f14e983d21bb6583a08b6e45130d4f4dfd58f2d83411a610cecb1311e1a702c8": {
+    "key": "f14e983d21bb6583a08b6e45130d4f4dfd58f2d83411a610cecb1311e1a702c8",
+    "recordedAt": "2026-11-09T23:06:44.333Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"Gellert Community Centre has Parent and Tot 1, 2 and 3 for ages 4 months to 3 years - the Town of Halton Hills site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I have them.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011CgtCB8akXZXMbsAV5yv6c",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\": \"Draft names a find with its place, ages, and registration date, plus a plain gap and next step; no search bookkeeping.\", \"process_sentences\": []}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 109,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 918,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 56,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "7f72a41f297a7272c55d751ea5413ba5e2ccb599e3d5e7bb319423435f8278eb": {
+    "key": "7f72a41f297a7272c55d751ea5413ba5e2ccb599e3d5e7bb319423435f8278eb",
+    "recordedAt": "2026-11-09T23:06:48.379Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"Parent and Tot 1, 2 and 3 at Gellert Community Centre cover 4 months to 3 years - the Town of Halton Hills site says, and registration opens Tuesday, September 1, though no day, time or price is posted yet. I'll keep watching and text you when they post them.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011CgtCBSUnVHe3dqCg784VQ",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"Draft names a find with place, age range, registration date and a stated gap; no search bookkeeping.\",\"process_sentences\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 108,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 918,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 49,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
   }
 }
