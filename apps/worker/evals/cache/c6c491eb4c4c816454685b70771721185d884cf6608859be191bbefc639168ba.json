@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reply": "好的，那就先不说名字了。之后想让我怎么称呼你，随时告诉我就行。接下来想不想把 Gmail 连上，让我帮你留意孩子们的邮件？",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh"
+  },
+  "latencyMs": 1892
+}

@@ -407,13 +407,17 @@
     "file": "offer-receipt.md",
     "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
   },
+  "onboarding-friend-place.md": {
+    "file": "onboarding-friend-place.md",
+    "sha256": "75792b8151d9da5d31d755f76d6b495089a61410af6de2956be52e29bae3850b"
+  },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
     "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "bc7cab3654c8842dc3f30b191ece289974489b4d870970fd85ea5e5cf4eb401a"
+    "sha256": "bfd5e3f4398bd07818b56e898c765b5a914f36ee9003dca694e4f2604657df22"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Totally fair, and you don't need to share your exact address. Would you be okay telling me just the first three characters of your postal code, or the first five digits of a ZIP? That's enough for me to find things near you.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse"
+  },
+  "latencyMs": 1302
+}
