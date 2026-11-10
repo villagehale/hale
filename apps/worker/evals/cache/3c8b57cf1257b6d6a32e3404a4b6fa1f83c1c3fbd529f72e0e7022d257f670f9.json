@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French with tu, correctly states the child is not registered and nothing was paid, and avoids claiming a spot is held. It does say the browser may have expired, which is accurate given holdMinutes 0. Minor issue: it says the browser is left open, though run.liveBrowser is true, so that is consistent. Tone is warm and short. Facts match: $98 cart over $90 max. No promises of retrying. Score high.",
+    "score": 5
+  }
+}
