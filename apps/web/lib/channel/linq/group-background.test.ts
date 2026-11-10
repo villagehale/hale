@@ -80,16 +80,17 @@ afterEach(() => {
 });
 
 describe('VIL-478 household group background', () => {
-  it('flag is dark by default and always dark on Production', () => {
+  it('flag is dark by default and on when exactly true, including Production', () => {
     vi.stubEnv('LINQ_GROUP_BACKGROUND_ENABLED', '');
     expect(linqGroupBackgroundEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_BACKGROUND_ENABLED', 'on');
     expect(linqGroupBackgroundEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_BACKGROUND_ENABLED', 'true');
-    vi.stubEnv('VERCEL_ENV', 'preview');
     expect(linqGroupBackgroundEnabled()).toBe(true);
     vi.stubEnv('VERCEL_ENV', 'production');
-    expect(linqGroupBackgroundEnabled()).toBe(false);
+    expect(linqGroupBackgroundEnabled()).toBe(true);
+    vi.stubEnv('LINQ_GROUP_BACKGROUND_ENABLED', 'true\n');
+    expect(linqGroupBackgroundEnabled()).toBe(true);
   });
 
   it('sets ice once, colour only, when Hale creates the household group — no bubble', async () => {

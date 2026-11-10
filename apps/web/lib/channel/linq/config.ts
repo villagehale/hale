@@ -165,11 +165,10 @@ export function linqGroupLeaveEnabled(): boolean {
 
 /**
  * VIL-478 — Hale sets the `ice` colour background once, when it opens a household
- * group. Exactly `true` enables it, and only off Production (`VERCEL_ENV` must not
- * be `production`). Unset, empty, `on`, and `false` stay dark.
+ * group. Exactly `true` (trimmed) enables it. Unset, empty, `on`, and `false` stay
+ * dark. Default off. Production may light it the same way as any other environment.
  */
 export function linqGroupBackgroundEnabled(): boolean {
-  if (trimmed('VERCEL_ENV') === 'production') return false;
   return trimmed('LINQ_GROUP_BACKGROUND_ENABLED') === 'true';
 }
 
