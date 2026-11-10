@@ -10,6 +10,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { familyLocalNow } from '~/lib/channel/coach/local-now';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { recordFieldOf } from '~/lib/memory/record-field';
 import { type ActivityPlace, readActivityPlace } from './place';
 
 /**
@@ -285,6 +286,10 @@ export function selectFitPreferences(
   const newest = new Map<string, FitFactRow>();
   for (const row of rows) {
     if (row.childId !== null && teenIds.has(row.childId)) continue;
+    // Age and place belong on the record. A marked row that is a correction is read
+    // there (`recordCorrections`); keeping it here would hide an unmarked preference
+    // that shares the key (Devin #981).
+    if (recordFieldOf(row.value)) continue;
     const id = `${row.childId ?? ''}\u0000${row.key}`;
     const seen = newest.get(id);
     if (!seen || row.sourcedAt.getTime() > seen.sourcedAt.getTime()) newest.set(id, row);

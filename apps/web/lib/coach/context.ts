@@ -320,7 +320,7 @@ export async function loadAgentContext(
   // an earlier one (it narrows to the RESOLVED focused child), so it stays behind.
   const [familyRows, place, corrections, parentRows, childRows, episodeRows] = await Promise.all([
     database
-      .select({ planTier: schema.families.planTier })
+      .select({ planTier: schema.families.planTier, country: schema.families.country })
       .from(schema.families)
       .where(eq(schema.families.id, input.familyId))
       .limit(1),

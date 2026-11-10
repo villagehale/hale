@@ -95,7 +95,11 @@ describe('find_activities with a stale swimming guess (VIL-519)', () => {
       });
     }
 
-    const reader = bindActivityReader(db.database, productionActivityFamilyReader());
+    const reader = bindActivityReader(
+      db.database,
+      productionActivityFamilyReader(),
+      'every_adult',
+    );
     const readFit = reader.familyFit;
     if (!readFit) throw new Error('familyFit missing');
     const fit = await readFit(familyId);
