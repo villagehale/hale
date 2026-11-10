@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a price. The facts give price as null, but the text says the class is $120. That is a claim the facts do not make, which caps the score at 2. The rest is right: \"Swapped\" matches replaced:true, Tuesday, Sept 15 at 7 a.m. is correct, the prerequisite warning to leave time is there, and there is no link and no question. It does not say the course details could not be read, a minor gap.",
+    "score": 2
+  }
+}

@@ -52,6 +52,9 @@ export interface ExtractedEvent {
    * Never estimated. */
   endTime?: string | null;
   location: string | null;
+  /** The street address, only when the email states one word for word (`sourcedAddress`);
+   * else null/absent. Never completed or looked up. */
+  address?: string | null;
 }
 
 /** A reference to the family_events / week_plans row a correlation matched,

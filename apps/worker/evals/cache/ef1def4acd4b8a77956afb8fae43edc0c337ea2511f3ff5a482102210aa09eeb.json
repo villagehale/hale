@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message acknowledges the waitlist report in Riverton. With responseHours and deadline both null, it correctly says the town publishes no response window, so there is no clock to set. Telling the parent to watch their email for an offer is a handed fact. It asks nothing and is in French as required. It invents no position and names no child. The tone is a bit formal but still reads naturally.",
+    "score": 5
+  }
+}

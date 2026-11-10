@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { VerdictOutcome, VerdictReader } from '~/lib/reviews/verdict';
+import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { runMidActivityAnswerPass } from './answer';
 import { MID_ACTIVITY_ASK_TEMPLATE_KEY, midActivityAskDedupeKey } from './claim';
@@ -461,7 +462,10 @@ describe('runMidActivityAnswerPass', () => {
   const repliedAt = new Date('2026-06-03T18:20:00.000Z');
   const readAt = new Date('2026-06-03T18:40:00.000Z');
 
-  async function seedAsk(dateOfBirth = '2023-03-01'): Promise<Seeded> {
+  async function seedAsk(
+    dateOfBirth = '2023-03-01',
+    replyBody = 'She loved the pool.',
+  ): Promise<Seeded> {
     const seeded = await seed({ dateOfBirth });
     await db.database.insert(schema.channelMessages).values({
       familyId: seeded.familyId,
@@ -481,7 +485,7 @@ describe('runMidActivityAnswerPass', () => {
       direction: 'in',
       category: 'reply',
       status: 'delivered',
-      body: 'She loved the pool.',
+      body: replyBody,
       createdAt: repliedAt,
     });
     return seeded;
@@ -521,6 +525,16 @@ describe('runMidActivityAnswerPass', () => {
     expect(outbound).toHaveLength(1);
     expect(JSON.stringify(outbound)).not.toContain('TODO-Design');
     expect(JSON.stringify(outbound)).not.toMatch(/\bSTOP\b/);
+  });
+
+  it('never hands the verdict reader a live browser link from the reply (VIL-613)', async () => {
+    await seedAsk('2023-03-01', 'She loved it https://live.browser-use.com/s/fixture-live-token');
+    arm();
+    const verdict = reader(WORTH_IT);
+
+    await runMidActivityAnswerPass(db.database, { verdict, now: readAt });
+
+    expect(verdict.calls).toEqual([`She loved it ${LIVE_VIEW_LINK_WITHHELD}`]);
   });
 
   it('drops a not-worth-it place from the next find when another option remains', async () => {

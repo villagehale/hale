@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Fair enough, I won't push on it. Then let's skip the place for now, and I'll just show you things that fit the age of your kids. What are your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1588
+}

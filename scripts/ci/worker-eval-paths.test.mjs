@@ -253,6 +253,7 @@ describe('ci.yml wiring', () => {
       'eval:sentinel',
       'eval:intake',
       'eval:intake-answer',
+      'eval:intake-ground',
       'eval:inbound-lane',
       'eval:general-answer',
       'eval:medical-symptom',

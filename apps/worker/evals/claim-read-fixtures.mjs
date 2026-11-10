@@ -137,6 +137,53 @@ const EN = [
     ],
     refused: [['no_scheduled_row']],
   }),
+  // VIL-580's test list: every join, one backed and one unbacked booking, and the
+  // controls where every claim in the sentence is backed.
+  ...[
+    ['dash', "I'll keep looking for toddler activities — your well-baby visit is booked."],
+    ['colon', "I'll keep looking for toddler activities: your well-baby visit is booked."],
+    ['but', "I'll keep looking for toddler activities, but your well-baby visit is booked."],
+    ['and', "I'll keep looking for toddler activities and your well-baby visit is booked."],
+  ].map(([join, body]) =>
+    fx({
+      id: `en-reproducer-${join}`,
+      language: 'en',
+      category: 'reproducer',
+      body,
+      rows: [pendingFollowup('toddler', 'Toddler activities')],
+      claims: [
+        [AF, 'toddler'],
+        [SE, 'none'],
+      ],
+      refused: [['no_scheduled_row']],
+    }),
+  ),
+  fx({
+    id: 'en-reproducer-backed',
+    language: 'en',
+    category: 'true_row',
+    body: "I'll keep looking for toddler activities, and your well-baby visit is booked.",
+    rows: [
+      pendingFollowup('toddler', 'Toddler activities'),
+      cal('visit', 'Well-baby visit', TUE_9),
+    ],
+    claims: [
+      [AF, 'toddler'],
+      [SE, 'visit'],
+    ],
+  }),
+  fx({
+    id: 'en-one-backed-one-not',
+    language: 'en',
+    category: 'compound',
+    body: 'Saturday swim is booked, and the dentist is booked too.',
+    rows: [cal('swim', 'Swim lesson', SAT_10)],
+    claims: [
+      [SE, 'swim'],
+      [SE, 'none'],
+    ],
+    refused: [['no_scheduled_row']],
+  }),
   fx({
     id: 'en-no-worries-false',
     language: 'en',

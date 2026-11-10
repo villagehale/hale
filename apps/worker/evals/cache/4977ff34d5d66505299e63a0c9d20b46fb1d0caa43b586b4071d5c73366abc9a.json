@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Canadian Children's Museum, Canadian Museum of History",
+        "age_fit": "Families with children; the page gives no age range",
+        "when": "Their page lists Monday and Wednesday 9 am to 5 pm and Thursday 9 am to 7 pm for Sept. 8 to Dec. 9, 2026. Hours for Sept. 4-6, 2027 could not be confirmed.",
+        "source_name": "Canadian Museum of History"
+      },
+      {
+        "name": "Canada Science and Technology Museum",
+        "age_fit": "Families with young children; the ticket page gives no age range",
+        "when": "Their ticket page says admission is free every day from 4 to 5 pm. Opening hours for Sept. 4-6, 2027 could not be confirmed.",
+        "price": "Free every day 4 to 5 pm",
+        "source_name": "Ingenium"
+      }
+    ]
+  },
+  "latencyMs": 8545
+}

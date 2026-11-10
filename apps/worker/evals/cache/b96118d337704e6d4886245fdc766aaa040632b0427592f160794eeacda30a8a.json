@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says sign-up was not completed, not confirmed, gives the registration link exactly, lists pack details only as provided, uses zh, no promise of retry, no system talk. Minor: it does not state reason in plain terms but that is acceptable.",
+    "score": 5
+  }
+}

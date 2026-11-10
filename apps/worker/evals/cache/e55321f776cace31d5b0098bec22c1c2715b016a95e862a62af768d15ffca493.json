@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The event is an all-day PD Day tomorrow, Monday Oct 26. The text names it as the event, gives the correct day relative to now (Sunday evening), includes no clock time, and invents no consequences (no school-closure claim, no plans). The title is presented as the name of the day, which the facts allow. Bold is none, which is fine.",
+    "score": 5
+  }
+}

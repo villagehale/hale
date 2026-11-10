@@ -85,6 +85,10 @@ export function weekdayGrounded(day, hay, year) {
 }
 
 export function inventedName(word, hay, year) {
+  // A quotation's first word is capitalised by its own grammar ("You're safe, back to
+  // sleep."), so it starts a sentence. A one-word quotation closes on itself and stays a
+  // name claim.
+  if (/^["“]/.test(word) && !/["”][^A-Za-z]*$/.test(word)) return null;
   const bare = word
     .replace(/^[^A-Za-z]+/, '')
     // Punctuation first, then the possessive it was hiding. The other order only ever

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The French text uses tu, gives the correct opening time and both sessions with correct prices, asks for order, maximum and waiver, and includes the two-places note as required for an offer. It does not claim registration or a held spot. Minor issues: it says the city queue counts two places as more than one, which is a slightly invented claim, and it asks about waiver ticking in a way that is fine for auto mode. Overall it matches watchFor closely.",
+    "score": 4
+  }
+}

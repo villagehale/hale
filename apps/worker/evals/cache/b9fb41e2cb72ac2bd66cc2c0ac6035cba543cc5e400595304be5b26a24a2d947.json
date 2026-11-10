@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two events in the week: Mon 4:30 at West pool and Thu 5:15 at East pool. Asking which one and drafting nothing is the correct handling. The reply is short and exact, every detail traces to the week, and it asks a single question.",
+    "score": 5
+  }
+}

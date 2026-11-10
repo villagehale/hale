@@ -1,7 +1,10 @@
-import { type Database, type Municipality, schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
-import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+import { type FactReader, factsForContext } from '@hale/worker/memory-context';
+import { eq } from 'drizzle-orm';
+import { familyLocalNow } from '~/lib/channel/coach/local-now';
+import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { type ActivityPlace, readActivityPlace } from './place';
 
 /**
  * THE THREE FACTS THE ACTIVITY LANE READS FROM THE DATABASE — and the whole reason it
@@ -10,18 +13,26 @@ import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
  * The town and the age band travel with a query to Anthropic's US `web_search`: a
  * cross-border disclosure, so rule #1 governs what they may be. A model asked for "the
  * location" will happily write a street; a model asked for "the age" writes the age. Both
- * are exactly what must not cross. Resolving them HERE, from `families.area_coarse` and a
- * date of birth, is what makes "town-level and age-band only" a property of the code
+ * are exactly what must not cross. Resolving them HERE, from the family's place (place.ts)
+ * and a date of birth, is what makes "town-level and age-band only" a property of the code
  * rather than a line in a prompt.
  *
  * The names are the third, and they are read for the opposite purpose: nothing is sent
  * with them, they are what a query is REFUSED for containing (deidentify.ts).
  */
 export interface ActivityFamilyReader {
-  municipality(database: Database, familyId: string): Promise<Municipality | null>;
+  place(database: Database, familyId: string): Promise<ActivityPlace>;
   stage(database: Database, familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(database: Database, familyId: string): Promise<string[]>;
-  familyFit?(database: Database, familyId: string, now?: Date): Promise<FamilyFit>;
+  familyFit?(
+    database: Database,
+    familyId: string,
+    reader: FactReader,
+    now?: Date,
+  ): Promise<FamilyFit>;
+  /** Today on the family's own clock, `YYYY-MM-DD (Weekday)`, or null when the zone is
+   * unknown (VIL-435). */
+  today?(database: Database, familyId: string): Promise<string | null>;
 }
 
 /**
@@ -51,8 +62,8 @@ export interface FamilyFitPreference {
 
 export interface FamilyFit {
   children: FamilyFitChild[];
-  /** The home municipality the search looked around, or null when unknown. */
-  homeArea: Municipality | null;
+  /** The town the search looked around, or null when the family has none. */
+  homeArea: string | null;
   preferences: FamilyFitPreference[];
 }
 
@@ -65,47 +76,56 @@ export const FAMILY_FIT_PREFERENCE_LIMIT = 8;
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
 export interface BoundActivityReader {
-  municipality(familyId: string): Promise<Municipality | null>;
+  place(familyId: string): Promise<ActivityPlace>;
   stage(familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(familyId: string): Promise<string[]>;
   familyFit?(familyId: string): Promise<FamilyFit>;
+  today?(familyId: string): Promise<string | null>;
 }
 
+/** `factReader`: who the turn is for, so a pick is never ranked on another adult's 1:1. */
 export function bindActivityReader(
   database: Database,
   reader: ActivityFamilyReader,
+  factReader: FactReader,
 ): BoundActivityReader {
   return {
-    municipality: (familyId) => reader.municipality(database, familyId),
+    place: (familyId) => reader.place(database, familyId),
     stage: (familyId, childId) => reader.stage(database, familyId, childId),
     householdNames: (familyId) => reader.householdNames(database, familyId),
     ...(reader.familyFit
-      ? { familyFit: (familyId: string) => reader.familyFit!(database, familyId) }
+      ? { familyFit: (familyId: string) => reader.familyFit!(database, familyId, factReader) }
       : {}),
+    ...(reader.today ? { today: (familyId: string) => reader.today!(database, familyId) } : {}),
   };
 }
 
 export function productionActivityFamilyReader(): ActivityFamilyReader {
   return {
     /**
-     * The ONE municipality this family's postal code names, or null.
-     *
-     * Null where the FSA names none or TWO, which is `selectStandingOption`'s own rule and
-     * not a new one: two Thornhill FSAs genuinely straddle a municipal boundary, and the
-     * table declines to guess rather than send a family the wrong town's programs. A null
-     * town is not a failure — the search runs without one and the skill says so.
+     * Today on the family's own clock (VIL-435), so a find for "today" is checked against
+     * the day it is where they live. A failed read is logged by fault class and leaves
+     * the day out; the find still runs.
      */
-    municipality: async (database, familyId) => {
-      const [family] = await database
-        .select({ areaCoarse: schema.families.areaCoarse })
-        .from(schema.families)
-        .where(eq(schema.families.id, familyId))
-        .limit(1);
-      const postal = family?.areaCoarse ?? null;
-      if (postal === null) return null;
-      const municipalities = municipalitiesForFsa(postal);
-      return municipalities.length === 1 ? (municipalities[0] as Municipality) : null;
+    today: async (database, familyId) => {
+      try {
+        const zone = await knownHouseholdTimezone(database, familyId);
+        if (!zone) return null;
+        const local = familyLocalNow(new Date(), zone);
+        return `${local.date} (${local.weekday})`;
+      } catch (err) {
+        console.error(
+          { fault: err instanceof Error ? err.name : typeof err },
+          'activity reader: family day unavailable',
+        );
+        return null;
+      }
     },
+    /**
+     * Where the family is now, as a search may be told it (place.ts), or why it cannot
+     * be. A postal area that covers two towns is not guessed: the find does not run.
+     */
+    place: readActivityPlace,
 
     /**
      * The named child's stage, or the YOUNGEST child's when none was named.
@@ -154,10 +174,10 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
         .filter((name) => name !== '');
     },
 
-    familyFit: async (database, familyId, now = new Date()) => {
+    familyFit: async (database, familyId, factReader, now = new Date()) => {
       const self = productionActivityFamilyReader();
-      const [homeArea, childRows] = await Promise.all([
-        self.municipality(database, familyId),
+      const [place, childRows] = await Promise.all([
+        self.place(database, familyId),
         database
           .select({
             id: schema.children.id,
@@ -171,42 +191,19 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
       const teenIds = new Set(
         children.filter((child) => child.stage === 'teenager').map((child) => child.childId),
       );
-      const factRows = await database
-        .select({
-          childId: schema.familyMemoryFacts.childId,
-          key: schema.familyMemoryFacts.factKey,
-          value: schema.familyMemoryFacts.factValue,
+      // A passing question (`one_off`) is not a family preference (Devin, #980).
+      const factRows = (
+        await factsForContext(database, familyId, {
+          now,
+          reader: factReader,
+          limit: FAMILY_FIT_PREFERENCE_LIMIT,
+          factTypes: FIT_FACT_TYPES,
+          excludeKinds: ['one_off'],
         })
-        .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, familyId),
-            inArray(schema.familyMemoryFacts.factType, [...FIT_FACT_TYPES]),
-            isNull(schema.familyMemoryFacts.validUntil),
-            // A passing question (`one_off`) is not a family preference (Devin, #980).
-            ne(schema.familyMemoryFacts.memoryKind, 'one_off'),
-            or(
-              isNull(schema.familyMemoryFacts.expiresAt),
-              gt(schema.familyMemoryFacts.expiresAt, now),
-            ),
-            // Teen facts are dropped in SQL so they never eat the LIMIT (Devin, #980).
-            teenIds.size > 0
-              ? or(
-                  isNull(schema.familyMemoryFacts.childId),
-                  notInArray(schema.familyMemoryFacts.childId, [...teenIds]),
-                )
-              : undefined,
-          ),
-        )
-        .orderBy(
-          desc(schema.familyMemoryFacts.confidence),
-          desc(schema.familyMemoryFacts.validFrom),
-          schema.familyMemoryFacts.id,
-        )
-        .limit(FAMILY_FIT_PREFERENCE_LIMIT * 2);
+      ).map((row) => ({ childId: row.childId, key: row.factKey, value: row.factValue }));
       return {
         children,
-        homeArea,
+        homeArea: place.status === 'known' ? place.town : null,
         preferences: selectFitPreferences(factRows, teenIds),
       };
     },

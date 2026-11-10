@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Fair enough, no code then. Who are the kids? Just first names is plenty.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1517
+}

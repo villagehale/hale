@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { EXPECTED_FAIL, expectedFailGate } from './said-line-expected-fail.mjs';
-import { SAID_LINE_FIXTURES } from './said-line-fixtures.mjs';
 
 const r = (id, failed) => ({ id, failed });
 
@@ -34,8 +33,7 @@ describe('said-line cached-only expected-fail gate (VIL-467)', () => {
     expect(expectedFailGate([r('a', true)], []).ok).toBe(false);
     expect(expectedFailGate([r('a', false)], []).ok).toBe(true);
   });
-  it('lists only intro-no-open-fr, a real fixture', () => {
-    expect([...EXPECTED_FAIL]).toEqual(['intro-no-open-fr']);
-    expect(SAID_LINE_FIXTURES.map((f) => f.id)).toContain('intro-no-open-fr');
+  it('lists no case: every fixture passes its recording (VIL-608)', () => {
+    expect([...EXPECTED_FAIL]).toEqual([]);
   });
 });

@@ -49,6 +49,8 @@ async function armCourse(
       label: 'Milliken preschool swim',
       instant: false,
       lastState: 'full',
+      sessionStartsAt: null,
+      sessionAnchor: null,
     },
     channelMessageId,
     now,

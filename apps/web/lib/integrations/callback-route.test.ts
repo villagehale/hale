@@ -24,6 +24,9 @@ vi.mock('~/lib/channel/connect/fresh-link', () => ({
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
+vi.mock('~/lib/channel/household-timezone', () => ({
+  householdTimezone: async () => 'America/Toronto',
+}));
 vi.mock('~/lib/family', () => ({
   resolveUserIdForUser: (...a: unknown[]) => resolveUserIdMock(...a),
 }));

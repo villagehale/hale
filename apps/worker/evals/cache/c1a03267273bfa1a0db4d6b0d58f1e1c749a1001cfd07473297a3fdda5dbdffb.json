@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgtRpRSKJ5ipZApxbbUkD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1gYKEAgTGAI4AUIIdGhpbmtpbmcSDKhIgRw0ETa3XFim4BoMQFN8K7xb2+w8LwknIjC4GPscNJQu5Mc9y1Ej4gAJpf9FSPOEJd3h0hwT4/bCFu4N/LeEt8dzissY7KZ9KFsq8wXB7w8cmROxgLzB7uyB1EW97oUeC2/wZqSp1lHdzoTv5u6mRpXZ9jy9VC2UaSkVl5mFaD7GI+h9JfkhaxV2bQEPTBmzOjRYDkSZ1AVNE3ULaIkGTBzz0B3mg4XXvIAeeUEfI1w2IUujMyxgorxFedobstGi1pIHiYTX5Gv5pvZt7tLHCGwVrOshxlHD1vMJXi47S06cXeo5ja3yF0Dzcp6JkC2o20iXZ5yPglq+qt2aDHI0vsfOo6rbFV8NK0AKvnT0/CD5yDZE8qYftdCC//PoThgCOCrVmriRnSHARPSF8yH1E4x4ydUyB7l/pctMySOTSnn1a1XxCxpZqqZrEquSfeE3Lw2OMJeCw/rmiQAbfJ/8Wz4gCSHq4GYi2YRhvsw0jSU02ONXDHCq4iDNwwKM8FntbltTUDmZGG2jMaLXEh8JXbMy2doNRgbMuIEI7cQYlRr0l9ewlXixOzas1z1v4h6geY5V0Z6qns+nyLFGuJwEreMijcld192vD841GXzP4iz0CdbPgCdIvnQzGck9UK9tx5EDd7uceY9pMUwrNhwm6rH3hcBx6f5egTtPc6J+W235HTyoUfndvl1ahaRAqgcg8/W+L2fBVtJPFStC+NlTCuT08Ue77enMVAV6QgDUPZdpsGQxSRoNxJnnWOXJFiXTsAjKrvUfmT6wncrEEp1vWO20GMjPlylGgddUNPx7DwaqOrDbrNBTsaYxISPnano0QrWL/eEKF+gtT9FeLpeLinjlQETY/kZOw/4iBWiQN1XBFSHy4tg7ZANxSxd+UqVUT+ndypLkBl238PB230pQx/mZGdbbFGwfQxyuIjxvJWUTs1VLyPFS+fxOmz4BXzpqPasMFYlHZMHo4UapmcLrgRTsKWUgPT+9PDsFQHGQudtJJR+OwXXw/rn3mSRNcTYwGMl/TqpZuEr2dD5d/eRfvlM8QnKkBXGiu5qju3YIM8qRwLBZ5tEFUnh83z91QlS81oQmtpsxu22tyFsBm8dgsRgB"
+      },
+      {
+        "type": "text",
+        "text": "Got it, I'm leaving Thursday swim as is."
+      }
+    ],
+    "usage": {
+      "input_tokens": 737,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22908,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 122,
+      "output_tokens_details": {
+        "thinking_tokens": 101
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2605
+}

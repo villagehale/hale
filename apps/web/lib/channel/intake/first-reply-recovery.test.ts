@@ -41,6 +41,10 @@ const FIRST_TEXT = [
   },
 ];
 
+/** Postal places by FSA only: K2P is in the Eastern zone, R3C in the Central zone. */
+const EASTERN_FSA = 'K2P';
+const CENTRAL_FSA = 'R3C';
+
 function dataBlob(
   transcript: Array<{
     direction: 'in' | 'out';
@@ -48,9 +52,21 @@ function dataBlob(
     providerId: string | null;
     at: string;
   }> = [],
+  areaCoarse: string | null = null,
 ): string {
+  const firstTouch = areaCoarse
+    ? {
+        language: 'en',
+        place: { kind: 'postal', areaCoarse, postalCode: null, municipality: null, city: null },
+        locationRequest: null,
+      }
+    : undefined;
   return encryptString(
-    JSON.stringify({ collected: { children: [], postalCode: null }, transcript }),
+    JSON.stringify({
+      collected: { children: [], postalCode: null },
+      transcript,
+      ...(firstTouch ? { firstTouch } : {}),
+    }),
   );
 }
 
@@ -66,6 +82,8 @@ function seedSession(
     closedAt?: Date | null;
     familyId?: string | null;
     sourceCode?: string | null;
+    /** The FSA the silent turn stored, when it stored a place. */
+    areaCoarse?: string;
     transcript?: Array<{
       direction: 'in' | 'out';
       body: string;
@@ -81,7 +99,7 @@ function seedSession(
     phoneEncrypted: encryptString(phoneE164),
     state: over.state ?? 'awaiting_details',
     sourceCode: over.sourceCode === undefined ? null : over.sourceCode,
-    dataEncrypted: dataBlob(over.transcript ?? FIRST_TEXT),
+    dataEncrypted: dataBlob(over.transcript ?? FIRST_TEXT, over.areaCoarse ?? null),
     createdAt: over.createdAt ?? FIRST_TEXT_AT,
     updatedAt: over.createdAt ?? FIRST_TEXT_AT,
     lastProviderId: over.lastProviderId === undefined ? INBOUND_SID : over.lastProviderId,
@@ -112,11 +130,10 @@ describe('firstReplyRecoveryEligible', () => {
     firstReplyRecoveredAt: null,
     familyId: null,
     lastProviderId: INBOUND_SID,
-    hasInbound: true,
-    hasOutbound: false,
+    owesReply: true,
   };
 
-  it('accepts awaiting_details + SID + an inbound and no outbound', () => {
+  it('accepts awaiting_details + SID + a transcript that ends on an unanswered inbound', () => {
     expect(firstReplyRecoveryEligible(open)).toBe(true);
   });
 
@@ -125,12 +142,8 @@ describe('firstReplyRecoveryEligible', () => {
     expect(firstReplyRecoveryEligible({ ...open, state: 'awaiting_ages' })).toBe(true);
   });
 
-  it('refuses a session whose inbound is not on the transcript yet', () => {
-    expect(firstReplyRecoveryEligible({ ...open, hasInbound: false })).toBe(false);
-  });
-
-  it('refuses a session that already has outbound', () => {
-    expect(firstReplyRecoveryEligible({ ...open, hasOutbound: true })).toBe(false);
+  it('refuses a session whose last text was answered, or is not on the transcript yet', () => {
+    expect(firstReplyRecoveryEligible({ ...open, owesReply: false })).toBe(false);
   });
 
   it('refuses a session with no inbound SID', () => {
@@ -183,7 +196,7 @@ describe('runFirstReplyRecoveryCron', () => {
 
     // Positive control: the same row with no hold standing is owed and sent its reply.
     const unheld = makeFakeDb();
-    seedSession(unheld);
+    seedSession(unheld, { areaCoarse: EASTERN_FSA });
     const owed = await runFirstReplyRecoveryCron(unheld.db, deps(transport), SAME_DAY_NOON_ET);
     expect(owed).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
     expect(transport.sent[0]?.to).toBe(PHONE);
@@ -192,7 +205,7 @@ describe('runFirstReplyRecoveryCron', () => {
   it('sends the locked first-hello once for a session with SID and no outbound', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
-    seedSession(fake);
+    seedSession(fake, { areaCoarse: EASTERN_FSA });
 
     const first = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
@@ -264,13 +277,14 @@ describe('runFirstReplyRecoveryCron', () => {
     });
   });
 
-  it('does not send or claim during quiet hours', async () => {
+  it("does not send or claim during the family's own quiet hours", async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
     // 9:30 p.m. America/Toronto, inside 21:00–08:00. The text is an hour old.
     const quiet = new Date('2026-08-29T01:30:00.000Z');
     const textAt = new Date(quiet.getTime() - 60 * 60_000);
     const id = seedSession(fake, {
+      areaCoarse: EASTERN_FSA,
       createdAt: textAt,
       transcript: [
         { direction: 'in', body: 'hi', providerId: INBOUND_SID, at: textAt.toISOString() },
@@ -279,8 +293,15 @@ describe('runFirstReplyRecoveryCron', () => {
 
     const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), quiet);
 
-    expect(firstReplyRecoveryQuiet(quiet)).toBe(true);
-    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 });
+    expect(firstReplyRecoveryQuiet(quiet, 'America/Toronto')).toBe(true);
+    expect(result).toEqual({
+      evaluated: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      deferred: 0,
+      quietHeld: 1,
+    });
     expect(transport.bodies()).toEqual([]);
     expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
       firstReplyRecoveredAt: null,
@@ -295,6 +316,7 @@ describe('runFirstReplyRecoveryCron', () => {
     const stillQuiet = new Date('2026-08-29T11:59:00.000Z');
     const open = new Date('2026-08-29T12:00:00.000Z');
     seedSession(fake, {
+      areaCoarse: EASTERN_FSA,
       createdAt: textAt,
       transcript: [
         { direction: 'in', body: 'hi', providerId: INBOUND_SID, at: textAt.toISOString() },
@@ -302,13 +324,13 @@ describe('runFirstReplyRecoveryCron', () => {
     });
 
     const held = await runFirstReplyRecoveryCron(fake.db, deps(transport), stillQuiet);
-    expect(firstReplyRecoveryQuiet(stillQuiet)).toBe(true);
+    expect(firstReplyRecoveryQuiet(stillQuiet, 'America/Toronto')).toBe(true);
     expect(held.sent).toBe(0);
     expect(transport.bodies()).toEqual([]);
     expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toBeNull();
 
     const morning = await runFirstReplyRecoveryCron(fake.db, deps(transport), open);
-    expect(firstReplyRecoveryQuiet(open)).toBe(false);
+    expect(firstReplyRecoveryQuiet(open, 'America/Toronto')).toBe(false);
     expect(morning).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
     expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
     expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toEqual(open);
@@ -322,6 +344,7 @@ describe('runFirstReplyRecoveryCron', () => {
     /** 8:00 a.m. the next morning, when quiet hours end. */
     const morning = new Date('2026-08-29T12:00:00.000Z');
     seedSession(fake, {
+      areaCoarse: EASTERN_FSA,
       createdAt: late,
       transcript: [
         { direction: 'in', body: 'hi', providerId: INBOUND_SID, at: late.toISOString() },
@@ -341,6 +364,52 @@ describe('runFirstReplyRecoveryCron', () => {
     expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
   });
 
+  it("reads quiet hours on each family's own clock, and guesses none for a session with no place", async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    // 9:30 p.m. in the East (quiet), 8:30 p.m. in the Central zone (open).
+    const tick = new Date('2026-08-29T01:30:00.000Z');
+    const textAt = new Date(tick.getTime() - 10 * 60_000);
+    const text = (body: string) => [
+      { direction: 'in' as const, body, providerId: INBOUND_SID, at: textAt.toISOString() },
+    ];
+    const eastern = seedSession(fake, {
+      areaCoarse: EASTERN_FSA,
+      createdAt: textAt,
+      transcript: text('east'),
+    });
+    const central = seedSession(fake, {
+      phoneE164: OTHER,
+      areaCoarse: CENTRAL_FSA,
+      createdAt: textAt,
+      transcript: text('central'),
+    });
+    const unplaced = seedSession(fake, {
+      phoneE164: '+14165550199',
+      createdAt: textAt,
+      transcript: text('no place yet'),
+    });
+
+    const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), tick);
+
+    expect(result).toEqual({
+      evaluated: 2,
+      sent: 2,
+      skipped: 0,
+      failed: 0,
+      deferred: 0,
+      quietHeld: 1,
+      zoneUnknownAnswered: 1,
+    });
+    const rows = fake.rows(schema.smsIntakeSessions);
+    const recovered = (id: string) => rows.find((row) => row.id === id)?.firstReplyRecoveredAt;
+    expect(recovered(eastern)).toBeNull();
+    expect(recovered(central)).toEqual(tick);
+    // No zone to read their night in: the reply answers the text they just sent.
+    expect(recovered(unplaced)).toEqual(tick);
+    expect(transport.sent.map((row) => row.to).sort()).toEqual([OTHER, '+14165550199'].sort());
+  });
+
   it('puts the elapsed wait on the model brief, and leaves a two-minute text unmarked', async () => {
     const inputs: FriendVoiceInput[] = [];
     const voice: FriendVoiceComposer = {
@@ -354,6 +423,7 @@ describe('runFirstReplyRecoveryCron', () => {
     const hoursAgo = new Date(SAME_DAY_NOON_ET.getTime() - 4 * 3_600_000);
     const twoMinutesAgo = new Date(SAME_DAY_NOON_ET.getTime() - 2 * 60_000);
     seedSession(fake, {
+      areaCoarse: EASTERN_FSA,
       createdAt: hoursAgo,
       transcript: [
         {

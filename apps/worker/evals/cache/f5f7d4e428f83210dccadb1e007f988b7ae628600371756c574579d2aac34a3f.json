@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both items are Maya's at the same time, so a second driver cannot fix it; the message hands Sam a plan and posts a poll on the two items, which the watchFor note says is wrong. The poll should not exist, and the message should say Maya is double-booked and ask which one she goes to. Also the message says Sam looks free, which is fine, but the core fix is wrong.",
+    "score": 1
+  }
+}

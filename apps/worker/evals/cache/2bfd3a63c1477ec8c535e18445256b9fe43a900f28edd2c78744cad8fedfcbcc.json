@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly takes the pasted course link and says Hale is watching the page and will text within about ten minutes of a spot showing, which matches watch_for_opening. No question and no app referral. It runs past what was needed: the overnight-next-morning rule and the waitlist caveat aren't grounded in what Hale knew. That is extra, loosely backed detail rather than a clear invention.",
+    "score": 4
+  }
+}

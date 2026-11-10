@@ -124,13 +124,46 @@ export type SuppressReason =
   | 'compose_rejected'
   /** VIL-562. Due inside the proactive quiet floor, which opens only after the event
    * starts, so it can never be sent in time. */
-  | 'quiet_hours';
+  | 'quiet_hours'
+  /** VIL-625. Held for the writer COMPOSE_HOLD_MAX_ATTEMPTS times and it never answered. */
+  | 'compose_retries_exhausted'
+  /** VIL-586 · NOT a drop: the mark on a row left 'scheduled' because the writer could
+   * not be reached. The drain asks again for a T-1h held this way, which the next hourly
+   * slot would only find started. Sending or dropping the row overwrites it. */
+  | typeof COMPOSE_HELD;
+
+export const COMPOSE_HELD = 'compose_unavailable';
+
+/** A reason a row stops: every SuppressReason but the hold mark, which only
+ * `holdForCompose` writes (run.ts). */
+export type DropReason = Exclude<SuppressReason, typeof COMPOSE_HELD>;
+
+/**
+ * VIL-625 · how often a held row is put back to the writer. This bounds an internal
+ * retry, not a send: whether and what a parent is told stays the model's call once it
+ * answers. Four tries spaced 5, 10 then 20 minutes apart all land inside the hour a
+ * T-1h has before its event, and stop the drain asking every minute.
+ */
+export const COMPOSE_HOLD_MAX_ATTEMPTS = 4;
+export const COMPOSE_HOLD_FIRST_GAP_MS = 5 * 60_000;
+
+export type ComposeHoldStep =
+  | { action: 'hold'; attempts: number; nextTryAt: Date }
+  | { action: 'exhausted' };
+
+/** What a writer failure does to a row that had already been tried `attemptsSoFar` times. */
+export function nextComposeHold(attemptsSoFar: number, now: Date): ComposeHoldStep {
+  const attempts = attemptsSoFar + 1;
+  if (attempts >= COMPOSE_HOLD_MAX_ATTEMPTS) return { action: 'exhausted' };
+  const gapMs = COMPOSE_HOLD_FIRST_GAP_MS * 2 ** (attempts - 1);
+  return { action: 'hold', attempts, nextTryAt: new Date(now.getTime() + gapMs) };
+}
 
 export type ReminderDecision =
   | { action: 'fire' }
   | { action: 'cancel' } // event erased or soft-deleted — the trust test
   | { action: 'stale' } // event moved — this row is for the old fire time
-  | { action: 'suppress'; reason: SuppressReason }
+  | { action: 'suppress'; reason: DropReason }
   | { action: 'wait' }; // fire_at still in the future
 
 export interface ClassifyOptions {

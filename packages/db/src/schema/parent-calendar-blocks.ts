@@ -9,7 +9,9 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { children } from './children.js';
 import { families } from './families.js';
+import type { CalendarStanding } from './family-events.js';
 import { integrations } from './integrations.js';
 import { users } from './users.js';
 
@@ -51,6 +53,13 @@ export const parentCalendarBlocks = pgTable(
     /** Set once the after-event follow-up has gone to the group. */
     followupAt: timestamp('followup_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** VIL-651 (migration 0222). Where the connecting parent stands on the event. A title is
+     * stored only when it is `organizer` or `own`. Null on a row written before the column
+     * existed, which reads as not the parent's own. */
+    calendarStanding: text('calendar_standing').$type<CalendarStanding>(),
+    /** VIL-651. The child a kid-related row is about, so a row with no title still names its
+     * kid. Null on a non-kid row, on a kid row tied to no child, and on older rows. */
+    childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.integrationId, table.eventId] }),

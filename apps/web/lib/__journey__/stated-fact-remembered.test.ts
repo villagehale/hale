@@ -427,10 +427,8 @@ describe('a 13+ child’s appointment', () => {
       teenWorld.db.database,
       SWEEP_AT,
     );
-    const serialized = JSON.stringify(context.memoryFacts);
-    expect(serialized).not.toContain('immunization_14_to_16_years');
-    expect(serialized).not.toContain(teenWorld.teenId);
-    expect(serialized).toContain('teen content');
+    // The row exists (the test above reads it); the coach is given nothing of it.
+    expect(context.memoryFacts).toEqual([]);
   });
 });
 
@@ -453,6 +451,7 @@ describe('a parent correcting a fact Hale already holds', () => {
       factValue: '7:30pm, bath then two books',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: TOLD_AT,
     });
     await writeFact(corrected.db.database, {
@@ -463,6 +462,7 @@ describe('a parent correcting a fact Hale already holds', () => {
       factValue: '8pm now that he naps later',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: SWEEP_AT,
     });
   }, 60_000);

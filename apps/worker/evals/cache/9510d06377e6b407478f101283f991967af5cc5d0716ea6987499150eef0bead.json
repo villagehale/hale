@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states registration opens Monday January 12 at 7:00 AM, parent signs up themselves at the exact link, nothing is booked (confirmed false, says rien n'est encore réservé), pack values are listed, French with tu for direct audience, no promise to retry or follow up. Minor: 'heure indiquée sur la page du fournisseur' is accurate to opensAt provenance, and 'c'est à toi de t'inscrire' is faithful to rush behavior.",
+    "score": 5
+  }
+}

@@ -202,6 +202,9 @@ async function ask(
       noop,
       noop,
       createTurnOfferLedger(),
+      undefined,
+      undefined,
+      'CA',
     )
     .find((candidate) => candidate.name === 'propose_calendar_add');
   if (!tool) throw new Error('production buildTools registers no propose_calendar_add');
@@ -401,6 +404,41 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
     expect(inGroup.approved).toEqual([groupId]);
   });
 
+  it('a household-group draft is not listed in its chat once that chat is no longer the household group', async () => {
+    const household = await householdGroup();
+    const groupId = await householdGroupDraft(household, {
+      audience: 'group',
+      groupChatId: household.chatId,
+      ...household,
+    });
+    const listed = () =>
+      groupPlanActionIds(db.database, { familyId: family.familyId, chatId: household.chatId });
+    expect(await listed()).toEqual(new Set([groupId]));
+
+    const next = `chat-household-${randomUUID()}`;
+    await makeHousehold(next);
+    expect(await listed()).toEqual(new Set());
+    // Fails closed: the new household chat does not inherit it, and it does not move to
+    // the private threads, which never asked it.
+    expect(
+      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: next }),
+    ).toEqual(new Set());
+    expect(await privateApprovalIds()).toEqual([]);
+  });
+
+  it('the synthetic event of a texted add does not carry the title a second time', async () => {
+    const [id] = (await ask({ audience: 'direct' })).minted;
+    if (!id) throw new Error('the private ask did not draft');
+    const [row] = await db.database
+      .select({ actionPayload: schema.actions.payload, eventPayload: schema.events.payload })
+      .from(schema.actions)
+      .innerJoin(schema.events, eq(schema.events.id, schema.actions.eventId))
+      .where(eq(schema.actions.id, id));
+    // Positive control: the action still carries the title the parent will approve.
+    expect(row?.actionPayload).toMatchObject({ title: TITLE });
+    expect(row?.eventPayload).toEqual({ actionType: 'calendar_add' });
+  });
+
   it('a household-group ask reuses its own group draft and never the private draft beside it', async () => {
     const household = await householdGroup();
     const group: Turn = { audience: 'group', groupChatId: household.chatId, ...household };
@@ -447,10 +485,15 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
 
     expect(again.minted).toEqual([]);
     expect(again.result).toMatchObject({ alreadyPending: true, actionId: bId });
-    // Recorded at mint: a later change of household chat leaves A's draft on A's list.
+    // A is no longer the household group, so its draft is listed nowhere (VIL-595): not
+    // in A, and not in B, whose ask did not draft it.
     expect(
       await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: chatA.chatId }),
-    ).toEqual(new Set([aId]));
+    ).toEqual(new Set());
+    expect(
+      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: chatB.chatId }),
+    ).toEqual(new Set([bId]));
+    expect(aId).not.toBe(bId);
   });
 
   it('a group ask in a shared chat reuses only a draft asked in that same chat', async () => {
@@ -473,6 +516,28 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
     const otherShared = await ask({ audience: 'group', groupChatId: OTHER_SHARED_CHAT });
     expect(otherShared.minted).toHaveLength(1);
     expect(otherShared.minted).not.toContain(sharedId);
+  });
+
+  it("a group ask's result says where its yes is given: this household group, or private texts", async () => {
+    const household = await householdGroup();
+    const inHousehold: Turn = { audience: 'group', groupChatId: household.chatId, ...household };
+    await householdGroupDraft(household, inHousehold);
+    expect((await ask(inHousehold)).result).toMatchObject({
+      alreadyPending: true,
+      approvalWaitsIn: 'this_group',
+    });
+
+    const inShared: Turn = { audience: 'group', groupChatId: SHARED_CHAT };
+    expect((await ask(inShared)).minted).toHaveLength(1);
+    expect((await ask(inShared, { time: '08:01' })).result).toMatchObject({
+      alreadyPending: true,
+      approvalWaitsIn: 'private_texts',
+    });
+
+    // A 1:1 turn's result is unchanged: it is already the private text.
+    const direct = (await ask({ audience: 'direct' })).result;
+    expect(direct).toMatchObject({ alreadyPending: true });
+    expect(direct).not.toHaveProperty('approvalWaitsIn');
   });
 
   it('a group ask with no chat id mints nothing and names group_chat_unknown', async () => {
@@ -508,6 +573,14 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
     ] as const) {
       expect(JSON.stringify(await mintRowAfter(id))).not.toContain(chatId);
     }
+    // The group-plan stamp is an exported audit row too: every row about the draft is
+    // free of the raw chat id, and the stamp is there (positive control).
+    const rows = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetId, householdId));
+    expect(rows.map((row) => row.actionTaken)).toContain('group_plan.drafted');
+    expect(JSON.stringify(rows)).not.toContain(household.chatId);
     // Positive control: the origin is still recorded, keyed, with the household bit.
     expect(await mintOrigin(sharedId)).toEqual({
       surface: 'group',
@@ -652,6 +725,14 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
 
     const cancelId = await draft('calendar_cancel');
     const addId = await draft('calendar_add');
+    // What the coach is told matches where each one is listed.
+    for (const [actionType, place] of [
+      ['calendar_cancel', 'private_texts'],
+      ['calendar_move', 'private_texts'],
+      ['calendar_add', 'this_group'],
+    ] as const) {
+      expect(await port.approvalWaitsIn?.({ familyId: family.familyId, actionType })).toBe(place);
+    }
 
     expect(await privateApprovalIds()).toEqual([cancelId]);
     expect(

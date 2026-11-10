@@ -152,6 +152,7 @@ function inbound(sender: string, text: string, messageId = `in-${text.length}`):
     mediaCount: 0,
     receivedAt: NOW,
     otherHandles: [],
+    mentions: [],
   };
 }
 
@@ -408,6 +409,9 @@ describe('askMember', () => {
     ).toEqual({ outcome: 'group_member_refused', reason: 'other_family' });
     expect(sent).toEqual([]);
     expect(await memberStatus(OTHER_PARENT)).toBe('refused');
+    expect((await audits('linq_group_member_refused')).map((row) => row.after)).toEqual([
+      { reason: 'number_unavailable' },
+    ]);
 
     expect(
       await askMember(db.database, {

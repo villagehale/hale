@@ -110,6 +110,7 @@ describe('one parent, two doors, one conversation', () => {
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
+      recordCapabilityNotes: async () => ({ status: 'recorded', declined: 0, corrected: 0 }),
       recordActivityPromise: async () => ({
         status: 'recorded',
         commitmentId: '77777777-7777-4777-8777-777777777777',
@@ -126,6 +127,12 @@ describe('one parent, two doors, one conversation', () => {
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       claimShadow: { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' },
+      claimEnforcer: {
+        enforces: () => false,
+        read: async () => {
+          throw new Error('the claim reader is not enforced here');
+        },
+      },
       recordStatedState: async () => ({ status: 'nothing_stated' }),
       weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
       recordWeekdayCare: async (_db, input) => ({

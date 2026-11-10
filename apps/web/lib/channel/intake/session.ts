@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { SealedBlobRejected, decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { haleContactCardDay } from '../linq/contact-card';
 import type { IntakeCollected } from './extract';
 
@@ -77,6 +77,24 @@ export interface TranscriptEntry {
   channel?: 'sms' | 'imessage';
   /** Linq chat id when `channel` is imessage. Replay writes it onto the ledger row. */
   chatId?: string | null;
+  /** INBOUND only: the door's group bit (`channel_messages.in_group`). Absent is unknown. */
+  inGroup?: boolean;
+  /**
+   * The model set `asks` on this outbound. Absent on older rows and on
+   * inbounds. A question mark in `body` is not a substitute.
+   */
+  asked?: boolean;
+  /**
+   * INBOUND only: this text was read as a crisis and took the crisis path. A reply
+   * the crisis writer could not send is never followed up with an onboarding ask.
+   */
+  crisis?: boolean;
+  /**
+   * INBOUND only: the turn that read this text sent nothing and said so
+   * (`first_touch_unsent`). Mid-onboarding, this is the only thing that lets the
+   * first-reply sweep follow up: an unmarked text is never assumed to be owed.
+   */
+  unsent?: boolean;
 }
 
 interface IntakeData {
@@ -164,6 +182,10 @@ export interface FirstTouchGiven {
   nameDeclined?: boolean;
   /** True once they declined the kids'-names ask. */
   kidsNamesDeclined?: boolean;
+  /** True once they declined to give any place, the coarse code included. */
+  placeDeclined?: boolean;
+  /** VIL-641. True once a reply that asked for the coarse code, after a first no, went out. */
+  coarseCodeAsked?: boolean;
   /** True once they said later to the calendar. */
   calendarLater?: boolean;
   /** True once they said later to email. */
@@ -341,6 +363,12 @@ function decodeLadderLanguage(value: unknown): ReplyLanguage | null {
   return acceptReplyLanguage(typeof value === 'string' ? value : null);
 }
 
+/** The blob itself will not open: the cipher refused it, or it opened to text that is not
+ * JSON. Anything else thrown while decoding is a fault in the code, never a corrupt row. */
+export function isUnreadableIntakeBlob(err: unknown): boolean {
+  return err instanceof SealedBlobRejected || err instanceof SyntaxError;
+}
+
 function decodeData(blob: string): IntakeData {
   // Decryption is authenticated (GCM), so a tampered or wrong-key blob throws rather
   // than returning garbage. That is the intended behaviour — a session we cannot read
@@ -398,6 +426,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     parentRole?: unknown;
     nameDeclined?: unknown;
     kidsNamesDeclined?: unknown;
+    placeDeclined?: unknown;
+    coarseCodeAsked?: unknown;
     calendarLater?: unknown;
     gmailLater?: unknown;
     scheduleDone?: unknown;
@@ -419,6 +449,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     row.connectGmail === true || row.connectGmail === false ? row.connectGmail : null;
   const nameDeclined = row.nameDeclined === true;
   const kidsNamesDeclined = row.kidsNamesDeclined === true;
+  const placeDeclined = row.placeDeclined === true;
+  const coarseCodeAsked = row.coarseCodeAsked === true;
   const calendarLater = row.calendarLater === true;
   const gmailLater = row.gmailLater === true;
   const scheduleDone = row.scheduleDone === true;
@@ -438,6 +470,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     !parentRole &&
     !nameDeclined &&
     !kidsNamesDeclined &&
+    !placeDeclined &&
+    !coarseCodeAsked &&
     !calendarLater &&
     !gmailLater &&
     !scheduleDone &&
@@ -455,6 +489,8 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     ...(parentRole ? { parentRole } : {}),
     ...(nameDeclined ? { nameDeclined } : {}),
     ...(kidsNamesDeclined ? { kidsNamesDeclined } : {}),
+    ...(placeDeclined ? { placeDeclined } : {}),
+    ...(coarseCodeAsked ? { coarseCodeAsked } : {}),
     ...(calendarLater ? { calendarLater } : {}),
     ...(gmailLater ? { gmailLater } : {}),
     ...(scheduleDone ? { scheduleDone } : {}),
@@ -813,6 +849,36 @@ export function transcriptHasOutbound(transcript: readonly TranscriptEntry[]): b
   return transcript.some((entry) => entry.direction === 'out');
 }
 
+/**
+ * The place item is settled: a place is stored, or the parent declined to give one.
+ * Every onboarding checklist reads `postal` from here, so a declined place is never
+ * asked again and never holds provisioning back.
+ */
+export function placeSettled(
+  touch:
+    | {
+        place?: FirstTouchPersisted['place'];
+        given?: Pick<FirstTouchGiven, 'placeDeclined'> | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  return touch?.place != null || touch?.given?.placeDeclined === true;
+}
+
+/**
+ * The first-reply sweep owes the parent's last text a reply. Opt-in: the opening text
+ * that heard nothing at all (no outbound anywhere, so no turn may have lived to mark
+ * it), or a later text whose turn marked it `unsent`. A text with no marker is never
+ * owed, so a crisis text written before `crisis` was recorded is not followed up. A
+ * text that took the crisis path is never owed an onboarding reply, marker or not.
+ */
+export function transcriptOwesReply(transcript: readonly TranscriptEntry[]): boolean {
+  const last = transcript.at(-1);
+  if (last?.direction !== 'in' || last.crisis === true) return false;
+  return last.unsent === true || !transcriptHasOutbound(transcript);
+}
+
 /** What a recovery sweep reads from the blob: it must not decrypt the phone until it
  * has decided to send. */
 export function decodeIntakeForRecovery(dataEncrypted: string): {
@@ -826,6 +892,30 @@ export function decodeIntakeForRecovery(dataEncrypted: string): {
     firstTouch: data.firstTouch ?? null,
     ladderLanguage: data.ladderLanguage ?? null,
   };
+}
+
+/**
+ * The family's newest answer to the co-parent group ask, including a closed session:
+ * true for a yes, false for a no, null when it was never answered.
+ */
+export async function latestCoparentGroupWish(
+  database: Database,
+  familyId: string,
+): Promise<boolean | null> {
+  const rows = await database
+    .select({ dataEncrypted: schema.smsIntakeSessions.dataEncrypted })
+    .from(schema.smsIntakeSessions)
+    .where(eq(schema.smsIntakeSessions.familyId, familyId))
+    .orderBy(desc(schema.smsIntakeSessions.updatedAt));
+  for (const row of rows) {
+    try {
+      const wish = decodeData(row.dataEncrypted).firstTouch?.given?.coparentGroup;
+      if (wish === true || wish === false) return wish;
+    } catch {
+      // A session blob that will not decrypt is not this answer.
+    }
+  }
+  return null;
 }
 
 /** The newest stored co-parent group choice for this parent, including a closed session. */

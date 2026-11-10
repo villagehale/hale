@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: Léa, Toddler Storytime, today at 1:30 PM (afternoon stated correctly), end at 2:00, Maple Branch Library at 9 Elm Street, and '45 minutes from now' matches minutesUntilStart of 45. Nothing is invented (no departure time or travel claim), no overlap is implied, no link is used, and the title is kept as the event's name. Bold is none, which is fine. Voice-wise, it reads like a casual friend text with a natural flow ('so about 45 minutes from now', 'runs until 2:00'), not a stiff notice or frame-filled report.",
+    "score": 5
+  }
+}

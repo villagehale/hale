@@ -47,13 +47,24 @@ import {
 } from './lib/harness.mjs';
 import { EXPECTED_FAIL, expectedFailGate } from './said-line-expected-fail.mjs';
 import { SAID_LINE_FIXTURES as FIXTURE_ROWS } from './said-line-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const HEALTH_LINE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'health-line.ts');
+const MISDECODED_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'voice',
+  'misdecoded-utf8.ts',
+);
 
 /** Each health row's facts and required numbers, as production derives them for its place.
  * Expanded once here, so the filter, broken mode, the dry run and the judge all see them. */
 const { healthLineFacts } = await tsImport(HEALTH_LINE_SRC, import.meta.url);
+const { repairMisdecodedUtf8 } = await tsImport(MISDECODED_SRC, import.meta.url);
 const SAID_LINE_FIXTURES = FIXTURE_ROWS.map((row) => {
   if (row.purpose !== 'health') return row;
   const { healthPlace, ...fixture } = row;
@@ -89,21 +100,7 @@ const SCRIPT_NAME = {
   es: 'Spanish',
 };
 
-const JUDGE_SYSTEM = `You grade one text message a family assistant sent to a parent.
-Read the whole text as a native speaker of its language would, and judge meaning, not wording.
-There is no required or banned phrase.
-Score 1-2 for any of: the wrong language, script or dialect for this parent; a fact, step,
-reason or detail not in the facts, including inferring one; any promise or offer of future
-action the facts do not give (more searching, setting things up, following up); an apology
-nobody asked for; any hint about another family or what they said; a name, company or
-address misspelled, changed, or turned into a description; a time, duration or date in the
-facts left out or changed; a mangled link; a Google warning screen mentioned without saying
-it is expected and safe for this connection; any medical guidance at all that the facts do not
-give (advice, a treatment, a warning sign, when to go where, who answers a health line), however
-sensible or standard it sounds; a reply that assumes a gender for the parent that no fact gives.
-At most 3: correct facts in a notification, calendar, log or form-letter register instead of
-a person texting (a label and a colon, a readout, an official tone).
-A 5 states exactly the facts, in the parent's language, warm and plain, like a friend texting.`;
+const JUDGE_SYSTEM = judgePrompt('said-line');
 
 /** --broken: one canned bad line for every fixture. English whatever the parent wrote,
  * leaks another family's answer, teaches a keyword, invents a date. Must fail. */
@@ -251,12 +248,13 @@ function userMessage(f) {
   });
 }
 
-/** acceptSaidLine in said-line.ts: facts verbatim, no typed URL, each slot once, then
+/** acceptSaidLine in said-line.ts: a misread code page put back (the production
+ * function, imported), facts verbatim, no typed URL, each slot once, then
  * code fills the slots. Returns the filled text, or null. mustConvey is keys only
  * here. Meaning is the convey judge (VIL-530), which sends nothing on a miss and
  * does not rewrite. This replica must not grow a word list for it. */
 function acceptText(text, f) {
-  let body = (text ?? '').trim();
+  let body = repairMisdecodedUtf8((text ?? '').trim());
   if (body.length === 0) return null;
   if (!(f.mustInclude ?? []).every((fact) => body.includes(fact))) return null;
   if (!(f.mustConvey ?? []).every((key) => key in f.facts)) return null;

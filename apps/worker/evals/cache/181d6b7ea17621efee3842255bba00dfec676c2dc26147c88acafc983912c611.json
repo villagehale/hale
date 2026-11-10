@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits a course_bound note. It acknowledges the replaced link and correctly says the course details could not be read. It gives the right date and time (Tuesday, September 15 at 7:00 a.m.) and warns to leave extra time for the prerequisite. It has no link and no question. Two small issues keep it from a 5: 'on the residents date' is awkwardly phrased, and 'I don't have those yet' faintly suggests Hale will get them later. It still sounds natural and friendly.",
+    "score": 4
+  }
+}

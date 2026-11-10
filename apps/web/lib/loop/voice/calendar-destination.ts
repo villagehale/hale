@@ -119,11 +119,8 @@ const DIAL_RUN = /(?:\+[\s./()[\]\p{Pd}_·‧•∙]*)?\p{Nd}(?:[\s./()[\]\p{Pd}
 
 const MIN_PHONE_DIGITS = 7;
 
-/**
- * An SMS short code: 5 or 6 digits with no digit beside them. A date, a season and a
- * clock never hold one (their groups have at most 4 digits, and clocks are blanked).
- */
-const SHORT_CODE = /(?<!\d)\d{5,6}(?!\d)/;
+/** An SMS short code has 5 or 6 digits, however a dialer's separators split them. */
+const SHORT_CODE_DIGITS = { min: 5, max: 6 } as const;
 
 /** Ten digits, area code and exchange each [2-9]XX and not N11. */
 const NORTH_AMERICAN = /^(?!\d11)[2-9]\d\d(?!\d11)[2-9]\d{6}$/;
@@ -140,12 +137,15 @@ export function asciiDigits(text: string): string {
   });
 }
 
+/** A day-first or month-first date may write its year as two digits ("11/23/26"). */
 function isStartDate(chunk: string, start: EventDate): boolean {
   const same = (y: string, m: string, d: string) =>
-    Number(y) === start.year && Number(m) === start.month && Number(d) === start.day;
+    (y.length === 2 ? Number(y) === start.year % 100 : Number(y) === start.year) &&
+    Number(m) === start.month &&
+    Number(d) === start.day;
   const ymd = /^(\d{4})([./-])(\d{1,2})\2(\d{1,2})$/.exec(chunk);
   if (ymd) return same(ymd[1] as string, ymd[3] as string, ymd[4] as string);
-  const xxy = /^(\d{1,2})([./-])(\d{1,2})\2(\d{4})$/.exec(chunk);
+  const xxy = /^(\d{1,2})([./-])(\d{1,2})\2(\d{4}|\d{2})$/.exec(chunk);
   if (!xxy) return false;
   const [a, b, y] = [xxy[1] as string, xxy[3] as string, xxy[4] as string];
   return same(y, b, a) || same(y, a, b);
@@ -169,10 +169,15 @@ export function joinDashes(run: string): string {
   return run.replace(/(?:(?<!\s)\s+)?\p{Pd}\s*/gu, '-');
 }
 
+function isYearAround(chunk: string, start: EventDate): boolean {
+  return /^\d{4}$/.test(chunk) && Math.abs(Number(chunk) - start.year) <= 1;
+}
+
 /**
- * Exactly one fact of this event — its own start date, or a season around its year —
- * plus at most one chunk of up to two digits ("Session 2", "Grade 10"). A lone year is
- * not a fact, and neither is any other date: the sender writes the title.
+ * Exactly one fact of this event — its own start date, a season around its year, or a
+ * year within one of its own — plus at most one chunk of up to two digits ("Session 2",
+ * "Grade 10"). No other date is a fact: the sender writes the title. A year with such a
+ * chunk has at most 6 digits, so for a phone's 7+ only the date and the season count.
  */
 function isCalendarFact(run: string, start: EventDate): boolean {
   let facts = 0;
@@ -180,11 +185,19 @@ function isCalendarFact(run: string, start: EventDate): boolean {
   for (const chunk of joinDashes(run).split(/\s+/)) {
     const bare = chunk.replace(/^\D+|(?<=\d)\D+$/g, '');
     if (bare === '') continue;
-    if (isStartDate(bare, start) || isSeasonAround(bare, start)) facts += 1;
-    else if ((bare.match(/\d/g) ?? []).length <= 2) others += 1;
+    if (isStartDate(bare, start) || isSeasonAround(bare, start) || isYearAround(bare, start)) {
+      facts += 1;
+    } else if ((bare.match(/\d/g) ?? []).length <= 2) others += 1;
     else return false;
   }
   return facts === 1 && others <= 1;
+}
+
+/** 5 or 6 digits that are no calendar fact of this event ("555-01", "202 555", "Text 55501"). */
+function isShortCode(run: string, start: EventDate): boolean {
+  const digits = run.replace(/\D/g, '').length;
+  if (digits < SHORT_CODE_DIGITS.min || digits > SHORT_CODE_DIGITS.max) return false;
+  return !isCalendarFact(run, start);
 }
 
 function isPhone(run: string, start: EventDate): boolean {
@@ -231,7 +244,7 @@ function shapeIn(
   if (runs.some((run) => isPhone(run, start))) return 'phone';
   // A title's digits count as handed to the writer, so a short code in it would be
   // repeated. A writer's own short code is already refused as an invented number.
-  return stops === 'title' && SHORT_CODE.test(dialable) ? 'phone' : null;
+  return stops === 'title' && runs.some((run) => isShortCode(run, start)) ? 'phone' : null;
 }
 
 /** The event title, before any model call. A destination in it holds the text. */

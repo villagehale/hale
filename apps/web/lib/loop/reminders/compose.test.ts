@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RecordAgentRunInput } from '~/lib/agent-run';
+import { GENERIC_DESCRIPTOR } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import {
   type ReminderFactEvent,
@@ -216,6 +217,65 @@ describe('reminderRefusals — structure only, never wording', () => {
   it('allows the handed plan link', () => {
     const withLink = { ...f, planLink: 'https://app.villagehale.com/plan' };
     expect(reminderRefusals(['Plan: https://app.villagehale.com/plan'], withLink)).toEqual([]);
+  });
+});
+
+/**
+ * VIL-551 · two things the same morning whose times run into each other. The writer said
+ * "both are on Thursday morning" and never that they overlap: an overlap read off two
+ * clock strings is an inference the skill forbids, so code states it as a fact.
+ */
+describe('reminderFacts — overlaps, the clash stated as a fact (VIL-551)', () => {
+  const at = (startsAt: string, endsAt: string | null, title: string, eventRef: string) =>
+    ev({ eventRef, title, startsAt, endsAt });
+  const swim = at('2026-10-26T14:00:00Z', '2026-10-26T15:00:00Z', 'Swim', 'e1'); // 10-11 AM
+  const swimTimes = { startsAt: swim.startsAt, endsAt: swim.endsAt };
+
+  it('names, on each event, the other events whose times run into it', () => {
+    const [a, b] = facts([swim, at('2026-10-26T14:30:00Z', '2026-10-26T15:30:00Z', 'Art', 'e2')])
+      .events;
+    expect(a?.overlaps).toEqual(['Art']);
+    expect(b?.overlaps).toEqual(['Swim']);
+  });
+
+  it('an event with no end overlaps one it starts inside, or one starting with it', () => {
+    const inside = facts([swim, at('2026-10-26T14:15:00Z', null, 'Dentist', 'e2')]).events;
+    expect(inside[1]?.overlaps).toEqual(['Swim']);
+    const same = facts([
+      at('2026-10-26T14:00:00Z', null, 'Dentist', 'e1'),
+      at('2026-10-26T14:00:00Z', null, 'Photos', 'e2'),
+    ]).events;
+    expect(same[0]?.overlaps).toEqual(['Photos']);
+  });
+
+  it('back-to-back, apart, or all-day is no overlap, and adds no key', () => {
+    const plain = facts([
+      swim,
+      at('2026-10-26T15:00:00Z', '2026-10-26T16:00:00Z', 'Art', 'e2'), // starts as swim ends
+      at('2026-10-26T19:00:00Z', null, 'Piano', 'e3'),
+      at('2026-10-26T04:00:00Z', '2026-10-27T04:00:00Z', 'PD Day', 'e4'), // all day
+    ]).events;
+    for (const event of plain) expect(event).not.toHaveProperty('overlaps');
+  });
+
+  it('a teen event a sibling’s overlaps names is the generic descriptor, never its title', () => {
+    const [teen, sibling] = reminderFacts({
+      events: [
+        ev({ eventRef: 'e1', title: 'therapy', childId: 'c-teen', ...swimTimes }),
+        ev({ eventRef: 'e2', title: 'Swim', childId: 'c-kid', ...swimTimes }),
+      ],
+      children: [TEEN, KID],
+      level: 'first_name',
+      timeZone: TZ,
+      offset: '-P1D',
+      now: NOW,
+      planLink: null,
+      language: 'en',
+    }).events;
+    // Positive control: the two do overlap, and the sibling's own title still reaches the teen's.
+    expect(teen?.overlaps).toEqual(['Swim']);
+    expect(sibling?.overlaps).toEqual([GENERIC_DESCRIPTOR]);
+    expect(JSON.stringify(sibling)).not.toMatch(/therapy|Rowan/);
   });
 });
 

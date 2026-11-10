@@ -13,6 +13,7 @@ import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import type { IntakeAnswerOutcome } from './answer';
 import type { IntakeCollected } from './extract';
 import {
   FakeAnswerComposer,
@@ -45,6 +46,20 @@ const MAYA: IntakeCollected = {
 };
 
 import { scriptedTurn } from './scripted-friend-voice.fixture';
+
+/**
+ * A connector card as the parent sees it: the prose, then its link once as its own
+ * text (VIL-573). Throws when the last text is not a lone link after link-free prose.
+ */
+function lastCard(transport: FakeTransport): string {
+  const bodies = transport.bodies();
+  const prose = bodies.at(-2) ?? '';
+  const link = bodies.at(-1) ?? '';
+  if (!/^https:\/\/\S+$/.test(link) || /https?:\/\//.test(prose)) {
+    throw new Error('expected card prose, then its link as its own text');
+  }
+  return `${prose}\n${link}`;
+}
 
 function harness(
   options: {
@@ -433,7 +448,7 @@ describe('friend voice onboarding', () => {
     // Step 5: Gmail, its own turn, link in the card.
     const named = await handleInboundSms(fake.db, inbound(transport, 'Dana'), timed);
     expect(named.status).toBe('first_touch');
-    const gmail = transport.bodies().at(-1) ?? '';
+    const gmail = lastCard(transport);
     expect(gmail).toContain('Dana, want me to watch school and camp email for the dates?');
     expect(gmail).toContain('/connect?t=');
     expect(gmail).toContain('to=gmail');
@@ -455,7 +470,7 @@ describe('friend voice onboarding', () => {
 
     // Step 7: the calendar, only after they answered Gmail.
     await handleInboundSms(fake.db, inbound(transport, 'ok'), timed);
-    const calendar = transport.bodies().at(-1) ?? '';
+    const calendar = lastCard(transport);
     expect(calendar).toContain('Dana, want me to check your calendar?');
     expect(calendar).toContain('to=gcal');
     expect(calendar).not.toMatch(/email/i);
@@ -636,7 +651,9 @@ describe('friend voice onboarding', () => {
     expect(done.status).toBe('provisioned');
     const bodies = transport.bodies();
     expect(bodies).toHaveLength(3);
-    expect(bodies[1]).toContain('1. Swim (ages 3-5) - Saturday');
+    // The map bubble is the one the model wrote from the line; code numbers nothing.
+    expect(bodies[1]).toContain('Swim (ages 3-5) - Saturday');
+    expect(bodies[1]).not.toMatch(/^\d+\.\s/m);
     expect(bodies[1]).not.toContain('?');
     expect(bodies[2]).toBe('What should I call you?');
     expect(bodies.join('\n')).not.toMatch(/postal code|how old|which of these/i);
@@ -678,8 +695,8 @@ describe('friend voice onboarding', () => {
       deps,
     );
     expect(done.status).toBe('provisioned');
-    const body = transport.bodies().at(-1) ?? '';
-    expect(transport.bodies()).toHaveLength(3);
+    const body = lastCard(transport);
+    expect(transport.bodies()).toHaveLength(4);
     expect(body).toContain('The price is on villagehale.com.');
     expect(body).toMatch(/email/i);
     expect(body).toContain('/connect?t=');
@@ -722,7 +739,7 @@ describe('friend voice onboarding', () => {
     expect(name.trim().endsWith('What should I call you?')).toBe(true);
 
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
-    const gmail = transport.bodies().at(-1) ?? '';
+    const gmail = lastCard(transport);
     expect(gmail).toMatch(/email/i);
     expect(gmail).toContain('/connect?t=');
 
@@ -744,7 +761,7 @@ describe('friend voice onboarding', () => {
 
     // The next text, with Gmail answered, is the calendar's own turn with its link.
     await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
-    const calendar = transport.bodies().at(-1) ?? '';
+    const calendar = lastCard(transport);
     expect(calendar).toMatch(/calendar/i);
     expect(calendar).not.toMatch(/gmail|email/i);
     expect(calendar).toContain('/connect?t=');
@@ -777,10 +794,10 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies()).toEqual([
       [
         '[crisis_emergency/en]',
-        'emergency=911',
-        'situation=they just told Hale their child is not breathing or is struggling to breathe, right now',
-        'firstStep=call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
-        'replyLanguage=English',
+        'emergency: 911',
+        'situation: they just told Hale their child is not breathing or is struggling to breathe, right now',
+        'firstStep: call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
+        'replyLanguage: English',
       ].join('\n'),
     ]);
     expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);
@@ -817,6 +834,10 @@ describe('friend voice onboarding', () => {
     const fire = inbound(transport3, 'fire');
     await handleInboundSms(fake3.db, fire, deps3);
     expect(transport3.bodies()).toEqual([]);
+    // VIL-641: the crisis text is marked, so the first-reply sweep never follows it
+    // with an onboarding ask.
+    const crisisSession = await loadOpenSession(fake3.db, PHONE);
+    expect(crisisSession?.transcript.at(-1)).toMatchObject({ direction: 'in', crisis: true });
     // Before any family exists the page still goes out, keyed on this inbound.
     expect(alerts).toEqual([
       {
@@ -917,7 +938,7 @@ describe('friend voice onboarding', () => {
     const kids = fake.rows(schema.children);
     expect(kids.map((row) => row.name)).toEqual(['Maya']);
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
-    expect(transport.bodies().at(-1)).toContain(
+    expect(lastCard(transport)).toContain(
       'Dana, want me to watch school and camp email for the dates?',
     );
   });
@@ -1090,12 +1111,12 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
     const declined = await loadOpenSession(fake.db, PHONE);
     expect(declined?.firstTouch?.given?.nameDeclined).toBe(true);
-    expect(transport.bodies().at(-1)).toMatch(/email/i);
+    expect(lastCard(transport)).toMatch(/email/i);
     await handleInboundSms(fake.db, inbound(transport, 'later'), deps);
     const later = await loadOpenSession(fake.db, PHONE);
     expect(later?.firstTouch?.given?.gmailLater).toBe(true);
-    expect(transport.bodies().at(-1)).toMatch(/calendar/i);
-    expect(transport.bodies().at(-1)).not.toMatch(/email/i);
+    expect(lastCard(transport)).toMatch(/calendar/i);
+    expect(lastCard(transport)).not.toMatch(/email/i);
     await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
     expect(transport.bodies().at(-1)).toBe(
       'Want the first one on your calendar as a weekly reminder?',
@@ -1147,8 +1168,8 @@ describe('friend voice onboarding', () => {
     const before = transport.bodies().length;
     const resumed = await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
     expect(resumed).toEqual({ status: 'first_touch', step: 'find_sent' });
-    expect(transport.bodies().length).toBe(before + 1);
-    expect(transport.bodies().at(-1)).toContain('Dana, want me to watch school and camp email');
+    expect(transport.bodies().length).toBe(before + 2);
+    expect(lastCard(transport)).toContain('Dana, want me to watch school and camp email');
     expect(fake.rows(schema.users).find((row) => row.name === 'Dana')).toBeDefined();
   });
   it('writes HELP from the model when friend voice is on', async () => {
@@ -1230,6 +1251,158 @@ describe('friend voice onboarding', () => {
     expect(answered).toEqual({ status: 'first_touch', step: 'place_asked' });
     expect(transport.bodies()).toEqual(["Hey, it's Hale. What's your postal code?"]);
     expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toBeNull();
+  });
+
+  // VIL-617: the parent's first answer turns down the postal code.
+  it('answers a declined postal code and keeps the session going', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+
+    const declined = await handleInboundSms(
+      fake.db,
+      inbound(transport, "I'd rather not give out my postal code"),
+      deps,
+    );
+
+    expect(declined).toEqual({ status: 'first_touch', step: 'place_waiting' });
+    expect(transport.sent).toHaveLength(2);
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.state).toBe('awaiting_place');
+    expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in', 'out']);
+  });
+
+  // VIL-641: a parent who declines the place for good still becomes a family.
+  it('provisions a family after two declined places, never asks the place again, and sends the Gmail card', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ voice: true });
+    const steps: string[] = [];
+    const scripted = deps.friendVoice;
+    if (!scripted) throw new Error('harness has no voice');
+    deps.friendVoice = {
+      async compose(input, options) {
+        steps.push(input.step);
+        const composed = await scripted.compose(input, options);
+        // The first no gets the coarse code; only a no after that closes the place.
+        return input.step === 'place' && /rather not/i.test(input.parentWords)
+          ? { ...composed, placeAsk: 'coarse' }
+          : composed;
+      },
+    };
+    let finds = 0;
+    deps.radar = {
+      async compose() {
+        finds += 1;
+        throw new Error('a find needs a place');
+      },
+    };
+    const text = (body: string) => handleInboundSms(fake.db, inbound(transport, body), deps);
+
+    await text('hi');
+    await text("I'd rather not give out my postal code");
+    const second = await text('not even that');
+
+    expect(second).toEqual({ status: 'first_touch', step: 'ages_waiting' });
+    const stored = await loadOpenSession(fake.db, PHONE);
+    expect(stored?.firstTouch?.given?.placeDeclined).toBe(true);
+    expect(stored?.state).toBe('awaiting_ages');
+    const sentBeforeThird = transport.bodies().length;
+
+    const third = await text('Maya is 4, Leo is 1');
+    expect(steps[3]).toBe('kids_names');
+    expect(third).toMatchObject({ status: 'provisioned' });
+    const [family] = fake.rows(schema.families);
+    expect(family?.areaCoarse ?? null).toBeNull();
+    expect(family?.postalCode ?? null).toBeNull();
+    expect(family?.country ?? null).toBeNull();
+    expect(finds).toBe(0);
+    // The provisioning turn still answers them: the next ask, with nothing nearby in it.
+    expect(transport.bodies().at(-1)).toBe('What should I call you?');
+
+    await text('Dana');
+    expect(lastCard(transport)).toMatch(/email/i);
+    expect(steps.slice(3)).not.toContain('place');
+    expect(transport.bodies().slice(sentBeforeThird).join('\n')).not.toMatch(/postal code/i);
+  });
+
+  // VIL-641: the second no is read against a fact code kept, not a guess from the thread.
+  it('keeps a sent coarse-code ask on the session and hands it to the next place turn', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const inputs: FriendVoiceInput[] = [];
+    const scripted = deps.friendVoice;
+    if (!scripted) throw new Error('harness has no voice');
+    let coarse: 'coarse' | 'full' = 'coarse';
+    deps.friendVoice = {
+      async compose(input, options) {
+        inputs.push(input);
+        const composed = await scripted.compose(input, options);
+        return input.step === 'place' && /rather not/i.test(input.parentWords)
+          ? { ...composed, placeAsk: coarse }
+          : composed;
+      },
+    };
+    const text = (body: string) => handleInboundSms(fake.db, inbound(transport, body), deps);
+
+    await text('hi');
+    await text("I'd rather not give out my postal code");
+    expect((await loadOpenSession(fake.db, PHONE))?.firstTouch?.given?.coarseCodeAsked).toBe(true);
+    await text('no thanks');
+    expect(inputs[1]?.coarseCodeAsked).not.toBe(true);
+    expect(inputs[2]?.coarseCodeAsked).toBe(true);
+
+    // Positive control: a reply that asked for the full code again records nothing.
+    const other = harness({ voice: true });
+    coarse = 'full';
+    other.deps.friendVoice = deps.friendVoice;
+    await handleInboundSms(other.fake.db, inbound(other.transport, 'hi'), other.deps);
+    await handleInboundSms(
+      other.fake.db,
+      inbound(other.transport, "I'd rather not give out my postal code"),
+      other.deps,
+    );
+    expect(
+      (await loadOpenSession(other.fake.db, PHONE))?.firstTouch?.given?.coarseCodeAsked,
+    ).not.toBe(true);
+  });
+
+  it('names a later place turn the model could not write, instead of a step', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    let modelUp = true;
+    const flaky: IntakeDeps = {
+      ...deps,
+      friendVoice: {
+        async compose(input) {
+          if (!modelUp) throw new Error('model down');
+          return { reply: scriptedTurn(input).reply };
+        },
+      },
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), flaky);
+
+    modelUp = false;
+    const silent = await handleInboundSms(
+      fake.db,
+      inbound(transport, "I'd rather not give out my postal code"),
+      flaky,
+    );
+
+    // A step says Hale replied; nothing went out, so the outcome names that (rule #11).
+    expect(silent).toEqual({ status: 'first_touch_unsent', reason: 'model_failed' });
+    expect(transport.sent).toHaveLength(1);
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.state).toBe('awaiting_place');
+    expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in']);
+    // VIL-641: the turn that sent nothing marks its inbound; only that lets the
+    // first-reply sweep follow up mid-onboarding.
+    expect(session?.transcript.at(-1)).toMatchObject({ direction: 'in', unsent: true });
+
+    // Positive control: their next text re-runs the step and a model that answers sends it.
+    modelUp = true;
+    const answered = await handleInboundSms(fake.db, inbound(transport, 'still here'), flaky);
+    expect(answered).toEqual({ status: 'first_touch', step: 'place_waiting' });
+    expect(transport.sent).toHaveLength(2);
+    const after = await loadOpenSession(fake.db, PHONE);
+    expect(after?.transcript.at(-2)).toMatchObject({ direction: 'in', body: 'still here' });
+    expect(after?.transcript.at(-2)?.unsent).toBeUndefined();
   });
 
   it('is answered once by the first-reply sweep when the opening turn sent nothing', async () => {
@@ -1711,6 +1884,23 @@ describe("ladder: a safety outcome names the health line for the family's region
     expect(calls[0]?.mustInclude).toEqual(['911']);
   });
 
+  it('the composer is handed the first code as the region its searches look in', async () => {
+    const { fake, transport, deps } = ladder({ collected: null, firstTouch: 'K7L 3N6' });
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    deps.answerComposer = composer;
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(composer.calls[0]?.regionToken).toBe('K7L 3N6');
+  });
+
+  it('a session with no code hands the composer no region', async () => {
+    const { fake, transport, deps } = ladder({ collected: null });
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    deps.answerComposer = composer;
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(composer.calls).toHaveLength(1);
+    expect(composer.calls[0]?.regionToken).toBeNull();
+  });
+
   it('a write that fails sends nothing and names the hold', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { fake, transport, deps } = ladder({ collected: '98101' }, null);
@@ -1744,5 +1934,68 @@ describe("ladder: a safety outcome names the health line for the family's region
       closed: false,
       held: 'writer_absent',
     });
+  });
+});
+
+describe('ladder: the line owed after an unanswered ask is the one the composer named', () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f003';
+  const USER = '00000000-0000-4000-8000-00000000a003';
+
+  function ladder(outcome: IntakeAnswerOutcome): {
+    fake: FakeDb;
+    transport: FakeTransport;
+    deps: IntakeDeps;
+    calls: SaidLineInput[];
+  } {
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+      collected: { children: [], postalCode: null },
+    });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'none', confirmation: '', language: 'fr' }),
+    };
+    deps.answerComposer = new FakeAnswerComposer(outcome);
+    const calls: SaidLineInput[] = [];
+    // A fake at the said-line port, not the model: it says which line it was asked for.
+    deps.saidLine = {
+      async write(input) {
+        calls.push(input);
+        return `line:${input.purpose}`;
+      },
+    };
+    return { fake, transport, deps, calls };
+  }
+
+  // No English keyword in any of these: the composer's read names the line, not the words.
+  it.each([
+    ['not_posted', 'Quand ouvrent les inscriptions à la natation?'],
+    ['no_source', '¿Cómo hago para que duerma la siesta?'],
+    ['cheer_up', '今天好累，给我打打气吧'],
+  ] as const)('a %s reason gets the %s line', async (reason, words) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder({ status: 'unavailable', reason });
+    await handleInboundSms(fake.db, inbound(transport, words), deps);
+    expect(calls.map((c) => c.purpose)).toEqual([reason]);
+    expect(transport.bodies()).toEqual([`line:${reason}`]);
+  });
+
+  it('a composer outage owes no line: the words alone never pick one', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder({
+      status: 'unavailable',
+      reason: 'model_failed',
+    });
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'When does swim registration open near me?'),
+      deps,
+    );
+    expect(
+      calls.filter((c) => ['not_posted', 'no_source', 'cheer_up'].includes(c.purpose)),
+    ).toEqual([]);
   });
 });

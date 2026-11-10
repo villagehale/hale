@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message restates the page accurately: course, Wednesday 10:30 AM, both prices, course code, age fit and the residents' date of Sep 8. It gives the public opening as Tuesday, September 15 at 10:30 a.m. It notes Hale had Monday the 14th and is going by the page. Because regForm is true, it warns the parent to leave time. It has no link and no question, and the tone is natural English. The line that the form can't be filled out through Hale is a harmless restatement, since Hale never registers anyway.",
+    "score": 5
+  }
+}

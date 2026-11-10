@@ -140,15 +140,6 @@ describe('intake answer · reading the pair', () => {
     });
   });
 
-  it('substitutes the reviewed safety line when the composer reaches for a referral', () => {
-    // Before every other gate: this parent must never get a signup question instead.
-    const outcome = readPair(
-      { answer: 'Call 811 if you are worried', returnLine: `${'x'.repeat(200)}?` },
-      INPUT,
-    );
-    expect(outcome).toEqual({ status: 'safety' });
-  });
-
   it('names WHY a body was refused rather than sending it', () => {
     expect(readPair({ answer: "I'll watch that for you.", returnLine: RETURN }, INPUT)).toEqual({
       status: 'unavailable',
@@ -270,164 +261,288 @@ describe('intake answer · the emergency tripwire', () => {
     expect(mid.body).not.toContain("I don't do that");
   });
 
-  it('answers a rec/camp question that misses the city pins without a model', async () => {
-    // VIL-326: "When does swim registration open near me?" is not Toronto /
-    // Markham / YMCA, so the 544/548/555 pins miss. The old path invented a
-    // clock (refused) or returned unavailable, and greet sent the ask alone.
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been required to invent a clock');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-    const outcome = await composer.compose({
-      parentWords: 'When does swim registration open near me?',
-      pendingAsk: COLD_START_ASK,
-      children: [],
-    });
-    // #868: no fixed line; the machine has the model write it.
-    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
-  });
+  describe('the path is the model read, never the words', () => {
+    type Read = { askKind: string; answer?: string; returnLine?: string };
+    type Search = { notes: string; url: string };
 
-  it('answers from official notes when search grounds a date, still no invented clock', async () => {
-    const notes = 'Hamilton swim registration opens September 8 at 7:00 a.m.';
-    const client = {
-      messages: {
-        create: async (req: { tools?: Array<{ type?: string }> }) => {
-          if (req.tools?.[0]?.type === 'web_search_20250305') {
+    /**
+     * A client at the wire, not a model stand-in for behaviour: it hands back the read
+     * the test stipulates and, when asked to search, the stipulated notes. Whether the
+     * model READS a French rec question as program_dates is the eval's job (en/fr/zh/es,
+     * run-intake-answer-eval.mjs); this owns what the composer does with each read.
+     */
+    function wire(read: Read, search: Search | null) {
+      type Request = { tools?: Array<{ type?: string; name?: string }>; messages?: unknown };
+      const requests: Request[] = [];
+      const client = {
+        messages: {
+          create: async (req: Request) => {
+            requests.push(req);
+            if (req.tools?.[0]?.type === 'web_search_20250305') {
+              if (search === null) throw new Error('this read must not search');
+              return {
+                content: [
+                  { type: 'text', text: search.notes },
+                  {
+                    type: 'web_search_tool_result',
+                    tool_use_id: 'srvtu_1',
+                    content: [{ type: 'web_search_result', url: search.url, title: 'source' }],
+                  },
+                ],
+              };
+            }
             return {
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 0, output_tokens: 0 },
               content: [
-                { type: 'text', text: notes },
-                {
-                  type: 'web_search_tool_result',
-                  tool_use_id: 'srvtu_1',
-                  content: [
-                    {
-                      type: 'web_search_result',
-                      url: 'https://www.hamilton.ca/recreation',
-                      title: 'Swim registration',
-                    },
-                  ],
-                },
+                { type: 'text', text: JSON.stringify({ answer: '', returnLine: '', ...read }) },
               ],
             };
-          }
-          throw new Error('compose must not run when notes already ground a date');
+          },
         },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(client);
-    const outcome = await composer.compose({
-      parentWords: 'Hamilton swim registration dates?',
-      pendingAsk: COLD_START_ASK,
-      children: [],
-    });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain('September 8');
-    expect(outcome.body).toContain('7:00');
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-  });
+      } as never;
+      const searches = () =>
+        requests.filter((req) => req.tools?.[0]?.type === 'web_search_20250305');
+      const searched = () => searches().length;
+      const searchedWords = () => JSON.stringify(searches().map((req) => req.messages));
+      return { client, searched, searchedWords };
+    }
 
-  it('answers a raising-kids question without a model inventing a method', async () => {
-    // VIL-327: a nap question used to hit intake-answer with tools: [] and
-    // either invent a method or fall through to the pending ask alone.
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not invent a nap method from memory');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-    const outcome = await composer.compose({
-      parentWords: 'How do I get him to nap?',
-      pendingAsk: COLD_START_ASK,
-      children: [],
-    });
-    // #868: no fixed line; the machine has the model write it.
-    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
-  });
+    const ASK = { pendingAsk: COLD_START_ASK, children: [] };
 
-  it('answers a leftover factual question from search notes, never from memory', async () => {
-    const notes = 'The official White House page names the current United States president.';
-    const client = {
-      messages: {
-        create: async (req: { tools?: Array<{ type?: string }> }) => {
-          if (req.tools?.[0]?.type === 'web_search_20250305') {
-            return {
-              content: [
-                { type: 'text', text: notes },
-                {
-                  type: 'web_search_tool_result',
-                  tool_use_id: 'srvtu_2',
-                  content: [
-                    {
-                      type: 'web_search_result',
-                      url: 'https://www.whitehouse.gov',
-                      title: 'The White House',
-                    },
-                  ],
-                },
-              ],
-            };
-          }
-          throw new Error('compose must not invent a leftover fact from memory');
+    it('a program_dates read searches official pages, in any language', async () => {
+      const { client, searched } = wire(
+        { askKind: 'program_dates' },
+        {
+          notes: 'Swim registration opens September 8 at 7:00 a.m.',
+          url: 'https://example.org/rec',
         },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(client);
-    const outcome = await composer.compose({
-      parentWords: 'Who is the US president?',
-      pendingAsk: COLD_START_ASK,
-      children: [],
+      );
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        ...ASK,
+        parentWords: 'Quand ouvrent les inscriptions à la natation?',
+      });
+      expect(searched()).toBe(1);
+      expect(outcome.status).toBe('answered');
+      if (outcome.status !== 'answered') return;
+      expect(outcome.body).toContain('September 8');
+      expect(outcome.body).not.toMatch(/https?:\/\//);
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain('United States president');
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-  });
 
-  it('answers a non-crisis therapist-find from live lookup or no current source', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not invent a hotline or a clinic');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-    const outcome = await composer.compose({
-      parentWords: 'I need a therapist',
-      pendingAsk: COLD_START_ASK,
-      children: [],
+    it('a program_dates read with no posted date owes the not-posted line', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { client } = wire(
+        { askKind: 'program_dates' },
+        { notes: 'The city has not announced winter dates.', url: 'https://example.org/rec' },
+      );
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        ...ASK,
+        parentWords: '冬令营什么时候开始报名？',
+      });
+      expect(outcome).toEqual({ status: 'unavailable', reason: 'not_posted' });
     });
-    // #868: no fixed line; the machine has the model write it.
-    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
-  });
 
-  it('answers a cheer-up with reviewed warmth, not a clinical method', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('cheer-up is reviewed copy, not a model');
+    it('a current_source read searches a current source and restates it', async () => {
+      const { client, searched } = wire(
+        { askKind: 'current_source' },
+        {
+          notes: 'Most toddlers drop to one nap between 15 and 18 months, the society says.',
+          url: 'https://example.org/sleep',
         },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-    const outcome = await composer.compose({
-      parentWords: 'cheer me up',
-      pendingAsk: COLD_START_ASK,
-      children: [],
+      );
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        ...ASK,
+        parentWords: '¿Cuándo deja la segunda siesta?',
+      });
+      expect(searched()).toBe(1);
+      expect(outcome.status).toBe('answered');
+      if (outcome.status !== 'answered') return;
+      expect(outcome.body).toContain('one nap');
     });
-    // #868: no fixed line; the machine has the model write it.
-    expect(outcome).toEqual({ status: 'unavailable', reason: 'cheer_up' });
+
+    it('a current_source read search cannot ground owes the no-source line', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { client } = wire({ askKind: 'current_source' }, { notes: '', url: 'https://x.org' });
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        ...ASK,
+        parentWords: '¿Cómo hago para que duerma la siesta?',
+      });
+      expect(outcome).toEqual({ status: 'unavailable', reason: 'no_source' });
+    });
+
+    describe('a child named in any language never reaches the search', () => {
+      const NOTES = {
+        notes: 'Registration opens September 8 at 7:00 a.m., the city page says.',
+        url: 'https://example.org/rec',
+      };
+      const CASES = [
+        { askKind: 'program_dates', name: '小明', words: '小明什么时候可以报名游泳课？' },
+        {
+          askKind: 'program_dates',
+          name: 'Zoé',
+          words: 'Quand ouvrent les inscriptions au camp pour Zoé?',
+        },
+        {
+          askKind: 'current_source',
+          name: 'José',
+          words: '¿Cuándo deja la siesta José? Tiene dos años.',
+        },
+        // Positive control: the English name the old \b scrub already caught.
+        { askKind: 'program_dates', name: 'Ava', words: 'When does swim open for Ava?' },
+      ];
+
+      for (const { askKind, name, words } of CASES) {
+        it(`${askKind} for ${name}: searched, without the name`, async () => {
+          vi.spyOn(console, 'error').mockImplementation(() => {});
+          const { client, searched, searchedWords } = wire({ askKind }, NOTES);
+          await createIntakeAnswerComposer(client).compose({
+            pendingAsk: COLD_START_ASK,
+            children: [{ name, ageMonths: 48, agePrecision: 'years' }],
+            parentWords: words,
+          });
+          expect(searched()).toBe(1);
+          expect(searchedWords().toLowerCase()).not.toContain(name.toLowerCase());
+        });
+      }
+
+      it('a name the scrub cannot remove stops the search, and owes the line', async () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { client, searched } = wire({ askKind: 'program_dates' }, NOTES);
+        const outcome = await createIntakeAnswerComposer(client).compose({
+          pendingAsk: COLD_START_ASK,
+          children: [{ name: 'Zoé', ageMonths: 48, agePrecision: 'years' }],
+          parentWords: 'Quand ouvrent les inscriptions au camp pour Zoe?',
+        });
+        expect(searched()).toBe(0);
+        expect(outcome).toEqual({ status: 'unavailable', reason: 'not_posted' });
+        expect(error).toHaveBeenCalledWith(
+          { reason: 'names_a_child' },
+          'intake answer: official page not grounded',
+        );
+      });
+    });
+
+    describe('the health-line tripwire reads every outcome, not only answer_here', () => {
+      const SICK = 'wait my daughter has a 40 fever and she is barely waking up';
+      const DATES = { notes: 'Swim registration opens September 8.', url: 'https://example.org' };
+      const SLEEP = { notes: 'Most toddlers drop to one nap by 18 months.', url: 'https://x.org' };
+      // Each case puts the 911 in a different place the composer can emit from: the
+      // read's own fields, or the search notes a body is restated from.
+      const CASES = [
+        {
+          askKind: 'program_dates',
+          read: { answer: 'If this is an emergency, call 911.' },
+          search: DATES,
+          clean: DATES,
+          withoutIt: 'answered',
+        },
+        {
+          askKind: 'current_source',
+          read: {},
+          search: { ...SLEEP, notes: 'Call 911 if a child with a fever will not wake.' },
+          clean: SLEEP,
+          withoutIt: 'answered',
+        },
+        {
+          askKind: 'cheer_up',
+          read: { returnLine: 'Call 911 now if she will not wake?' },
+          search: null,
+          clean: null,
+          withoutIt: 'unavailable',
+        },
+      ] as const;
+
+      it('answer_here: substitutes for a pair the gates would refuse, too', async () => {
+        // This parent must never get the script's signup question instead.
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { client } = wire(
+          {
+            askKind: 'answer_here',
+            answer: 'Call 911 if you are worried',
+            returnLine: COLD_START_ASK,
+          },
+          null,
+        );
+        const outcome = await createIntakeAnswerComposer(client).compose({
+          ...ASK,
+          parentWords: SICK,
+        });
+        expect(outcome).toEqual({ status: 'safety' });
+      });
+
+      for (const { askKind, read, search, clean, withoutIt } of CASES) {
+        it(`${askKind}: a 911 the model or its search wrote sends the safety line`, async () => {
+          vi.spyOn(console, 'error').mockImplementation(() => {});
+          const { client } = wire({ askKind, ...read }, search);
+          const outcome = await createIntakeAnswerComposer(client).compose({
+            ...ASK,
+            parentWords: SICK,
+          });
+          expect(outcome).toEqual({ status: 'safety' });
+        });
+
+        it(`${askKind}: positive control, the same text with no 911 keeps its path`, async () => {
+          vi.spyOn(console, 'error').mockImplementation(() => {});
+          const { client } = wire({ askKind }, clean);
+          const outcome = await createIntakeAnswerComposer(client).compose({
+            ...ASK,
+            parentWords: SICK,
+          });
+          expect(outcome.status).toBe(withoutIt);
+        });
+      }
+    });
+
+    it('a current_source read naming a child the scrub cannot remove never searches', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { client, searched } = wire(
+        { askKind: 'current_source' },
+        { notes: 'Most toddlers drop to one nap by 18 months.', url: 'https://x.org' },
+      );
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        pendingAsk: COLD_START_ASK,
+        children: [{ name: 'Zoé', ageMonths: 30, agePrecision: 'years' }],
+        parentWords: 'Comment aider Zoe à faire la sieste?',
+      });
+      expect(searched()).toBe(0);
+      expect(outcome).toEqual({ status: 'unavailable', reason: 'no_source' });
+      expect(error).toHaveBeenCalledWith(
+        { reason: 'names_a_child' },
+        'intake answer: current source not grounded',
+      );
+    });
+
+    it('a cheer_up read owes the cheer-up line and searches nothing', async () => {
+      const { client, searched } = wire({ askKind: 'cheer_up' }, null);
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        ...ASK,
+        parentWords: '今天好累，给我打打气吧',
+      });
+      expect(searched()).toBe(0);
+      expect(outcome).toEqual({ status: 'unavailable', reason: 'cheer_up' });
+    });
+
+    it('an answer_here read is answered in the model words, even full of rec words', async () => {
+      // Positive control for the three above: the same composer, a different read, and
+      // "swimming lessons" no longer sends it searching.
+      const { client, searched } = wire(
+        {
+          askKind: 'answer_here',
+          answer: "Booking isn't something I do.",
+          returnLine: 'Want to send me their names and ages?',
+        },
+        null,
+      );
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        ...ASK,
+        parentWords: 'When does swim registration open? Can you book the swimming lessons?',
+      });
+      expect(searched()).toBe(0);
+      expect(outcome).toEqual({
+        status: 'answered',
+        body: "Booking isn't something I do. Want to send me their names and ages?",
+      });
+    });
   });
 });
 

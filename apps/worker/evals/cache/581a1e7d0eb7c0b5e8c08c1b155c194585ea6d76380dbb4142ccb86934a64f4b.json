@@ -1,0 +1,8 @@
+{
+  "value": {
+    "locality": "College Place",
+    "region": "Washington",
+    "granularity": "locality"
+  },
+  "latencyMs": 697
+}

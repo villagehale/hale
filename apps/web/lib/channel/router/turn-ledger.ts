@@ -55,7 +55,7 @@ export type TurnFailureReason =
   /** The turn texted the parent and then broke on its own bookkeeping. They have their
    * answer; the failure is real and invisible to them. */
   | 'broke_after_answering'
-  /** It broke after drafting, so the receipt names a count of real rows (copy.ts). */
+  /** It broke after drafting. The receipt is the model's, from the count alone. */
   | 'drafts_receipt'
   /** They plainly answered something, the coach could not run, and Hale asked which. */
   | 'unplaced_choice'
@@ -65,7 +65,10 @@ export type TurnFailureReason =
    * went out with no model in the loop (smoke-alarm.ts). */
   | 'smoke_alarm'
   /** A Gmail draft notice could not be composed. Nothing was texted. #ops is paged. */
-  | 'notice_unsent';
+  | 'notice_unsent'
+  /** VIL-581 · the claim reader could not read the composed reply, and neither a drafts
+   * receipt nor an apology could be written. Nothing was texted; the turn is claimed. */
+  | 'claim_read_failed';
 
 /**
  * What became of an ANSWERED claim. 'already_answered' means another attempt's claim

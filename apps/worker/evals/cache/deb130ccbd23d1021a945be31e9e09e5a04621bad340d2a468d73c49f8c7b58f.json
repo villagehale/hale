@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, as the facts ask. It does what a check_in_ask should: it asks how Riverton Fall 2026 registration went and covers all three outcomes (got in, waitlisted with the number, or missed). It names no child, gives no dates and makes no claim beyond the facts. The tone is friendly, though slightly formal and wordy for a text.",
+    "score": 5
+  }
+}

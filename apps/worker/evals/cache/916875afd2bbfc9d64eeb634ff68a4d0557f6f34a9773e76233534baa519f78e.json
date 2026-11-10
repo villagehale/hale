@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Fair enough, we can leave that for now. I'll keep what you've shared and won't push on the name. What should I call you from here on?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh"
+  },
+  "latencyMs": 1627
+}

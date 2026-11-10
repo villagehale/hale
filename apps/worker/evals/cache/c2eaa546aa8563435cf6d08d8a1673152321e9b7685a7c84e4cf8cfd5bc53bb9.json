@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "householdGroup is claimed, so saying the setup is all set and the other parent is in is accurate and not a violation; however the reply's claim that the other parent 'is in' is not supported by facts (coparentJoin is null), and the watchFor says the reply must not say the other parent has joined. That is a direct violation, so score is low.",
+    "score": 2
+  }
+}

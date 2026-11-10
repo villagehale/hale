@@ -44,6 +44,7 @@ import {
   lazyAnthropic,
   liveStructuredCall,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -214,17 +215,7 @@ const DISCOVERY_JSON_SCHEMA = {
 };
 const DISCOVERY_LIMIT = 8; // matches discover.ts DEFAULT_LIMIT
 
-const DISCOVERY_JUDGE_SYSTEM = [
-  "You are a strict reviewer scoring ONE list of local activity candidates Hale's",
-  'discovery agent proposed for a child at a given family stage in a coarse area',
-  '(an FSA / neighbourhood / municipality — never a precise address). Score LOCAL',
-  'FIT & HONESTY on a 1-5 integer scale. A 5: every candidate suits the stage and',
-  'is the kind of honest, broadly-true local option a thoughtful parent would',
-  'recommend, with calibrated confidence (a generic "there is probably a library"',
-  'is NOT asserted as a verified, scheduled class). A LOW score: candidates out of',
-  'stage, fabricated specifics (made-up class times, prices, instructors), or',
-  'over-confident filler. Reply with ONLY the score tool.',
-].join(' ');
+const DISCOVERY_JUDGE_SYSTEM = judgePrompt('agent-discovery');
 
 function discoveryUserMessageFor(fixture) {
   // MUST match discoverForFamily's serialization in discover.ts.

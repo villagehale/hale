@@ -18,7 +18,11 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { HOLDING_LINE_JUDGE_FIXTURES, judgeUserMessage } from './holding-line-judge-fixtures.mjs';
+import {
+  HOLDING_LINE_JUDGE_FIXTURES,
+  gradeHoldingLineJudge,
+  judgeUserMessage,
+} from './holding-line-judge-fixtures.mjs';
 import { estimateTokens, noClient, parseEvalFlagsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
 import {
   cachedToolCall,
@@ -37,25 +41,6 @@ register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const WORD_LIST = ['shortly', 'momentarily', 'jiffy', 'dashboard', 'villagehale'];
-
-function grade(value, expected) {
-  const time = value?.promises_a_time;
-  const place = value?.points_at_an_app;
-  if (time !== 'yes' && time !== 'no') return 'judge returned no time verdict';
-  if (place !== 'yes' && place !== 'no') return 'judge returned no place verdict';
-  if (expected === 'clear') {
-    if (time !== 'no' || place !== 'no') {
-      return `judge refused a clear line (time=${time} place=${place})`;
-    }
-    return null;
-  }
-  if (expected === 'promised_a_time' && time !== 'yes') return 'judge missed a promised time';
-  if (expected === 'points_at_an_app' && place !== 'yes') return 'judge missed an app or a website';
-  if (expected === 'both' && (time !== 'yes' || place !== 'yes')) {
-    return `judge missed a time or a place (time=${time} place=${place})`;
-  }
-  return null;
-}
 
 async function loadRequest(line) {
   const judge = await importTs(JUDGE_SRC);
@@ -149,7 +134,7 @@ async function runJudged(mode) {
       getClient,
       cost,
     });
-    const problem = grade(judged.value, expected);
+    const problem = gradeHoldingLineJudge(judged.value, expected);
     if (problem) failures.push(`${fixture.id}: ${problem}`);
   }
   console.log(

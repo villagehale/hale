@@ -1,17 +1,21 @@
+import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { encryptString } from '~/lib/crypto/string-cipher';
+import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { runDeletionSweep } from '~/lib/rights/delete';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type OneToOneSend, privateAsideOneToOne } from './connect-link-1to1';
+import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import {
   PRIVATE_ASIDE_AUDIT,
   type PrivateAsideDraftInput,
   type PrivateAsideModel,
   type PrivateAsideReadInput,
 } from './group-private-aside';
-import { joinFamilyToSharedGroup, takeMultiFamilyTurn } from './multi-family';
+import { handleLinqInboundRequest } from './inbound';
+import { takeMultiFamilyTurn } from './multi-family';
 import type { SharedGroupReader } from './shared-group-reading';
 import { fakeSharedGroupComposer } from './shared-group-voice-fake';
 import { LinqSendError } from './transport';
@@ -129,26 +133,12 @@ async function seedPrivate(familyId: string) {
   });
 }
 
-async function twoJoined() {
+/** Two households in the chat; neither parent has said a word about joining. */
+async function twoPresent() {
   const ada = await seedFamily(PARENT_A, 'Ada');
   const bao = await seedFamily(PARENT_B, 'Bao');
   await seedPrivate(bao.familyId);
-  const wire = sender();
-  for (const [fam, phone] of [
-    [ada, PARENT_A],
-    [bao, PARENT_B],
-  ] as const) {
-    await joinFamilyToSharedGroup(db.database, {
-      chatId: CHAT,
-      familyId: fam.familyId,
-      userId: fam.userId,
-      phone,
-      verbatim: 'our family is in this group',
-      now: NOW,
-      send: wire.send,
-    });
-  }
-  return { ada, bao, wire };
+  return { ada, bao, wire: sender() };
 }
 
 /** 'clash' picks the family whose own facts name the kid (refs follow join order, which can tie). */
@@ -189,6 +179,7 @@ function fakeOneToOne() {
 const turnInput = (wire: ReturnType<typeof sender>, providerMessageId = 'in-aside') => ({
   chatId: CHAT,
   senderHandle: PARENT_A,
+  otherHandles: [PARENT_B],
   text: 'Hale can everyone do the park Saturday at 10am?',
   providerMessageId,
   receivedAt: NOW,
@@ -198,7 +189,7 @@ const turnInput = (wire: ReturnType<typeof sender>, providerMessageId = 'in-asid
 
 describe('VIL-457 shared-group turn wires the private aside', () => {
   it('texts the clashing family 1:1 with its own facts; the group line carries none', async () => {
-    const { bao, wire } = await twoJoined();
+    const { bao, wire } = await twoPresent();
     const groupBefore = wire.texts.length;
     const m = fakeModel('clash');
     const dm = fakeOneToOne();
@@ -243,10 +234,12 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
       .where(eq(schema.channelMessages.templateKey, 'linq:private_aside'));
     expect(ledger).toHaveLength(1);
     expect(ledger[0]?.familyId).toBe(bao.familyId);
+    // Presence alone: neither household joined, and no consent was written for them.
+    expect(await db.database.select().from(schema.linqMultiFamilyJoins)).toEqual([]);
   });
 
   it('sends nothing 1:1 when the read picks no family', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const m = fakeModel([]);
     const dm = fakeOneToOne();
     const out = await takeMultiFamilyTurn(
@@ -266,7 +259,7 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
   });
 
   it('a failing model never fails the turn and sends no fallback', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const groupBefore = wire.texts.length;
     const m = fakeModel(new Error('boom'));
     const dm = fakeOneToOne();
@@ -287,7 +280,7 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
   });
 
   it('a redelivered group message does not run the aside twice', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const m = fakeModel('clash');
     const dm = fakeOneToOne();
     const privateAside = {
@@ -306,7 +299,7 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
   });
 
   it('without the aside port the turn reads no private model at all', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const out = await takeMultiFamilyTurn(db.database, turnInput(wire), ports());
     expect(out).toMatchObject({ handled: true, outcome: 'shared_reply' });
     expect(out).not.toHaveProperty('aside');
@@ -319,7 +312,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
     ['refused (model failed)', () => fakeSharedGroupComposer({ fail: true })],
   ] as const) {
     it(`group ${label}: the clashing family still hears 1:1; the turn is owned, not held`, async () => {
-      const { bao, wire } = await twoJoined();
+      const { bao, wire } = await twoPresent();
       const groupBefore = wire.texts.length;
       const m = fakeModel('clash');
       const dm = fakeOneToOne();
@@ -348,7 +341,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
   }
 
   it('group quiet and the aside declines: hands the message back so a text RSVP can still be read', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const m = fakeModel('clash', { send: false });
     const dm = fakeOneToOne();
     const out = await takeMultiFamilyTurn(
@@ -368,7 +361,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
   });
 
   it('group quiet and the 1:1 fails to send: hands the message back', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const m = fakeModel('clash');
     const send: OneToOneSend = {
       text: async () => {
@@ -392,7 +385,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
   });
 
   it('group quiet and no family touched: hands the message back (no hold-stealing)', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const m = fakeModel([]);
     const dm = fakeOneToOne();
     const out = await takeMultiFamilyTurn(
@@ -412,7 +405,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
 
   for (const intent of ['chatter', 'unclear'] as const) {
     it(`reader says ${intent}: the clashing family still hears 1:1; group stays silent`, async () => {
-      const { wire } = await twoJoined();
+      const { wire } = await twoPresent();
       const groupBefore = wire.texts.length;
       const m = fakeModel('clash');
       const dm = fakeOneToOne();
@@ -433,7 +426,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
     });
 
     it(`reader says ${intent} and no family touched: hands the message back`, async () => {
-      const { wire } = await twoJoined();
+      const { wire } = await twoPresent();
       const m = fakeModel([]);
       const dm = fakeOneToOne();
       const out = await takeMultiFamilyTurn(
@@ -453,7 +446,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
   }
 
   it('a redelivered message after a quiet group does not aside twice', async () => {
-    const { wire } = await twoJoined();
+    const { wire } = await twoPresent();
     const m = fakeModel('clash');
     const dm = fakeOneToOne();
     const privateAside = {
@@ -473,5 +466,277 @@ describe('VIL-496 aside sends even when the group line does not', () => {
     expect(again).toMatchObject({ handled: true, outcome: 'duplicate' });
     expect(m.reads).toHaveLength(1);
     expect(dm.sent).toHaveLength(1);
+  });
+});
+
+const SECRET_BYTES = Buffer.alloc(32, 9);
+const TS = String(Math.floor(NOW.getTime() / 1000));
+
+/** participant.removed through the real Linq door: one member, or Hale itself. */
+async function removedAtTheDoor(handle: string, isMe: boolean) {
+  vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+  vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
+  const eventId = `evt_removed_${isMe ? 'hale' : 'member'}`;
+  const raw = JSON.stringify({
+    api_version: 'v3',
+    webhook_version: '2026-02-03',
+    event_type: 'participant.removed',
+    event_id: eventId,
+    created_at: NOW.toISOString(),
+    data: {
+      chat_id: CHAT,
+      handle,
+      participant: { handle, is_me: isMe, service: 'iMessage', status: 'removed' },
+    },
+  });
+  const mac = createHmac('sha256', SECRET_BYTES).update(`${eventId}.${TS}.${raw}`).digest('base64');
+  const response = await handleLinqInboundRequest(
+    new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'webhook-id': eventId,
+        'webhook-timestamp': TS,
+        'webhook-signature': `v1,${mac}`,
+      },
+      body: raw,
+    }),
+    {
+      database: db.database,
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      enqueue: async () => {},
+      now: () => NOW,
+      groupVoice: fakeGroupOnboardingComposer(),
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1],
+  );
+  expect(response.status).toBe(200);
+}
+
+const stopReader: SharedGroupReader = {
+  async read() {
+    return {
+      intent: 'stop_me',
+      role: 'unclear',
+      familyLabel: null,
+      kidName: null,
+      confidence: 'high',
+    };
+  },
+};
+
+const joinReader: SharedGroupReader = {
+  async read() {
+    return {
+      intent: 'join',
+      role: 'unclear',
+      familyLabel: null,
+      kidName: null,
+      confidence: 'high',
+    };
+  },
+};
+
+async function personRow(phone: string) {
+  const rows = await db.database
+    .select()
+    .from(schema.linqSharedGroupPeople)
+    .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(phone)));
+  return rows;
+}
+
+/** Bao's parent is in the chat with a first name and an inferred kid name on their row. */
+async function baoNamed() {
+  await db.database
+    .update(schema.linqSharedGroupPeople)
+    .set({ firstName: 'Bao', inferredKidName: CHILD, inferredFamilyLabel: 'Bao family' })
+    .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(PARENT_B)));
+}
+
+describe('a STOP in a shared chat outlives leaving it', () => {
+  for (const [label, removal] of [
+    ['the member is removed', () => removedAtTheDoor(PARENT_B, false)],
+    ['Hale is removed', () => removedAtTheDoor(FROM, true)],
+  ] as const) {
+    it(`${label} and re-added: the stopped parent stays stopped and their household gets no aside`, async () => {
+      const { wire } = await twoPresent();
+      const stopped = await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire, 'in-stop'),
+          senderHandle: PARENT_B,
+          otherHandles: [PARENT_A],
+          text: 'stop',
+        },
+        { reader: stopReader, composer: fakeSharedGroupComposer({ body: SHARED_REPLY }) },
+      );
+      expect(stopped).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'intake' });
+      await baoNamed();
+
+      await removal();
+
+      // Only the stop survives: the hash and when, nothing that names the person or a family.
+      const [tombstone, ...extra] = await personRow(PARENT_B);
+      expect(extra).toEqual([]);
+      expect(tombstone).toMatchObject({
+        chatId: CHAT,
+        phoneE164Encrypted: null,
+        familyId: null,
+        userId: null,
+        firstName: null,
+        inferredKidName: null,
+        inferredFamilyLabel: null,
+        inferredRole: null,
+      });
+      expect(tombstone?.stoppedAt).toEqual(NOW);
+
+      // Re-added: Bao's parent texts the group, and Ada's question touches Bao's own kid.
+      const again = await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire, 'in-back'),
+          senderHandle: PARENT_B,
+          otherHandles: [PARENT_A],
+          text: 'Hale is anyone free Saturday?',
+        },
+        ports(),
+      );
+      expect(again).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'ignored' });
+
+      const m = fakeModel('clash');
+      const dm = fakeOneToOne();
+      await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire, 'in-ada'),
+          privateAside: {
+            model: m.model,
+            sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+          },
+        },
+        ports(),
+      );
+      expect(dm.sent).toEqual([]);
+      expect(m.reads.flatMap((read) => read.families.flatMap((f) => f.kids))).not.toContain(CHILD);
+    });
+  }
+
+  it('erasing the household keeps only the stop: re-added, the parent is still stopped and nameless; the unstopped row is gone', async () => {
+    const PARENT_C = '+12025550133';
+    const BAO_COPARENT = '+12025550144';
+    const { bao, wire } = await twoPresent();
+    await seedFamily(PARENT_C, 'Cai');
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:Bao-coparent', name: 'Bao co-parent' })
+      .returning({ id: schema.users.id });
+    await db.database.insert(schema.familyMembers).values({
+      familyId: bao.familyId,
+      userId: coParent?.id as string,
+      role: 'co_parent',
+    });
+    await db.database.insert(schema.parentChannels).values({
+      userId: coParent?.id as string,
+      familyId: bao.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(BAO_COPARENT),
+      phoneE164Hash: phoneBlindIndex(BAO_COPARENT),
+      verifiedAt: NOW,
+    });
+    const everyone = [PARENT_A, PARENT_C, BAO_COPARENT];
+    const stopped = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire, 'in-stop'),
+        senderHandle: PARENT_B,
+        otherHandles: everyone,
+        text: 'stop',
+      },
+      { reader: stopReader, composer: fakeSharedGroupComposer({ body: SHARED_REPLY }) },
+    );
+    expect(stopped).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'intake' });
+    await baoNamed();
+    expect(await personRow(BAO_COPARENT)).toHaveLength(1);
+    // Ada's household joins, so the chat keeps a host once Bao's household is gone.
+    const joined = await takeMultiFamilyTurn(
+      db.database,
+      { ...turnInput(wire, 'in-join'), otherHandles: everyone, text: 'count us in' },
+      { reader: joinReader, composer: fakeSharedGroupComposer({ body: SHARED_REPLY }) },
+    );
+    expect(joined).toMatchObject({ handled: true, outcome: 'joined' });
+
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) })
+      .where(eq(schema.families.id, bao.familyId));
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+    expect(summary.erased).toBe(1);
+
+    // Control: the household's unstopped row goes with it.
+    expect(await personRow(BAO_COPARENT)).toEqual([]);
+    const [tombstone, ...extra] = await personRow(PARENT_B);
+    expect(extra).toEqual([]);
+    expect(tombstone).toMatchObject({
+      chatId: CHAT,
+      phoneE164Encrypted: null,
+      familyId: null,
+      userId: null,
+      firstName: null,
+      inferredKidName: null,
+      inferredFamilyLabel: null,
+      inferredRole: null,
+    });
+    expect(tombstone?.stoppedAt).toEqual(NOW);
+
+    const groupBefore = wire.texts.length;
+    const again = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire, 'in-back'),
+        senderHandle: PARENT_B,
+        otherHandles: [PARENT_A, PARENT_C],
+        text: 'Hale is anyone free Saturday?',
+      },
+      ports(),
+    );
+    expect(again).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'ignored' });
+    expect(wire.texts.length).toBe(groupBefore);
+    const [back] = await personRow(PARENT_B);
+    expect(back).toMatchObject({
+      phoneE164Encrypted: null,
+      familyId: null,
+      firstName: null,
+      inferredKidName: null,
+    });
+    expect(back?.stoppedAt).toEqual(NOW);
+  });
+
+  it('positive control: a parent who never stopped is forgotten when removed, and live again when re-added', async () => {
+    const { wire } = await twoPresent();
+    await takeMultiFamilyTurn(db.database, turnInput(wire, 'in-first'), ports());
+    await baoNamed();
+    expect(await personRow(PARENT_B)).toHaveLength(1);
+
+    await removedAtTheDoor(PARENT_B, false);
+
+    expect(await personRow(PARENT_B)).toEqual([]);
+    const m = fakeModel('clash');
+    const dm = fakeOneToOne();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire, 'in-ada'),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+        },
+      },
+      ports(),
+    );
+    expect(dm.sent).toEqual([{ to: PARENT_B, body: `aside:${CHILD}` }]);
+    const [back] = await personRow(PARENT_B);
+    expect(back?.stoppedAt).toBeNull();
+    expect(back?.firstName).toBeNull();
+    expect(decryptString(back?.phoneE164Encrypted as string)).toBe(PARENT_B);
   });
 });

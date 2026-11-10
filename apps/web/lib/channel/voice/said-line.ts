@@ -14,6 +14,7 @@ import {
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import type { MomentUnwrittenReason } from '~/lib/channel/off-domain/moment-reply';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { linksOutside } from '~/lib/format/link-shape';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
@@ -22,6 +23,7 @@ import {
   crisisReplyViolation,
   replyLocale,
 } from './crisis-check';
+import { repairMisdecodedUtf8 } from './misdecoded-utf8';
 import { type ConveyFact, judgeSaidLineConvey } from './said-line-convey';
 
 export {
@@ -152,17 +154,19 @@ export function saidLineUserMessage(input: SaidLineInput): string {
 /**
  * Structural checks only: non-empty, every required fact verbatim, each link slot
  * exactly once, and no URL typed by the model at all. Then code fills the slots
- * with the exact URLs, so a link can never be mistyped (#868).
+ * with the exact URLs, so a link can never be mistyped (#868). A write that came back
+ * as its UTF-8 read through a single-byte code page is put back first (VIL-608).
  */
 export function acceptSaidLine(text: string, input: SaidLineInput): string | null {
-  let body = text.trim();
+  let body = repairMisdecodedUtf8(text.trim());
   if (body.length === 0) return null;
   const required = input.mustInclude ?? [];
   if (!required.every((fact) => body.includes(fact))) return null;
   // A mustConvey key with no fact behind it is a wiring bug, not something to say.
   // The meaning itself is not matched here. The writer asks the convey judge.
   if (!(input.mustConvey ?? []).every((key) => key in input.facts)) return null;
-  if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
+  // A required fact is code's own text (Hale's site, its email): a link only as that word.
+  if (linksOutside(body, required).length > 0) return null;
   for (const [name, url] of Object.entries(input.links ?? {})) {
     const slot = linkSlot(name);
     if (body.split(slot).length !== 2) return null;

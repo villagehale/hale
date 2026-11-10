@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states nothing is confirmed, gives the registration link exactly, offers the pack values (pack is present), uses tu for a direct audience in French, and makes no retry or follow-up promise. Minor: no cause of failure given, but reason is not_configured and the text avoids system talk.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says sign-up is not confirmed, Hale couldn't complete it on this site, no login was attempted, parent signs up at the link, no personal details, no retry promise, language zh matches, audience group. Link carried exactly. Minor: '目前还不能' implies future capability, not a promise, so acceptable.",
+    "score": 5
+  }
+}

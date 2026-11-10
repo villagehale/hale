@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Confirms receipt, states only the given situation (already said yes, nothing changed) and the given next step (will tell them if it goes ahead). English, warm and plain, reads like a friend texting, no extra promises, apologies, or invented details.",
+    "score": 5
+  }
+}

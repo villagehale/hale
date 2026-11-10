@@ -16,7 +16,7 @@ interface Capture {
 /**
  * Fakes the Drizzle chains runInferenceForFamily + its tools run. No real DB.
  *
- * Select order (read_recent_memory): events, episodes, facts — each
+ * Select order: save_memory's roster read, then events, episodes, facts — each
  * from().where()(.orderBy().limit())? → []. save_memory does an update (supersede)
  * then an insert(...).returning(). The audit insert routes by table identity.
  */
@@ -24,7 +24,9 @@ function fakeDb(capture: Capture) {
   let selectCall = 0;
   const select = vi.fn().mockImplementation(() => {
     const call = selectCall++;
-    if (call === 0 || call === 1) {
+    // save_memory reads the roster (from().where()) before it writes.
+    if (call === 0) return { from: () => ({ where: async () => [] }) };
+    if (call === 1 || call === 2) {
       // events / episodes: from().where().orderBy().limit()
       return {
         from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [] }) }) }),
@@ -95,6 +97,7 @@ function fakeClient(confidence: number): AgentClient {
             id: 's1',
             name: 'save_memory',
             input: {
+              childId: null,
               factType: 'routine',
               factKey: 'bedtime',
               factValue: { time: '19:30' },

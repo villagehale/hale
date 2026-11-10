@@ -33,6 +33,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { normalizeForCompare } from './lib/variation.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -132,26 +133,7 @@ function refusals(body) {
 // ── the judge ────────────────────────────────────────────────────────────────
 
 // Scoped to MEANING: every mechanical property is already decided by refusals() above.
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring the MEANING of ONE private text message Hale sends a',
-  'parent who has sent many texts in a short time. Hale is not answering their latest text.',
-  'Hale composed it BLIND: it saw only that situation, whether they wrote in a group chat or',
-  'their own chat, and the language. Links and digits are ALREADY verified mechanically;',
-  "length, sentence count and punctuation are the writer's own. Judge only MEANING.",
-  'You are given the message, the language and watchFor. Score 1-5.',
-  'A 5 tells them plainly, warmly and in the first person, in the requested language, that a',
-  'lot came in at once, Hale is not answering this one now, and they can send it again later.',
-  'FACT: for a while every further text from this parent also gets no reply, so a resend right',
-  'away gets silence. A LOW score (2 or below) is any of: promising Hale will answer this text',
-  'later; promising, by meaning in any wording or language, that Hale will answer or get back',
-  'to them if they text again (for example "text again in a bit and I will get back to you");',
-  'naming or implying a specific wait or limit; scolding or blaming the parent; mentioning',
-  'other people in a group or what was said; support-desk language; third person ("Hale is");',
-  'the wrong language; pretending to answer their question. Simply inviting them to send it',
-  'again later, with no promise that it will be answered, read or picked up, is TRUE and fine;',
-  'do not mark it down. Apply all of this strictly and the same way every time.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('flood-line');
 
 const BROKEN_LINE =
   'Hale is rate-limited: you sent 30 texts! Please wait 60 minutes, I will answer this one then. See https://villagehale.com';

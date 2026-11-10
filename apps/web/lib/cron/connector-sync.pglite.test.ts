@@ -87,6 +87,7 @@ function change(eventId: string): CalendarChange {
     // pass as `outside_window`.
     start: { dateTime: new Date(Date.now() + 86_400_000).toISOString() },
     end: { dateTime: new Date(Date.now() + 90_000_000).toISOString() },
+    standing: 'organizer',
   };
 }
 
@@ -187,7 +188,7 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
     for (const updated of [moved.updated, '2026-09-17T15:40:00.000Z']) {
       await expect(
         calendarAlertPort()({ connection: conn, seeding: false, changes: [{ ...moved, updated }] }),
-      ).resolves.toEqual({ changes: ['fixed_copy_retired'], reoffers: [] });
+      ).resolves.toEqual({ changes: ['not_material'], reoffers: [] });
     }
   });
 });
