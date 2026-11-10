@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives a clock time (7 a.m.) for the new opening, but opens.time is null. It reused the old time without support. It also doesn't say the date came from the registration page. It does carry the right link and the right new day.",
+    "score": 2
+  }
+}
