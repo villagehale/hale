@@ -49,6 +49,7 @@ const SWIM: CalendarChange = {
   title: 'Swim lesson',
   start: { dateTime: '2026-09-19T14:00:00.000Z' },
   end: { dateTime: '2026-09-19T14:45:00.000Z' },
+  standing: 'organizer',
 };
 
 const CANCELLED_SWIM: CalendarChange = {
@@ -57,6 +58,7 @@ const CANCELLED_SWIM: CalendarChange = {
   status: 'cancelled',
   start: SWIM.start,
   end: SWIM.end,
+  standing: 'own',
 };
 
 const MEETING: CalendarChange = {

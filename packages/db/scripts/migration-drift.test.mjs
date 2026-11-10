@@ -52,7 +52,8 @@ describe('catalog history cutover', () => {
       '0220_event_reminders_compose_backoff',
       '0218_family_memory_facts_source_user',
       '0221_family_events_calendar_standing',
-      '0222_authorized_signup_plan_resume',
+      '0222_parent_calendar_blocks_standing',
+      '0223_authorized_signup_plan_resume',
     ]);
   });
 });

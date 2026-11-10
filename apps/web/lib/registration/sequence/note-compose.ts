@@ -44,12 +44,16 @@ export type RegistrationNoteFacts =
             kind: 'waitlist_halfway';
             town: string;
             responseHours: number | null;
+            /** Where the count started: the parent's own message. Null with `deadline`. */
+            clockFrom: Moment | null;
             deadline: Moment | null;
           }
         | {
             kind: 'waitlist_final';
             town: string;
             responseHours: number | null;
+            /** Where the count started: the parent's own message. Null with `deadline`. */
+            clockFrom: Moment | null;
             deadline: Moment | null;
             hoursLeft: number;
           }
@@ -60,6 +64,8 @@ export type RegistrationNoteFacts =
             town: string;
             position: number | null;
             responseHours: number | null;
+            /** Where the count started: the parent's own message. Null with `deadline`. */
+            clockFrom: Moment | null;
             deadline: Moment | null;
           }
         | { kind: 'readiness_answer'; ready: boolean; portal: string; account: string; who: string }
