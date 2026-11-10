@@ -436,6 +436,7 @@ const childSchema = z.object({
   name: z.string().nullable().optional().default(null),
   ageMonths: z.number().nullable().optional().default(null),
   agePrecision: z.enum(['years', 'months']).nullable().optional().default(null),
+  dateOfBirth: z.string().nullable().optional().default(null),
 });
 
 const scheduleAddSchema = z.object({
@@ -589,6 +590,7 @@ const replyJsonSchema = {
             type: ['string', 'null'],
             enum: ['years', 'months', null],
           },
+          dateOfBirth: { type: ['string', 'null'] },
         },
       },
     },
