@@ -657,8 +657,8 @@ export async function unseatMultiFamilyMember(
  * name, non-customers' included, so it lives only while the person and Hale are both in the
  * chat. Hale removed forgets the whole chat; anyone else removed forgets that one number.
  * A STOP is the exception: CASL needs it to hold if the person or Hale comes back, so a
- * stopped row stays as a tombstone with its number and stop time, and nothing that names
- * the person or a family. Re-adding fills the family back in from the verified number.
+ * stopped row stays as a tombstone with its number's hash and stop time, and nothing that
+ * names the person or a family. Re-adding fills the family back in from the verified number.
  * Runs whatever the multi-family flag says: a flag may turn a send off, never retention.
  */
 export async function forgetSharedGroupPresence(
@@ -698,6 +698,7 @@ export async function forgetSharedGroupPeople(
   const tombstoned = await database
     .update(people)
     .set({
+      phoneE164Encrypted: null,
       familyId: null,
       userId: null,
       firstName: null,

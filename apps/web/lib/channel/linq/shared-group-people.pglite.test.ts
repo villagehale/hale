@@ -211,4 +211,15 @@ describe('shared-group presence rows', () => {
     expect(summary.erased).toBe(1);
     expect(await present()).toEqual([at(CHAT, PARENT_B), at(CHAT, GUEST)].sort());
   });
+
+  it('migration 0224 applies a second time over itself and leaves the number nullable', async () => {
+    await expect(
+      db.applyMigration('0224_linq_shared_group_people_phone_nullable.sql'),
+    ).resolves.toBeUndefined();
+    const result = await db.client.query<{ is_nullable: string }>(
+      `select is_nullable from information_schema.columns
+        where table_name = 'linq_shared_group_people' and column_name = 'phone_e164_encrypted'`,
+    );
+    expect(result.rows).toEqual([{ is_nullable: 'YES' }]);
+  });
 });

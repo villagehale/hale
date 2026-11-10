@@ -53,6 +53,7 @@ describe('catalog history cutover', () => {
       '0218_family_memory_facts_source_user',
       '0221_family_events_calendar_standing',
       '0222_parent_calendar_blocks_standing',
+      '0224_linq_shared_group_people_phone_nullable',
     ]);
   });
 });

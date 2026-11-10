@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { encryptString } from '~/lib/crypto/string-cipher';
+import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { runDeletionSweep } from '~/lib/rights/delete';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type OneToOneSend, privateAsideOneToOne } from './connect-link-1to1';
@@ -580,6 +580,7 @@ describe('a STOP in a shared chat outlives leaving it', () => {
       expect(extra).toEqual([]);
       expect(tombstone).toMatchObject({
         chatId: CHAT,
+        phoneE164Encrypted: null,
         familyId: null,
         userId: null,
         firstName: null,
@@ -677,6 +678,7 @@ describe('a STOP in a shared chat outlives leaving it', () => {
     expect(extra).toEqual([]);
     expect(tombstone).toMatchObject({
       chatId: CHAT,
+      phoneE164Encrypted: null,
       familyId: null,
       userId: null,
       firstName: null,
@@ -700,7 +702,12 @@ describe('a STOP in a shared chat outlives leaving it', () => {
     expect(again).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'ignored' });
     expect(wire.texts.length).toBe(groupBefore);
     const [back] = await personRow(PARENT_B);
-    expect(back).toMatchObject({ familyId: null, firstName: null, inferredKidName: null });
+    expect(back).toMatchObject({
+      phoneE164Encrypted: null,
+      familyId: null,
+      firstName: null,
+      inferredKidName: null,
+    });
     expect(back?.stoppedAt).toEqual(NOW);
   });
 
@@ -730,5 +737,6 @@ describe('a STOP in a shared chat outlives leaving it', () => {
     const [back] = await personRow(PARENT_B);
     expect(back?.stoppedAt).toBeNull();
     expect(back?.firstName).toBeNull();
+    expect(decryptString(back?.phoneE164Encrypted as string)).toBe(PARENT_B);
   });
 });
