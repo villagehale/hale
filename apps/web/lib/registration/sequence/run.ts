@@ -89,7 +89,6 @@ import {
   legIsUrgent,
   openLegWindows,
   openTimeIsPublished,
-  waitlistDeadline,
 } from './schedule.js';
 import {
   type SequenceChild,
@@ -980,13 +979,7 @@ async function runLegForSequence(
     portal,
     readinessReady: sequence.readinessReady,
     prep,
-    waitlist: {
-      position: sequence.waitlistPosition,
-      deadlineAt:
-        sequence.waitlistStartedAt === null
-          ? null
-          : waitlistDeadline(sequence.waitlistStartedAt, sequence.window.waitlistResponseHours),
-    },
+    waitlist: { position: sequence.waitlistPosition, startedAt: sequence.waitlistStartedAt },
   };
   let body: string;
   if (unconfirmed !== null) {
