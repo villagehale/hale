@@ -22,7 +22,12 @@ import type { QuietShift } from './policy';
 export const GROUP_REMINDER_VOICE_SKILL = 'group-reminder-voice';
 export const GROUP_REMINDER_VOICE_TOOL = 'group_reminder_text';
 export const GROUP_REMINDER_VOICE_TOOL_DESCRIPTION = 'The one text Hale sends.';
-export const GROUP_REMINDER_VOICE_MAX_TOKENS = 300;
+/**
+ * Thinking plus the text. The lane thinks (with thinking off, a French group
+ * confirm took the familiar "you" whatever the skill said), and a confirm spends about
+ * 400-550 tokens of it; a budget it spends thinking is re-asked with thinking off.
+ */
+export const GROUP_REMINDER_VOICE_MAX_TOKENS = 1024;
 export const GROUP_REMINDER_MAX_ATTEMPTS = 2;
 
 export interface ConfirmSetFact {
@@ -82,7 +87,7 @@ export function groupReminderVoiceUserMessage(facts: GroupReminderFacts): string
 
 /**
  * Structural refusals only, never wording: empty, or a link. Length is the skill's to
- * judge; `GROUP_REMINDER_VOICE_MAX_TOKENS` keeps a draft far inside one Linq text part.
+ * judge.
  */
 export function groupReminderRefusals(body: string): string[] {
   const text = body.trim();
