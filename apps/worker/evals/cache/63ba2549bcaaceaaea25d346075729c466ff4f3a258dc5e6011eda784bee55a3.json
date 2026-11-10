@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot is accurate. Its name, age band (12 months to 4 years), days, time and session dates are exactly as printed and cited to the programme page. The price is correctly null, and no rental figure ($185 or $95) was borrowed. No registration date is printed, so a null is correct. The message leads with the slot by name, attributes the facts with 'their site says', is plain ASCII with no link and no question, and makes no unearned negative claim. 'I could not pin down the price' is first person, which is right for page_has_schedule. Watch is true, so the first-person 'I'll keep watching and text you' is correctly backed. One minor nit: the page says fees are at the front desk or by calling reception, and the message could have passed that on, but this is not a fault under the rubric.",
+    "score": 5
+  }
+}

@@ -88,6 +88,74 @@ describe('shared group reading', () => {
     expect(JSON.parse(sharedGroupUserMessage({ ...base, clock })).clock).toEqual(clock);
   });
 
+  it('reads a pick only as one of the times Hale offered, to the instant', () => {
+    const offered = ['2026-10-31T14:00:00.000Z', '2026-11-01T15:00:00.000Z'];
+    const pick = (picked: unknown) =>
+      parseSharedGroupReading(
+        {
+          intent: 'pick_time',
+          role: 'unclear',
+          familyLabel: null,
+          kidName: null,
+          confidence: 'high',
+          ruledOut: [],
+          picked,
+          planTitle: '  Zoo trip ',
+        },
+        offered,
+      );
+    const read = pick('2026-10-31T10:00:00-04:00');
+    expect(read.intent).toBe('pick_time');
+    expect(read.picked).toEqual(new Date('2026-10-31T14:00:00.000Z'));
+    expect(read.planTitle).toBe('Zoo trip');
+    // A time Hale never offered, a missing pick, or no offer at all is not a pick.
+    expect(pick('2026-10-31T15:00:00.000Z').intent).toBe('unclear');
+    expect(pick(null).intent).toBe('unclear');
+    // A pick places a plan on calendars: a low-confidence one is no pick.
+    expect(
+      parseSharedGroupReading(
+        {
+          intent: 'pick_time',
+          role: 'unclear',
+          familyLabel: null,
+          kidName: null,
+          confidence: 'low',
+          picked: offered[0],
+        },
+        offered,
+      ).intent,
+    ).toBe('unclear');
+    expect(
+      parseSharedGroupReading({
+        intent: 'pick_time',
+        role: 'unclear',
+        familyLabel: null,
+        kidName: null,
+        confidence: 'high',
+        picked: offered[0],
+      }).intent,
+    ).toBe('unclear');
+  });
+
+  it('keeps a plan title only on a find-time or a pick, and never a pick on another intent', () => {
+    const base = { role: 'unclear', familyLabel: null, kidName: null, confidence: 'high' };
+    const find = parseSharedGroupReading({ ...base, intent: 'find_time', planTitle: 'Zoo' });
+    expect(find.planTitle).toBe('Zoo');
+    const question = parseSharedGroupReading(
+      { ...base, intent: 'question', planTitle: 'Zoo', picked: '2026-10-31T14:00:00.000Z' },
+      ['2026-10-31T14:00:00.000Z'],
+    );
+    expect(question.planTitle).toBeNull();
+    expect(question.picked).toBeNull();
+  });
+
+  it('shows the reader the times Hale offered only when there are some', () => {
+    const base = { text: 'Saturday works', reaction: null, language: 'en', people: [], recent: [] };
+    expect(JSON.parse(sharedGroupUserMessage(base)).offered).toBeUndefined();
+    const offered = [{ start: '2026-10-31T14:00:00.000Z', local: 'Sat Oct 31 10:00' }];
+    expect(JSON.parse(sharedGroupUserMessage({ ...base, offered })).offered).toEqual(offered);
+  });
+
   it('hands the eval the same payload shape the live reader sends', () => {
     const payload = JSON.parse(
       sharedGroupUserMessage({

@@ -216,6 +216,22 @@ describe('VIL-455 group plan fan-out', () => {
     expect((await liveCopies(a))[0]?.deletedAt).toBeNull();
   });
 
+  it('only a family’s own out takes its copy back: unclear leaves it on the calendar', async () => {
+    const fams = await seedFamilies(1);
+    const a = fams[0]?.familyId as string;
+    const h = harness(fams, new Map([[a, 'in']]));
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
+    h.deps.reader = { read: async () => new Map([[a, 'unclear']]) };
+    const existing = await existingCopyFamilies(db.database, PLAN, [a]);
+
+    const report = await driveGroupPlan(h.deps, PLAN, said(fams), existing);
+
+    if (report.status !== 'done') throw new Error('expected done');
+    expect(report.families[0]).toMatchObject({ attendance: 'unclear', outcome: 'unchanged' });
+    expect(h.invites.map((i) => i.method)).toEqual(['REQUEST']);
+    expect((await liveCopies(a))[0]?.deletedAt).toBeNull();
+  });
+
   it('a failed read places nothing and sends nothing', async () => {
     const fams = await seedFamilies(2);
     const h = harness(fams, null);

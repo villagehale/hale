@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is exactly what the page prints. Day, time, block dates, the $124 fee and the July 22 registration window are all correct and cited to the programs page. The $25 membership is correctly shown as an add-on, not as the price. Tiny Gym fits the toddler stage. The message is in zh as watchFor requires (which overrides plain ASCII), leads with TINY GYM by name and attributes facts to 'their website says'. It carries the fall block, fee and registration date, and has no link, no question and no unbacked coming-back promise (watch is false). It makes no negative claim.",
+    "score": 5
+  }
+}

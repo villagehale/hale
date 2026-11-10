@@ -527,6 +527,37 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     expect(held.unsent_activity_options.every((option) => option.source_url === PAGE)).toBe(true);
   });
 
+  it('carries the registration row into the text when the extract put it past the cut', async () => {
+    armed();
+    const undated = SLOTS.map((row) => ({ ...row, registration: null }));
+    const registrationRow: DeepSlot = {
+      ...SLOTS[0]!,
+      name: 'Fall registration (covers Tiny Gym), Cartwheels Gym Centre',
+      when: null,
+      price: null,
+    };
+    const h = payable({
+      deep: {
+        status: 'read',
+        slots: [undated[0]!, undated[1]!, undated[2]!, registrationRow],
+        searchResults: 8,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 1,
+        pageVerdict: 'page_has_schedule',
+      },
+    });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    const composed = h.composed[0] as { picks: { name: string }[] };
+    expect(composed.picks.map((pick) => pick.name)).toEqual([
+      undated[0]!.name,
+      undated[1]!.name,
+      registrationRow.name,
+    ]);
+  });
+
   it('threads the message the parent actually got - venue page and all', async () => {
     armed();
     const h = payable();

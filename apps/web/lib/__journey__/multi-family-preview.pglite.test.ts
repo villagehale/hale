@@ -258,10 +258,8 @@ describe('Preview conversation: three fake families, seven numbers', () => {
     );
     expect(people.find((row) => row.phoneE164Hash === phoneBlindIndex(MEI))?.stoppedAt).toBeNull();
 
-    const joins = (await db.database.select().from(schema.linqMultiFamilyJoins)).filter(
-      (row) => row.leftAt == null,
-    );
-    expect(joins).toHaveLength(3);
+    // Nobody said their family is in, so no household is joined for them (VIL-399 F2).
+    expect(await db.database.select().from(schema.linqMultiFamilyJoins)).toEqual([]);
     expect(capturedSends()).toEqual([]);
 
     const rendered = [

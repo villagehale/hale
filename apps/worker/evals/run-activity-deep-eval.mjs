@@ -516,6 +516,16 @@ function carriesFact(field, kind) {
   return statesAFigure(String(field));
 }
 
+/** Mirrors `textSlots` (deliver.ts): the best SLOTS_IN_TEXT, plus the first held slot
+ * stating a registration date when none of them does. */
+function textSlots(slots) {
+  const picks = slots.slice(0, SLOTS_IN_TEXT);
+  const dated = (slot) => carriesFact(slot.registration, 'registration');
+  if (picks.some(dated)) return picks;
+  const extra = slots.slice(SLOTS_IN_TEXT).find(dated);
+  return extra ? [...picks, extra] : picks;
+}
+
 /** Mirrors `awaitsAPostedPage` (followup-note.ts). A continuation is a claim about WHY
  * Hale is coming back; in the future tense the absence-claim gate cannot see it. The
  * trigger clause may not open on Hale - "when I can get to them" is the true sentence
@@ -948,7 +958,7 @@ async function main() {
     // (sweep.ts) - so those slots never reach the composer, and composing from them here
     // would be scoring a message the product does not send.
     const composesText = fixture.composesText !== false;
-    const inText = composesText ? kept.slice(0, SLOTS_IN_TEXT) : [];
+    const inText = composesText ? textSlots(kept) : [];
     // The two sweep facts the composer is told (deliver.ts). A page read out of the
     // provider's cache is not a page read today, and a page that was read and DOES publish
     // a schedule buys no licence to report an absence either.

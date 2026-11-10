@@ -8,6 +8,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkBeyond } from '~/lib/format/link-shape';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { CourseBindRefusal } from './prepare-reply.js';
 
 /**
  * VIL-543 · every registration message that is not the heads-up, the evening or the
@@ -86,6 +87,21 @@ export type RegistrationNoteFacts =
             haleHad: Moment | null;
             regForm: boolean;
             prerequisite: boolean;
+          }
+        | {
+            kind: 'course_link_refused';
+            reason: CourseBindRefusal;
+            portal: string;
+            town: string;
+            /** `different_season` only: the morning the page opens, and the one Hale holds. */
+            pageOpens: Moment | null;
+            haleHas: Moment | null;
+          }
+        | {
+            kind: 'course_link_throttled';
+            alreadyBound: boolean;
+            /** Minutes until the next read is theirs. Null when the link is the one bound. */
+            retryMinutes: number | null;
           }
         | {
             kind: 'approval_card';

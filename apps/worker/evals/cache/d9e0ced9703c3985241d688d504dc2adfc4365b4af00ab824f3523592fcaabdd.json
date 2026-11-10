@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has three picks, all real and specific Seattle venues, each sourced from the operator's own page: Seattle University Athletics, YMCA of Greater Seattle and Seattle Parks and Recreation's Ballard Pool. All fit preschool age. It leads with the most concrete pick by name. That pick's days and times come straight from the picks and are attributed with \"their site says\". No price or time is invented. Under no_page_read it uses the earned form, \"I could not get into their pages\", rather than \"not posted yet\". Watch is true, and the message gives the correct first-person continuation. It is plain text with no link and no question, and it does not withhold any find. One small gap: it does not mention that the Seattle U page also describes the winter session as Feb/Mar. Because the dates are attributed to their site, this is not disqualifying.",
+    "score": 5
+  }
+}
