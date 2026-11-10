@@ -6,7 +6,7 @@ import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activit
 import type { ActivityPlace } from '~/lib/channel/activity/place';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { dayKeyOf } from '~/lib/format/datetime';
-import type { HealthChild } from '~/lib/health/match';
+import type { HealthChild } from '~/lib/channel/child-roster';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';

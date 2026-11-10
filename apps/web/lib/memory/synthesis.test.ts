@@ -3,7 +3,6 @@ import { STAGE_BOUNDARIES_MONTHS, TEENAGER_START_MONTHS } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { defaultInferenceCronDeps } from '~/lib/cron/inference';
-import { loadSuppressedCheckpointRefs, recordCheckpointDone } from '~/lib/health/reply';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
 import {
@@ -111,25 +110,21 @@ async function auditRows(familyId: string) {
 
 describe('the writer allowlist', () => {
   it('never touches a control-plane record, and still elects among the beliefs beside it', async () => {
-    const { familyId, parentUserId } = await seedFamily(db.database);
-    const child = await seedChildAged(familyId, 'Ella', dobAged(30));
-    await recordCheckpointDone(db.database, {
-      familyId,
-      parentUserId,
-      childId: child,
-      checkpointId: 'cp-18mo',
-      ref: '18mo-visit',
+    const { familyId } = await seedFamily(db.database);
+    await seedFact(familyId, {
+      factKey: 'health_checkpoint:18mo-visit',
+      inferredBy: 'health-nudge-reply',
     });
     const winner = await seedFact(familyId, { factKey: 'bedtime_routine', confidence: 0.95 });
     const loser = await seedFact(familyId, { factKey: 'bedtime-routine', confidence: 0.8 });
 
     const result = await runFamilySynthesis(db.database, familyId, NOW, true);
 
-    // The far-side artifact, not a query of our own: the checkpoint a parent already
-    // answered still suppresses its nudge. A close here would make Hale re-nag.
-    expect(await loadSuppressedCheckpointRefs(db.database, familyId)).toEqual(
-      new Set(['18mo-visit']),
+    // Historical control-plane receipts stay live. A close here would un-suppress them.
+    const receipt = (await db.database.select().from(schema.familyMemoryFacts)).filter(
+      (row) => row.factKey === 'health_checkpoint:18mo-visit' && row.validUntil === null,
     );
+    expect(receipt).toHaveLength(1);
     expect(result.controlPlaneExcluded).toBe(1);
     // The positive control: the pass DID act this run, so the survival above is a
     // decision rather than an idle night.

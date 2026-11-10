@@ -1,5 +1,4 @@
 import type { Database } from '@hale/db';
-import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 
 /**
  * VIL-294 · THE INBOUND HALF OF THE RECONCILIATION PRIMITIVE — what did the PARENT state?
@@ -282,25 +281,11 @@ export type StatedStateOutcome =
  * message name its own key would be a reader any sentence could aim at any reminder.
  */
 export async function recordStatedState(
-  database: Database,
-  input: { familyId: string; parentUserId: string; body: string; now: Date },
-  deps: HealthReplyDeps,
+  _database: Database,
+  _input: { familyId: string; parentUserId: string; body: string; now: Date },
+  _deps?: unknown,
 ): Promise<StatedStateOutcome> {
-  const state = readStatedState(input.body);
-  if (state === null) return { status: 'nothing_stated' };
-
-  const outcome = await handleHealthCheckpointReply(
-    database,
-    {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      body: input.body,
-      now: input.now,
-      resolved: 'done',
-    },
-    deps,
-  );
-  return outcome.status === 'recorded_done'
-    ? { status: 'recorded', state, ref: outcome.ref }
-    : { status: 'not_recorded', state, reason: 'no_open_checkpoint' };
+  // Hale sends no health checkpoint reminder and records no health-visit stated
+  // state (Barton, 2026-10-12). The reader above is unused on the write path.
+  return { status: 'nothing_stated' };
 }

@@ -18,7 +18,7 @@ import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { priceBandLabel } from '~/lib/format/labels';
-import type { HealthChild } from '~/lib/health/match';
+import type { HealthChild } from '~/lib/channel/child-roster';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import {
   type HouseholdFindBias,
