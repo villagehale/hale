@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgtSgRqGUf24YsVyBmGfL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "That one's on me, I sent it. You have two swims this week, Mon 4:30 at West pool and Thu 5:15 at East pool. Which one was it, and what day should the email have said?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1306,
+      "cache_read_input_tokens": 23462,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1306,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 358,
+      "output_tokens_details": {
+        "thinking_tokens": 296
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3477
+}
