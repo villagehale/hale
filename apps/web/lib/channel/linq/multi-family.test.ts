@@ -36,7 +36,7 @@ describe('shared group path has no keyword list', () => {
     expect(typeof multiFamily.takeMultiFamilyTurn).toBe('function');
     expect(typeof createSharedGroupReader).toBe('function');
     expect(SHARED_GROUP_INTENTS).toEqual(
-      expect.arrayContaining(['stop_me', 'chatter', 'question', 'who_i_am']),
+      expect.arrayContaining(['stop_me', 'withdraw_calendar', 'chatter', 'question', 'who_i_am']),
     );
     expect(parseSharedGroupReading('anything they typed').intent).toBe('unclear');
     expect(

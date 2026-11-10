@@ -226,6 +226,7 @@ export const AUDIT_VERBS = [
   'linq_multi_family_left',
   'linq_multi_family_unseated',
   'linq_multi_family_member_stopped',
+  'linq_multi_family_calendar_withdrawn',
   'linq_multi_family_refused',
   'linq_multi_family_reply_sent',
   'linq_multi_family_common_time_proposed',
@@ -993,6 +994,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_multi_family_member_stopped: {
     sentence: 'Someone asked Hale to leave them out of the shared thread',
+    family: 'note',
+  },
+  linq_multi_family_calendar_withdrawn: {
+    sentence:
+      'A parent asked Hale to stop using their calendar busy times in a shared thread, and to keep writing there',
     family: 'note',
   },
   linq_multi_family_refused: {

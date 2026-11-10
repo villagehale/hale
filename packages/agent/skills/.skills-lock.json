@@ -569,6 +569,10 @@
     "file": "said-line.md",
     "sha256": "2cc922ae1a7db57f1f1c0e7b4de8fbfdc9103d49a9a98c384f03c6b66e6f6570"
   },
+  "shared-group-reading-common-time.md": {
+    "file": "shared-group-reading-common-time.md",
+    "sha256": "045c723248fefb6bd0f549f0db6ef852d7365409e3cac499c0b19ecd39ae0079"
+  },
   "shared-group-reading.md": {
     "file": "shared-group-reading.md",
     "sha256": "0d710370b2c517fbad3ef0945c17ccc4446f49971a5b15ed7b25e764accfcf4f"
