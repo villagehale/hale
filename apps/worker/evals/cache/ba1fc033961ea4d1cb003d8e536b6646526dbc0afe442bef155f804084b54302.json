@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't push. Without a place I can't point you to things nearby, but I can still help with the rest. What are your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1649
+}

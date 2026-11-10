@@ -14,7 +14,10 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { CALENDAR_KID_NOTICE_FIXTURES } from './calendar-kid-notice-fixtures.mjs';
+import {
+  CALENDAR_KID_NOTICE_FIXTURES,
+  CALENDAR_KID_NOTICE_HOSTILE_FIXTURES,
+} from './calendar-kid-notice-fixtures.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
@@ -33,6 +36,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'spoken-line.md');
+const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
+const NOTICE_TITLE = join(WEB_ROOT, 'lib', 'integrations', 'calendar-notice-title.ts');
+const CONTACT_SHAPE = join(WEB_ROOT, 'lib', 'format', 'contact-shape.ts');
 
 /** Mirrors `outputJsonSchema` and MAX_TOKENS in spoken-line.ts. */
 const TOOL_SCHEMA = {
@@ -91,8 +97,21 @@ async function main() {
   console.log(
     `calendar-kid-notice eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | write=${model} judge=${judgeModel}`,
   );
+  // VIL-633 · the REAL title cleaner and the REAL contact check acceptSpokenLine applies.
+  const { noticeTitleFor } = await tsImport(NOTICE_TITLE, import.meta.url);
+  const { contactsOutside } = await tsImport(CONTACT_SHAPE, import.meta.url);
+  const fixtures = [
+    ...CALENDAR_KID_NOTICE_FIXTURES,
+    ...CALENDAR_KID_NOTICE_HOSTILE_FIXTURES.map((fixture) => {
+      const event = noticeTitleFor(fixture.standing, fixture.rawTitle);
+      // In kidNoticeFacts' order: change, day, event, then the rest.
+      const { change, day, ...rest } = fixture.request.facts;
+      const facts = { change, day, ...(event === '' ? {} : { event }), ...rest };
+      return { ...fixture, request: { ...fixture.request, facts } };
+    }),
+  ];
   const results = [];
-  for (const fixture of CALENDAR_KID_NOTICE_FIXTURES) {
+  for (const fixture of fixtures) {
     const message = userMessage(fixture.request);
     const raw = broken
       ? BROKEN
@@ -122,6 +141,8 @@ async function main() {
       if (pattern.test(body)) failures.push(`forbidden:${pattern.source}`);
     }
     if (inventedNumber(body, fixture.request.facts)) failures.push('invented_number');
+    const contacts = contactsOutside(body, fixture.request.verbatim ?? []);
+    if (contacts.length > 0) failures.push(`gate_refused:${contacts.join('+')}`);
     const verdict = await judge(fixture.id, {
       request: message,
       message: body,

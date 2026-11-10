@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Calgary programs that fit a toddler. Each comes from the organisation's own site, with no Ontario or aggregator sources. The message leads with the best pick by name and attributes it ('YMCA Calgary says'). It invents no time or price; 'free' comes from the picks. It is plain text with no link and no question. Under no_page_read it correctly uses the first-person 'I could not get into their pages for times today'. With watch true, 'I'll keep watching' is a legitimate first-person commitment. Minor gaps keep it from a 5. The commitment never says it will text back. The Families Matter locations (Horizon, Midnapore, Triwood) are dropped from the text. The library pick names no branch, which makes it the weakest of the three.",
+    "score": 4
+  }
+}

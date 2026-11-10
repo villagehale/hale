@@ -526,6 +526,9 @@ async function coachLane(fixture, client, modules) {
         },
       },
       client: () => client,
+      // This eval scores what the coach's tools do, not the find-reply judge; the
+      // pass-through sends the draft and names that it went unjudged (rule #11).
+      judgeFindReply: coach.findJudge.findReplyNotJudged,
       runAgent: (args) => coach.agent.runAgent({ ...args, tools: args.tools.map(observeGate) }),
       recordRun: async () => {},
       now: () => now,
@@ -676,6 +679,7 @@ async function main() {
     pglite: await importWeb('lib/testing/pglite.ts'),
     coach: {
       runtime: await importWeb('lib/channel/coach/runtime.ts'),
+      findJudge: await importWeb('lib/channel/coach/find-reasoning-judge.ts'),
       tools: await importWeb('lib/channel/coach/tools.ts'),
       draft: await importWeb('lib/channel/coach/draft.ts'),
       readEmail: await importWeb('lib/channel/coach/read-email-tool.ts'),

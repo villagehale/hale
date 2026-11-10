@@ -39,25 +39,33 @@ export function groupGmailReceipt(
   return speak({ purpose: 'group_gmail_receipt', language, facts: { name } });
 }
 
+/** The facts, without an event the group may not hear named (VIL-651). */
+export function kidEventFacts<T extends { event: string | null }>(
+  input: T,
+): Omit<T, 'event'> & { event?: string } {
+  const { event, ...rest } = input;
+  return event === null ? rest : { ...rest, event };
+}
+
 export function groupKidEventText(
   language: ReplyLanguage | null,
-  input: { name: string; kid: string; event: string; day: string; time: string },
+  input: { name: string; kid: string; event: string | null; day: string; time: string },
 ): Promise<string | null> {
-  return speak({ purpose: 'group_kid_event', language, facts: input });
+  return speak({ purpose: 'group_kid_event', language, facts: kidEventFacts(input) });
 }
 
 export function groupConflictText(
   language: ReplyLanguage | null,
-  input: { kid: string; event: string; day: string; time: string },
+  input: { kid: string; event: string | null; day: string; time: string },
 ): Promise<string | null> {
-  return speak({ purpose: 'group_conflict', language, facts: input });
+  return speak({ purpose: 'group_conflict', language, facts: kidEventFacts(input) });
 }
 
 export function groupHandoffText(
   language: ReplyLanguage | null,
-  input: { name: string; kid: string; event: string; time: string },
+  input: { name: string; kid: string; event: string | null; time: string },
 ): Promise<string | null> {
-  return speak({ purpose: 'group_handoff', language, facts: input });
+  return speak({ purpose: 'group_handoff', language, facts: kidEventFacts(input) });
 }
 
 /** `{name}, ` then the locked how-it-went line, with the next letter lowercased. */

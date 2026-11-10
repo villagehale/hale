@@ -94,6 +94,8 @@ async function main() {
   installEvalSpendCap();
   const { freeBusyOnly } = await importTs(join(LINQ, 'household-calendar.ts'));
   const { findCommonTimes, commonTimeFacts } = await importTs(join(LINQ, 'common-time.ts'));
+  // VIL-633 · the REAL contact check acceptSpokenLine applies before anything is sent.
+  const { contactsOutside } = await importTs(join(WEB_ROOT, 'lib', 'format', 'contact-shape.ts'));
   const agent = await importTs(AGENT_SRC);
   const skill = await loadSkill();
   const lane = agent.pickLane(skill.task);
@@ -140,6 +142,14 @@ async function main() {
     if (!text) {
       failed += 1;
       console.info(`FAIL  ${fixture.id}  empty line (nothing would be sent)`);
+      continue;
+    }
+    const contacts = broken ? [] : contactsOutside(text, []);
+    if (contacts.length > 0) {
+      failed += 1;
+      console.info(
+        `FAIL  ${fixture.id}  gate_refused:${contacts.join('+')} ${JSON.stringify(text)}`,
+      );
       continue;
     }
     const verdict = await judge(fixture.id, {

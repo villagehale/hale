@@ -287,7 +287,23 @@ export async function waitForRun(
   runId: string,
   tracker: BrowserTracker = { browserId: null },
 ): Promise<RunWait> {
-  const deadline = deps.now().getTime() + RUN_DEADLINE_MS;
+  const waited = await waitForRunUntil(
+    deps,
+    runId,
+    deps.now().getTime() + RUN_DEADLINE_MS,
+    tracker,
+  );
+  if (waited.kind === 'timeout') await deps.api.cancelRun(runId).catch(() => undefined);
+  return waited;
+}
+
+/** Polls until the run ends or `deadline` (epoch ms) passes. Leaves a run still going running. */
+export async function waitForRunUntil(
+  deps: BrowserUseEngineDeps,
+  runId: string,
+  deadline: number,
+  tracker: BrowserTracker = { browserId: null },
+): Promise<RunWait> {
   let cursor = 0;
   let live: string | null = null;
   for (;;) {
@@ -316,10 +332,7 @@ export async function waitForRun(
     if (TERMINAL_RUN_STATUSES.includes(status)) {
       return { kind: 'terminal', status, liveViewUrl: live };
     }
-    if (deps.now().getTime() >= deadline) {
-      await deps.api.cancelRun(runId).catch(() => undefined);
-      return { kind: 'timeout', liveViewUrl: live };
-    }
+    if (deps.now().getTime() >= deadline) return { kind: 'timeout', liveViewUrl: live };
     await deps.sleep(POLL_INTERVAL_MS);
   }
 }

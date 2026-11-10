@@ -1,0 +1,26 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent & Tot to Swimmer 3 lessons, Acton Lion's Indoor Pool",
+        "age_fit": "Parent & Tot 1/2/3 is for 4 months to 3 years, with a parent",
+        "when": "Acton fall schedule, Saturday October 3 to Thursday December 3, 2026 (the page gives no day or time for the Parent & Tot class)",
+        "price": "$86.22 for 9 lessons (30 minute lesson)",
+        "source_name": "Town of Halton Hills"
+      },
+      {
+        "name": "Drop-in Family Swim Lessons, Parent & Tot 123, Gellert Community Centre",
+        "age_fit": "Beginner swimmers from 4 months to 5 years, parent in the water, 1 adult per child (from the winter 2026 schedule)",
+        "when": "Tuesdays or Thursdays from 10:00 a.m.; the program runs September 22 to December 29, 2026",
+        "source_name": "Town of Halton Hills"
+      },
+      {
+        "name": "Parent and Tot, Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3.11 yrs, with parent participation, 30 min class",
+        "when": "Fall 2026 session, 13 weeks, September 12 to December 18; registration opened July 20 (no day or time on the page)",
+        "source_name": "Halton Hills Gymnastics Centre"
+      }
+    ]
+  },
+  "latencyMs": 13863
+}

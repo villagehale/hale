@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states a price of $120 that the facts never give, since price is null. That is an invented number, which caps the score at 2. Every course detail is null, so the message should say they could not be read, and it doesn't. 'That class' implies a known course. The date, time and prerequisite warning are correct, and the message carries no link and asks no question.",
+    "score": 1
+  }
+}

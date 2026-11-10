@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   asHandsetReads,
+  foreignLinks,
   hasLinkBeyond,
   hasLinkShape,
   linkHostname,
@@ -9,58 +10,60 @@ import {
   wordSpans,
 } from './link-shape';
 
+const EVASIONS: readonly (readonly [string, string])[] = [
+  ['a scheme', 'see https://example.test/x'],
+  ['another scheme', 'see ftp://example.test/x'],
+  ['www', 'see www.example'],
+  ['a bare short link', 'see bit.ly/x'],
+  ['a bare host', 'see evil.app'],
+  ['an upper-case host', 'see EVIL.IO'],
+  ['a mixed-case host', 'visit Example.Org now'],
+  ['a capitalised host with a path', 'see Bit.Ly/x'],
+  ['an email address', 'write to someone@example.test'],
+  ['punycode', 'see xn--80ak6aa92e'],
+  ['full-width dots and letters', 'see ｅｖｉｌ．ａｐｐ'],
+  ['a full-width scheme', 'see ＨＴＴＰＳ：／／ＥＸＡＭＰＬＥ．ＯＲＧ'],
+  ['a halfwidth ideographic full stop', 'see evil｡app/x'],
+  ['an ideographic full stop', 'see evil。app/x'],
+  ['a small full stop', 'see evil﹒app/x'],
+  ['a dotted-quad host', 'see 203.0.113.9/x'],
+  ['a non-Latin ending', 'see evil.рф'],
+  ['a non-Latin host', 'see пример.испытание'],
+  ['a Latin name with a Han ending', 'see example.中国'],
+  ['a bracketed dot', 'see evil[.]app'],
+  ['a parenthesised dot', 'see evil(.)app'],
+  ['a spaced dot', 'see bit . ly/x'],
+  ['a zero-width joiner inside the host', 'see ev‍il.app'],
+  ['a zero-width space before the dot', 'see bit​.ly/x'],
+  ['a zero-width space after the dot', 'see bit.​ly/x'],
+  ['a two-letter pair before a host', 'see EE.UU.com'],
+  ['a capitalised second label', 'see mail.Google.Com'],
+  ['a title-case ending', 'evil.Com'],
+  ['a title-case name and ending', 'Abc.Com'],
+  ['a capitalised short link with no path', 'Bit.Ly'],
+  ['a short capitalised name', 'Go.Com'],
+  ['a title-case app ending', 'visit evil.App'],
+  ['a title-case ending mid-sentence', 'see evil.Com now'],
+  ['a title-case ending after a crisis line', 'Call 988 or see crisis.Org'],
+  ['a capitalised short link after a verb', 'visit Bit.Ly'],
+  ['a title-case ending ending a sentence', 'see evil.App.'],
+  ['a title-case ending after an ideographic full stop', 'see evil。App'],
+  ['a glued sentence (fails closed)', 'Look at the page.Check it tonight.'],
+  ['a saint, unspaced (fails closed)', 'The St.Mary pool is open.'],
+  ['an honorific, unspaced (fails closed)', 'Ask Mr.Smith at the desk.'],
+  ['an Arabic host', 'مثال.مصر'],
+  ['a Hebrew host', 'דוגמה.ישראל'],
+  ['a digit name with an Arabic ending', '123.مصر'],
+  ['an ASCII dot between Chinese runs', '你好.我们明天见'],
+  ['an ASCII dot after digits in Chinese (fails closed)', '请拨打988.你并不孤单。'],
+  ['a Han name with a Latin ending', '例子。com'],
+  ['an ideographic full stop with a path after it', '你好。我们/x'],
+  ['a Latin and digit name before an ideographic full stop', 'see evil1。中国'],
+  ['a Latin name before an ideographic full stop (fails closed)', '我是Hale。你住在哪里'],
+];
+
 describe('hasLinkShape: the evasion table', () => {
-  it.each([
-    ['a scheme', 'see https://example.test/x'],
-    ['another scheme', 'see ftp://example.test/x'],
-    ['www', 'see www.example'],
-    ['a bare short link', 'see bit.ly/x'],
-    ['a bare host', 'see evil.app'],
-    ['an upper-case host', 'see EVIL.IO'],
-    ['a mixed-case host', 'visit Example.Org now'],
-    ['a capitalised host with a path', 'see Bit.Ly/x'],
-    ['an email address', 'write to someone@example.test'],
-    ['punycode', 'see xn--80ak6aa92e'],
-    ['full-width dots and letters', 'see ｅｖｉｌ．ａｐｐ'],
-    ['a full-width scheme', 'see ＨＴＴＰＳ：／／ＥＸＡＭＰＬＥ．ＯＲＧ'],
-    ['a halfwidth ideographic full stop', 'see evil｡app/x'],
-    ['an ideographic full stop', 'see evil。app/x'],
-    ['a small full stop', 'see evil﹒app/x'],
-    ['a dotted-quad host', 'see 203.0.113.9/x'],
-    ['a non-Latin ending', 'see evil.рф'],
-    ['a non-Latin host', 'see пример.испытание'],
-    ['a Latin name with a Han ending', 'see example.中国'],
-    ['a bracketed dot', 'see evil[.]app'],
-    ['a parenthesised dot', 'see evil(.)app'],
-    ['a spaced dot', 'see bit . ly/x'],
-    ['a zero-width joiner inside the host', 'see ev‍il.app'],
-    ['a zero-width space before the dot', 'see bit​.ly/x'],
-    ['a zero-width space after the dot', 'see bit.​ly/x'],
-    ['a two-letter pair before a host', 'see EE.UU.com'],
-    ['a capitalised second label', 'see mail.Google.Com'],
-    ['a title-case ending', 'evil.Com'],
-    ['a title-case name and ending', 'Abc.Com'],
-    ['a capitalised short link with no path', 'Bit.Ly'],
-    ['a short capitalised name', 'Go.Com'],
-    ['a title-case app ending', 'visit evil.App'],
-    ['a title-case ending mid-sentence', 'see evil.Com now'],
-    ['a title-case ending after a crisis line', 'Call 988 or see crisis.Org'],
-    ['a capitalised short link after a verb', 'visit Bit.Ly'],
-    ['a title-case ending ending a sentence', 'see evil.App.'],
-    ['a title-case ending after an ideographic full stop', 'see evil。App'],
-    ['a glued sentence (fails closed)', 'Look at the page.Check it tonight.'],
-    ['a saint, unspaced (fails closed)', 'The St.Mary pool is open.'],
-    ['an honorific, unspaced (fails closed)', 'Ask Mr.Smith at the desk.'],
-    ['an Arabic host', 'مثال.مصر'],
-    ['a Hebrew host', 'דוגמה.ישראל'],
-    ['a digit name with an Arabic ending', '123.مصر'],
-    ['an ASCII dot between Chinese runs', '你好.我们明天见'],
-    ['an ASCII dot after digits in Chinese (fails closed)', '请拨打988.你并不孤单。'],
-    ['a Han name with a Latin ending', '例子。com'],
-    ['an ideographic full stop with a path after it', '你好。我们/x'],
-    ['a Latin and digit name before an ideographic full stop', 'see evil1。中国'],
-    ['a Latin name before an ideographic full stop (fails closed)', '我是Hale。你住在哪里'],
-  ])('refuses %s', (_label, text) => {
+  it.each(EVASIONS)('refuses %s', (_label, text) => {
     expect(hasLinkShape(text)).toBe(true);
   });
 
@@ -81,14 +84,19 @@ describe('hasLinkShape: the evasion table', () => {
   });
 });
 
-describe('hasLinkBeyond: only the handed link, exactly', () => {
+describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => {
   const LINK = 'https://app.example.test/approve/abc123';
 
   it('passes the handed link, mid-sentence or ending one', () => {
-    expect(hasLinkBeyond(`Tap ${LINK} to say yes.`, [LINK])).toBe(false);
-    expect(hasLinkBeyond(`Tap here: ${LINK}.`, [LINK])).toBe(false);
-    expect(hasLinkBeyond(`Tap here (${LINK}).`, [LINK])).toBe(false);
-    expect(hasLinkBeyond(`点这里:${LINK}这个窗口`, [LINK])).toBe(false);
+    for (const text of [
+      `Tap ${LINK} to say yes.`,
+      `Tap here: ${LINK}.`,
+      `Tap here (${LINK}).`,
+      `点这里:${LINK}这个窗口`,
+    ]) {
+      expect(hasLinkBeyond(text, [LINK])).toBe(false);
+      expect(foreignLinks(text, { handed: [LINK], email: null, words: [] })).toEqual([]);
+    }
   });
 
   it.each([
@@ -101,6 +109,7 @@ describe('hasLinkBeyond: only the handed link, exactly', () => {
   ])('refuses %s', (label, text) => {
     const handed = label.startsWith('any link') ? [] : [LINK];
     expect(hasLinkBeyond(text, handed)).toBe(true);
+    expect(foreignLinks(text, { handed, email: null, words: [] })).not.toEqual([]);
   });
 });
 
@@ -123,6 +132,16 @@ describe('linksOutside: an allowed word counts only whole', () => {
       ['villagehale.com'],
     ],
     ['a spaced-dot host', 'See bit . ly/x', []],
+    [
+      'a trusted host with a glued path past a linkifier stop',
+      'See villagehale.com/<evil.app>',
+      ['villagehale.com'],
+    ],
+    [
+      'a trusted host with a quote then another host',
+      'See villagehale.com/"evil.app"',
+      ['villagehale.com'],
+    ],
   ])('refuses %s', (_label, text, allowed) => {
     expect(linksOutside(text, allowed)).not.toEqual([]);
   });
@@ -159,6 +178,19 @@ describe('wordSpans: the shared word reading, with where each word sits', () => 
     expect(spans.map((span) => span.word)).toEqual(['See', 'evil.example', 'then', '9:00']);
     for (const span of spans) expect(read.slice(span.from, span.to)).toBe(span.word);
   });
+
+  it('splits at a phone linkifier stop, so a glued host is its own word', () => {
+    const read = 'See villagehale.com/<evil.app> or villagehale.com/"evil.app" now.';
+    expect(wordSpans(read).map((span) => span.word)).toEqual([
+      'See',
+      'villagehale.com/',
+      'evil.app',
+      'or',
+      'villagehale.com/',
+      'evil.app',
+      'now',
+    ]);
+  });
 });
 
 describe('withoutLinks', () => {
@@ -177,5 +209,90 @@ describe('withoutLinks', () => {
     expect(withoutLinks('Swim Level 2, St. Mary pool, 10.30am')).toBe(
       'Swim Level 2, St. Mary pool, 10.30am',
     );
+  });
+});
+
+describe("foreignLinks: words from Hale's own records are not links", () => {
+  const LINK = 'https://register.example.test/activity/42';
+  const FAMILY = { handed: [LINK], email: 'sam@example.test', words: ['Sam', 'Ana', 'Lena'] };
+
+  it.each(EVASIONS)('still refuses %s, and names it', (_label, text) => {
+    expect(foreignLinks(text, FAMILY)).not.toEqual([]);
+  });
+
+  it("passes the parent's email from the facts, and the same shape from anywhere else is a link", () => {
+    const draft = `Sign up here: ${LINK}. Have ready: parent email sam@example.test.`;
+    expect(foreignLinks(draft, FAMILY)).toEqual([]);
+    expect(foreignLinks(draft, { handed: [LINK], email: null, words: [] })).toEqual([
+      'sam@example.test',
+    ]);
+    expect(foreignLinks('家长邮箱:sam@example.test。', FAMILY)).toEqual([]);
+    expect(foreignLinks('write evilsam@example.test', FAMILY)).toEqual(['evilsam@example.test']);
+    expect(foreignLinks('write sam@example.test.evil.app', FAMILY)).toEqual([
+      'sam@example.test.evil.app',
+    ]);
+  });
+
+  it('never trusts a name that is itself link-shaped, nor an email outside its own field', () => {
+    for (const name of ['evil.app', 'Evil.App', 'evil。app', 'bit.ly/x', 'x@evil.test']) {
+      expect(
+        foreignLinks(`Ana and ${name} have not added it yet.`, { ...FAMILY, words: ['Ana', name] }),
+      ).not.toEqual([]);
+    }
+    expect(
+      foreignLinks('Ana and Rosa have not added it yet.', { ...FAMILY, words: ['Ana', 'Rosa'] }),
+    ).toEqual([]);
+    expect(
+      foreignLinks('write sam@example.test', {
+        handed: [],
+        email: null,
+        words: ['sam@example.test'],
+      }),
+    ).toEqual(['sam@example.test']);
+  });
+
+  it('reads a full stop before a trusted name as the end of a Chinese sentence', () => {
+    expect(foreignLinks('已经放到日历上。Ana、Sam,还没有。', FAMILY)).toEqual([]);
+    expect(foreignLinks('没有空位了。Hale不会自动加入候补', FAMILY)).toEqual([]);
+    expect(foreignLinks('Hale这边不会代办。报名页面在这里', FAMILY)).toEqual([]);
+    expect(hasLinkShape('Hale这边不会代办。报名页面在这里')).toBe(true);
+    expect(
+      foreignLinks('已经放到日历上。Ana、Sam,还没有。', { handed: [], email: null, words: [] }),
+    ).not.toEqual([]);
+  });
+
+  it.each([
+    ['an untrusted Latin ending', '例子。app'],
+    ['a Latin name before the stop', 'evil。app'],
+    ['a trusted name before the stop, not after', 'Ana。app'],
+    ['a trusted name followed by a host', '日历上。Ana.app'],
+    ['a trusted name glued to more letters', '日历上。Anax'],
+    ['a trusted name with a path', '日历上。Ana/x'],
+    ['an untrusted Latin word inside the CJK run', 'evil这边不会代办。报名页面'],
+  ])('still refuses %s', (_label, text) => {
+    expect(foreignLinks(text, FAMILY)).not.toEqual([]);
+  });
+
+  it('accepts a trusted word inside the CJK run before the stop, as the pure-CJK form already passes', () => {
+    // Documented acceptance: a CJK label with a CJK run after it, and no '/', is not read
+    // as a host. Stripping Hale's name extends that to '请到Hale报名。在线'; the strip is
+    // what lets "Hale这边不会代办。…" through.
+    expect(hasLinkShape('请到报名。在线')).toBe(false);
+    expect(foreignLinks('请到Hale报名。在线', FAMILY)).toEqual([]);
+    expect(hasLinkShape('请到Hale报名。在线')).toBe(true);
+  });
+
+  it('names exactly the offending words', () => {
+    expect(foreignLinks(`Tap ${LINK} or bit.ly/x, Sam`, FAMILY)).toEqual(['bit.ly/x']);
+  });
+
+  it('names only the host a phone would make inside unspaced CJK writing', () => {
+    expect(foreignLinks('早上7:00 AM。到时候需要你自己去报名,Hale这边不会代办', FAMILY)).toEqual([
+      'AM.到时候需要你自己去报名',
+    ]);
+    expect(foreignLinks('报名页面在这里:evil.app/x,到时候', FAMILY)).toEqual(['evil.app']);
+    expect(foreignLinks('看这里https://evil.test/x好吗', FAMILY)).toEqual([
+      '看这里https://evil.test/x好吗',
+    ]);
   });
 });

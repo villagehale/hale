@@ -96,6 +96,14 @@ function shaped(text: string): ShapedChar[] {
   });
 }
 
+/** `text` as every pattern here reads it ({@link oneShape}), for a caller with its own
+ * pattern over the same reading (format/contact-shape.ts reads phones on it). */
+export function inShape(text: string): string {
+  return shaped(text)
+    .map((c) => c.shape)
+    .join('');
+}
+
 /** Each match of `pattern` on the shape, as the run of typed characters it was read from. */
 function matchedRuns(chars: readonly ShapedChar[], pattern: RegExp): ShapedChar[][] {
   const shape = chars.map((c) => c.shape).join('');

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Swim Basics - Preschool, YMCA of Greater Seattle",
+        "age_fit": "ages 3 to 5",
+        "when": "30-minute group lessons in sessions of six or eight classes; winter dates not found",
+        "source_name": "YMCA of Greater Seattle"
+      },
+      {
+        "name": "Preschool lessons, Ballard Pool (Seattle Parks and Recreation)",
+        "age_fit": "preschool lessons (no age range given on the page)",
+        "when": "Winter 2027 quarter; class days and times not found",
+        "source_name": "Seattle Parks and Recreation"
+      },
+      {
+        "name": "Seattle University Kids Swim Lessons",
+        "age_fit": "ages 3+",
+        "when": "Winter Quarter Jan 11 to Feb 11 (5 weeks), Monday-Thursday 4:30-5:00pm or 5:00-5:30pm",
+        "source_name": "Seattle University Athletics"
+      }
+    ]
+  },
+  "latencyMs": 13808
+}
