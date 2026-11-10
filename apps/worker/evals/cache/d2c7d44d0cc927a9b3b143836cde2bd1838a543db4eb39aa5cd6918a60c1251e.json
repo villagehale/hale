@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the opening moved and gives the new date and time from `opens` (Friday, September 18 at 10:00 a.m.). It names the old date so the parent knows which one to drop, credits the registration page, includes the handed link, uses only the handed names Max and Mia, and is in English. It blames no one and makes no false claims. \"Let me know if you have questions\" is an invitation rather than a question to the parent, so it is not penalized, but it reads slightly formal. The tone is friendly enough, though a little stiff.",
+    "score": 5
+  }
+}
