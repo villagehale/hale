@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message says the 36-hour clock starts once an offer comes in. The facts start the clock at the parent's own message (Tuesday 11:00 a.m.). That is an explicitly failing pattern, and it contradicts the stated deadline. Position, hours and deadline are otherwise correct, and the reminder promise is handed, but the wrong clock start caps the score.",
+    "score": 2
+  }
+}

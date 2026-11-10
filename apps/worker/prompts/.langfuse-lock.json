@@ -327,7 +327,7 @@
   "judges/registration-note": {
     "name": "judges/registration-note",
     "version": null,
-    "sha256": "1123227714bb717398ec038e0ecd8e1b0acf474d692623a6f14e49b0bb6fc719"
+    "sha256": "7b9020ea3a603cd700cf73da934430f24ed5eed8c5f324414d869c7d84469bb2"
   },
   "judges/reminder": {
     "name": "judges/reminder",
@@ -352,7 +352,7 @@
   "judges/signup-plan-reply": {
     "name": "judges/signup-plan-reply",
     "version": null,
-    "sha256": "586fa48cbcace921151bc456fdc6fc3416055aec8672e24d76dd052e3a54594b"
+    "sha256": "974bedbe39392a04aa42f0454a398b1972157839e7211e221a5efd1fbba97b25"
   },
   "judges/spot-open-voice": {
     "name": "judges/spot-open-voice",

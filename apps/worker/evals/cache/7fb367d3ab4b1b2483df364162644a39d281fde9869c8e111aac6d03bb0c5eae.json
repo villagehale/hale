@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits readiness_answer for a yes. It attributes readiness to the parent (\"You told me\") and does not claim to have checked anything. It names the portal, the account and Max correctly, and spelling out the four completed items is just a plain restatement of 'ready'. It asks no question, sounds friendly and is in English. Using \"his\" for Max is a tiny assumption the facts do not make, but it is not a material claim.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fits a readiness_answer for a 'no'. It names the four things (account, each child with a birthday, address, saved card), uses the handed names and portal, says Hale will check in the evening before, and asks nothing now. It adds no unsupported claims and the tone is friendly. Calling it 'a recreation account' rather than 'a Springfield recreation account' is a minor shortening; the portal is already named Springfield's.",
+    "score": 5
+  }
+}
