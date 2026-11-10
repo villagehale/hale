@@ -11,8 +11,8 @@ import {
 } from './every-eval-known-ok.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const EVAL_RUNNERS = readdirSync(join(REPO_ROOT, 'apps', 'worker', 'evals')).filter((name) =>
-  /^run-.*\.mjs$/.test(name),
+const EVAL_RUNNERS = readdirSync(join(REPO_ROOT, 'apps', 'worker', 'evals')).filter(
+  (name) => /^run-.*\.mjs$/.test(name) && !name.endsWith('.test.mjs'),
 );
 
 describe('every-eval known-ok list', () => {
@@ -21,6 +21,10 @@ describe('every-eval known-ok list', () => {
   it('names committed run-*.mjs files only', () => {
     const runners = new Set(EVAL_RUNNERS.map((name) => name.replace(/\.mjs$/, '')));
     expect([...known].every((name) => runners.has(name))).toBe(true);
+  });
+
+  it('does not treat eval unit tests as runners', () => {
+    expect(EVAL_RUNNERS.some((name) => name.includes('.test.'))).toBe(false);
   });
 
   it('ignores comments and blanks', () => {
