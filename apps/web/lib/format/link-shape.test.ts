@@ -62,6 +62,11 @@ const EVASIONS: readonly (readonly [string, string])[] = [
   ['a mixed name with a Han ending', '请到Hale报名。在线'],
   ['a Han ending glued to more letters', 'evil。在线abc'],
   ['a Latin word before a dot and a Han run (fails closed)', '早上7:00 AM.到时候需要你自己去报名'],
+  ['a Katakana ending with a long-vowel mark', 'evil。セール'],
+  ['another Katakana ending with a long-vowel mark', 'evil。グーグル'],
+  ['a Katakana ending with no long-vowel mark', 'evil。ファッション'],
+  ['a Han ending that starts a longer run', 'evil。在线报名'],
+  ['a Han ending that starts a longer run inside a sentence', '请访问evil。在线报名吧'],
 ];
 
 describe('hasLinkShape: the evasion table', () => {
@@ -84,6 +89,8 @@ describe('hasLinkShape: the evasion table', () => {
       'a Latin word before a Chinese full stop',
       '开放:Monday, January 12 at 7:00 AM。到时候需要你自己去报名,',
     ],
+    ['a Latin word before a Chinese full stop, then prose', 'AM。到时候需要你自己去报名'],
+    ['a Japanese full stop before Katakana prose', 'はい。コーヒーを飲みます'],
     ["Hale's name before a Chinese full stop", '我是Hale。你住在哪里'],
     ["Hale's name inside the run before a Chinese full stop", 'Hale这边不会代办。报名页面在这里'],
     ['an Arabic sentence', 'حسناً، لن نراسلك بعد الآن.'],
@@ -93,9 +100,10 @@ describe('hasLinkShape: the evasion table', () => {
   });
 });
 
-describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => {
-  const LINK = 'https://app.example.test/approve/abc123';
-
+describe.each([
+  ['a path link', 'https://app.example.test/approve/abc123'],
+  ['a host-only link', 'https://app.example.test'],
+])('hasLinkBeyond and foreignLinks: only the handed link, exactly, for %s', (_kind, LINK) => {
   it('passes the handed link, mid-sentence or ending one', () => {
     for (const text of [
       `Tap ${LINK} to say yes.`,
@@ -105,7 +113,11 @@ describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => 
       `报名页面在这里:${LINK}(场次:周六上午9:30)。`,
       `报名页面在这里:${LINK}（场次）`,
       `报名页面在这里:${LINK}。到时候`,
+      `报名页面在这里:${LINK}（场次`,
+      `报名页面在这里(${LINK}）。`,
       `[${LINK}]`,
+      `Tap ${LINK}!`,
+      `"${LINK}", then reply`,
     ]) {
       expect(hasLinkBeyond(text, [LINK])).toBe(false);
       expect(foreignLinks(text, { handed: [LINK], email: null, words: [] })).toEqual([]);
@@ -120,6 +132,13 @@ describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => 
     ['the handed link with a port', `Tap ${LINK}:8080 now`],
     ['the handed link with a query', `Tap ${LINK}?next=x now`],
     ['the handed link, a bracket, then a host', `Tap ${LINK}(evil.app)`],
+    ['the handed link, a bang, then a user-info host', `Tap ${LINK}!@evil now`],
+    ['the handed link, a quote, then a user-info host', `Tap ${LINK}'@evil now`],
+    ['the handed link, a comma, then more host', `Tap ${LINK},evil now`],
+    ['the handed link, a backslash, then a user-info host', `Tap ${LINK}\\@evil.app now`],
+    ['the handed link as a single-label user name', `Tap ${LINK}@evil now`],
+    ['the handed link, an escaped slash, then a user-info host', `Tap ${LINK}%2F@evil.app now`],
+    ['the handed link with a dotted host glued on', `Tap ${LINK}.evil.tld now`],
     ['another scheme link', `Tap ${LINK} or https://evil.test/x`],
     ['a scheme-less domain beside it', `Tap ${LINK} or bit.ly/x`],
     ['any link when none was handed', `Tap ${LINK}`],
