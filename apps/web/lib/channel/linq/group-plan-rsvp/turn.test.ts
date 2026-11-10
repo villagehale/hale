@@ -481,4 +481,133 @@ describe('takeGroupPlanRsvpTurn', () => {
     expect(plan.rsvps.size).toBe(2);
     expect(plan.rsvps.get(legacyKey)?.response).toBe('no');
   });
+
+  it('starts a plan on the sender household when the chat has no covering family', async () => {
+    const world = createMemoryWorld();
+    world.seats.set(CHAT, [
+      {
+        memberKey: memberKeyFromHandle(PRIYA) as string,
+        displayName: 'Priya',
+        userId: 'u-priya',
+        haleCustomer: true,
+      },
+    ]);
+    const store = createMemoryGroupPlanRsvpStore(world);
+    const texts: string[] = [];
+    const outcome = await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'Hale, track who is coming to the pumpkin walk',
+        tapback: null,
+        language: 'en',
+        now: NOW,
+      },
+      {
+        store,
+        households: {
+          resolve: async () => ({ status: 'one', familyId: 'fam-priya' }),
+        },
+        reader: readerOf({
+          intent: 'start_tracking',
+          planTitle: 'pumpkin walk',
+          startsAt: '2026-11-07T14:00:00.000Z',
+          location: 'Riverdale Farm',
+          deadline: null,
+          response: null,
+          headcount: 1,
+          householdLabel: null,
+          coversNames: [],
+          confidence: 'high',
+        }),
+        composer: fakeGroupPlanRsvpComposer(),
+        send: async ({ text }) => {
+          texts.push(text);
+          return { providerMessageId: `msg-${texts.length}` };
+        },
+        enabled: () => true,
+      },
+    );
+    expect(outcome).toMatchObject({ handled: true, outcome: 'group_plan_spoken' });
+    expect([...world.plans.values()].map((plan) => plan.familyId)).toEqual(['fam-priya']);
+    expect(texts).toHaveLength(1);
+  });
+
+  it('does not start a plan when the sender sits in two households', async () => {
+    const world = createMemoryWorld();
+    const store = createMemoryGroupPlanRsvpStore(world);
+    const outcome = await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'Hale, track the picnic',
+        tapback: null,
+        language: 'en',
+        now: NOW,
+      },
+      {
+        store,
+        households: { resolve: async () => ({ status: 'ambiguous' }) },
+        reader: readerOf({
+          intent: 'start_tracking',
+          planTitle: 'picnic',
+          startsAt: null,
+          location: null,
+          deadline: null,
+          response: null,
+          headcount: 1,
+          householdLabel: null,
+          coversNames: [],
+          confidence: 'high',
+        }),
+        composer: fakeGroupPlanRsvpComposer(),
+        send: async () => ({ providerMessageId: 'x' }),
+        enabled: () => true,
+      },
+    );
+    expect(outcome).toEqual({ handled: false });
+    expect(world.plans.size).toBe(0);
+  });
+
+  it('does not start a plan when there is no covering family and no resolved household', async () => {
+    const world = createMemoryWorld();
+    const store = createMemoryGroupPlanRsvpStore(world);
+    const outcome = await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'Hale, track the picnic',
+        tapback: null,
+        language: 'en',
+        now: NOW,
+      },
+      {
+        store,
+        households: { resolve: async () => ({ status: 'none' }) },
+        reader: readerOf({
+          intent: 'start_tracking',
+          planTitle: 'picnic',
+          startsAt: null,
+          location: null,
+          deadline: null,
+          response: null,
+          headcount: 1,
+          householdLabel: null,
+          coversNames: [],
+          confidence: 'high',
+        }),
+        composer: fakeGroupPlanRsvpComposer(),
+        send: async () => ({ providerMessageId: 'x' }),
+        enabled: () => true,
+      },
+    );
+    expect(outcome).toEqual({ handled: false });
+    expect(world.plans.size).toBe(0);
+  });
 });
