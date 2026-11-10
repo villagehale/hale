@@ -10,7 +10,7 @@ import {
   familyOutboundTarget,
 } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
-import { splitKidEvent, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
+import { splitKidEvent, spokenBlockTitle, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -566,14 +566,26 @@ async function buildOccasions(
       status: schema.parentCalendarBlocks.status,
       kidRelated: schema.parentCalendarBlocks.kidRelated,
       familyId: schema.parentCalendarBlocks.familyId,
+      standing: schema.parentCalendarBlocks.calendarStanding,
+      childName: schema.children.name,
     })
     .from(schema.parentCalendarBlocks)
+    .leftJoin(schema.children, eq(schema.children.id, schema.parentCalendarBlocks.childId))
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
+  // VIL-651: an unanswered invite is not asked about, a row stored against a teen is left
+  // out, and only the parent's own or organized event lends its title to the group.
   const kidBlocks = withoutTeenTitles(
-    blocks.filter((row) => row.familyId === familyId),
+    blocks.filter(
+      (row) =>
+        row.familyId === familyId &&
+        row.standing !== 'invited' &&
+        !(row.childName !== null && home.teenNames.includes(row.childName)),
+    ),
     home.childNames,
     home.teenNames,
-  ).filter((row) => row.kidRelated);
+  )
+    .filter((row) => row.kidRelated)
+    .map((row) => ({ ...row, title: spokenBlockTitle(row.standing, row.title) }));
   const byEvent = new Map<string, typeof kidBlocks>();
   for (const block of kidBlocks) {
     const list = byEvent.get(block.eventId) ?? [];
