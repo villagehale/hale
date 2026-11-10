@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, migrationFiles, seedFamily } from '~/lib/testing/pglite';
 
-const MIGRATION = '0225_email_alert_holds.sql';
+const MIGRATION = '0228_email_alert_holds.sql';
 
 let db: TestDb;
 
