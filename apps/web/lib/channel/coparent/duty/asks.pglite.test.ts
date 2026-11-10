@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { schema } from '@hale/db';
+import { type CalendarStanding, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -93,9 +93,11 @@ async function kidBlock(input: {
   familyId: string;
   userId: string;
   eventId: string;
-  title: string;
+  title: string | null;
   start: Date;
   status?: string;
+  standing?: CalendarStanding | null;
+  childId?: string;
 }): Promise<void> {
   const [existing] = await db.database
     .select({ id: schema.integrations.id })
@@ -119,6 +121,8 @@ async function kidBlock(input: {
     endAt: new Date(input.start.getTime() + 60 * 60 * 1000),
     kidRelated: true,
     title: input.title,
+    calendarStanding: input.standing === undefined ? 'organizer' : input.standing,
+    childId: input.childId ?? null,
     status: input.status ?? 'confirmed',
     updatedStamp: '1',
   });
@@ -252,6 +256,78 @@ describe('duty ask sweep', () => {
     expect(text).toContain('Maya');
     expect(text).not.toContain('Noor');
     expect(text).not.toMatch(/hockey/i);
+  });
+
+  it("never speaks someone else's invite title, and asks nothing about an unanswered one (VIL-651)", async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    const family = await seedDutyFamily('Stranger invite');
+    await secondParent(family.familyId, 'Alex');
+    await claimGroup(family.familyId, 'chat-stranger');
+    await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_AFTERNOON);
+    const teen = await seedChild(
+      db.database,
+      family.familyId,
+      'Noor',
+      14 * 12,
+      undefined,
+      SUNDAY_AFTERNOON,
+    );
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-teen',
+      title: null,
+      start: MONDAY,
+      standing: 'accepted',
+      childId: teen,
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-accepted',
+      title: 'Maya pickup, Ms. Vale collects at the north gate',
+      start: MONDAY,
+      standing: 'accepted',
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-legacy',
+      title: 'Maya swim, ask for the side door code',
+      start: TUESDAY,
+      standing: null,
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-invited',
+      title: 'Maya dance trial',
+      start: TUESDAY,
+      standing: 'invited',
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-own',
+      title: 'Maya soccer',
+      start: TUESDAY,
+    });
+    const view = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: SUNDAY_AFTERNOON,
+      bubbleLeaving: true,
+    });
+    if (!('plan' in view)) throw new Error('expected a duty plan');
+    const labels = new Map(view.render.occasions.map((row) => [row.eventKey, row.eventLabel]));
+    expect(Object.fromEntries(labels)).toEqual({
+      'evt-accepted': null,
+      'evt-legacy': null,
+      'evt-own': 'soccer',
+    });
+    const text = (renderDutyLines(view.plan.foldLines, view.render)?.facts ?? []).join(' ');
+    for (const words of ['north gate', 'Vale', 'door code', 'dance']) {
+      expect(text).not.toContain(words);
+    }
   });
 
   it('asks when both parents claim and does not pick a winner', async () => {

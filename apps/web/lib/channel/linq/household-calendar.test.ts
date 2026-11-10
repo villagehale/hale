@@ -46,6 +46,9 @@ function block(over: Partial<BusyBlock> & Pick<BusyBlock, 'eventId' | 'userId'>)
     allDay: false,
     kidRelated: false,
     title: null,
+    kid: null,
+    standing: 'organizer',
+    teen: false,
     status: 'confirmed',
     announced: false,
     followupSent: false,
@@ -618,5 +621,70 @@ describe('planAmbiguousWhoTakes', () => {
     );
     expect(ask?.text).not.toContain('busy');
     expect(ask?.text).not.toContain("Who's taking it?");
+  });
+
+  it("asks about someone else's event by its kid alone, keyed so the answer is read back (VIL-651)", async () => {
+    const evening = new Date('2026-09-24T22:00:00.000Z');
+    const start = new Date('2026-09-25T19:00:00.000Z');
+    const input = {
+      blocks: [
+        block({
+          eventId: 'invite',
+          userId: PARENT_A,
+          kidRelated: true,
+          title: null,
+          kid: 'Maya',
+          standing: 'accepted',
+          start,
+          end: start,
+        }),
+      ],
+      parentUserIds: [PARENT_A, PARENT_B] as const,
+      parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
+      childNames: ['Maya'],
+      now: evening,
+      timeZone: ZONE,
+      language: 'en' as const,
+    };
+    const ask = await planAmbiguousWhoTakes(input);
+    const clock = when(start);
+    expect(ask?.whoTakes).toEqual({
+      startIso: start.toISOString(),
+      titleNorm: 'maya',
+      kid: 'Maya',
+      event: null,
+      day: clock.day,
+      time: clock.time,
+    });
+    expect(ask?.text).toBe(
+      await whoTakesPrompt('en', { kid: 'Maya', event: null, day: clock.day, time: clock.time }),
+    );
+    const answered = await planAmbiguousWhoTakes({
+      ...input,
+      remembered: [
+        {
+          factKey: whoTakesFactKey(start.toISOString(), 'maya'),
+          kind: 'who_takes',
+          status: 'decided',
+          startIso: start.toISOString(),
+          titleNorm: 'maya',
+          takerUserId: PARENT_B,
+          slotLabel: null,
+          slotStart: null,
+          kid: 'Maya',
+          event: null,
+          day: null,
+          slots: [],
+          source: 'text',
+          since: evening,
+        },
+      ],
+    });
+    expect(answered).toBeNull();
+    const unanswered = await planAmbiguousWhoTakes({
+      ...input,
+      blocks: input.blocks.map((row) => ({ ...row, standing: 'invited' as const })),
+    });
+    expect(unanswered).toBeNull();
   });
 });
