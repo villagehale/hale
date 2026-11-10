@@ -1,4 +1,4 @@
-import { inShape } from '../channel/place-token';
+import { inShape } from '@hale/types';
 import { asHandsetReads, linksOutside, wordsAsHandsetReads } from './link-shape';
 
 /**
@@ -8,7 +8,8 @@ import { asHandsetReads, linksOutside, wordsAsHandsetReads } from './link-shape'
  * are dropped before a writer sees them when they hold one. Links are read by link-shape.ts; this file adds
  * phones and emails on the same readings, and writes no link pattern of its own.
  *
- * Relative imports only, so the eval runners can load it as-is.
+ * `inShape` is the one matcher every search shares (@hale/types). Link patterns stay
+ * relative so the eval runners can load this file as-is.
  */
 
 /**

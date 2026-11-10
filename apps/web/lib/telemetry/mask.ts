@@ -27,7 +27,7 @@
  * that throws would drop the whole export batch — see the Langfuse masking docs).
  */
 
-import { CANADIAN_POSTAL, redactInShape, scrubPlaceTokens } from '~/lib/channel/place-token';
+import { CANADIAN_POSTAL, redactInShape, scrubPlaceTokens } from '@hale/types';
 
 const TEEN_CONTENT_PLACEHOLDER = '[REDACTED_TEEN_CONTENT]';
 const EMAIL_PLACEHOLDER = '[REDACTED_EMAIL]';

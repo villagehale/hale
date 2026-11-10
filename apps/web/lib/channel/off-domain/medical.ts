@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent';
 import type { MedicalReplySourceValue } from '@hale/db';
+import { redactInShape, scrubPlaceTokens } from '@hale/types';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import {
@@ -9,7 +10,6 @@ import {
   healthLineFacts,
   healthNumbersIn,
 } from '~/lib/channel/health-line';
-import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -469,11 +469,13 @@ const RESIDUAL_PII_PATTERNS: RegExp[] = [
 ];
 const REDACTED = '[redacted]';
 
-/** A postal code or a ZIP goes through the one matcher every search shares
- * (place-token.ts), and LAST, so a five-digit house number is taken with its street. */
+/** Every pattern reads the text's one shape (@hale/types place-token.ts), so a full-width
+ * email or another script's digits are caught. A postal code or a ZIP goes through the one
+ * matcher every search shares, and LAST, so a five-digit house number is taken with its
+ * street. */
 export function scrubResidualPii(text: string): string {
   return scrubPlaceTokens(
-    RESIDUAL_PII_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, REDACTED), text),
+    RESIDUAL_PII_PATTERNS.reduce((acc, pattern) => redactInShape(acc, pattern, REDACTED), text),
     REDACTED,
   );
 }
