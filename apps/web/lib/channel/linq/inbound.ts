@@ -113,6 +113,7 @@ import { captureLogisticsText, takeGroupPickupClaim } from './household-calendar
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
 import {
+  forgetSharedGroupPresence,
   noticeSharedGroupAdded,
   takeMultiFamilyReaction,
   takeMultiFamilyTurn,
@@ -1300,6 +1301,14 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     },
     'linq signal',
   );
+  if (signal.event === 'participant.removed' && signal.chatId) {
+    await forgetSharedGroupPresence(deps.database, {
+      chatId: signal.chatId,
+      participantHandle: signal.participantHandle,
+      participantIsMe: signal.participantIsMe,
+      now: deps.now?.() ?? new Date(),
+    });
+  }
   const rosterTrigger = groupRosterTrigger(signal);
   if (rosterTrigger && linqMultiFamilyGroupsEnabled()) {
     const added = await noticeSharedGroupAdded(

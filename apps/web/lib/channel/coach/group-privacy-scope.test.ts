@@ -115,6 +115,29 @@ describe('VIL-439 group privacy scope', () => {
       expect(seen[0]).toContain(SECRET_FACT);
     });
 
+    it('a group turn gets no registration windows; a 1:1 turn keeps them', async () => {
+      const WINDOW = {
+        town: 'Riverside',
+        programs: 'Winter swim lessons',
+        opensFor: 'Dec 1, 7:00 a.m.',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: false,
+      };
+      const contexts = async (audience: 'group' | 'direct') => {
+        const seen: string[] = [];
+        await channelCoachRuntime({
+          ...ports(seen),
+          loadRegistrationWindows: async () => [WINDOW] as never,
+        }).respond(turn(audience), []);
+        return JSON.parse(seen[0] as string) as { registrationWindows: unknown[] };
+      };
+      expect((await contexts('group')).registrationWindows).toEqual([]);
+      // Positive control: the same window reaches the parent's own 1:1 turn.
+      expect((await contexts('direct')).registrationWindows).toEqual([WINDOW]);
+    });
+
     it('every group flag off: a group turn is still scoped', async () => {
       for (const flag of [
         'GROUP_PRIVACY_SCOPE_ENABLED',

@@ -59,6 +59,11 @@ export interface LinqSignal {
   /** True when Linq says the event is ours. Our own tapback echo is not a parent. */
   isFromMe: boolean;
   /**
+   * True only when Linq marks the added or removed participant as Hale (`participant.is_me`).
+   * Unlike `isFromMe`, a member event that merely carries `is_from_me` never sets it.
+   */
+  participantIsMe: boolean;
+  /**
    * Every member but Hale, on `chat.created` only — the one webhook that lists
    * them. Empty on every other signal. Never logged.
    */
@@ -378,6 +383,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
       participantHandle: participantHandle || null,
       actorHandle: actorHandle || null,
       isFromMe,
+      participantIsMe: participant?.is_me === true,
       handles: [],
       isGroup: null,
     },
@@ -398,6 +404,7 @@ function parseChatCreated(data: Record<string, unknown>): LinqParsedWebhook {
       participantHandle: null,
       actorHandle: null,
       isFromMe: false,
+      participantIsMe: false,
       handles: otherHandles(data),
       isGroup: data.is_group === true,
     },
