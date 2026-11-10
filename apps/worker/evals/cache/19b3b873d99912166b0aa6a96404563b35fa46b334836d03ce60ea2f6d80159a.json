@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgrqFEWcnoare1C7kR4cg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpQUKEAgTGAI4AUIIdGhpbmtpbmcSDG1BXUPbzVfkBgbCFRoM8xLtYcdGnwNtmk0CIjBSjkHyXe2lV54S9bYjuAqswOkwOTD3E1lQqt3/tlyafAOPxsy718VBv+lpZcWSMu8qwgRQDOM40SZKSSzekoxNxIOAHGlXZxv/eAI5tSPa87+PfalV4iyXMjJoQ9g3eTMu8kFWVBRYzRqNoFx3j41Jmr8cI8ZAMF/DEjXKLNhhtVp4TzxGh7zMkGunCZzKMj2nd7ATIRdljs/k4zcHAilGu0WMKHR092ZuEHAFPdBfn3zUE/ODaIJfDBzkTLLiC/BPWwS7rX6r2mDACEGG45UvgNf8vTJ7sawfhWet5QC33U8I2WXsr+7ZwHGXTc/MwC5Ikh0mOv2LuGgHGIYA9j3J7fQ3RcptnwvbwJIGkRfSyolP6zmi8ga47eNnZ/is2Q2oVQS8LLAhoxRV9OH5ZaLOpcCZ2tGl1dZUUEfDnduJqrNQXB+kXQ/VnW9Ha/mWALdFEu6TFzy701CM+PR5cHX5+Ab1v+9qjwfQTtijmfC6mXGT2YbEPi3BMhnxCug5WPaUBQXm2EVGHdoPeASZMKqDepNrxlg9hC5HBJb/18fdAArsrsqKZV1NeYbKIX9kJzGa+Ry7yr3oc7qTIzQJXqkZrUmIO7+4BmXm0UZIwzOsxdXgkCVt/Mf5UBW/ymtKb9Wj2yauRKqkVzzxRl/xtv1m3UOYETB18kIqb8/F/vXZzTCvydggLoLLF5+kLw4BWRT0KrPxFrAyUNe61DF16BkmsV6P4wmIYDLvNgeDKy7S36e6e/LrYZ7B97U7080BHC1ClNdeDG641lrAvImXKJuFu6U5K8K2C/LXCyuguk+baaxBU+ZNHE5uSlPirtHfE3iiVfmEjRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_018echmXY8xKoZWoG9yzquJ8",
+        "name": "submit_verdict",
+        "input": {
+          "verdict": "reject",
+          "rationale": "The idempotency check returned ok:false, so this action is treated as a duplicate of a recent action with the same hash. The time window and calendar conflict checks both passed. Duplicates are a clear rejection criterion.",
+          "remediation": "Check whether a calendar item with this action_hash was already added in the last 24 hours. If it was, don't re-add it. If this is a deliberately new event, change the payload so it gets a new action_hash, then resubmit."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 651,
+      "cache_read_input_tokens": 1595,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 651,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 260,
+      "output_tokens_details": {
+        "thinking_tokens": 24
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2448
+}

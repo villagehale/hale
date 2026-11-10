@@ -82,6 +82,10 @@ import {
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const LANES = ['alert', 'draft', 'drafter', 'notes', 'memory', 'web', 'coach'];
 
+// The draft and coach lanes run the real calendar tools. Recordings on this
+// branch were taken with kid-clash notice on; keep that so cached-only replays.
+process.env.KID_CLASH_NOTICE_ENABLED = 'true';
+
 // Traces of synthetic families are noise in the real project; tracing is best-effort and
 // runs without keys.
 for (const key of ['LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL']) {

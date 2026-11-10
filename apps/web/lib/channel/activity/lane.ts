@@ -174,6 +174,9 @@ export interface ActivityPick {
   access?: 'drop_in' | 'register_at_venue' | null;
   placeId?: string;
   civicVenueId?: string;
+  /** VIL-79 · a real session instant, set ONLY by a source that publishes one. The
+   * free-text `when` is never parsed into this. No producer sets it yet. */
+  session?: { startsAt: string; endsAt: string | null };
 }
 
 /**

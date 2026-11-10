@@ -454,9 +454,10 @@ export const REQUIRED_CHECKS = {
 
   // Placing an item on Hale's own family calendar (VIL-219): the time window bounds
   // when HALE acts — the drafting instant against the family's allowActionsBetween,
-  // never the hour the placement starts — don't double-place (idempotency), and don't
-  // clash with an existing placement for the same child (check_calendar_conflict,
-  // now a REAL query over family_events — no longer the not_configured stub).
+  // never the hour the placement starts — and don't double-place (idempotency).
+  // check_calendar_conflict stays required so the reviewer always SEES a kid clash
+  // (family_events + kid-judged Google blocks, read live), but since VIL-79 it is
+  // non-blocking: it returns ok:true and reports the clash as a fact for the parent.
   calendar_add: ['check_action_time_window', 'check_action_idempotency', 'check_calendar_conflict'],
   calendar_move: [
     'check_action_time_window',

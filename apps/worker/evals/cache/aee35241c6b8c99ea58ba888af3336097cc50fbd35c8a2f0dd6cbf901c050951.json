@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011CgrqGzWoVZuyuGrPcG6MB",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01XXeamHoJFx2SMeUsFCYUse",
+        "name": "check_action_time_window",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01ShispvCZr6pJgguDD8vx2z",
+        "name": "check_action_idempotency",
+        "input": {
+          "familyId": "11111111-1111-4111-8111-111111111111",
+          "actionHash": "dc7024ee000df946a63c3fbc3a3ff88e6ac3a0807ff1ef27c3c9bf30415e615a"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_013yhHZfzhAACx4QtbWrdDjA",
+        "name": "check_calendar_conflict",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 368,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 1595,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 196,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2461
+}

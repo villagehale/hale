@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgrqGWcG9AARCv8Ukng82",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuQUKEAgTGAI4AUIIdGhpbmtpbmcSDEJd6RrS4IRtKqjEgBoMXvFPW41LaCW7KuYKIjCsPclrM/CgnebLW/9k9m13jrqmBCARQyiEp07pCZW31U6qlcsunZBVVNqm7siKkO4q1gR/kNYFBkk7RcOSoREwMYw9sTuo0Nyg0Asqhvpx1yxvodTELqLuK/p2tV6wIUJsgCp+gCwd6Pm0xYtlNuLSKuyRUK1/+241nO2hxcK7PgU6TCIUI6hFmNavEccZWodtoLKOJ1mE+v4nkKc5JOy16VLIwTBmJ4o8qjFpS25oiGamlkAkTkZhnQ+ZwePfvkTBDw3d3sNhYbqWW6lo3WN7Jrcy0dx+YLaZOnjBengCB2zfB1hmdhYMn/Dwt4CLp73MoqJ6bNEoKOkUj+OSFhf2Hv7Ynn/EhCzQMNECudzJhj5Dyy00UztbN/qJjUkT4NamES+gBmXA0zv5XVFt3BFpeWZs+NldI2fS8Z7PUZRkShhFG5KPbSBagok9aGa+eaoM/1X6pPPaiaWEQXi1mDvPgv/vVewoce13AuycDQ6PAW0yYmHFEJ3hdW+ITNz6YLDsh/vJybrMP5ciFQb7T50UhpWbu7b+ZT5m+BnFveHWn5ksBvAfpHiLASqvnnvZi12iv9ol/GYtygSFTo3AShKPIs2N1RfTiB0D6+ooj03MVzCYnrYv+NzRCGTGG/N4Q8bggQrKJxBkhQ3zZZfg6K8DI1g0/XpUnNWv+aLS2P1ZJlrHgeM326P0gJjFhzWjwoqAZpLYvhAlSJHTbPIr3/+5CVEP73SwypaZvwauI8ZTdCX1Xr7uKmhrU+EuDltSAFug2kPTMQU/icNvrO3znOI+6XwWnSuDLpubYE0xmr11L38GVdWG7FofnBT8g8JSrm/iFi48ysS64/niehAu3ytqWIk9FUVr/HPhGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01VjuKo3cy86Ec8s294y1pT8",
+        "name": "submit_verdict",
+        "input": {
+          "verdict": "reject",
+          "rationale": "check_action_time_window returned ok:false, so the action falls outside the family's allowed time window. That is a clear policy violation and grounds for rejection. The idempotency check passed, so this is not a duplicate. The calendar conflict check also passed.",
+          "remediation": "Re-draft the action so it falls within the family's permitted time window, or get the parent's explicit approval to act outside it. Then resubmit."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 697,
+      "cache_read_input_tokens": 1595,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 697,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 248,
+      "output_tokens_details": {
+        "thinking_tokens": 26
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2082
+}
