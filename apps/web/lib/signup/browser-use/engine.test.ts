@@ -211,6 +211,7 @@ describe('browser use signup engine', () => {
       browserSettings: { profileId: profileCreated.id, record: false },
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
+      maxCostUsd: 3,
     });
     // V4 keepAlive is integer seconds (120-14400), not the V2/V3 boolean. The
     // 4-hour `timeout_at` on browser.released is Browser Use's hard limit, not this.
@@ -229,6 +230,8 @@ describe('browser use signup engine', () => {
     expect(task).not.toContain('Grace');
     expect(task).not.toContain('cookie-value-fixture');
     expect(JSON.stringify(body.outputSchema)).toContain('reached_checkout');
+    expect(JSON.stringify(body.outputSchema)).toContain('submitted');
+    expect(JSON.stringify(body.outputSchema)).toContain('confirmation_number');
   });
 
   it('reuses a profile already seeded from this session', async () => {
@@ -294,6 +297,48 @@ describe('browser use signup engine', () => {
       detail: 'payment_boundary',
       liveViewUrl: null,
     });
+  });
+
+  it('refuses a run that submitted a charged cart', async () => {
+    const { deps } = setup(happyRoutes(summaryWith({ submitted: true, cart_total_cents: 9800 })));
+    const result = await runBrowserUseSignup(input(), deps);
+    expect(result).toMatchObject({
+      outcome: 'error',
+      detail: 'submit_boundary',
+      liveViewUrl: null,
+    });
+  });
+
+  it('completes a $0 class the agent submitted after the parent approved', async () => {
+    const { deps } = setup(
+      happyRoutes(
+        summaryWith({
+          submitted: true,
+          cart_total_cents: 0,
+          confirmation_number: 'FREE-1',
+        }),
+      ),
+    );
+    const result = await runBrowserUseSignup(input({ approvedPriceCents: 0 }), deps);
+    expect(result).toMatchObject({
+      outcome: 'completed',
+      detail: 'none',
+      cartTotalCents: 0,
+      confirmationNumber: 'FREE-1',
+      liveViewUrl: null,
+    });
+  });
+
+  it('hands a $0 cart that was not submitted back at checkout', async () => {
+    const { deps } = setup(happyRoutes(summaryWith({ submitted: false, cart_total_cents: 0 })));
+    const result = await runBrowserUseSignup(input({ approvedPriceCents: 0 }), deps);
+    expect(result).toMatchObject({
+      outcome: 'reached_checkout',
+      detail: 'none',
+      cartTotalCents: 0,
+      confirmationNumber: null,
+    });
+    expect(result.liveViewUrl).not.toBeNull();
   });
 
   it('drops a checkout url on another site', async () => {
