@@ -290,6 +290,12 @@ export const NOTE_BROKEN = [
     facts: BY_ID['waitlist-final'],
     text: 'About 2 hours left on the Springfield waitlist offer: it runs out tomorrow at 9 a.m. Check your email and the portal.',
   },
+  {
+    // Scored 5 under the rubric before it judged where the clock starts.
+    id: 'broken-waitlisted-clock-unsaid',
+    facts: BY_ID['outcome-waitlisted-clock'],
+    text: "Got it, you're on the waitlist at spot 12 for Springfield. Springfield gives a 36-hour window to accept an offer, so this one runs out Wednesday, September 16 at 11:00 p.m. I'll remind you before it closes. Keep an eye on your email in case an offer comes through.",
+  },
 ];
 
 /** --broken, offline: the composer's own gate must refuse every planted draft. */

@@ -26,6 +26,9 @@
 //     did not list the field, so the deep pass learned it and the parent never heard it.
 //   · the follow-up gates, mirrored from followup-note.ts - links, claiming
 //     verification, and burying the top pick past the first segment.
+//   · research log - the follow-up judge (followup-note.ts, run through
+//     lib/followup-process.mjs) still names a search sentence after every redraft.
+//   · silent watch - a watch row the sent text never mentions.
 //   · a date credited to a page that does not carry it is the judge's call (JUDGE_SYSTEM),
 //     with every fetched page in its notes (notesForTheJudge). No check reads the wording.
 //
@@ -55,6 +58,7 @@ import { textOfFetchSource } from '../../web/lib/channel/activity/pdf-text.mjs';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
 import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
+import { loadFollowUpProcessJudge } from './lib/followup-process.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -799,6 +803,7 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const deepSkill = await agent.loadSkill(DEEP_SKILL);
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
+  const judgeProcess = await loadFollowUpProcessJudge(agent);
   const model = candidateModel ?? agent.pickModel(deepSkill.meta.task);
   const composerModel = agent.pickModel(finderSkill.meta.task);
   const subjectLane = candidateModel ? null : agent.pickLane(deepSkill.meta.task);
@@ -950,6 +955,7 @@ async function main() {
     const pageEvidence = readPageVerdict(evidence);
     const watch = watchWarranted(inText);
     let body = '';
+    let mentionsWatch = false;
     let violations = [];
     let firstDraftViolations = [];
     for (let attempt = 1; composesText && attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
@@ -981,11 +987,29 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, watch, composed.commits_to_return === true);
+      mentionsWatch = composed.commits_to_return === true;
+      violations = followUpViolations(body, inText, watch, mentionsWatch);
+      // The process judge reads only a draft the mechanical gates passed, as in
+      // followup-note.ts. Skipped in broken mode with the quality judge below.
+      if (violations.length === 0 && !broken) {
+        const searchLog = await judgeProcess(body, {
+          tag: evalRunTag(`activity-deep-followup-process:${fixture.id}:${attempt}`),
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        if (searchLog) violations = [searchLog];
+      }
       if (attempt === 1) firstDraftViolations = violations;
-      if (violations.length === 0 || broken) break;
+      // An unjudged draft is not redrafted: production sends nothing.
+      if (violations.length === 0 || broken || violations[0]?.tag === 'process_unjudged') break;
     }
     failures.push(...violations.map((v) => v.tag));
+    // A watch row the sent text never tells the parent about. Not a runtime gate (whether
+    // to mention it is the model's call), so it is scored here and logged in production.
+    if (composesText && watch && violations.length === 0 && !mentionsWatch) {
+      failures.push('silent_watch');
+    }
 
     // The last hop, the registration fact reaching the text, is the judge's (`factChecks`).
 
@@ -1060,6 +1084,10 @@ async function main() {
   );
   console.log(
     `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
+  );
+  console.log(`silent watch:              ${count('silent_watch')}`);
+  console.log(
+    `research log:              ${count('reports_process') + count('process_unjudged')}`,
   );
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);

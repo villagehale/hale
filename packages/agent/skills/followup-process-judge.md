@@ -26,8 +26,11 @@ These are the message. Leave them alone:
   said so.
 - A gap in a find, said plainly: a day or a price Hale could not pin down, or a
   fact that only shows behind a login.
-- That nothing fits. When the draft has no find, one plain statement of where
-  Hale looked and why nothing fits is the answer itself, not the log.
+- That nothing fits. When the draft names no find, the sentences that say where
+  Hale looked and why nothing there fits are the answer itself, not the log,
+  even when they are in the first person and name the pages Hale went through.
+  Flag a sentence in such a draft only when it goes past that: a count of pages,
+  a ranking, or a source Hale trusted over another.
 - What happens next: that Hale is keeping watch, or that more options can be
   asked for in the chat.
 
