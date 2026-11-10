@@ -92,6 +92,15 @@ function estimateTokens(value) {
   return Math.ceil(latin / 4) + other;
 }
 
+/**
+ * A draw production refuses (VIL-645: call markup the model wrote into a field) is
+ * replayed as that refusal, named, never graded and never a crash of the whole run.
+ */
+function refusal(err) {
+  if (err?.name !== 'StructuredOutputError') throw err;
+  return { refused: err.outcome, value: null };
+}
+
 async function loadSubject() {
   const agent = await importTs(AGENT_SRC);
   const voice = await importTs(VOICE_SRC);
@@ -190,7 +199,13 @@ async function record() {
       const composer = {
         async compose(turn, options) {
           const prompt = options?.prompt === 'short' ? 'short' : 'full';
-          const drawn = await draw(turn, prompt, draws.length === 0 ? tag : `${tag}:rewrite`);
+          const drawn = await draw(turn, prompt, draws.length === 0 ? tag : `${tag}:rewrite`).catch(
+            (err) => {
+              // Refused as production refuses it: speakFriend gets the throw and rewrites.
+              draws.push(refusal(err));
+              throw err;
+            },
+          );
           draws.push(drawn);
           if (drawn.dry) throw new Error('dry run');
           return voice.parseReplyTool(drawn.value);
@@ -207,7 +222,12 @@ async function record() {
         body: spoken.body,
       };
     } else {
-      result = await draw(input, fixture.prompt === 'short' ? 'short' : 'full', tag);
+      result = await draw(input, fixture.prompt === 'short' ? 'short' : 'full', tag).catch(refusal);
+      if (result.refused) {
+        failed += 1;
+        console.info(`FAIL  ${fixture.id.padEnd(24)} refused:${result.refused}`);
+        continue;
+      }
     }
     if (result.dry) {
       console.info(`DRY   ${fixture.id}`);
@@ -249,7 +269,8 @@ async function record() {
     console.info(
       `${(misses.length === 0 ? 'PASS' : 'FAIL').padEnd(5)} ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
     );
-    if (fixture.printReply || fixture.groupBubbles)
+    if (draws[0]?.refused) console.info(`      first draw refused: ${draws[0].refused}`);
+    else if (fixture.printReply || fixture.groupBubbles)
       console.info(`      reply: ${JSON.stringify((draws[0] ?? result).value?.reply ?? null)}`);
     if (draws.length > 1) {
       console.info(`      rewrite: ${JSON.stringify(draws[1]?.value?.reply ?? null)}`);

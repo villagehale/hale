@@ -226,7 +226,7 @@ export function readStructuredAnswer(
   if (request.tools) {
     const toolUse = findToolUse(response, stage);
     if (!toolUse) fail(stage, 'no_answer', response, `model returned no ${stage} tool call`);
-    const leak = markupAt(toolUse.input, fieldNames(request.tools));
+    const leak = markupAt(toolUse.input, fieldNames(request.tools), inputText(request));
     if (leak !== null) {
       fail(stage, 'tool_markup', response, `tool-call markup inside the string at ${leak}`);
     }
@@ -251,9 +251,30 @@ export function readStructuredAnswer(
  * (`<parameter name="connectorsOffered">[]`), so that next field is lost. Refused, never
  * stripped: stripping keeps the answer but not the swallowed field. Only a closing tag
  * that names one of the tool's own fields counts, so a `</b>` in a reply is left alone.
+ *
+ * Only markup the MODEL wrote is a leak. A tag that occurs in the request's own input is
+ * an echo of it — a STOP text holding `</intent>` copied into `verbatim`, an email
+ * subject holding `</title>` — and refusing it would fail that read on every attempt.
  */
-const PARAMETER_TAG = /<\/?(?:\w+:)?parameter[\s>]/;
+const PARAMETER_TAG = /<\/?(?:\w+:)?parameter(?=[\s>])[^<>]*>?/g;
 const CLOSING_TAG = /<\/([A-Za-z_][\w-]*)>/g;
+
+/** The user turns' text: the data the caller handed the model, where an echo comes from. */
+function inputText(request: StructuredRequest): string {
+  return request.messages
+    .filter((message) => message.role === 'user')
+    .flatMap((message) =>
+      typeof message.content === 'string'
+        ? [message.content]
+        : message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])),
+    )
+    .join('\n');
+}
+
+/** In the input as written, or as a JSON payload quotes it. */
+function echoed(tag: string, input: string): boolean {
+  return input.includes(tag) || input.includes(JSON.stringify(tag).slice(1, -1));
+}
 
 function fieldNames(node: unknown, names = new Set<string>()): Set<string> {
   if (!node || typeof node !== 'object') return names;
@@ -267,16 +288,24 @@ function fieldNames(node: unknown, names = new Set<string>()): Set<string> {
 }
 
 /** The dotted path of the first string holding call markup, or null. */
-function markupAt(value: unknown, fields: ReadonlySet<string>, path: string[] = []): string | null {
+function markupAt(
+  value: unknown,
+  fields: ReadonlySet<string>,
+  input: string,
+  path: string[] = [],
+): string | null {
   if (typeof value === 'string') {
-    const closesAField = [...value.matchAll(CLOSING_TAG)].some((match) =>
-      fields.has(match[1] as string),
-    );
-    return PARAMETER_TAG.test(value) || closesAField ? path.join('.') : null;
+    const tags = [
+      ...[...value.matchAll(PARAMETER_TAG)].map((match) => match[0]),
+      ...[...value.matchAll(CLOSING_TAG)]
+        .filter((match) => fields.has(match[1] as string))
+        .map((match) => match[0]),
+    ];
+    return tags.some((tag) => !echoed(tag, input)) ? path.join('.') : null;
   }
   if (value && typeof value === 'object') {
     for (const [key, child] of Object.entries(value)) {
-      const found = markupAt(child, fields, [...path, key]);
+      const found = markupAt(child, fields, input, [...path, key]);
       if (found !== null) return found;
     }
   }
@@ -344,15 +373,41 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
     response = await send(retry);
     usage = sumUsage(usage, response.usage);
     return {
-      value: args.schema.parse(readStructuredAnswer(retry, response, args.toolName)),
+      value: args.schema.parse(readCounted(retry, response, args.toolName)),
       usage,
     };
   }
 
   return {
-    value: args.schema.parse(readStructuredAnswer(request, response, args.toolName)),
+    value: args.schema.parse(readCounted(request, response, args.toolName)),
     usage,
   };
+}
+
+/** Markup refusals so far in this process, per stage. */
+const toolMarkupRefusals = new Map<string, number>();
+
+/**
+ * readStructuredAnswer, with each markup refusal logged under a running per-stage count,
+ * so a stage that keeps losing reads to it shows up. Stage, model and count only.
+ */
+function readCounted(
+  request: StructuredRequest,
+  response: Anthropic.Message,
+  stage: string,
+): unknown {
+  try {
+    return readStructuredAnswer(request, response, stage);
+  } catch (err) {
+    if (err instanceof StructuredOutputError && err.outcome === 'tool_markup') {
+      const count = (toolMarkupRefusals.get(stage) ?? 0) + 1;
+      toolMarkupRefusals.set(stage, count);
+      console.warn(
+        JSON.stringify({ event: 'structured_tool_markup', stage, model: request.model, count }),
+      );
+    }
+    throw err;
+  }
 }
 
 function cameBackEmpty(
