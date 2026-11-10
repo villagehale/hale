@@ -1268,6 +1268,12 @@ async function pickCommonTime(
     },
     input.ports.commonTimePlan,
   );
+  if (report.status === 'picker_not_joined') {
+    return { handled: true, outcome: 'common_time_pick_not_joined', count: 'ignored' };
+  }
+  if (report.status === 'picker_stopped') {
+    return { handled: true, outcome: 'common_time_pick_stopped', count: 'ignored' };
+  }
   return { handled: true, outcome: 'common_time_picked', count: 'intake', notice: report.status };
 }
 

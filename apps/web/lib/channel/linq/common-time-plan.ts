@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { CalendarInviteSender } from '@hale/worker/executor';
-import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { productionChannels } from '~/lib/channel/adapters/production';
 import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
@@ -37,8 +37,8 @@ export const COMMON_TIME_PICKED = 'linq_multi_family_common_time_picked';
 export const COMMON_TIME_PLACED = 'linq_multi_family_common_time_placed';
 export const COMMON_TIME_PLACE_FAILED = 'linq_multi_family_common_time_place_failed';
 const NOTE_TEMPLATE = 'linq:multi_family_common_time_note';
-/** What the attendance read sees: the newest lines since the proposal. */
-const PLAN_MESSAGES_MAX = 30;
+/** What the attendance read sees: each family's own newest lines since the proposal. */
+const PLAN_MESSAGES_PER_FAMILY = 30;
 
 export interface CommonTimeProposal {
   id: string;
@@ -93,7 +93,10 @@ export async function latestCommonTimeProposal(
   };
 }
 
-/** Linked parents' own lines in this chat after the proposal (never the ask), oldest first. */
+/**
+ * Linked parents' own lines in this chat after the proposal (never the ask), oldest first.
+ * Read per family, so a busy chat never pushes one family's yes out of the read.
+ */
 async function planMessages(
   database: Database,
   input: {
@@ -105,23 +108,32 @@ async function planMessages(
   },
 ): Promise<GroupPlanMessage[]> {
   const m = schema.channelMessages;
-  const rows = await database
-    .select({ familyId: m.familyId, userId: m.parentUserId, body: m.body })
-    .from(m)
-    .where(
-      and(
-        eq(m.providerChatId, input.chatId),
-        eq(m.direction, 'in'),
-        inArray(m.familyId, [...input.familyIds]),
-        gt(m.sentAt, input.since),
-        isNotNull(m.body),
-      ),
-    )
-    .orderBy(desc(m.sentAt))
-    .limit(PLAN_MESSAGES_MAX);
-  return rows
-    .reverse()
-    .filter((row) => row.body && !(row.userId && input.stopped.has(row.userId)))
+  const stopped = [...input.stopped];
+  const perFamily = await Promise.all(
+    input.familyIds.map((familyId) =>
+      database
+        .select({ familyId: m.familyId, userId: m.parentUserId, body: m.body, sentAt: m.sentAt })
+        .from(m)
+        .where(
+          and(
+            eq(m.providerChatId, input.chatId),
+            eq(m.direction, 'in'),
+            eq(m.familyId, familyId),
+            gt(m.sentAt, input.since),
+            isNotNull(m.body),
+            stopped.length > 0
+              ? or(isNull(m.parentUserId), notInArray(m.parentUserId, stopped))
+              : undefined,
+          ),
+        )
+        .orderBy(desc(m.sentAt))
+        .limit(PLAN_MESSAGES_PER_FAMILY),
+    ),
+  );
+  return perFamily
+    .flat()
+    .filter((row): row is typeof row & { sentAt: Date } => row.sentAt !== null && !!row.body)
+    .sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime())
     .map((row) => ({
       familyId: row.familyId,
       senderName: (row.userId && input.names.get(row.userId)) || null,
@@ -129,9 +141,17 @@ async function planMessages(
     }));
 }
 
+export type PickedTimeReport =
+  | GroupPlanFanOutReport
+  /** The picker's family has no live, consented join here: nothing is written. */
+  | { status: 'picker_not_joined' }
+  /** The picker stopped Hale in this chat: nothing is written. */
+  | { status: 'picker_stopped' };
+
 /**
  * Place the picked time. Families come from the directory (live joins carrying their own
- * consent for this chat), so a family that left or withdrew gets nothing. Writes one
+ * consent for this chat), so a family that left or withdrew gets nothing, and only a
+ * member of one of those families who has not stopped Hale here can pick. Writes one
  * audit row on the picker's family and one on each family whose calendar copy changed
  * or failed to.
  */
@@ -151,7 +171,11 @@ export async function placePickedTime(
     stopped: ReadonlySet<string>;
   },
   ports: CommonTimePlanPorts,
-): Promise<GroupPlanFanOutReport> {
+): Promise<PickedTimeReport> {
+  if (input.stopped.has(input.picker.userId)) {
+    console.warn({ outcome: 'common_time_pick_stopped' }, 'linq multi-family: pick not placed');
+    return { status: 'picker_stopped' };
+  }
   const plan: GroupPlan = {
     groupPlanId: input.proposal.id,
     chatId: input.chatId,
@@ -162,17 +186,18 @@ export async function placePickedTime(
     cancelled: false,
   };
   const families = await input.directory.familiesInGroup(input.chatId);
+  if (!families.some((family) => family.familyId === input.picker.familyId)) {
+    console.warn({ outcome: 'common_time_pick_not_joined' }, 'linq multi-family: pick not placed');
+    return { status: 'picker_not_joined' };
+  }
   const familyIds = families.map((family) => family.familyId);
-  const messages =
-    familyIds.length > 0
-      ? await planMessages(database, {
-          chatId: input.chatId,
-          since: input.proposal.occurredAt,
-          familyIds,
-          names: input.names,
-          stopped: input.stopped,
-        })
-      : [];
+  const messages = await planMessages(database, {
+    chatId: input.chatId,
+    since: input.proposal.occurredAt,
+    familyIds,
+    names: input.names,
+    stopped: input.stopped,
+  });
   const existing = await existingCopyFamilies(database, plan, familyIds);
   const report = await driveGroupPlan(
     {

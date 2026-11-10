@@ -57,7 +57,11 @@ afterEach(async () => {
   );
 });
 
-async function seedParent(phone: string, name: string) {
+async function seedParent(
+  phone: string,
+  name: string,
+  role: 'primary_parent' | 'nanny' = 'primary_parent',
+) {
   const [family] = await db.database
     .insert(schema.families)
     .values({ displayName: name, provinceOrState: 'NY' })
@@ -68,9 +72,7 @@ async function seedParent(phone: string, name: string) {
     .values({ externalAuthId: `imessage:${name}-${phone}`, name, timezone: ZONE })
     .returning({ id: schema.users.id });
   const userId = user?.id as string;
-  await db.database
-    .insert(schema.familyMembers)
-    .values({ familyId, userId, role: 'primary_parent' });
+  await db.database.insert(schema.familyMembers).values({ familyId, userId, role });
   await db.database.insert(schema.parentChannels).values({
     userId,
     familyId,
@@ -133,7 +135,8 @@ const chatter = () => reading({ intent: 'chatter' });
 
 /**
  * The attendance read stands in for the model (its eval covers the reading): a family
- * whose own line is in the thread is in. The fan-out still applies the own-word rule.
+ * whose own latest line is "can't make it" is out, any other own line is in. The fan-out
+ * still applies the own-word rule.
  */
 function planPorts() {
   const invites: CalendarInviteRequest[] = [];
@@ -142,12 +145,13 @@ function planPorts() {
     reader: {
       async read(input) {
         reads.push([...input.messages]);
-        const spoke = new Set(input.messages.map((m) => m.familyId));
+        const latest = new Map(input.messages.map((m) => [m.familyId, m.text]));
         return new Map(
-          input.families.map((f): [string, GroupPlanAttendance] => [
-            f.familyId,
-            spoke.has(f.familyId) ? 'in' : 'unclear',
-          ]),
+          input.families.map((f): [string, GroupPlanAttendance] => {
+            const line = latest.get(f.familyId);
+            if (line === undefined) return [f.familyId, 'unclear'];
+            return [f.familyId, line === "can't make it" ? 'out' : 'in'];
+          }),
         );
       },
     },
@@ -170,7 +174,8 @@ const listOf =
 async function turn(
   reader: SharedGroupReader,
   plan: CommonTimePlanPorts | undefined,
-  input: { id: string; from: string; text: string; minutes: number },
+  input: { id: string; from: string; text: string; minutes: number; reactionType?: string },
+  handles: readonly string[] = [MEI, ADA, PRIYA],
 ) {
   const at = new Date(NOW.getTime() + input.minutes * 60_000);
   return takeMultiFamilyTurn(
@@ -183,9 +188,10 @@ async function turn(
       receivedAt: at,
       now: at,
       send: async () => ({ providerMessageId: `out-${input.id}` }),
+      ...(input.reactionType ? { reactionType: input.reactionType, targetIsHale: true } : {}),
     },
     {
-      listHandles: listOf([MEI, ADA, PRIYA]),
+      listHandles: listOf(handles),
       reader,
       composer: fakeSharedGroupComposer(),
       commonTimeWriter: async () => 'written by the model',
@@ -205,6 +211,26 @@ async function copies() {
     })
     .from(schema.familyEvents)
     .where(isNotNull(schema.familyEvents.groupPlanCopyKey));
+}
+
+async function pickedRows() {
+  return db.database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.actionTaken, 'linq_multi_family_common_time_picked'));
+}
+
+async function liveCopyOf(familyId: string) {
+  const rows = await db.database
+    .select({ deletedAt: schema.familyEvents.deletedAt })
+    .from(schema.familyEvents)
+    .where(
+      and(
+        eq(schema.familyEvents.familyId, familyId),
+        isNotNull(schema.familyEvents.groupPlanCopyKey),
+      ),
+    );
+  return rows.length === 1 && rows[0]?.deletedAt === null;
 }
 
 async function proposal() {
@@ -380,5 +406,178 @@ describe('a picked common time becomes a plan on each family calendar', () => {
       .from(schema.auditLog)
       .where(and(eq(schema.auditLog.actionTaken, 'linq_multi_family_common_time_picked')));
     expect(picked).toHaveLength(0);
+  });
+});
+
+describe('only a member whose family is in this chat can pick the time', () => {
+  it('a pick from a member whose household never joined writes nothing', async () => {
+    const { priya } = await threeFamilies();
+    const NANNY = '+16415550401';
+    await seedParent(NANNY, 'Nan', 'nanny');
+    const { reader } = script([ask, chatter, pickOffered(0), pickOffered(0)]);
+    const plan = planPorts();
+    const handles = [MEI, ADA, PRIYA, NANNY];
+
+    await turn(
+      reader,
+      plan.ports,
+      { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 },
+      handles,
+    );
+    await turn(
+      reader,
+      plan.ports,
+      { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 },
+      handles,
+    );
+    const refused = await turn(
+      reader,
+      plan.ports,
+      { id: 'in-3', from: NANNY, text: 'first one', minutes: 4 },
+      handles,
+    );
+
+    expect(refused).toMatchObject({ handled: true, outcome: 'common_time_pick_not_joined' });
+    expect(await copies()).toHaveLength(0);
+    expect(plan.invites).toHaveLength(0);
+    expect(await pickedRows()).toHaveLength(0);
+
+    // Positive control: the same pick from a joined, consenting parent places the plan.
+    await turn(
+      reader,
+      plan.ports,
+      { id: 'in-4', from: PRIYA, text: 'first one', minutes: 6 },
+      handles,
+    );
+    expect((await copies()).map((row) => row.familyId)).toEqual([priya.familyId]);
+  });
+
+  it("a pick from a parent whose family's consent for this chat is gone writes nothing", async () => {
+    const { ada, priya } = await threeFamilies();
+    const { reader } = script([ask, chatter, pickOffered(0), pickOffered(0)]);
+    const plan = planPorts();
+
+    await turn(reader, plan.ports, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
+    await turn(reader, plan.ports, { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 });
+    const [join] = await db.database
+      .select({ consentRecordId: schema.linqMultiFamilyJoins.consentRecordId })
+      .from(schema.linqMultiFamilyJoins)
+      .where(eq(schema.linqMultiFamilyJoins.familyId, ada.familyId));
+    await db.database
+      .update(schema.consentRecords)
+      .set({ revokedAt: NOW })
+      .where(eq(schema.consentRecords.id, join?.consentRecordId as string));
+    const refused = await turn(reader, plan.ports, {
+      id: 'in-3',
+      from: ADA,
+      text: 'first one',
+      minutes: 4,
+    });
+
+    expect(refused).toMatchObject({ handled: true, outcome: 'common_time_pick_not_joined' });
+    expect(await copies()).toHaveLength(0);
+    expect(plan.invites).toHaveLength(0);
+    expect(await pickedRows()).toHaveLength(0);
+
+    // Positive control: Priya's family still consents, and her pick places the plan.
+    await turn(reader, plan.ports, { id: 'in-4', from: PRIYA, text: 'first one', minutes: 6 });
+    expect((await copies()).map((row) => row.familyId)).toEqual([priya.familyId]);
+  });
+
+  it('a reaction from a parent who stopped Hale in this chat picks nothing', async () => {
+    const { priya } = await threeFamilies();
+    const { reader } = script([ask, chatter, pickOffered(0), pickOffered(0)]);
+    const plan = planPorts();
+
+    await turn(reader, plan.ports, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
+    await turn(reader, plan.ports, { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 });
+    await db.database
+      .update(schema.linqSharedGroupPeople)
+      .set({ stoppedAt: NOW })
+      .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(ADA)));
+    const refused = await turn(reader, plan.ports, {
+      id: 'in-3',
+      from: ADA,
+      text: '',
+      minutes: 4,
+      reactionType: 'like',
+    });
+
+    expect(refused).toMatchObject({ handled: true, outcome: 'common_time_pick_stopped' });
+    expect(await copies()).toHaveLength(0);
+    expect(plan.invites).toHaveLength(0);
+    expect(await pickedRows()).toHaveLength(0);
+
+    // Positive control: the same reaction from a member who has not stopped places it.
+    await turn(reader, plan.ports, {
+      id: 'in-4',
+      from: PRIYA,
+      text: '',
+      minutes: 6,
+      reactionType: 'like',
+    });
+    expect((await copies()).map((row) => row.familyId)).toEqual([priya.familyId]);
+  });
+});
+
+describe("a family's yes is never lost to a busy chat", () => {
+  it('a yes said before 30 other lines still places that family when the time is picked', async () => {
+    const { ada, priya } = await threeFamilies();
+    const busy = Array.from({ length: 32 }, () => chatter);
+    const { reader } = script([ask, chatter, ...busy, pickOffered(0)]);
+    const plan = planPorts();
+
+    await turn(reader, plan.ports, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
+    await turn(reader, plan.ports, { id: 'in-2', from: ADA, text: 'we are in', minutes: 1 });
+    for (const [i] of busy.entries()) {
+      await turn(reader, plan.ports, {
+        id: `busy-${i}`,
+        from: MEI,
+        text: `chatter ${i}`,
+        minutes: 2 + i,
+      });
+    }
+    await turn(reader, plan.ports, { id: 'in-3', from: PRIYA, text: 'first works', minutes: 40 });
+
+    expect(await liveCopyOf(ada.familyId)).toBe(true);
+    expect(await liveCopyOf(priya.familyId)).toBe(true);
+  });
+
+  it("30 lines after a family's yes, a later pick keeps its copy; its own can't-make-it still cancels", async () => {
+    const { ada } = await threeFamilies();
+    const busy = Array.from({ length: 32 }, () => chatter);
+    const { reader } = script([
+      ask,
+      pickOffered(0),
+      ...busy,
+      pickOffered(0),
+      chatter,
+      pickOffered(0),
+    ]);
+    const plan = planPorts();
+
+    await turn(reader, plan.ports, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
+    await turn(reader, plan.ports, { id: 'in-2', from: ADA, text: 'first one for us', minutes: 1 });
+    expect(await liveCopyOf(ada.familyId)).toBe(true);
+    for (const [i] of busy.entries()) {
+      await turn(reader, plan.ports, {
+        id: `busy-${i}`,
+        from: i % 2 === 0 ? MEI : PRIYA,
+        text: `chatter ${i}`,
+        minutes: 2 + i,
+      });
+    }
+    await turn(reader, plan.ports, { id: 'in-3', from: PRIYA, text: 'first works', minutes: 40 });
+
+    expect(await liveCopyOf(ada.familyId)).toBe(true);
+    expect(plan.invites.filter((i) => i.method === 'CANCEL')).toHaveLength(0);
+
+    // Control: Ada's own later word takes her family out.
+    await turn(reader, plan.ports, { id: 'in-4', from: ADA, text: "can't make it", minutes: 41 });
+    await turn(reader, plan.ports, { id: 'in-5', from: MEI, text: 'first then', minutes: 42 });
+    expect(await liveCopyOf(ada.familyId)).toBe(false);
+    expect(plan.invites.filter((i) => i.method === 'CANCEL').map((i) => i.familyId)).toEqual([
+      ada.familyId,
+    ]);
   });
 });
