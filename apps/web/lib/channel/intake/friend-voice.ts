@@ -74,7 +74,8 @@ import {
  * retry has the same budget: its prompt is smaller, its answer is not. A reply that
  * fills every optional field ran past 600 tokens live (VIL-617). Household-group
  * turns append household-group.md and were truncating or dumping tool markup at 1000
- * (#1219); those draws get a larger completion budget.
+ * (#1219); leftover-marks draws add extra JSON fields and did the same on
+ * find_show / schedule (#1221). Those draws get a larger completion budget.
  */
 const MAX_TOKENS = 1000;
 const HOUSEHOLD_GROUP_MAX_TOKENS = 2000;
@@ -83,7 +84,10 @@ export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
 export const ONBOARDING_HOUSEHOLD_GROUP_MAX_TOKENS = HOUSEHOLD_GROUP_MAX_TOKENS;
 
 export function onboardingReplyMaxTokens(input?: Pick<FriendVoiceInput, 'householdGroup'>): number {
-  return input?.householdGroup ? HOUSEHOLD_GROUP_MAX_TOKENS : MAX_TOKENS;
+  // Leftover marks add extra JSON fields; find_show with two groups and a
+  // schedule confirmation truncated at 1000 (#1221). Same budget as household.
+  if (input?.householdGroup || friendVoiceLeftoverMarksEnabled()) return HOUSEHOLD_GROUP_MAX_TOKENS;
+  return MAX_TOKENS;
 }
 export const ONBOARDING_REPLY_TOOL = 'reply';
 export const ONBOARDING_REPLY_TOOL_DESCRIPTION =
@@ -1155,6 +1159,9 @@ function withModelReading(
     return { ...capture, parentName: lone };
   }
   if (composed?.parentPlainYes !== true) return capture;
+  // A question is not a yes. Restoring a connector yes here would undo
+  // noYesInAQuestion (#1213 email-question-fr).
+  if (composed.parentQuestion === true) return capture;
   if (item === 'gmail') return { ...capture, connectGmail: true, gmailLater: false };
   if (item === 'calendar') return { ...capture, connectCalendar: true, calendarLater: false };
   if (item === 'schedule') return { ...capture, scheduleDone: true };
@@ -2703,8 +2710,8 @@ export function askInWords(
       return 'ask how old each kid is';
     case 'place':
       return input?.coarseCodeAsked === true
-        ? 'ask the coarse code, or, when they declined it again, ask `next` instead'
-        : 'ask their postal code or ZIP, or, when they just declined it, the coarse code instead, with `placeDeclined` false';
+        ? 'ask `next` — they already turned the coarse code down; set `placeDeclined`, `placeAsk` none; no code, ZIP, or town'
+        : 'their postal code or ZIP, or after they declined it only the coarse code — never a town, never both, `placeDeclined` false';
     default:
       return 'ask the open item';
   }

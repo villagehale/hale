@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
 import { strictToolSchema } from '@hale/agent';
+import { describe, expect, it } from 'vitest';
 import {
   type RawActivityFact,
   activityCalendarDate,
@@ -428,15 +428,17 @@ describe('activity facts stay attached to their source', () => {
 });
 
 describe('activity_picks wire schema (#875 / #998)', () => {
-  it('stays a grammar the compiler can express: sessions are strings, not nested objects', () => {
-    const projected = strictToolSchema(activityPicksJsonSchema as never);
-    expect(projected).not.toBeNull();
-    const pick = (
-      projected as {
-        properties: { picks: { items: { properties: { sessions: { items: { type: string } } } } } };
+  it('is not compiled as json_schema: nested pick objects exceed Anthropic internal grammar size', () => {
+    const pickItems = (
+      activityPicksJsonSchema as {
+        properties: {
+          picks: { items: { properties: Record<string, { items?: { type: string } }> } };
+        };
       }
-    ).properties.picks.items.properties.sessions.items;
-    expect(pick.type).toBe('string');
+    ).properties.picks.items.properties;
+    expect(pickItems.sessions?.items?.type).toBe('string');
+    expect(Object.keys(pickItems).length).toBe(18);
+    expect(strictToolSchema(activityPicksJsonSchema as never)).toBeNull();
   });
 
   it('parses a flattened session line the extract schema asks for', () => {

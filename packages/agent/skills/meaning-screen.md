@@ -35,8 +35,10 @@ Call `meaning_screen` once.
 
 `hit` is `yes` when the line is clear of the three faults. `no` otherwise. `violations` uses only `promised_a_retry`, `promised_a_time`, `points_at_the_app`.
 
+Set `promised_a_time` first, independently of the other two: `yes` when the line names any moment Hale will be back, `no` when it does not. Then fill `hit` and `violations`.
+
 - `promised_a_retry` — Hale will try again, is still working on it, or the request is waiting. Inviting the parent to text again is not this fault.
-- `promised_a_time` — a moment Hale will be back: shortly, in a minute, any second now, "back in a minute", "give me a sec", and the same idea in another language. Informal or paraphrased still counts. `hit` is `no` and `violations` includes `promised_a_time`.
+- `promised_a_time` — a moment Hale will be back. That includes shortly, in a minute, any second now, back in a minute, give me a sec, and the same idea in another language. Informal or paraphrased still counts. "I'm on it - back in a minute" is this fault: `promised_a_time` is `yes`, `hit` is `no`, and `violations` includes `promised_a_time`.
 - `points_at_the_app` — the line sends them to an app, a dashboard, or the website by name, without being a URL (URLs are a shape check).
 
 ### `copy_reply_banned`

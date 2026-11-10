@@ -117,4 +117,13 @@ describe('toMeaningReading', () => {
     expect(reading.hit).toBe(false);
     expect(reading.violations).toEqual(['promised_a_time']);
   });
+
+  it('flags promised_a_time from the dedicated field even when violations omitted it', () => {
+    const reading = toMeaningReading(
+      { reason: 'a moment', hit: 'yes', promised_a_time: 'yes' },
+      'copy_false_promise',
+    );
+    expect(reading.hit).toBe(false);
+    expect(reading.violations).toEqual(['promised_a_time']);
+  });
 });

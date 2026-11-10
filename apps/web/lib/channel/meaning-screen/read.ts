@@ -99,9 +99,17 @@ export const MEANING_SCREEN_SCHEMA: Anthropic.Tool.InputSchema = {
       description: 'One short clause for the decision. Not a sentence for the parent.',
     },
     hit: { type: 'string', enum: ['yes', 'no'] },
+    promised_a_time: {
+      type: 'string',
+      enum: ['yes', 'no'],
+      description:
+        'copy_false_promise only. yes when the line names a moment Hale will be back — shortly, in a minute, back in a minute, any second now, give me a sec, in any language. no otherwise. Other screens: no.',
+    },
     violations: {
       type: 'array',
       items: { type: 'string' },
+      description:
+        'copy_false_promise: promised_a_retry, promised_a_time, points_at_the_app. Empty when hit is yes.',
     },
     kind: {
       type: 'string',
@@ -126,6 +134,7 @@ export const MEANING_SCREEN_SCHEMA: Anthropic.Tool.InputSchema = {
 const rawSchema = z.object({
   reason: z.string(),
   hit: z.enum(['yes', 'no']),
+  promised_a_time: z.enum(['yes', 'no']).optional(),
   violations: z.array(z.string()).optional(),
   kind: z.string().optional(),
   intent: z.string().optional(),
@@ -177,7 +186,6 @@ export function toMeaningReading(
   raw: z.infer<typeof rawSchema>,
   screen: MeaningScreenName,
 ): MeaningScreenReading {
-  const hit = raw.hit === 'yes';
   const violations = (raw.violations ?? []).filter((code) => {
     if (screen === 'copy_friend') {
       return (COPY_FRIEND_VIOLATIONS as readonly string[]).includes(code);
@@ -187,6 +195,15 @@ export function toMeaningReading(
     }
     return false;
   });
+  // Dedicated field the model fills; not a regex over the line.
+  if (
+    screen === 'copy_false_promise' &&
+    raw.promised_a_time === 'yes' &&
+    !violations.includes('promised_a_time')
+  ) {
+    violations.push('promised_a_time');
+  }
+  const hit = screen === 'copy_false_promise' && violations.length > 0 ? false : raw.hit === 'yes';
   const position =
     typeof raw.position === 'number' &&
     Number.isInteger(raw.position) &&

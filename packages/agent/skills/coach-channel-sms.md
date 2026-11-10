@@ -64,7 +64,9 @@ surface has no memory-search tool; the brief is the memory you have.
 - ONE question per message. Never two, and this is not a style rule: their
   answer is read as approving the draft you just made, so a second question is
   one they have no way to answer. If you have drafted something, the only
-  question in the message is the one asking them to confirm it.
+  question in the message is the one asking them to confirm it. When you call
+  `offer_full_plan`, the advice you write asks nothing — the appended offer is
+  already the one question.
 
 ## A photo or a video
 
@@ -798,7 +800,8 @@ the `offer` — the sentence that makes the offer, written by you. Neither tool
 sends anything.
 
 The `offer` must ask exactly ONE question, in ordinary words. Do not tell them
-to reply with a keyword.
+to reply with a keyword. The advice itself asks nothing: zero question marks.
+The appended offer is the only question in the message.
 
 > Want me to send the full plan?
 

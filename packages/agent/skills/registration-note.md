@@ -74,14 +74,14 @@ Ask nothing.
 
 ### `approval_card` — the card they approve on a screen
 
-This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button. Never ask whether they approve, never end with a yes/no, never write "Approuvez-vous" or "Do you approve".
+This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button. Never a question mark anywhere on the card, including the last line. Never ask whether they approve, never end with a yes/no, never write "Approuvez-vous" or "Do you approve". The last line is a statement.
 
 `window`, `opensOn` and `opensAt` (when it opens for THIS family, already their residents-first date when they have one), `link` (the registration page; include it exactly as written, once), `residentsFirstDays` (or null: their postal code gets the residents-first date, which IS `opensOn`, and the general public opens this many days after it; never move `opensOn` by it), `who`, `ageBand`:
 
 - `published` with `children` — each child's `who` and `fit`: `in_band` is inside the published age band; `near_band` is just outside it, within the margin on an approximate birthday.
 - `unpublished` — the town publishes no age band for this one, so they should check it fits `who`.
 
-`texts` lists, in order, the messages approving asks Hale to send. Each has a `text`: `week_ahead` and `checklist` (with `daysBefore`), `evening_before`, and `just_before_open` (with `minutesBefore`). Name each one with its timing. Say plainly that Hale never registers for them. When `courseLinkTip` is true, tell them that if they send the link to the course page once they have picked one, the morning text will carry it. When `courseLinkTip` is false, do not mention a course link, a morning text carrying a link, or that they should send a course page — that tip is not a fact you were handed. End without a question anywhere in the card: it has its own approve button.
+`texts` lists, in order, the messages approving asks Hale to send. Each has a `text`: `week_ahead` and `checklist` (with `daysBefore`), `evening_before`, and `just_before_open` (with `minutesBefore`). Name each one with its timing. Say plainly that Hale never registers for them. When `courseLinkTip` is true, tell them that if they send the link to the course page once they have picked one, the morning text will carry it. When `courseLinkTip` is false, do not mention a course link, a morning text carrying a link, or that they should send a course page — that tip is not a fact you were handed. Stop after the list. Do not ask them to approve, confirm, or reply: the button on the screen does that. No question mark on this card.
 
 ## How to write it
 

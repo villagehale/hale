@@ -3,11 +3,16 @@ import { FAMILY_STAGES, type FamilyStage, STAGE_BOUNDARIES_MONTHS } from '@hale/
 import { parseStatedAgeBand } from '../../social/age-band';
 
 /**
- * Wire schema for `activity_picks`. Nested session objects and string enums
- * made Anthropic reject the request (`Schema is too complex`) once source
- * binding added evidence fields (#875 / #998). Sessions travel as one string
- * per occurrence; code parses them. Enums are strings here and checked in Zod.
- * Binding still requires the evidence + URL fields.
+ * Wire schema for `activity_picks`. Extract is a separate turn from grounding
+ * (no `web_search` on this request), so the 400 is this schema's compiled
+ * grammar, not total tool count. Flattening sessions to strings kept the
+ * documented 24-optional / 16-union caps, but Anthropic still rejects the
+ * nested 18-property pick objects on an internal grammar-size limit
+ * ("Schema is too complex"; structured-outputs additional internal limits).
+ * `strictToolSchema` therefore returns null and `forceToolJson` sends a plain
+ * non-strict tool — the documented fallback; splitting extract is unnecessary
+ * once the grammar is not compiled. Binding still requires the evidence + URL
+ * fields. Enums are strings here and checked in Zod.
  */
 export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
   type: 'object',
