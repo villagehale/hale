@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgrt3jeKhQzUdg5Fjrm5K",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShQYKEAgTGAI4AUIIdGhpbmtpbmcSDNZDItyihn2S4AcWtRoMPp4ID9MQvfwOCbEbIjD5rjLbo+FXYHvQjbrXYvKLocAk70zG0KbseEN0EgwLdpgcuWU6mdXJmb8Yz+laz0IqogU5VMpe8ikCLNSYna6G7GZHHaGetrAF2olEUC2gB36YaN5n25hXcsiZsvtWpRfbtv1wdJsjzXqzb7rH0AsoMx9hE/urDFVn25n6UVmNDBzL7SJm2mAn80Z83ADZXnSVuIfBYaqvNlVHba/CeRJrN3X8sWMaYI3lhZzNOJ+x7tgmgrkXGhJAVq9OD90Rv3zkB+DQrMk5eajgi/fEg7qXN1fk1HFTZwLMGbNegKR/KQRQF7kxCRT4SC9c0v7mGT8Tu+8XI4byIysFy5c6WolB7UMyYsaX9WD+Lcq0OP1p/GFvAxu2MmCDJ8HEof/AKH6AKwI+46wKK+9dNIvRHvvAhzGcxXlVt1JpCxna4keNO5sym8r2ovplHTJHBiPLpXz+TNPfhumt7IlJzo037PaidpRZMZw66meOBOB0loS7qXrNQmXMtOGm8BwxrV22W8/fs9nV80s2qOJLBy5E2ACmToAjVD3W6J1OgA1XNxr0FAYx/Jnd+In25YjAFv5AziautSmUV42BNioPt9yiUUJZ6xTCSeMTmCno2WCQDFIoCOkhd0vFoizneksSz+3ZcXEwxEZO6tFHzoOCVHeYb4/gIsXw5h7vuE77mBoTb15CH0iKNYw0ehawtLJygrppm1489xF6Nl30DIKfTEDVyH2UhM2Gb/7W9YjQJ8NzbMg5XgJdoHRus2n3351h6rJ0an78FWiKs3xmd3DaOaoOj3j0Kbk96Ddp/e0eOM2r5q6aoKi5GneXAFvvgLGyu/sYLYYOw2tevnlu4eZ7U9MhlkPCOvx6mrnNrCANzKniaKjwKD98tP5U1wz38uloDu20uC0gGBBQON80w6tlXb5n4WcW5mWdMCapHiQtFfwrrzdNr9G8W4Ycdp+BuqzsU8MHT083YZhUzRgB"
+      },
+      {
+        "type": "text",
+        "text": "Today looks wet, 90% chance of rain, so go indoors. Riverbend Community Centre has an Indoor open play gym, Saturdays 9 a.m. to noon, $6 per child, and it fits a 2-year-old. That's per their program page, so I haven't confirmed it myself. [link-187000] Your calendar's empty today, so it's open."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 328,
+      "cache_read_input_tokens": 21264,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 328,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 159,
+      "output_tokens_details": {
+        "thinking_tokens": 39
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

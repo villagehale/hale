@@ -76,6 +76,10 @@ interface Recorded {
   costUsd: number;
 }
 
+function readingFindTurn(findTurn = true): NonNullable<ChannelCoachPorts['readFindTurn']> {
+  return async () => ({ findTurn });
+}
+
 function ports(overrides: Partial<ChannelCoachPorts> = {}) {
   const recorded: Recorded[] = [];
   const contextInputs: unknown[] = [];
@@ -1461,6 +1465,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
 
 describe('find reasoning stays off the reply (VIL-524)', () => {
   const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
 
   it('does not append the private skill or call the judge on a calendar edit', async () => {
     let instructions = '';
@@ -1485,6 +1490,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const draft = 'All three finds are at the library: Storytime Saturday at 10.';
     let instructions = '';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: send,
       runAgent: async (args) => {
         instructions = args.skill.instructions;
@@ -1501,6 +1507,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'All three finds share one page…';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'withhold' }),
       runAgent: answering(draft),
     });
@@ -1554,6 +1561,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
   it("the judge reads the draft with a teen's name already redacted", async () => {
     const drafts: string[] = [];
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async (draft) => {
         drafts.push(draft);
         return { verdict: 'send' };
@@ -1573,12 +1581,35 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       'EarlyON Saturday at 10.',
     );
     expect(gate).toEqual({ verdict: 'unjudged', reason: 'client_unavailable' });
+    vi.unstubAllEnvs();
+  });
+
+  it('production wires a find-turn reader, not a word list', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const ports = productionChannelCoachPorts({} as Database);
+    const readFindTurn = ports.readFindTurn;
+    expect(typeof readFindTurn).toBe('function');
+    if (readFindTurn === undefined) throw new Error('expected readFindTurn');
+    const reading = await readFindTurn({
+      text: "what's on this weekend",
+      transcript: [],
+    });
+    expect(reading).toEqual({ findTurn: false });
+    expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("what's on this weekend");
+    logged.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it('the scripted pass-through sends the draft and names that', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
-    const p = ports({ judgeFindReply: findReplyNotJudged, runAgent: answering(draft) });
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: findReplyNotJudged,
+      runAgent: answering(draft),
+    });
     const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
     expect(reply).toBe(draft);
     expect(error).toHaveBeenCalledWith(
@@ -1592,6 +1623,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
       runAgent: answering(draft),
     });
@@ -1611,6 +1643,109 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       expect.any(String),
     );
     error.mockRestore();
+  });
+});
+
+describe('the day a find is for (VIL-567)', () => {
+  const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
+
+  it("hands the model today on the family's clock, not the UTC day", async () => {
+    const seen: Record<string, unknown>[] = [];
+    // 02:30Z Monday is still Sunday evening for a family on Pacific time.
+    const p = ports({
+      now: () => new Date('2026-11-09T02:30:00.000Z'),
+      loadTimeZone: async () => 'America/Los_Angeles',
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(seen[0]?.localNow).toEqual({
+      date: '2026-11-08',
+      weekday: 'Sunday',
+      time: '18:30',
+      timeZone: 'America/Los_Angeles',
+    });
+  });
+
+  it('a bare find after a question about today gets the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      loadTranscript: async () => [
+        { role: 'user' as const, content: 'is there anything on today?' },
+        { role: 'assistant' as const, content: 'Nothing on your calendar today.' },
+        { role: 'user' as const, content: 'find me something to do' },
+      ],
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  it('a find with their own Gmail connected keeps the day addendum and the email addendum, email last', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      voiceMemosEnabled: () => true,
+      emailReader: {
+        connected: async () => true,
+        read: async () => ({ read: true as const, body: 'unused', truncated: false }),
+      },
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do today'), []);
+    const voiceAt = instructions.indexOf('A reply can be a voice memo');
+    const findPrivateAt = instructions.indexOf('Keep the finding to yourself');
+    const findDayAt = instructions.indexOf('The day a find is for');
+    const readEmailAt = instructions.indexOf('An email Hale told them about');
+    expect(voiceAt).toBeGreaterThan(-1);
+    expect(findPrivateAt).toBeGreaterThan(voiceAt);
+    expect(findDayAt).toBeGreaterThan(findPrivateAt);
+    expect(readEmailAt).toBeGreaterThan(findDayAt);
+  });
+
+  it('a calendar edit does not get the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(instructions).not.toContain('The day a find is for');
+  });
+
+  it('a find in any language gets the day addendum when the reader says it is one', async () => {
+    const seen: string[] = [];
+    let instructions = '';
+    const p = ports({
+      readFindTurn: async ({ text }) => {
+        seen.push(text);
+        return { findTurn: true };
+      },
+      judgeFindReply: send,
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Patinoire familiale à 13h.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('trouve-moi quelque chose à faire'), []);
+    expect(seen).toEqual(['trouve-moi quelque chose à faire']);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
   });
 });
 

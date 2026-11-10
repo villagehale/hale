@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgrt1kFEpH8HAQwbJUYhu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnAcKEAgTGAI4AUIIdGhpbmtpbmcSDAmf46MOSVxCO6+OeBoM1PinOcfcD2Y8TnwMIjC+H/+DOm8VdMAAgjdrwnvsQoruWE0GtGyW9QH5svOK7OuQtzX6Ghd1Rh2VYiWUnlgquQYizAkHjLaFBt0oWT+GRfeTbQ5apiNTCyX1MoL4QFEDaYARH4/6EfshFciQpIVAF7LDu0h22eCv0HXofwP+OeOVNYO19cUsNY1K8fAz8PD1SQYtVB8A+d1YkSOK0zQ4LHBPriFGEI5ugrZ5boVJHj/EOyq2IdvCAQ9zfGNOUhm4BKIAAVYb2+fIuUA7qz2lOjkhaepalyp1WHcWA5qOuSVwVW3E7oH4fTli/mae+w8SXYXfs/wMGkMg1h7KS86lEVoKUTiV5kUdG0mYdJ+xHaRiJlSNynnSDjZZ4d5ZLpNDqlvY85x5uu/m5ok/7palctBm/QWWTvU7gjgPZF2TsNy7kscKE5i3702yd+jLg7EuAeZnoINQYaPkxf3d1UdShuhIVmiDIvUEtyCRTEz78l+M84r5HnVKYUvCsvvTw9k5pq60FSQ3ZOfu6n3zS4k9SAywaBBDp7V2adCerO9TtxTVkuARYZ4nyMnXretdDYWcBRY1jdkizvpJI05Qt1AARTbU8alu+HDBw5snELO2miED7D5JnLTwacTNyjMQvfc2O+l5hxMo1sAwnA4dKRo8fIjlnrtEiXDZMLRrGsnWGjk2EzIoVtljXptL2WQojvOaTDlJC6/6nubyvOIjJbcq62vz6UveARxbP6SUvIzL7bC2XxSOb/EtDbyGXfoqIawroOiq86E1Wzj3QuCDUY0UCTyzw9qIp5bVK9kHBMI3r12w9IU5sLPeAZvtdBifzwHPA5cAhtm+mCPtDYcfONMQL6+JqH9VtQfmapPaNF7oQXM2xIPU5lkhFQwiqX0qux40wjGzWuFMvWVSCJf6hOsk42LOelaD6Ag4gbAmwcqYtjEgxaRfYwoLxOanT70mYA8pPPaVeFYkET7yb9DVISs5qHTxkXk7o1XusNStJNPZ9+CLYh+0nGBd3WJT1Frdz3LIPJ5/C+oqvBwl7UeQlvSPdyDwQ0T1fOo8L+z9wPImr/xJJzCUMI27ZpIFDn1L+OVobyCBMKfHsmZN4A/L1p3xvMNse2ijRuCqqLNMU7INIzbOchdlYGNmmsQob4WGbwU82z6SiPlz8Uk2Yma/Gl3pGHMiR8h92x4MbIwYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Heads up, today is Thanksgiving, so a lot of places may be closed or on holiday hours. Both of these are weekly Thursday programs, and their pages don't say whether today is an exception.\n\nLittle Movers drop-in is Thursdays 9:30 to 11:30 a.m., free, for ages 1 to 4, per Riverbend Community Centre's program page. [link-c6988f]\n\nToddler story time is Thursdays 10:30 a.m., free, for 18 months to 3 years, per Willow Branch Library's events page. [link-ce743d]\n\nBoth come from their own sites and I haven't verified them. I'd check that one is running before you head out."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 280,
+      "cache_read_input_tokens": 21002,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 280,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 313,
+      "output_tokens_details": {
+        "thinking_tokens": 95
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
