@@ -2,7 +2,8 @@
 //
 // The subject is the REAL agent loop (`runAgent`) over the REAL coach skill, composed the
 // way runtime.ts composes a 1:1 nearby-find turn: coach-channel-sms + coach-nearby-find,
-// then coach-find-private and coach-find-day when `nearbyFindTurn` says so, then the
+// then coach-find-private and coach-find-day (this suite is nearby-find turns; production
+// gates those addenda with a model read), then the
 // coach-local-day addendum through the REAL `augmentCoachSkillForLocalDay`. The day facts
 // come from the REAL `familyLocalNow` and `localDayContext`, and `find_activities` is the
 // REAL tool over a fixture finder (the live web search is not what this suite grades). A
@@ -201,9 +202,7 @@ async function main() {
     join(COACH, 'local-day.ts'),
   );
   const { familyLocalNow } = await importTs(join(COACH, 'local-now.ts'));
-  const { augmentCoachSkillForFindPrivate, nearbyFindTurn } = await importTs(
-    join(COACH, 'find-private.ts'),
-  );
+  const { augmentCoachSkillForFindPrivate } = await importTs(join(COACH, 'find-private.ts'));
   const { findActivitiesTool } = await importTs(
     join(WEB_ROOT, 'lib', 'channel', 'activity', 'tools.ts'),
   );
@@ -237,13 +236,8 @@ async function main() {
     const failures = [];
     const localNow = familyLocalNow(new Date(fixture.now), fixture.timeZone);
     const localDay = localDayContext(localNow, fixture.forecast);
-    const transcript = [{ role: 'user', content: fixture.text }];
-    const findTurn = nearbyFindTurn(fixture.text, transcript);
     const skill = augmentCoachSkillForLocalDay(
-      augmentCoachSkillForFindPrivate(
-        augmentCoachSkillForFindPrivate(base, findTurn ? findPrivate : null),
-        findTurn ? findDay : null,
-      ),
+      augmentCoachSkillForFindPrivate(augmentCoachSkillForFindPrivate(base, findPrivate), findDay),
       localDaySkill,
     );
     let reply = fixture.broken;

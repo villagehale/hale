@@ -109,7 +109,11 @@ import {
   augmentCoachSkillForExperienceCards,
   shareExperienceCardTool,
 } from './experience-card-tool';
-import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import {
+  type FindTurnReading,
+  augmentCoachSkillForFindPrivate,
+  createFindTurnReader,
+} from './find-private';
 import { type FindReplyGate, judgeWholeFindReply } from './find-reasoning-judge';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
@@ -338,6 +342,16 @@ export interface ChannelCoachPorts {
    */
   client(): AgentClient;
   /**
+   * VIL-524 / VIL-567. Whether this inbound is a nearby-find, in any language.
+   * Production wires a model read. Absent: not a find — scripted tests that are
+   * not about the gate, and a missing client in production, fail the same way so
+   * a calendar edit is never treated as a search.
+   */
+  readFindTurn?(input: {
+    text: string;
+    transcript: readonly { role: string; content: string }[];
+  }): Promise<FindTurnReading>;
+  /**
    * VIL-524. On a nearby-find turn, after the model writes, this decides whether
    * the whole reply is internal reasoning. Required: production wires the model
    * judge, and a scripted coach passes `findReplyNotJudged`, which sends the draft
@@ -454,10 +468,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...groupedSkill,
         instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
       };
-      // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
-      // itself stays byte-identical, so coach-channel and group-privacy
-      // recordings stay keyed on the prompt they already have.
-      const findTurn = nearbyFindTurn(turn.body, transcript);
+      // VIL-524 / VIL-567. Only a nearby-find turn gets these addenda. A model
+      // reads the parent's words in any language; there is no word list. Absent
+      // port or a failed read is not a find. coach-nearby-find itself stays
+      // byte-identical, so coach-channel and group-privacy recordings stay keyed
+      // on the prompt they already have.
+      const findTurn = ports.readFindTurn
+        ? (await ports.readFindTurn({ text: turn.body, transcript })).findTurn
+        : false;
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
       // VIL-567: the same gate, so a bare find reads its day from the thread.
       const findDay = findTurn ? await loadCronSkill('coach-find-day') : null;
@@ -913,8 +931,10 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
  * compiles perfectly when either half is missing, and a fake port cannot fail on that.
  */
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
+  const findTurnReader = createFindTurnReader(anthropicClient);
   return {
     client: anthropicClient,
+    readFindTurn: (input) => findTurnReader.read(input),
     judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
     voiceMemosEnabled: linqVoiceMemosEnabled,

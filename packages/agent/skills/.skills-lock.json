@@ -131,6 +131,10 @@
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
   },
+  "coach-find-turn.md": {
+    "file": "coach-find-turn.md",
+    "sha256": "2caf87d704110fef35689584caa399f84f4aa16ced1bf4320f9c1caf9c007bd6"
+  },
   "coach-group-lists.md": {
     "file": "coach-group-lists.md",
     "sha256": "6356a5810c5a49937f948fa3dc2c8b7b147babbca9b843b41beb8f6489cf2cdb"

@@ -182,21 +182,13 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel
 const LOCAL_NOW_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'local-now.ts');
 const LOCAL_DAY_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-local-day.md');
 /**
- * VIL-567 · the REAL find-turn gate and the find-turn addenda the runtime appends.
- * Only a `findTurnPrompt` fixture gets those addenda, so every other fixture keeps
- * the prompt its recording is keyed on. Main's #1190 already put `localNow` on the
- * standing corpus. The named gap left is the find-turn addenda themselves on those
- * standing find fixtures (see VIL-524's follow-up).
+ * VIL-567 · the find-turn addenda the runtime appends. Only a `findTurnPrompt`
+ * fixture gets them, so every other fixture keeps the prompt its recording is
+ * keyed on. Production gates this with a model read (`coach-find-turn`); this
+ * harness uses the fixture flag so standing keys stay put. The reader itself
+ * lives in find-private.ts behind `~/`, which this tsx loader cannot resolve —
+ * its own suite is find-turn-eval.mjs.
  */
-const FIND_PRIVATE_SRC = join(
-  REPO_ROOT,
-  'apps',
-  'web',
-  'lib',
-  'channel',
-  'coach',
-  'find-private.ts',
-);
 const FIND_TURN_SKILL_PATHS = ['coach-find-private.md', 'coach-find-day.md'].map((file) =>
   join(REPO_ROOT, 'packages', 'agent', 'skills', file),
 );
@@ -1968,10 +1960,6 @@ async function main() {
     import.meta.url,
   );
   const experienceCardAddendum = await agent.loadSkill(EXPERIENCE_CARD_SKILL_PATH);
-  const { nearbyFindTurn, augmentCoachSkillForFindPrivate } = await tsImport(
-    FIND_PRIVATE_SRC,
-    import.meta.url,
-  );
   ({ familyLocalNow } = await tsImport(LOCAL_NOW_SRC, import.meta.url));
   const findTurnAddenda = await Promise.all(FIND_TURN_SKILL_PATHS.map((p) => agent.loadSkill(p)));
   // VIL-429: the runtime appends this last, and only on a 1:1 turn holding a fact with
@@ -2121,10 +2109,14 @@ async function main() {
           }),
         );
       }
-      // VIL-567: the find-turn addenda, behind the runtime's own gate, in its order.
-      if (fixture.findTurnPrompt && nearbyFindTurn(fixture.text, fixture.transcript ?? [])) {
+      // VIL-567: the find-turn addenda, in the runtime's order. Production gates
+      // this with a model read (coach-find-turn). This harness uses the fixture
+      // flag so standing recordings keep their keys; the reader's own suite is
+      // find-turn-eval.mjs. `withAddendum` is the same concat as
+      // `augmentCoachSkillForFindPrivate` (find-private.ts cannot load here: `~/`).
+      if (fixture.findTurnPrompt) {
         for (const addendum of findTurnAddenda) {
-          turnSkill = augmentCoachSkillForFindPrivate(turnSkill, addendum);
+          turnSkill = withAddendum(turnSkill, addendum);
         }
       }
       if (turnContext.memoryFacts.some((fact) => fact.seenIn)) {
