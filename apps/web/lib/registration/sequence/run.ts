@@ -1288,6 +1288,8 @@ async function deliverHouseholdText(
       familyId: input.familyId,
       body: wireBody,
       now: input.now,
+      lane: 'registration_sequence',
+      parentUserId: recipient.parentUserId,
     });
     if (unbacked.length > 0) {
       console.error(

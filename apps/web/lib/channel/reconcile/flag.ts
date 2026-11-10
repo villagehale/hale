@@ -2,9 +2,9 @@
  * VIL-581 · the claim reader's mode. Unset is `off`: nothing reads, nothing is queried
  * and the warm skips. `shadow` reads every gated body beside or after the regex
  * decision and only counts the comparison (claim-shadow.ts); no send changes.
- * `enforce` makes the reader part of the decision on the coach turn and the gated
- * sweeps (claim-enforce.ts), with the English regex kept as a floor beside it. The
- * dispatch choke is not enforced yet and keeps shadowing in every mode.
+ * `enforce` makes the reader part of the decision on the coach turn, the gated
+ * sweeps, model-written dispatch bodies, and a passport line folded onto a send
+ * (claim-enforce.ts), with the English regex kept as a floor beside it.
  *
  * The allowlist enforces named families (the test line) while the mode is `shadow`, so
  * the test line goes first and everyone else stays in shadow. It never arms anything

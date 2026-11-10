@@ -2,6 +2,7 @@ import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
+import type { DispatchClaimEnforce } from '~/lib/channel/reconcile/claim-enforce';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
@@ -121,9 +122,14 @@ export interface DispatchPorts {
   /**
    * VIL-581 · the claim reader in shadow, for model-written bodies. Required (rule #11);
    * it starts detached, never throws, and the leg's outcome never reads it. No db
-   * handle here either: wiring.ts binds it.
+   * handle here either: wiring.ts binds it. Skipped when {@link claimEnforce} decides.
    */
   claimShadow: DispatchClaimShadow;
+  /**
+   * VIL-581 · the claim reader as part of the send, for model-written bodies on an
+   * enforced family. Required; off is a named `off` decision, not a missing port.
+   */
+  claimEnforce: DispatchClaimEnforce;
   renderer: {
     render: (
       m: LoopMessage,
@@ -293,13 +299,42 @@ async function dispatchLeg(
   // artifact instead of a loud row saying the template needs fixing.
   const unbacked = claimsNoLedgerCanBack(claimText(rendered));
   if (rendered.modelWritten) {
-    ports.claimShadow.dispatch({
-      familyId: msg.familyId,
-      parentUserId: msg.parentUserId,
-      body: claimText(rendered),
-      now,
-      claims: unbacked,
-    });
+    const body = claimText(rendered);
+    if (ports.claimEnforce.enforces(msg.familyId)) {
+      // The regex floor already refuses this body: do not spend a read, and do not
+      // shadow (an enforced family was already going to be decided by the reader).
+      if (unbacked.length === 0) {
+        const decision = await ports.claimEnforce.decide({
+          familyId: msg.familyId,
+          parentUserId: msg.parentUserId,
+          body,
+          now,
+        });
+        if (decision.status === 'failed') {
+          console.error(
+            { event: 'claim_read_enforce_failed', lane: 'dispatch', reason: decision.reason },
+            'dispatch: the claim reader could not read the body - not sent',
+          );
+          if (decision.retry) {
+            throw new ChannelRetryableError(channel, 'claim_read_failed', decision.reason);
+          }
+          await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'claim_read_failed' });
+          return { channel, outcome: 'failed', reason: 'claim_read_failed', voice };
+        }
+        if (decision.status === 'unbacked') {
+          await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
+          return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
+        }
+      }
+    } else {
+      ports.claimShadow.dispatch({
+        familyId: msg.familyId,
+        parentUserId: msg.parentUserId,
+        body,
+        now,
+        claims: unbacked,
+      });
+    }
   }
   if (unbacked.length > 0) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
