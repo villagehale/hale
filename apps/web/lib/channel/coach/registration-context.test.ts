@@ -66,7 +66,7 @@ describe('the coach registration context', () => {
   });
 
   it('claims nothing for a family whose area is outside the covered set', async () => {
-    // M9J is Etobicoke — a real FSA, not one this window's municipality covers. A
+    // M9J is Etobicoke — a valid code, not one this window's municipality covers. A
     // neighbouring town's registration morning is worse than silence.
     const outside = await loadRegistrationWindows(
       ports({ areaCoarse: async () => 'M9J' }),

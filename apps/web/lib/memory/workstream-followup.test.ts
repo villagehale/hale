@@ -6,6 +6,7 @@ import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import {
   composeWorkstreamFollowup,
   followupBackoffUntil,
@@ -20,7 +21,7 @@ import { WORKSTREAMS_ENABLED_ENV, activeWorkstreamBlock, haleActionNextStep } fr
 /** 11:00 in Toronto, 00:00 in Tokyo. Quiet hours are 21:00–08:00 local. */
 const NOW = new Date('2026-08-12T15:00:00.000Z');
 const FAMILY = '11111111-1111-4111-8111-111111111111';
-const TITLE = 'Saturday swim for Sebastian near L7G';
+const TITLE = `Saturday swim for Sebastian near ${FIXTURE_FSA}`;
 
 function usage(): Anthropic.Usage {
   return {

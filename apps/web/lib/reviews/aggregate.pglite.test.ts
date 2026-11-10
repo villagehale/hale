@@ -1,6 +1,7 @@
 import { type ActivityReviewTag, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   MIN_FAMILIES_FOR_AGGREGATE,
@@ -289,7 +290,7 @@ describe('what is spoken and what is only ranked', () => {
   it('pools per area — a verdict from another neighbourhood is not "near you"', async () => {
     await seedReview(await seedFamily('one'), 'worth_it');
     await seedReview(await seedFamily('two'), 'worth_it');
-    await seedReview(await seedFamily('three'), 'worth_it', { areaKey: 'L7G' });
+    await seedReview(await seedFamily('three'), 'worth_it', { areaKey: FIXTURE_FSA });
 
     expect(await verdictsFor()).toBeUndefined();
   });
