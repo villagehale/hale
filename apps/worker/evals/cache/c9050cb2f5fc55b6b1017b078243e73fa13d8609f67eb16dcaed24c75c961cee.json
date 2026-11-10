@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CguyPk71r6B9EZJummxa7",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSkwwKEAgTGAI4AUIIdGhpbmtpbmcSDCfMlHKgkwPSOGO+vhoMErTKO/2FyLJgCxOsIjDpiszPld8oJFEF7nwY0JGufC0PSlXrfTTN0wZyS/Z5xE8caR73C2gTf+sKAHbqBN4qsAs9+ZiXI+Vie0aBbZ9RRiOEkXejMkLgIkTzqBaYWy4UUNQ8DuJU9n0iGQGBcKLJitATbBJXDcGFrPp5ws/5TbW8aOMqEA+7Co9+LmNle6N0NYkkvixsLjHLfUyd7b48KldlIbDICz0JVbc6mULV0r/9LFObYGuULHTsnBqAZeX5z5QGKIwxAfRKMwECVMP5OxPsaihGkzdxsyeXgQHLVN/oFkbUuezqzCueO0OgYqOtFWY4fGyvyZW4d5wca98dG+uTk15ESPVcl26fSorDQZPzWUWSyQnwgsEVIccMlcgWszaBSjt8FpdU68aj2iHMbHGHbiw6NBGmfLxONWOuMgCrDQriR+NsakfhPDzOJKfPOvYkINJvtKQ41bsh6bxeHCQnPLaa4CR2FRBq++v7G/DvB5LSXWjoZDaoUwjMLUgCBMG2qqRPPIhtCNcgt3kvuINCAlFCWO7OLLM+JoR6XV3lKvUb1m5RA6JG18vKgvKF9BrmlHPQ0HUoffud4oWNjRzuL96GhsqGigHkhrz8ku1o1d7LZa2Erann8RspNTCjN6PQILSD499N0w1Hkt37wrqgIRs2Sq4EH2N90KRedaJri1ggbaUEx24r8N55eMdIgKCU/Aiual2mFLTBXEBuoQ+43oKeKggstNRP36lVadfzo4im+NPfXuVOGLCYtdJbiihxap9y2F1+Dz8eyJlhBEEPw6vUMyFqvw0jq65soYq3Znn3xF52GiF/eCMk8idqM/3J1P45gWJuBWenh6mFDsCh1bW3pP2wfk6VThZK4yWWfZvCZoF0VopFcwt735Vc2Akcu/930omhDC8BIPN0OHuibpj+fOtfN3DB0OE1I5nqE+NNNk+tPOfb69TzhiyMbUchm0ZfsDpPfW8+AxE5waEDLDhVA8RH5OVHVj8ZWjRzGi5yeV50BK78YVkMOu92mFRnQZO5VKabL8PAHn9SB/iyZPd3zAnxYjkObbr2w8uE/V3RDlY1wyMzfPhSCjyzXa4W/ybabfcMW3IszJaJOE9Ni7NWpg+w36AgfJCUGI/39Ya2+gPT6V8jFD7fnCO+8N9t0oWEBs6n69+PWnUHu1nxtHBuTnyd7DdKPKuTiKynWQ63WB4LYtCV9EK3iK9OIL8yldXtcnhkygB3hvZ5d36+lX1wQTMe4JiOHL5M+an9KWQwjIxpzA9cUPd4D7S1HaXG2J3jREKPzwYmJ9Fi5cOBDgvmCYpivElXZWe1Gn6WkKsnhjZx80RwYi20VUjailmoVMj7GQwBIh5R6VuGLj/wNRqTXndCvcDvVI6SxKedB9v4ynK1Y1U8DqQjsXAJw+LRKAD48nsRx0wY/Cwy9IF+oylwAyCCxCywh6EjWlxUX0mXqvmbL12g26jFyPI8HEWEZKEIgjFwdNbCsBPr5DIEuderIkUHUPFTyt+lzLiL7+6AMEFSX8koh8Vjreg+ce9Mw4NT2EmARdqNH2/2twf5GO997vEFptlNoHk1jV0qoQVcoMBSQuFdngLEbrbAQoC3VKLYr2fL9zd18HgKGTCKuSYE5ccDkgpi2MfYSv+N7O4xSbgQs/h//bm6EVDCJ82OzJDIfuX4u5dG3csH7KUOzUCuldYLLqFBwOGoC+ZCrsfTv/iawCixwGKFf+Fcyo2/jzQSj73UNu82nMQmojxFugwyd2krql/ywm/EJ5weoYgmA61bhSp1h8u4pdLU9tAKDfRPGoyq3w1Kn4bY9t2HQPsxAhEZA1Jk1+btoTGQNEJWO14KdqYWBPzPB5ghqNC/YKqzZlILy5VdPpHCzO1EVXBA/Z740I4JNybTkCvpD4gvHZUxEWB76ufPLdK3q6HuBdw0Y+CSss34c9Aub1Lfi0N/9E0XhMDXv1axSRjdD3sXYYsYd9xnFrfsSPv1Y0YlTzK3JyGJVdQ5trQQLRmjLOCF6DHsSBpCt118W4uJGAE="
+      },
+      {
+        "type": "text",
+        "text": "I only know that Maple Tree Montessori wrote back. I don't have what the message says, so I'd be guessing if I told you."
+      }
+    ],
+    "usage": {
+      "input_tokens": 444,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18902,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 355,
+      "output_tokens_details": {
+        "thinking_tokens": 312
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

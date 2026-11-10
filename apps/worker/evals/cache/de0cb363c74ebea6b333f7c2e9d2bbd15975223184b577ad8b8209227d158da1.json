@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CguymGvF4Kk5mySJZDGAJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9gUKEAgTGAI4AUIIdGhpbmtpbmcSDMmVnhOT5m4UCkfDTRoME1j9FfUIDSgPGoiuIjBojdkyzlNdCYsNnhdf25zTIdTzabZ8YBN7TnXWIKCiyN6lRx6RjR9C1v1e58+zZykqkwUnEF58W4mUnSvLacj4Qiu9MVanwn4XuIAnxv8H7jFJRBSxOh/YzxLtCp2Byt4zVF2N3GM/zMjLiILsASuZxWjaDxUuWRpe+RuUHOXALbYlmLlKqXAbIVn+4EE3wFq5dtMkpqiDOxG03xqtWXMqvBF8+JQWD4WgB7EEekDlkQidW62DCPVEdly4x/ijK36Yfm+mhJhuDlO6nCPPoGT8iM+hfw47l8eae3cUUFQARK7+6Nfg/RsFv4wMyZn51sZ+h6iTbVfl02LJyCA0IRDyDa5ay8wv0GIcMnT7FALU8TT+Od3e/pdYt3ohbLQGWODjzBoqBradNhtjjrZwz/Y5HBQyPRowRbP2txWjiEN2yxjADFjTMNY/G9vcZohPDn4XB55vwZEK3f0FK+1gpfdtZYc9eoywBvemLgycNqOMX32oI+oPeMDCd+c+ay9/Ia5P2akFfs+HwmeV+nItpbykC+v9aeKOGnd14Zp0zUU7OXa4LIubeQkaj6lzzEUmhIAcMqRrFaiRTRf6h5d9lKz99AqSBG3uUp4FHLX4zea4jE7K8E8CCJyfcjmGvTrSNBaXeQmDcMTNSHWfYsF902+Bv51jHnWVgiz9HDDqy+wMhXgCUsV5E44EDSJ14LpujTOTIiF+8ZBpzqMZXTJyrneY8mS55VFa15O1aBQ31mMmL+j4yu72Efhfg+uxIRIFVh2TY6A5GLgc/ZEJu2YJsnazUPb0/66PFJgL//ufM1nfcto7dEaxAO90sA7mcn4zp4hes6P58m5UdlrXlBusXQ3jp6SkdQxVQEyVtDpznaUwEVWgSdixRTgTjYk58gunQeDfN2AQTUFSZk3ivlg9FVTtMniKOTg2pkFSa5cHkud+S+kpCCYyXxgB"
+      },
+      {
+        "type": "text",
+        "text": "Saturday, Aug 8 has three. Swim Kids 3 at the West pool at 11:00 a.m. is a swim class for school-age kids. [link-0aed70] Central Library story time at the Bloor/Gladstone branch is a free indoor drop-in for all ages. [link-c9bfa2] The High Park playground (Jamie Bell Adventure Playground) is free and outdoors. [link-b7e8a1]\n\nSunday, Aug 9 is Riverdale Farm, a free outdoor farm that's open daily. [link-b8b9f6]\n\nSaturday looks dry and warm, so the playground works well. Want me to put one on the calendar?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1501,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1501,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 267,
+      "output_tokens_details": {
+        "thinking_tokens": 44
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2428
+}

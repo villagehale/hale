@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct and true: both send_email and reply_to_email autonomy were turned off this turn, so \"C'est fait\" is accurate. It answers in the parent's French, in one plain sentence, with no question or sign-off. One small blemish: \"je ne enverrai\" should be \"je n'enverrai\".",
+    "score": 4
+  }
+}

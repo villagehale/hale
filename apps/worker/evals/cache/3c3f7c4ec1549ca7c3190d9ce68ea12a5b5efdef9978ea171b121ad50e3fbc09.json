@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "find",
+    "reason": "naming one of the prior finds during an ongoing nearby search"
+  },
+  "latencyMs": 1523
+}

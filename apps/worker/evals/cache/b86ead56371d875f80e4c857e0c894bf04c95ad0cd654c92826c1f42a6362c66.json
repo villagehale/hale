@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CguySmHnBzHBK35n58ty6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxQcKEAgTGAI4AUIIdGhpbmtpbmcSDAp9Sg05qwD2ASctIRoMXVJ+QG9w+F56aY7FIjBrGMe7XYUPJJ+pfl3bzAi8xx8cAd6hSVdiAyVbU68YML7z36oq7vODUx/oaZc912cq4gaPCK4bAAt8R6uQ2bHtg+Ir9fsBoDG99xzTXUWPxcGJMaLw4ZnTIu9MaoYKPRktnIoyoKGeJ6p2hwffvfb5b6e+xSYULEcMw6B8wm0PHnFSnTqR/fQ8BUw96AV+Nsq7P37agroCe7me5yIzD1L0s1Vh9Dxal9+6GpOGnHIdZ77DnoE8nreyd8rYyZUlaBkQywsaDldUhuW46Mas+Vuyu22/xPbWLoxPzG6Xjd/7goD2bIgaT+p9u6mIsDBZOmsemaHlRa8NJrMdwO3EtewUeXHCueP0qt+Gw/VtvyNfTFfCNiUuvcOM+mZpuHXsnOg8Ez7YdFkJxD0IiF+oABBA0uPgur/bC8M0y/fCjnAbNaKnxFkTSdiDWekfcDdd5EoS0RMewxgzHbtKr/YOCSm5doZW8ZvhvWY4uSURcu+K1lv2Csb5Dzga6dywsIz6bWDVU86ss6zNzvLv/R2rDCtPGU8rzjbStZ7JskUg43L9B+qmIDGf4Wu8FV9ywswteBsVJMaJ2YLK8/wUtLqO7pmsliGi/F0V7xzGv7AalJ2WCZQ3Qi8TXRxd9Xl73NsNUCC3td2seb/fjXRPoMw6uIlE2YUjVB4y6j/T84tdCbcLGmBDnaY5MovryM2ldYEeho1+AXZ4mcwVXfKQoNKhopogNUHWPHC2AkXYWg66qJSkS1aU0fbAkwUaptN11o0NdhatOdt4q7px987fNWxDGyAfUdID8+sLMrKY7gjv19PNp++qE6vNpfgXPLalZzAs8DFY0B19ryetn+2BQwliMGdwoteabOJmBUC+1u7sa/+y3swjCL2yKBK13r1x2ldCdl9vTdNIz4iOm854s9RvUOeBY3+bQ/T8yWMmdYbXdm1ROIJqc8ac+BFeUrLVSrZrOCEOVCK+PQ17TMHrjgZo3N6MUtHgENUbOKzk/4FVPr2jVbufB4YM6tKwvt2Fy1ghi7z0R1wQGO6SJBP/rtdLZkvRWgW5lVm9iNgoZS5XnhUY+G4jtI4/0AL83JkoFANXA3dXynXvI4rdPPBJnRHqz5P0PJlZVeSePaKaiQOlTPzclmzNyNQ+6pYgxN/CDfantIJTqKLhcyY1u/gJ+us2Vkzj/SycE/Uizv0tP7VyBvLhpmTd0am66kX+/O24/MM4+vv45t/aXhgB"
+      },
+      {
+        "type": "text",
+        "text": "Got it, I'm leaving Thursday swim as is."
+      }
+    ],
+    "usage": {
+      "input_tokens": 737,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 170,
+      "output_tokens_details": {
+        "thinking_tokens": 149
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1864
+}

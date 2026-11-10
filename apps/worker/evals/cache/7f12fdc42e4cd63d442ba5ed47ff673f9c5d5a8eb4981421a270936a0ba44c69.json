@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CguzsxBwCVVJ4BZkHq3G4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Nothing from the radar, so web."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_019vejmfbG87EA3dNEK12VZK",
+        "name": "find_activities",
+        "input": {
+          "subject": "kids activities Sunday afternoon",
+          "window": "Sunday, Aug 9, 2026",
+          "childId": "kid-lin"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1467,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1467,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 133,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1307
+}

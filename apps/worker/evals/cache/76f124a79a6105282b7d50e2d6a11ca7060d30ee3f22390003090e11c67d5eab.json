@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy for send_email and reply_to_email was turned off this turn, so the confirmation is true. It answers in the parent's language, in one plain sentence, with no greeting, sign-off or extra detail. The reply only mentions sending, not replying to emails, but that matches what the parent asked for.",
+    "score": 5
+  }
+}

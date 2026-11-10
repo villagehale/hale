@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message keeps retryMinutes (7) right and asks for a resend as the kind allows. But \"I just used that read on an earlier page\" implies Hale actually read the earlier page, and the kind forbids saying that; Hale only tried it. The message never says Hale has not opened this link. \"I won't come back to it\" is also ambiguous, since \"it\" could mean the earlier page.",
+    "score": 2
+  }
+}

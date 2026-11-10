@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Good news, I checked your calendar and there's nothing coming up in the next few weeks that needs a plan for Mia yet. I'll keep an eye out and let you know if something useful turns up.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "language": "en",
+    "ahaMention": null
+  },
+  "latencyMs": 1813
+}

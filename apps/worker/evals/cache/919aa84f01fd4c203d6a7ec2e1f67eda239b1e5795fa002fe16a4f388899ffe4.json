@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "All four invoked checks (PII leak, recipient allowlist, sender allowlist, idempotency) passed, but this is a medical communication (confirming a pediatric 18-month visit), and policy requires explicit per-action parent approval for medical communications regardless of allowlist state. Required verifications were also not run: check_calendar_conflict (Tuesday June 23 at 5:30 PM is unverified), check_vaccine_schedule (18-month visit timing), check_action_time_window, and check_user_override. The Drafter's claim that the slot works cannot be confirmed without the calendar check. The reply is outbound with public recipient visibility and not reversible once sent.",
+    "remediation": "Run check_calendar_conflict for Tuesday June 23 at 5:30 PM, check_action_time_window, and check_user_override, then present the draft to the parent for explicit approval before sending. A calendar clash alone would not block the draft; it would just be surfaced to the parent in the confirmation."
+  },
+  "latencyMs": 10207
+}

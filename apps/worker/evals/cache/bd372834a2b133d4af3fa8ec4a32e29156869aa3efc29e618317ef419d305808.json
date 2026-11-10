@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and does what check_in_ask asks: it asks how it went (registered, waitlisted with their number, or missed). It names no child, no invented date, link or price, and the window name is right. Two things hold it back from a 5. Saying registrations 'sont ouvertes' asserts a current state the facts don't explicitly give, though it is a mild framing. The tone is also somewhat formal rather than friend-texting.",
+    "score": 4
+  }
+}

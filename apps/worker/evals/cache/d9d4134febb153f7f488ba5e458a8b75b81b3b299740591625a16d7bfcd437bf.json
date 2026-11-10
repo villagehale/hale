@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "sender is an individual I can't place, generic title, no child named, no date, time or place; can't tell whose program or what changed",
+    "about_the_kids": "unsure",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

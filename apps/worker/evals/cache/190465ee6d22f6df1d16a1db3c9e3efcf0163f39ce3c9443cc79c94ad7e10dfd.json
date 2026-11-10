@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful and cited. Tiny Gym's ages and the 45-minute length come from programs.php. Pricing is correctly reported as behind the login, and the $45 Gymnastics Ontario fee is not borrowed as a price. Term dates (Sept 14-Nov 1, Nov 2-Dec 20) and the times are read off the schedule PDF that was actually opened. The PDF-derived weekdays are honestly flagged as unmatched. The July 22, 2026 8:00am registration date is in a slot. The message leads with Tiny Gym by name and says 'their site says'. It carries the registration date and states the price-behind-login fact. Because pageEvidence is page_has_schedule, it correctly frames the weekday gap in first person. It is ASCII, has no link and no question, and fits watch=true with 'I'll keep watching'. Deductions: the message silently drops Rock n' Roll (0+), a fitting find that was slotted, which is a mild withholding. The grid-parsed Tiny Gym times are uncertain given the messy PDF text.",
+    "score": 4
+  }
+}

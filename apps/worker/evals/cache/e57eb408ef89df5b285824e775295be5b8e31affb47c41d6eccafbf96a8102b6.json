@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the event (picture day for Robin), date Friday October 2, 9 AM AM, location the daycare, and asks whether to add it, matching offer add_to_week. Sender and arrival detail are supported. Tone is casual and no unsupported claims appear.",
+    "score": 5
+  }
+}

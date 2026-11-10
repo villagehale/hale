@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It acknowledges that the link replaces the earlier one and says plainly that the name, day and time could not be read, which is right since all three are null. The date and time (Tuesday, September 15 at 7:00 a.m.) and the 'residents date' label match the facts. It says nothing is booked, which invents no claim, and it warns to leave extra time because the prerequisite is true. There is no link and no question, and the tone is friendly English. 'Going by the registration date it shows' is a plain restatement and implies no prior date Hale held.",
+    "score": 5
+  }
+}

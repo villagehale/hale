@@ -1,0 +1,15 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Zaid",
+        "age_months": 33,
+        "age_precision": "months",
+        "date_of_birth": null
+      }
+    ],
+    "postal_code": "M4K 1N2",
+    "confidence": 0.96
+  },
+  "latencyMs": 1003
+}

@@ -35,6 +35,8 @@
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs --broken  # calibration: must FAIL
 //   node evals/run-activity-finder-eval.mjs --cached-only                   # CI: replay only
 //   node evals/run-activity-finder-eval.mjs --estimate                      # no API: price the travel writer
+//   node evals/run-activity-finder-eval.mjs --changed-only                  # probe: list cache-miss cases, no API
+//   node evals/run-activity-finder-eval.mjs --changed-only --max-usd 7      # live, only cache-miss cases
 //   node evals/run-activity-finder-eval.mjs --max-usd 7                     # live, booked on HALE_SPEND_LEDGER
 //   node evals/run-activity-finder-eval.mjs --skip-travel-brief             # compose and picks only
 //   node --env-file=../../launch.env evals/run-activity-finder-eval.mjs \
@@ -1044,6 +1046,47 @@ function travelWriterCacheKey(tag, lane, system, userMessage) {
   return cacheKey(tag, canonical);
 }
 
+function activityGroundCacheKey(fixture, model, skill) {
+  const query = {
+    subject: fixture.subject,
+    town: fixture.town,
+    stage: fixture.stage,
+    window: fixture.window,
+  };
+  const tag = evalRunTag(`activity-ground:${fixture.id}`);
+  const canonical = JSON.stringify({
+    model,
+    system: skill.instructions,
+    userMessage: groundUserMessage(query),
+    tools: groundTools(fixture.subject),
+  });
+  return { id: fixture.id, tag, key: cacheKey(tag, canonical) };
+}
+
+/** Cache-miss cases only: first subject/writer request bytes, no network. */
+async function listChangedActivityCases({ model, skill, spokenSkill, skipTravelBrief }) {
+  const hits = [];
+  const misses = [];
+  const push = async (row) => {
+    const cached = Boolean(await cacheGet(row.key));
+    (cached ? hits : misses).push({ ...row, cached });
+  };
+  for (const fixture of ACTIVITY_FIXTURES) {
+    await push(activityGroundCacheKey(fixture, model, skill));
+  }
+  if (!skipTravelBrief) {
+    const lane = spokenLineLanes()[0];
+    const system = spokenSkill.instructions;
+    for (const travelCase of TRAVEL_WRITER_CASES) {
+      const plans = travelWriterPlans(travelCase.input);
+      const tag = evalRunTag(`activity-travel-writer:${travelCase.id}`);
+      const key = travelWriterCacheKey(tag, lane, system, spokenLineUserMessage(plans.first));
+      await push({ id: travelCase.id, tag, key });
+    }
+  }
+  return { hits, misses };
+}
+
 function createTravelWriter({ tag, lanes, system, cachedOnly, getClient, cost, asks, drafts }) {
   return {
     async write(request) {
@@ -1345,9 +1388,14 @@ async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const estimateOnly = process.argv.includes('--estimate');
+  const changedOnly = process.argv.includes('--changed-only');
   const skipTravelBrief = process.argv.includes('--skip-travel-brief');
   if (estimateOnly && (cachedOnly || broken)) {
     console.error('activity-finder: --estimate does not combine with --cached-only or --broken');
+    process.exit(1);
+  }
+  if (changedOnly && (broken || estimateOnly)) {
+    console.error('activity-finder: --changed-only does not combine with --broken or --estimate');
     process.exit(1);
   }
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
@@ -1491,18 +1539,50 @@ async function main() {
   );
   const spokenLanes = spokenLineLanes();
 
+  let changedMissIds = null;
+  if (changedOnly) {
+    const { hits, misses } = await listChangedActivityCases({
+      model,
+      skill,
+      spokenSkill,
+      skipTravelBrief: skipTravelBrief || broken,
+    });
+    console.log(
+      `activity-finder changed-only | hits ${hits.length} misses ${misses.length} | live API calls: 0`,
+    );
+    for (const row of [...hits, ...misses]) {
+      console.log(`  ${row.cached ? 'HIT ' : 'MISS'}  ${row.id}  ${row.tag}  ${row.key}`);
+    }
+    const recordMisses = cap !== null && !cachedOnly && !preflight;
+    if (!recordMisses) {
+      process.exit(0);
+    }
+    if (misses.length === 0) {
+      console.log('activity-finder changed-only | nothing to record (all cache hits)');
+      process.exit(0);
+    }
+    changedMissIds = new Set(misses.map((row) => row.id));
+  }
+
   console.log(
-    `activity-finder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | lane=${model} judge=${judgeModel}`,
+    `activity-finder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''}${changedOnly ? ' (changed-only)' : ''} | lane=${model} judge=${judgeModel}`,
   );
-  const selectedIds = new Set(only?.split(',').filter(Boolean) ?? []);
-  const fixtures = only
+  let selectedIds = new Set(only?.split(',').filter(Boolean) ?? []);
+  if (changedMissIds) {
+    selectedIds =
+      selectedIds.size === 0
+        ? changedMissIds
+        : new Set([...selectedIds].filter((id) => changedMissIds.has(id)));
+  }
+  const restrict = Boolean(only) || Boolean(changedMissIds);
+  const fixtures = restrict
     ? ACTIVITY_FIXTURES.filter((fixture) => selectedIds.has(fixture.id))
     : ACTIVITY_FIXTURES;
   const writerCases = (
-    only ? TRAVEL_WRITER_CASES.filter((item) => selectedIds.has(item.id)) : TRAVEL_WRITER_CASES
+    restrict ? TRAVEL_WRITER_CASES.filter((item) => selectedIds.has(item.id)) : TRAVEL_WRITER_CASES
   ).filter(() => !broken && !skipTravelBrief);
   const matched = fixtures.length + (broken ? 0 : writerCases.length);
-  const expected = only
+  const expected = restrict
     ? selectedIds.size
     : ACTIVITY_FIXTURES.length + (broken || skipTravelBrief ? 0 : TRAVEL_WRITER_CASES.length);
   if (matched !== expected) {

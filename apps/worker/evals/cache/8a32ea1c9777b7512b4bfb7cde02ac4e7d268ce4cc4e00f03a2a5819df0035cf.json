@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly says Hale already has that class, names no time and asks for no resend. However, it never says Hale did not open the link again, and \"Got the course page\" could suggest it was read. It also skips the one-course-page-at-a-time explanation. \"Everything else is up to date on my end\" is a status assurance the facts never give.",
+    "score": 2
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CguzhTbSuHt7yPoVxPyBo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuwgKEAgTGAI4AUIIdGhpbmtpbmcSDGG2I7fWiwvdVe/JHBoMTra69/N2Ivv7wa1ZIjCy1UuiZ2Ha6xWxDkadScyjSTmi2xiQ9kPS4sh7miW4VFp6ERLv4B40ey+29KqI6qIq2AeBOCiQzJjZqyYeyaKSlDstQ6H2Lcy8AaLDzTtxblUrQe8yqYBUTQCSAw7VV2iLUmJn6zjrXPU7RqXc+9zgdHyL95otLrpKp2lMXTFItIQnZ5pgZOxn6+6xNB4AqXi9Gllm7ygdUhtT5JW4JEvzcpE/bXMdS9dwQwaE0GybO9szsQYErYtO/iwi2669QUJx9WqLmVsK529lr3X7X4BLBQtHkmVNHxqKC1X9OMbxWyC8MQsVefI8Qq0zBTXgk+iU+CRzRUKLG02FvQCMUH0jBcWvdhNiKyM71DCla5U4rIn2QrRVeuSHbbFlMvyzHCiMcUkhWjtFFDzgP2E0+QH0gN8EdEQBhfGh/4fvlnV3hBxZgs4pjqEeT4b1oX22QaEqgTYnKdd8Ro2hn+y7p6RY1Z4kzMbRBnrdgf8DYCcZKKMADJ30hp61R5L3VzuVy/N5CCU9opqpSpK2BY6P9swoqwv9y1M9X/RLxJ9EyQgQWborCtzfVw8+4+V4XAZnDAnn9LU6IcA+rqiYofTKnLNi3jvlDtOUDi/0nCkG0OgaWbL8ewY3XaAm+85JNsjrkwStXdFZS4aBTJuq1KQNp9S14OE4UW3ps6hMlvNv1cA2gKHOHdPmk/kNJ65+Uj61nr2zxKScbuGAO8nuTYl3MLRqT75ZqoW4tJqBj6o8rJ51od6pGppD679SnnzT6a0hZy3uLTGwzak/x9yHuTTTyKCUBpE5IA0Qp7xwCTJVsLugZD1XOzej+caZDJB2BEYJXDA98wDd5CVabubnK05brA2qilAwxnfvUpNbIvQk3iwfzsCbOc9ULNHaUQLVXRp5B6cWS4UMB4bx0hn1ho2kJ1twhjO/YNLFF8FpzRs48nJzH/UVCblx6eEATtKnCop1itoJnf1KP3c99hVeCQt1OfoLcTdtVGlJmf2ioHeRhU+DFXhHobBWmeSL+OSmTLc5tXxD+yKS0P90fBi1zqSWvLxKfK/2tCItHbhPSL7XDq76kI90xcydJl3Bx4O352qcIkXT1yt1938kOT6cNmLpTU/QlVA4XHh51OJdpHSDpDX4Gn49NS8VzEDqc41yhUwoMwwRkHhaj8i9f7zzjG3PUUGzrYCp4jBYWKwQnTADndwcVcKgrk+V9gwvRLoY92v9WoZws6Sn9o63Q5iixiJ8lf2DmKlC69KUpopBJ2DkB9RU0B3OrBfPTA05iLH5rnTtRe4D82kmPORrTFoZguVLryfJJlMogKBYJc4tXoFmLB9np6BAUYRXiwbDNzQ1383vU+rvme0J8gLcxK34HYkGAjqZa6NuzS60Cy7wW+QYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Saturday already has soccer practice at 10:00am at Cedarvale Park. Saturday afternoon there's also Fanous lantern craft, free, per Toronto Public Library's program page. [link-c9bfa2] It's for ages 6-12, so it suits Ada but is a bit old for Milo. Their page doesn't give a more exact time."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 178,
+      "cache_read_input_tokens": 25148,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 178,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 324,
+      "output_tokens_details": {
+        "thinking_tokens": 207
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3296
+}

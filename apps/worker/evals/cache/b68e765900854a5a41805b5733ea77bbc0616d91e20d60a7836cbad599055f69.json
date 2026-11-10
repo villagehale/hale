@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CguzFJQa1aDWQxmAgXMib",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3wkKEAgTGAI4AUIIdGhpbmtpbmcSDHioPqZw8NdqLYgazxoMbJ6g+WxrBy4LdTiuIjCa11Fu+VpoMWWHVDF3zVWR4wVsfw2mmGvIHZ4OPRWaH3S8jWH23bJEFMY5X4HRPZoq/AjyIflqAfK9OOPlvFu7mhXkI9Uo7JCL4tw8LedviupAO2Qa5esd++6PhbQMyCb7Qd5usQNXxpYUe3Si4gX5T7nYxDS5Efbsujd16fHLAwZSYSusuDeAHNfJzd9Zb6jr1LhMsi4f5YNs+AXOShrR3KRpZW5x416aex4ECYamF1WQ+msf8XG5KGNhGqPKIZ5k7qBl/BqpYiV2eRGdfWD02vfenCcxbgmnS/1cSmCy8lUJ/98p+tzlM7UR7xyjoQ7u7zqN0y5eBqSdTlXRFv2o7JIUD/tZ9j93tIRIPJ59Y3RUK64L/qZ2PHfgqhfaciyRLlp45QVRhcVwwTeqCe88yaS6m/r/5RTdU2nN0ijxpR3qNKFWvbltwr+1AxzJ+2d5dZeAGLNHd9Csatx0J3XixeLWZR81Uwjnq92XqIW5R/gP2hlXMN1csDo4Ey7dk30xlg43T/2aRjmmYRaCfqtOGREx/TXbuvPV4q/anJsAEyMB/SbsYV0VlsDkm4B7HFRukK3XDh9yUIwEFoVkmwoE9EumHTccpmM1rsiZYjIYT86piU80EQsYjV+TlocxnJ3uTj+kM/R+28eysakwcDFNGThMcG8jB1AYiMH5fqgOvQv+IfKkVs4D70sVV9eVADYhcGx0s4GiNOlI3KWIWjpdp1pzactM0uNSHX+5aE74CdglZ7kgzrGzUq+1RyiYe2hTehMLe/M/+LPwuUYqD8yqdv+PuGaKUsJVpqLqyALA+7RKdmhnh4jkxOMBZq0Uz6VdvXYkiIOzPd20GkseUNtniCvqmN18c2XO0HKgLWiOMrrGFEvX5Rk9vW/nwKdNTLXOva3YxPzM5moi6LYA2N4XLy7R7X0qCcJAE39jdmrS9qegVYd8xZ/FoVl/bVymchd5H3Me5N8WTUdPw2ZXzOr7x7BU8KNhdkZqOMwEu8ipOMxEnv1c8Tc/54HT9r7yHaDpDpkc+Dr0vyCGQH7HxYkne3+28+FJQEj1CfJzl5arH5OBncOTcp36rgo8GNP9zBAsDnYuUoguye12Zj/6mso8j8EYgoTpkAz/SerXNQu0O6DOa6Psqq4L7G9NJ5NlmnDhXNQTilGbi54Qbe/qBS8zDDo+g2KCnrzKWGbZ3+Q8izyOg/L7MJOQXmI3hh4jFcFc8OBO8ogyGtf1aN8Zvnnw4wceJJ2riPbRm9WZ9qJjfkgpw/gsW8CRwgxQtYfna5zhklUQaXKtRNz8aaQV57vNDczcM5VNTyuvP92DCm8FLxPZXfD1cEoHyYlp6aKMEjkOvbv5h1lUxp4lT2YlK01WZ2nmOFK84Oz7XScOBMAlPVkuOdTS72N4w1LSaZlgj5520fExfhHlKXPN3iDIUAzUoQ2viZRBg1uG+lN+LrtuIAQc8XS4WDaAeX2bZ5NvOc4P2fLgLEkFVCPEcbLWwqgyr0cbtSTGtnWsuvTeDJaZLaoDZrOYelC49uabXjPMU8LyxBSSeljm+/pD5X7T8qrSMbQTOGTxkVk/Tbufh44j7WU7LsvRdNzqn5128MYD9BgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01EqLJK7KoDrfGERqA9oMVwD",
+        "name": "find_activities",
+        "input": {
+          "subject": "parks and playgrounds"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1543,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1543,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 263,
+      "output_tokens_details": {
+        "thinking_tokens": 206
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2271
+}

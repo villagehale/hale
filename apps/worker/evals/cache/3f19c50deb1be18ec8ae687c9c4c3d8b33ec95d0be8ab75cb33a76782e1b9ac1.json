@@ -1,0 +1,21 @@
+{
+  "value": {
+    "reply": "No worries, I'll leave the name for now. Want me to check your inbox for kid stuff, so I can flag what matters for the kids?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1743
+}

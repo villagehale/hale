@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "generic weekly update from unplaceable sender, placeholder title, no child, no date or place",
+    "about_the_kids": "unsure",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

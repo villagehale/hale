@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Great, I'll keep it simple. When you're ready, start a group text with Mia's other parent and send them the number and phrase that will appear below. Then you'll both get the same plans and reminders, and nothing private.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true
+  },
+  "latencyMs": 1832
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "parent instructs ending the Gmail grant now",
+    "hit": "yes",
+    "action": "disconnect",
+    "provider": "gmail"
+  },
+  "latencyMs": 1672
+}

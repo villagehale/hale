@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is correct and handed-only. Every date and time checks out: 11:00 a.m. Tuesday plus 36 hours is 11:00 p.m. Wednesday, and 5:00 a.m. Wednesday is the halfway point. Relative to now, 'yesterday at 11:00 a.m.' and 'tonight at 11:00 p.m.' are right. The clock is started from the parent's own message. Calling it the window for a waitlist offer and telling the parent to watch email and the portal are both allowed. It asks nothing, names no child and is in English with a casual tone.",
+    "score": 5
+  }
+}

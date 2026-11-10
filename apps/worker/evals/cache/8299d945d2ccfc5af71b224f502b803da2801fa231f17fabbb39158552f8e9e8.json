@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "parent asks for a family doctor, a primary-care match",
+    "hit": "yes",
+    "kind": "primary"
+  },
+  "latencyMs": 1904
+}

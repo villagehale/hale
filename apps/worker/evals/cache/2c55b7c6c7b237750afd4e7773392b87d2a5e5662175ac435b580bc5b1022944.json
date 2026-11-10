@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Totally fair, you don't have to share the full code. Could you give me just the first three characters instead?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "en"
+  },
+  "latencyMs": 1622
+}

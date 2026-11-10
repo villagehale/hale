@@ -33,6 +33,8 @@ fails=0
 knowns=0
 stale=0
 for f in evals/run-*.mjs; do
+  # Vitest files also match run-*.mjs (e.g. a former run-linq-edit-eval.test.mjs).
+  case "$f" in *.test.mjs) continue ;; esac
   name=$(basename "$f" .mjs)
   echo "::group::$name"
   if node "$f" --cached-only; then

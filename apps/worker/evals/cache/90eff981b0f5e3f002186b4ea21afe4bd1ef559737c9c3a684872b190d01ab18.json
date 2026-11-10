@@ -1,0 +1,15 @@
+{
+  "value": {
+    "page_kind": "program_page",
+    "session_quote": "Preschool Swim 1 Saturday 9:00 AM - 9:30 AM",
+    "sessions_matching": "one",
+    "availability_quote": "3 spaces left",
+    "waitlist_quote": null,
+    "schedule_quote": "Saturday 9:00 AM - 9:30 AM",
+    "state": "open",
+    "spots_left": 3,
+    "waitlist_room": null,
+    "confidence": 0.93
+  },
+  "latencyMs": 1973
+}

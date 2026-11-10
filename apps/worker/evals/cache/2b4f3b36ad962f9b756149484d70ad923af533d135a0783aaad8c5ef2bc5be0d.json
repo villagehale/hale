@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CguynMap7Gw5xZg8CZom4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjwgKEAgTGAI4AUIIdGhpbmtpbmcSDF4+ElbLQzOanclb7hoMj697ct3anIH6eq6ZIjD2NbqLBe1nASeoAwObMPs8kR1v2RGd5k9xrF+u5Re54mh322wy7rZYbiRXA8LoKOEqrAeKgtL74w1CcUhf9LB9lwEwNn4PsJSBKeNrE0lU7J9+n0c94z46CfCskrzIrpsqjRQ2wtK6UgcCo+Qy4FNW0YoScN5wdnNSt2+qZJsCn3GwtkbJcE/ifvP+owp/G3FL+qBCMGuwxbwkAPojIWFGDBMyRvSBCHWg4D3s+ip+0+74KsTEeCGXwSvlWoOr54T2DRXgZdhsTZ0Eiq8W7jZJEdO+JcTGDse1ofd7XzlvGKWpjqJdPIoIWEZ+jL+e5dLoiWtMO+0pL8GuZ6PBHpgzjrfzy4g1YXGIrhGUnfaLfTiGySIyQURTZTrD39mFnizUzO5GGILs7c5ghka6QkEBNlsVHo4eMoNm/NpDAYFs4zRd7h/4lkIKN0uibLTND9z378R9kh5hEwQ2RIrGxRh7BUKQbHv4r7hWRJWqsQaZXiEqdnyfZoadd2rhVApB4PkW5IpfnJYBZuE9XnvYaFjjUiBkVytfSJGi+EtpYNZ8NalETgUPLE2x5Qi+NOpr+5kat1PK0LsaHv9hKASPwSxPncdLEucwh4fMUj0qfCpx2LvuHZxhAVPDAnrJXjBIr+Bh2S1udpYylSBphmlpS8jw51fvZZ3eDvGt/gBU4k3bqSHKYbdaEPbaCnO/A+d5VEdJQWFRXgCe0AnVler5xOaaBnaoLtQ78mCdFxjuNZQwlRIAcbHWEPz5yIbEjUmQAiPegae4Z8wAKuKSpoa11EuC7U9wkOL6WHXM7+ITjyKOiN9jpXTrvJJ8oq2ZanzFs4+WxQLygTvt9zviCrLBZonSIRPuYqsV70c6QA8bBKNoHxus3nhOvQHVymxw/b29yYgX25NcRE2sfzlGnnjkLMT/D5D9eHgxWI1E6kiIBm4EPjbWHMou3vZk35zxR25JWo3nI8np+xYram5kgno4gE7oH4ZvKPmrL4LvjcdKTcYBCfEvxbm23nVBaLYOEVSBVvQcIXS6n47JU+cna654M5clNYdPH8iWM8VA7ep2K5EfycrYhaEaqIY86aMvVPguEPTFCSGkYwfiLwsNMyRBALpNyfy0qliB8FJsoXitwvDHXpq/bUv9qVOQUMmZMtKCTR73T/B2/3Q8EdBU7+lli+x59xWDUu0ixdJqoRi6X7MJftIYleerbCmQ8nN8oMakFgkY8/A35Tg2dUDE4ACZveniQHK2xNzoB+19FbmfEAtdO3aDYQKbMH41t9L6GImNj6Q1AHXnCRyKdfkODKjNv3NWYWFc5uyvC/ll9HuTtI9bGAE="
+      },
+      {
+        "type": "text",
+        "text": "Indoor open play gym is on today until noon, listed at $6 per child and for ages 1 to 5, per Riverbend Community Centre's program page. [link-187000] It's a lovely day out too. Toddler nature walk (outdoor trail) is Saturdays at 10 a.m. and free, per Cedar Park Conservancy's events page, but it's already started, so you'd be joining late. [link-0b6114]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 304,
+      "cache_read_input_tokens": 22524,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 304,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 281,
+      "output_tokens_details": {
+        "thinking_tokens": 142
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

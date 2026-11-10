@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "find",
+    "reason": "French request to find something to do today, a nearby-find with no prior context needed"
+  },
+  "latencyMs": 1139
+}

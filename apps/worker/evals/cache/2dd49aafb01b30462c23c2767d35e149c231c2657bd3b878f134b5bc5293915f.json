@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "No problem, I'll leave the name for now. What should I call you, if anything, whenever you're ready?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameConfirmed": false,
+    "nameDeclined": false,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1735
+}

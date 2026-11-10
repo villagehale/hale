@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Most of the message is correct and in natural French: the window, the date (Saturday, September 12), 9:00, Léa, the link, no residents-first date, the unpublished age band, the plain statement that Hale never registers, and the three texts with their timings. However, courseLinkTip is false, yet the message ends with the course-link tip, promising that the morning text will carry a course page link. That is a promise the facts do not make.",
+    "score": 2
+  }
+}

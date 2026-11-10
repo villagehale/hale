@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cguz867CkqUFxtkXh2FjC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2wYKEAgTGAI4AUIIdGhpbmtpbmcSDFW1kpWqOWJP+TJPTRoMbJDdvbLSmYKwdDZ7IjBkzv4SWHJCGNNW8DXVvMpbp4UmWcdOqRMCimVZ6+48C0I7GpIW0PjvXXMiDAraeJ0q+AWiGoB518LXiYgp17zZfRmjF9ec0TPHbwsBGWzZmeZz+PPXXYbwg6JnWIN3YAvuo49z3vGPCHuoS1581Y8XCzvwOshpdjRwdny8uVeNzngpEqgBXpYItf9e2D9mKSdyAQrs8ai0rhcP3eUAK7/9x2p7Z6SWFBxH414h93QaiV3APF0ji0fxqsOpjmZ4fTSAQQ/tWrO4xQL9Go8tFFpcLWrv8ohiYgn6bshZR6EV5vjOnWqSOfgULgtpPDCqs7efaPYD/wnafwXvuUo/JSZxWiTuBj78ttBa75Q2dZm8CmCtkVfzIvw3or/dxceQS6CnIyg8LwQpB4UpFxq8RNu8bDsm9Ke5bLfUcn7G8ZZK8iqGfDb+cUmXC+kwwmrDNH+tJqGi6nCRbvxTWxk+gpM+9kH2TeavZwUkO4YYQ7QpBx1y8fnn99iLuPOjVOVifZHSxkWgUdeUW39txdbhIu2gA40Qw1pd25Od+rH4L/DF5KMeJXqev7ePGTQjqs4WqYXJmhqcYsvymYdn6c0zx3C85gv0lLxv9Yp+WOeFAuYBqeeYSGDFtwjcnYcA1GZfkR3gHDpoV8KEAWEKevE2cIicLmrARv+YE8EcBPco8WMGyH76t9tZtPkifs6WyadSfWu+JkgfuMJ76fXkp8DQNU0UN5FAWzaTnojdzBe0q3hVk94mg036OHvlEvcZ5nSbsdcEmmAHbugstYLeLzAX/V9KAqltoGsCzun0KhYn8J3vNWiAZTH6cX4WCAhW96I0gxhZUf5ErivpI/SVf+jAXwODpplv+CLUDqGv4hnHYLqczUnrycxyUIg04xsiHzexAkuH5JphWTWjQlUInHIVcYzS2Tzd7eZehn+8R0wSOwULs2FtGxWXmiwCJ7bARS4TTNR74zCDcw496kgjxuDJ/ess0enF2q+iZL+/81V8RxnLac6k0hYAI+7bFXR+eqXKkxmNJwe/wxk5paMQ3RNBHYaVY1w31eKXMF+QJ1Kq9XPWBsdhOTpWrppBV+CZGAE="
+      },
+      {
+        "type": "text",
+        "text": "Tiny Gym at Cartwheels is $124 for the term, Sundays at 9:30."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1901,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 136,
+      "output_tokens_details": {
+        "thinking_tokens": 102
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2315
+}

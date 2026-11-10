@@ -1,0 +1,19 @@
+{
+  "value": {
+    "cycle_on_page": null,
+    "evidence": null,
+    "year_evidence": null,
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": null,
+    "note": "The page states \"Fall 2026: Registration dates will be announced at a later date.\"",
+    "found": false,
+    "reason": "announced_later",
+    "confidence": 0.97
+  },
+  "latencyMs": 1419
+}

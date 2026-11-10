@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is short, warm, and answers the parent's yes. It does not claim the group exists or that setup is done, and it gives no phone number or link; the number and phrase are placed below by code, as watchFor specifies. Household group is unclaimed, and the reply correctly frames it as future action by the parent.",
+    "score": 5
+  }
+}

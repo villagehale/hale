@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is grounded. The city, dates, kids, reference name (Discovery Club) and source (City Museum) all match the facts unchanged. It invents no price, time or place. Because picks is empty, it correctly says there are no confirmed picks. It names the unconfirmed status rather than claiming the visit is confirmed or that anyone has been. It is English, matching the null language. It reads as one natural short text, not a form or a question.",
+    "score": 5
+  }
+}

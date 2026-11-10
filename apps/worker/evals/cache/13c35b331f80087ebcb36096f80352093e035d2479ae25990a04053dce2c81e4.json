@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Cguzi9t7XLj1YceZUzNat",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlAYKEAgTGAI4AUIIdGhpbmtpbmcSDPkXMr7v06os04BL2BoMhaapM4TWMY0IJOJ1IjA3VfUYoUXGBGQckee6Oimv75YKNdrcPmrcvTutg5nQq79+eZjwE8INHWJQXAw1VzcqsQXk/TCn6mi2fMGMdrrAaLCE6ETpjj917saVNg6SHl20iR1vVNAQZgdmXKTWlLSuel+fSGbCuth7Tma7e6Z3RM03XaewQ2Wol3z8x4FY9tgba7BJqZMbbzbkRm/GHGdThj9y65WkCMOKdeZEkwBU6ka/Ek3YfVKFA1fI4dDVpV6XK/nDmIByk6geAybx2jVnSsr+jUyqtPiKL6p0dPzlSFPuBfNzrOWuAz4KHWM1J5J0Q6CSx2BXoRYyH1M8UxnSFn+9MdYhqoaQj6W+Xshgq/boU+4i6oUuzx4UM1IF1BAL+GFWfqxYbrw5R7foRZ6+CoZoJAm5XBrtVrmZBXtq0yLJ1IoH+4FgW+Lv4IHs0tWby2v4KOXFPjQ8ztLKLgvuulpta76/vGFR4a2ZgUdLX459hUbrUb4aQWeOyLtBBENVEGDZmA+ZpsEkD/xaVaPk2UevL1V8xVRnJB+ACS7jyXoC21KORSrKwgDxuE9kbOlSM2x3P7dUUvjrKNG2+7e4He1lnG5Ife7i11//Ztqv84rN2y7WV4NtTA8zouac6Gg89eBiRBBO9Mr1f+eQ+OQEm4h40Heyk6sFfLFoML0BYq8nTrfzZPslb/YaaUijmlMYHD13ARyUi5GYAJa1lIxF4Qvta61kO5cIh27gFRsRz/9rC6SMTivTif0Lwi1inriuXD6fn75IzfagOMKZT707yw1wCnM2b35YXYMYGxt/awnJbAhB3cNaYScYZxVN1lzXDfpBmvPNeQ6q7N74ExGaDjv33f5TjZspf2Tnj0NZlJ+Se5G+q4crqGc3qiXzZpi9aPD7CE0SbJBUtRacAhVJcJtl7EijhvUMhNI/s5316jYVQmPTSt8DzvWvrV47CZ0qBWd3Z9esjnDCrDjEe8u1svUw0ZfO0HFpaXibw9r8+b4k/BgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01SRQQpnHJMzqqs7ExtjkZsa",
+        "name": "search_village",
+        "input": {
+          "query": "fun for kids this weekend",
+          "window": "this weekend, Aug 8-9"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DsS8v3DH5A1rNBHi6b6gT4",
+        "name": "lookup_week",
+        "input": {
+          "weekOffset": 0
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 737,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 224,
+      "output_tokens_details": {
+        "thinking_tokens": 86
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2310
+}

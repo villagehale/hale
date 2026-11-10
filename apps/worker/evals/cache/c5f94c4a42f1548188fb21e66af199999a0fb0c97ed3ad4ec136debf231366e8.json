@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "parent takes the recorded duty back with undo",
+    "hit": "yes",
+    "kind": "clear"
+  },
+  "latencyMs": 1970
+}

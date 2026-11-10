@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly hands Sam the family's referral link, which the runtime appended, and tells them to forward it themselves, which is exactly the job. The shape runs long, though. It explains that Hale won't text the friend, describes what happens once the friend texts in, and adds a product pitch, which is more than the ask needed. The pitch also switches to addressing the friend mid-message.",
+    "score": 4
+  }
+}

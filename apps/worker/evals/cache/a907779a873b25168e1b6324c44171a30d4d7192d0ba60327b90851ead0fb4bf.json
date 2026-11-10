@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The switch-off really happened this turn (turnedOffThisTurn lists send_email and reply_to_email), so 'Done' is true. The reply says plainly what changed and that Sam will see each email first. Short, accurate, no greeting, no sign-off, no machinery.",
+    "score": 5
+  }
+}

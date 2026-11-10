@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking, and turnedOffThisTurn confirms send_email and reply_to_email were actually switched off, so the claim is true. The reply answers in the parent's language, briefly and completely, with no machinery and no question. 'Sam' is a name in knows and reads as a natural address rather than a greeting.",
+    "score": 5
+  }
+}

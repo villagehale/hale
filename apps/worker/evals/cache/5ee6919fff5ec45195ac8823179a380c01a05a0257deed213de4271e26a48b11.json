@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CguyzHtuY4rDxFn2ZzJrc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSswkKEAgTGAI4AUIIdGhpbmtpbmcSDIcpshJJb2x24SnuFRoMv3ra0L4BIe2nkYf3IjDZIh9rGsCWyJKYibbC0usuYJDWEXNRfCk96rNvIUno3jsO3fVo1Bs8jI+nYyqj5EMq0Ahz0u9GMtCUnkG+F26vTbuiO8zVGFTIWs6/6kw0nCg5vHTSSpPW7MBFO+Jz5aASCkN4trQme+vp2NiJeiYM7Hu26HUdCu0Tfp9Bdc2V/RFinwvzgU99H+9v0quA81lFYWS222pdEIIx9wBIBJVBdmNK64Ko5NbRV+B9oflYWcole6ZEqFrPu+lewQ5KMNeYyCVJcNJsgo9iuJ070WU3ymyuN7/8EQQjtFT2cCvj9QLrODivr/0UTJ1ON3TJzRbxC0iF2UgvS8w0cQZDaHlb+roi3xEUwxhS+3GZkD/g/MYLyJlppW1LD5mgpq/Wz/m+UxpTHtowaoqaCE8Wwqmxajf30D8KAUETxg+2ktXdCgeRkTUnkyTHhVYE0AodOIeC4gSv6zIhADeun/4EiMWCAW5jEEHurIHEgcYCnckEe32dgX8FEuJZ0fO1qG6g6/BUFu+VdQGlegma5uQy4tL4sOkHFkK0LJAgI/fh00LO6tobLjm5E1A2rUejNTuwpHVA8+Ur6lmYpOmBnm3gPRMjYS0tzAYVDa3jOzpfGx7zyE4iunWCIQTlPQ+Y3TkIgDF+JCmgHOCF3YyrBeH9K/Swjii/K+36x72ChqKuy9ehsmtS7L2liRF1mZY0i+jOtXb08IoRt7ceg71nUPBgyQF5IBKOFtrWJCmMpBjcWGuy1FrAE6Zhe/2GQgr1gibf+E7cNuHKRqjWEhM4O0bVa19QnUrLuR9LKTxe/6wCNPOsDN7GASq8PyHXjrYdWREcVE/vs53BCPp+mwzCQNpPeQA9XbyQYuuwjyA4CeM1VL/oODqAUhNZ/2OlsZQxz2HGN+TuT9NljoRBj/ASXjtKki7cDWAoYAvOsfsqscGjXY/R8SE9dqjI2KCNEKrOIfgcuWkgRRSWnY9wFqRhexz3BVlEZiowK6ekBNwL5XGE262aINEYoQ7B1AhqsvXZPt49+4gcjF4AabYq4S6jK+ktwZHkt0oSO1gcI53J+46ceKcJe0RfvRlT/MuqZzBjzXX7GOgvttxwv1GOb9MDD5PwPb+JTIfY2Y39lRgFprPxqFZVFr90qR6OzYNytl1MMnEs7XWNbZrrEOnzj0fP5nrJtbIG/y4gk+v+9slW7nnUZg09/xL9oleOLX2LfF5EgPptQ5ub01+BdhquQdmvcCIqu+GXcm/65tmws3oJdGrcnLtoQoNhcFDXRjt9gw8B3gSrRL+u1TlbjHGXs4f81Tt8t3HW0QT+UXZjhACyd8BWNCZm/fJhjGhjknOqXPCkyNunH2/ce8vAwoVVjQZI0/HGoBer1uz50tu45K40TG/YpsyD7Pp3SmOVfiRzAX7104P+wfJXw79kSynQt6l+LRCX+9WwRByX6zoOG1CUPi/uk3x1gXUI5eC3OgW7Cwc1gRRrqJg0CZwN97s8AQnt3dDypqJZ1+fdiQMAK/TTMeOnov9QiBPQROKVgzYlPPzm7VOLlUfi9tUYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Jordan, Maya's swim is Saturday at 11:00am at Y on Main, and Dana can't make pickup. Can you take it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 698,
+      "cache_read_input_tokens": 19527,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 698,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 285,
+      "output_tokens_details": {
+        "thinking_tokens": 237
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

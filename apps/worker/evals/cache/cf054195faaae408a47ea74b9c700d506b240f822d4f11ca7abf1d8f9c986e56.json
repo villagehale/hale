@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a single warm question and it ends on that question. It does not re-teach or name the method, add a tip, assume success, apologize, or ask a second question. The word \"honestly\" signals that a bad weekend is fine to report. It has no greeting, sign-off, markdown, emoji, or links. Two small weaknesses: \"since the weekend\" is slightly vague, and the dash-and-\"honestly\" phrasing could read a bit pointed, as if testing for candor. It also doesn't explicitly make room for \"it went badly\", though \"honestly\" implies it. It is a strong message but not perfect.",
+    "score": 4
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Cguztds9NzybDnkczvCKo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjQcKEAgTGAI4AUIIdGhpbmtpbmcSDKxH6PhNCorvmw+CehoMWo2gJaQbhFlpMPc4IjD2HRUEWyiTlh0hamt7nJPUur5UnHhg42Me6+5QOYkQUDYydWwX47PeTqMAnYkT/OwqqgbvJZt4mMAiWbYkTpSOxwwaEzvRx6x2sPcYVn7lDG3axZbQp19sHO7paDKHDoM1p16AZkdMiKsyN5TANyHXVQpC5aqwA22Ld6hiy0x6PHHYQHAw9aFdTGu2oObU0DGFerY3fADY5uBKRKx0GtD5zjfTl4jezcoZYelYgaYL6gApyvC1bWJ7mIOQJ/F6zg03l8WaUPPoMGkg76tz5XjEhoMXBvm1b+ALRyqueds6SrnvLfk+z9/zmVPGoF1ywHlvc/UcAny4sNyM/XYxnBbIq0YToyopPRW8MxJNxvKHQ2W9dMsErjhUEux3qta3DyNA4i6p5+aunvKkUkNdz2JMF8tC8KIfGXrF/EbXZSQcUMQR3KI6w/Czz++puj4q/mnWPUm58G1EYzqOcTudptlt2CnW/i8RRYOccgWP4lZ5V7bLjetVibKWvAvoAz5/WqOQdzboGpNUbDNUhxipOlRC36kC6Z586bBuur1gy+lTwMaBttm4Zc/Lhz9W7ShXSoK6mrY3FkZOm1gFMkiE1WtaX7u6k2DwmA1ijy33YnFMTe4nPG+fod7rRv/TgjA+zb6X+7Hci9nJoGJHCIEZNUAcuvfM+iEeg5F3CAG3MmK4lDq+6Sw3gMXs6y82JR+QxC6fjgZ+4+NLyFjjxv533BAsqpMgn4BiUkaVv1M0I78EF4u90OM96k0IsMaUuryaEmrHfQ73e5apDi9rOJ01b3KH/k53o1f8hDi1+zseIgBzHETQOrrdvR/s+4pXGwNFdIoXb0QlnhhuTLDNBQl69OYY1IyHBNXU1zyOFXafpUc+Nr5ACaeBS5ra76Gm0HztDHn+vTT4Df9qOfupq42iwEhe6rXYMDLdR9VMpY3u085IpNd3XyDf+ab/m9we9qJ7j9MaGK/+7IgG2/+TEgpOBiFM4tR3ULSc/LDYDinzDfMIiO/14K0x1vWmZ8iqVG3EPy/2ungl7J2DAjml3SKz6uFFaXsg4RG2lJyiYZX6xGVdkQMp1pmqWdAOwjJNdQbuPbgCCJ9M/tMX1NKfGTtSVy6BhDckhSxluMW3wjFyukvdwtepLEI5YRoDrgTYVpwYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Bb6cyEmTTfTGLGQPSVTkHR",
+        "name": "search_village",
+        "input": {
+          "query": "fun activity for a 10-year-old Sunday afternoon",
+          "window": "Sunday Aug 9"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Mf3WFiMukQFdew6MQfWfav",
+        "name": "lookup_week",
+        "input": {
+          "weekOffset": 0
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 696,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 262,
+      "output_tokens_details": {
+        "thinking_tokens": 116
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2291
+}

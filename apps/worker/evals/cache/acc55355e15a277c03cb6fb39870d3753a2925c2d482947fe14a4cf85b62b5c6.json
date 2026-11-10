@@ -1,0 +1,55 @@
+{
+  "response": {
+    "id": "msg_011CguzuMcNQCHfNXGHzVtBX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9AYKEAgTGAI4AUIIdGhpbmtpbmcSDFl3SOQNXB0guBZ72RoMS0PFPXUlm8mtuXo+IjAVv2+yrxrMH1XpvK2hgKSQ10Yq8zX/tHK5Oav2sk+xaE3v+GFn0lnsQQViVrVadCQqkQbwsDbTYwuH/k3xY/hPXG0KNUj34Bq3KjB43bpwOFU7aOJZTkFg0qhoYPAIL+99cn9defCBvR9hEYSCiv2Y5+QgMQl3kpi3duaYaa9AS5omP+cEfmjrw+LBqOMdHSIZsQ0Pl5BYLNuPgUU7qoxsqi1HCalFRggMHHY8If6uFoW4gi7oi/ef5bIH1pCSwzoFDxGskMeYWUAaKZ3DK2VeqaOwrn1QWIFTGqLBsyOKKfOvAPiWULuXuiySaeWGrQNgjQaZU2y9Yfb1AiTae8YthyI2U25KhZlznz3P3kzAzGY2h9uDCdLF6pcrO7vb+1BUMoZ1jPH9bJYuVaRcg6z8dQP/DdBFBDn7kXyU5JLVe56gwBuSTt86NLzqZQOznIRPn9wm+pZ7gmIK03jOquL+WxjYT5w538ymbyeXNnTgjta25xmV6BfV+hyYvcGrO1tnHY55U7OUyzyETBcZJwKS0665uI0Gk3E6TBaho0/+2rKzlYP83kNcQ8Ni5EkRTbYkVunqcUhXEhoTbcF6zhEJBd0Z0jkCQvjEyu29Rl8fdq6euWwUI+RMprNbMzFdxY7e+wz0Jd87XWB0FsGgjdXFzKAO3r54PbIT+t1U/aAM/JbzUI56+AqtgFWltYIjlp2Ha5q97qoK9xUe3jPamJKyvfCWViB0w5+eeD2dxQoupJFO03dvH5Xa9Y9sl29GfJF69OxflcE+J5PygyFf7K3pqjQ+qjTXT4kDiY2B0Ifcx/3EcU2bn/ixs/UMhICwX4wL7dGGVJyt11FYgwLVtOV2tWEbvZ3tYvbjadJoD1FVWNH2/+kpjG9Tx1jJz4nQUHhj7Acm2RpIz1w7XeBJ5Cm2bw/GtMTb1bRMKokBNPxODekn+ytv06R4gYd2dmrUpjTTuoxfTZI1U7NYxdTlysBSOLAikfmIsNx/Q4dxFTS2EXgZDobs7nvvZsxVxCAj4bnTZvl0P8+Idx6SxvxR8LGAWgWazbOLG1l9+QKMFFBkf7yEDWy22/Sq197K0PTNzbAltMcRSNO5+WF/JRUDZLfV6H22sBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01PHucWmiWaGB1CKx17QGKtM",
+        "name": "search_village",
+        "input": {
+          "query": "fun activity for a 10-year-old Sunday afternoon",
+          "window": "Sunday, Aug 9"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KAyde35W7g7GJ8MuPvVg4g",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 696,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 236,
+      "output_tokens_details": {
+        "thinking_tokens": 114
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2289
+}

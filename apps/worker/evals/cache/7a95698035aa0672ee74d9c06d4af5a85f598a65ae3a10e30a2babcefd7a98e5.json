@@ -1,0 +1,15 @@
+{
+  "value": {
+    "page_kind": "program_page",
+    "session_quote": "Preschool Swim 1 Tuesday 4:30 PM - 5:00 PM",
+    "sessions_matching": "one",
+    "availability_quote": "Full - waitlist available",
+    "waitlist_quote": "Full - waitlist available",
+    "schedule_quote": "Tuesday 4:30 PM - 5:00 PM",
+    "state": "full",
+    "spots_left": null,
+    "waitlist_room": true,
+    "confidence": 0.9
+  },
+  "latencyMs": 3214
+}

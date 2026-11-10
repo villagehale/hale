@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly refuses the link for the different_season reason. It states both pageOpens (Tuesday, October 27, 7:00 a.m.) and haleHas (Tuesday, September 15, 7:00 a.m.) accurately. It carries no link, saves nothing (\"left things as they were\"), asks nothing and asks for no other link. It is in English, sounds conversational and names no child. \"The morning I'm holding for you\" refers to the date Hale already has, not to a held spot, so it is not an invented claim.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a valid check_in_ask in French. It asks once how it went and covers all three outcomes: registered, waitlisted (with the number) or missed. It names the window correctly, names no child and adds no invented booking. One small issue: 'sont ouvertes' says the registration is open now, which the facts do not state. A check-in should frame it as having opened. The tone is also a bit formal for a friend's text.",
+    "score": 4
+  }
+}
