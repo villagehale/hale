@@ -426,6 +426,7 @@ export async function joinFamilyToSharedGroup(
         granted: true,
         consentScope: input.chatId,
         policyVersion: POLICY_VERSION,
+        grantedAt: input.now,
         evidence: {
           verbatim: input.verbatim,
           interpretation:
@@ -541,6 +542,7 @@ export async function leaveFamilyFromSharedGroup(
       granted: false,
       consentScope: input.chatId,
       policyVersion: POLICY_VERSION,
+      grantedAt: input.now,
       evidence: {
         verbatim: input.verbatim,
         interpretation: 'this parent removed their own family from this shared group',
@@ -570,50 +572,84 @@ export async function leaveFamilyFromSharedGroup(
   return { outcome: 'left', notice: 'already_sent' };
 }
 
-/** Unseat one person Linq removed. The family's join stays until a parent leaves. */
+/**
+ * Unseat one person Linq removed. The family's join stays until a parent leaves, but
+ * the person's own free/busy say-so in this chat ends with their place in it, whether
+ * or not they held a seat.
+ */
 export async function unseatMultiFamilyMember(
   database: Database,
   input: { chatId: string; participantHandle: string; now: Date },
 ): Promise<
   | { outcome: 'flag_off' }
   | { outcome: 'ignored' }
-  | { outcome: 'linq_multi_family_unseated' }
+  | { outcome: 'linq_multi_family_unseated'; freeBusyWithdrawn: number }
   | { outcome: 'absent' }
 > {
   if (!linqMultiFamilyGroupsEnabled()) return { outcome: 'flag_off' };
   const phone = seatablePhone(input.participantHandle);
   if (!phone) return { outcome: 'ignored' };
   const hash = phoneBlindIndex(phone);
-  const rows = await database
-    .select({
-      id: schema.linqMultiFamilyMembers.id,
-      chatId: schema.linqMultiFamilyMembers.chatId,
-      familyId: schema.linqMultiFamilyMembers.familyId,
-      phoneE164Hash: schema.linqMultiFamilyMembers.phoneE164Hash,
-      removedAt: schema.linqMultiFamilyMembers.removedAt,
-    })
-    .from(schema.linqMultiFamilyMembers);
+  const [rows, people] = await Promise.all([
+    database
+      .select({
+        id: schema.linqMultiFamilyMembers.id,
+        chatId: schema.linqMultiFamilyMembers.chatId,
+        familyId: schema.linqMultiFamilyMembers.familyId,
+        userId: schema.linqMultiFamilyMembers.userId,
+        phoneE164Hash: schema.linqMultiFamilyMembers.phoneE164Hash,
+        removedAt: schema.linqMultiFamilyMembers.removedAt,
+      })
+      .from(schema.linqMultiFamilyMembers),
+    peopleInChat(database, input.chatId),
+  ]);
   const live = rows.find(
     (row) => row.chatId === input.chatId && row.phoneE164Hash === hash && row.removedAt == null,
   );
-  if (!live) return { outcome: 'absent' };
-  await database
-    .update(schema.linqMultiFamilyMembers)
-    .set({ removedAt: input.now, updatedAt: input.now })
-    .where(
-      and(
-        eq(schema.linqMultiFamilyMembers.id, live.id),
-        isNull(schema.linqMultiFamilyMembers.removedAt),
-      ),
-    );
-  await audit(database, {
-    familyId: live.familyId,
-    actor: 'system',
-    actionTaken: 'linq_multi_family_unseated',
-    targetTable: 'linq_multi_family_members',
-    targetId: live.id,
+  const person = people.find((row) => row.phoneE164Hash === hash);
+  const leaver = live
+    ? { ...live, targetTable: 'linq_multi_family_members' }
+    : person?.familyId && person.userId
+      ? {
+          id: person.id,
+          familyId: person.familyId,
+          userId: person.userId,
+          targetTable: 'linq_shared_group_people',
+        }
+      : null;
+  if (!leaver) return { outcome: 'absent' };
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    if (live) {
+      await tx
+        .update(schema.linqMultiFamilyMembers)
+        .set({ removedAt: input.now, updatedAt: input.now })
+        .where(
+          and(
+            eq(schema.linqMultiFamilyMembers.id, live.id),
+            isNull(schema.linqMultiFamilyMembers.removedAt),
+          ),
+        );
+    }
+    const freeBusyWithdrawn = await withdrawFreeBusyConsent(tx, {
+      familyId: leaver.familyId,
+      userIds: [leaver.userId],
+      chatId: input.chatId,
+      now: input.now,
+      interpretation:
+        'this person left this shared group, so Hale no longer uses their busy times here',
+    });
+    if (!live && freeBusyWithdrawn === 0) return { outcome: 'absent' as const };
+    await audit(tx, {
+      familyId: leaver.familyId,
+      actor: 'system',
+      actionTaken: 'linq_multi_family_unseated',
+      targetTable: leaver.targetTable,
+      targetId: leaver.id,
+      after: { seated: Boolean(live), freeBusyWithdrawn },
+    });
+    return { outcome: 'linq_multi_family_unseated' as const, freeBusyWithdrawn };
   });
-  return { outcome: 'linq_multi_family_unseated' };
 }
 
 /**
@@ -1468,11 +1504,7 @@ export async function takeMultiFamilyTurn(
       .update(schema.linqSharedGroupPeople)
       .set({ stoppedAt: input.now, updatedAt: input.now })
       .where(eq(schema.linqSharedGroupPeople.id, me.id));
-    await unseatMultiFamilyMember(database, {
-      chatId: input.chatId,
-      participantHandle: input.senderHandle,
-      now: input.now,
-    });
+    // Withdrawn here first, so the ledger row carries the stop rather than the unseat.
     const freeBusyWithdrawn =
       me.familyId && me.userId
         ? await withdrawFreeBusyConsent(database, {
@@ -1483,6 +1515,11 @@ export async function takeMultiFamilyTurn(
             interpretation: 'this parent stopped Hale in this shared group',
           })
         : 0;
+    await unseatMultiFamilyMember(database, {
+      chatId: input.chatId,
+      participantHandle: input.senderHandle,
+      now: input.now,
+    });
     await audit(database, {
       familyId,
       actor: userId,
@@ -1603,7 +1640,9 @@ export async function takeMultiFamilyTurn(
     });
   };
 
-  if (intent === 'find_time' && commonTimeOn) {
+  // A guest's ask reads no calendar: only a family member in the chat can start a read,
+  // so nobody outside the families can probe busy times with crafted ruled-out spans.
+  if (intent === 'find_time' && commonTimeOn && channel) {
     const proposed = await proposeCommonTime(database, {
       chatId: input.chatId,
       providerMessageId: input.providerMessageId,

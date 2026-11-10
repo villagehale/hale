@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada's spot is held and that the parent is done, but run.confirmed is false and the facts say only a cart in an open browser needing a security code; saying a spot is held is a forbidden claim. It also omits the 9-minute window and the cart framing from watchFor, and calls it good news prematurely.",
+    "score": 1
+  }
+}

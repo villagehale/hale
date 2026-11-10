@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly states cart over max (98 vs 90), no payment, no spot, does not claim registration; French with tu; no invented facts; cart-in-browser hold uncertainty is hedged. Minor issue: says 'un panier n'est pas une réservation' fine. Does not hint at trying again. Overall accurate and compliant.",
-    "score": 5
-  }
-}
