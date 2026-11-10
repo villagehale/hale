@@ -13,6 +13,7 @@ import {
   closeWatchOnCalendar,
   createWatchCalendarCheck,
   createWatchCalendarReader,
+  loadWatchCalendar,
 } from './calendar-check';
 import { productionActivityFamilyReader } from './reader';
 import {
@@ -288,6 +289,24 @@ describe('a watch on a class the family already has', { timeout: RECORD_TIMEOUT 
         ),
       );
     expect(open).toEqual({ cancelledAt: null });
+  });
+});
+
+describe('a watch with no named child', () => {
+  it("still keeps a teen's entries from the model (rule #1)", async () => {
+    const read = await loadWatchCalendar(database, {
+      familyId,
+      parentUserId,
+      subjectChildId: null,
+      now: NOW,
+    });
+
+    if (read.status !== 'read') throw new Error(`expected a read, got ${read.status}`);
+    const titles = read.calendar.map((entry) => entry.title);
+    // POSITIVE CONTROL: a household entry for no child still reaches the model.
+    expect(titles).toContain('Dentist');
+    expect(titles).not.toContain('Volleyball tryouts');
+    expect(titles).not.toContain('Rowan driving lesson');
   });
 });
 

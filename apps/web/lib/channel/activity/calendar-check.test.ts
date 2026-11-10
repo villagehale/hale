@@ -71,3 +71,30 @@ describe('the check never asks about an empty calendar', () => {
     expect(reader.calls).toBe(1);
   });
 });
+
+describe('only a held verdict closes the watch', () => {
+  const WATCH = {
+    familyId: 'fam-1',
+    parentUserId: 'parent-1',
+    subjectChildId: null,
+    subject: 'toddler swim lessons',
+    heardFacts: ['when:day:sat'],
+    now: new Date('2026-12-01T15:00:00.000Z'),
+  };
+  const ONE_ENTRY = async () => ({
+    status: 'read' as const,
+    today: '2026-12-01 (Tuesday)',
+    calendar: [{ title: 'Swim', day: '2026-12-05 (Saturday)', start: '09:15', end: null }],
+  });
+
+  it.each([
+    ['held', { outcome: 'on_calendar' }],
+    ['not_held', { outcome: 'not_on_calendar' }],
+    ['unsure', { outcome: 'calendar_unchecked', reason: 'unsure' }],
+    [null, { outcome: 'calendar_unchecked', reason: 'read_failed' }],
+  ] as const)('a %s verdict becomes %o', async (verdict, expected) => {
+    const check = createWatchCalendarCheck({ read: async () => verdict }, ONE_ENTRY);
+
+    expect(await check.check({} as never, WATCH)).toEqual(expected);
+  });
+});
