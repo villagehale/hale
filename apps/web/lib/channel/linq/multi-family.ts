@@ -620,11 +620,14 @@ export async function unseatMultiFamilyMember(
  * A shared-chat people row is presence: it holds a number, a first name and an inferred kid
  * name, non-customers' included, so it lives only while the person and Hale are both in the
  * chat. Hale removed forgets the whole chat; anyone else removed forgets that one number.
+ * A STOP is the exception: CASL needs it to hold if the person or Hale comes back, so a
+ * stopped row stays as a tombstone with its number and stop time, and nothing that names
+ * the person or a family. Re-adding fills the family back in from the verified number.
  * Runs whatever the multi-family flag says: a flag may turn a send off, never retention.
  */
 export async function forgetSharedGroupPresence(
   database: Database,
-  input: { chatId: string; participantHandle: string | null; haleRemoved: boolean },
+  input: { chatId: string; participantHandle: string | null; haleRemoved: boolean; now: Date },
 ): Promise<number> {
   const people = schema.linqSharedGroupPeople;
   const phone = input.participantHandle ? seatablePhone(input.participantHandle) : null;
@@ -634,14 +637,34 @@ export async function forgetSharedGroupPresence(
       ? and(eq(people.chatId, input.chatId), eq(people.phoneE164Hash, phoneBlindIndex(phone)))
       : null;
   if (!scope) return 0;
-  const forgotten = await database.delete(people).where(scope).returning({ id: people.id });
-  if (forgotten.length > 0) {
+  const forgotten = await database
+    .delete(people)
+    .where(and(scope, isNull(people.stoppedAt)))
+    .returning({ id: people.id });
+  const tombstoned = await database
+    .update(people)
+    .set({
+      familyId: null,
+      userId: null,
+      firstName: null,
+      inferredKidName: null,
+      inferredFamilyLabel: null,
+      inferredRole: null,
+      updatedAt: input.now,
+    })
+    .where(and(scope, isNotNull(people.stoppedAt)))
+    .returning({ id: people.id });
+  if (forgotten.length + tombstoned.length > 0) {
     console.info(
-      { outcome: 'shared_group_presence_forgotten', count: forgotten.length },
+      {
+        outcome: 'shared_group_presence_forgotten',
+        count: forgotten.length,
+        stopsKept: tombstoned.length,
+      },
       'linq multi-family: presence forgotten',
     );
   }
-  return forgotten.length;
+  return forgotten.length + tombstoned.length;
 }
 
 /**

@@ -1279,6 +1279,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       chatId: signal.chatId,
       participantHandle: signal.participantHandle,
       haleRemoved: signal.isFromMe,
+      now: deps.now?.() ?? new Date(),
     });
   }
   const rosterTrigger = groupRosterTrigger(signal);

@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,8 @@ import {
   type PrivateAsideModel,
   type PrivateAsideReadInput,
 } from './group-private-aside';
+import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
+import { handleLinqInboundRequest } from './inbound';
 import { takeMultiFamilyTurn } from './multi-family';
 import type { SharedGroupReader } from './shared-group-reading';
 import { fakeSharedGroupComposer } from './shared-group-voice-fake';
@@ -462,5 +465,173 @@ describe('VIL-496 aside sends even when the group line does not', () => {
     expect(again).toMatchObject({ handled: true, outcome: 'duplicate' });
     expect(m.reads).toHaveLength(1);
     expect(dm.sent).toHaveLength(1);
+  });
+});
+
+const SECRET_BYTES = Buffer.alloc(32, 9);
+const TS = String(Math.floor(NOW.getTime() / 1000));
+
+/** participant.removed through the real Linq door: one member, or Hale itself. */
+async function removedAtTheDoor(handle: string, isMe: boolean) {
+  vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+  vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
+  const eventId = `evt_removed_${isMe ? 'hale' : 'member'}`;
+  const raw = JSON.stringify({
+    api_version: 'v3',
+    webhook_version: '2026-02-03',
+    event_type: 'participant.removed',
+    event_id: eventId,
+    created_at: NOW.toISOString(),
+    data: {
+      chat_id: CHAT,
+      handle,
+      participant: { handle, is_me: isMe, service: 'iMessage', status: 'removed' },
+    },
+  });
+  const mac = createHmac('sha256', SECRET_BYTES).update(`${eventId}.${TS}.${raw}`).digest('base64');
+  const response = await handleLinqInboundRequest(
+    new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'webhook-id': eventId,
+        'webhook-timestamp': TS,
+        'webhook-signature': `v1,${mac}`,
+      },
+      body: raw,
+    }),
+    {
+      database: db.database,
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      enqueue: async () => {},
+      now: () => NOW,
+      groupVoice: fakeGroupOnboardingComposer(),
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1],
+  );
+  expect(response.status).toBe(200);
+}
+
+const stopReader: SharedGroupReader = {
+  async read() {
+    return {
+      intent: 'stop_me',
+      role: 'unclear',
+      familyLabel: null,
+      kidName: null,
+      confidence: 'high',
+    };
+  },
+};
+
+async function personRow(phone: string) {
+  const rows = await db.database
+    .select()
+    .from(schema.linqSharedGroupPeople)
+    .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(phone)));
+  return rows;
+}
+
+/** Bao's parent is in the chat with a first name and an inferred kid name on their row. */
+async function baoNamed() {
+  await db.database
+    .update(schema.linqSharedGroupPeople)
+    .set({ firstName: 'Bao', inferredKidName: CHILD, inferredFamilyLabel: 'Bao family' })
+    .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(PARENT_B)));
+}
+
+describe('a STOP in a shared chat outlives leaving it', () => {
+  for (const [label, removal] of [
+    ['the member is removed', () => removedAtTheDoor(PARENT_B, false)],
+    ['Hale is removed', () => removedAtTheDoor(FROM, true)],
+  ] as const) {
+    it(`${label} and re-added: the stopped parent stays stopped and their household gets no aside`, async () => {
+      const { wire } = await twoPresent();
+      const stopped = await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire, 'in-stop'),
+          senderHandle: PARENT_B,
+          otherHandles: [PARENT_A],
+          text: 'stop',
+        },
+        { reader: stopReader, composer: fakeSharedGroupComposer({ body: SHARED_REPLY }) },
+      );
+      expect(stopped).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'intake' });
+      await baoNamed();
+
+      await removal();
+
+      // Only the stop survives: the hash and when, nothing that names the person or a family.
+      const [tombstone, ...extra] = await personRow(PARENT_B);
+      expect(extra).toEqual([]);
+      expect(tombstone).toMatchObject({
+        chatId: CHAT,
+        familyId: null,
+        userId: null,
+        firstName: null,
+        inferredKidName: null,
+        inferredFamilyLabel: null,
+        inferredRole: null,
+      });
+      expect(tombstone?.stoppedAt).toEqual(NOW);
+
+      // Re-added: Bao's parent texts the group, and Ada's question touches Bao's own kid.
+      const again = await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire, 'in-back'),
+          senderHandle: PARENT_B,
+          otherHandles: [PARENT_A],
+          text: 'Hale is anyone free Saturday?',
+        },
+        ports(),
+      );
+      expect(again).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'ignored' });
+
+      const m = fakeModel('clash');
+      const dm = fakeOneToOne();
+      await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire, 'in-ada'),
+          privateAside: {
+            model: m.model,
+            sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+          },
+        },
+        ports(),
+      );
+      expect(dm.sent).toEqual([]);
+      expect(m.reads.flatMap((read) => read.families.flatMap((f) => f.kids))).not.toContain(CHILD);
+    });
+  }
+
+  it('positive control: a parent who never stopped is forgotten when removed, and live again when re-added', async () => {
+    const { wire } = await twoPresent();
+    await takeMultiFamilyTurn(db.database, turnInput(wire, 'in-first'), ports());
+    await baoNamed();
+    expect(await personRow(PARENT_B)).toHaveLength(1);
+
+    await removedAtTheDoor(PARENT_B, false);
+
+    expect(await personRow(PARENT_B)).toEqual([]);
+    const m = fakeModel('clash');
+    const dm = fakeOneToOne();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire, 'in-ada'),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+        },
+      },
+      ports(),
+    );
+    expect(dm.sent).toEqual([{ to: PARENT_B, body: `aside:${CHILD}` }]);
+    const [back] = await personRow(PARENT_B);
+    expect(back?.stoppedAt).toBeNull();
+    expect(back?.firstName).toBeNull();
   });
 });
