@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The grouping by day is accurate, and the names and days match the offerable list. But it labels Swim Kids 3 at West pool as 'indoor', which nothing in the data supports; only story time is listed as indoor. That is an invented detail. The opening line ('That's everything, and it's all from what I sent earlier') is also extra padding.",
+    "score": 2
+  }
+}

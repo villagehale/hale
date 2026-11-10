@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Great, thanks. Google shares your whole inbox with me, but I only keep and use what's about the kids, and I never send email. You can disconnect any time. Want to connect Gmail through the link above?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "connectGmail": true
+  },
+  "latencyMs": 1689
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the parent's no warmly and asks once for just the area-level ZIP. It explains that this places them by area, not street. It makes no promise to find nearby things and does not ask for a town or street. Offering the first three characters of a Canadian postal code is allowed. It is less plain than ideal: \"coarse code\" is jargon, \"first five digits of your ZIP\" is slightly confusing, and it is a bit wordy for a 5.",
+    "score": 4
+  }
+}

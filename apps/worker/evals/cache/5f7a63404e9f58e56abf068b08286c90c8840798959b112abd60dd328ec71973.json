@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what a 'no' readiness_answer should. It names all four items (account, Max and the teen added with birthdays, address, saved card) and says Hale will ask again the evening before. It asks nothing now, uses English with a friendly tone, and names only the handed children. The one flaw is 'before the morning': it hints at an opening time the facts never give, and it sits awkwardly with 'the evening before it opens'. That is minor vagueness rather than a clearly wrong date.",
+    "score": 4
+  }
+}

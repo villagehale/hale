@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv41u2zcCco9mGLK64qv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnwkKEAgTGAI4AUIIdGhpbmtpbmcSDInbf3Fqcmswwghx/hoMjSdm/ezufeYYCX8cIjDysqBELL+LNDMYBEfAXyyG+zrqeTu/IAHged1mLyBiWxmbAagwEW208igzBSUhKNMqvAgSm1z035JOMXJECAXt1ufo0w1ic7RSsWICnJ9lHy1HkzcpyrJ65L5kOLLxvwGm9fJa1y2Ag6b3JIg2SPKtfzaaqVF9YD4pdACqYSqDOXlPHgZ/wgFRrUomBQ7BveK9an83HJAH5pHunRcVX9NEfvC3VtcBm4b9dzGI2gJbG4UOME1bGEN7AKWO+IMqFESnLNiRbZ7dOUbIObqF2yiRCBfUI5dS1ljiWsKVZFLuQOgbBPG4wA3K8HBx/aq0lJJ+we8l3yrB/3m9dkf2FqTKLYiPQMUg2WCZL5MwARXW8u4BVxmhNK/8LTOMu6eo9FsCkioJuuyCafAvTRE1BU5NB/GU04TWI4578kgjaFVdMg6yHLTLyBvOu+/JPtI3OZo7r59HTEdn2di0RmbQLomJ3XAUwtC5eIKISMQKprY8oVqio/G4VVPCeL/hxDsDE9ZFIjBQXQ8LyzSxMUmVtvK2cOon2EwEiOJC2MFd9wTz6OLm7bkEz3trpt6JDO/Bm5nJGQxtgkfMetebzo0WtfslVSJBnIHWdgfd538VKt+w8/Iwop/X1OvGt+CGKeX31jDvbGtkc4lTQDjK4uJ1V/GulO+eJZDRzNJGfdTz8Ycn8VvQ/vdBFgjq0t3apvjVX5GBN586huzjCns/ai825OiT9faUI4xSMbklj4PyYqB6cz++1bqgpY09PD9++rmlyMljg6p+V09lmcqI6ZSwLmyargTiaPItMF8VsxiVGFJXq9CSb2+2LEfjscbtL/o5NMs4y+opNlS880FR4s1roXqIlbrW9zPC5wh9fql9Svz+bULSdiqlluzcL9gE7gdqzZyMGLB/s6C18hkbHxUpTprUjTe3yDmxyYJppSpcJu/Hc+SZ1XSpIs/xFq7D8ynhYiGvQY92aLx9f96XIJmM7VeQuJNPWGvIifdihYld573NFK8PR63Uvl+oPqbOj+/B52/E5imM3c7F8f5dZnmUQItSluvolM0ErPpP5wL7smqQG5g20cdiKaKtmlSuBhyi1ysgwutiYOX306OzPjPCraAYkCHFLuA78sfmWFBIcpax2QzOTCR28n9yw/gyVRPDe1X0FhKA0fWsRcCIAslWFGFMyRTgbilb/9XlSN2AlD02KICx2FjMQHYYcQKRzTG0TybfP8Cl15kjRQLUncaexPXsMsEmF4NcRO8PSHRr3vn10eLRYWLdFu5iEi9JfSap55DgBFFOXdCgE+fntqCEn9eJplxDfxXFfpn389FDoz1vTaHD8uyrZ1okosXk9ARwGb6fQ/X31AzsJSnaHNczYT1M1mxzfly2szAreCVzS30xCCDkWv5uKuQnPyL7RwGZzcoNip7w2ky3wFC3/iPIxYoiK+ang+tudo/chd/wjg2ISK+5Su5YnZZt13UzuKM8T/hd4U5scsBp3n/Z3z2EQRnm5bVsmpE+m0FGPyl/+0QdGAE="
+      },
+      {
+        "type": "text",
+        "text": "周六上午10点，Leo 有足球课，在社区中心。另外，周六9点到10点有一段时间已经被占用了。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 548,
+      "cache_read_input_tokens": 19664,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 548,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 270,
+      "output_tokens_details": {
+        "thinking_tokens": 224
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

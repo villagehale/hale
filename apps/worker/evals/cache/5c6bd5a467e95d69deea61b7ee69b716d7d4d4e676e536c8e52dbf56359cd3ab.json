@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Got it, no calendar for now. I can't save Mia's carpool for tomorrow yet because it isn't on my map, so nothing has been added. Would a group chat with the other parent help?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "scheduleAdds": [],
+    "stopAsking": false,
+    "coparentGroup": null
+  },
+  "latencyMs": 1692
+}

@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011Cgv4BVyhLzfWAmdz6XWqf",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8ggKEAgTGAI4AUIIdGhpbmtpbmcSDCUZfyHGPH15sf/6fhoMfXR6U+5xsWwGZk1ZIjDslKdXQKky/bOkwOgwwk8LRE3u9S9/+uSx+NsAhI4sz2gYMcGN90+OejZA+HftU+Qqjwjjn50JvR7HE4YbCS/vUlcK5al7/u34k7/tfUq6qFMsBr1fynJKufGIbsqO8kz7bv2UMTMGosT1C9t/RWNU9JQ0o+uVe7ATzWGgcAHxhe0VH/+l88peNSJMjVD8TaqiUsYNevv0FJIxyVPIAGg3dTX83di+zNagYIEm+R1RB99Smv1Q8ypB9w3V6mYH743ASNAcd5RztusXlbj+8JG1G3TzhAqI8UtghR5anlgGzLMfGaCRdon4xBytv8fb7NJ3yUe0Sr6DfaRDhctIM913K8l2+GgOUFC/yeOsT5FpQq3b06I7RotGQbcjakTY8eJ22LTo47Tr5OlgBFTVWySxdwrFgr8iO/Vl69zrf/SGqGHhW7k92CZO6f9mDDuIQgitSo3pwmhJFSPShdGtvUSXXm8i0AHOjjlkOeMs1gbehBnyd2+P5CX0HdGqyDcUMEq+3MRZrSnM6bIB8gQ5F6nC7QmmqbonJ4nfXjWWjiqTg+WfiwsHjraipmt12uPO0ce6bmK9KHPmTk35svfOaOt2V5fwAhdem1s0lY3Ny0mUihiVB2QbuLD70VNAOsq9Nz7fuVDbYAMuqRrqbBE+3v4Tev0XrUlKsIutwjVM407G844cAB8KjTZjiwhECCAPn8qFy6NooLoBauKgMjjsba3FsaKPkji2vLSxMX47rUCjKFnz4tm7KzcYm4zuWyn/UPGKAAc6FguoNqH4mJoIDVSfQAN1Okvrdto3YznvlyrPjNXxb1kmuNj4lqN720gQP1K34r8gh5+YtQAFI9UYPM7XFBpdhBBpVZ+9Y1byqz0NGoCybf8sS+jJ7meNBmjHEBFAfZlxSaDpEh3n8X/HseX3E2BF1W9NhD6e2jert8Yc7tpRgsmewOK2l8dc7iA1GBuWUuTSBvbiX/ulN3JQToFEGoUDxtCLFjsY3yAoSFmFOWZni32ppDvECPPEX4guZyp329XgbfUpHBd6qh4IDbbDZ/Obb4sXBi2e038I1oEtDtONnrILAa/spNc7DHxu4n4EwIwz4K15WJmv7MFbDGM0+N/W95P2OosSCCY05UNcm5KCGF55I7JpYaSP4DYgpl1IIwvIWUBhyC3Hl/7WL9eUEPt6uw2xnWZLFvQ3SdgW8j6XyPkp9u/dJtYLSpkz2KAXZF4wchzpy2czmrE4UlVmJN2DeXiUC30XW7huuPyYBZkKZo4MgZ0vVjoHEYpADJTHp+tVQTUV1iqZ1VFUrZk8VTXUAJA0uQOzFU0fizqsAC5fI5MamtVxENhnjRp/fxx88/ZpO6gWC7GwVmC0U5Pm7LhOfDh0IEVUVMhnWjSnyBZLl8hR5StevWxUrZJLy154QB+RAof8vJ/P5KtiMHrbzt6lGMgdyhc6wCRqK4skXut4GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_012QGS4bSp6wx6Ch1tKYug6q",
+        "name": "note_capability_declined",
+        "input": {
+          "capability": "spot_watch"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 805,
+      "cache_read_input_tokens": 20927,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 805,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 224,
+      "output_tokens_details": {
+        "thinking_tokens": 167
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

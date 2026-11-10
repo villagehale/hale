@@ -1,0 +1,55 @@
+{
+  "response": {
+    "id": "msg_011Cgv49D2v3VmeuUqdkLisY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxAcKEAgTGAI4AUIIdGhpbmtpbmcSDJesNOeUYpr6CB0Y0xoMk8HdYfHiai9YeX/YIjBIFk6NukLSVRRCwlXdtl3CKeZubrzAzazoIHs4VGrG6dp95ODMS6ypZpY3rhNrBaAq4QZikWv2IhAuSrAs9qLvI46fP+knx4aPYCSt8lqQ4r0S4ljT2K43q9s5zsuCtphOIArUB96XnYPOhQqyx+0EjsSmjmdqNZ6l3ZMUo5fWryY4sO+3RaHZn7ub15Ymzh+c04wmfhm0GB2xEyehSSSBYxv0/eGlvwZFBG7YsJc2XC2BePirI//nRwparg4qBTkJQRjgkMfCPvD0jxiU3PDuNObvDQeSqqQR/jfD7QuoNJ1FhUux+HUPzc/iCzLqotBZp6AUplxQg/a3TRLIn1KarofgAu0CxssrmJSvJuOrLt4C8cqQZRkJbqU+bELsKPLrtT1xqyYk6xuDUb6KNVLdB4/KxDSYGjSUqvCuC/IdRHUacalkmFw866a2vzj2ECBjOh5WiVy0Xc1vVv44V+DtR1Hfwtv+xoOL0zMh1AdnC4dcGAwoHfmAPzxeYfpNxanwgCsYiOsHkbwzIXVfnglKXcj+ej6ASwHd6MtpzhJh6zCdgt/SdYcbHU/O6EbI149B70xV+C+girk7FnUWM//1RaSae0n1HzRmLiS4o8BFQfPqP1KhCOV+8S6U6wX0vJXqCsUvErmDjbYz1JT2IltXbQ57urHQWm1gCvpsWYmnIzQWLNi9i7DVMSydZxKhSssggc9WI7nPvnq8zQ21Ax/Of+9xXx7B2BnEFNkX7c6bRbARjYv/AUF6ANfvQAyZJnpQbMRHvDvJ2sQWMmMqBqpEDPUEGtniDzT9RTyejE/9og75jooKLYpH3UfsId3YmanoXEU7MtWybxUdPaljo5lfB50qtWNGLh9VO703LujuJZfFAG5fZLAAYqr+xk2ibyP/JfsQVcVhc9lPXA0J0fWDY0K7tMWwP8V3Cx2LyVSrbSZtWN/CGy+oEEDDZezWUm+9dMC4I2/IFSohYnZxerOvSa+O6rEDb8w1yV2kpS1sfo8oE0+ZwcWv4/hLHRjqmpZ9+LYHP1pZ2oiTfVUVja7IKxshJsCNOpCeW6XwIEVGAyICK/gycbs1ToLpExOpY8DSGH8fwwpQjzcNofFqZKcldGMxUcOI7y7DN3GB9e3zRG1iYV7mjddqulFGuu63EANz9+nhBM2Pm8yMLjVszb5MjVQeWwidoDsmbcQ7zoe6dN5bvXZ1v/lPTVXLLplCiXZUHGoIGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01BAwe1GDf23FcsknLcs6jay",
+        "name": "search_village",
+        "input": {
+          "query": "kids activities Saturday",
+          "window": "Saturday, Aug 8"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01BQH3f7nreNcpezKF3e2TgX",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 735,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23841,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 224,
+      "output_tokens_details": {
+        "thinking_tokens": 114
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1910
+}

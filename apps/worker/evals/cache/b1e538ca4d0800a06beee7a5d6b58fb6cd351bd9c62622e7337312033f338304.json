@@ -1,0 +1,22 @@
+{
+  "value": {
+    "reply": "好的，那就先不说了。我还是可以帮你留意孩子们的活动，你想叫你什么，之后随时告诉我就行。接下来想不想连一下邮箱，让我帮你看看学校和活动的通知？",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh"
+  },
+  "latencyMs": 2112
+}

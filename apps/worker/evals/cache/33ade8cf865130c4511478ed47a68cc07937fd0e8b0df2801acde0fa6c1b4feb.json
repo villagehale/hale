@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv3nHxFV9KwCxvSTWhuc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5wgKEAgTGAI4AUIIdGhpbmtpbmcSDDxLMLlFyUbO/q+WwBoMwxTQGksl68aEmICjIjD6SMIVEUa1tG5I8DTsnPBldn9fPBsPVp6t/Om9B2K0ue+B3Xlni85e6s5kUuC3vO0qhAgnmg78C1glPhgWBdmCiyNLhuBG4sXv0UpRo4C1hILDVPLFlPDAwIUNM4xsMEX08JgCu19T65IrU0nheFAumLO9lDKD4AbNpsPCu6kkW6Um0kY3f4gscGhga8jqb5VXVYMh+EdARs386v7SgIzRUghGTbGHvRcOHWGiEh2qZt6lum1GIpFj/8bB3/dnj5L6SExpcgKkT0rzP96TlIU3egBfiSqbAEfTMGP5gsBV+qNE071hnXYY9tR0tJZuj8hmqbN3t0zIYgvUc1Ew5Ak1ctJl22NyUNhZqCtSmwpKTLFjtNiW07DtTQV3DSHGAVYdgO1VgWAWouSQtz2RJxps/pIZwkDwg6oIPENxGJ2hD0c1vtpd8zq3K7xoDYY3GodYvliX/MWa6lGH9faIoSa3wYFzUvbpH1yIMdTyDmr/6u7Zko5eNtuW6eSEeoioHtNYOFSpk8c/Fwlta7/UR5Z7gwrzvnToBVvWfsOYnITpkykNQdFnm0D2HEetMnfW8jUHvF6SQhGGOlemj5TTvmKOfnPdtS8MtVtDY9hpOGhXUVedBevgPvMX/i4/wj70K3exkVSuNRapIpQ8QHkJ2ZYcjgY5ict0Kuaqb36jPsBXabRDyLAez+wJAVhAe2q/3aommOEIoi6AQfBVHBxPFlRQl1wCppEBzkpB8QXXwobYGv29jdFb2FPbUTyWR6v/YSbe8ClvynmdvDgP2aQjWzmo5V8CS4IDQ4eIV5ahfq5R+NB2mrS1HJQtMeLo699WxifFcXxK9lsjnX3imoHBCXy+hWkmIl/MRLUeXqWjFjQIZWuchqibvpgp1z4D4Yx0WF76tYianuwl7rr0KVfNxbDQxs0YD/eoLffAVTNHeGXil8hKzYm75cIxbSDuV1MrMa40Fc2QFa3mcyzNP61AL0xtlJRdX5PqhzNrtwPikPqzwTsgZNCgtuxRqJ3vdfKMUPj911ZwRmZ2xmPzD1CqZ7PatcPs7pxbNu/Dr1DaRe+rbmOsZo8yedXCyg+RiYBw/mFEAHsqmAuTtrwRL6wTyoa9hlD+4alJG6e6yTyOgeawW3PXnJW1kHxbw26sBifjxMYMklwSaYykld2HT7hUwzQaVVybSivr1BtYYY+E/GVmEmkazyboPwl3FkcU6sxZcWpazhXsIUkmD83PT6e6/BrIX7XuVtStSKn7FDUpDE8xSUGkfAiR8H7Ql89x4mOKcULRonlWGXGCR5ngir5sBCKHXuHnQ0JL8Lff6IETNKDLn6hMCloyh1Vy2te8IL3zgBldVNXuyxnfPW+udwv4EmRz6ETX/4x/huMGlm75wmyFVxIP5DPDQPuD5s+6AcVPEjGIBR21DUa9wKDqaOKqFwfe7qCuzMegARgB"
+      },
+      {
+        "type": "text",
+        "text": "Saturday has three: Swim Kids 3 at the West pool at 11:00 a.m., Central Library story time at Bloor/Gladstone, and the High Park playground. Sunday has the Riverdale Farm visit. Those are the only four I found."
+      }
+    ],
+    "usage": {
+      "input_tokens": 928,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23841,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 303,
+      "output_tokens_details": {
+        "thinking_tokens": 218
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2812
+}

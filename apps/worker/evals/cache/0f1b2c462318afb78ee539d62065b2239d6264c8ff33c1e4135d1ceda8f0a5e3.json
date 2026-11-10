@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Parfait, je lance un groupe avec l'autre parent de Mia pour que vous ayez les mêmes plans et rappels. Tu préfères que je t'aide à l'ajouter à un groupe iMessage que vous avez déjà, ou que je démarre un nouveau groupe ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "fr"
+  },
+  "latencyMs": 1917
+}

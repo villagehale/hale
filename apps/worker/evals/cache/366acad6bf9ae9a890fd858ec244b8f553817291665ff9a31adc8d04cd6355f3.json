@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv47rV8J2o8pzJpoR6nn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AoKEAgTGAI4AUIIdGhpbmtpbmcSDA0muh2UoN1znaZVvRoMiKGkS8wnvDlQsGfIIjDHZo58uAlqgUWwzJZZFvKcVUuvhEnq+pPAy/T7SHp3q/0AjEM0UfPM1jJx7r4fKFQq8QlrepEKimusLtGuRA2LjM7AFznEi4rv/H6yeqxqVpLe+QpKkHJlGMrL+/thQykWVW5/S/RcjgFmDk5c07PPJ/li4y/tSAy6egzt9ECeTX7L41eMARjiW2xMaSn6N1KPrhq+uAqHu01bINfKO7ujNJDde9cGRhkrf6RHXvUGmYJWuRXTDy2DTYLr6Ne9sEFoB0T24d0wKilA4ye6uK203PRep2BFXH1FOfZBhqr1FQkIPA9AyS24opYa1vJDJRa9aSUtSoxXYpRzRH6hzjNJ4V0LLKQD8j5YJP/RZD9anh9LgsMww0R20O26ua9axNwU4sVAMpXUdgiqZ3poUtRJU3J+FYD6j/t7V4PeHwy4+RVNylohJtzR5yQTQjxig8jhB6L0XaNprXQqarr39x/8BrvAxap9IxD7FLBS5yPLb8tVFHT17BTPhMyh3V37iP00LXXjQbhNm7ZgAdkXlLKvJg4II6jEPCuUDlDpD+RdNcMszyzDdSYdvkCAVSFVThhq5lweFOWa+Nc6kF2Aya/AckzrvdX+hg675gEbBfpYbHrYFvLwtIiELaw+AOthlxMaiWANbueIhDdzGzFImsM12l4EVg00u9d78PdUlR0BAHoMTW+um631FJTk4TXO4NUSaIiGZiUSEyImAm0WdbQIizXQO4okBGkXqhnbdhd56HWxgku90t0UUcbQeCzLRyIhQDMkici5u3UOqYKXSnjl4DK9yB/c0DBzjPVcIkvlfbVHUqxIxr+cHYN+d8g1pnwc+2YfYrf6bs85LeqYvRvluER8mxjP042TSHafGVG8ZYhRswUK/nXLmhsnruRUctx7HBG6nD2ZmPDjvIs80yyV+xgdNsufbnvvDhN6WH+LQrvqEbyoU0A7cmjaBFiIxeNXXE08AXzKe5NOI5Hl3k5hRU3Q6u2OaYAzsxVz4j//8EYIQAVKgxEzVzl+UzfcZFwzVgK/SVKdeZPacYgDj36Cm/qSckZfWrmVYsf9+48Fvar7PNpt/ge6c4sy58rHyXnnD3uKQfto1nsRYRlNCO8BW8I4C4h/6hlGIDVNq8f0lTGxg5tRhetNVGu9SGptR6qCKP3bDoAzaFFHVLgURhy4+McyjO2he1NfwPyXHHPbyMlccptX8s3qloG6ylVin3mfdgR29txhIvrgwnNjhXu82hVoGYlMuhlcfDmLJ2obZ1jVf+lFkMxv9P3zLybamlKc2dkyCOUbgBdFuDKchnzVRoh3Tj/bMACYMGC51VKfOJ5YYjX+enrQe/g2zgpOki++eKQFlw3aR7zZZ1CFGZvu00/xof645np+plMt+w9TkPs+RXAXRYH8OyzpNq0SfeDtJYCUO4Ku/k/06ApweEM+wMxeCrd80TQmwgz32v4unFCelq9HuiNm4+0lCmA7ZWweiQepNB6rkEr41Ug2+/JvZqLXn1L2Gdr+mbLeWWS51aNQJQ07lKjjFTEKsggIhX67D7zBvC3B6YqGAJCbFQIyG9D0L9X0nKtdSNaw38rFq/NJM2gpZ7GD4etJ0PXKNlWaHhjgXHh/p6yQ1Fk4jNBnY6zakMWOMMV3Eji4LNjtUzBkWEwbpufW1dp43Mbwbk+PlnrIb2VsAAwakC9QkO4dOwUErMIwYqcfrA7TiAANVYurenh+4mRTaFjsog1+gVmyFwPf6iv8s5ixaowmZTizGqknJRgB"
+      },
+      {
+        "type": "text",
+        "text": "Saturday you've got soccer practice at Cedarvale Park at 10:00am. After that, High Park at Bloor St W and Parkside Dr is a good bet. It has the Jamie Bell Adventure Playground, a free animal display with bison and llamas, and wading pool and splash pads. It's forecast to be dry and about 29, so the water play should be nice. The park is open daily, but the water play is seasonal, so it's worth checking that it's running."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1669,
+      "cache_read_input_tokens": 23841,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1669,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 387,
+      "output_tokens_details": {
+        "thinking_tokens": 236
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3325
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly attributes the 'yes' to the parent ('you told me') without verifying it, names only Max, uses the handed portal and account, and asks nothing. However, 'I won't name a day or time for what comes next' is an odd meta statement that doesn't sound like a friend texting. 'I'll keep Max's registration in mind' vaguely hints at follow-up the facts don't spell out. It also assumes Max's pronoun.",
+    "score": 3
+  }
+}

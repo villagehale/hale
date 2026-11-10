@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with \"Approuvez-vous ces messages ?\", a question on an approval_card, which must ask nothing. It also says that with no residents-first priority the date is the same for everyone, which the facts do not state. A null residentsFirstDays only means this family does not get a residents-first date. The other parts are right: the date, the time, the link, Léa's name, the three texts with their timing, the line that Hale never registers for them, and no course-link tip.",
+    "score": 2
+  }
+}

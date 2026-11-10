@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Totally fair, you don't have to share it. Could you give me just the first three characters of your postal code instead?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": true,
+    "language": "en"
+  },
+  "latencyMs": 1744
+}

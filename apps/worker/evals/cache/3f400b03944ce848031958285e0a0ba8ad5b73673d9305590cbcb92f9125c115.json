@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits the readiness_answer 'no' case. It says the setup isn't done and names all four items: the Springfield recreation account, Max and your teen added with birthdays, the address, and a saved card. It says Hale will ask again the evening before, asks nothing now, uses only the handed names, and is in friendly English. The one flaw is 'before the morning'. The facts give no opening date or time, and at 6 p.m. on a Monday this can read as tomorrow morning, which is a slight unsupported implication.",
+    "score": 4
+  }
+}

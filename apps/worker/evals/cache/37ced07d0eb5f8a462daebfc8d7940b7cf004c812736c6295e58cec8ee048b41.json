@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "No problem, I'll drop that. What should I call you, whenever you're ready?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1631
+}

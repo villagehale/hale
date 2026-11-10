@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts hold: milk is on the Groceries list per facts.after, and the reply claims no purchase or action beyond that. No secrets, no health advice, correct English, and it doesn't recite eggs. It reads like a friend's text. The trailing clause 'so it'll be in the next run' is a mild implied promise about a shopping trip nobody scheduled, so it falls just short of the plain 'Milk's on the groceries list' that the reference texts treat as the ideal.",
+    "score": 4
+  }
+}

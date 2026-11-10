@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv3y3gKTWSd7UiNWp4ii",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSiwYKEAgTGAI4AUIIdGhpbmtpbmcSDGWOOQUpixUEYEg10BoMOP2g1LvTtwJkdr31IjBLExxjI+o+GPAkJR40PL3z5ZeI985BdbghlQy5TtdhomECrGcQEIDyLETGU0fLlwYqqAWm3rFmWs4bHiF0nZrqClslJpGRb+z2eihhj6Z7tI3LGZOC5NdaOz0DTRoNNTzYXzcfeKSEPptIngTkY1A7YqWKbjtUxLvRRs6Cusz2kYlDDm98WIOPNVD19GgMUD7HaGJKNsk7m73gok4zlc7qfYzegKFESqAmvxF3PZ9CU+uJgzNMBheCWKZVdA9Op3kZXjsuSFH2ALcrnfCT6OLc5Gtc6NqBP2VSpy90SGtUKg03mFG4Er2Sk1jdGPGg3mbsA7z5LW8tdmkT4l7Exzbb6qe58AOrvU4sx+2jTF/6DiYUITB9k5IIDMXVbFHynRuym555Fw00X4el8NsXjBSTaA8pTKffui/ZTl1np6IfJ5v6DY7t8rJaS7t3UHLYl5VJpegf1w4Ts1paKKqWqDQ5xYX4eAYhcxBQP3gsmfihpX+vB4ivw2iUTnzOT5V1tTIsZqkvhI+DzxHfOm7wzif4BQR1gpWXy2pboX0vqD7STQ9gy9aTJkwlFrnHLsIECI1KBBr40pQpqn76j4rNPQHoIx9bnEvv+MMazqBjtwvvddg7gxLozpnV/dIyOxBhQT/YJUCixbJMmYpeCNgya0sNDTONdB+hdrirFhTNg/QLRKDIawJEhj179MFvI3XYuhpCJKBRemgcH2ZvCMbMCh16gvNziV6Az2mq0rSt4MtcPH6KQiV8AJd9lx6DGtI/Mom15tz9a2GdiUREC/RVhejiEx3rFWDHpOeJTjDb/CFFT2G7XbQ3dgCnetMGptNe3BFqAjpd+kZkWVljpZl2mKykRCJG3OVdi6fiwTurAgeEQmxWfpj19KiBHPTVA5AWwIPXwwQFTgeXvNzboQxENIybXaWduyyCnOQ6dDVwxPZOZzHS9s0jhgPEJ7sQvJOXCrYRN7nFGovWoZzVPhgB"
+      },
+      {
+        "type": "text",
+        "text": "Got it, Thursday swim stays as is, nothing's been cancelled."
+      }
+    ],
+    "usage": {
+      "input_tokens": 737,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23841,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 98,
+      "output_tokens_details": {
+        "thinking_tokens": 71
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1243
+}

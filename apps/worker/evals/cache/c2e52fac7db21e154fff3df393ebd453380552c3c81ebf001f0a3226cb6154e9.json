@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The halfway timing (5:00 a.m. Wed) and the deadline (11:00 p.m. Wed) both match 36 hours from the 11:00 a.m. Tue start, and 'tonight' is right against now. It correctly says the clock started from the parent's own message, not from an offer arriving. It invents nothing, asks nothing, uses the right language and reads as a friendly text. Watching email and the portal is handed.",
+    "score": 5
+  }
+}

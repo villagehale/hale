@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It says the page replaces the earlier one, correctly says the course name, day and time could not be read (all null), and keeps the date and time right (Tuesday, September 15 at 7:00 a.m., residents date). It warns to leave time because prerequisite is true, has no link, asks nothing, and invents no booking or child. Two small gaps: it never mentions who the class is for (your teen), and \"going by what you've sent\" is slightly unclear when haleHad is null, though it makes no false claim.",
+    "score": 4
+  }
+}

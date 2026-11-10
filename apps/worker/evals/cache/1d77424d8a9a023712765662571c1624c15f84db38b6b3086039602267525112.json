@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Good, I'll keep it simple for you both. When you're ready, start a group text with Mia's other parent and send the number and phrase I'll share below, and that's the group. Thanks, Dana.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true
+  },
+  "latencyMs": 1766
+}

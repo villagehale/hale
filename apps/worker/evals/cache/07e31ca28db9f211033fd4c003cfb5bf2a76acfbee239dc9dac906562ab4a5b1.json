@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Tu peux me donner juste les trois premiers caractères de ton code postal? Ça me suffit pour trouver ce qui est près de chez toi. Et combien d'enfants tu as?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 2,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 2014
+}

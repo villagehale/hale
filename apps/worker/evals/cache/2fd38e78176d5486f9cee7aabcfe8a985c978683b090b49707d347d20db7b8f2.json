@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the parent's no warmly and then asks one question: just the first three characters of their postal code, with a ZIP offered as an alternative, which watchFor allows. Explaining that this coarse area is enough, not their street, reassures them without pressing. The only finding promise depends on them giving the code. It does not ask for a town or street and promises nothing nearby while no place is known. It is short and plain.",
+    "score": 5
+  }
+}

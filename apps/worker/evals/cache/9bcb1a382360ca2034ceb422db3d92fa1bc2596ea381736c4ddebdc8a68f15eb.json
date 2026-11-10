@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with a question (\"Approuvez-vous ces messages ?\"), and an approval_card must ask nothing. It may tell the parent to approve but may not ask. It also says there is no residents-first priority and that the date is the same for everyone. That goes beyond the facts: residentsFirstDays being null does not establish that no priority exists for anyone. Smaller issues: \"je ne m'inscris jamais à votre place\" is roughly right but awkward, and the week-ahead text is described as \"la semaine précédente\" rather than 7 days before (acceptable). The dates, time and link are correct, the language is French, and Léa is handed.",
+    "score": 2
+  }
+}

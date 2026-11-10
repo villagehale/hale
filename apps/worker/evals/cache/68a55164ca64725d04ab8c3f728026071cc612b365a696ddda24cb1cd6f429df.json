@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fits the course_link_refused kind for reason not_https. The message says plainly why the link wasn't taken: it isn't secure. It carries no link and saves nothing. It asks once for the course page from the handed portal. It claims nothing the facts don't give, names no child, is in English and reads casual and friendly.",
+    "score": 5
+  }
+}

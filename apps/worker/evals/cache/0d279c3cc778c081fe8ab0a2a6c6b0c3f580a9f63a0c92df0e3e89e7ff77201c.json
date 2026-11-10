@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It notes the page replaces the earlier one and rightly says the name, day and time could not be read, since they are null. It gives the correct opening, Tuesday, September 15 at 7:00 a.m., tied to the residents date, and warns to leave time because prerequisite is true. It carries no link and asks nothing. Minor gaps keep it from a 5: it never says who the class is for, and 'going by what you've sent' is a bit vague when haleHad is null. 'Prerequisite level' slightly embellishes the handed fact.",
+    "score": 4
+  }
+}

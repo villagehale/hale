@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two swim lessons on the calendar, so asking which one is the correct move. The reply names both with their exact days, times and pools from the week, drafts nothing, and asks a single plain question. No greeting, no sign-off, no invented detail.",
+    "score": 5
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Pas de souci, on laisse le code de côté. Je ne peux pas trouver ce qui est près de chez toi sans un minimum de repère, mais je peux me contenter de plus large. Tu es d'accord pour me dire juste les trois premiers caractères? Ou alors, on passe à la suite.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 2055
+}
