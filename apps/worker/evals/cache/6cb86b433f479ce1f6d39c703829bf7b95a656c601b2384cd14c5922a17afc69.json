@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The slots are faithful to the pages. Tiny Gym's ages and 45-minute length come from the programs page. The Term 1 and Term 2 dates and the Tiny Gym and Rock n' Roll times come from the schedule PDF, and the slot admits the weekday could not be matched from the grid. Each slot is cited to the page it was read off. The registration slot correctly carries Term 1/Fall registration of Wednesday July 22, 2026 at 8:00am online, cited to the homepage. The message does several things right. It leads with Tiny Gym by name, attributes with \"their site says\", and uses a first-person \"I could not pin down the weekday\", which is correct under page_has_schedule. It reports truthfully that the price only shows after login. With watch=true, \"I'll keep watching and text you\" is correct, and the text is plain ASCII with no link and no question. However, the message drops the registration date that the slots carried (July 22, 2026). That is an explicit low-score condition.",
-    "score": 2
-  }
-}
