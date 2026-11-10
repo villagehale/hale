@@ -4,6 +4,7 @@ import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type { DueCommitment } from '~/lib/commitments/ledger';
+import type { WatchCalendarOutcome } from './calendar-check';
 import { ACTIVITY_WATCH_DUE_HOURS } from './commitment';
 import type { DeepSlot } from './deep';
 import type { ActivityPick } from './lane';
@@ -66,6 +67,8 @@ interface Harness {
   heldNotes: string[];
   watched: unknown[];
   deferredWatches: unknown[];
+  calendarChecks: unknown[];
+  closedWatches: unknown[];
 }
 
 function harness(
@@ -84,6 +87,8 @@ function harness(
     conversationId?: string | null;
     /** `users.locale` for the parent the promise was sent to. */
     language?: string;
+    /** What the calendar check answers for a watch. Empty calendar by default. */
+    calendar?: WatchCalendarOutcome;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -95,6 +100,8 @@ function harness(
   const heldNotes: string[] = [];
   const watched: unknown[] = [];
   const deferredWatches: unknown[] = [];
+  const calendarChecks: unknown[] = [];
+  const closedWatches: unknown[] = [];
 
   const deps: ActivityFollowUpDeps = {
     refuseUnbackedSend: async () => overrides.unbacked ?? [],
@@ -168,6 +175,16 @@ function harness(
       deferredWatches.push(input);
       return { status: 'deferred' };
     },
+    calendarCheck: {
+      async check(_db, watch) {
+        calendarChecks.push(watch);
+        return overrides.calendar ?? { outcome: 'calendar_empty' };
+      },
+    },
+    closeWatch: async (_db, input) => {
+      closedWatches.push(input);
+      return { status: 'closed', commitmentIds: [input.commitmentId] };
+    },
   };
   return {
     deps,
@@ -180,6 +197,8 @@ function harness(
     heldNotes,
     watched,
     deferredWatches,
+    calendarChecks,
+    closedWatches,
   };
 }
 
@@ -947,6 +966,104 @@ describe('a watch sends news or nothing', () => {
 
     expect(result).toMatchObject({ sent: 1, nothingNew: 0 });
     expect(h.deferredWatches).toEqual([]);
+  });
+});
+
+describe('a watch ends when the activity is already on the family calendar', () => {
+  const WATCH: DueCommitment = { ...DUE, heardFacts: ['when:day:sat', 'when:time:9:15'] };
+
+  it('closes the watch and neither searches nor sends when the calendar holds it', async () => {
+    armed();
+    let searched = 0;
+    const h = harness({ due: [WATCH], calendar: { outcome: 'on_calendar' } });
+    h.deps.finder = {
+      async find() {
+        searched += 1;
+        return { found: true, picks: [PICK] };
+      },
+    };
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ due: 1, sent: 0, onCalendar: 1, nothingNew: 0, failed: 0 });
+    expect(h.closedWatches).toEqual([{ commitmentId: WATCH.id, familyId: FAMILY, now: NOW }]);
+    expect(searched).toBe(0);
+    expect(h.composed).toEqual([]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.fulfilled).toEqual([]);
+    expect(h.deferredWatches).toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ commitmentId: WATCH.id, outcome: 'on_calendar' }),
+      expect.any(String),
+    );
+  });
+
+  it('hands the check the watch subject, its heard facts, and the parent it is owed to', async () => {
+    armed();
+    const h = harness({ due: [WATCH], calendar: { outcome: 'on_calendar' } });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.calendarChecks).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        subjectChildId: null,
+        subject: WATCH.topic,
+        heardFacts: WATCH.heardFacts,
+        now: NOW,
+      },
+    ]);
+  });
+
+  it('POSITIVE CONTROL - a calendar without it lets the watch look and send as before', async () => {
+    armed();
+    const h = harness({ due: [WATCH], calendar: { outcome: 'not_on_calendar' } });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sent: 1, onCalendar: 0, calendarUnchecked: 0 });
+    expect(h.closedWatches).toEqual([]);
+    expect(h.transport.bodies()).toHaveLength(1);
+  });
+
+  it.each(['zone_unknown', 'unreadable', 'unsure', 'read_failed'] as const)(
+    'a check with no answer (%s) keeps the watch going and is counted and logged',
+    async (reason) => {
+      armed();
+      const h = harness({ due: [WATCH], calendar: { outcome: 'calendar_unchecked', reason } });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+      expect(result).toMatchObject({ sent: 1, onCalendar: 0, calendarUnchecked: 1 });
+      expect(h.closedWatches).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        { commitmentId: WATCH.id, outcome: 'calendar_unchecked', reason },
+        expect.any(String),
+      );
+    },
+  );
+
+  it("the coach's first promise is never checked against the calendar", async () => {
+    armed();
+    const h = harness({ calendar: { outcome: 'on_calendar' } });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sent: 1, onCalendar: 0 });
+    expect(h.calendarChecks).toEqual([]);
+    expect(h.closedWatches).toEqual([]);
+  });
+
+  it('a held family is not checked - the check comes after the gate', async () => {
+    armed();
+    const h = harness({ due: [WATCH], hold: 'quiet_hours', calendar: { outcome: 'on_calendar' } });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.calendarChecks).toEqual([]);
   });
 });
 

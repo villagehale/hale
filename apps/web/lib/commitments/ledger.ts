@@ -86,7 +86,13 @@ export type CommitmentCancelReason =
    * is voided out loud rather than filed as kept. ('channel_revoked' covers the household
    * that left instead: the reason is the leaving, not the watch.)
    */
-  | 'spot_watch_ended';
+  | 'spot_watch_ended'
+  /**
+   * The activity a watch was following up on is already on the family's calendar
+   * (VIL-564). The promise was "I'll text you when I learn more"; the family has it, so
+   * nothing is left to tell them, and no message made good on it — voided, not kept.
+   */
+  | 'already_on_calendar';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the
@@ -256,11 +262,14 @@ export async function cancelCommitment(
     kind: CommitmentKind;
     reason: CommitmentCancelReason;
     now: Date;
+    /** Void only this row. Set by a caller that decided about ONE promise it read
+     * earlier, so a newer promise written in between is never voided by that decision. */
+    commitmentId?: string;
   },
 ): Promise<CommitmentCloseOutcome> {
   return close(
     database,
-    { familyId: input.familyId, kind: input.kind },
+    { familyId: input.familyId, kind: input.kind, commitmentId: input.commitmentId },
     { cancelledAt: input.now, cancelledReason: input.reason },
     { actionTaken: 'commitment_cancelled', after: { kind: input.kind, reason: input.reason } },
   );
@@ -325,7 +334,7 @@ export async function deferCommitment(
  * its audit row in the same transaction, so a refused audit leaves the promise open. */
 async function close(
   database: Database,
-  target: { familyId: string; kind: CommitmentKind },
+  target: { familyId: string; kind: CommitmentKind; commitmentId?: string | undefined },
   patch: Record<string, unknown>,
   audit: Pick<typeof schema.auditLog.$inferInsert, 'actionTaken' | 'after'>,
 ): Promise<CommitmentCloseOutcome> {
@@ -338,6 +347,9 @@ async function close(
           and(
             eq(schema.agentCommitments.familyId, target.familyId),
             eq(schema.agentCommitments.commitmentKind, target.kind),
+            target.commitmentId === undefined
+              ? undefined
+              : eq(schema.agentCommitments.id, target.commitmentId),
             openPredicate(),
           ),
         )
