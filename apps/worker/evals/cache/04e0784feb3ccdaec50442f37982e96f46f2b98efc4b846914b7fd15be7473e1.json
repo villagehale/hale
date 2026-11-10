@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "Here's what I found near Springfield for Mia and Leo. Want me to set up reminders for any of these?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "groupLeads": [
+      "Swim lessons at the community pool for ages 3 to 5, on Saturdays at 10:00. This one fits Mia.",
+      "Library storytime for all ages on Tuesdays at 10:30, free, and a drop-in playgroup for ages 0 to 6 on weekday mornings, also free. Both fit Leo and Mia."
+    ]
+  },
+  "latencyMs": 1789
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in French, accepts the no warmly and asks once for only the first three characters of the postal code, which is exactly what watchFor calls right. The 'voir ce qui est près de chez toi' line is tied to them giving those characters, so it is not a promise made with no place known. There is no request for a town or street, no pressing, and it is short and plain.",
+    "score": 5
+  }
+}
