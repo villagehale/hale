@@ -205,6 +205,20 @@ describe('VIL-443 groupPlanReportRefusals (the link only, never wording)', () =>
     ]);
   });
 
+  it('never trusts a member name that is itself link-shaped', () => {
+    const draft = `Swim is on the calendar for Ana. evil.app has not added it yet: ${LINK}`;
+    expect(
+      groupPlanReportRefusals([draft], input({ onCalendarOf: ['Ana'], notYet: ['Rosa'] })),
+    ).toEqual(['other_link: evil.app']);
+    expect(
+      groupPlanReportRefusals([draft], input({ onCalendarOf: ['Ana'], notYet: ['evil.app'] })),
+    ).toEqual(['other_link: evil.app']);
+    const named = `Swim is on the calendar for Ana. Rosa has not added it yet: ${LINK}`;
+    expect(
+      groupPlanReportRefusals([named], input({ onCalendarOf: ['Ana'], notYet: ['Rosa'] })),
+    ).toEqual([]);
+  });
+
   it('leaves length, how many messages, punctuation and emoji to the judge', () => {
     const long = 'Swim is set for Saturday at the Y. '.repeat(20);
     expect(groupPlanReportRefusals([`${long}Add it: ${LINK}`], input())).toEqual([]);

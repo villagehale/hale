@@ -92,7 +92,7 @@ describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => 
       `点这里:${LINK}这个窗口`,
     ]) {
       expect(hasLinkBeyond(text, [LINK])).toBe(false);
-      expect(foreignLinks(text, { handed: [LINK], words: [] })).toEqual([]);
+      expect(foreignLinks(text, { handed: [LINK], email: null, words: [] })).toEqual([]);
     }
   });
 
@@ -106,7 +106,7 @@ describe('hasLinkBeyond and foreignLinks: only the handed link, exactly', () => 
   ])('refuses %s', (label, text) => {
     const handed = label.startsWith('any link') ? [] : [LINK];
     expect(hasLinkBeyond(text, handed)).toBe(true);
-    expect(foreignLinks(text, { handed, words: [] })).not.toEqual([]);
+    expect(foreignLinks(text, { handed, email: null, words: [] })).not.toEqual([]);
   });
 });
 
@@ -155,7 +155,7 @@ describe('withoutLinks', () => {
 
 describe("foreignLinks: words from Hale's own records are not links", () => {
   const LINK = 'https://register.example.test/activity/42';
-  const FAMILY = { handed: [LINK], words: ['sam@example.test', 'Sam', 'Ana', 'Lena'] };
+  const FAMILY = { handed: [LINK], email: 'sam@example.test', words: ['Sam', 'Ana', 'Lena'] };
 
   it.each(EVASIONS)('still refuses %s, and names it', (_label, text) => {
     expect(foreignLinks(text, FAMILY)).not.toEqual([]);
@@ -164,12 +164,32 @@ describe("foreignLinks: words from Hale's own records are not links", () => {
   it("passes the parent's email from the facts, and the same shape from anywhere else is a link", () => {
     const draft = `Sign up here: ${LINK}. Have ready: parent email sam@example.test.`;
     expect(foreignLinks(draft, FAMILY)).toEqual([]);
-    expect(foreignLinks(draft, { handed: [LINK], words: [] })).toEqual(['sam@example.test']);
+    expect(foreignLinks(draft, { handed: [LINK], email: null, words: [] })).toEqual([
+      'sam@example.test',
+    ]);
     expect(foreignLinks('家长邮箱:sam@example.test。', FAMILY)).toEqual([]);
     expect(foreignLinks('write evilsam@example.test', FAMILY)).toEqual(['evilsam@example.test']);
     expect(foreignLinks('write sam@example.test.evil.app', FAMILY)).toEqual([
       'sam@example.test.evil.app',
     ]);
+  });
+
+  it('never trusts a name that is itself link-shaped, nor an email outside its own field', () => {
+    for (const name of ['evil.app', 'Evil.App', 'evil。app', 'bit.ly/x', 'x@evil.test']) {
+      expect(
+        foreignLinks(`Ana and ${name} have not added it yet.`, { ...FAMILY, words: ['Ana', name] }),
+      ).not.toEqual([]);
+    }
+    expect(
+      foreignLinks('Ana and Rosa have not added it yet.', { ...FAMILY, words: ['Ana', 'Rosa'] }),
+    ).toEqual([]);
+    expect(
+      foreignLinks('write sam@example.test', {
+        handed: [],
+        email: null,
+        words: ['sam@example.test'],
+      }),
+    ).toEqual(['sam@example.test']);
   });
 
   it('reads a full stop before a trusted name as the end of a Chinese sentence', () => {
@@ -178,7 +198,7 @@ describe("foreignLinks: words from Hale's own records are not links", () => {
     expect(foreignLinks('Hale这边不会代办。报名页面在这里', FAMILY)).toEqual([]);
     expect(hasLinkShape('Hale这边不会代办。报名页面在这里')).toBe(true);
     expect(
-      foreignLinks('已经放到日历上。Ana、Sam,还没有。', { handed: [], words: [] }),
+      foreignLinks('已经放到日历上。Ana、Sam,还没有。', { handed: [], email: null, words: [] }),
     ).not.toEqual([]);
   });
 
@@ -192,6 +212,15 @@ describe("foreignLinks: words from Hale's own records are not links", () => {
     ['an untrusted Latin word inside the CJK run', 'evil这边不会代办。报名页面'],
   ])('still refuses %s', (_label, text) => {
     expect(foreignLinks(text, FAMILY)).not.toEqual([]);
+  });
+
+  it('accepts a trusted word inside the CJK run before the stop, as the pure-CJK form already passes', () => {
+    // Documented acceptance: a CJK label with a CJK run after it, and no '/', is not read
+    // as a host. Stripping Hale's name extends that to '请到Hale报名。在线'; the strip is
+    // what lets "Hale这边不会代办。…" through.
+    expect(hasLinkShape('请到报名。在线')).toBe(false);
+    expect(foreignLinks('请到Hale报名。在线', FAMILY)).toEqual([]);
+    expect(hasLinkShape('请到Hale报名。在线')).toBe(true);
   });
 
   it('names exactly the offending words', () => {

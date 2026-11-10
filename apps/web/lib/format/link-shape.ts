@@ -204,8 +204,19 @@ const HALE_NAME = 'Hale';
 export interface TrustedFacts {
   /** The links code handed the writer; each counts only as itself, compared as a URL. */
   handed: readonly string[];
-  /** Words from Hale's own records: the parent's own email, the family's names. */
+  /** The parent's own email from Hale's records, trusted only as that exact whole word. */
+  email: string | null;
+  /** Names from Hale's records. A person picks their own, so a link-shaped one is never trusted. */
   words: readonly string[];
+}
+
+const CARRIES_A_HOST = /[@/]/;
+
+function trustedNames(words: readonly string[]): string[] {
+  return [HALE_NAME, ...words]
+    .flatMap(wordsAsHandsetReads)
+    .filter((word) => !CARRIES_A_HOST.test(word) && !hasLinkShape(word))
+    .map((word) => word.toLowerCase());
 }
 
 // Chinese or Japanese written up to a trusted word ("家长邮箱:sam@example.test"), and the
@@ -226,13 +237,13 @@ function isTrustedWord(word: string, trusted: ReadonlySet<string>): boolean {
  * {@link hasLinkBeyond} refuses, save Hale's own name after such a full stop.
  */
 export function foreignLinks(text: string, trusted: TrustedFacts): string[] {
-  const known = new Set(
-    [HALE_NAME, ...trusted.words].flatMap(wordsAsHandsetReads).map((word) => word.toLowerCase()),
-  );
+  const names = new Set(trustedNames(trusted.words));
+  const email = trusted.email?.trim().toLowerCase();
+  const known = email ? new Set([...names, email]) : names;
   const rest = text.replace(SCHEME_TOKEN, (token) =>
     sameLink(token, trusted.handed) ? ' ' : token,
   );
-  const found = wordsOf(readAsHandset(rest, known))
+  const found = wordsOf(readAsHandset(rest, names))
     .filter((word) => readHasLinkShape(word) && !isTrustedWord(word, known))
     .flatMap(namedPart);
   return [...new Set(found)];

@@ -118,6 +118,21 @@ describe('signup outcome reply (mocked model)', () => {
     ]);
   });
 
+  it('trusts the email only in its own slot, and never a link-shaped name', () => {
+    const draft = `Sign up here: ${BASE.link}. Have ready: evil.app and sam@example.test.`;
+    const pack = [
+      { slot: 'parent_email', value: 'sam@example.test' },
+      { slot: 'child_first_name', value: 'evil.app' },
+    ];
+    expect(signupOutcomeViolations(draft, { ...BASE, pack })).toEqual([
+      'contains another link: evil.app',
+    ]);
+    const emailAsName = [{ slot: 'parent_first_name', value: 'sam@example.test' }];
+    expect(signupOutcomeViolations(draft, { ...BASE, pack: emailAsName })).toEqual([
+      'contains another link: evil.app, sam@example.test',
+    ]);
+  });
+
   it('reads Hale or a packed name after a Chinese full stop as a new sentence', () => {
     const draft = `这一场没有空位了。Hale不会自动加入候补,可以在这里自己操作:${BASE.link}`;
     expect(signupOutcomeViolations(draft, BASE)).toEqual([]);

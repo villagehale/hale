@@ -174,7 +174,7 @@ export function groupPlanReportMessages(drafted: readonly string[]): string[] {
  * could reach the group while what follows it did not. Length, how many messages, tone
  * and whether it asks anything are read by the judge, not matched. A refused link is
  * named ('other_link: <words>') so the retry can change exactly that; the members' names
- * come from Hale's records, so they are not links. The event's title and place are not
+ * come from Hale's records, so they are not links, unless a member chose a link-shaped one. The event's title and place are not
  * trusted: they may come from a page or an invite.
  */
 export function groupPlanReportRefusals(
@@ -188,6 +188,7 @@ export function groupPlanReportRefusals(
   const link = input.link;
   const others = foreignLinks(text, {
     handed: link === null ? [] : [link],
+    email: null,
     words: [...input.onCalendarOf, ...input.notYet],
   });
   if (link === null) {

@@ -60,8 +60,8 @@ export const SIGNUP_OUTCOME_TOOL_SCHEMA = {
 
 /**
  * Why a draft cannot leave, each as 'code' or 'code: the words', so the retry knows exactly
- * what to change. Empty means it can. The pack is read from the family record, so its
- * values (the parent's own email among them) are not links.
+ * what to change. Empty means it can. The pack is read from the family record: the
+ * parent's own email is trusted in its slot only, and a name only when it is not link-shaped.
  */
 export function signupOutcomeViolations(text: string, facts: SignupOutcomeFacts): string[] {
   const out: string[] = [];
@@ -69,7 +69,10 @@ export function signupOutcomeViolations(text: string, facts: SignupOutcomeFacts)
   if (!tidy) out.push('empty');
   const links = foreignLinks(tidy, {
     handed: facts.link ? [facts.link] : [],
-    words: (facts.pack ?? []).map((item) => item.value),
+    email: facts.pack?.find((item) => item.slot === 'parent_email')?.value ?? null,
+    words: (facts.pack ?? [])
+      .filter((item) => item.slot !== 'parent_email')
+      .map((item) => item.value),
   });
   if (facts.link && !tidy.includes(facts.link)) out.push('missing the hand-off link');
   if (links.length > 0) {
