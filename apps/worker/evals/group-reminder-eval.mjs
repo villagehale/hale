@@ -9,8 +9,7 @@
 // hours, a non-customer never 1:1, nobody reminded who is not in the chat), the STOP drop,
 // the refusals and fixed copy. Whether a text carries its facts in the right language is the
 // judge's call. Register is a separate fact check (VIL-493): an address read reports how the
-// text says "you", and code holds that against who reads it. In French that result is a
-// warning, not a failure, until the read holds steady across re-records.
+// text says "you", and code holds that against who reads it.
 //
 //   node evals/group-reminder-eval.mjs --dry                    # offline: gates + worst case
 //   node evals/group-reminder-eval.mjs --broken --dry           # offline calibration: must FAIL
@@ -285,7 +284,7 @@ async function main() {
       fullName: fullName ?? null,
     }));
     const open = fixture.open ?? [];
-    const result = { arm, fixture, failures: [], warnings: [], notes: [], texts: [] };
+    const result = { arm, fixture, failures: [], notes: [], texts: [] };
     const isReal = arm === 'real';
 
     const readUser = web.groupReminderReadUserMessage({
@@ -450,22 +449,15 @@ async function main() {
     if (verdict.score < JUDGE_MIN) {
       result.failures.push(`judge ${kind}: ${verdict.score} (${verdict.reason})`);
     }
-    const register = registerFinding({
-      audience: facts.audience,
-      language: facts.language,
-      address: read.address,
-    });
-    if (register) {
-      const finding = `${kind} ${register.finding} [${read.you.join(', ')}]`;
-      (register.soft ? result.warnings : result.failures).push(finding);
-    }
+    const register = registerFinding({ audience: facts.audience, address: read.address });
+    if (register) result.failures.push(`${kind} ${register} [${read.you.join(', ')}]`);
     return true;
   }
 
   /**
    * The judge's read of address on texts whose address is known (VIL-493), several draws
-   * each. Reported, never a failure: it is the evidence for making French register blocking
-   * again, and that waits until every draw comes back right across re-records.
+   * each. Reported, never a failure: it is the evidence that the read the register gate
+   * rests on is right.
    */
   async function calibrateRegister() {
     let right = 0;
@@ -492,7 +484,7 @@ async function main() {
     }
     if (!dry) {
       console.info(
-        `register calibration (soft, not blocking): ${right}/${drawn} draws read the address right`,
+        `register calibration (reported, not a gate): ${right}/${drawn} draws read the address right`,
       );
     }
   }
@@ -522,7 +514,6 @@ async function main() {
     );
     for (const t of r.texts) console.info(`      ${t.kind}: "${t.text}"`);
     for (const f of r.failures) console.info(`      · ${f}`);
-    for (const w of r.warnings) console.info(`      ! warning (soft, not blocking): ${w}`);
     for (const n of r.notes) console.info(`      (${n})`);
   }
   if (!broken || dry) await calibrateRegister();
