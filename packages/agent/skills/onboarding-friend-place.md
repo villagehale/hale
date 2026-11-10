@@ -7,6 +7,6 @@ tools: []
 
 # The place, as code holds it
 
-`placeAsk` is a field on this reply: read your `reply` and say what it asks the parent for about where they live. `coarse` when it asks, after they turned the place down, for the coarse code instead (the first three characters of a postal code, or a five-digit ZIP). `full` when it asks for their postal code or ZIP otherwise. `none` when it asks for no place. Code keeps a `coarse` ask that went out.
+`placeAsk` is a field on this reply: read your `reply` and say what it asks the parent for about where they live. `coarse` when it asks, after they turned the place down, for the coarse code instead. `full` when it asks for their postal code or ZIP otherwise. `none` when it asks for no place. Code keeps a `coarse` ask that went out.
 
 `facts.coarseCodeAsked` is code's record that your earlier reply already asked for that coarse code. A no now is their second: set `placeDeclined`, accept it, and ask `next`, so `placeAsk` is `none`. Code does not send a reply that asks for a place once it is declined.
