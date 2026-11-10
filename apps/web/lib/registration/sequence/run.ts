@@ -514,6 +514,9 @@ export interface SequenceRunResult {
   recheckReads: number;
   /** Change notes sent: one per parent per moved opening. */
   dateMovedSent: number;
+  /** Change notes cleared unsent because the household stopped the ladder or reported
+   * how registration went before the note could go. */
+  dateMovedDropped: number;
 }
 
 function emptyResult(enabled: boolean): SequenceRunResult {
@@ -548,6 +551,7 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     >,
     recheckReads: 0,
     dateMovedSent: 0,
+    dateMovedDropped: 0,
   };
 }
 
@@ -730,6 +734,8 @@ type LegTally = LegReadEffects & {
   skipped?: SequenceSkipReason;
   /** The evening text was due and the model did not write it. Nothing was sent. */
   unwritten?: number;
+  /** A change note that is no longer owed: the ladder was stopped or finished. */
+  dropped?: number;
 };
 
 function emptyTally(overrides: Partial<LegTally> = {}): LegTally {
@@ -1410,6 +1416,30 @@ async function sendDateMovedNote(
     await deps.saveDateWatch(database, sequence.sequenceId, { pendingChange: null });
     sequence.pendingChange = null;
   };
+  // The same condition `recheckDates` recorded the change under, re-read here because a
+  // household can opt out or report an outcome between that tick and this one (CASL).
+  const stopped =
+    sequence.outcome !== null
+      ? 'outcome_reported'
+      : sequence.optIn !== 'opted_in' && sequence.optIn !== 'pending'
+        ? 'not_opted_in'
+        : null;
+  if (stopped !== null) {
+    await settle();
+    await deps.audit(database, {
+      familyId: sequence.familyId,
+      actor: 'system',
+      actionTaken: 'registration_date_moved_dropped',
+      targetTable: 'registration_sequences',
+      targetId: sequence.sequenceId,
+      after: {
+        windowId: sequence.window.id,
+        outcome: 'registration_date_moved_dropped',
+        reason: stopped,
+      },
+    });
+    return emptyTally({ dropped: 1 });
+  }
   if (change === null || Date.parse(change.to) <= now.getTime()) {
     await settle();
     return emptyTally();
@@ -1906,6 +1936,7 @@ export async function runRegistrationSequenceCron(
       if (checker.mode === 'enforce' && sequence.pendingChange !== null) {
         const note = await sendDateMovedNote(database, sequence, deps, now);
         result.dateMovedSent += note.sent;
+        result.dateMovedDropped += note.dropped ?? 0;
         result.deduped += note.deduped;
         result.refused += note.refused;
         result.unwritten += note.unwritten ?? 0;
