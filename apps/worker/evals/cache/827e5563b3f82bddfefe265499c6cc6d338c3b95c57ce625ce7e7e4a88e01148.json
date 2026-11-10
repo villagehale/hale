@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reason": "line says Hale is still working on it and will be back in a minute",
+    "hit": "yes",
+    "violations": [
+      "promised_a_retry",
+      "promised_a_time"
+    ]
+  },
+  "latencyMs": 1689
+}

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "find",
+    "reason": "Chinese request to look for activities nearby this weekend, a nearby-find ask"
+  },
+  "latencyMs": 1365
+}

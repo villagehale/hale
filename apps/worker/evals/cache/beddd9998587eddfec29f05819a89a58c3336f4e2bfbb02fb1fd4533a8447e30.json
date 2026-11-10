@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Totally fine. A coarse code works too: just the first three characters of your postal code, or the first five digits of a ZIP, whichever fits. That's enough to find things in your area. What would you like to use?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1829
+}

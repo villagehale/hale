@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "Two verification tools returned red: check_recipient_allowlist (recipient not on the family's allowlist and unverifiable) and check_sender_allowlist (sender origin not trusted). A sender not on the allowlist is a clear policy violation, and the default is to reject when any tool returns red. The draft is also a public-visibility reply that commits the family to something ('Sure, that sounds fine') with no context on what is being agreed to. The PII and idempotency checks passed, but they do not offset the allowlist failures.",
+    "remediation": "Do not send. Surface the original message to a parent so they can decide whether the sender is legitimate. If they are, the parent can add the sender or recipient to the allowlist and the Drafter can re-propose a reply that restates what is being agreed to rather than a blanket 'sounds fine'."
+  },
+  "latencyMs": 4060
+}

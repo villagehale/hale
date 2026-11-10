@@ -1,0 +1,21 @@
+{
+  "value": {
+    "reply": "No problem, I'll leave the name out for now. Should I connect your Gmail next so I can keep an eye on the kids' emails, or would you rather hold off?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1773
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "cycle_on_page": null,
+    "evidence": null,
+    "year_evidence": null,
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": null,
+    "note": "The page's registration schedule is headed \"Fall 2025 and Winter 2026 Registration Schedule\"; it shows no Fall 2026 dates.",
+    "found": false,
+    "reason": "different_cycle_only",
+    "confidence": 0.9
+  },
+  "latencyMs": 2604
+}

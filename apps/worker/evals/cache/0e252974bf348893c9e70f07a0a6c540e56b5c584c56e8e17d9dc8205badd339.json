@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits the course_link_refused / different_season case. It explains plainly why Hale didn't take the link: the page opens on a different date than the one Hale has. It names both pageOpens (Tuesday, October 27 at 7:00 a.m.) and haleHas (Tuesday, September 15 at 7:00 a.m.) with correct days and times. It carries no link, saves nothing ('left things as they were') and asks nothing. It invents no claims, children or prices. 'Holding for you' refers to Hale's own date, not a held registration. The tone is a natural, friendly English text.",
+    "score": 5
+  }
+}

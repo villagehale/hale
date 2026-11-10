@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what check_in_ask asks, in French: it asks once whether they got in, were waitlisted (with their number) or missed the window. It names no child, date or link. One flaw: \"sont ouvertes\" claims registration is currently open, which the facts do not state. That also sits oddly next to asking whether they missed the window. The tone is a little formal.",
+    "score": 4
+  }
+}

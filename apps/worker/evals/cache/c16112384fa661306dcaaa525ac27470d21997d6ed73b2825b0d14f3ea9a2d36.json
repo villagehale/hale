@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own. turn_off_autonomy ran this turn for both send_email and reply_to_email, so \"Done\" is true and backed by state. The reply confirms the change plainly, invents nothing and adds no greeting or sign-off. \"You'll see them first\" covers replies too, roughly. Short and exact.",
+    "score": 5
+  }
+}

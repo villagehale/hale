@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reply": "好的，那我们先不说名字了。接下来想问问你要不要连一下Gmail，这样我能帮你留意孩子的活动通知，你觉得怎么样？",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh",
+    "children": []
+  },
+  "latencyMs": 2140
+}

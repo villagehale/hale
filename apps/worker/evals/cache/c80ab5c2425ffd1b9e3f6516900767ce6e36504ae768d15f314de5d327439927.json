@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and plainly gives the page_unreadable reason (Hale could not read the course page). It carries no link and says nothing was saved or changed. It asks once for the same link again. 'Je réessaierai' simply follows from asking for a resend and invents no new promise. It makes no false claims, names no child, and sounds natural.",
+    "score": 5
+  }
+}

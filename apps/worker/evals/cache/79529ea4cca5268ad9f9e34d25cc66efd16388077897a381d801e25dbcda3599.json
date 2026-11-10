@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Pour te trouver ce qui est près de chez toi, est-ce que tu peux me donner juste les trois premiers caractères de ton code postal (ou les cinq chiffres du ZIP)? Ça me suffit pour la région, pas l'adresse exacte.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 2058
+}

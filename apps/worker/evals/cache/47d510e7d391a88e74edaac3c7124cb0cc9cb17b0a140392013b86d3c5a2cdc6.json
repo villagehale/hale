@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states the reschedule from Saturday Sept 19 to Sunday Sept 20 at 1:00 PM, the 45-minute duration and ~1:45 PM wrap-up, and the sender. It correctly asks nothing since offer is null and the event is already on the calendar. Casual, friendly tone in English. Minor issue: it says 'emailed Tuesday' which matches arrivedOn, and mentions the sender name, which is allowed since the email is not private. No unsupported claims found.",
+    "score": 5
+  }
+}

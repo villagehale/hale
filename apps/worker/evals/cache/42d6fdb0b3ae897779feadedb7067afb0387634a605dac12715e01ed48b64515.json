@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reply": "Nothing new came up on your calendar for Mia yet, so I'll keep an eye out and let you know when something matters for her. You're all set on my end for now.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1669
+}

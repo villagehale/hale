@@ -1,0 +1,31 @@
+{
+  "value": {
+    "cycle_on_page": "Session d'hiver 2027",
+    "evidence": "Session d'hiver 2027 — Baie-des-Hérons (Nouveau-Brunswick). Inscription des résidents : lundi 7 décembre 2026 à 18 h 30. Inscription des non-résidents : vendredi 11 décembre 2026 à 9 h.",
+    "year_evidence": "lundi 7 décembre 2026 à 18 h 30",
+    "time_zone_evidence": "Baie-des-Hérons (Nouveau-Brunswick)",
+    "time_zone": "America/Moncton",
+    "eligibility_evidence": "The page labels the first opening \"Inscription des résidents\" (residents) and the second \"Inscription des non-résidents\" (non-residents).",
+    "preview": null,
+    "resident_open": {
+      "quote": "lundi 7 décembre 2026 à 18 h 30",
+      "date_text": "lundi 7 décembre 2026",
+      "time_text": "18 h 30",
+      "date": "2026-12-07",
+      "time": "18:30"
+    },
+    "general_open": {
+      "quote": "vendredi 11 décembre 2026 à 9 h",
+      "date_text": "vendredi 11 décembre 2026",
+      "time_text": "9 h",
+      "date": "2026-12-11",
+      "time": "09:00"
+    },
+    "unclassified_open": null,
+    "note": null,
+    "found": true,
+    "reason": null,
+    "confidence": 0.95
+  },
+  "latencyMs": 4125
+}

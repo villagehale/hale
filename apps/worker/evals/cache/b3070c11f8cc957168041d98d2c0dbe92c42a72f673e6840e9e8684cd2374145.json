@@ -1,0 +1,28 @@
+{
+  "value": {
+    "reply": "Done, I'll remind Mia before her Saturday swim every week. One more thing: would a group chat with Mia's other parent help? It's a shared space for kid plans and reminders, nothing private.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": true,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "scheduleAdds": [
+      {
+        "line": 1,
+        "child": "Mia",
+        "cadence": "weekly",
+        "date": "2026-11-07",
+        "time": "11:00",
+        "weeks": 8
+      }
+    ],
+    "scheduleDone": false
+  },
+  "latencyMs": 1909
+}

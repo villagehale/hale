@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CguzvKVQDGsXhfJrJujRD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Nothing for art is on this Friday (Aug 7). The only place I have it is a Harbour Art Studio email from Jul 28 that said Fridays at 4:30, so it may not be on your calendar. Want me to add it for this Friday at 4:30?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1307,
+      "cache_read_input_tokens": 23981,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1307,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 86,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1580
+}

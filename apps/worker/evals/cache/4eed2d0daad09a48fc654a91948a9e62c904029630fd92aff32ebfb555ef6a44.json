@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Sure, we can do Gmail first. Google shares the whole inbox with me, but I only keep and use what's about the kids, and you can disconnect any time. Want me to connect it? The link is above.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1607
+}

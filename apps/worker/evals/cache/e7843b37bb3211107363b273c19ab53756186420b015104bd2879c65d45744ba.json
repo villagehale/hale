@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cguz8eJTdmojPrxA6xUXc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSugYKEAgTGAI4AUIIdGhpbmtpbmcSDEDPzxOH5hWM8un85RoMrHmK7AKJBU+ZrbVUIjA1F6aRKGwelQMT6tbuEIE2QF+9eGYhyaDlBochtxfbdWaqzbZsJcYWw35yyMVP750q1wWoo1RNwDn3TDBVGaBQjFnNvoofrnpRUIBVCcgVFW+Man5qRLnurfp0l8S9oQS0uMXrE7PvrH6W20+VYvbVH482OfJY6xm1d/QNBc395DudIe6+ubjMbFHgVteUvBcoY+v+9FbHJlApzYX++qHnYt48sKgDZ6skOdMQaJHrek7je7EZeHKc1c/vfscS5qOqgqRk1NBnox+D8zzEO2jPdL0HSaXY50xWR6/2cWWOqOFTSD09a4cK562m0GzkPj7NTp5Z1D5cz+pQPdT4Rul7j8rJMrMUmGDwbsya7nfgfF+dYywzMUsSuJ2ZtMPG6hF3gM/7i3B3PONcXLnPxXT66ZqOWvgxOwVR8qkPPg9Y8Drj/oVVWlK1PNDGVZN+MQbLT8oERM0ohEH2Upts74sUd8tkZBDDDFZNZndyUzvcrpdOS/Pzon8eBPiKL6udpWn7of5NsME5x8NN07T0xtP1v31pQ+PjrE6r+1WxGPsfqD7EVVazRQ+7D9iIgICVYCLnp38/x2cvtLvJbC6N6EdX6HQPXnSAUPvxMNjPv3yqY07Ah2zqXSJbg16YmozvSiUhAuoZe1lP1SJWWcAdSWtOsuZVQQtw/xin0j+S3BqHxYtz7y6z3Ostj/OKbD6p4eOLusNyBNYYeOv+83ruOd6sw0CuvjFcYo7qo7rvyG6IkY8yN6HzKV3A0qYBSRHDcvSOqs2l7k75OgoaBhdv3o1XCT4px9NbxDd7GAq5tfkETCiJfQPPTSpRis2lWP3xMsP5x1CTvkTj504K/dnn3EOc8ygYfUu34n4EXqKL489uRSnDTtvxUFCQQEF+7t/gOFhqaZlcw4cbn1QMkXhsrnGL/Vu0J/PDFJ2TlbycdFe1ajzp8AJb8RhmalrNSXY83J9dPHXqDBuZhQ74iwJEsgwMbkwxILI5nnh1uS27dwptDLDHifD3K5zMDPh/YK9HsVSl6dr6mEhztXG8GAE="
+      },
+      {
+        "type": "text",
+        "text": "I said Tiny Gym at Cartwheels is $124 for the term, Sundays at 9:30."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1901,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 129,
+      "output_tokens_details": {
+        "thinking_tokens": 93
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1858
+}

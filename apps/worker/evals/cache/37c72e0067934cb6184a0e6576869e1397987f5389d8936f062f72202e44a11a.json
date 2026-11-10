@@ -1,0 +1,21 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't push on it. Do you want Gmail connected next so I can watch for the kids' things in your inbox?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameDeclined": true,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1716
+}

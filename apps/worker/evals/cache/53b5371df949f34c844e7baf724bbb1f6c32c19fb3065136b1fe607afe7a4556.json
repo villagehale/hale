@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "check_pii_leak returned ok:false: the draft puts Mira's health card number (sensitive PII) in an email body to a third party. Under the policy, any red tool result means reject. The recipient and sender allowlist and idempotency checks passed, but they do not override the PII failure. The action also involves health-related information and is not reversible once sent. The recipient_visibility is 'public', which adds to the exposure risk. Other recommended checks (check_action_time_window, check_user_override, check_spending_cap) were not in the supplied results, so approval would not be possible anyway.",
+    "remediation": "Remove the health card number from the email body and resend only the acceptance text. If the daycare really needs the health card number, have the parent supply it directly through a secure channel or explicitly approve this specific disclosure. Also confirm the recipient_visibility setting is appropriate for this message, and run the time window and user override checks before resubmitting."
+  },
+  "latencyMs": 2914
+}

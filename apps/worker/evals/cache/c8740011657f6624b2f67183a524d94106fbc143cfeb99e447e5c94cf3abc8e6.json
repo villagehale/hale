@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Est-ce que tu veux bien me donner juste les trois premiers chiffres de ton code postal? Ça me suffit pour trouver ce qui est proche.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1952
+}

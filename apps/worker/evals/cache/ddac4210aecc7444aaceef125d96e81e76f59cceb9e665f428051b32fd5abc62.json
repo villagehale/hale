@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011Cguyt2tquWp6PxQiSXSPU",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Saturday you've got swim lesson at the community pool at 10 in the morning, and that's the only thing on your calendar this weekend. Sunday's wide open. I couldn't pull up anything nearby for the weekend just now, so I can't give you anything else to add."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 45,
+      "cache_read_input_tokens": 20657,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 45,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 87,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

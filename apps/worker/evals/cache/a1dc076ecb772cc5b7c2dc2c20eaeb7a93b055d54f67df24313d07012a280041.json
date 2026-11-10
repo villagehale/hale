@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cguz7eeGQM6xZQCHcMTTe",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlAYKEAgTGAI4AUIIdGhpbmtpbmcSDNXV1ShT+jxn0PsqexoM7n3UqKmUa3VdJrq3IjA4g7k/QgudqEXM6Pch0UGzVTg5lZIQouTFpUWkZ2ApJDqAifMNxKovkIQ2U+BSYPMqsQWMYmxI5VzpRJ1E+OuHOF4YbjxcMT8S1wUZF6hEE7yxVF4vF13YDhzqzbdDgtxbUqaK6uuz4eAVX/pzcJoaHrIdHumqSurh4AhqxFLba+ua3ngApTVpBqvYy+vJbcMSySSZNunioUYRXDYQFC4uTS/LKG+vap3j+dhpYIFDK6TDQYzMOanKpdeAwRgX1QQ2+D11NfuW//9M0yXiSrafYPIv4vbH6aOCRvHNtNQBCXbSnmHs2HYeYBaiBCwcc3eAjqutibOYY1ugMZwVa5nR7Z0ijRVrvbMjvuGdiuyltCiuGFZl5bAbcZYRCyJLsyj7Vdi8JbwqArquzIpjnVXTyTWE5WFsV2/KnV4rvn5qdN+EhE0aGURxtJ7V9FYfaq6d0p+DpIgtkT0TsgrFfwRNWMkXaxEkESLXSfIyrOd7ZtrCFbv/syezRdUzBmYdCHLB6KNWHoL71WBfV5YO92x2fe/FbFkJJBjEa58s4xr1xT8OekeC1t9TeAvElAGUmyFqass8xvQu+dA9TtADrDieKREPuC5kNLiwV3VMTShR7EirdmWhiuxxIVgoNq8Op4l4uwryiNyR+mC2fGl18z4ocgFqCHesVqdmvewAWf8AdoOAzRI+1/w0rPt8Pcm+F1JjdwhZzqYIwh1NOIGZFmTWoTSVj5vXWrsbuosLK1m4FES+ednQBNkpTNRi3u/5zHLnOl1fes0fhfjTFaBMV1EN2L6PgX5UlWowKQTSTsA01WQC3G9NPWG/E9xTe0Y8lasp9WZFhjAjASk8sZX9hJXYqR226feWecu0p/JDu3S2/hW+r0f+u3CPHnwPqG8sHxcHCWfKVtkw6ixOoMcCbyD4EO6lFibwobK14/BG3el37aHlmv6M8o9ZBUJ0+/huGaWXfuvkSOBP5yeXRJ4y9tURq2ju0hgB"
+      },
+      {
+        "type": "text",
+        "text": "Remy would be in Tiny Gym. He's 19 months, and that's the one for under 3.5s with a parent. Mini Gym is for kids who are 3.5 and going solo."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1697,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 152,
+      "output_tokens_details": {
+        "thinking_tokens": 90
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2317
+}

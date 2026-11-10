@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CguytCkAYpCnxGBKjDUUv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxwUKEAgTGAI4AUIIdGhpbmtpbmcSDKAz+taRGBR6E1bT/xoMUQwkprm49c223RptIjCsxhAAucqqN+zRVHjOWwGcqQQ0rWnl2eaL9rlvD7omIBnZmx7wzo7Udjfquhw4pRMq5AS1n0Ar8nmIDQiqkPHZpowZ9EKzWFbKXxo17mSIHRx1UuKJC5mOU3T6RLVUlp6qGzSESl0vMr0UrpFJ/zzVBqnc3RDp5OiMsTmQbZVemr3WCham2VaVwBU3p5DOTFcB0E/FOf8qbeF9zZt1FJT1A8qaEDVJ9TcxOQnnEV72J+twM7HV26OX9VYVdMCVXonri+LwgmYx2io66EHUeqT9i/Ouf+qdzXYlzaV6NdqfKSYKw1YP09xUaSTVrgKeJHI8je70K2Jt6rshADThI4PyLfHz5XQO5EtXu3zQv+ZkhjsKdwxtw+rGegUU154keJFcI3OrmYbjMM0FVzWRZczNk5fMzEebAUuK6PRkuRuy+o5bQTodwO5+XyEuqYHf7f4TTGa2ikI/Y0sRbdhZEUxvkYU1SC1H3biOAPBWelqiIQBczOUGArcsedabiJNcYYzMZ1Q8gD6wkmfDFVMnCeZRI5UawQyy/vG54L1g4t0IPqreiOYjeQUufdwzBgauq2tPUoF74Hd4aSjS+hLqmeuD9y3/mzx2y9V1Gj6j5b67rHbtsmIJjXH9KQqYOIXkMARse4caDt/+VDVMC6nDgy6wT172xRzpkIAQrMHDPmFtqYvFil4acj3k0f6SY4KG+E6krHcroQF+oeJMWiYwRAXNru8H3H1Md4Zd3qMpqs7TGU7/8QI/co0JWmTIpDZddjNNjnxV5hnOJazzDVX/QgjxY9f1rrO3tsRp206ujgvX29Hy/niC8PUQt6c9q2KJX+dKd85vqyqqO3lmEoB8gl6KkyGOdld30xRNsgF4yExu40sDfmI7whUYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Swim lesson is Saturday at 10:00am at the Community pool, running until 10:45."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 438,
+      "cache_read_input_tokens": 19555,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 438,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 96,
+      "output_tokens_details": {
+        "thinking_tokens": 63
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

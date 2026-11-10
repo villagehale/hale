@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real, separate classes on the cited Town of Oakville page. The Saturday times, the Sept 12 to Nov 28 dates and the 3-5 age band match the page exactly. Price is correctly null because the page prints no fee. Both slots carry the Aug 11, 7 a.m. registration date verbatim. The message leads with Preschool A by name, attributes the facts with 'their site says', includes the Aug 11 registration opening, is plain ASCII, and has no link and no question. Because watch is true, the first-person 'I'll keep watching and text you' is a real commitment. Under page_has_schedule, the price gap is correctly owned in the first person ('I could not pin down the price') rather than called 'not posted'. Two small gaps: the message omits the Aug 4 browse date, and neither the notes nor the slots record that the Recreation Guide holding the fees was not opened. Neither is material.",
+    "score": 5
+  }
+}

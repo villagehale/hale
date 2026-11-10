@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, that Hale stop sending emails without asking first. Autonomy for send_email and reply_to_email was turned off this turn, so the confirmation is true. The reply is in the parent's language, short and exact, with no greeting beyond the name and no sign-off. That is the job done in the right shape.",
+    "score": 5
+  }
+}

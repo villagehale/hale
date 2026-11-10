@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It notes that this link replaces the earlier one and correctly says the name, day and time could not be read, since they are null. It gives the right opening, Tuesday, September 15 at 7:00 a.m. (residents date), and warns to leave extra time for the prerequisite. It carries no link, asks nothing, makes no invented claim (\"nothing is booked yet\" is accurate) and names no child. The tone is natural English.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused for not_https. It says plainly why Hale did not take the link: it isn't a secure link. It carries no link, says nothing was saved, and asks once for the course page from the handed portal. It is in English, invents nothing and sounds natural. One small quibble: 'couldn't open' frames this as an inability rather than a choice, but that is still accurate enough.",
+    "score": 5
+  }
+}

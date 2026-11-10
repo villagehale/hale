@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CguyY4JNA1KVWvtUCc7rA",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStAcKEAgTGAI4AUIIdGhpbmtpbmcSDFO74q0iNN5pOtVYQRoMNHRnIugsGFCnXMQhIjCZFWAk2ardNa6Xj60g/+u1YeZgfiDKj4lfDvtdkAz9nrA829/TgJhIZ5nMMqBTgXYq0QYVNc11x522lTTSWXI5PiCoqYvO6p6A4S21CN3EKXYbfnE9TOhtdRmPNUOQCR2DuKRsAmzeaMqNku4DrunGvZ7o5uP2QYRxVpYaJIbe4pznIlz5lVKWieSijk6Fnr41Ajw49DcNJvQvgQiTBTVkAyQ9bCz05m8Yr3FfTnKYoDro+8GCK9VHp6KGfseKr+HjIqK1wf+dhpQFlzc5b+g2tHSWbfvFNJyf+hSNBUj476V2f3mDkB6LLMffYmvWZVsK69Z25s8fe2SF8+Id1Rnlq0fug4mJ+wws5Pt+xWfBFPJzkC6tH6tZZrta7qTuRgLOocLBrzJ1LF+sUxulG46AI51zOvAn/1E8dShxyP3VgMzbbJK9bO78k1JhmU8lwsOZXPYGFwHmjkOqklWmEl4YgTghF1438hjt3O/7N+IeKdLpNhvfNTbA5Vev2WdX9urTx9ROmi6LTvONSHf63yqEpaHDnmIangE9TdcXD//2BRJm7EbZK+9Mp8l0Jxu6lFw09dz4YjSjekFD0oIT2GhClpSGeXtFoFwkeIrv37p+eW7o1XYNH6ZNomuILYMkU3KWQt0iO20I0FYMVuPBqKcVUFtwDBrALiZuXAB6WmztvowDrokn5OxBqP/XyiIWeyH4sqSMI2QkjleOkt9IEJ2XKOrSUOYEjZ+5dTnUeixm9lCIHLpQYtOpEw+1Ctk/OalaoT5BQ11rDbQtq8IzFNA6VSPdXWjUGuP05pl7JEEnOi2LMUeej4w8ygHJ4rbAjn11P76OzTiHg0+4HnE6JkjmdH/j9mR0G+HwLpovwyFA7KbwyPnG0VS4DnRKut1BvM6hmNOVvIB9ue6LbY1iimTr4JIYHEiW06hX7KCFny8Xy8QU3ZeKgsfRWTWDlc5wFdEKxHEHkRTFwdGuEMYqvrmzFOBFODRzBy72DvxA3ZVEom4s81O2cOEiVVvTZVTAc8ZJXGfyFAESH9x4yjGQtTnainFEeNFgMqKl4qoEKlBp40rMJiWNuHMt20QIh9Yys0fCSxKMKq6uVGEHeL0loVu0sG1M2az1w0+zi6Z4cJxE3jt3QHnzwCbnqRCR7ogl6Wcw48gBvlSw3ebEpjgRefkzTjs9KDKDIxX7zgeGIAXj849ItDgYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "There's a private item Tue 3:45pm. What it is isn't mine to share. Nothing else is on for Tuesday."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1212,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1212,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 180,
+      "output_tokens_details": {
+        "thinking_tokens": 138
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1742
+}

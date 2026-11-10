@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no warmly ('Totally fair, no problem') and asks once for only the first three characters of the postal code, which is exactly what watchFor calls right. Offering a ZIP as well is allowed. It promises nothing about finding things nearby while no place is known, asks for no town or street, and doesn't press or make the code sound required. It is short, plain and ends on a single question.",
+    "score": 5
+  }
+}

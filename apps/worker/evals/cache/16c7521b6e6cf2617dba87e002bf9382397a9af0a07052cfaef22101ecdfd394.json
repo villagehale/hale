@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This does what course_link_refused asks for reason not_https. It says plainly why the link was refused: it is not a secure link. It carries no link and says nothing was saved. It asks once for the course page from the handed portal, Springfield's portal. The tone is casual and friendly, in English, and no child is named.",
+    "score": 5
+  }
+}

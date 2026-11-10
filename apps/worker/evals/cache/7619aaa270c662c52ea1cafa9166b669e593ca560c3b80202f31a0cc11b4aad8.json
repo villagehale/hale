@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Got it, no calendar for now. I can't save Mia's carpool from here, since only map activities can be saved during setup, so please add it to your own calendar. Would a group chat with Mia's other parent help, where you both see the same kid plans and reminders and nothing private?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "gmailLater": false,
+    "calendarLater": true
+  },
+  "latencyMs": 1989
+}

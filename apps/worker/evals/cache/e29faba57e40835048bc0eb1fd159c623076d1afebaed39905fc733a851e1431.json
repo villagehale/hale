@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Good, I'm glad it would help, Dana. Whenever you want to set it up, you'll start a group text with the other parent and use the number and phrase I'm sharing right below, so you'll both see the same kid plans and reminders and nothing private.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": true,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true
+  },
+  "latencyMs": 2031
+}
