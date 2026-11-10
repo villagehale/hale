@@ -326,6 +326,27 @@ describe('findGroupClashes', () => {
 });
 
 describe('clashCalendar', () => {
+  it('joins an untitled copy to the plan its titled copy on the other calendar made (VIL-651)', () => {
+    const calendar = clashCalendar({
+      blocks: [
+        block({
+          eventId: 'shared-id',
+          integrationId: 'gcal-sam',
+          userId: 'sam',
+          title: null,
+        }),
+        block({ eventId: 'shared-id', title: 'Maya swim pickup' }),
+        block({ eventId: 'other-id', integrationId: 'gcal-sam', userId: 'sam', title: null }),
+      ],
+      events: [],
+      decided: noDecision,
+    });
+    expect(calendar.plans.map((row) => [row.title, [...row.holders].sort()])).toEqual([
+      ['Maya swim pickup', ['barton', 'sam']],
+    ]);
+    expect(calendar.busy.map((row) => row.key)).toEqual(['busy:gcal-sam:other-id']);
+  });
+
   it("hides a private plan's copy on every calendar, even another parent's invite copy", () => {
     const calendar = clashCalendar({
       blocks: [
@@ -752,6 +773,31 @@ describe('groupConflictLineInput', () => {
     expect(line.suggested).toBeNull();
     expect(line.alsoFree).toEqual([]);
     expect(line.poll).toBeNull();
+  });
+
+  it("calls nobody else free for one child's two plans, while two children's still name them", () => {
+    const jo: ClashPerson = { id: 'jo', name: 'Jo', calendar: true };
+    const line = (second: string) => {
+      const [clash] = findGroupClashes({
+        plans: [
+          plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] }),
+          plan({ key: 'b', title: second, holders: ['barton'], end: AT_4 }),
+        ],
+        busy: [],
+        people: [barton, sam, jo],
+        now: NOW,
+      });
+      expect(clash?.alsoFree).toEqual(['jo']);
+      return groupConflictLineInput(clash as GroupClash, {
+        people: [barton, sam, jo],
+        kids: ['Maya', 'Leo'],
+        timeZone: 'America/Toronto',
+        language: 'en',
+        poll: null,
+      });
+    };
+    expect(line("Maya's dentist").alsoFree).toEqual([]);
+    expect(line('Leo daycare pickup').alsoFree).toEqual(['Jo']);
   });
 
   it("names no shared child for two children's plans, or a name that is only part of a word", () => {

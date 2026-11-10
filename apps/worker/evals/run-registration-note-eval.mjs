@@ -96,6 +96,7 @@ export const NOTE_FIXTURES = [
       now: { date: 'Wednesday, September 16, 2026', time: '5:00 a.m.' },
       town: 'Springfield',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       language: 'en',
     },
@@ -107,6 +108,7 @@ export const NOTE_FIXTURES = [
       now: { date: 'Wednesday, September 16, 2026', time: '9:00 p.m.' },
       town: 'Springfield',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       hoursLeft: 2,
       language: 'en',
@@ -128,6 +130,7 @@ export const NOTE_FIXTURES = [
       town: 'Springfield',
       position: 12,
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       language: 'en',
     },
@@ -140,6 +143,7 @@ export const NOTE_FIXTURES = [
       town: 'Riverton',
       position: null,
       responseHours: null,
+      clockFrom: null,
       deadline: null,
       language: 'fr',
     },
@@ -289,6 +293,12 @@ export const NOTE_BROKEN = [
     id: 'broken-waitlist-wrong-time',
     facts: BY_ID['waitlist-final'],
     text: 'About 2 hours left on the Springfield waitlist offer: it runs out tomorrow at 9 a.m. Check your email and the portal.',
+  },
+  {
+    // Scored 5 under the rubric before it judged where the clock starts.
+    id: 'broken-waitlisted-clock-unsaid',
+    facts: BY_ID['outcome-waitlisted-clock'],
+    text: "Got it, you're on the waitlist at spot 12 for Springfield. Springfield gives a 36-hour window to accept an offer, so this one runs out Wednesday, September 16 at 11:00 p.m. I'll remind you before it closes. Keep an eye on your email in case an offer comes through.",
   },
 ];
 

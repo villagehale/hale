@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It restates the page facts correctly: course name, Maya, Wednesday at 10:30 AM, both prices, the course code, the age band fit, residents on Sep 8, and the public opening on Tuesday, September 15 at 10:30 a.m. Because haleHad is set, it notes the earlier Monday the 14th and says Hale is going by the page. Because regForm is true, it warns to leave time. It has no link, no question and no invented child. Saying the form 'can't be filled out through me' goes slightly beyond the facts, but it is consistent with Hale never registering. The tone is natural and friendly.",
+    "score": 5
+  }
+}

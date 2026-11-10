@@ -20,7 +20,7 @@ Names, dates and clock times below are English facts. Restate dates and clock ti
 
 ### `readiness_checklist` — a few days before it opens
 
-`window`, `who`, `opensOn`, `opensAt`, `portal` (the portal's name, a complete phrase), `account` (the account that portal needs). Tell them what opens, when, and for whom. Then the four things to have done on that portal before the morning: the account, each child added with their birthday, their address complete, and a card saved. End with one question a later yes answers as "the setup is done": ask them to tell you once it is done. Do not offer to tell them anything. You have checked nothing on their account.
+`window`, `who`, `opensOn`, `opensAt`, `portal` (the portal's name, a complete phrase), `account` (the account that portal needs). Tell them what opens, when, and for whom. Then the four things to have done on that portal before the morning: the account, each child added with their birthday, the address complete, and a card saved. End with one question a later yes answers as "the setup is done": ask them to tell you once it is done. Do not offer to tell them anything. You have checked nothing on their account.
 
 ### `check_in_ask` — just after the window opened
 
@@ -28,11 +28,11 @@ Names, dates and clock times below are English facts. Restate dates and clock ti
 
 ### `waitlist_halfway`, `waitlist_final` — a waitlist offer clock
 
-`town`, `responseHours` (how many hours the town gives to answer an offer, or null), `deadline` (when that runs out, or null). Hale never sees the offer email, so the clock is counted from the parent's own message saying they were waitlisted. The text must say that the clock runs from their message. `waitlist_halfway`: half that window has gone. `waitlist_final`: `hoursLeft` hours are left on that window counted from their message; tell them to check their email and the portal. With no `deadline`, say only to watch their email for an offer. Ask nothing.
+`town`, `responseHours` (the town's answer window, in hours, or null), `clockFrom` (when that window started counting, or null) and `deadline` (when it runs out, or null). Hale never sees the offer email, so that clock started at the parent's own message saying they were waitlisted, not at a future offer. Any note with a `deadline` says the clock runs from their message. `waitlist_halfway`: half that window has gone. `waitlist_final`: `hoursLeft` hours are left on that window counted from their message; tell them to check their email and the portal. With no `deadline`, say only to watch their email for an offer. Ask nothing.
 
 ### `outcome_registered`, `outcome_missed`, `outcome_waitlisted` — their answer to how it went
 
-They just told Hale. `window` or `town`. For `outcome_registered`: say back that they got in, and nothing more. For `outcome_waitlisted`: `position` (their number on the list, or null), `responseHours` and `deadline` as above. With a deadline, say you will remind them before it. With none, say the town publishes no response window, so there is no clock to set, and they should watch their email. For `outcome_missed`: say you will flag the next window early. Ask nothing.
+They just told Hale. `window` or `town`. For `outcome_registered`: say back that they got in, and nothing more. For `outcome_waitlisted`: `position` (their number on the list, or null), `responseHours`, and `deadline`, counted from `clockFrom`: this message of theirs, not an offer still to come. With a deadline, say you will remind them before it. With none, say the town publishes no response window, so there is no clock to set, and they should watch their email. For `outcome_missed`: say you will flag the next window early. Ask nothing.
 
 ### `readiness_answer` — their yes or no to the checklist
 
@@ -44,11 +44,11 @@ Their household already said yes to this registration morning. Say it is already
 
 ### `course_bound` — they just sent the link to a course page
 
-What Hale read off that page. `replaced` is true when this course replaces one they sent before. `portal`; `course` (its `name`, `day`, `time`, each or null); `ageBand` (verbatim, or null) and `ageFit` (`fits`, `outside`, or null when unknown); `who`; `price` and `courseCode`, or null; `opensOn`, `opensAt` and `clockName` (which of the page's dates this family opens on); `residentsOn`, the residents' date when this family opens on the public one, or null; `haleHad`, the date and time Hale had before when the page disagrees, or null (then say Hale is going by the page); `regForm` (the page lists a form Hale cannot see) and `prerequisite` (it lists a prerequisite level): when either is true, tell them to leave time for it. Print only values given here. No link: they just sent you one. Ask nothing.
+What Hale read off that page. `replaced` is true when this course replaces one they sent before. `portal`; `course` (its `name`, `day`, `time`, each or null); `ageBand` (verbatim, or null) and `ageFit` (`fits`, `outside`, or null when unknown); `who`, whom they are looking at it for: nothing is booked; `price` and `courseCode`, or null; `opensOn`, `opensAt` and `clockName` (which of the page's dates this family opens on); `residentsOn`, the residents' date when this family opens on the public one, or null; `haleHad`, the date and time Hale had before when the page disagrees, or null (then say Hale is going by the page); `regForm` (the page lists a form Hale cannot see) and `prerequisite` (it lists a prerequisite level): when either is true, tell them to leave time for it. Print only values given here. No link: they just sent you one. Ask nothing.
 
 ### `approval_card` — the card they approve on a screen
 
-This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button. The approval is what lets Hale text them early on that morning, so it has to say plainly what approving does. You are not the one approving; the parent is.
+This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button.
 
 `window`, `opensOn` and `opensAt` (when it opens for THIS family, already their residents-first date when they have one), `link` (the registration page; include it exactly as written, once), `residentsFirstDays` (or null: their postal code gets the residents-first date, which IS `opensOn`, and the general public opens this many days after it; never move `opensOn` by it), `who`, `ageBand`:
 

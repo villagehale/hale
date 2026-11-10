@@ -2137,7 +2137,8 @@ describe('a declined postal code', () => {
 /**
  * VIL-617: a consent guard fails closed. In 2 of 42 live draws Haiku wrote tool-call
  * XML into the `parentQuestion` string; a value that is there but is not a boolean
- * may hide a question, so it counts as one.
+ * may hide a question, so it counts as one. VIL-645: a draw with that markup is now
+ * refused where the answer is read, so the short retry writes the reply instead.
  */
 describe('a garbled parentQuestion', () => {
   const base = (
@@ -2154,13 +2155,16 @@ describe('a garbled parentQuestion', () => {
     claimsSaved: false,
   };
 
-  function composerReplying(input: Record<string, unknown>) {
-    const response = {
-      ...base,
-      stop_reason: 'tool_use',
-      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
-    } as Anthropic.Message;
-    const next = async () => response;
+  /** Answers with each input in turn; the last one repeats. */
+  function composerReplying(...inputs: Record<string, unknown>[]) {
+    const next = async () => {
+      const input = inputs.length > 1 ? inputs.shift() : inputs[0];
+      return {
+        ...base,
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+      } as Anthropic.Message;
+    };
     const client = {
       messages: { create: next, stream: () => ({ finalMessage: next }) },
     };
@@ -2186,7 +2190,6 @@ describe('a garbled parentQuestion', () => {
   it('counts a present non-boolean as a question, and an absent one as none', async () => {
     const read = async (input: Record<string, unknown>) =>
       (await composerReplying(input).compose(gmailAsk)).parentQuestion;
-    expect(await read({ ...fields, parentQuestion: GARBLED })).toBe(true);
     expect(await read({ ...fields, parentQuestion: 'true' })).toBe(true);
     expect(await read(fields)).toBe(false);
     expect(await read({ ...fields, parentQuestion: true })).toBe(true);
@@ -2262,15 +2265,48 @@ describe('a garbled parentQuestion', () => {
     }
   });
 
-  it('keeps no Gmail yes on a garbled draw, and keeps it on a clean one', async () => {
+  it('refuses a draw with call markup in a field instead of reading it', async () => {
+    await expect(
+      composerReplying({ ...fields, parentQuestion: GARBLED }).compose(gmailAsk),
+    ).rejects.toMatchObject({ outcome: 'tool_markup' });
+  });
+
+  it('writes the reply on the retry when the first draw is garbled, and keeps no Gmail yes', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const retried = await speakFriend(
+        composerReplying(
+          { ...fields, connectGmail: true, parentQuestion: GARBLED },
+          { ...fields, parentQuestion: true },
+        ),
+        gmailAsk,
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(retried.source).toBe('retry');
+      expect(retried.body).toBe(fields.reply);
+      expect(retried.capture.connectGmail).not.toBe(true);
+      expect(warn.mock.calls).toContainEqual([
+        expect.objectContaining({ err: 'StructuredOutputError', outcome: 'tool_markup' }),
+        'onboarding-friend: attempt refused',
+      ]);
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('sends nothing when both draws are garbled, and keeps a Gmail yes on a clean one', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const garbled = await speakFriend(
         composerReplying({ ...fields, connectGmail: true, parentQuestion: GARBLED }),
         gmailAsk,
         { page: async () => undefined, linkFollows: true },
       );
-      expect(garbled.source).toBe('composed');
+      expect(garbled.source).toBe('unsent');
       expect(garbled.capture.connectGmail).not.toBe(true);
 
       const clean = await speakFriend(
@@ -2282,6 +2318,8 @@ describe('a garbled parentQuestion', () => {
       expect(clean.capture.connectGmail).toBe(true);
     } finally {
       info.mockRestore();
+      warn.mockRestore();
+      error.mockRestore();
     }
   });
 });

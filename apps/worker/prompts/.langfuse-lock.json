@@ -314,6 +314,11 @@
     "version": null,
     "sha256": "e036c093b2e1e85e38a14c15ad912adc7b62ec350333a92a2d2e36174091a63c"
   },
+  "judges/registration-date-moved": {
+    "name": "judges/registration-date-moved",
+    "version": null,
+    "sha256": "c34600c43abe5e5d5737d0f34037d12392408ef52064d79f2c9b92acafd92fce"
+  },
   "judges/registration-date-unconfirmed": {
     "name": "judges/registration-date-unconfirmed",
     "version": null,
@@ -322,7 +327,7 @@
   "judges/registration-note": {
     "name": "judges/registration-note",
     "version": null,
-    "sha256": "1a44b18c816dc0c4c6bb46ba649971b098b87dbf47259dcf1c40fe9b20882027"
+    "sha256": "1123227714bb717398ec038e0ecd8e1b0acf474d692623a6f14e49b0bb6fc719"
   },
   "judges/reminder": {
     "name": "judges/reminder",
