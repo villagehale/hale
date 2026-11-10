@@ -326,6 +326,8 @@ describe('the D21 dark-launch flag', () => {
   });
 
   it('does no work at all when neither the flag nor the allowlist is set', async () => {
+    vi.stubEnv('F14_ENABLED', '');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
     const h = harness({ windows: [win()] });
     const selectFamilies = vi.fn(async () => [family()]);
     const result = await runNudgeCron(db(), { ...h.deps, selectFamilies }, FRIDAY_10AM);
@@ -335,6 +337,7 @@ describe('the D21 dark-launch flag', () => {
   });
 
   it('skips a family that is not in the allowlist while the flag is off', async () => {
+    vi.stubEnv('F14_ENABLED', '');
     vi.stubEnv('F14_FAMILY_ALLOWLIST', 'fam-other');
     const h = harness({ windows: [win()] });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);

@@ -48,11 +48,6 @@ export const MAX_COMPOSE_ATTEMPTS = 2;
 
 const MAX_TOKENS = 96;
 
-/** A time nobody scheduled: nobody knows when the answer lands. */
-const PROMISED_TIME =
-  /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
-const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
-
 export type HoldingLineRefusal =
   | 'empty'
   | 'carries_link'
@@ -63,8 +58,8 @@ export type HoldingLineRefusal =
 /**
  * Mechanical reasons this line cannot go out, fed back on the next attempt. A link or a
  * digit is a fact in any language. Whether the line promises a time, or points at an app
- * or a website, is {@link judgeHoldingLine} — meaning, not a word list. How the line is
- * worded otherwise is the model's.
+ * or a website, is {@link judgeHoldingLine} — meaning, not a word list (VIL-540 / #728).
+ * How the line is worded otherwise is the model's.
  */
 function shapeRefusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
@@ -74,24 +69,18 @@ function shapeRefusals(body: string): HoldingLineRefusal[] {
   return found;
 }
 
-function meaningRefusalsRegex(body: string): HoldingLineRefusal[] {
-  const found: HoldingLineRefusal[] = [];
-  if (PROMISED_TIME.test(body)) found.push('promised_a_time');
-  if (APP_POINTER.test(body)) found.push('points_at_the_app');
-  return found;
-}
-
 export function refusals(body: string): HoldingLineRefusal[] {
-  return [...shapeRefusals(body), ...meaningRefusalsRegex(body)];
+  return shapeRefusals(body);
 }
 
 const FALSE_PROMISE: ReadonlySet<string> = new Set(['promised_a_time', 'points_at_the_app']);
 
-/** Production gate. Off, the regex meaning checks. On, a Haiku read; unread refuses. */
+/** Production gate. Meaning is a Haiku read when MODEL_READ_SWEEP is on; unread refuses.
+ * Off, only the mechanical shape (link / digit / empty) is gated here. */
 export async function holdingLineRefusals(body: string): Promise<HoldingLineRefusal[]> {
   const shape = shapeRefusals(body);
   if (shape.includes('empty')) return shape;
-  if (!modelReadSweepEnabled()) return [...shape, ...meaningRefusalsRegex(body)];
+  if (!modelReadSweepEnabled()) return shape;
   const reading = await sharedMeaningScreen().read({ screen: 'copy_false_promise', text: body });
   if (!reading) return [...shape, 'promised_a_time'];
   const meaning = reading.violations.filter((code): code is HoldingLineRefusal =>
