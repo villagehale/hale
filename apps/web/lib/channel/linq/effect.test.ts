@@ -150,18 +150,17 @@ describe('VIL-473 Linq message effects', () => {
     );
   });
 
-  it('is on only in Preview when the flag is exactly true', () => {
-    expect(linqEffectsEnabled()).toBe(false);
-    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
-    vi.stubEnv('VERCEL_ENV', 'production');
-    expect(linqEffectsEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', 'development');
+  it('flag is dark by default and on when exactly true, including Production', () => {
     expect(linqEffectsEnabled()).toBe(false);
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'on');
-    vi.stubEnv('VERCEL_ENV', 'preview');
+    expect(linqEffectsEnabled()).toBe(false);
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'TRUE');
     expect(linqEffectsEnabled()).toBe(false);
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
-    vi.stubEnv('VERCEL_ENV', 'preview');
+    expect(linqEffectsEnabled()).toBe(true);
+    vi.stubEnv('VERCEL_ENV', 'production');
+    expect(linqEffectsEnabled()).toBe(true);
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true\n');
     expect(linqEffectsEnabled()).toBe(true);
   });
 

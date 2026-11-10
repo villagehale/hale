@@ -23,8 +23,8 @@ import {
  * VIL-473 — an iMessage screen or bubble effect on Hale's reply, when the model
  * says one fits.
  *
- * Behind `LINQ_EFFECTS_ENABLED`, exactly `true`, and only on a Preview deploy.
- * Production stays dark. The `linq-effect`
+ * Behind `LINQ_EFFECTS_ENABLED`, exactly `true` (trimmed). Default off.
+ * Production may light it the same way as any other environment. The `linq-effect`
  * skill reads the parent's message and the reply Hale already wrote, and returns
  * the effect or none. Code never picks an effect and has no fallback one: a
  * failed or unusable read, or a provider that refused the effect, sends the
