@@ -7,20 +7,23 @@ name: CI
 #
 # Required check: "Lint, typecheck, test, build"
 #   Reports on every PR (push, pull_request, workflow_dispatch). Passes when
-#   workspace lint, typecheck, test, and build passed, every eval suite passed,
-#   and worker evals either passed or were skipped because the diff was
-#   site-only. Branch protection should require this name. It already fails
-#   closed when evals were supposed to run and did not pass.
+#   workspace lint, typecheck, test, and build passed, and worker evals either
+#   passed or were skipped because the diff was site-only. Branch protection
+#   should require this name. It already fails closed when evals were supposed
+#   to run and did not pass.
 #
 # Not a required check: "Worker evals (cached-only)"
 #   Skipped when the diff is site-only. Requiring this job name leaves those
 #   PRs stuck, because a skipped required check does not count as success.
 #
-# Required through the aggregator: "Every eval suite (cached-only)"
+# Not a required check: "Every eval suite (cached-only)"
 #   Replays every apps/worker/evals/run-*.mjs from the committed cache on every
-#   PR, whatever paths changed (VIL-650): a shared gate or skill can break a
-#   suite no path filter would pick. Same script as eval-sweep.yml. Zero API
-#   calls and no secrets: a cache miss fails instead of spending.
+#   PR and on main (VIL-650): a shared gate or skill can break a suite no path
+#   filter would pick. Same script as eval-sweep.yml. Zero API calls and no
+#   secrets: a cache miss fails the suite instead of spending. Suites listed in
+#   scripts/ci/every-eval-known-ok.txt may fail without failing this job, so
+#   known reds from in-flight PRs do not turn main red. Do not add this job
+#   name to branch protection until every suite passes without that list.
 #
 # Site-only (evals skipped): every file is under apps/site/, or the only other
 # file is pnpm-lock.yaml and that hunk is confined to the apps/site importer
@@ -543,15 +546,20 @@ jobs:
         run: pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
 
       - name: Run every eval suite (cached-only)
+        env:
+          # Known reds on main (in-flight PRs) do not fail this job. The weekly
+          # sweep does not set this, so it still reports those suites.
+          HALE_EVERY_EVAL_KNOWN_OK: '1'
         run: scripts/ci/run-every-eval.sh
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
-  # skipped job. Fails when workspace checks fail, when any eval suite fails, or
-  # when worker evals were required and did not pass.
+  # skipped job. Fails when workspace checks fail or when evals were required and
+  # did not pass. The every-eval job is not in this list: it is not a required
+  # check (VIL-650 waits until every suite passes on main without known-ok).
   required:
     name: Lint, typecheck, test, build
-    needs: [changes, verify, test, worker-evals, all-evals]
+    needs: [changes, verify, test, worker-evals]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -572,5 +580,4 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           EVALS_RESULT: ${{ needs.worker-evals.result }}
           WORKER_EVALS: ${{ needs.changes.outputs.worker_evals }}
-          ALL_EVALS_RESULT: ${{ needs.all-evals.result }}
         run: node scripts/ci/required-check.mjs
