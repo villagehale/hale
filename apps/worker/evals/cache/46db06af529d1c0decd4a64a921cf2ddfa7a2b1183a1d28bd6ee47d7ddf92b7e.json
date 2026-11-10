@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The position, town, 36-hour window and deadline (11:00 a.m. Tuesday plus 36 hours is 11:00 p.m. Wednesday) are all correct, and the reminder promise is handed. But the note never says the clock started from the parent's own message at 11:00 a.m. today. It frames the 36 hours as a window 'to accept an offer', tying the clock to an offer that hasn't come, which this kind fails on.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a correct readiness_answer for a no. It names all four things (the account, each child added with a birthday, the address, a saved card) and says Hale will ask again the evening before, without asking now. 'Max and your teen' matches the handed 'who', so no unhanded child is named. It invents no dates, links or prices. The tone is friendly. Minor nit: it says 'a recreation account' rather than the full 'Springfield recreation account', but since it is on Springfield's portal that is fine.",
+    "score": 5
+  }
+}
