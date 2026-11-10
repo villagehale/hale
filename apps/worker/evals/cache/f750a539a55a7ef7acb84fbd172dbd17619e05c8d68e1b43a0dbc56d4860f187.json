@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message claims Hale will register the children (\"I'll sign Max and Mia up for you\"), but Hale never registers for them. This invented claim alone caps the score at 2. It also leaves out most of what an approval card must carry. It does not list the texts and their timing: a week ahead, 3 days before, the evening before, and 15 minutes before. It omits the course-link tip even though courseLinkTip is true. It gives no residents-first context and does not mention that Mia is near the age band. The date, time and link are correct.",
+    "score": 1
+  }
+}
