@@ -193,7 +193,7 @@
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
-    "sha256": "d94ecb2e3d75632a4ee5b6d9d8f173db49c4597c99b52c8635d54c2cc3814f6e"
+    "sha256": "c1d60db1f34b34d0f61424a188c51640b9822761b2357ea85edaf8c58324c25c"
   },
   "extract-coparent-duty.md": {
     "file": "extract-coparent-duty.md",
@@ -379,6 +379,10 @@
     "file": "linq-sticker.md",
     "sha256": "058703a76f47c7021790ae4e2c8248b065c00937a439943af13f35df4121602d"
   },
+  "match-team-schedule.md": {
+    "file": "match-team-schedule.md",
+    "sha256": "ed9f91ba8b0dc45106ee55a095b2ae2814d8498f499456f2a223758fb3f18af3"
+  },
   "medical-answer.md": {
     "file": "medical-answer.md",
     "sha256": "42c9056d114af9f096468fb555c325359c42d220365cae592abdc4d864feceb9"
@@ -546,6 +550,14 @@
   "spot-open-voice.md": {
     "file": "spot-open-voice.md",
     "sha256": "6fc4f5aef16b9feaedbe5655f99da5283f3930186940dc5db8a05f20a4b6ceae"
+  },
+  "team-schedule-driver.md": {
+    "file": "team-schedule-driver.md",
+    "sha256": "9e83657a1fc149e43b38298a78484b3a3ea4a738cf5b7d1618bdd4825413833f"
+  },
+  "team-schedule-parent.md": {
+    "file": "team-schedule-parent.md",
+    "sha256": "e934408cf4df123224abe65d19ee99f20427f039a92bc152dfd6486405213ace"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
