@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This matches the connect-link shape the rubric calls correct. The parent's ask was not caught by the deterministic branch, and the reply says the link is a text away and quotes the plain words that send it. It also gets the 15-minute window right. There is no URL, no app referral, one sentence of substance, and nothing invented. The opening \"Yes, I can\" is fine.",
+    "score": 5
+  }
+}

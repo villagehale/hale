@@ -1,7 +1,7 @@
 // VIL-543 · every registration message that is not the heads-up, the evening or the
 // morning-of text: the readiness checklist, the check-in, the waitlist guards, the
-// answers to what a parent reported, the course-link ack, the second parent's yes and
-// the approval card.
+// answers to what a parent reported, the course-link ack, refusal and throttle, the
+// second parent's yes and the approval card.
 //
 // The subject is the REAL skill (packages/agent/skills/registration-note.md) run through
 // the REAL request the web composer builds (apps/web/lib/registration/sequence/
@@ -18,7 +18,8 @@
 //   HALE_SPEND_LEDGER=... node --env-file=../../.env evals/run-registration-note-eval.mjs --live --max-usd 1   # PAID
 //
 // --live and --cached-only also score the broken drafts: each claims something the facts
-// do not, and the judge must score every one 2 or lower, or the run fails.
+// do not, and the judge must score every one 2 or lower, or the run fails. They score the
+// handed drafts too: each does what its kind asks, and the judge must pass every one.
 
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -96,6 +97,7 @@ export const NOTE_FIXTURES = [
       now: { date: 'Wednesday, September 16, 2026', time: '5:00 a.m.' },
       town: 'Springfield',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       language: 'en',
     },
@@ -107,6 +109,7 @@ export const NOTE_FIXTURES = [
       now: { date: 'Wednesday, September 16, 2026', time: '9:00 p.m.' },
       town: 'Springfield',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       hoursLeft: 2,
       language: 'en',
@@ -128,6 +131,7 @@ export const NOTE_FIXTURES = [
       town: 'Springfield',
       position: 12,
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
       language: 'en',
     },
@@ -140,6 +144,7 @@ export const NOTE_FIXTURES = [
       town: 'Riverton',
       position: null,
       responseHours: null,
+      clockFrom: null,
       deadline: null,
       language: 'fr',
     },
@@ -212,6 +217,78 @@ export const NOTE_FIXTURES = [
       haleHad: null,
       regForm: false,
       prerequisite: true,
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-refused-not-https',
+    facts: {
+      kind: 'course_link_refused',
+      now: NOW,
+      reason: 'not_https',
+      portal: PORTAL,
+      town: 'Springfield',
+      pageOpens: null,
+      haleHas: null,
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-refused-wrong-town',
+    facts: {
+      kind: 'course_link_refused',
+      now: NOW,
+      reason: 'wrong_municipality',
+      portal: PORTAL,
+      town: 'Springfield',
+      pageOpens: null,
+      haleHas: null,
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-refused-unreadable-fr',
+    facts: {
+      kind: 'course_link_refused',
+      now: NOW,
+      reason: 'page_unreadable',
+      portal: 'le portail de Riverton',
+      town: 'Riverton',
+      pageOpens: null,
+      haleHas: null,
+      language: 'fr',
+    },
+  },
+  {
+    id: 'course-refused-different-season',
+    facts: {
+      kind: 'course_link_refused',
+      now: { date: 'Tuesday, September 1, 2026', time: '8:00 a.m.' },
+      reason: 'different_season',
+      portal: PORTAL,
+      town: 'Springfield',
+      pageOpens: { date: 'Tuesday, October 27, 2026', time: '7:00 a.m.' },
+      haleHas: { date: 'Tuesday, September 15, 2026', time: '7:00 a.m.' },
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-throttled',
+    facts: {
+      kind: 'course_link_throttled',
+      now: NOW,
+      alreadyBound: false,
+      retryMinutes: 7,
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-throttled-already-bound',
+    facts: {
+      kind: 'course_link_throttled',
+      now: NOW,
+      alreadyBound: true,
+      retryMinutes: null,
       language: 'en',
     },
   },
@@ -290,16 +367,51 @@ export const NOTE_BROKEN = [
     facts: BY_ID['waitlist-final'],
     text: 'About 2 hours left on the Springfield waitlist offer: it runs out tomorrow at 9 a.m. Check your email and the portal.',
   },
+  {
+    id: 'broken-throttled-comes-back',
+    facts: BY_ID['course-throttled'],
+    text: "I'm reading another page for you right now. I'll open this one as soon as I'm free and text you what it says.",
+  },
+  {
+    id: 'broken-season-wrong-date',
+    facts: BY_ID['course-refused-different-season'],
+    text: "That course opens Tuesday, November 3 at 7 a.m., and the Springfield morning I'm holding is Tuesday, September 15. That looks like a different season, so I've left it as it was.",
+  },
+  {
+    // Scored 5 under the rubric before it judged where the clock starts.
+    id: 'broken-waitlisted-clock-unsaid',
+    facts: BY_ID['outcome-waitlisted-clock'],
+    text: "Got it, you're on the waitlist at spot 12 for Springfield. Springfield gives a 36-hour window to accept an offer, so this one runs out Wednesday, September 16 at 11:00 p.m. I'll remind you before it closes. Keep an eye on your email in case an offer comes through.",
+  },
+  {
+    // The near miss: the right deadline, but the clock starts when an offer arrives.
+    id: 'broken-waitlisted-clock-at-offer',
+    facts: BY_ID['outcome-waitlisted-clock'],
+    text: "Got it, you're number 12 on Springfield's waitlist. Once an offer comes in, you'll have 36 hours to accept it, until Wednesday, September 16 at 11:00 p.m. I'll remind you before then, so keep an eye on your email for the offer.",
+  },
+];
+
+/** Drafts that do what their kind asks. The judge must score each JUDGE_MIN or higher. */
+export const NOTE_HANDED = [
+  {
+    // Scored 2 under the rubric that read "window to accept an offer" as the clock
+    // starting at the offer, while drafts with the same wording scored 4 and 5.
+    id: 'handed-waitlist-halfway-offer-window',
+    facts: BY_ID['waitlist-halfway'],
+    text: "You're on Springfield's waitlist, and half of the 36-hour window to accept an offer has passed. Your clock started from your message yesterday at 11:00 a.m., so it runs out tonight at 11:00 p.m. Keep an eye on your email and the portal in case an offer comes through before then.",
+  },
 ];
 
 /** --broken, offline: the composer's own gate must refuse every planted draft. */
 function brokenOffline(note) {
   const card = BY_ID['approval-card-portal'];
   const checkIn = BY_ID['check-in-ask-fr'];
+  const courseRefused = BY_ID['course-refused-not-https'];
   const refused = [
     note.noteRefusals('   ', checkIn),
     note.noteRefusals("Comment ça s'est passé? https://evil.example/phish", checkIn),
     note.noteRefusals('Opens Tuesday: https://evil.example/phish', card),
+    note.noteRefusals('Send me the secure one instead: https://evil.example/phish', courseRefused),
   ];
   const kept = [
     note.noteRefusals("Comment ça s'est passé ce matin?", checkIn),
@@ -324,10 +436,10 @@ function worst(model, inTokens, maxOut) {
 async function main() {
   const raw = process.argv.slice(2);
   const modeArgs = raw.filter((a, i) => a !== '--max-usd' && raw[i - 1] !== '--max-usd');
-  const knownIds = [...NOTE_FIXTURES, ...NOTE_BROKEN].map((f) => f.id);
+  const knownIds = [...NOTE_FIXTURES, ...NOTE_BROKEN, ...NOTE_HANDED].map((f) => f.id);
   const { mode, only } = parseEvalArgsOrExit('registration-note', knownIds, modeArgs);
   if (only) {
-    for (const list of [NOTE_FIXTURES, NOTE_BROKEN]) {
+    for (const list of [NOTE_FIXTURES, NOTE_BROKEN, NOTE_HANDED]) {
       list.splice(0, list.length, ...list.filter((f) => only.includes(f.id)));
     }
   }
@@ -365,7 +477,7 @@ async function main() {
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 600, judgeMaxOut);
       calls += note.NOTE_MAX_ATTEMPTS + 1;
     }
-    for (const b of NOTE_BROKEN) {
+    for (const b of [...NOTE_BROKEN, ...NOTE_HANDED]) {
       const msg = JSON.stringify({ facts: b.facts, text: b.text });
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += 1;
@@ -437,12 +549,22 @@ async function main() {
       `${low ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | judge ${verdict.score}`,
     );
   }
+  let kept = 0;
+  for (const h of NOTE_HANDED) {
+    const verdict = await judge(h.id, { facts: h.facts, text: h.text });
+    const high = verdict.score >= JUDGE_MIN;
+    if (high) kept += 1;
+    console.info(`${high ? 'HANDED-PASSES (good)' : 'HANDED-FAILED (bad)'} ${h.id} | judge ${verdict.score}`);
+    if (!high) console.info(`     reason: ${verdict.reason}`);
+  }
   const brokenOk = caught === NOTE_BROKEN.length && brokenOffline(note);
+  const handedOk = kept === NOTE_HANDED.length;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
+  console.info(`handed calibration (must pass): ${handedOk ? 'PASS' : 'FAIL'}`);
   console.info(
     `registration-note | ${NOTE_FIXTURES.length - failed} of ${NOTE_FIXTURES.length} passed | live calls: ${cost.liveCalls} | spent $${totalUsd(cost).toFixed(6)}`,
   );
-  if (failed > 0 || !brokenOk) process.exit(1);
+  if (failed > 0 || !brokenOk || !handedOk) process.exit(1);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

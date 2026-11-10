@@ -794,10 +794,10 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies()).toEqual([
       [
         '[crisis_emergency/en]',
-        'emergency=911',
-        'situation=they just told Hale their child is not breathing or is struggling to breathe, right now',
-        'firstStep=call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
-        'replyLanguage=English',
+        'emergency: 911',
+        'situation: they just told Hale their child is not breathing or is struggling to breathe, right now',
+        'firstStep: call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
+        'replyLanguage: English',
       ].join('\n'),
     ]);
     expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);
@@ -834,6 +834,10 @@ describe('friend voice onboarding', () => {
     const fire = inbound(transport3, 'fire');
     await handleInboundSms(fake3.db, fire, deps3);
     expect(transport3.bodies()).toEqual([]);
+    // VIL-641: the crisis text is marked, so the first-reply sweep never follows it
+    // with an onboarding ask.
+    const crisisSession = await loadOpenSession(fake3.db, PHONE);
+    expect(crisisSession?.transcript.at(-1)).toMatchObject({ direction: 'in', crisis: true });
     // Before any family exists the page still goes out, keyed on this inbound.
     expect(alerts).toEqual([
       {
@@ -1247,6 +1251,158 @@ describe('friend voice onboarding', () => {
     expect(answered).toEqual({ status: 'first_touch', step: 'place_asked' });
     expect(transport.bodies()).toEqual(["Hey, it's Hale. What's your postal code?"]);
     expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toBeNull();
+  });
+
+  // VIL-617: the parent's first answer turns down the postal code.
+  it('answers a declined postal code and keeps the session going', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+
+    const declined = await handleInboundSms(
+      fake.db,
+      inbound(transport, "I'd rather not give out my postal code"),
+      deps,
+    );
+
+    expect(declined).toEqual({ status: 'first_touch', step: 'place_waiting' });
+    expect(transport.sent).toHaveLength(2);
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.state).toBe('awaiting_place');
+    expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in', 'out']);
+  });
+
+  // VIL-641: a parent who declines the place for good still becomes a family.
+  it('provisions a family after two declined places, never asks the place again, and sends the Gmail card', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ voice: true });
+    const steps: string[] = [];
+    const scripted = deps.friendVoice;
+    if (!scripted) throw new Error('harness has no voice');
+    deps.friendVoice = {
+      async compose(input, options) {
+        steps.push(input.step);
+        const composed = await scripted.compose(input, options);
+        // The first no gets the coarse code; only a no after that closes the place.
+        return input.step === 'place' && /rather not/i.test(input.parentWords)
+          ? { ...composed, placeAsk: 'coarse' }
+          : composed;
+      },
+    };
+    let finds = 0;
+    deps.radar = {
+      async compose() {
+        finds += 1;
+        throw new Error('a find needs a place');
+      },
+    };
+    const text = (body: string) => handleInboundSms(fake.db, inbound(transport, body), deps);
+
+    await text('hi');
+    await text("I'd rather not give out my postal code");
+    const second = await text('not even that');
+
+    expect(second).toEqual({ status: 'first_touch', step: 'ages_waiting' });
+    const stored = await loadOpenSession(fake.db, PHONE);
+    expect(stored?.firstTouch?.given?.placeDeclined).toBe(true);
+    expect(stored?.state).toBe('awaiting_ages');
+    const sentBeforeThird = transport.bodies().length;
+
+    const third = await text('Maya is 4, Leo is 1');
+    expect(steps[3]).toBe('kids_names');
+    expect(third).toMatchObject({ status: 'provisioned' });
+    const [family] = fake.rows(schema.families);
+    expect(family?.areaCoarse ?? null).toBeNull();
+    expect(family?.postalCode ?? null).toBeNull();
+    expect(family?.country ?? null).toBeNull();
+    expect(finds).toBe(0);
+    // The provisioning turn still answers them: the next ask, with nothing nearby in it.
+    expect(transport.bodies().at(-1)).toBe('What should I call you?');
+
+    await text('Dana');
+    expect(lastCard(transport)).toMatch(/email/i);
+    expect(steps.slice(3)).not.toContain('place');
+    expect(transport.bodies().slice(sentBeforeThird).join('\n')).not.toMatch(/postal code/i);
+  });
+
+  // VIL-641: the second no is read against a fact code kept, not a guess from the thread.
+  it('keeps a sent coarse-code ask on the session and hands it to the next place turn', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const inputs: FriendVoiceInput[] = [];
+    const scripted = deps.friendVoice;
+    if (!scripted) throw new Error('harness has no voice');
+    let coarse: 'coarse' | 'full' = 'coarse';
+    deps.friendVoice = {
+      async compose(input, options) {
+        inputs.push(input);
+        const composed = await scripted.compose(input, options);
+        return input.step === 'place' && /rather not/i.test(input.parentWords)
+          ? { ...composed, placeAsk: coarse }
+          : composed;
+      },
+    };
+    const text = (body: string) => handleInboundSms(fake.db, inbound(transport, body), deps);
+
+    await text('hi');
+    await text("I'd rather not give out my postal code");
+    expect((await loadOpenSession(fake.db, PHONE))?.firstTouch?.given?.coarseCodeAsked).toBe(true);
+    await text('no thanks');
+    expect(inputs[1]?.coarseCodeAsked).not.toBe(true);
+    expect(inputs[2]?.coarseCodeAsked).toBe(true);
+
+    // Positive control: a reply that asked for the full code again records nothing.
+    const other = harness({ voice: true });
+    coarse = 'full';
+    other.deps.friendVoice = deps.friendVoice;
+    await handleInboundSms(other.fake.db, inbound(other.transport, 'hi'), other.deps);
+    await handleInboundSms(
+      other.fake.db,
+      inbound(other.transport, "I'd rather not give out my postal code"),
+      other.deps,
+    );
+    expect(
+      (await loadOpenSession(other.fake.db, PHONE))?.firstTouch?.given?.coarseCodeAsked,
+    ).not.toBe(true);
+  });
+
+  it('names a later place turn the model could not write, instead of a step', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    let modelUp = true;
+    const flaky: IntakeDeps = {
+      ...deps,
+      friendVoice: {
+        async compose(input) {
+          if (!modelUp) throw new Error('model down');
+          return { reply: scriptedTurn(input).reply };
+        },
+      },
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), flaky);
+
+    modelUp = false;
+    const silent = await handleInboundSms(
+      fake.db,
+      inbound(transport, "I'd rather not give out my postal code"),
+      flaky,
+    );
+
+    // A step says Hale replied; nothing went out, so the outcome names that (rule #11).
+    expect(silent).toEqual({ status: 'first_touch_unsent', reason: 'model_failed' });
+    expect(transport.sent).toHaveLength(1);
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.state).toBe('awaiting_place');
+    expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in']);
+    // VIL-641: the turn that sent nothing marks its inbound; only that lets the
+    // first-reply sweep follow up mid-onboarding.
+    expect(session?.transcript.at(-1)).toMatchObject({ direction: 'in', unsent: true });
+
+    // Positive control: their next text re-runs the step and a model that answers sends it.
+    modelUp = true;
+    const answered = await handleInboundSms(fake.db, inbound(transport, 'still here'), flaky);
+    expect(answered).toEqual({ status: 'first_touch', step: 'place_waiting' });
+    expect(transport.sent).toHaveLength(2);
+    const after = await loadOpenSession(fake.db, PHONE);
+    expect(after?.transcript.at(-2)).toMatchObject({ direction: 'in', body: 'still here' });
+    expect(after?.transcript.at(-2)?.unsent).toBeUndefined();
   });
 
   it('is answered once by the first-reply sweep when the opening turn sent nothing', async () => {

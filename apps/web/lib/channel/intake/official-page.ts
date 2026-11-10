@@ -1,6 +1,7 @@
 import { scrubContactTokens, scrubPlaceTokens } from '@hale/types';
 import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
 import { smsEncoding } from '~/lib/channel/sms-segments';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import type { ExtractedChild } from './extract';
 
 /**
@@ -61,7 +62,7 @@ export function joinOfficialAnswer(answer: string, pendingAsk: string): string |
   const joined = [answer, ask].filter((part) => part.length > 0).join(' ');
   if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
   if (smsEncoding(joined) !== 'gsm7') return null;
-  if (/https?:\/\/|www\./i.test(joined)) return null;
+  if (hasLinkShape(joined)) return null;
   return joined;
 }
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly explains the plan could not be saved because the maximum price is not allowed, states Hale is not registering, and says a link follows without including one. It never claims a spot or registration. Tone is warm and plain, in English as required. Minor issue: it names the max-price refusal in plain terms but the facts show maxPriceCents is null, which is consistent with the refusal, so no invention. Overall it matches watchFor closely.",
+    "score": 5
+  }
+}

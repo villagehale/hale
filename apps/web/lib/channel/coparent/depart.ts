@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { liveScopeSql } from '@hale/worker/memory-context';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withdrawFreeBusyConsent } from '~/lib/channel/linq/free-busy-consent';
+import { renameDepartedMember } from '~/lib/channel/linq/group-plan-rsvp/departed-member';
 import { type PendingAsksForgotten, forgetPendingAsks } from '~/lib/channel/off-domain/lane';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -30,9 +32,10 @@ import { revokeTeenAccessGrantsForDepartingMember } from '~/lib/teen-access';
  * non-zero total.
  *
  * WHAT IT LEAVES BEHIND, DELIBERATELY, AND SAYS SO. `family_memory_facts` are the
- * HOUSEHOLD's record, not this parent's — the bedtime, the allergy, the sitter's name —
- * and they were never provenanced per author (VIL-353 is where that would come from).
- * Their thread (`channel-sms:<userId>`) is family-scoped too. Their `users` row, the
+ * HOUSEHOLD's record, not this parent's — the bedtime, the sitter's name, the pickup they
+ * texted — with one exception since facts record who said them (VIL-599): a fact only
+ * they could hear (said in their own 1:1, not shared by R7) is deleted, counted in
+ * `privateFactsDeleted`. Nobody else could ever be told it, and it is theirs. Their thread (`channel-sms:<userId>`) is family-scoped too. Their `users` row, the
  * revoked `parent_channels` row holding their encrypted number, and the
  * `caregiver_invites` row that authorised the one text Hale sent them all survive: the
  * number is the EVIDENCE of express consent, which CASL requires be producible for
@@ -72,6 +75,9 @@ export interface CoParentDeparted {
    * read (the search is dark, or the table has not reached this database). */
   openQuestionsDeleted: PendingAsksForgotten;
   membershipRemoved: true;
+  /** Facts only they could hear (their own 1:1, not shared by R7), live or retired,
+   * deleted. */
+  privateFactsDeleted: number;
   /** `granted=false` rows appended — one per messaging scope that was still standing. */
   consentWithdrawn: number;
   /** ── kept on purpose, each named rather than absent (rule #11) ─────────────── */
@@ -276,6 +282,18 @@ export async function departCoParent(
       interpretation: 'the co-parent left the family; their free/busy sharing ends',
     });
 
+    // Every row scoped to them, history included. The household's rows, and the
+    // logistics they texted, stay.
+    const privateFacts = await tx
+      .delete(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, familyId),
+          sql`${liveScopeSql()} = ${actorUserId}`,
+        ),
+      )
+      .returning({ id: schema.familyMemoryFacts.id });
+
     // ── what is KEPT, counted so the answer can say it out loud ──────────────
     const retainedChannels = await tx
       .select({
@@ -290,6 +308,14 @@ export async function departCoParent(
         ),
       );
     const hashes = retainedChannels.map((row) => row.phoneE164Hash);
+
+    // Their name and words off the household's group plans and polls; their answers stay
+    // counted. The member key of a seated number is its blind index, the same hash.
+    const groupNamesCleared = await renameDepartedMember(tx, {
+      familyId,
+      userId: actorUserId,
+      memberKeys: hashes,
+    });
     const retainedInvites =
       hashes.length === 0
         ? []
@@ -367,6 +393,8 @@ export async function departCoParent(
           threadRetained: retainedThreads.length,
           openQuestionsDeleted,
           freeBusyWithdrawn,
+          groupNamesCleared,
+          privateFactsDeleted: privateFacts.length,
         },
       },
     ]);
@@ -379,6 +407,7 @@ export async function departCoParent(
       teenGrantsRevoked,
       openQuestionsDeleted,
       membershipRemoved: true,
+      privateFactsDeleted: privateFacts.length,
       consentWithdrawn: withdrawals.length,
       threadRetained: retainedThreads.length,
       channelRecordRetained: retainedChannels.length,

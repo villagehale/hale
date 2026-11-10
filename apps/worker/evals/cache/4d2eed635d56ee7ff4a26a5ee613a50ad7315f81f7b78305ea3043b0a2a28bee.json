@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The switch was actually turned off this turn for both sending and replying, so saying \"Done\" is true. The reply confirms that Hale will now check before anything goes out. One small blemish: the second sentence restates the first, which is redundant padding.",
+    "score": 4
+  }
+}

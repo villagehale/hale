@@ -22,6 +22,7 @@ import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
 import {
+  JUDGE_MIN,
   PRICE,
   REPO_ROOT,
   assertRunFlags,
@@ -31,8 +32,11 @@ import {
   isDryRun,
   lazyAnthropic,
   makeCost,
+  makeJudge,
+  readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
@@ -48,6 +52,13 @@ const SHORT_SKILL_PATH = join(
   'onboarding-friend-short.md',
 );
 const VOICE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'intake', 'friend-voice.ts');
+// A declined place is graded on meaning (VIL-641): fixtures with `watchFor` are judged.
+const PLACE_JUDGE_SYSTEM = judgePrompt('friend-place');
+// A conditional ("your ZIP would let me look near you") is not an empty promise; the
+// Haiku judge read it as one against its own rubric, so this judge is the Sonnet tier.
+const PLACE_JUDGE_TIER = 'sonnet';
+/** Judge input ceiling per verdict, for the estimate. */
+const JUDGE_ESTIMATE_OUTPUT_TOKENS = 4096;
 
 process.env.LINQ_GROUP_ONBOARDING_V2_ENABLED = 'false';
 
@@ -60,10 +71,14 @@ function inputFor(voice, fixture) {
     fixture.over.language ?? 'en',
     NAME_ASK_STORED,
   );
-  const retry = fixture.retry
-    ? { retry: { draft: fixture.retry.draft, problem: voice.retryProblem(fixture.retry.reason) } }
-    : {};
-  return { ...base, ...fixture.over, ...retry };
+  const input = { ...base, ...fixture.over };
+  if (!fixture.retry) return input;
+  // With askNote the retry is briefed as speakFriend briefs it: the problem, for this
+  // step, then what the message should ask. Older fixtures keep their recorded bytes.
+  const problem = fixture.retry.askNote
+    ? `${voice.retryProblem(fixture.retry.reason, undefined, input)} This message should ${voice.askInWords(input.step, input)}.`
+    : voice.retryProblem(fixture.retry.reason);
+  return { ...input, retry: { draft: fixture.retry.draft, problem } };
 }
 
 function estimateTokens(value) {
@@ -75,6 +90,15 @@ function estimateTokens(value) {
     else other += 1;
   }
   return Math.ceil(latin / 4) + other;
+}
+
+/**
+ * A draw production refuses (VIL-645: call markup the model wrote into a field) is
+ * replayed as that refusal, named, never graded and never a crash of the whole run.
+ */
+function refusal(err) {
+  if (err?.name !== 'StructuredOutputError') throw err;
+  return { refused: err.outcome, value: null };
 }
 
 async function loadSubject() {
@@ -95,8 +119,20 @@ async function estimate() {
     const input =
       estimateTokens((fixture.prompt === 'short' ? shortSkill : skill).instructions) +
       estimateTokens(JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture)))) +
-      estimateTokens(voice.onboardingReplyToolSchema());
-    usd += (input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output;
+      estimateTokens(voice.onboardingReplyToolSchema(inputFor(voice, fixture)));
+    // A turn graded through code may draw its one rewrite too.
+    const draws = fixture.throughCode ? 2 : 1;
+    usd +=
+      draws *
+      ((input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output);
+    if (fixture.watchFor) {
+      const judgePrice = PRICE[await readJudgeModel(PLACE_JUDGE_TIER)];
+      if (!judgePrice) throw new Error('no list price for the judge model');
+      const judgeInput = estimateTokens(PLACE_JUDGE_SYSTEM) + 2000;
+      usd +=
+        (judgeInput / 1e6) * judgePrice.input +
+        (JUDGE_ESTIMATE_OUTPUT_TOKENS / 1e6) * judgePrice.output;
+    }
   }
   console.info(
     `friend-marks: estimate to record ${FRIEND_MARKS_FIXTURES.length} fixtures on ${lane.model}, priced at max_tokens. live API calls: 0. nothing written. $${usd.toFixed(4)} USD. Approved cap $${HARD_CAP_USD}.`,
@@ -122,31 +158,81 @@ async function record() {
   const getClient = lazyAnthropic('friend-marks');
   const cost = makeCost();
   const cachedOnly = process.argv.includes('--cached-only');
-  const { skill, shortSkill, voice, lane } = await loadSubject();
+  const { voice, lane } = await loadSubject();
+  const judge = makeJudge(
+    await readJudgeModel(PLACE_JUDGE_TIER),
+    PLACE_JUDGE_SYSTEM,
+    'friend-marks',
+    cachedOnly,
+    getClient,
+    cost,
+  );
 
-  let failed = 0;
-  for (const fixture of FRIEND_MARKS_FIXTURES) {
-    const result = await cachedToolCall({
-      tag: `friend-marks:${fixture.id}`,
+  // The system and the tool the live composer builds for this turn.
+  const draw = async (turn, prompt, tag) =>
+    cachedToolCall({
+      tag,
       lane,
-      system: (fixture.prompt === 'short' ? shortSkill : skill).instructions,
-      userMessage: JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture))),
+      system: (await voice.friendVoiceSystem(turn, prompt === 'short')).system,
+      userMessage: JSON.stringify(voice.friendVoiceContext(turn)),
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
-      toolSchema: voice.onboardingReplyToolSchema(),
-      maxTokens:
-        fixture.prompt === 'short'
-          ? voice.ONBOARDING_REPLY_SHORT_MAX_TOKENS
-          : voice.ONBOARDING_REPLY_MAX_TOKENS,
+      toolSchema: voice.onboardingReplyToolSchema(turn),
+      maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
     });
+
+  let failed = 0;
+  // A metric, not a gate: how often speakFriend refused the first draft and rewrote it.
+  const firstDrafts = { graded: 0, refused: 0 };
+  for (const fixture of FRIEND_MARKS_FIXTURES) {
+    const input = inputFor(voice, fixture);
+    const tag = `friend-marks:${fixture.id}`;
+    let result;
+    let sent = null;
+    const draws = [];
+    if (fixture.throughCode) {
+      // speakFriend itself runs on the recorded draws: its refusal and its one rewrite
+      // are the code under test, and the reply graded is the one it would send.
+      const composer = {
+        async compose(turn, options) {
+          const prompt = options?.prompt === 'short' ? 'short' : 'full';
+          const drawn = await draw(turn, prompt, draws.length === 0 ? tag : `${tag}:rewrite`).catch(
+            (err) => {
+              // Refused as production refuses it: speakFriend gets the throw and rewrites.
+              draws.push(refusal(err));
+              throw err;
+            },
+          );
+          draws.push(drawn);
+          if (drawn.dry) throw new Error('dry run');
+          return voice.parseReplyTool(drawn.value);
+        },
+      };
+      const spoken = await voice.speakFriend(composer, input, { page: async () => undefined });
+      // The fields graded are the sent draw's, as production keeps them.
+      result = spoken.source === 'retry' ? draws[draws.length - 1] : draws[0];
+      firstDrafts.graded += 1;
+      if (draws.length > 1) firstDrafts.refused += 1;
+      sent = {
+        source: spoken.source,
+        placeDeclined: spoken.capture.placeDeclined,
+        body: spoken.body,
+      };
+    } else {
+      result = await draw(input, fixture.prompt === 'short' ? 'short' : 'full', tag).catch(refusal);
+      if (result.refused) {
+        failed += 1;
+        console.info(`FAIL  ${fixture.id.padEnd(24)} refused:${result.refused}`);
+        continue;
+      }
+    }
     if (result.dry) {
       console.info(`DRY   ${fixture.id}`);
       continue;
     }
-    const input = inputFor(voice, fixture);
     const kept = fixture.groupBubbles
       ? (
           voice.findShowGroupBubbles(
@@ -156,17 +242,47 @@ async function record() {
           ) ?? []
         ).filter((bubble) => bubble.length > 0).length
       : 0;
-    const misses = friendMarksMisses(fixture, result.value, { keptGroupBubbles: kept });
+    // A reply code would send: the same judge speakFriend runs, for this step.
+    const judged = fixture.sendable
+      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+      : null;
+    const context = voice.friendVoiceContext(input);
+    const meaning = fixture.watchFor
+      ? await judge(fixture.id, {
+          facts: context.facts,
+          step: input.step,
+          recentTurns: input.recentTurns,
+          parentWords: input.parentWords,
+          reply: sent ? sent.body : String(result.value?.reply ?? ''),
+          watchFor: fixture.watchFor,
+        })
+      : null;
+    if (meaning?.dry) continue;
+    const misses = friendMarksMisses(fixture, result.value, {
+      keptGroupBubbles: kept,
+      judged,
+      meaning,
+      meaningMin: JUDGE_MIN,
+      sent,
+    });
     if (misses.length > 0) failed += 1;
     console.info(
-      `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
+      `${(misses.length === 0 ? 'PASS' : 'FAIL').padEnd(5)} ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
     );
-    if (fixture.printReply || fixture.groupBubbles)
-      console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);
+    if (draws[0]?.refused) console.info(`      first draw refused: ${draws[0].refused}`);
+    else if (fixture.printReply || fixture.groupBubbles)
+      console.info(`      reply: ${JSON.stringify((draws[0] ?? result).value?.reply ?? null)}`);
+    if (draws.length > 1) {
+      console.info(`      rewrite: ${JSON.stringify(draws[1]?.value?.reply ?? null)}`);
+    }
+    if (sent) console.info(`      sent (${sent.source}): ${JSON.stringify(sent.body)}`);
     if (fixture.groupBubbles)
       console.info(`      groupLeads: ${JSON.stringify(result.value?.groupLeads ?? null)}`);
   }
 
+  console.info(
+    `first drafts refused and rewritten: ${firstDrafts.refused} of ${firstDrafts.graded} turns graded through code`,
+  );
   console.info(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );

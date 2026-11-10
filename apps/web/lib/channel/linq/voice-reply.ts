@@ -4,6 +4,7 @@ import {
   sendLinqVoiceMemo,
   uploadLinqAttachment,
 } from '~/lib/channel/outbound-transport';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { clearForNonAnthropic } from '~/lib/pipeline/provider-clearance';
 import { linqVoiceMemosEnabled } from './config';
 import type { LinqIMessageCapability } from './transport';
@@ -45,8 +46,6 @@ export type VoiceReplyOutcome =
   | { sent: 'voice_memo'; providerMessageId: string | null }
   | { sent: 'text'; why: string; code?: string };
 
-const LINK = /https?:\/\/|www\./i;
-
 function codeOf(err: unknown): string {
   if (err instanceof VoiceSpeechError) return err.code;
   if (err && typeof err === 'object' && typeof (err as { code?: unknown }).code === 'string') {
@@ -71,7 +70,7 @@ export async function sendReplyAsVoiceMemo(
   if (input.isGroup || !input.chatId) return { sent: 'text', why: 'not_one_to_one' };
   if (input.textOnly) return { sent: 'text', why: 'text_only_turn' };
   if (!input.text.trim()) return { sent: 'text', why: 'empty' };
-  if (LINK.test(input.text)) return { sent: 'text', why: 'has_link' };
+  if (hasLinkShape(input.text)) return { sent: 'text', why: 'has_link' };
   const capability = await (
     deps.capability ?? ((address) => checkLinqIMessageCapability({ address }))
   )(input.address).catch(() => null);

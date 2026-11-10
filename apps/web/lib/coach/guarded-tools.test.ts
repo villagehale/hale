@@ -88,7 +88,7 @@ describe('tool guard rails', () => {
     const db = fakeDb([]);
     const ask = (input: Record<string, unknown>) =>
       invokeTool(
-        frameworkGuidanceTool(),
+        frameworkGuidanceTool('CA'),
         input,
         { familyId: FAMILY_ID, actor: 'user-1' },
         buildGuardDeps(db),

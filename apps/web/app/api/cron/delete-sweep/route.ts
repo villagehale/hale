@@ -4,6 +4,7 @@ import { sweepRosterRetention } from '~/lib/channel/linq/roster-retention';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { erasureGoogleLogLine, runDeletionSweep, sweepMessageRetention } from '~/lib/rights/delete';
+import { sweepRecordRetention } from '~/lib/rights/record-retention';
 import { remoteProfileDeleterFromEnv } from '~/lib/signup/browser-use/runner';
 import { sweepExpiredProviderSessions } from '~/lib/signup/browser-use/vault';
 
@@ -22,15 +23,18 @@ export const runtime = 'nodejs';
  * a thirty-day stamp and are purged here rather than on their own feature's cron for one
  * reason: that cron is behind the F14 dark-launch flag, and a retention promise that
  * stops being kept when a feature flag flips is not a retention promise. The Linq group
- * roster's numbers ride on this same cron, but only while group onboarding v2 is on.
- * Flag off the call returns `flag_off` and releases nothing, which is today's sweep.
- * 0158 and 0159 have to be applied together before that flag goes on: 0159 is what
- * makes the number column nullable, and the release UPDATE throws if it is still NOT NULL.
+ * roster's numbers ride on this same cron for the same reason, whatever the group flags
+ * say. 0159 is what makes the number column nullable; the release UPDATE throws if it is
+ * still NOT NULL.
  *
  * MESSAGE RETENTION IS NOT FLAG-GATED. A message body or transcript older than
  * 365 days is removed on this same hourly run (`sweepMessageRetention`). The
  * privacy promise is a year, and a promise that stops when a flag flips is not
  * a promise. The step logs counts only.
+ *
+ * NOR ARE THE RECORDS WITH NO CLOCK OF THEIR OWN (`sweepRecordRetention`): the words of
+ * an episode a parent removed go thirty days after the removal, and a proactive candidate
+ * row goes after a year. Counts only.
  *
  * PROVIDER SIGNUP SESSIONS ARE NOT FLAG-GATED EITHER. A captured provider login
  * (cookies, never a password) lives at most 48 hours; past that the row and its
@@ -47,6 +51,7 @@ export const GET = cronRoute('delete-sweep', async () => {
   const summary = await runDeletionSweep(db());
   const checkInNotesPurged = await purgeExpiredCheckInNotes(db());
   const messageRetention = await sweepMessageRetention(db());
+  const recordRetention = await sweepRecordRetention(db());
   const groupRosterRetention = await sweepRosterRetention(db());
   const providerSessions = await sweepExpiredProviderSessions(
     db(),
@@ -78,6 +83,13 @@ export const GET = cronRoute('delete-sweep', async () => {
     console.info(messageRetention, 'cron/delete-sweep: removed message content past 12 months');
   }
   if (
+    recordRetention.removedEpisodesBlanked > 0 ||
+    recordRetention.proactiveCandidatesDeleted > 0
+  ) {
+    // Counts only (rule #1).
+    console.info(recordRetention, 'cron/delete-sweep: removed records past their window');
+  }
+  if (
     groupRosterRetention.outcome === 'swept' &&
     (groupRosterRetention.familylessRostersDeleted > 0 || groupRosterRetention.numbersReleased > 0)
   ) {
@@ -102,6 +114,7 @@ export const GET = cronRoute('delete-sweep', async () => {
       google,
       checkInNotesPurged,
       messageRetention,
+      recordRetention,
       groupRosterRetention,
       providerSessions,
     },

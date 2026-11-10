@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import {
   ACTIVITY_CATEGORIES,
   type ActivityCategoryId,
@@ -127,6 +128,22 @@ describe('categoriesForAges', () => {
 });
 
 describe('collectActivityMap', () => {
+  it('drops a link-shaped word from a map line and keeps the rest of it', async () => {
+    const { finder } = finderWith({ learning_sports_arts: [pick('Kidsclub.ca Swim')] });
+    const map = await collectActivityMap({
+      finder,
+      children: [{ name: null, ageMonths: 50, dobPrecision: 'derived' }],
+      town: 'Springfield',
+      civic: [civic('Story time', 'Funhall.app Library')],
+      familyId: FAMILY,
+      today: TODAY,
+    });
+    const lines = map.lines.join('\n');
+    expect(lines).toContain('Swim (ages 3-5)');
+    expect(lines).toContain('Story time at Library');
+    for (const line of map.lines) expect(hasLinkShape(line), line).toBe(false);
+  });
+
   it('does not show the same occurrence twice across categories', async () => {
     const same = pick('Workshop', {
       sourceUrl: 'https://example.org/program',

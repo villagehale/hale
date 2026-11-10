@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gives the not_https reason plainly as a link that isn't secure, and says nothing was saved. It carries no link and asks once for the course page from Springfield's portal. 'I'll pick it up from there' just follows from asking for the page, so it is not an invented promise. It is in English, uses a friendly tone, names no child and states no extra facts.",
+    "score": 5
+  }
+}

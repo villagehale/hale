@@ -90,6 +90,7 @@ async function seedFact(familyId: string, seed: FactSeed): Promise<string> {
     factValue: { summary: seed.factKey },
     confidence: seed.confidence ?? 0.9,
     inferredBy: seed.inferredBy ?? 'chat_distiller',
+    heard: 'unrecorded',
     validFrom: seed.validFrom ?? daysBefore(120),
   });
   return factId;

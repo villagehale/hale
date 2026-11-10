@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The core is right: piano is not among the visible events, and the reply does not guess that a private item might be piano. But \"or next\" claims a check of next week, which isn't in what Hale could see, so that detail isn't traceable. The follow-up packs two alternatives into one question, including offering to add it on Wednesday with no time, which pads past the complete answer of \"I do not see piano on this week.\"",
+    "score": 3
+  }
+}

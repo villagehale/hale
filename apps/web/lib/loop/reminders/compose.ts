@@ -6,6 +6,7 @@ import { ZodError, z } from 'zod';
 import type { RecordAgentRunInput } from '~/lib/agent-run';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkBeyond } from '~/lib/format/link-shape';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { eventDescriptor, isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild, ReminderEventView } from '~/lib/loop/templates/reminder/payload';
@@ -265,8 +266,6 @@ export function reminderUserMessage(facts: ReminderFacts): string {
   return JSON.stringify(facts);
 }
 
-const URL_SHAPE = /https?:\/\/\S+/gi;
-
 /**
  * Structural refusals only, never wording or length: no texts, an empty text, or a
  * link that was not handed. The model decides how many texts and where to split
@@ -277,9 +276,8 @@ export function reminderRefusals(texts: readonly string[], facts: ReminderFacts)
   if (trimmed.length === 0 || trimmed.every((t) => t === '')) return ['empty'];
   const found: string[] = [];
   if (trimmed.some((t) => t === '')) found.push('empty_text');
-  const urls = trimmed.flatMap((t) => t.match(URL_SHAPE) ?? []);
-  const link = facts.planLink;
-  if (urls.some((url) => link === null || !url.startsWith(link))) found.push('other_link');
+  const handed = facts.planLink === null ? [] : [facts.planLink];
+  if (trimmed.some((t) => hasLinkBeyond(t, handed))) found.push('other_link');
   return found;
 }
 

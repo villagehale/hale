@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what an approval_card asks. It names the window, the date and time (Sept 15, 7:00 a.m., not shifted by residentsFirstDays) and both children, and includes the correct link. It explains the residents-first timing and the general public opening 7 days later. It shows Max in the band and Mia just outside it, and says plainly that Hale never registers. All four texts are listed with correct timings, and the course-link tip is given because courseLinkTip is true. It asks no question, invents nothing and reads naturally in English.",
+    "score": 5
+  }
+}

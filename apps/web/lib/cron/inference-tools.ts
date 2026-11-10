@@ -46,6 +46,14 @@ const RECENT_LIMIT = 30;
 /** How many current facts the snapshot carries to diff against. */
 const CURRENT_FACT_LIMIT = 100;
 
+/**
+ * VIL-599 · the nightly writer cannot say which adult a fact came from: the family's
+ * conversation is one thread whose turns name no author, and an event names no speaker.
+ * Its facts are held back from every adult while another is on record, until a write
+ * made at the turn (which knows the speaker) replaces them.
+ */
+const NIGHTLY_HEARD = 'unrecorded' as const;
+
 const memoryFactType = z.enum([
   'preference',
   'routine',
@@ -207,7 +215,11 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
 
       const [recentEpisodes, currentFacts] = await Promise.all([
         episodesForContext(database, ctx.familyId, { now, limit: RECENT_LIMIT }),
-        factsForContext(database, ctx.familyId, { now, limit: CURRENT_FACT_LIMIT }),
+        factsForContext(database, ctx.familyId, {
+          now,
+          reader: 'memory_writer',
+          limit: CURRENT_FACT_LIMIT,
+        }),
       ]);
 
       const snapshot: MemorySnapshot = {
@@ -325,6 +337,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         inferredBy: 'memory_inferencer',
         source: 'inferred',
         sourceEventId,
+        heard: NIGHTLY_HEARD,
         now,
         memoryClass: input.memoryClass,
         disposition: input.disposition,
@@ -677,6 +690,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         confidence: input.confidence,
         inferredBy: 'chat_distiller',
         source: 'inferred',
+        heard: NIGHTLY_HEARD,
         now,
         memoryClass: input.memoryClass,
         disposition: input.disposition,

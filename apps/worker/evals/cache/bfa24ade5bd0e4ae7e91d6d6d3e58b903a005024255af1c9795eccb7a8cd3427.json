@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a $120 price, but the facts give price null. It also fails to say the course details couldn't be read. It does keep the date and time right, mentions the prerequisite with a warning to leave time, and asks nothing.",
+    "score": 2
+  }
+}

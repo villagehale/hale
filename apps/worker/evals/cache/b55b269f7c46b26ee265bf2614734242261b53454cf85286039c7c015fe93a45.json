@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the web find by its full title, attributes it to the library's program page, and appends the right URL. It checks the ages properly: ages 6-12 fits Ada at about 8 and not Milo at about 5. The soccer and weather details both trace to the week and the forecast. The blemish is a slightly padded shape: the 'worth confirming before you go' line, plus the extra weather sentence.",
+    "score": 4
+  }
+}

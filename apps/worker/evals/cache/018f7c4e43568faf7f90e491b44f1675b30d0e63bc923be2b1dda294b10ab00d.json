@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Most facts are right. The date, time, link and child are correct, the three texts appear with their timings, and it says plainly that Hale never registers. It also correctly gives no course-link tip. However, it ends with a question (\"Approuvez-vous ce plan ?\"), and an approval_card must ask nothing. Telling the parent to approve would be fine; a question is not. \"Pour tout le monde\" is a fair restatement, since residentsFirstDays is null.",
+    "score": 2
+  }
+}

@@ -3,7 +3,13 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { kidForAllClient, scriptedKidClient } from '~/lib/testing/kid-judge-client';
-import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
+import {
+  type TestDb,
+  createTestDb,
+  migrationFiles,
+  seedFamily,
+  seedIntegration,
+} from '~/lib/testing/pglite';
 import { type CalendarMirrorKidJudge, reconcileCalendarMirrors } from './calendar-mirror';
 import {
   EVENT_NOTES_FAILED,
@@ -391,6 +397,35 @@ describe('reconcileCalendarMirrors', () => {
       .from(schema.channelMessages)
       .where(eq(schema.channelMessages.familyId, family.familyId));
     expect(messages).toEqual([]);
+  });
+
+  it('stores where the parent stands, and rewrites a copy that has none (VIL-633)', async () => {
+    const stranger = {
+      organizer: { email: 'someone@example.test' },
+      attendees: [
+        { self: true, responseStatus: 'needsAction' },
+        { email: 'someone@example.test', responseStatus: 'accepted' },
+      ],
+    };
+    await reconcile([swim(stranger)]);
+    expect((await rows())[0]?.calendarStanding).toBe('invited');
+
+    // A copy mirrored before the column existed is written on the next sweep.
+    await db.database
+      .update(schema.familyEvents)
+      .set({ calendarStanding: null })
+      .where(eq(schema.familyEvents.googleEventId, 'ev-swim'));
+    expect(await reconcile([swim(stranger)])).toMatchObject({ updated: 1 });
+    expect((await rows())[0]?.calendarStanding).toBe('invited');
+
+    // The parent says yes: the copy follows.
+    await reconcile([
+      swim({
+        ...stranger,
+        attendees: [{ self: true, responseStatus: 'accepted' }, stranger.attendees[1]],
+      }),
+    ]);
+    expect((await rows())[0]?.calendarStanding).toBe('accepted');
   });
 
   it('does not mirror a decline, a past event, an out-of-office block, or an all-day busy block', async () => {
@@ -1155,5 +1190,32 @@ describe('reconcileCalendarMirrors - the kid gate (VIL-548)', () => {
       { source: 'parent' },
       { source: 'parent', remindersRestored: 2 },
     ]);
+  });
+});
+
+/** Found by suffix, so it survives renumbering at merge. */
+describe('the calendar_standing migration (VIL-633)', () => {
+  const files = migrationFiles();
+  const file = files.find((f) => f.endsWith('_family_events_calendar_standing.sql'));
+  let old: TestDb;
+
+  beforeAll(async () => {
+    if (!file) throw new Error('calendar_standing migration file not found');
+    old = await createTestDb(files[files.indexOf(file) - 1]);
+  });
+
+  afterAll(async () => {
+    await old.close();
+  });
+
+  it('applies twice and leaves one nullable text column', async () => {
+    const column = () =>
+      old.client.query<{ data_type: string; is_nullable: string }>(
+        "SELECT data_type, is_nullable FROM information_schema.columns WHERE table_name = 'family_events' AND column_name = 'calendar_standing'",
+      );
+    expect((await column()).rows).toEqual([]);
+    await old.applyMigration(file as string);
+    await expect(old.applyMigration(file as string)).resolves.toBeUndefined();
+    expect((await column()).rows).toEqual([{ data_type: 'text', is_nullable: 'YES' }]);
   });
 });

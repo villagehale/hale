@@ -87,6 +87,7 @@ describe('offerSignupFromFacts (production caller)', () => {
     if (!result.ok) throw new Error(result.reason);
     expect(result.text).toBe(`Plan text from the model.\n${HREF}`);
     expect(planFacts[0]?.moment).toBe('offer');
+    expect(planFacts[0]?.mode).toBe('auto');
     expect(planFacts[0]?.sessions.map((s) => s.label)).toEqual(['Tue 4:30']);
     expect(writer.facts).toHaveLength(0);
     const [row] = await db.database
@@ -109,6 +110,65 @@ describe('offerSignupFromFacts (production caller)', () => {
       .from(schema.authorizedSignupOffers)
       .where(eq(schema.authorizedSignupOffers.id, ordinary.offerId));
     expect(plain?.planOpensAt).toBeNull();
+  });
+
+  it('an ActiveNet offer is a plan only while the assisted switch is on, and is written as assisted', async () => {
+    const seeded = await family();
+    const href = 'https://anc.ca.apm.activecommunities.com/exampleville/activity/search/detail/7';
+    const opensAt = new Date(NOW.getTime() + 20 * 60 * 60_000);
+    const planFacts: PlanReplyFacts[] = [];
+    const writer = echoOfferWriter();
+    const run = () =>
+      offerSignupFromFacts(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          childId: seeded.childId,
+          now: NOW,
+          planOpensAt: opensAt,
+          facts: {
+            source: 'chat',
+            evidence: 'Winter swim registration opens tomorrow at 7',
+            registrationUrl: href,
+            sessions: [SESSION],
+            approvedPriceCents: null,
+            language: null,
+          },
+        },
+        {
+          writer,
+          planWriter: {
+            write: async (facts) => {
+              planFacts.push(facts);
+              return 'Plan text from the model.';
+            },
+          },
+        },
+      );
+    const close = (offerId: string) =>
+      db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ status: 'handed_back' })
+        .where(eq(schema.authorizedSignupOffers.id, offerId));
+
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    const off = await run();
+    if (!off.ok) throw new Error(off.reason);
+    expect(writer.facts).toHaveLength(1);
+    expect(planFacts).toHaveLength(0);
+    await close(off.offerId);
+
+    vi.stubEnv('REGISTRATION_ASSISTED_RUN_ENABLED', 'true');
+    const on = await run();
+    if (!on.ok) throw new Error(on.reason);
+    expect(planFacts.map((f) => [f.moment, f.mode])).toEqual([['offer', 'assisted']]);
+    expect(on.text).toBe(`Plan text from the model.\n${href}`);
+    const [row] = await db.database
+      .select()
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.id, on.offerId));
+    expect(row?.planOpensAt?.toISOString()).toBe(opensAt.toISOString());
   });
 
   it('writes from facts, records the offer, and audits without a locked sentence', async () => {

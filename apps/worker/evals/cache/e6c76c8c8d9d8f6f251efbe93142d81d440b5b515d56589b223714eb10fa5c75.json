@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly says piano isn't on the schedule and does not guess at the private items. One blemish: 'or next' claims a week that isn't shown, so it isn't traceable to what Hale could see. The follow-up question is reasonable but more than the answer needed.",
+    "score": 4
+  }
+}

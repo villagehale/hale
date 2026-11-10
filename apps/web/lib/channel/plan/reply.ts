@@ -6,7 +6,7 @@ import {
   deriveStage,
   playbookFor,
 } from '@hale/types';
-import { factsForContext } from '@hale/worker/memory-context';
+import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import type { ReplySent } from '~/lib/channel/router/reply-route';
@@ -126,7 +126,8 @@ export interface PlanReplyDeps {
   /** The question the parent originally asked, read back off their own thread. */
   loadQuestion(database: Database, conversationId: string, current: string): Promise<string | null>;
   loadChild(database: Database, familyId: string, childId: string): Promise<PlanChild | null>;
-  loadFacts(database: Database, familyId: string): Promise<string[]>;
+  /** `reader`: the parent the plan is written for (VIL-599). */
+  loadFacts(database: Database, familyId: string, reader: FactReader): Promise<string[]>;
   /** The family's own clock, so the day Hale promises is the day they will live. */
   loadTimeZone(database: Database, familyId: string): Promise<string>;
   composer: PlanComposer;
@@ -208,7 +209,7 @@ export async function handlePlanYes(
 
   const [question, facts, timeZone] = await Promise.all([
     deps.loadQuestion(database, input.conversationId, input.body),
-    deps.loadFacts(database, input.familyId),
+    deps.loadFacts(database, input.familyId, { adult: input.parentUserId }),
     deps.loadTimeZone(database, input.familyId),
   ]);
 
@@ -479,10 +480,12 @@ export async function loadPlanChild(
 export async function loadPlanFacts(
   database: Database,
   familyId: string,
+  reader: FactReader,
   now: Date = new Date(),
 ): Promise<string[]> {
   const rows = await factsForContext(database, familyId, {
     now,
+    reader,
     limit: MAX_PLAN_FACTS,
     scope: 'family',
     factTypes: ['preference'],
