@@ -376,9 +376,9 @@ async function keepOne(
   // already been answered must not cost a web search (the per-search provider bill is the
   // reason this ordering is not merely tidy).
   const [place, stage, householdNames] = await Promise.all([
-    deps.reader.place(database, commitment.familyId),    deps.reader.stage(database, commitment.familyId, commitment.subjectChildId),
+    deps.reader.place(database, commitment.familyId),
+    deps.reader.stage(database, commitment.familyId, commitment.subjectChildId),
     deps.reader.householdNames(database, commitment.familyId),
-    deps.reader.location?.(database, commitment.familyId),
   ]);
   // Phase 0 AGAIN, a day later. The subject cleared it when the promise was made, but the
   // household can have changed since — a child added this morning is a name that must not
@@ -386,7 +386,8 @@ async function keepOne(
   // searched and the promise stays open for a human to see in the overdue count.
   const deidentified = deidentifyActivityQuery({
     subject,
-    town: place.status === 'known' ? place.town : null,    stage,
+    town: place.status === 'known' ? place.town : null,
+    stage,
     householdNames,
   });
   if (!deidentified.ok) {
