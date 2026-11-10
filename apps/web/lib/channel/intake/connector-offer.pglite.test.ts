@@ -5,6 +5,7 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV } from './connector-card-unsent-flag';
 import {
   type ConnectorOfferPorts,
   calendarCardDedupeKey,
@@ -37,6 +38,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv(CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV, 'true');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -187,5 +189,26 @@ describe('a connector card whose link never went', () => {
     const third = await offerCalendar(parent, imessageTransport(false));
     expect(third.calendar).toBe('already_sent');
     expect(await calendarClaims(parent.familyId)).toHaveLength(2);
+  });
+
+  it('dark, a link_unsent claim stays accepted and keeps the family key', async () => {
+    vi.stubEnv(CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV, undefined);
+    const parent = await seedParent();
+    refusePreview();
+
+    const outcome = await offerCalendar(parent, imessageTransport(true));
+
+    expect(outcome.calendar).toBe('send_failed');
+    expect(await calendarClaims(parent.familyId)).toEqual([
+      expect.objectContaining({
+        status: 'sent',
+        errorCode: null,
+        dedupeKey: calendarCardDedupeKey(parent.familyId),
+      }),
+    ]);
+
+    const again = await offerCalendar(parent, imessageTransport(false));
+    expect(again.calendar).toBe('already_sent');
+    expect(await calendarClaims(parent.familyId)).toHaveLength(1);
   });
 });
