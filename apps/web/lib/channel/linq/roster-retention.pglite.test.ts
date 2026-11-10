@@ -40,7 +40,7 @@ afterEach(async () => {
 
 function nextPhone(): string {
   phones += 1;
-  return `+1416555${String(1000 + phones).slice(-4)}`;
+  return `+1202555${String(100 + phones).padStart(4, '0')}`;
 }
 
 async function seedFamily(options: { scheduledDeletionAt?: Date } = {}) {
@@ -127,26 +127,61 @@ async function retentionAudit() {
     .where(eq(schema.auditLog.actionTaken, 'linq_group_roster_numbers_released'));
 }
 
-describe('sweepRosterRetention — flag off', () => {
-  it("releases nothing and names flag_off, which is today's delete sweep", async () => {
+describe('sweepRosterRetention — no flag keeps a number past its purpose', () => {
+  it('sweeps with group onboarding v2 unset, and keeps a roster still inside the window', async () => {
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
-    const rosterId = await seedRoster({
-      chatId: 'chat-flag-off',
-      familyId: null,
-      status: 'no_family',
-      updatedAt: PAST_RETENTION,
-    });
-    const memberId = await seedMember({
-      rosterId,
-      chatId: 'chat-flag-off',
-      status: 'declined',
-      updatedAt: PAST_RETENTION,
-    });
+    try {
+      const familyId = await seedFamily();
+      const oldRoster = await seedRoster({
+        chatId: 'chat-flag-unset',
+        familyId: null,
+        status: 'no_family',
+        updatedAt: PAST_RETENTION,
+      });
+      await seedMember({
+        rosterId: oldRoster,
+        chatId: 'chat-flag-unset',
+        status: 'declined',
+        updatedAt: PAST_RETENTION,
+      });
+      const familyRoster = await seedRoster({
+        chatId: 'chat-flag-unset-family',
+        familyId,
+        status: 'partial',
+        updatedAt: WITHIN_RETENTION,
+      });
+      const declined = await seedMember({
+        rosterId: familyRoster,
+        chatId: 'chat-flag-unset-family',
+        status: 'declined',
+        updatedAt: PAST_RETENTION,
+      });
+      const young = await seedMember({
+        rosterId: familyRoster,
+        chatId: 'chat-flag-unset-family',
+        status: 'declined',
+        updatedAt: WITHIN_RETENTION,
+      });
 
-    expect(await sweepRosterRetention(db.database, NOW)).toEqual({ outcome: 'flag_off' });
-    expect(await rosterChats()).toEqual(['chat-flag-off']);
-    expect((await member(memberId.id))?.encrypted).not.toBeNull();
-    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+      expect(await sweepRosterRetention(db.database, NOW)).toEqual({
+        outcome: 'swept',
+        familylessRostersDeleted: 1,
+        familylessMembersDeleted: 1,
+        numbersReleased: 1,
+        numbersReleasedWithoutFamily: 0,
+        familiesAudited: 1,
+      });
+      expect(await rosterChats()).toEqual(['chat-flag-unset-family']);
+      expect(await member(declined.id)).toEqual({
+        encrypted: null,
+        hash: declined.hash,
+        status: 'declined',
+      });
+      // Positive control: the sweep is bounded by the window, not by the flag.
+      expect((await member(young.id))?.encrypted).not.toBeNull();
+    } finally {
+      vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    }
   });
 });
 

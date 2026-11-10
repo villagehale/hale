@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gets the deadline wrong. It says the offer runs out 'tomorrow at 9 a.m.', but the deadline is Wednesday, September 16 at 11:00 p.m., which is tonight, two hours from now. 'Tomorrow at 9 a.m.' also contradicts the 'about 2 hours left' in the same text. It never says the clock is the town's 36-hour response window starting from the parent's own message on Tuesday at 11:00 a.m., so it gives no start for the clock. Framing it as a 'waitlist offer' running out also implies an offer that the facts don't establish.",
+    "score": 1
+  }
+}

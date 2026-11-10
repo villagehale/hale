@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, named Ottawa venues taken from the operators' own pages, and both run on Tuesday, matching the watchFor window. The message leads with the best pick by name and attributes each one (\"their site says\", \"Global Child Care Services says\"). Every time and price matches the picks. Under no_page_read, \"I could not get into their page today\" is the earned form, and there is no negative claim about page contents. It has no question, no link and no coming-back promise, which is correct with watch false. Leaving out the Inuit-only group is a reasonable fit decision, not withholding.",
+    "score": 5
+  }
+}

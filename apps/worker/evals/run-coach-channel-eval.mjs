@@ -115,7 +115,9 @@ import {
   COACH_CHANNEL_FIXTURES,
   FIXTURE_CHILDREN,
   FIXTURE_COURSE_ID,
+  FIXTURE_DAY_TRUTH,
   FIXTURE_EVENTS,
+  FIXTURE_FORECAST,
   FIXTURE_NOW,
   FIXTURE_TIMEZONE,
   FIXTURE_VILLAGE,
@@ -123,6 +125,7 @@ import {
   FIXTURE_WEEK_SUMMARY,
   REFUSAL_MARKERS,
 } from './coach-channel-fixtures.mjs';
+import { knownMissState } from './coach-channel-known-miss.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
 import { nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
@@ -174,6 +177,9 @@ const FRAMEWORK_TOOL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'frame
  * no `~/` alias — a tilde import here is unresolvable and fails the eval at load. */
 const CONTEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
+/** The REAL family-local clock (VIL-435). It reaches for no `~/` alias. */
+const LOCAL_NOW_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'local-now.ts');
+const LOCAL_DAY_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-local-day.md');
 /** Lit-only card addendum (VIL-500). Appended on experience-card fixtures, never on the rest. */
 const EXPERIENCE_CARD_SKILL_PATH = join(
   REPO_ROOT,
@@ -253,6 +259,20 @@ const PRIVATE_EVENT_WHAT = 'A private calendar item';
  * they are live is a test that feeds them the sentences they exist to catch. */
 
 const NOW = new Date(FIXTURE_NOW);
+
+/** `localNow` and `forecast` as the runtime puts them on every turn whose family has a
+ * zone and an area (channel/coach/runtime.ts). Set in main(). */
+let localDay = {};
+
+// ── replicated: apps/web/lib/channel/coach/local-day.ts forecastFacts ─────────
+// local-day.ts reaches for the `~/` alias, which the tsx loader here cannot resolve.
+function forecastFacts(outlooks) {
+  const weekday = new Intl.DateTimeFormat('en-CA', { weekday: 'long', timeZone: 'UTC' });
+  return outlooks.map((day) => ({
+    ...day,
+    weekday: weekday.format(new Date(`${day.date}T12:00:00Z`)),
+  }));
+}
 
 /** The two identifying strings loadAgentContext injects besides the children. */
 const CONTEXT_PARENT_NAME = 'Sam';
@@ -1159,6 +1179,7 @@ function channelContext(fixture, compact, severed = false) {
     // reply is one it composed — and the skill's standing rule is that a URL it was
     // not given is a URL it invented.
     nowIso: NOW.toISOString(),
+    ...localDay,
     // What Hale is holding an answer for, in Hale's own words (channel/coach/runtime.ts).
     // Empty is the ordinary case and means Hale is waiting on nothing — which is exactly
     // the state a "yes" that matches nothing arrives in.
@@ -1378,6 +1399,8 @@ function groundedHay(fixture, toolResults) {
   // by the caller and only on a turn that called share_referral_link — see the call
   // site; it is a link the RUNTIME appended, not one the model wrote.
   const parts = [fixture.text, FIXTURE_WEEK_SUMMARY, JSON.stringify(toolResults)];
+  // The day facts on the context ground too, and so does what that day really is.
+  parts.push(JSON.stringify(localDay), FIXTURE_DAY_TRUTH);
   // The injected context grounds too: loadAgentContext hands the model every NON-teen
   // child by name (a teenager arrives as stage only), so naming one of them is recall,
   // not invention. The teen's name is deliberately absent here — if it ever reaches a
@@ -1872,6 +1895,14 @@ async function main() {
   const factSourceAddendum = await agent.loadSkill(
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-fact-source.md'),
   );
+  // VIL-435: production hands every turn of a family with a zone and an area these facts,
+  // and appends the addendum that reads them after the fact-source addendum.
+  const { familyLocalNow } = await tsImport(LOCAL_NOW_SRC, import.meta.url);
+  localDay = {
+    localNow: familyLocalNow(NOW, FIXTURE_TIMEZONE),
+    forecast: forecastFacts(FIXTURE_FORECAST),
+  };
+  const localDayAddendum = await agent.loadSkill(LOCAL_DAY_SKILL_PATH);
   assertLongRepliesAreNotCut();
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
@@ -1998,6 +2029,7 @@ async function main() {
       if (turnContext.memoryFacts.some((fact) => fact.seenIn)) {
         turnSkill = withAddendum(turnSkill, factSourceAddendum);
       }
+      turnSkill = withAddendum(turnSkill, localDayAddendum);
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
         cachedOnly,
@@ -2107,6 +2139,9 @@ async function main() {
             knows: {
               parent: CONTEXT_PARENT_NAME,
               city: cityFor(fixture),
+              // The day facts the model was handed, and what that day really is there.
+              ...localDay,
+              dayTruth: FIXTURE_DAY_TRUTH,
               // Ages included: a coaching answer is graded on whether it fits THIS
               // child, and a judge that cannot see how old they are would be scoring
               // the prose instead of the fit.
@@ -2293,7 +2328,9 @@ async function main() {
   }
 
   const answered = results.filter((r) => r.reply !== null);
-  const passes = results.filter((r) => r.failures.length === 0);
+  const knownMisses = results.filter((r) => knownMissState(r.fixture, r.failures) === 'covered');
+  const staleMisses = results.filter((r) => knownMissState(r.fixture, r.failures) === 'stale');
+  const passes = results.filter((r) => r.failures.length === 0 && !staleMisses.includes(r));
   const fabricating = results.filter((r) => (r.invented ?? []).length > 0);
   const ambiguous = results.find((r) => r.fixture.id === 'cancel-ambiguous-two-swims');
   const chitChat = results.find((r) => r.fixture.id === 'chit-chat');
@@ -2322,10 +2359,12 @@ async function main() {
     !severed &&
     (!voiceRequired || (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
   const segments = answered.map((r) => smsSegments(r.reply));
-  const accuracy = passes.length / results.length;
+  const accuracy = (passes.length + knownMisses.length) / results.length;
 
   console.log('\n--- corpus metrics ---');
-  console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
+  console.log(
+    `fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required${knownMisses.length ? `, ${knownMisses.length} as a known miss` : ''})`,
+  );
   console.log(`FABRICATIONS:                 ${fabricating.length}  (0 required — the hard gate)`);
   console.log(
     `destructive on ambiguous ref: ${ambiguous?.failures.some((f) => f.startsWith('drafted')) ? 1 : 0}  (0 required — the hard gate)`,
@@ -2363,6 +2402,16 @@ async function main() {
       `BELOW THE FLOOR:              ${belowFloor
         .map((r) => `${r.fixture.id} (${r.score}${r.draws ? ` of ${r.draws.join('/')}` : ''})`)
         .join(', ')}`,
+    );
+  }
+  for (const r of knownMisses) {
+    console.log(
+      `KNOWN MISS (${r.fixture.expect.knownMiss.ticket}):        ${r.fixture.id} — ${r.failures.join('; ')}`,
+    );
+  }
+  for (const r of staleMisses) {
+    console.log(
+      `KNOWN MISS NOW PASSES:        ${r.fixture.id} — remove its knownMiss marker (${r.fixture.expect.knownMiss.ticket})`,
     );
   }
   for (const r of floorWaived) {

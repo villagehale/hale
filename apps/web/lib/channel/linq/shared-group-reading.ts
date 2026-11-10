@@ -19,6 +19,7 @@ export const SHARED_GROUP_INTENTS = [
   'leave',
   'stop_me',
   'find_time',
+  'pick_time',
   'question',
   'yes',
   'no',
@@ -56,6 +57,11 @@ export interface SharedGroupReadInput {
   recent: readonly { from: 'hale' | 'member'; text: string }[];
   /** The speaker's clock, so `ruledOut` can be placed. Absent when no zone is known. */
   clock?: { now: string; timeZone: string };
+  /**
+   * VIL-459: the times Hale last offered in this chat, still ahead. A pick is one of
+   * these or nothing. `local` is the speaker's wall clock, null when no zone is known.
+   */
+  offered?: readonly { start: string; local: string | null }[];
 }
 
 export interface RuledOutSpan {
@@ -71,6 +77,10 @@ export interface SharedGroupReading {
   confidence: SharedGroupConfidence;
   /** VIL-459: on `find_time`, the times the chat said do not work. Empty otherwise. */
   ruledOut?: readonly RuledOutSpan[];
+  /** VIL-459: on `pick_time`, the offered time they chose. Null otherwise. */
+  picked?: Date | null;
+  /** VIL-459: on `find_time` / `pick_time`, a short calendar title in their words. */
+  planTitle?: string | null;
 }
 
 export interface SharedGroupReader {
@@ -85,6 +95,8 @@ const readingSchema = z
     kidName: z.string().nullable(),
     confidence: z.enum(['high', 'low']),
     ruledOut: z.array(z.object({ start: z.string(), end: z.string() }).strict()).optional(),
+    picked: z.string().nullable().optional(),
+    planTitle: z.string().nullable().optional(),
   })
   .strict();
 
@@ -106,8 +118,19 @@ export const sharedGroupReadingJsonSchema = {
         required: ['start', 'end'],
       },
     },
+    picked: { type: ['string', 'null'] },
+    planTitle: { type: ['string', 'null'] },
   },
-  required: ['intent', 'role', 'familyLabel', 'kidName', 'confidence', 'ruledOut'],
+  required: [
+    'intent',
+    'role',
+    'familyLabel',
+    'kidName',
+    'confidence',
+    'ruledOut',
+    'picked',
+    'planTitle',
+  ],
 };
 
 const UNCLEAR: SharedGroupReading = {
@@ -117,6 +140,8 @@ const UNCLEAR: SharedGroupReading = {
   kidName: null,
   confidence: 'low',
   ruledOut: [],
+  picked: null,
+  planTitle: null,
 };
 
 const STATE_CHANGE: ReadonlySet<SharedGroupIntent> = new Set([
@@ -124,6 +149,7 @@ const STATE_CHANGE: ReadonlySet<SharedGroupIntent> = new Set([
   'join',
   'leave',
   'stop_me',
+  'pick_time',
 ]);
 
 /** The user-turn payload. Shared with the eval, which replays this request shape. */
@@ -135,6 +161,7 @@ export function sharedGroupUserMessage(input: SharedGroupReadInput): string {
     people: input.people,
     recent: input.recent.slice(-6),
     ...(input.clock ? { clock: input.clock } : {}),
+    ...(input.offered?.length ? { offered: input.offered } : {}),
   });
 }
 
@@ -156,13 +183,36 @@ function blankToNull(value: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Validate a model object. Anything outside the contract is `unclear`. */
-export function parseSharedGroupReading(value: unknown): SharedGroupReading {
+const PLAN_TITLE_MAX = 80;
+
+/** The offered start the model named, matched to the instant. Null when it named none of them. */
+function offeredPick(raw: string | null | undefined, offered: readonly string[]): Date | null {
+  if (!raw) return null;
+  const at = new Date(raw).getTime();
+  if (Number.isNaN(at)) return null;
+  const match = offered.find((start) => new Date(start).getTime() === at);
+  return match ? new Date(match) : null;
+}
+
+/**
+ * Validate a model object. Anything outside the contract is `unclear`. A pick counts only
+ * as one of `offered` (the starts Hale showed the reader), so the model can never place
+ * a time Hale did not propose.
+ */
+export function parseSharedGroupReading(
+  value: unknown,
+  offered: readonly string[] = [],
+): SharedGroupReading {
   const parsed = readingSchema.safeParse(value);
   if (!parsed.success) return UNCLEAR;
-  const { intent, role, familyLabel, kidName, confidence, ruledOut } = parsed.data;
+  const { intent, role, familyLabel, kidName, confidence, ruledOut, picked, planTitle } =
+    parsed.data;
   if (STATE_CHANGE.has(intent) && confidence !== 'high') return UNCLEAR;
   if (intent === 'unclear') return UNCLEAR;
+  const pick = intent === 'pick_time' ? offeredPick(picked, offered) : null;
+  if (intent === 'pick_time' && !pick) return UNCLEAR;
+  const title =
+    intent === 'find_time' || intent === 'pick_time' ? blankToNull(planTitle ?? null) : null;
   return {
     intent,
     role,
@@ -170,6 +220,8 @@ export function parseSharedGroupReading(value: unknown): SharedGroupReading {
     kidName: blankToNull(kidName),
     confidence,
     ruledOut: intent === 'find_time' ? spansOf(ruledOut) : [],
+    picked: pick,
+    planTitle: title && title.length <= PLAN_TITLE_MAX ? title : null,
   };
 }
 
@@ -193,7 +245,10 @@ export function createSharedGroupReader(
       schema: readingSchema,
       maxTokens: SHARED_GROUP_READ_MAX_TOKENS,
     });
-    return parseSharedGroupReading(value);
+    return parseSharedGroupReading(
+      value,
+      (input.offered ?? []).map((slot) => slot.start),
+    );
   };
   return {
     async read(input) {

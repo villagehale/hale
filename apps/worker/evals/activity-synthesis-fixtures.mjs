@@ -220,4 +220,62 @@ export const SYNTHESIS_FIXTURES = [
     minSlots: 0,
     brokenMode: 'stretch_to_fit',
   },
+  {
+    id: 'us-park-district-merge',
+    // A US family (VIL-590). The park district splits one programme across its schedule
+    // grid, its fee brochure (resident and non-resident) and its registration notice.
+    subject: 'parent and child swim lessons',
+    town: 'Springfield, Illinois, United States',
+    stage: 'toddler',
+    window: 'this winter',
+    legs: [
+      {
+        angle: 'venue_site',
+        status: 'read',
+        pages_read: 1,
+        pages_refused: 0,
+        pages_truncated: 0,
+        notes: [
+          '--- page: https://lakeviewparks.example/aquatics/winter-lessons ---',
+          'WINTER 2027 AQUATICS - LAKEVIEW FAMILY AQUATIC CENTER',
+          'Session 1: Jan 11 - Feb 19',
+          'Parent/Child Swim | Tue | 9:30-10:00 AM | 6 mos - 3 yrs, adult in water | course 41207',
+          'Parent/Child Swim | Sat | 9:00-9:30 AM | 6 mos - 3 yrs, adult in water | course 41208',
+          'Preschool Swim 1 | Sat | 10:00-10:30 AM | 3 - 5 yrs, no adult',
+        ].join('\n'),
+      },
+      {
+        angle: 'municipal',
+        status: 'read',
+        pages_read: 1,
+        pages_refused: 0,
+        pages_truncated: 0,
+        notes: [
+          '--- page: https://lakeviewparks.example/brochure/winter-2027-fees ---',
+          'WINTER 2027 PROGRAM FEES',
+          'Parent/Child Swim (6 classes) ........ R $64 / NR $96',
+          'Preschool Swim 1 (6 classes) ......... R $70 / NR $105',
+          'Private lane rental (1 hr) ........... $150',
+        ].join('\n'),
+      },
+      {
+        angle: 'registration',
+        status: 'read',
+        pages_read: 1,
+        pages_refused: 0,
+        pages_truncated: 0,
+        notes: [
+          '--- page: https://lakeviewparks.example/register ---',
+          'HOW TO REGISTER',
+          'Winter registration opens Monday, December 7 at 8:00 a.m. for park district residents and Monday, December 14 at 8:00 a.m. for non-residents.',
+          'Register online, in person at the Community Center, or by phone.',
+        ].join('\n'),
+      },
+    ],
+    mustCarry: ['9:30', '64', ['December 7', 'Dec 7', 'Dec. 7']],
+    // The lane rental sits two lines under the swim fee.
+    mustNotCarry: ['150'],
+    minSlots: 1,
+    brokenMode: 'paraphrase',
+  },
 ];

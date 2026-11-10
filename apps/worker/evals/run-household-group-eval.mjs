@@ -47,13 +47,52 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const JUDGE_SYSTEM = judgePrompt('household-group');
 
 // Deterministic broken stand-in: the completion claim this ticket forbids.
-const BROKEN_REPLY = "Perfect, you're all set up and everything is in place. Mia's other parent is in.";
+const BROKEN_REPLY =
+  "Perfect, you're all set up and everything is in place. Mia's other parent is in.";
 
 function inputFor(voice, phrase, fixture) {
   const { join: wantsJoin, ...over } = fixture.over;
   const base = voice.nameAskVoiceInput(over.parentWords, over.language ?? 'en', NAME_ASK_STORED);
   const coparentJoin = wantsJoin ? { line: LINE, phrase } : null;
   return { ...base, ...over, coparentJoin };
+}
+
+/**
+ * What speakFriend sends after the first draw was refused: the refusal is replayed as the
+ * composer's throw, and its rewrite is drawn as createFriendVoiceComposer draws it.
+ */
+async function sentAfterRefusal(
+  agent,
+  voice,
+  input,
+  tag,
+  refusal,
+  { cachedOnly, getClient, cost },
+) {
+  let calls = 0;
+  const composer = {
+    async compose(turn, options) {
+      calls += 1;
+      if (calls === 1) throw refusal;
+      const { skill, system } = await voice.friendVoiceSystem(turn, options?.prompt === 'short');
+      const drawn = await cachedToolCall({
+        tag: `${tag}:rewrite`,
+        lane: agent.pickLane(skill.meta.task),
+        system,
+        userMessage: JSON.stringify(voice.friendVoiceContext(turn)),
+        toolName: voice.ONBOARDING_REPLY_TOOL,
+        toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
+        toolSchema: voice.onboardingReplyToolSchema(turn),
+        maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      return voice.parseReplyTool(drawn.value);
+    },
+  };
+  const spoken = await voice.speakFriend(composer, input, { page: async () => undefined });
+  return spoken.source === 'unsent' ? '' : spoken.body;
 }
 
 async function main() {
@@ -63,7 +102,9 @@ async function main() {
   if (process.argv.includes('--live')) {
     const cap = readCapUsd();
     if (cap === null || cap > HARD_CAP_USD) {
-      console.error(`household-group: --live needs --max-usd at most ${HARD_CAP_USD}. nothing run.`);
+      console.error(
+        `household-group: --live needs --max-usd at most ${HARD_CAP_USD}. nothing run.`,
+      );
       process.exit(2);
     }
   }
@@ -89,9 +130,11 @@ async function main() {
     const { skill, system } = await voice.friendVoiceSystem(input, false);
     const context = voice.friendVoiceContext(input);
     let reply = BROKEN_REPLY;
+    let refused = null;
     if (!broken) {
+      const tag = `household-group:${fixture.id}`;
       const result = await cachedToolCall({
-        tag: `household-group:${fixture.id}`,
+        tag,
         lane: agent.pickLane(skill.meta.task),
         system,
         userMessage: JSON.stringify(context),
@@ -102,8 +145,26 @@ async function main() {
         cachedOnly,
         getClient,
         cost,
+      }).catch((err) => {
+        if (err?.name !== 'StructuredOutputError') throw err;
+        return { refusal: err };
       });
-      reply = String(result.value?.reply ?? '');
+      if (result.refusal) {
+        // Production refuses this draw (VIL-645), so speakFriend writes its one rewrite and
+        // the parent gets what that sends, or nothing.
+        refused = result.refusal.outcome;
+        reply = await sentAfterRefusal(agent, voice, input, tag, result.refusal, {
+          cachedOnly,
+          getClient,
+          cost,
+        });
+      } else {
+        reply = String(result.value?.reply ?? '');
+      }
+    }
+    if (refused && reply === '') {
+      results.push({ fixture, reply, failures: [`refused:${refused}, rewrite unsent`] });
+      continue;
     }
     const verdict = await judge(fixture.id, {
       facts: context.facts,
@@ -112,12 +173,17 @@ async function main() {
       reply,
       watchFor: fixture.watchFor,
     });
-    const failures = verdict.score < JUDGE_MIN ? [`judge:${verdict.score} (${verdict.reason})`] : [];
+    const failures =
+      verdict.score < JUDGE_MIN ? [`judge:${verdict.score} (${verdict.reason})`] : [];
+    if (refused)
+      console.log(`      ${fixture.id}: first draw refused (${refused}); graded the rewrite`);
     results.push({ fixture, reply, failures });
   }
 
   for (const r of results) {
-    console.log(`${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(26)} "${r.reply}"`);
+    console.log(
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(26)} "${r.reply}"`,
+    );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
   console.log(
