@@ -16,6 +16,7 @@ import {
 } from './engine';
 import { BROWSER_USE_SIGNUP_DETAILS, sameProviderHttpsUrl } from './outcome';
 import {
+  type BrowserUsePlanCheckpoint,
   type BrowserUsePlanInput,
   type BrowserUsePlanResult,
   type PlanEngineDetail,
@@ -94,7 +95,7 @@ export function assistedFacts(input: BrowserUsePlanInput): Record<string, unknow
 export function runBrowserUsePlanForMode(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
-): Promise<BrowserUsePlanResult> {
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   return input.mode === 'assisted'
     ? runBrowserUseAssistedSignup(input, deps)
     : runBrowserUsePlanSignup(input, deps);

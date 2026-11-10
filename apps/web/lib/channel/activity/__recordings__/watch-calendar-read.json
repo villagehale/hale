@@ -1,0 +1,43 @@
+{
+  "e38bdbf153d424af7b7b4cb27047578b7fc65b2c00e1649e69076e31c3b2c733": {
+    "key": "e38bdbf153d424af7b7b4cb27047578b7fc65b2c00e1649e69076e31c3b2c733",
+    "recordedAt": "2026-11-10T00:03:22.018Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"today\":\"2026-12-01 (Tuesday)\",\"watching\":\"parent and tot swim lessons for a 2 year old\",\"toldTheParent\":[\"price:money:$96\",\"when:date:jan-9\",\"when:day:sat\",\"when:time:9:15\"],\"calendar\":[{\"title\":\"Dentist\",\"day\":\"2026-12-03 (Thursday)\",\"start\":\"15:30\",\"end\":null},{\"title\":\"Parent & Tot Swim\",\"day\":\"2027-01-09 (Saturday)\",\"start\":\"09:15\",\"end\":\"09:45\"}]}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011CgtGVWtu9mZacgA6AyGvf",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"The calendar entry \\\"Parent & Tot Swim\\\" on Saturday 2027-01-09 at 09:15 matches the told date, day, and time for parent and tot swim lessons.\",\"verdict\":\"held\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 182,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1038,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 78,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  }
+}

@@ -244,6 +244,83 @@ describe('the day-before plan conversation', () => {
     expect(await auditSteps(f.offerId)).toEqual(['plan_approved', 'plan_cancelled', 'plan_reply']);
   });
 
+  it.each([
+    [
+      'its queue',
+      { phase: 'signup', runId: 'run-q', sessionId: null, browserId: null },
+      'cancel_requested',
+    ],
+    [
+      'its payment',
+      {
+        phase: 'paying',
+        runId: 'pay-run-1',
+        sessionId: 'bu-session-pay',
+        browserId: null,
+        choiceIndex: 0,
+        cartTotalCents: 9800,
+        holdExpiresAt: null,
+        costUsd: null,
+      },
+      'paying',
+    ],
+  ] as const)(
+    'a take-back while the run is in %s is recorded on the offer for the next sweep',
+    async (_name, resume, recorded) => {
+      const f = await family();
+      expect(
+        await approveSignupPlan(db.database, {
+          offerId: f.offerId,
+          familyId: f.familyId,
+          parentUserId: f.parentUserId,
+          messageId: `msg-approve-${resume.phase}`,
+          choiceIds: ['sat-0900'],
+          maxPriceCents: 9800,
+          opensAt: OPENS,
+          waiverAccepted: false,
+          now: new Date(NOW.getTime() - 30 * 60_000),
+        }),
+      ).toEqual({ ok: true });
+      // Past the open, checkpointed between sweeps.
+      await db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ status: 'submitting', planResume: resume, planLeaseUntil: null })
+        .where(eq(schema.authorizedSignupOffers.id, f.offerId));
+      const later = {
+        ...turn(f, 'stop, I will do it myself'),
+        now: new Date(OPENS.getTime() + 20 * 60_000),
+      };
+      const { planReader, planWriter, written } = fakes({ verdict: 'take_back' });
+      const result = await runPlanTurn(db.database, later, { planReader, planWriter });
+
+      expect(vi.mocked(planReader.read).mock.calls[0]?.[0].offer).toMatchObject({
+        status: 'planned',
+        plan: { choiceIds: ['sat-0900'], maxPriceCents: 9800, waiverAccepted: false },
+      });
+      const row = await offer(f.offerId);
+      expect(row.status).toBe('submitting');
+      expect(row.planCancelRequestedAt).not.toBeNull();
+      if (recorded === 'paying') {
+        // Already paying: no "cancelled" reply. The sweep reports what the payment did.
+        expect(result).toBeNull();
+        expect(written).toEqual([]);
+        expect(await auditSteps(f.offerId)).toEqual(['plan_approved', 'plan_cancel_requested']);
+      } else {
+        expect(result?.outcome).toBe('plan_cancelled');
+        expect(written[0]?.moment).toBe('cancelled');
+        expect(await auditSteps(f.offerId)).toEqual([
+          'plan_approved',
+          'plan_cancel_requested',
+          'plan_reply',
+        ]);
+      }
+      // Taken back: the plan lane no longer owns this family's turns.
+      const again = fakes({ verdict: 'take_back' });
+      expect(await runPlanTurn(db.database, later, again)).toBeNull();
+      expect(again.planReader.read).not.toHaveBeenCalled();
+    },
+  );
+
   it('a no to the offered plan closes the offer', async () => {
     const f = await family();
     const { planReader, planWriter } = fakes({ verdict: 'take_back' });
