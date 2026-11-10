@@ -40,6 +40,14 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import {
+  type PhotoFacts,
+  type ReadPhotoFactsInput,
+  augmentCoachSkillForPhotoFacts,
+  extractInboundPhotoFacts,
+  inboundPhotoFactsEnabled,
+  photoFactSignupLinks,
+} from '~/lib/channel/inbound-photo-facts';
 import { loadHouseholdGroupFact } from '~/lib/channel/intake/household-group';
 import {
   linqExperiencesEnabled,
@@ -353,6 +361,19 @@ export interface ChannelCoachPorts {
     parts: readonly InboundMediaPart[],
     audience: ChannelTurn['audience'],
   ): Promise<ReadInboundMedia>;
+  /**
+   * VIL-413 — whether this turn may extract facts from an inbound photo or PDF
+   * (`INBOUND_PHOTO_FACTS_ENABLED`). Absent or false: no extract call, no
+   * photoFacts key, no addendum, and PDFs stay unwatched files. Dark turns keep
+   * today's prompt bytes.
+   */
+  photoFactsEnabled?(): boolean;
+  /**
+   * VIL-413 — read this turn's image/PDF blocks into facts. Absent while the
+   * flag is lit is a named gap: the image still reaches the coach, and no
+   * canned line is sent.
+   */
+  readPhotoFacts?(input: ReadPhotoFactsInput): Promise<PhotoFacts | null>;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
   recordRun(run: ChannelRunRecord): Promise<void>;
   now(): Date;
@@ -585,6 +606,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       if (media.unwatched.length > 0) {
         Object.assign(context, { arrivedMedia: media.unwatched });
       }
+      const photoFacts = await photoFactsForTurn(turn, ports, media.blocks, now, timeZone);
+      const skillForTurn = photoFacts
+        ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
+        : coachSkill;
+      if (photoFacts) {
+        Object.assign(context, { photoFacts });
+      }
+      const turnForTools = photoFacts ? { ...turn, photoFacts } : turn;
       // VIL-439 (T18): every group turn sees only group-safe context and tools. No flag:
       // the router sets the group audience for any message the door marked in_group.
       const groupScoped = turn.audience === 'group';
@@ -604,7 +633,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
             // reused set would spend this text's budget on the last one's.
             const builtTools = ports.buildTools(
-              turn,
+              turnForTools,
               (actionId) => draftedActionIds.push(actionId),
               (offer) => {
                 planOffer = offer;
@@ -716,7 +745,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             // Re-thrown rather than handled — the router owns what a parent is told.
             const result = await ports
               .runAgent({
-                skill: coachSkill,
+                skill: skillForTurn,
                 context: turnContext,
                 tools,
                 client: ports.client(),
@@ -733,7 +762,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 );
               });
 
-            const modelUsed = pickModel(coachSkill.meta.task);
+            const modelUsed = pickModel(skillForTurn.meta.task);
             trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
               model: modelUsed,
               usage: result.usage,
@@ -913,6 +942,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
     voiceMemosEnabled: linqVoiceMemosEnabled,
+    photoFactsEnabled: inboundPhotoFactsEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     emailReader: productionCoachEmailReader(database),
@@ -1087,6 +1117,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
                 ...offered
                   .read()
                   .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+                ...photoFactSignupLinks(turn.photoFacts),
               ],
             }
           : null,
@@ -1102,6 +1133,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
                 ...offered
                   .read()
                   .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+                ...photoFactSignupLinks(turn.photoFacts),
               ],
             }
           : null,
@@ -1128,6 +1160,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     },
     now: () => new Date(),
     // VIL-495: a voice memo is heard only while the flag is lit, and only on a 1:1 turn.
+    // VIL-413: a PDF is fetched only while inbound photo facts are lit.
     readInboundMedia: (parts, audience) =>
       readInboundMedia(
         parts,
@@ -1135,8 +1168,40 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         audience === 'direct' && linqVoiceMemosEnabled()
           ? (part) => hearVoiceMemo(part, audience)
           : undefined,
+        inboundPhotoFactsEnabled() ? { documents: true } : undefined,
       ),
+    readPhotoFacts: (input) => extractInboundPhotoFacts({ ...input, client: anthropicClient() }),
   };
+}
+
+async function photoFactsForTurn(
+  turn: ChannelTurn,
+  ports: ChannelCoachPorts,
+  blocks: Anthropic.ContentBlockParam[],
+  now: Date,
+  timeZone: string | null,
+): Promise<PhotoFacts | null> {
+  const lit = ports.photoFactsEnabled?.() ?? inboundPhotoFactsEnabled();
+  if (!lit || blocks.length === 0) return null;
+  if (!ports.readPhotoFacts) {
+    console.info({ reason: 'not_configured' }, 'channel coach: inbound photo facts unread');
+    return null;
+  }
+  try {
+    return await ports.readPhotoFacts({
+      blocks,
+      parentWords: turn.body,
+      now,
+      timeZone,
+      audience: turn.audience,
+    });
+  } catch (err) {
+    console.info(
+      { reason: 'extract_failed', err: err instanceof Error ? err.name : 'unknown' },
+      'channel coach: inbound photo facts unread',
+    );
+    return null;
+  }
 }
 
 async function mediaForTurn(

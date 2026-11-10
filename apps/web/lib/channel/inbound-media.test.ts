@@ -83,4 +83,25 @@ describe('readInboundMedia', () => {
     expect(read.unwatched).toEqual([{ kind: 'audio' }]);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it('names a PDF instead of fetching it, until documents is on (VIL-413)', async () => {
+    const pdf = Buffer.from('%PDF-1.4\n%%EOF');
+    const fetchImpl = vi.fn(async () => new Response(pdf, { status: 200 }));
+    const part = {
+      kind: 'file' as const,
+      url: 'https://cdn.example/form.pdf',
+      mime: 'application/pdf',
+    };
+    const dark = await readInboundMedia([part], fetchImpl as unknown as typeof fetch);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(dark.blocks).toEqual([]);
+    expect(dark.unwatched).toEqual([{ kind: 'file' }]);
+
+    const lit = await readInboundMedia([part], fetchImpl as unknown as typeof fetch, undefined, {
+      documents: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(lit.blocks[0]).toMatchObject({ type: 'document' });
+    expect(lit.unwatched).toEqual([]);
+  });
 });

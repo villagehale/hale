@@ -150,15 +150,37 @@ function headerMime(header: string | null): string | null {
   return mime || null;
 }
 
+const PDF_EXT = /\.pdf(?:$|\?)/i;
+const PDF_MIME = 'application/pdf';
+
+function sniffedPdf(bytes: Buffer): boolean {
+  return bytes.length >= 5 && bytes.toString('ascii', 0, 5) === '%PDF-';
+}
+
+function looksLikePdf(part: InboundMediaPart): boolean {
+  const mime = (part.mime ?? '').toLowerCase();
+  return mime === PDF_MIME || PDF_EXT.test(part.url ?? '');
+}
+
+export type ReadInboundMediaOptions = {
+  /**
+   * VIL-413 — fetch a PDF file into a document block. Off (the default): files
+   * stay named and unwatched, so a dark turn does not download them.
+   */
+  documents?: boolean;
+};
+
 /**
  * Fetch the images on this turn into model blocks, and hear its voice memos when a
- * `hear` port is given (VIL-495). Videos and files are not fetched. A failed fetch is
- * named in the return (unwatched), never thrown, and the URL is not logged.
+ * `hear` port is given (VIL-495). Videos and files are not fetched unless
+ * `documents` is on and the file is a PDF. A failed fetch is named in the return
+ * (unwatched), never thrown, and the URL is not logged.
  */
 export async function readInboundMedia(
   parts: readonly InboundMediaPart[],
   fetchImpl: typeof fetch = fetch,
   hear?: HearVoiceMemo,
+  options?: ReadInboundMediaOptions,
 ): Promise<ReadInboundMedia> {
   const blocks: Anthropic.ContentBlockParam[] = [];
   const unwatched: Array<{ kind: InboundMediaKind; heard?: string }> = [];
@@ -169,13 +191,15 @@ export async function readInboundMedia(
       unwatched.push(heard ? { kind: 'audio', heard } : { kind: 'audio' });
       continue;
     }
-    if (part.kind !== 'image') {
+    const asDocument = options?.documents === true && part.kind === 'file' && looksLikePdf(part);
+    if (part.kind !== 'image' && !asDocument) {
       unwatched.push({ kind: part.kind });
       continue;
     }
+    const unreadKind: InboundMediaKind = asDocument ? 'file' : 'image';
     const url = httpsMediaUrl(part.url);
     if (!url) {
-      unwatched.push({ kind: 'image' });
+      unwatched.push({ kind: unreadKind });
       continue;
     }
     try {
@@ -186,17 +210,29 @@ export async function readInboundMedia(
       // A stub Response has an empty url. A real redirect that lands off https does not.
       const finalUrl = response.url ? httpsMediaUrl(response.url) : url;
       if (!response.ok || !finalUrl) {
-        unwatched.push({ kind: 'image' });
+        unwatched.push({ kind: unreadKind });
         continue;
       }
       const declared = Number(response.headers.get('content-length'));
       if (Number.isFinite(declared) && declared > IMAGE_BYTE_CAP) {
-        unwatched.push({ kind: 'image' });
+        unwatched.push({ kind: unreadKind });
         continue;
       }
       const bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.byteLength === 0 || bytes.byteLength > IMAGE_BYTE_CAP) {
-        unwatched.push({ kind: 'image' });
+        unwatched.push({ kind: unreadKind });
+        continue;
+      }
+      if (asDocument) {
+        const mime =
+          sniffedPdf(bytes) || headerMime(response.headers.get('content-type')) === PDF_MIME
+            ? PDF_MIME
+            : null;
+        if (!mime) {
+          unwatched.push({ kind: 'file' });
+          continue;
+        }
+        blocks.push(attachmentContentBlock(bytes, mime));
         continue;
       }
       const mime =
@@ -209,9 +245,9 @@ export async function readInboundMedia(
     } catch (err) {
       console.info(
         { reason: 'fetch_failed', err: err instanceof Error ? err.name : 'unknown' },
-        'inbound media: image unread',
+        asDocument ? 'inbound media: document unread' : 'inbound media: image unread',
       );
-      unwatched.push({ kind: 'image' });
+      unwatched.push({ kind: unreadKind });
     }
   }
   return { blocks, unwatched };

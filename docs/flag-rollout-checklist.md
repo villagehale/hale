@@ -69,6 +69,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `HALE_TRIAGE_MODEL_MODE` | `apps/web/lib/sentinel/triage.ts:101` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE` | none on main (#844) | none | no reader on main | none (no reader) | Eugene |
 | `HOLDING_LINE_ENABLED` | `apps/web/lib/channel/router/holding-line.ts:36` | `true` (no trim) | OFF | unset | Barton |
+| `INBOUND_PHOTO_FACTS_ENABLED` | `apps/web/lib/channel/inbound-photo-facts.ts:22` | `true` (exact, untrimmed) | OFF | unset | Noah |
 | `INTEREST_PASSPORT_DEMO` | `apps/web/lib/passport/demo.ts:26` (also needs `INTEREST_PASSPORT_ENABLED` to be `true`) | `true` | OFF | unset | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `apps/web/lib/passport/flag.ts:12` | `true` | OFF | `false` | Noah |
 | `LINQ_GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:107` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
@@ -227,6 +228,7 @@ Code is merged for every row.
 | `HALE_MEMORY_INFER_MODEL_MODE` | `candidate` uses DeepSeek for memory inference. A failed tool loop is not retried. | Duplicate memory rows after a failed run. | `current` | Eugene |
 | `HALE_REPLY_INTENT_MODEL_MODE` | `candidate` uses JEV for reply intent. Assent still goes through Sonnet. | A yes/no stored for a reply the parent did not mean. | `current` | Eugene |
 | `HALE_TRIAGE_MODEL_MODE` | `candidate` uses JEV for sentinel triage, with Haiku when confidence is low. | Triage latency and low-confidence retries. | `current` | Eugene |
+| `INBOUND_PHOTO_FACTS_ENABLED` | After signup, Hale extracts facts from a parent photo or PDF (a flyer, a schedule screenshot, a registration page) and the coach answers from those facts. Off, images still reach the coach as today and PDFs stay unwatched. Set with `printf '%s' true`. | A reply that invents a date or URL the photo did not show, or a PDF fetched while the flag is unset. | unset | Noah |
 | `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp (a Calendar stamp also needs `CALENDAR_ALERT_ENABLED`). A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
 | `LINQ_GROUP_CARPOOL_ENABLED` | Hale reads who is driving from the group and reminds the night before (`apps/web/lib/channel/linq/config.ts:103-104`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |

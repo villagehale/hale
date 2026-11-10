@@ -139,6 +139,10 @@
     "file": "coach-nearby-find.md",
     "sha256": "dc699d224aca4924699a2c2497ab07774e68984f71e199f9f139470c8dd8c246"
   },
+  "coach-photo-facts.md": {
+    "file": "coach-photo-facts.md",
+    "sha256": "b07d0bc5b25d4a72f7cd70ec98bcfd5faafc94dc0e46d44bc770fcb495e4278a"
+  },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
     "sha256": "6a2d08cba7a9806e816e433cf7e07efa70754375ef6b241c12d0f365b15a8b8c"
@@ -338,6 +342,10 @@
   "inbound-lane.md": {
     "file": "inbound-lane.md",
     "sha256": "e08fada31d807c6841bb0668f487f1687be77bcf468f9584172b34ebd4974f4c"
+  },
+  "inbound-photo-facts.md": {
+    "file": "inbound-photo-facts.md",
+    "sha256": "900b8ca8b85f5f216d91dab79bf58515324b8f506657139b0bff522f28423a13"
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
