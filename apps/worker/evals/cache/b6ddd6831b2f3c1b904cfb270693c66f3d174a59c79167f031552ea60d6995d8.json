@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgtS8EuZJGC7HBDW92JZB",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Waking now and then is common at 8, and summer's later bedtimes and looser routines often set it off again. Tonight, try a calm, boring script for when she wakes. Keep the lights low and don't chat. Walk her back to bed with the same one-line reassurance every time, like \"You're safe, it's still night, back to sleep.\" If worries are keeping her up, a few minutes of talking them through before bed can help. A steady wake-up time, even on weekends, helps too."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 261,
+      "cache_read_input_tokens": 24118,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 261,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 152,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2636
+}
