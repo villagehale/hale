@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with a real, local, stage-fitting program by name: Halton Hills Gymnastics Centre Parent and Tot, 18 months to 3.11 years. It attributes the details to the source (\"their site says\"). The session dates, 30-minute length and Oct 26 registration all come from the venue's own opened page. Under page_has_schedule it correctly owns the gap in first person (\"I could not pin down the price\") rather than claiming the price is not posted. With watch true, the first-person \"I'll keep watching and text you\" is a real commitment. It is plain text with no link and no question. Docked one point for two reasons: the extracted picks list is empty, so the dates and session details do not appear in any pick, which is the rubric's \"appears nowhere in the picks\" mismatch. It also does not name the unpinned class day alongside the price.",
+    "score": 4
+  }
+}

@@ -81,6 +81,7 @@ export interface BoundActivityReader {
   householdNames(familyId: string): Promise<string[]>;
   familyFit?(familyId: string): Promise<FamilyFit>;
   today?(familyId: string): Promise<string | null>;
+  timeZone?(familyId: string): Promise<string | null>;
 }
 
 /** `factReader`: who the turn is for, so a pick is never ranked on another adult's 1:1. */
@@ -97,7 +98,16 @@ export function bindActivityReader(
       ? { familyFit: (familyId: string) => reader.familyFit!(database, familyId, factReader) }
       : {}),
     ...(reader.today ? { today: (familyId: string) => reader.today!(database, familyId) } : {}),
+    timeZone: (familyId) => readActivityTimeZone(database, familyId),
   };
+}
+
+/** The family's own zone, or null when it was never set. Used to date a find, not sent to search. */
+export async function readActivityTimeZone(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
+  return knownHouseholdTimezone(database, familyId);
 }
 
 export function productionActivityFamilyReader(): ActivityFamilyReader {

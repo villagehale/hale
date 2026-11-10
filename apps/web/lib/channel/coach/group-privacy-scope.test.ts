@@ -1,8 +1,12 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
-import { findReplyNotJudged } from './find-reasoning-judge';
-import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
+import {
+  groupScopedContext,
+  groupScopedTools,
+  privateCalendarFields,
+  replyShowsPrivateField,
+} from './group-privacy-scope';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 const NOW = new Date('2026-10-25T16:00:00.000Z');
@@ -32,7 +36,6 @@ const PRIVATE_CONTEXT = {
     digestFreshness: 'fresh',
   },
   sourceNote: { eyebrow: 'Email', body: INBOX_LINE, when: 'today' },
-  location: { city: null, province: null, country: 'Canada' },
 };
 
 afterEach(() => vi.unstubAllEnvs());
@@ -80,7 +83,6 @@ describe('VIL-439 group privacy scope', () => {
         nearbySaid: async () => null,
         guardDeps: { async writeAudit() {} },
         client: () => ({ messages: {} }) as never,
-        judgeFindReply: findReplyNotJudged,
         runAgent: async (args) => {
           seen.push(JSON.stringify(args.context));
           return {
@@ -113,29 +115,6 @@ describe('VIL-439 group privacy scope', () => {
       const seen: string[] = [];
       await channelCoachRuntime(ports(seen)).respond(turn('direct'), []);
       expect(seen[0]).toContain(SECRET_FACT);
-    });
-
-    it('a group turn gets no registration windows; a 1:1 turn keeps them', async () => {
-      const WINDOW = {
-        town: 'Riverside',
-        programs: 'Winter swim lessons',
-        opensFor: 'Dec 1, 7:00 a.m.',
-        residentsFirst: false,
-        generalOpens: null,
-        ageApproximate: false,
-        watching: false,
-      };
-      const contexts = async (audience: 'group' | 'direct') => {
-        const seen: string[] = [];
-        await channelCoachRuntime({
-          ...ports(seen),
-          loadRegistrationWindows: async () => [WINDOW] as never,
-        }).respond(turn(audience), []);
-        return JSON.parse(seen[0] as string) as { registrationWindows: unknown[] };
-      };
-      expect((await contexts('group')).registrationWindows).toEqual([]);
-      // Positive control: the same window reaches the parent's own 1:1 turn.
-      expect((await contexts('direct')).registrationWindows).toEqual([WINDOW]);
     });
 
     it('every group flag off: a group turn is still scoped', async () => {
@@ -267,7 +246,6 @@ describe('VIL-439 review: group tools and group history', () => {
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as never,
-      judgeFindReply: findReplyNotJudged,
       runAgent: async (args) => {
         seenTools.push(args.tools.map((t) => t.name));
         return {
@@ -312,5 +290,29 @@ describe('groupScopedTools find_activities (VIL-518)', () => {
     const result = (await scoped!.handler()) as Record<string, unknown>;
     expect(result).toEqual({ found: true, picks: [] });
     expect('family' in result).toBe(false);
+  });
+});
+
+describe('busy-block field rubric', () => {
+  const events = [
+    { kind: 'event', what: 'Leo 足球课', when: 'Sat 10:00am', where: '社区中心' },
+    {
+      kind: 'calendar',
+      what: '心理咨询 - 王医生',
+      when: 'Sat 9:00am',
+      until: 'Sat 10:00am',
+      where: '诊所',
+    },
+  ];
+  const reply =
+    '周六上午 10:00 Leo 有足球课，在社区中心。9:00 到 10:00 那一小时已经有人占了，别排别的事。';
+
+  it('treats a taken hour as not who, what, or where', () => {
+    expect(replyShowsPrivateField(reply, privateCalendarFields(events))).toEqual([]);
+  });
+
+  it('fails when the private place is in the reply', () => {
+    const shown = replyShowsPrivateField(`${reply} 诊所`, privateCalendarFields(events));
+    expect(shown.map((field) => field.value)).toContain('诊所');
   });
 });

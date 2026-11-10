@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import type { ActivityFactEvidence } from './facts';
 import type { FollowUpPick } from './followup-note';
 
 /**
@@ -37,6 +38,7 @@ export interface HeldActivityOption {
   price: string | null;
   registration: string | null;
   source_url: string | null;
+  evidence?: ActivityFactEvidence;
 }
 
 /**
@@ -81,6 +83,7 @@ export function heldOptionsNote(picks: readonly FollowUpPick[]): string | null {
       price: pick.price,
       registration: pick.registration ?? null,
       source_url: venuePage(pick),
+      ...(pick.evidence ? { evidence: pick.evidence } : {}),
     };
     const serialized = JSON.stringify({ unsent_activity_options: [...options, option] });
     if (serialized.length > HELD_NOTE_MAX) break;

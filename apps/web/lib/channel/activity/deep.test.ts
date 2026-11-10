@@ -8,8 +8,8 @@ import {
   createDeepResearcher,
   toDeepSlots,
 } from './deep';
-import type { ActivityQuery } from './deidentify';
 import { FETCH_FRESHNESS_MS } from './evidence';
+import type { ActivityQuery } from './deidentify';
 
 /**
  * THE DEEP PASS — the leg that opens the venue's pages instead of reading snippets.

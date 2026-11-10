@@ -167,11 +167,11 @@ export const ACTIVITY_FIXTURES = [
   // search loses its dates with no error anywhere.
   //
   // `composesOwnText: true` says where this query shape STOPS. `createActivityFinder`
-  // ends at the picks, and the travel sweep hands them to `renderTravelBrief`, which is
-  // deterministic and never asks the model for a word. The follow-up composer the other
-  // fixtures are scored on is `followup-note.ts`, which the coach reaches and this lane
-  // does not — so the runner skips it here and grades the FINDS, against a rubric that
-  // asks the one question this string exists to settle. Every hard zero still runs.
+  // ends at the picks, and the travel sweep hands them to `renderTravelBrief`. That
+  // brief is the spoken-line writer (`travel_source_listings`), cached and judged with
+  // the other calls — picks-only, references, and the one-fewer-fact retry. The
+  // follow-up composer the other fixtures are scored on is `followup-note.ts`, which
+  // the coach reaches and this lane does not. Every hard zero still runs.
   //
   // And none of the three requires a PRICE, which is the bar rev 2 of the brief asked for
   // and this corpus's own header forbids: "a `when` or a `price` the SOURCE never
@@ -192,12 +192,15 @@ export const ACTIVITY_FIXTURES = [
   // the way phase 3 already recomposes.
   {
     id: 'travel-visit-new-york',
+    // Positive travel case must be future-dated against the fixed October 15 corpus clock.
+    dateRange: { start: '2026-11-12', end: '2026-11-15' },
+    timeZone: 'America/New_York',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
-    window: 'September 12 to 15',
+    window: 'November 12 to 15, 2026',
     town: 'New York, NY',
     stage: 'preschool',
-    rawSubject: 'things to do in New York with Mia, 4, from 2026-09-12 to 2026-09-15',
+    rawSubject: 'things to do in New York with Mia, 4, from 2026-11-12 to 2026-11-15',
     dropsFromQuery: ['mia', '2026', '4 year'],
     expectPicks: true,
     composesOwnText: true,
@@ -206,6 +209,8 @@ export const ACTIVITY_FIXTURES = [
   },
   {
     id: 'travel-visit-montreal',
+    dateRange: { start: '2026-12-27', end: '2026-12-30' },
+    timeZone: 'America/Toronto',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
     window: 'December 27 to 30',
@@ -228,6 +233,8 @@ export const ACTIVITY_FIXTURES = [
     // (lib/travel/query.ts) never composes one: this fixture no longer mirrors the
     // product's window shape. "September 4 to 6, 2027" survives scrubResidualPii intact.
     id: 'travel-visit-ottawa-month-boundary',
+    dateRange: { start: '2027-09-04', end: '2027-09-06' },
+    timeZone: 'America/Toronto',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
     window: 'September 4 to 6, 2027',

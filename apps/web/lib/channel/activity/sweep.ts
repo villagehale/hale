@@ -10,25 +10,16 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
-import { parentLanguage } from '~/lib/channel/parent-language';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type DueCommitment,
-  deferCommitment,
   fulfillCommitment,
   loadDueCommitments,
 } from '~/lib/commitments/ledger';
 import { activityClient, pipelineClient } from '~/lib/pipeline/client';
 import {
-  type WatchCalendarCheck,
-  closeWatchOnCalendar,
-  createWatchCalendarCheck,
-  createWatchCalendarReader,
-} from './calendar-check';
-import {
-  ACTIVITY_WATCH_DUE_HOURS,
   cancelActivityPromise,
   defaultActivityPromisePorts,
   recordActivityPromise,
@@ -39,9 +30,7 @@ import {
   type FollowUpDelivery,
   type FollowUpRecipient,
   deliverFollowUp,
-  learnedSomethingNew,
   noEvidence,
-  textSlots,
 } from './deliver';
 import type { PageVerdict } from './evidence';
 import { type FollowUpPick, createFollowUpComposer } from './followup-note';
@@ -166,20 +155,6 @@ export interface ActivityFollowUpResult {
    * parent has been told Hale is on it and nothing in the system knows.
    */
   watchUnrecorded: number;
-  /**
-   * Watches whose next look found nothing the parent has not already been told — no new
-   * time, price, date or opening. Nothing was sent and the watch was moved to its next
-   * look (VIL-564). Its own count, never `deferred`: that one is the composer failing,
-   * and this is the sweep deciding a repeat is not worth a text.
-   */
-  nothingNew: number;
-  /** Watches closed because the family's calendar already holds the activity. Nothing
-   * was searched or sent (VIL-564). */
-  onCalendar: number;
-  /** Watches whose calendar check gave no answer — no household clock, an unreadable
-   * calendar, a failed read, or an unsure one. The watch went on as before; counted so a
-   * check that never answers is visible (rule #11). */
-  calendarUnchecked: number;
 }
 
 function emptyResult(enabled: boolean): ActivityFollowUpResult {
@@ -199,9 +174,6 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     deepUnavailable: 0,
     watching: 0,
     watchUnrecorded: 0,
-    nothingNew: 0,
-    onCalendar: 0,
-    calendarUnchecked: 0,
   };
 }
 
@@ -232,14 +204,6 @@ export interface ActivityFollowUpDeps extends FollowUpDelivery {
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive: typeof dedupeActive;
   cancelPromise: typeof cancelActivityPromise;
-  /** Moves a watch whose look found nothing new to its next look. Required: without it a
-   * silent watch stays due and is re-researched every hour (rule #11). */
-  deferWatch: typeof deferCommitment;
-  /** Reads whether the family's calendar already holds a watch's activity. Required: a
-   * sweep wired without it would keep texting about a class the family already has. */
-  calendarCheck: WatchCalendarCheck;
-  /** Voids the one watch the check found on the calendar. */
-  closeWatch: typeof closeWatchOnCalendar;
 }
 
 export async function runActivityFollowUpSweep(
@@ -337,41 +301,6 @@ async function keepOne(
   const dedupeKey = `activity_followup:${commitment.id}`;
   if (await deps.dedupeActive(dedupeKey, database)) return;
 
-  // A WATCH ENDS WHEN THE FAMILY HAS THE ACTIVITY. Read before any search, so a class
-  // already on their calendar costs neither a research pass nor a text. Only a watch
-  // (heard facts set) is checked: the coach's first promise answers a question the
-  // parent asked just now, whatever their calendar says.
-  if (commitment.heardFacts !== null) {
-    const calendar = await deps.calendarCheck.check(database, {
-      familyId: commitment.familyId,
-      parentUserId: recipient.parentUserId,
-      subjectChildId: commitment.subjectChildId,
-      subject,
-      heardFacts: commitment.heardFacts,
-      now,
-    });
-    if (calendar.outcome === 'on_calendar') {
-      const closed = await deps.closeWatch(database, {
-        commitmentId: commitment.id,
-        familyId: commitment.familyId,
-        now,
-      });
-      result.onCalendar += 1;
-      console.info(
-        { commitmentId: commitment.id, outcome: 'on_calendar', close: closed.status },
-        'activity follow-up: the activity is already on the family calendar - watch closed, nothing sent',
-      );
-      return;
-    }
-    if (calendar.outcome === 'calendar_unchecked') {
-      result.calendarUnchecked += 1;
-      console.warn(
-        { commitmentId: commitment.id, outcome: 'calendar_unchecked', reason: calendar.reason },
-        'activity follow-up: the calendar check gave no answer - the watch goes on',
-      );
-    }
-  }
-
   // Searched only AFTER the gate and the dedupe: a family who is over their budget or has
   // already been answered must not cost a web search (the per-search provider bill is the
   // reason this ordering is not merely tidy).
@@ -394,7 +323,7 @@ async function keepOne(
     result.unsendable += 1;
     console.error(
       { commitmentId: commitment.id, refusal: deidentified.refusal },
-      'activity follow-up: the stored subject or the family place no longer clears de-identification',
+      'activity follow-up: the stored subject no longer clears de-identification',
     );
     return;
   }
@@ -431,7 +360,8 @@ async function keepOne(
       // The text carries the best one or two. The rest stay in the chat until the parent
       // asks. Slicing here, rather than asking the model for a shortlist, is what makes
       // "there are more" true of a real remainder.
-      ({ picks, held } = textSlots(deep.slots));
+      picks = deep.slots.slice(0, SLOTS_IN_TEXT);
+      held = deep.slots.slice(SLOTS_IN_TEXT);
     } else if (deep.status === 'unread') {
       // It reached the web and could not open one page — every fetch refused or
       // unreachable, which the live probe showed is a real and common shape. It knows
@@ -481,28 +411,16 @@ async function keepOne(
       picks = foundPicks;
     }
     if (!found.found) searched = found.searched;
+    else if (found.references?.length) {
+      searched = {
+        town: deidentified.query.town,
+        notes: '',
+        references: found.references,
+        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
+      };
+    }
   }
   evidence.picks = picks.length;
-
-  // A WATCH SENDS NEWS OR NOTHING. A row with heard facts is a continuation: its last
-  // follow-up already went out, and this look is worth a text only if it found a time,
-  // price, date or opening the parent was not given then. Otherwise silence, and the
-  // watch stays owed on its own clock (VIL-564). The coach's first promise has no heard
-  // facts and always gets its answer.
-  if (commitment.heardFacts !== null && !learnedSomethingNew(picks, commitment.heardFacts)) {
-    result.nothingNew += 1;
-    const deferred = await deps.deferWatch(database, {
-      commitmentId: commitment.id,
-      familyId: commitment.familyId,
-      dueAt: new Date(now.getTime() + ACTIVITY_WATCH_DUE_HOURS * 3_600_000),
-      reason: 'nothing_new',
-    });
-    console.info(
-      { commitmentId: commitment.id, outcome: 'nothing_new', deferral: deferred.status },
-      'activity follow-up: the watch found nothing the parent has not heard - nothing sent',
-    );
-    return;
-  }
 
   // THE SEND HALF, shared verbatim with the question-time deep job (deliver.ts). Nine
   // steps in a fixed order, seven of them added because one had gone wrong in production
@@ -522,7 +440,6 @@ async function keepOne(
       held,
       pageEvidence,
       evidence,
-      heardFacts: commitment.heardFacts,
       ...(searched ? { searched } : {}),
     },
     now,
@@ -553,21 +470,20 @@ export async function resolveFollowUpRecipient(
     .select({
       parentUserId: schema.channelMessages.parentUserId,
       conversationId: schema.channelMessages.relatedConversationId,
-      proactiveLanguage: schema.users.proactiveLanguage,
-      familyLanguage: schema.families.primaryLanguage,
+      language: schema.users.locale,
     })
     .from(schema.channelMessages)
     .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
-    .innerJoin(schema.families, eq(schema.families.id, schema.channelMessages.familyId))
     .where(eq(schema.channelMessages.id, channelMessageId))
     .limit(1);
-  // No user row means there is nobody to write to: the outcome the sweep already names.
-  if (!row?.parentUserId) return null;
+  // No user row means there is nobody to write to, and no locale means there is no
+  // language to write in. Both are the same outcome the sweep already names: the
+  // recipient no longer resolves. A default language here would be a language nobody stored.
+  if (!row?.parentUserId || row.language.trim() === '') return null;
   return {
     parentUserId: row.parentUserId,
     conversationId: row.conversationId ?? null,
-    // VIL-572 · the one proactive language, never the last text's.
-    language: parentLanguage(row.proactiveLanguage, row.familyLanguage),
+    language: row.language,
   };
 }
 
@@ -613,9 +529,6 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
     cancelPromise: cancelActivityPromise,
-    deferWatch: deferCommitment,
-    calendarCheck: createWatchCalendarCheck(createWatchCalendarReader(pipelineClient)),
-    closeWatch: closeWatchOnCalendar,
     refuseUnbackedSend,
     recordWatch: (database, input) =>
       recordActivityPromise(database, input, defaultActivityPromisePorts()),

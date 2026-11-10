@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has the right form. It is plain text with no link and no question. It leads with the pick by name and attributes it (\"Halton Region Public Health's site says\"). With watch TRUE it correctly makes a first-person promise to keep watching. Under page_has_schedule it puts the price gap in the first person (\"I could not pin down the price\") rather than saying \"not posted\". The day and time match the pick's evidence, and the source is the provider's own regional page, not an aggregator. The substance falls short. The pick is a parenting support group for babies from birth until they crawl, which does not fit the toddler stage or the parent's ask for a drop-in play group. The notes show a much better fit was available: Halton Region's Kids & Me drop-in, a free weekly drop-in for children up to 6 with no registration and Fees: None. Hale missed it. Because of that miss, the message also leaves the price as unknown when the region's materials point to these programs being free.",
+    "score": 3
+  }
+}

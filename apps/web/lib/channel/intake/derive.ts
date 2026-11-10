@@ -9,7 +9,7 @@ import { timezoneForIntakePostal } from './postal-zone';
  */
 
 /**
- * Where a postal token places a family. The FSA is always known; the full code only
+ * Where a postal token places a family. The coarse prefix is always known; the full code only
  * when the parent volunteered one. Decision D2: the FSA is what discovery actually
  * runs on (the M1 matcher keys on it), so the second half is a later just-in-time ask
  * and never a precondition for setting a family up.

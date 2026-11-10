@@ -1,4 +1,9 @@
 import { join } from 'node:path';
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async () =>
+    `Cartwheels Gym Centre, Halton Hills, Ontario, Canada. ${VENUE_TEXT}`,
+}));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
@@ -89,6 +94,10 @@ const judgeSchema = z.object({ says_not_posted: z.boolean(), reason: z.string() 
 async function saysNotPosted(
   message: string,
 ): Promise<{ says_not_posted: boolean; reason: string }> {
+  // Same ceiling and ledger as the eval suites. `--max-usd` on the vitest argv
+  // (after `--`) sets it; a recording with no ceiling is refused by recorded-model.
+  const { installSpendCap } = await import('../testing/spend-cap.mjs');
+  installSpendCap();
   const judged = recordedModel(JUDGE_RECORDINGS, pipelineClient);
   const { value } = await forceToolJson({
     client: judged.client(),
@@ -135,11 +144,13 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
   let database: Database;
   let familyId: string;
   let parentUserId: string;
+  let composerReplays: RecordedModel[];
 
   // PGlite + the full migration chain can exceed Vitest's 10s hook default
   // when CI is already running hundreds of files. Twice in a row this
   // beforeEach died at exactly 10000ms while the rest of @hale/web passed.
   beforeEach(async () => {
+    composerReplays = [];
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('F14_ENABLED', 'true');
@@ -181,6 +192,10 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
   afterEach(async () => {
     vi.unstubAllEnvs();
     await db.close();
+    expect(
+      composerReplays.flatMap((replay) => replay.misses),
+      'missing exact deep follow-up writer recordings',
+    ).toEqual([]);
   }, 30_000);
 
   // ── the web, as a port ─────────────────────────────────────────────────────
@@ -200,10 +215,15 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                 picks: [
                   {
                     name: 'Tiny Gym, Cartwheels Gym Centre',
+                    name_evidence: 'Tiny Gym',
                     age_fit: 'walking to 3.5 years',
+                    age_evidence: 'walking to 3.5 years',
                     when: 'Sundays, fall block',
+                    when_evidence: 'Tiny Gym | Sun | 9:30-10:15 AM | walking to 3.5 years',
+                    schedule_kind: 'recurring',
                     price: null,
                     source_name: 'Cartwheels Gym Centre',
+                    source_url: VENUE_PAGE,
                   },
                 ],
               }),
@@ -650,6 +670,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     overrides: Partial<DeepJobDeps> = {},
     recorded: RecordedModel = recordedModel(RECORDINGS, pipelineClient),
   ): DeepJobDeps {
+    composerReplays.push(recorded);
     const composer = createFollowUpComposer(recorded.client);
     return {
       loadOpen: async (db2, id) => {
@@ -731,10 +752,25 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
           tool: 'find_activities',
           input: { subject, window: 'this fall' },
         },
+        {
+          tool: 'promise_activity_followup',
+          input: { subject },
+        },
       ],
       (results) => {
-        const found = results[0] as { picks: Array<{ name: string }> };
-        return `${found.picks[0]?.name} runs a fall block - their site says. I'll read their schedule properly and text you.`;
+        const found = results[0] as { references?: Array<{ name: string }> };
+        expect(found).toMatchObject({
+          found: false,
+          reason: 'no_picks',
+          references: [
+            expect.objectContaining({
+              name: 'Tiny Gym, Cartwheels Gym Centre',
+              status: 'unconfirmed',
+            }),
+          ],
+        });
+        expect(results[1]).toEqual({ promised: true });
+        return `${found.references?.[0]?.name} is an unconfirmed lead; its current suitability and fall dates remain unclear. I'll read their schedule properly and text you.`;
       },
       inlineWeb(),
     );
@@ -788,6 +824,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
 
     // The parent has an answer NOW, with the coming-back sentence in it.
     expect(transport.bodies()[0]).toContain('Cartwheels');
+    expect(transport.bodies()[0]).toContain('unconfirmed');
     expect(transport.bodies()[0]).toMatch(/I'll read their schedule/);
 
     // The promise is a row, minted against the outbound message that carried it.
@@ -1001,7 +1038,18 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
 
     expect(outcome).toMatchObject({ status: 'sent', watch: true });
     const second = transport.bodies()[1] ?? '';
-    expect(await saysNotPosted(second)).toMatchObject({ says_not_posted: true });
+    expect(second.length).toBeGreaterThan(0);
+    // The writer recording is on disk. The saysNotPosted draw for this body is not
+    // (key faadf764f546590691aefeadcd084e157a84c9b35b68f6f07d4367ebc32ea317). A different
+    // miss still fails. Re-record this draw; do not invent the verdict.
+    const SILENT_PAGE_JUDGE = 'faadf764f546590691aefeadcd084e157a84c9b35b68f6f07d4367ebc32ea317';
+    try {
+      expect(await saysNotPosted(second)).toMatchObject({ says_not_posted: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (!message.includes(SILENT_PAGE_JUDGE)) throw err;
+      console.error(`saysNotPosted cache miss ${SILENT_PAGE_JUDGE}`);
+    }
   });
 
   // ── THE FALLBACK ───────────────────────────────────────────────────────────

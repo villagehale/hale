@@ -10,6 +10,7 @@ import {
 } from '~/lib/channel/activity/reader';
 import { f14Allowlist, f14Enabled, f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound, familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -25,11 +26,9 @@ import {
   failedSendPatch,
   readSendRefusal,
 } from '~/lib/channel/outbound-transport';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { activityClient } from '~/lib/pipeline/client';
-import { zonedLocalInstant } from '~/lib/plan/spine';
 import { TRAVEL_BRIEF_TEMPLATE_KEY, type TravelBriefRender, renderTravelBrief } from './copy';
 import { localCalendarDay } from './detect';
 import { travelBriefAllowlist, travelBriefEnabled, travelBriefEnabledFor } from './flag';
@@ -88,17 +87,8 @@ const PREFILTER_SLACK_DAYS = 1;
 
 /** THE CORRECTNESS GUARD. One text per trip, forever, enforced by a unique index rather
  * than by a read a concurrent tick can race. */
-const TRAVEL_BRIEF_KEY_PREFIX = 'travel_brief:';
-
 export function travelBriefDedupeKey(tripId: string): string {
-  return `${TRAVEL_BRIEF_KEY_PREFIX}${tripId}`;
-}
-
-/** The trip a brief's key names, for the decider's send to close (VIL-612). */
-export function tripIdFromBriefDedupeKey(dedupeKey: string): string | null {
-  return dedupeKey.startsWith(TRAVEL_BRIEF_KEY_PREFIX)
-    ? dedupeKey.slice(TRAVEL_BRIEF_KEY_PREFIX.length)
-    : null;
+  return `travel_brief:${tripId}`;
 }
 
 /**
@@ -160,10 +150,6 @@ export interface TravelBriefResult {
    * the silent early return rule #11 forbids.
    */
   alreadyClaimed: number;
-  /** Live cadence: the composed brief was handed to the hourly decider this tick. */
-  queued: number;
-  /** Live cadence: an earlier tick handed it over, so this one searches nothing. */
-  awaitingDecider: number;
   /** `starts_on` passed while the trip was still open. Counted at the write that closes
    * it. */
   overtaken: number;
@@ -191,8 +177,6 @@ export function emptyTravelBriefResult(enabled: boolean): TravelBriefResult {
     refusedAtRender: 0,
     unsendable: 0,
     alreadyClaimed: 0,
-    queued: 0,
-    awaitingDecider: 0,
     overtaken: 0,
     failed: 0,
   };
@@ -368,10 +352,6 @@ async function briefOne(
     result.alreadyClaimed += 1;
     return;
   }
-  if (await isQueuedForDecider(database, trip.familyId, dedupeKey)) {
-    result.awaitingDecider += 1;
-    return;
-  }
 
   const verdict = await assertProactiveSendAllowed(
     {
@@ -441,8 +421,16 @@ async function briefOne(
     return;
   }
 
-  const found = await deps.finder.find(deidentified.query);
-  if (!found.found) {
+  const found = await deps.finder.find({
+    ...deidentified.query,
+    dateRange: { start: trip.startsOn, end: trip.endsOn },
+  });
+  const references = found.found
+    ? (found.references ?? [])
+    : found.reason === 'no_picks'
+      ? (found.searched?.references ?? [])
+      : [];
+  if (!found.found && references.length === 0) {
     if (found.reason === 'no_picks') {
       // The search ran and there is nothing on. The trip is LEFT OPEN: a search that found
       // nothing is not a brief the parent received. Record the attempt and the next one,
@@ -467,14 +455,21 @@ async function briefOne(
   let rendered: TravelBriefRender;
   try {
     const target = await familyOutboundTarget(database, trip.familyId);
+    const [parent] = await database
+      .select({ locale: schema.users.locale })
+      .from(schema.users)
+      .where(eq(schema.users.id, trip.parentUserId))
+      .limit(1);
     rendered = await renderTravelBrief({
       city: trip.destinationCity,
       startsOn: trip.startsOn,
       endsOn: trip.endsOn,
       childNames: names.namable,
-      picks: found.picks,
+      picks: found.found ? found.picks : [],
+      references,
       teenNames: names.teens,
       forGroup: target.channel === 'group',
+      language: acceptReplyLanguage(parent?.locale),
     });
   } catch (err) {
     result.refusedAtRender += 1;
@@ -482,45 +477,6 @@ async function briefOne(
       { tripId: trip.id, err: err instanceof Error ? err.message : 'unknown' },
       'travel brief: the composed body was refused',
     );
-    return;
-  }
-
-  // VIL-612 · live cadence: the hourly decider decides when, re-gates and sends, and
-  // closes the trip with the overlap collapse below (closeBriefedTrip). A brief is
-  // worthless once the trip starts, on the parent's own clock.
-  const handedOff = await handOffProactive(
-    database,
-    [
-      {
-        familyId: trip.familyId,
-        parentUserId: trip.parentUserId,
-        kind: 'travel_brief',
-        category: 'travel_brief',
-        templateKey: TRAVEL_BRIEF_TEMPLATE_KEY,
-        what: rendered.body,
-        why: 'travel_brief',
-        sourceUrl: null,
-        worthlessAfter: zonedLocalInstant(
-          trip.startsOn,
-          '00:00',
-          await deps.parentTimeZone(database, trip.parentUserId),
-        ),
-        parentRequested: false,
-        dedupeKey,
-      },
-    ],
-    'candidate',
-  );
-  if (handedOff === 'queued') {
-    await database.insert(schema.auditLog).values({
-      familyId: trip.familyId,
-      actor: 'system',
-      actionTaken: 'proactive_cadence_queued',
-      targetTable: 'family_trips',
-      targetId: trip.id,
-      after: { kind: 'travel_brief' },
-    });
-    result.queued += 1;
     return;
   }
 
@@ -611,11 +567,29 @@ async function briefOne(
     })
     .where(eq(schema.channelMessages.id, claimed.id));
 
-  const merged = await closeBriefedTrip(database, {
-    tripId: trip.id,
-    channelMessageId: claimed.id,
-    now,
-  });
+  // R4 · OVERLAP COLLAPSE, at read rather than in the schema. The flight and the hotel for
+  // one trip are two emails, two extractions and two rows, with dates that often differ by
+  // a day — one piece of news that must spend one slot, not several. The calendar alert's
+  // series collapse, applied to the same problem. Every merged row carries the SAME
+  // message id, so the receipt for each of them is the text the parent actually got.
+  const merged = await database
+    .update(schema.familyTrips)
+    .set({ closedAt: now, closedReason: 'merged', briefChannelMessageId: claimed.id })
+    .where(
+      and(
+        eq(schema.familyTrips.familyId, trip.familyId),
+        isNull(schema.familyTrips.closedAt),
+        ne(schema.familyTrips.id, trip.id),
+        lte(schema.familyTrips.startsOn, trip.endsOn),
+        gte(schema.familyTrips.endsOn, trip.startsOn),
+      ),
+    )
+    .returning({ id: schema.familyTrips.id });
+
+  await database
+    .update(schema.familyTrips)
+    .set({ closedAt: now, closedReason: 'sent', briefChannelMessageId: claimed.id })
+    .where(eq(schema.familyTrips.id, trip.id));
 
   // The composed sentence, not the wire body — the CASL line belongs on the wire, and the
   // coach re-reads this row next turn.
@@ -636,63 +610,17 @@ async function briefOne(
     // `rendered.length`, not `found.picks.length`: the lane may hand up three and the
     // assembly renders at most two, so the finder's count is a receipt that disagrees with
     // the message the parent got.
-    after: { picks: rendered.rendered.length, merged },
+    after: {
+      picks: rendered.rendered.length,
+      ...(rendered.renderedReferences.length
+        ? { references: rendered.renderedReferences.length }
+        : {}),
+      merged: merged.length,
+    },
   });
 
   result.sent += 1;
-  result.merged += merged;
-}
-
-/**
- * Close a trip whose brief left, and the open trips it overlaps. Returns how many merged.
- *
- * R4 · OVERLAP COLLAPSE, at read rather than in the schema. The flight and the hotel for
- * one trip are two emails, two extractions and two rows, with dates that often differ by
- * a day — one piece of news that must spend one slot, not several. The calendar alert's
- * series collapse, applied to the same problem. Every merged row carries the SAME
- * message id, so the receipt for each of them is the text the parent actually got.
- *
- * The sweep calls it after its own send, and the hourly decider after one it made.
- */
-export async function closeBriefedTrip(
-  database: Database,
-  input: { tripId: string; channelMessageId: string; now: Date },
-): Promise<number> {
-  const [trip] = await database
-    .select({
-      familyId: schema.familyTrips.familyId,
-      startsOn: schema.familyTrips.startsOn,
-      endsOn: schema.familyTrips.endsOn,
-    })
-    .from(schema.familyTrips)
-    .where(eq(schema.familyTrips.id, input.tripId));
-  if (!trip) throw new Error('closeBriefedTrip: no trip behind the brief');
-  const merged = await database
-    .update(schema.familyTrips)
-    .set({
-      closedAt: input.now,
-      closedReason: 'merged',
-      briefChannelMessageId: input.channelMessageId,
-    })
-    .where(
-      and(
-        eq(schema.familyTrips.familyId, trip.familyId),
-        isNull(schema.familyTrips.closedAt),
-        ne(schema.familyTrips.id, input.tripId),
-        lte(schema.familyTrips.startsOn, trip.endsOn),
-        gte(schema.familyTrips.endsOn, trip.startsOn),
-      ),
-    )
-    .returning({ id: schema.familyTrips.id });
-  await database
-    .update(schema.familyTrips)
-    .set({
-      closedAt: input.now,
-      closedReason: 'sent',
-      briefChannelMessageId: input.channelMessageId,
-    })
-    .where(and(eq(schema.familyTrips.id, input.tripId), isNull(schema.familyTrips.closedAt)));
-  return merged.length;
+  result.merged += merged.length;
 }
 
 /** The under-13s' first names and the 13+ names, from ONE read. The age gate is

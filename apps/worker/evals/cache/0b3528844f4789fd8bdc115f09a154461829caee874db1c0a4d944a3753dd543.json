@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgUmGUjcFzKpNdEuyVMaZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Night wakings do happen at 8, and they often come in waves with stress, a growth spurt or a schedule change like back-to-school coming up. Tonight, try a short, boring wind-down with screens off an hour before bed. If she wakes, walk her straight back to bed with no chat and no lights, so 2am stays dull. If it keeps up for weeks or she seems upset or unwell, mention it to her doctor.\n\nWant me to send the full plan for Ada's night waking?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 384,
+      "cache_read_input_tokens": 22534,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 384,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 155,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2048
+}

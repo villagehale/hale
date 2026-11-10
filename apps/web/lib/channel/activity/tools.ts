@@ -10,6 +10,7 @@ import {
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, deidentifyActivitySubject, refusalSentence } from './deidentify';
+import { finderSourceBindingEnabled } from './flag';
 import { type ActivityFinder, MAX_ACTIVITY_CALLS_PER_TURN } from './lane';
 import type { BoundActivityReader } from './reader';
 
@@ -117,11 +118,12 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       callsThisTurn += 1;
 
       const childId = input.childId ?? null;
-      const [place, stage, householdNames, today] = await Promise.all([
+      const [place, stage, householdNames, today, timeZone] = await Promise.all([
         args.reader.place(ctx.familyId),
         args.reader.stage(ctx.familyId, childId),
         args.reader.householdNames(ctx.familyId),
         args.reader.today ? args.reader.today(ctx.familyId) : null,
+        args.reader.timeZone ? args.reader.timeZone(ctx.familyId) : null,
       ]);
 
       let town = place.status === 'known' ? place.town : null;
@@ -143,6 +145,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       }
 
       const deidentified = deidentifyActivityQuery({
+        timeZone,
         subject: input.subject,
         window: input.window ?? null,
         town,
@@ -177,7 +180,39 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         if (result.reason === 'over_budget') {
           args.onPromise({ subject: deidentified.query.subject, childId });
         }
-        return { found: false as const, reason: result.reason };
+        if (result.searched?.references?.some((reference) => reference.status === 'unconfirmed')) {
+          args.onPromise({ subject: deidentified.query.subject, childId });
+        }
+        args.onLinks?.([
+          ...(result.searched?.references ?? []).map((reference) => ({
+            title: reference.name,
+            url: reference.sourceUrl,
+          })),
+          ...(result.searched?.checkedSources ?? []).map((url) => ({
+            title: deidentified.query.subject,
+            url,
+          })),
+        ]);
+        return {
+          found: false as const,
+          reason: result.reason,
+          ...(result.reason === 'location_unverified'
+            ? { sourceCaveat: result.searched?.notes }
+            : {}),
+          ...(result.searched
+            ? {
+                references: (result.searched.references ?? []).map(
+                  ({ sourceUrl, ...reference }) => ({
+                    ...reference,
+                    ref: linkRef(sourceUrl),
+                  }),
+                ),
+                checkedSources: (result.searched.checkedSources ?? []).map((url) => ({
+                  ref: linkRef(url),
+                })),
+              }
+            : {}),
+        };
       }
       // A REAL FIND WITH A HOLE IN IT REGISTERS ITS OWN FOLLOW-UP.
       //
@@ -200,23 +235,48 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         args.onPromise({ subject: deidentified.query.subject, childId });
       }
       const linked = result.picks.flatMap((pick) =>
-        pick.url ? [{ title: pick.name, url: pick.url }] : [],
+        pick.url || pick.sourceUrl
+          ? [{ title: pick.name, url: (pick.url ?? pick.sourceUrl) as string }]
+          : [],
       );
       if (linked.length > 0) args.onLinks?.(linked);
       // The model sees a page's REF, never its URL: a reply cites the ref and code
       // attaches the page (coach/activity-links.ts), so a typed URL can never reach a parent.
-      const picks = result.picks.map(({ url, ...pick }) =>
-        url ? { ...pick, ref: linkRef(url) } : pick,
-      );
-      // VIL-518. The family slice the picks are ranked and opened on, read off the record
-      // (never the model's arguments) and handed back beside them — so "fits Zephyrina at
-      // 4, near home, indoors" is a fact the model holds at composition, not a hope in a
-      // skill. It never reaches the search. Absent reader or a failed read: the find
-      // still lands, without a slice, and nothing is invented to fill it.
+      const picks = result.picks.map(({ url, sourceUrl, ...pick }) => {
+        const page = url ?? sourceUrl;
+        return page ? { ...pick, ref: linkRef(page) } : pick;
+      });
       const family = args.reader.familyFit
         ? await args.reader.familyFit(ctx.familyId).catch(() => null)
         : null;
-      return family ? { found: true as const, picks, family } : { found: true as const, picks };
+      const bound = finderSourceBindingEnabled();
+      const references =
+        bound && result.references?.length
+          ? result.references.map(({ sourceUrl, ...reference }) => ({
+              ...reference,
+              ref: linkRef(sourceUrl),
+            }))
+          : undefined;
+      const checkedSources =
+        bound && result.checkedSources?.length
+          ? result.checkedSources.map((url) => ({ ref: linkRef(url) }))
+          : undefined;
+      if (bound && result.references?.length)
+        args.onLinks?.(
+          result.references.map((reference) => ({
+            title: reference.name,
+            url: reference.sourceUrl,
+          })),
+        );
+      return family || references || checkedSources
+        ? {
+            found: true as const,
+            picks,
+            ...(family ? { family } : {}),
+            ...(references ? { references } : {}),
+            ...(checkedSources ? { checkedSources } : {}),
+          }
+        : { found: true as const, picks };
     },
   });
 }

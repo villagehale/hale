@@ -2,12 +2,14 @@ import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
+import type { ActivityReference } from '~/lib/channel/activity/facts';
 import {
   type ActivityFinder,
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
 import { readActivityPlace } from '~/lib/channel/activity/place';
+import { readActivityTimeZone } from '~/lib/channel/activity/reader';
 import {
   type NamedAreaReader,
   resolveNamedArea,
@@ -162,9 +164,11 @@ export async function findFamilyActivities(
 ): Promise<{
   picks: ActivityPick[];
   reason: string | null;
+  references?: ActivityReference[];
+  checkedSources?: string[];
 }> {
   const now = options.now ?? new Date();
-  const [children, place, parents] = await Promise.all([
+  const [children, place, parents, timeZone] = await Promise.all([
     database
       .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
       .from(schema.children)
@@ -175,6 +179,7 @@ export async function findFamilyActivities(
       .from(schema.familyMembers)
       .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
       .where(eq(schema.familyMembers.familyId, familyId)),
+    readActivityTimeZone(database, familyId),
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
@@ -196,6 +201,7 @@ export async function findFamilyActivities(
     town = named.label;
   }
   const query = deidentifyActivityQuery({
+    timeZone,
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
     town,
@@ -242,10 +248,16 @@ export async function findFamilyActivities(
           ? await unofferedActivityPicks(database, familyId, found.picks)
           : found.picks,
         reason: null,
+        ...(found.references ? { references: found.references } : {}),
+        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
       }
     : {
         picks: [],
         reason: found.reason,
+        ...(found.searched?.references?.length ? { references: found.searched.references } : {}),
+        ...(found.searched?.checkedSources?.length
+          ? { checkedSources: found.searched.checkedSources }
+          : {}),
       };
 }
 

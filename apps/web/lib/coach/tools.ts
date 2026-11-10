@@ -9,6 +9,7 @@ import {
 } from '~/lib/channel/activity/lane';
 import { linkRef } from '~/lib/channel/coach/activity-links';
 import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
+import type { NamedLink } from '~/lib/channel/coach/tools';
 import type { NamedAreaReader } from '~/lib/channel/named-area';
 import { activityClient } from '~/lib/pipeline/client';
 import {
@@ -56,11 +57,12 @@ export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
  * wrong pick, and `inputExamples` on this surface are cached outside the protections
  * message content gets (rule #1). See {@link OfferedCandidate}. */
 interface OfferableActivity {
+  evidence?: ActivityPick['evidence'];
   title: string;
   kind: string;
   summary: string;
   venue?: string;
-  when: string;
+  when?: string;
   /** A ref for the row's own page, never the URL. The one id the model sees, and on
    * purpose: the reply cites it and code attaches that exact page, so an invented ref
    * attaches nothing and a typed URL is dropped (channel/coach/activity-links.ts). */
@@ -171,6 +173,7 @@ export function searchVillageTool(
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
   finder?: ActivityFinder,
   areaReader?: NamedAreaReader,
+  onLinks?: (links: readonly NamedLink[]) => void,
 ): RegisteredTool {
   return defineTool({
     name: 'search_village',
@@ -235,9 +238,10 @@ export function searchVillageTool(
           kind: 'activity',
           summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
           venue: pick.sourceName,
-          when: pick.when ?? 'Current time could not be verified',
+          ...(pick.when ? { when: pick.when } : {}),
           // A ref, not the page: the reply cites it and code attaches the URL.
           ...(pick.sourceUrl ? { ref: linkRef(pick.sourceUrl) } : {}),
+          ...(pick.evidence ? { evidence: pick.evidence } : {}),
         },
         offer: {
           title: pick.name,
@@ -277,12 +281,33 @@ export function searchVillageTool(
       // count and never a teen-attributed row, which has no venue and no date and must
       // not be nameable at all (rule #1).
       onOffered?.(offered);
+      onLinks?.([
+        ...(found.references ?? []).map((reference) => ({
+          title: reference.name,
+          url: reference.sourceUrl,
+        })),
+        ...(found.checkedSources ?? []).map((url) => ({
+          title: url,
+          url,
+        })),
+      ]);
 
       return {
         candidates,
         inVerification: 0,
         standingOption: null,
-        liveRead: found.reason ?? 'verified',
+        liveRead: found.reason ?? 'source_read',
+        ...(found.references
+          ? {
+              references: found.references.map(({ sourceUrl, ...reference }) => ({
+                ...reference,
+                ref: linkRef(sourceUrl),
+              })),
+            }
+          : {}),
+        ...(found.checkedSources
+          ? { checkedSources: found.checkedSources.map((url) => ({ ref: linkRef(url) })) }
+          : {}),
       };
     },
   });

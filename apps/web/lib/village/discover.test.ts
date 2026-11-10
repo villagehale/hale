@@ -53,7 +53,7 @@ describe('live recommendations without a catalog', () => {
     expect(result.picks[0]?.eventDate).toBeUndefined();
     expect([...(await readCandidates(db.database, familyId, { finder }))]).toEqual([]);
   });
-  it('passes the existing Finder municipality without leaking the postal prefix', async () => {
+  it('qualifies the Finder municipality without leaking the postal prefix', async () => {
     const familyId = await family(36, 'Burlington');
     await db.database
       .update(schema.families)
@@ -61,19 +61,17 @@ describe('live recommendations without a catalog', () => {
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
     await findFamilyActivities(db.database, familyId, { finder: { find } });
-    expect(find.mock.calls[0]![0].town).toBe('Burlington');
+    expect(find.mock.calls[0]![0].town).toBe('Burlington, Ontario, Canada');
     expect(JSON.stringify(find.mock.calls)).not.toContain('L7M');
   });
 
-  it('searches a Canadian city outside the GTA by its city and province', async () => {
-    const familyId = await family(36, 'Victoria');
+  it('searches a Canadian city outside the GTA by its city and province', async () => {    const familyId = await family(36, 'Victoria');
     await db.database
       .update(schema.families)
       .set({ areaCoarse: null, province: 'BC', country: 'Canada' })
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
-    await findFamilyActivities(db.database, familyId, { finder: { find } });
-    expect(find.mock.calls[0]![0].town).toBe('Victoria, British Columbia, Canada');
+    await findFamilyActivities(db.database, familyId, { finder: { find } });    expect(find.mock.calls[0]![0].town).toBe('Victoria, British Columbia, Canada');
   });
 
   it('searches a US family in its own state, never an Ontario namesake', async () => {
@@ -96,8 +94,7 @@ describe('live recommendations without a catalog', () => {
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
     await findFamilyActivities(db.database, familyId, { finder: { find } });
     expect(find.mock.calls[0]![0].town).toBe('Seattle, Washington, United States');
-    expect(JSON.stringify(find.mock.calls)).not.toMatch(/98101|981/);
-  });
+    expect(JSON.stringify(find.mock.calls)).not.toMatch(/98101|981/);  });
 
   it('keeps a known venue identity for review ranking, never an ambiguous shared URL', async () => {
     const familyId = await family();
@@ -182,7 +179,7 @@ describe('live recommendations without a catalog', () => {
     expect(second.status).toBe('discovered');
     expect(find).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(find.mock.calls)).not.toContain('PrivateChildName');
-    expect(find.mock.calls[0]![0].town).toBe('Toronto');
+    expect(find.mock.calls[0]![0].town).toBe('Toronto, Ontario, Canada');
     const rows = await db.database
       .select()
       .from(schema.familyActivityHistory)
@@ -301,6 +298,18 @@ describe('live recommendations without a catalog', () => {
         })
       ).picks,
     ).toEqual([]);
+    expect(find).not.toHaveBeenCalled();
+  });
+  it('does not leak a household name stored as an unmapped city', async () => {
+    const familyId = await family(36, 'PrivateChildName');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: null, country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn();
+    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
+      'names_a_person',
+    );
     expect(find).not.toHaveBeenCalled();
   });
   it('nudge candidates are freshly sourced and require an explicit date and link', async () => {

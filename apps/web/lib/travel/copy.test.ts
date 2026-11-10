@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ActivityReference } from '~/lib/channel/activity/facts';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
@@ -6,6 +7,7 @@ import {
   MAX_TRAVEL_BRIEF_SEGMENTS,
   renderTravelBrief,
   travelBriefViolations,
+  travelWriterPlans,
   tripDayPhrase,
 } from './copy';
 
@@ -33,6 +35,25 @@ const ZOO = pick({
   sourceName: 'Central Park Zoo',
 });
 
+const REFERENCE: ActivityReference = {
+  name: 'Discovery Club',
+  sourceName: 'City Museum',
+  sourceUrl: 'https://example.org/discovery',
+  ageFit: 'ages 2-5',
+  when: '2020-09-12 10:00',
+  price: '$14',
+  status: 'unconfirmed',
+  evidence: {
+    program: 'Discovery Club',
+    age: null,
+    sessions: [],
+    schedule: null,
+    price: null,
+    history: null,
+    windowConfirmed: false,
+  },
+};
+
 /** The BODY, which is what all but one of these tests are about. The render's other half
  * — which picks actually made it in — has its own test below. */
 async function brief(overrides: Partial<Parameters<typeof renderTravelBrief>[0]> = {}) {
@@ -52,26 +73,39 @@ async function renderBrief(overrides: Partial<Parameters<typeof renderTravelBrie
 }
 
 describe('renderTravelBrief', () => {
-  it('uses the locked group opening and does not guess who is travelling', async () => {
+  it('uses the group audience fact and does not guess who is travelling', async () => {
     const body = await brief({ forGroup: true });
-    expect(
-      body.startsWith('Trip: New York, the 12th to the 15th. A couple of things on for Mia:'),
-    ).toBe(true);
+    expect(body.startsWith('Trip: New York, the 12th to the 15th. for Mia:')).toBe(true);
     expect(body).not.toContain("You're in");
   });
 
-  it('names the city, the days and two things, and claims nothing about having been', async () => {
+  it('names the city, the days and two things, from the writer', async () => {
     const body = await brief();
-    expect(body).toBe(
-      "You're in New York the 12th to the 15th. A couple of things on for Mia: " +
-        'American Museum of Natural History - open daily 10am-5:30pm, USD 28 adults / 16 kids ' +
-        '(their site). Central Park Zoo - 10am-5pm, USD 20 (their site). ' +
-        "That's off their own pages, not from anyone who's been.",
-    );
-    // No link, and no question: there is no reply handler behind this text, and a question
-    // with nothing behind it is the recorded 2026-08-22 defect.
+    expect(body).toContain("You're in New York the 12th to the 15th");
+    expect(body).toContain('for Mia:');
+    expect(body).toContain('American Museum of Natural History - open daily 10am-5:30pm');
+    expect(body).toContain('Central Park Zoo - 10am-5pm, USD 20');
+    expect(body).not.toContain('(their site)');
+    expect(body).not.toContain("That's off their own pages");
+    expect(body).not.toContain('A couple of things on');
     expect(body).not.toContain('http');
     expect(body).not.toContain('?');
+  });
+
+  it('sends nothing when the picks-only writer returns nothing', async () => {
+    await expect(
+      renderTravelBrief(
+        {
+          city: 'New York',
+          startsOn: '2026-09-12',
+          endsOn: '2026-09-15',
+          childNames: ['Mia'],
+          picks: [pick()],
+          teenNames: [],
+        },
+        { write: async () => null },
+      ),
+    ).rejects.toThrow(/model_unreachable/);
   });
 
   it('fits four segments against the FULL opt-out form, in GSM-7', async () => {
@@ -89,9 +123,8 @@ describe('renderTravelBrief', () => {
 
   it('omits a clause the source never published, and invents nothing in its place', async () => {
     const body = await brief({ picks: [pick({ price: null }), ZOO] });
-    expect(body).toContain(
-      'American Museum of Natural History - open daily 10am-5:30pm (their site).',
-    );
+    expect(body).toContain('American Museum of Natural History - open daily 10am-5:30pm.');
+    expect(body).not.toContain('(their site)');
     expect(body).not.toContain('USD 28');
     // THE POSITIVE CONTROL: the same pick WITH a price renders it, so the absence above is
     // a claim about the null rather than about a renderer that never prints prices.
@@ -100,7 +133,8 @@ describe('renderTravelBrief', () => {
 
   it('renders a pick with neither a time nor a price rather than dropping it', async () => {
     const body = await brief({ picks: [pick({ when: null, price: null })] });
-    expect(body).toContain('American Museum of Natural History (their site).');
+    expect(body).toContain('American Museum of Natural History.');
+    expect(body).not.toContain('(their site)');
   });
 
   it('carries at most two picks — the third is dropped, not linked', async () => {
@@ -119,31 +153,163 @@ describe('renderTravelBrief', () => {
   });
 
   /**
-   * WHOLE-PICK-AT-A-TIME. A cut that lands inside "USD 2" publishes a wrong price, so a
-   * pick that would not fit whole is dropped entire — asserted by the FIRST pick's
-   * complete price string still being present.
+   * The writer is asked again without the pick that did not fit. The first pick's price
+   * stays whole; the long pick is not cut down to a fragment of its price.
    */
-  it('drops a second pick whole rather than cutting one in half', async () => {
+  it('plans the one-fewer-fact retry without the pick that does not fit', () => {
     const long = pick({
-      name: 'Long Island Childrens Museum and Discovery Centre at Mitchel Field',
-      when: 'Tuesday to Sunday 10am to 5pm, and every statutory holiday Monday as well, with the last admission half an hour before closing and the whole building shut for the first week of September',
-      price:
-        'USD 17 per person over one year old, members free, EBT card holders USD 3, and a family membership that covers two adults and up to four children for the year',
+      name: 'Long Island Childrens Museum',
+      when: 'open daily '.repeat(80),
+      price: 'USD 17',
+      sourceName: 'Long Island Childrens Museum',
+    });
+    const plans = travelWriterPlans({
+      city: 'New York',
+      startsOn: '2026-09-12',
+      endsOn: '2026-09-15',
+      childNames: ['Mia'],
+      picks: [pick(), long],
+      teenNames: [],
+    });
+    expect(plans.first.verbatim).toContain(long.name);
+    expect(plans.first.verbatim).toContain('USD 17');
+    expect(plans.first.verbatim).toContain(long.sourceName);
+    expect(plans.first.verbatim).not.toContain(long.when);
+    expect(plans.first.facts?.picks).toContain(long.when);
+    expect(plans.first.purpose).toBe('travel_source_listings');
+    const retry = plans.retry;
+    if (!retry?.facts) throw new Error('expected a one-fewer-fact retry');
+    const retryPicks = JSON.parse(retry.facts.picks ?? '[]') as { name: string }[];
+    expect(retryPicks.map((item) => item.name)).toEqual(['American Museum of Natural History']);
+    expect(retry.verbatim ?? []).not.toContain(long.when);
+  });
+
+  it('leaves out a second pick that does not fit, and does not cut a price', async () => {
+    const long = pick({
+      name: 'Long Island Childrens Museum',
+      when: 'open daily '.repeat(80),
+      price: 'USD 17 per person',
       sourceName: 'Long Island Childrens Museum',
     });
     const render = await renderBrief({ picks: [pick(), long] });
-    const body = render.body;
-    expect(body).toContain('USD 28 adults / 16 kids (their site).');
-    expect(body).not.toContain('USD 17');
-    expect(body).not.toContain('USD 1');
-    expect(smsSegments(withOptOut(body, 'full'))).toBeLessThanOrEqual(MAX_TRAVEL_BRIEF_SEGMENTS);
-    // A pick dropped for length is a pick the receipt must not count either.
+    expect(render.body).toContain('USD 28 adults / 16 kids');
+    expect(render.body).not.toContain('USD 17');
+    expect(render.body).not.toContain('Long Island');
     expect(render.rendered).toHaveLength(1);
+    expect(smsSegments(withOptOut(render.body, 'full'))).toBeLessThanOrEqual(
+      MAX_TRAVEL_BRIEF_SEGMENTS,
+    );
+  });
+
+  it('sends nothing when the only pick still does not fit', async () => {
+    await expect(brief({ picks: [pick({ when: 'open daily '.repeat(80) })] })).rejects.toThrow(
+      /too_many_segments/,
+    );
   });
 
   it('throws rather than shortening when the body cannot be trusted', async () => {
     // Nothing on: there is no honest one-line version of this text, so there is no text.
     await expect(brief({ picks: [] })).rejects.toThrow(/no_picks/);
+  });
+
+  it('names an unconfirmed reference from the writer, not a fixed English caveat', async () => {
+    const rendered = await renderBrief({ picks: [], references: [REFERENCE] });
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('Places to check');
+    expect(rendered.body).not.toContain('These are source listings, not confirmed plans.');
+    expect(rendered.body).not.toContain('dates and age fit not confirmed');
+    expect(rendered.body).not.toContain('older listing');
+    for (const rejected of ['2020', '10:00', '$14', 'ages 2-5', 'https://']) {
+      expect(rendered.body).not.toContain(rejected);
+    }
+    expect(rendered.rendered).toEqual([]);
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+  });
+
+  it('sends nothing when the reference writer fails', async () => {
+    await expect(
+      renderTravelBrief(
+        {
+          city: 'New York',
+          startsOn: '2026-09-12',
+          endsOn: '2026-09-15',
+          childNames: ['Mia'],
+          picks: [],
+          references: [REFERENCE],
+          teenNames: [],
+        },
+        { write: async () => null },
+      ),
+    ).rejects.toThrow(/model_unreachable/);
+  });
+
+  it('passes a historical reference to the writer as a status, not a sentence', async () => {
+    const rendered = await renderBrief({
+      picks: [],
+      references: [{ ...REFERENCE, status: 'historical' }],
+    });
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('older listing');
+    expect(rendered.body).not.toContain('2020');
+    expect(rendered.rendered).toHaveLength(0);
+    expect(rendered.renderedReferences).toHaveLength(1);
+  });
+
+  it('prioritizes supported picks and shares their two-slot ceiling with references', async () => {
+    const rendered = await renderBrief({
+      picks: [pick()],
+      references: [REFERENCE, { ...REFERENCE, name: 'Another Club' }],
+    });
+    expect(rendered.rendered).toHaveLength(1);
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+    expect(rendered.body).not.toContain('Another Club');
+    expect(rendered.body.indexOf(pick().name)).toBeLessThan(rendered.body.indexOf(REFERENCE.name));
+    expect((await renderBrief({ references: [REFERENCE] })).renderedReferences).toEqual([]);
+  });
+
+  it('refuses rather than leaking a teen named in a reference or its source', async () => {
+    for (const reference of [
+      { ...REFERENCE, name: 'Ari Discovery Club' },
+      { ...REFERENCE, sourceName: "Ari's Museum" },
+    ]) {
+      await expect(
+        brief({ picks: [], references: [reference], teenNames: ['Ari'] }),
+      ).rejects.toThrow(/names_a_teen/);
+    }
+  });
+
+  it('keeps reference-only group copy free of the fixed English lines', async () => {
+    const rendered = await renderBrief({
+      picks: [],
+      references: [REFERENCE],
+      forGroup: true,
+    });
+    expect(rendered.body).toContain('Trip: New York, the 12th to the 15th. for Mia:');
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('Places to check');
+    expect(rendered.body).not.toContain('These are source listings');
+    expect(smsSegments(withOptOut(rendered.body, 'full'))).toBeLessThanOrEqual(
+      MAX_TRAVEL_BRIEF_SEGMENTS,
+    );
+  });
+
+  it('leaves out a reference that does not fit and keeps the one that does', async () => {
+    const rendered = await renderBrief({
+      picks: [],
+      references: [REFERENCE, { ...REFERENCE, name: 'Long name '.repeat(100) }],
+    });
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('Long name Long name');
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+  });
+
+  it('sends nothing when the only reference does not fit', async () => {
+    await expect(
+      brief({
+        picks: [],
+        references: [{ ...REFERENCE, name: 'Long name '.repeat(100) }],
+      }),
+    ).rejects.toThrow(/too_many_segments/);
   });
 });
 
@@ -187,8 +353,14 @@ describe('travelBriefViolations', () => {
     expect(travelBriefViolations(`${body} That's Al's week.`, short)).toContain('names_a_teen');
   });
 
+  it('allows a schedule rewritten in another language when the days and times are the same', () => {
+    const body =
+      'Vous etes a New York du 12 au 15. pour Mia: American Museum of Natural History, ouvert tous les jours de 10 h a 5 h 30, USD 28 adults / 16 kids. Central Park Zoo, de 10 h a 5 h, USD 20.';
+    expect(travelBriefViolations(body, context)).not.toContain('unbacked_digit');
+  });
+
   it('refuses a digit that traces to nothing', async () => {
-    const body = (await brief()).replace("That's off", "Roughly 40 minutes away. That's off");
+    const body = `${await brief()} Roughly 40 minutes away.`;
     expect(travelBriefViolations(body, context)).toContain('unbacked_digit');
     // Positive control: the same body without the invented figure is clean, so the rule is
     // about the digit rather than about the sentence.
