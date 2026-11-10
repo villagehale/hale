@@ -195,6 +195,16 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_hold_id_collision: {},
   opt_out_unread: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
+  retention_step_failed: {
+    step: [
+      'deletion_sweep',
+      'check_in_notes',
+      'message_retention',
+      'record_retention',
+      'roster_retention',
+      'provider_sessions',
+    ],
+  },
 } as const satisfies Record<string, Readonly<Record<string, readonly string[]>>>;
 
 type OpsPageVocabulary = typeof OPS_PAGE_VOCABULARY;

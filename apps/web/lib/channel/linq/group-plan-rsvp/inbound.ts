@@ -439,13 +439,10 @@ export async function considerGroupPollCardVote(
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const seated = await store.seatedExpected(input.chatId);
   const senderName = await senderNameOf(ports.database, input.senderUserId ?? null);
-  const memberKey = await senderMemberKey(
-    { handle: input.senderHandle, name: senderName },
-    async () => {
-      const poll = await store.pollForCard(input.chatId, input.card.providerMessageId);
-      return poll ? store.pollVoterKeys(poll.id) : [];
-    },
-  );
+  const memberKey = await senderMemberKey({ handle: input.senderHandle }, async () => {
+    const poll = await store.pollForCard(input.chatId, input.card.providerMessageId);
+    return poll ? store.pollVoterKeys(poll.id) : [];
+  });
   const seat = seated.find((person) => person.memberKey === memberKey);
   return takeGroupPollCardVote(
     {

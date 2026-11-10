@@ -12,6 +12,7 @@ import type { GoogleDisconnectPorts } from '~/lib/integrations/google-disconnect
 import { encryptTokens } from '~/lib/integrations/token-vault';
 import { revokeMcpGrant } from '~/lib/mcp/oauth-store';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { nameKey, senderMemberKey } from '~/lib/channel/linq/group-plan-rsvp/member-key';
 import { CO_PARENT_INVITE_CONSENT_SCOPE, acceptCoParentInvite } from './accept';
 import { departCoParent } from './depart';
 
@@ -369,6 +370,169 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       (row) => row.actionTaken === 'co_parent_departed',
     );
     expect(departed?.after).toMatchObject({ groupNamesCleared: 5 });
+  });
+
+  it('leaves the same person’s answers on another household’s plan and poll alone', async () => {
+    const household = await seedSeatedHousehold();
+    const leaverKey = phoneBlindIndex(household.partnerPhone);
+    const other = await seedSeatedHousehold();
+    // The leaver is a guest in another family's chat: same number, same user id.
+    const [plan] = await db.database
+      .insert(schema.linqGroupPlans)
+      .values({ chatId: 'chat-guest', familyId: other.familyId, title: 'Pizza night' })
+      .returning({ id: schema.linqGroupPlans.id });
+    const planId = plan?.id as string;
+    const leaver = { memberKey: leaverKey, displayName: 'Sam', userId: household.coParentUserId };
+    await db.database.insert(schema.linqGroupPlanExpected).values({ planId, ...leaver });
+    await db.database.insert(schema.linqGroupPlanRsvps).values({
+      planId,
+      ...leaver,
+      response: 'yes',
+      source: 'text',
+      verbatim: 'count us in',
+    });
+    const [poll] = await db.database
+      .insert(schema.linqGroupPolls)
+      .values({
+        chatId: 'chat-guest',
+        familyId: other.familyId,
+        question: 'Which night?',
+        options: [{ key: 'o1', text: 'Friday', providerOptionId: null }],
+        expected: [{ memberKey: leaverKey, displayName: 'Sam' }],
+        origin: 'parent',
+      })
+      .returning({ id: schema.linqGroupPolls.id });
+    const pollId = poll?.id as string;
+    await db.database
+      .insert(schema.linqGroupPollVotes)
+      .values({ pollId, ...leaver, optionKey: 'o1', source: 'text' });
+    // Positive control: the leaver's answers in their own household do change.
+    const own = await seedGroupAnswers(household, 'chat-own');
+
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(await groupNames(planId, pollId)).toEqual({
+      rsvps: [{ name: 'Sam', verbatim: 'count us in' }],
+      expected: ['Sam'],
+      votes: ['Sam'],
+      pollExpected: ['Sam'],
+    });
+    expect((await groupNames(own.planId, own.pollId)).votes).toEqual(['Ana', 'someone']);
+  });
+
+  it('moves an Apple-ID sender’s handle key and their name key to one departed key, in this household only', async () => {
+    const household = await seedSeatedHousehold();
+    const stayerKey = phoneBlindIndex(parentPhone(households));
+    const handleKey = await senderMemberKey({ handle: 'sam.parent@example.com' }, async () => []);
+    const samKey = nameKey('Sam');
+    const [plan] = await db.database
+      .insert(schema.linqGroupPlans)
+      .values({ chatId: 'chat-apple', familyId: household.familyId, title: 'Saturday picnic' })
+      .returning({ id: schema.linqGroupPlans.id });
+    const planId = plan?.id as string;
+    await db.database.insert(schema.linqGroupPlanExpected).values([
+      { planId, memberKey: samKey, displayName: 'Sam' },
+      { planId, memberKey: stayerKey, displayName: 'Ana', userId: household.parentUserId },
+    ]);
+    // The other parent answered for both of them ("me and Sam").
+    await db.database.insert(schema.linqGroupPlanRsvps).values({
+      planId,
+      memberKey: stayerKey,
+      displayName: 'Ana',
+      userId: household.parentUserId,
+      response: 'yes',
+      source: 'text',
+      coversKeys: JSON.stringify([samKey]),
+    });
+    const [poll] = await db.database
+      .insert(schema.linqGroupPolls)
+      .values({
+        chatId: 'chat-apple',
+        familyId: household.familyId,
+        question: 'Which park?',
+        options: [{ key: 'o1', text: 'North', providerOptionId: null }],
+        expected: [
+          { memberKey: handleKey, displayName: 'Sam' },
+          { memberKey: stayerKey, displayName: 'Ana' },
+        ],
+        origin: 'parent',
+      })
+      .returning({ id: schema.linqGroupPolls.id });
+    const pollId = poll?.id as string;
+    // A tap on the poll card from their Apple ID: the card path stamps their user id.
+    await db.database.insert(schema.linqGroupPollVotes).values({
+      pollId,
+      memberKey: handleKey,
+      displayName: 'Sam',
+      userId: household.coParentUserId,
+      optionKey: 'o1',
+      source: 'native',
+    });
+    // Positive control: another household's Sam, on the same name key, keeps it.
+    const other = await seedSeatedHousehold();
+    const [otherPlan] = await db.database
+      .insert(schema.linqGroupPlans)
+      .values({ chatId: 'chat-other', familyId: other.familyId, title: 'Pizza night' })
+      .returning({ id: schema.linqGroupPlans.id });
+    await db.database
+      .insert(schema.linqGroupPlanExpected)
+      .values({ planId: otherPlan?.id as string, memberKey: samKey, displayName: 'Sam' });
+
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    const expected = await db.database
+      .select({
+        key: schema.linqGroupPlanExpected.memberKey,
+        name: schema.linqGroupPlanExpected.displayName,
+      })
+      .from(schema.linqGroupPlanExpected)
+      .where(eq(schema.linqGroupPlanExpected.planId, planId));
+    const [stayerRsvp] = await db.database
+      .select({ covers: schema.linqGroupPlanRsvps.coversKeys })
+      .from(schema.linqGroupPlanRsvps)
+      .where(eq(schema.linqGroupPlanRsvps.planId, planId));
+    const [vote] = await db.database
+      .select({ key: schema.linqGroupPollVotes.memberKey })
+      .from(schema.linqGroupPollVotes)
+      .where(eq(schema.linqGroupPollVotes.pollId, pollId));
+    const [pollRow] = await db.database
+      .select({ expected: schema.linqGroupPolls.expected })
+      .from(schema.linqGroupPolls)
+      .where(eq(schema.linqGroupPolls.id, pollId));
+
+    const samNow = expected.find((row) => row.key !== stayerKey);
+    expect(samNow).toMatchObject({ name: 'someone', key: expect.stringMatching(/^departed:/) });
+    // The covers list still points at their place, so they are not "waiting".
+    expect(JSON.parse(stayerRsvp?.covers ?? '[]')).toEqual([samNow?.key]);
+    expect(vote?.key).toMatch(/^departed:/);
+    expect(pollRow?.expected).toEqual([
+      { memberKey: vote?.key, displayName: 'someone' },
+      { memberKey: stayerKey, displayName: 'Ana' },
+    ]);
+    const householdRows = JSON.stringify({ expected, stayerRsvp, vote, pollRow });
+    expect(householdRows).not.toContain(samKey);
+    expect(householdRows).not.toContain(handleKey);
+    // Positive control: the stayer's key is untouched, and so is the other household.
+    expect(expected.map((row) => row.key)).toContain(stayerKey);
+    const [otherSam] = await db.database
+      .select({ key: schema.linqGroupPlanExpected.memberKey })
+      .from(schema.linqGroupPlanExpected)
+      .where(eq(schema.linqGroupPlanExpected.planId, otherPlan?.id as string));
+    expect(otherSam?.key).toBe(samKey);
+    const [departed] = (await auditRows(household.familyId)).filter(
+      (row) => row.actionTaken === 'co_parent_departed',
+    );
+    // name:sam on the expected row and in the covers list; the handle on the vote and the
+    // waiting list.
+    expect(departed?.after).toMatchObject({ groupKeysCleared: 4 });
   });
 
   it('revokes the channel, removes the seat, withdraws the consent, and keeps the thread', async () => {
@@ -1130,6 +1294,7 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
           openQuestionsDeleted: 2,
           freeBusyWithdrawn: 0,
           groupNamesCleared: 0,
+          groupKeysCleared: 0,
           privateFactsDeleted: 0,
         },
       }),
@@ -1296,6 +1461,7 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
             openQuestionsDeleted: 'not_migrated',
             freeBusyWithdrawn: 0,
             groupNamesCleared: 0,
+            groupKeysCleared: 0,
             privateFactsDeleted: 0,
           },
         },
