@@ -12,3 +12,17 @@ export function registrationPlanRunEnabled(
 ): boolean {
   return env[REGISTRATION_PLAN_RUN_ENABLED_ENV] === 'true';
 }
+
+/**
+ * VIL-558 step 6 · the assisted mode's own switch, for ActiveNet towns: Hale joins the open,
+ * fills the registration and hands the parent the live browser to submit and pay. Off unless
+ * REGISTRATION_ASSISTED_RUN_ENABLED is exactly `true`. It only adds hosts to the plan lane, so
+ * the lane's own switch must be on as well.
+ */
+export const REGISTRATION_ASSISTED_RUN_ENABLED_ENV = 'REGISTRATION_ASSISTED_RUN_ENABLED';
+
+export function registrationAssistedRunEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[REGISTRATION_ASSISTED_RUN_ENABLED_ENV] === 'true';
+}

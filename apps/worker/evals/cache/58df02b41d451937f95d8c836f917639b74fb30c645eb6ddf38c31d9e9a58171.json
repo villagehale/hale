@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a price: it says the class is $120, but price is null in the facts. That fabrication alone caps the score at 2 or lower. It also does not say the course details could not be read, though name, day and time are all null. The date and time (Tuesday, Sept 15 at 7 a.m.), the prerequisite warning and the 'leave time' advice are correct, there is no link and no question, but the invented price is disqualifying.",
+    "score": 1
+  }
+}
