@@ -13,7 +13,7 @@ const nothingKnown = async () => [];
 
 describe('senderMemberKey', () => {
   it('keys a nameless non-phone handle with the keyed index, never the handle itself', async () => {
-    const key = await senderMemberKey({ handle: APPLE_ID, name: null }, nothingKnown);
+    const key = await senderMemberKey({ handle: APPLE_ID }, nothingKnown);
     expect(key).not.toBe(nameKey(APPLE_ID));
     expect(key.toLowerCase()).not.toContain('example.com');
     expect(key.toLowerCase()).not.toContain('parent.one');
@@ -21,40 +21,29 @@ describe('senderMemberKey', () => {
   });
 
   it('gives one handle one key whatever its case or padding', async () => {
-    const a = await senderMemberKey({ handle: APPLE_ID, name: null }, nothingKnown);
-    const b = await senderMemberKey(
-      { handle: ` ${APPLE_ID.toLowerCase()} `, name: '' },
-      nothingKnown,
-    );
-    const other = await senderMemberKey({ handle: 'other@example.com', name: null }, nothingKnown);
+    const a = await senderMemberKey({ handle: APPLE_ID }, nothingKnown);
+    const b = await senderMemberKey({ handle: ` ${APPLE_ID.toLowerCase()} ` }, nothingKnown);
+    const other = await senderMemberKey({ handle: 'other@example.com' }, nothingKnown);
     expect(b).toBe(a);
     expect(other).not.toBe(a);
   });
 
   it('reads a row written under the legacy name:<handle> key', async () => {
     const legacy = nameKey(APPLE_ID);
-    const key = await senderMemberKey({ handle: APPLE_ID, name: null }, async () => [legacy]);
+    const key = await senderMemberKey({ handle: APPLE_ID }, async () => [legacy]);
     expect(key).toBe(legacy);
   });
 
   it('prefers the keyed index once a row under it exists', async () => {
-    const fresh = await senderMemberKey({ handle: APPLE_ID, name: null }, nothingKnown);
-    const key = await senderMemberKey({ handle: APPLE_ID, name: null }, async () => [
-      nameKey(APPLE_ID),
-      fresh,
-    ]);
+    const fresh = await senderMemberKey({ handle: APPLE_ID }, nothingKnown);
+    const key = await senderMemberKey({ handle: APPLE_ID }, async () => [nameKey(APPLE_ID), fresh]);
     expect(key).toBe(fresh);
   });
 
-  it('keeps a phone on its blind index and a named sender on their name, reading nothing', async () => {
+  it('keeps a phone on its blind index, reading no known keys', async () => {
     const neverRead = async (): Promise<string[]> => {
       throw new Error('known keys read for a sender with no legacy key');
     };
-    expect(await senderMemberKey({ handle: PHONE, name: 'Sam' }, neverRead)).toBe(
-      memberKeyFromHandle(PHONE),
-    );
-    expect(await senderMemberKey({ handle: APPLE_ID, name: 'Sam' }, neverRead)).toBe(
-      nameKey('Sam'),
-    );
+    expect(await senderMemberKey({ handle: PHONE }, neverRead)).toBe(memberKeyFromHandle(PHONE));
   });
 });
