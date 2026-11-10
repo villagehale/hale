@@ -492,6 +492,7 @@ export const AUDIT_VERBS = [
   'registration_date_moved',
   'registration_date_moved_sent',
   'registration_date_moved_unwritten',
+  'registration_date_moved_dropped',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -1827,6 +1828,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   registration_date_moved_unwritten: {
     sentence: 'Hale did not send the text about a moved registration date',
+    family: 'note',
+  },
+  registration_date_moved_dropped: {
+    sentence:
+      'Hale did not text you about a moved registration date, because the reminders had stopped',
     family: 'note',
   },
   registration_outcome_recorded: {
