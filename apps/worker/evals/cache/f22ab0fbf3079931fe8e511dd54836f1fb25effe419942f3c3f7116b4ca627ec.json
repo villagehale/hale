@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind is outcome_registered, so the message should answer the parent's report that they got in. Instead it claims Hale itself registered and paid, which the facts never say and which Hale never does. It also names a child, Max, who is not in the facts. Both are invented claims.",
+    "score": 1
+  }
+}
