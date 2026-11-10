@@ -593,8 +593,9 @@ async function channelRowsFor(database: Database, providerMessageId: string) {
 
 /**
  * Apply a `message.edited` webhook. Our own edit rewrites the transcript bubble
- * when the text differs; a parent's edit rewrites the inbound body. A retry
- * that already matches writes nothing. The text is never logged.
+ * when the text differs; a parent's edit rewrites their coach turn and leaves the
+ * inbound body as sent. A retry that already matches writes nothing. The text is
+ * never logged.
  */
 export async function recordLinqEditWebhook(
   database: Database,
@@ -617,17 +618,19 @@ export async function recordLinqEditWebhook(
       console.info({ reason: 'redacted' }, 'linq edit webhook: not applied');
       return 'unchanged';
     }
-    if (inbound.body === edit.text) return 'unchanged';
     if (isStale(edit, await lastAppliedEditAt(database, inbound.id))) {
       console.info({ reason: 'stale' }, 'linq edit webhook: not applied');
       return 'unchanged';
     }
-    await database
-      .update(schema.channelMessages)
-      .set({ body: edit.text })
-      .where(eq(schema.channelMessages.id, inbound.id));
-    // Devin BUG_0001: the coach re-reads the thread, so the parent's turn changes too.
-    await rewriteParentTurn(database, edit.messageId, edit.text);
+    // The inbound body is the parent's words as sent: a consent or a readiness answer
+    // points at that row as its evidence, so an edit never rewrites it. Only the coach
+    // turn changes, because the coach re-reads the thread (Devin BUG_0001).
+    const wrote = await rewriteParentTurn(database, edit.messageId, edit.text);
+    if (wrote === 'missing') {
+      console.info({ reason: 'no_coach_turn' }, 'linq edit webhook: not applied');
+      return 'unchanged';
+    }
+    if (wrote === 'unchanged') return 'unchanged';
     await auditEdit(database, {
       familyId: inbound.familyId,
       parentUserId: inbound.parentUserId,
@@ -657,16 +660,17 @@ export async function recordLinqEditWebhook(
   return 'updated';
 }
 
-/** The parent's own turn in the coach thread, matched by its Linq id. Absent is fine. */
+/** The parent's own turn in the coach thread, matched by its Linq id. */
 async function rewriteParentTurn(
   database: Database,
   providerMessageId: string,
   text: string,
-): Promise<void> {
+): Promise<Rewrite> {
   const rows = await database
     .select({
       id: schema.messages.id,
       role: schema.messages.role,
+      content: schema.messages.content,
       providerMessageId: schema.messages.providerMessageId,
       deletedAt: schema.messages.deletedAt,
     })
@@ -675,9 +679,11 @@ async function rewriteParentTurn(
   const match = rows.filter(
     (row) => row.providerMessageId === providerMessageId && row.role === 'user' && !row.deletedAt,
   );
-  if (match.length !== 1 || !match[0]) return;
+  if (match.length !== 1 || !match[0]) return 'missing';
+  if (match[0].content === text) return 'unchanged';
   await database
     .update(schema.messages)
     .set({ content: text })
     .where(eq(schema.messages.id, match[0].id));
+  return 'updated';
 }

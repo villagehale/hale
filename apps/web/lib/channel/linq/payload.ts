@@ -1,5 +1,6 @@
 import { type InboundMediaPart, mediaPartFromLinq } from '~/lib/channel/inbound-media';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
+import { linqMessageEditEnabled } from './edit';
 import { lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { describeInboundAppCard } from './app-card-inbound';
@@ -236,7 +237,10 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     return { kind: 'ignored', reason: 'unsupported_version' };
   }
   if (isReceiptEvent(payload.event_type)) return parseReceipt(payload, payload.event_type);
-  if (payload.event_type === 'message.edited') return parseEdit(payload);
+  // VIL-479 · read only while LINQ_MESSAGE_EDIT_ENABLED is on; unset, it stays an ignored event.
+  if (payload.event_type === 'message.edited' && linqMessageEditEnabled()) {
+    return parseEdit(payload);
+  }
   if (isLocationEvent(payload.event_type)) return parseLocation(payload, payload.event_type);
   if (isSignalEvent(payload.event_type)) return parseSignal(payload, payload.event_type);
   // VIL-226 · read only while PROACTIVE_CADENCE is armed; unset, it stays an ignored event.

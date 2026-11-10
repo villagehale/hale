@@ -482,7 +482,7 @@ describe('VIL-479 message.edited webhook', () => {
     ).toHaveLength(1);
   });
 
-  it('names an unknown message and records a parent edit of their own bubble', async () => {
+  it('names an unknown message, and records nothing for a parent edit with no coach turn', async () => {
     const fake = makeFakeDb();
     expect(
       await recordLinqEditWebhook(fake.db, {
@@ -516,13 +516,13 @@ describe('VIL-479 message.edited webhook', () => {
       direction: 'inbound',
       isFromMe: false,
     });
-    expect(applied).toBe('updated');
+    expect(applied).toBe('unchanged');
     expect(fake.rows(schema.channelMessages).find((row) => row.direction === 'in')?.body).toBe(
-      'It is at 5.',
+      'It is at 4.',
     );
     expect(
       fake.rows(schema.auditLog).filter((row) => row.actionTaken === 'linq_parent_message_edited'),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   const outbound = (text: string, editedAt: Date | null, partIndex = 0) => ({
@@ -583,7 +583,7 @@ describe('VIL-479 message.edited webhook', () => {
     isFromMe: false,
   });
 
-  it("rewrites the parent's own turn in the coach thread, not only the ledger", async () => {
+  it("rewrites the parent's coach turn and keeps the ledger body as their original words", async () => {
     const fake = makeFakeDb();
     await seedParentText(fake, 'Swim is at 4');
     expect(await recordLinqEditWebhook(fake.db, parentEdit('Swim is at 5', NOW))).toBe('updated');
@@ -594,9 +594,18 @@ describe('VIL-479 message.edited webhook', () => {
     expect(await recordLinqEditWebhook(fake.db, parentEdit('Swim is at 3', older))).toBe(
       'unchanged',
     );
-    expect(fake.rows(schema.channelMessages).find((row) => row.direction === 'in')?.body).toBe(
+    expect(await recordLinqEditWebhook(fake.db, parentEdit('Swim is at 5', null))).toBe(
+      'unchanged',
+    );
+    expect(fake.rows(schema.messages).find((row) => row.role === 'user')?.content).toBe(
       'Swim is at 5',
     );
+    expect(fake.rows(schema.channelMessages).find((row) => row.direction === 'in')?.body).toBe(
+      'Swim is at 4',
+    );
+    expect(
+      fake.rows(schema.auditLog).filter((row) => row.actionTaken === 'linq_parent_message_edited'),
+    ).toHaveLength(1);
   });
 
   it('does not bring back a parent text retention already cleared', async () => {

@@ -8,8 +8,9 @@ import { appendMessage } from '~/lib/coach/conversation';
 import { handleLinqInboundRequest } from './inbound';
 
 /**
- * VIL-479 · `message.edited` lands on the transcript (our edit) or the inbound
- * body (a parent's edit). The text is not a log line. A retry does not audit twice.
+ * VIL-479 · `message.edited` lands on the transcript: our bubble, or the parent's
+ * coach turn. The inbound ledger body stays the parent's original words. Dark
+ * behind LINQ_MESSAGE_EDIT_ENABLED. The text is not a log line. A retry does not audit twice.
  */
 
 const KEY_BYTES = Buffer.alloc(32, 9);
@@ -80,7 +81,86 @@ describe('linq message.edited webhook', () => {
     };
   }
 
+  const IN_ID = '5c1e0f3a-8d2b-4f6e-9a7c-3b2d1e0f9a8b';
+  const SAID = 'yes, sign her up';
+  const UNSAID = 'wait, no';
+
+  async function seedParentText() {
+    const family = await seedFamily(db.database);
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId: family.familyId })
+      .returning({ id: schema.conversations.id });
+    if (!conversation) throw new Error('conversation missing');
+    await db.database.insert(schema.messages).values({
+      conversationId: conversation.id,
+      role: 'user',
+      content: SAID,
+      providerMessageId: IN_ID,
+    });
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: SAID,
+      providerMessageId: IN_ID,
+      providerChatId: CHAT_ID,
+      relatedConversationId: conversation.id,
+      sentAt: NOW,
+    });
+  }
+
+  const parentEdit = envelope({
+    id: IN_ID,
+    direction: 'inbound',
+    chat: { id: CHAT_ID, is_group: false },
+    sender_handle: { handle: '+14375550100', is_me: false },
+    part: { index: 0, text: UNSAID },
+    edited_at: NOW.toISOString(),
+  });
+
+  async function stored() {
+    const [ledger] = await db.database
+      .select({ body: schema.channelMessages.body })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.providerMessageId, IN_ID));
+    const [turn] = await db.database
+      .select({ content: schema.messages.content })
+      .from(schema.messages)
+      .where(eq(schema.messages.providerMessageId, IN_ID));
+    const audits = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_parent_message_edited'));
+    return { body: ledger?.body, turn: turn?.content, audits: audits.length };
+  }
+
+  it('flag off: a parent edit is the ignored event it was before, and nothing is rewritten', async () => {
+    await seedParentText();
+    const res = await handleLinqInboundRequest(editRequest(parentEdit), deps());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ outcome: 'ignored_event' });
+    expect(await stored()).toEqual({ body: SAID, turn: SAID, audits: 0 });
+  });
+
+  it('flag on: a parent edit changes the coach turn and never the ledger body that consent points at', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    await seedParentText();
+    const first = await handleLinqInboundRequest(editRequest(parentEdit), deps());
+    await expect(first.json()).resolves.toEqual({ outcome: 'message_edited', apply: 'updated' });
+    const retry = await handleLinqInboundRequest(editRequest(parentEdit), deps());
+    await expect(retry.json()).resolves.toEqual({ outcome: 'message_edited', apply: 'unchanged' });
+    expect(await stored()).toEqual({ body: SAID, turn: UNSAID, audits: 1 });
+    expect(JSON.stringify(info.mock.calls)).not.toContain(UNSAID);
+  });
+
   it('rewrites the sent bubble, ignores the text in the log, and does not audit a retry', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     const family = await seedFamily(db.database);
     const [conversation] = await db.database
       .insert(schema.conversations)
@@ -140,6 +220,8 @@ describe('linq message.edited webhook', () => {
   });
 
   it('names a provider id this deployment never sent', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     const res = await handleLinqInboundRequest(
       editRequest(
         envelope({
