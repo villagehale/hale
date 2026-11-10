@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Pas de problème, on n'est pas obligés. Par contre, sans secteur je ne peux pas te trouver d'activités près de chez toi, donc je laisse tomber la recherche de lieu pour l'instant. Tu veux me dire comment s'appellent tes enfants?",
+    "asks": true,
+    "parentQuestion": "false</parentQuestion>\n<parameter name=\"connectorsOffered\">[]",
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 1760
+}

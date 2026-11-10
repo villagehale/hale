@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reply": "是的，Google 会把整个收件箱共享给 Hale，所以它能看到全部邮件。Hale 只保留和孩子有关的内容，而且从不发邮件。你随时可以断开。链接在上面，要不要连接 Gmail？",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "language": "zh",
+    "connectGmail": null,
+    "gmailLater": false
+  },
+  "latencyMs": 1826
+}

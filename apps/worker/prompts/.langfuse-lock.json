@@ -139,6 +139,11 @@
     "version": null,
     "sha256": "9b97acde7a073332efb646666ab42e7580b2674de39b1265fe9d9498f4561f56"
   },
+  "judges/friend-place": {
+    "name": "judges/friend-place",
+    "version": null,
+    "sha256": "e2816b4a1fd6ae26233daf116e75f61cf286fbc6841a2cae972684db51d4eed4"
+  },
   "judges/general-answer": {
     "name": "judges/general-answer",
     "version": null,
