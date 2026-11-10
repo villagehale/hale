@@ -1,7 +1,7 @@
 import { AGENT_TOOL_ACTION_PREFIX } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, notInArray, notLike, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, notInArray, notLike, or, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '../format/datetime';
 import { NO_TEEN_UNLOCKS, type TeenAccessUnlocks, redactsTeenContent } from '../teen-access';
 import {
@@ -119,6 +119,21 @@ export interface LoadTrailOptions {
   includeInternal?: boolean;
   /** Verbs this surface never shows, internal or not (rights/export.ts). */
   exclude?: readonly AuditVerb[];
+  /** Of the excluded verbs, these still show where the row is about this user
+   * (target users/<userId>): a right-to-access copy holds the requester's own rows. */
+  keepOwn?: { userId: string; verbs: readonly AuditVerb[] };
+}
+
+function isOwnRow(
+  entry: { actionTaken: string; targetTable: string | null; targetId: string | null },
+  keepOwn: LoadTrailOptions['keepOwn'],
+): boolean {
+  return (
+    keepOwn !== undefined &&
+    (keepOwn.verbs as readonly string[]).includes(entry.actionTaken) &&
+    entry.targetTable === 'users' &&
+    entry.targetId === keepOwn.userId
+  );
 }
 
 export async function loadTrailForFamily(
@@ -190,7 +205,16 @@ export async function loadTrailForFamily(
           ? undefined
           : notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]),
         options.exclude?.length
-          ? notInArray(schema.auditLog.actionTaken, [...options.exclude])
+          ? or(
+              notInArray(schema.auditLog.actionTaken, [...options.exclude]),
+              options.keepOwn?.verbs.length
+                ? and(
+                    inArray(schema.auditLog.actionTaken, [...options.keepOwn.verbs]),
+                    eq(schema.auditLog.targetTable, 'users'),
+                    eq(schema.auditLog.targetId, options.keepOwn.userId),
+                  )
+                : undefined,
+            )
           : undefined,
       ),
     )
@@ -202,7 +226,8 @@ export async function loadTrailForFamily(
         !isAgentToolStep(row.entry.actionTaken) &&
         !isShadowOnlyRow(row.entry.actionTaken, row.entry.after) &&
         (options.includeInternal || !isInternalTrailVerb(row.entry.actionTaken)) &&
-        !(options.exclude as readonly string[] | undefined)?.includes(row.entry.actionTaken),
+        (!(options.exclude as readonly string[] | undefined)?.includes(row.entry.actionTaken) ||
+          isOwnRow(row.entry, options.keepOwn)),
     )
     .map((row) => {
       const resolvedToEvent = row.teenContent !== null;

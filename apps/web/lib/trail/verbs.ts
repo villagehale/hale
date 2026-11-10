@@ -144,6 +144,8 @@ export const AUDIT_VERBS = [
   'channel_sms_revoked',
   // VIL-553. A text whose stop check failed during a model outage, read again later.
   'opt_out_hold_read',
+  // VIL-553. An operator cleared a hold no read could release (a shared provider id).
+  'opt_out_hold_cleared',
   // VIL-572. One parent's texting language became the one Hale writes to them in.
   'parent_language_changed',
   'sms_reply_received',
@@ -752,6 +754,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
   opt_out_hold_read: {
     sentence: 'Hale read a text it had held to check whether you asked it to stop',
+    family: 'note',
+  },
+  opt_out_hold_cleared: {
+    sentence: 'Hale stopped holding back its messages to your phone after a check',
     family: 'note',
   },
   parent_language_changed: {
@@ -2233,6 +2239,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'crisis_unanswered',
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
+  // VIL-553. About the one adult who holds the number.
+  'opt_out_hold_cleared',
   // VIL-572. About the one parent whose language changed.
   'parent_language_changed',
   'group_decision_sync_closed_unsent',
