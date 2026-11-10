@@ -20,6 +20,7 @@ import {
 } from './followup-note';
 import type { EmptySearch } from './lane';
 import { factKeys, statesAFigure, statesNoCost } from './quote-match';
+import { SLOTS_IN_TEXT } from './share-page';
 import { ACTIVITY_HELD_TOPIC, heldOptionsNote, venuePage, withVenuePages } from './venue-pages';
 
 /**
@@ -117,10 +118,30 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
  * turned into an open question, on one of this product's beachhead subjects. Which field
  * is being read decides whether "free" means anything, so the field says which it is.
  */
-function carriesFact(field: string | null, kind: 'when' | 'price'): boolean {
+function carriesFact(field: string | null, kind: 'when' | 'price' | 'registration'): boolean {
   if (field === null || field.trim() === '') return false;
   if (kind === 'price' && statesNoCost(field)) return true;
   return statesAFigure(field);
+}
+
+/**
+ * THE SLOTS THE TEXT CARRIES, and the ones held for when the parent asks.
+ *
+ * The best {@link SLOTS_IN_TEXT} lead. A registration date is the fact that decides
+ * whether a parent acts today, so when none of them states one and a held slot does, the
+ * first such slot rides in the text as well. The extract is asked to put that row second;
+ * on 2026-11-09 a live extract put it third, and the date it had opened a page to read
+ * never reached the parent.
+ */
+export function textSlots<T extends FollowUpPick>(
+  slots: readonly T[],
+): { picks: T[]; held: T[] } {
+  const picks = slots.slice(0, SLOTS_IN_TEXT);
+  const held = slots.slice(SLOTS_IN_TEXT);
+  const dated = (slot: T) => carriesFact(slot.registration ?? null, 'registration');
+  const at = picks.some(dated) ? -1 : held.findIndex(dated);
+  if (at === -1) return { picks, held };
+  return { picks: [...picks, held[at]!], held: held.filter((_, index) => index !== at) };
 }
 
 /**

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so I scored the slots alone. Both fetches were refused, and the notes say so plainly. There is one slot: Parent & Tot swimming lessons at Gellert Community Centre, run by the Town of Halton Hills. Its age fit (4 months to 3 years) is explicitly marked as coming from a search snippet, which correctly covers a toddler. The day, price and registration fields are left null rather than invented, and nothing in the slot claims the schedule is 'not posted', which would be unearned under no_page_read. No figures were borrowed from another program, and no registration date was printed that the slot could have dropped. The sourceUrl points at the venue's own page that was refused. That is acceptable as attribution to the operator's site, and the age fit says outright that the page could not be opened, so the slot does not claim a read. This is the snippet-grounded result with null day and price that watchFor asks for.",
+    "score": 5
+  }
+}
