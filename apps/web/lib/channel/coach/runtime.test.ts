@@ -407,6 +407,29 @@ describe('channelCoachRuntime', () => {
     expect(seen[2]).not.toContain(addendum);
   });
 
+  it('appends the no-group-relay skill only on a 1:1 turn with GROUP_1TO1_NO_GROUP_RELAY_ENABLED on (VIL-577)', async () => {
+    const addendum = (await loadCronSkill('coach-no-group-relay')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
+  });
+
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {
