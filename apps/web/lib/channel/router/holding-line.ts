@@ -2,6 +2,8 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -60,14 +62,38 @@ export type HoldingLineRefusal =
  * guard facts only — a time, a number, a link or an app nobody gave it. How the line is
  * worded is the model's.
  */
-export function refusals(body: string): HoldingLineRefusal[] {
+function shapeRefusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
   const found: HoldingLineRefusal[] = [];
   if (hasLinkShape(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
+  return found;
+}
+
+function meaningRefusalsRegex(body: string): HoldingLineRefusal[] {
+  const found: HoldingLineRefusal[] = [];
   if (PROMISED_TIME.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
+}
+
+export function refusals(body: string): HoldingLineRefusal[] {
+  return [...shapeRefusals(body), ...meaningRefusalsRegex(body)];
+}
+
+const FALSE_PROMISE: ReadonlySet<string> = new Set(['promised_a_time', 'points_at_the_app']);
+
+/** Production gate. Off, the regex meaning checks. On, a Haiku read; unread refuses. */
+export async function holdingLineRefusals(body: string): Promise<HoldingLineRefusal[]> {
+  const shape = shapeRefusals(body);
+  if (shape.includes('empty')) return shape;
+  if (!modelReadSweepEnabled()) return [...shape, ...meaningRefusalsRegex(body)];
+  const reading = await sharedMeaningScreen().read({ screen: 'copy_false_promise', text: body });
+  if (!reading) return [...shape, 'promised_a_time'];
+  const meaning = reading.violations.filter((code): code is HoldingLineRefusal =>
+    FALSE_PROMISE.has(code),
+  );
+  return [...shape, ...meaning];
 }
 
 export interface RejectedHoldingLine {
@@ -148,7 +174,7 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
           return unavailable('model_failed');
         }
         const line = plainText(raw);
-        const problems = refusals(line);
+        const problems = await holdingLineRefusals(line);
         if (problems.length === 0) return { status: 'composed', line };
         rejected.push({ line, problems });
       }

@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull, like } from 'drizzle-orm';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { normalizeToken } from '~/lib/channel/normalize-token';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { writeFact } from '~/lib/memory/facts';
@@ -76,6 +78,15 @@ export function matchHealthReply(body: string): HealthReplyIntent | null {
   const word = normalizeToken(body);
   if (DONE_WORDS.has(word)) return 'done';
   if (BOOKING_VERBS.has(word)) return 'booking';
+  return null;
+}
+
+/** Production matcher. Off, the word list. On, a Haiku read; unread is a miss. */
+async function healthReplyIntent(body: string): Promise<HealthReplyIntent | null> {
+  if (!modelReadSweepEnabled()) return matchHealthReply(body);
+  const reading = await sharedMeaningScreen().read({ screen: 'health_done', text: body });
+  if (!reading) return null;
+  if (reading.intent === 'done' || reading.intent === 'booking') return reading.intent;
   return null;
 }
 
@@ -166,7 +177,7 @@ export async function handleHealthCheckpointReply(
   },
   deps: HealthReplyDeps,
 ): Promise<HealthReplyOutcome> {
-  const intent = input.resolved ?? matchHealthReply(input.body);
+  const intent = input.resolved ?? (await healthReplyIntent(input.body));
   // Checked before any lookup: an ordinary message must not cost a query, because most
   // inbound traffic on this channel is ordinary.
   if (!intent) return { status: 'ignored', reason: 'not_a_health_reply' };

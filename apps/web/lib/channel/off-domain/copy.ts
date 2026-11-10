@@ -23,6 +23,8 @@
  */
 import { type HealthPlace, healthLineFacts, healthNumbersIn } from '~/lib/channel/health-line';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { speak } from '~/lib/channel/spoken-line';
 
 /**
@@ -73,6 +75,18 @@ const EYE_CARE_PATTERN = new RegExp(`\\b(?:${EYE_CARE_TOKENS.join('|')})`, 'i');
  * registry answer and the direct-access one. Deterministic, and no model sees it. */
 export function asksAboutEyeCare(body: string): boolean {
   return EYE_CARE_PATTERN.test(body);
+}
+
+async function providerAccessKind(body: string): Promise<'eye' | 'primary' | 'none' | 'unread'> {
+  if (!modelReadSweepEnabled()) {
+    if (asksAboutEyeCare(body)) return 'eye';
+    if (PRIMARY_CARE_PATTERN.test(body)) return 'primary';
+    return 'none';
+  }
+  const reading = await sharedMeaningScreen().read({ screen: 'provider_access', text: body });
+  if (!reading) return 'unread';
+  if (reading.kind === 'eye' || reading.kind === 'primary') return reading.kind;
+  return 'none';
 }
 
 /**
@@ -126,9 +140,9 @@ export async function referralReply(
     console.info({ provider: 'not_sent', reason: 'named_a_number' }, 'off-domain provider line');
     return null;
   }
-  const eye = asksAboutEyeCare(body);
-  const primary = !eye && PRIMARY_CARE_PATTERN.test(body);
-  const verbatim = eye ? [EYE_DIRECTORY] : primary ? ['811'] : [];
+  const access = await providerAccessKind(body);
+  if (access === 'unread') return null;
+  const verbatim = access === 'eye' ? [EYE_DIRECTORY] : access === 'primary' ? ['811'] : [];
   return speak({
     purpose: 'provider_access',
     language,

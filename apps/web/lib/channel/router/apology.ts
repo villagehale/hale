@@ -1,6 +1,8 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import {
@@ -100,7 +102,7 @@ export type ApologyRefusal =
 
 /** Every reason this body cannot go out — all of them, not the first, so one recompose
  * can fix everything the model got wrong rather than one thing per round trip. */
-export function refusals(body: string): ApologyRefusal[] {
+function shapeRefusals(body: string): ApologyRefusal[] {
   if (body === '') return ['empty'];
   const found: ApologyRefusal[] = [];
   if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
@@ -108,10 +110,36 @@ export function refusals(body: string): ApologyRefusal[] {
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
   if (/\d/.test(body)) found.push('invented_number');
+  return found;
+}
+
+function meaningRefusalsRegex(body: string): ApologyRefusal[] {
+  const found: ApologyRefusal[] = [];
   if (PROMISED_RETRY.test(body)) found.push('promised_a_retry');
   if (PROMISED_TIME.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
+}
+
+export function refusals(body: string): ApologyRefusal[] {
+  return [...shapeRefusals(body), ...meaningRefusalsRegex(body)];
+}
+
+const FALSE_PROMISE: ReadonlySet<string> = new Set([
+  'promised_a_retry',
+  'promised_a_time',
+  'points_at_the_app',
+]);
+
+/** Production gate. Off, the regex meaning checks. On, a Haiku read; unread refuses. */
+export async function apologyRefusals(body: string): Promise<ApologyRefusal[]> {
+  const shape = shapeRefusals(body);
+  if (shape.includes('empty')) return shape;
+  if (!modelReadSweepEnabled()) return [...shape, ...meaningRefusalsRegex(body)];
+  const reading = await sharedMeaningScreen().read({ screen: 'copy_false_promise', text: body });
+  if (!reading) return [...shape, 'promised_a_retry'];
+  const meaning = reading.violations.filter((code): code is ApologyRefusal => FALSE_PROMISE.has(code));
+  return [...shape, ...meaning];
 }
 
 export interface RejectedApology {
@@ -252,7 +280,7 @@ export function createTurnApology(client: () => AgentClient): TurnApology {
         }
 
         const body = plainText(raw);
-        const problems = refusals(body);
+        const problems = await apologyRefusals(body);
         if (problems.length === 0) return { status: 'composed', reply: body };
         rejected.push({ apology: body, problems });
       }

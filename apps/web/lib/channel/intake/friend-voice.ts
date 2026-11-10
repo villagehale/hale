@@ -11,6 +11,11 @@ import {
   localeFor,
 } from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import {
+  type CopyFriendViolation,
+  sharedMeaningScreen,
+} from '~/lib/channel/meaning-screen/read';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import {
@@ -430,6 +435,8 @@ export interface SpeakOptions {
 /** The judge sees the link decision already made for the step it judges. */
 type JudgeOptions = Omit<SpeakOptions, 'linkFollows'> & {
   linkFollows?: boolean;
+  /** Skip the five meaning checks the Haiku screen owns when the sweep is on. */
+  skipMeaning?: boolean;
 };
 
 const childSchema = z.object({
@@ -1666,10 +1673,13 @@ export function judgeFriendReply(
   if (replyAddressesByOtherName(trimmed, input)) {
     return { ok: false, reason: 'identity', detail: 'unknown_name', kinds: ['unknown_name'] };
   }
-  if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
-  if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
-  if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
-  if (REGISTRATION_CLAIM.test(trimmed)) return { ok: false, reason: 'registration_claim' };
+  const skipMeaning = options.skipMeaning === true;
+  if (!skipMeaning) {
+    if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
+    if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
+    if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
+    if (REGISTRATION_CLAIM.test(trimmed)) return { ok: false, reason: 'registration_claim' };
+  }
   // Who is behind this number is a disclosure: when they asked, the company is named.
   if (input.identityAsked && !NAMES_HALE_COMPANY.test(trimmed)) {
     return { ok: false, reason: 'identity' };
@@ -1685,17 +1695,23 @@ export function judgeFriendReply(
 
   const slots = friendFactSlots(input, options.link);
   for (const fact of trailerFacts(options)) slots.push(fact);
-  const found: [kind: string, matched: string[]][] = [
-    ['fact', findInventedFacts(trimmed, slots)],
-    ['price', mentionsOutsideSlots(trimmed, PRICE, slots)],
-    ['weekday', weekdaysOutsideSlots(trimmed, [...slots, ...weekdaysOfDates(slots, input.now)])],
-    ['price_talk', priceTalk(trimmed, input)],
-    ['quote', quotesOutsideSlots(trimmed, slots)],
-    ['name', namesOutsideSlots(trimmed, slots)],
-    ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    ['domain', linksOutside(trimmed, linkAllowList(input, options))],
-    ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
-  ];
+  const found: [kind: string, matched: string[]][] = skipMeaning
+    ? [
+        ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
+        ['domain', linksOutside(trimmed, linkAllowList(input, options))],
+        ['price', mentionsOutsideSlots(trimmed, PRICE, slots)],
+      ]
+    : [
+        ['fact', findInventedFacts(trimmed, slots)],
+        ['price', mentionsOutsideSlots(trimmed, PRICE, slots)],
+        ['weekday', weekdaysOutsideSlots(trimmed, [...slots, ...weekdaysOfDates(slots, input.now)])],
+        ['price_talk', priceTalk(trimmed, input)],
+        ['quote', quotesOutsideSlots(trimmed, slots)],
+        ['name', namesOutsideSlots(trimmed, slots)],
+        ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
+        ['domain', linksOutside(trimmed, linkAllowList(input, options))],
+        ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
+      ];
   const invented = found.flatMap(([, matched]) => matched);
   if (invented.length > 0) {
     return {
@@ -1759,6 +1775,49 @@ export function judgeFriendReply(
     if (grounded) return { ok: false, reason: 'invented', detail: grounded, kinds: ['aha'] };
   }
   return { ok: true };
+}
+
+const COPY_FRIEND_REASON: Record<CopyFriendViolation, FriendJudgeFailure> = {
+  privacy: 'privacy',
+  banned: 'banned',
+  compliance: 'compliance',
+  registration: 'registration_claim',
+  invented: 'invented',
+};
+
+/**
+ * The production judge. Off, the regex path. On, the five meaning checks are a
+ * Haiku read; unread fails closed (nothing is sent). Shape checks still run in
+ * code either way.
+ */
+export async function judgeFriendReplySweep(
+  body: string,
+  input: FriendVoiceInput,
+  options: JudgeOptions = {},
+): Promise<{ ok: true } | FriendJudgeRefusal> {
+  if (!modelReadSweepEnabled()) return judgeFriendReply(body, input, options);
+  const shaped = judgeFriendReply(body, input, { ...options, skipMeaning: true });
+  if (!shaped.ok) return shaped;
+  const facts = friendFactSlots(input, options.link);
+  for (const fact of trailerFacts(options)) facts.push(fact);
+  const reading = await sharedMeaningScreen().read({
+    screen: 'copy_friend',
+    text: body,
+    facts,
+  });
+  if (!reading) return { ok: false, reason: 'banned', kinds: ['unjudged'] };
+  if (reading.hit && reading.violations.length === 0) return { ok: true };
+  const codes = reading.violations.filter((code): code is CopyFriendViolation =>
+    code in COPY_FRIEND_REASON,
+  );
+  const first = codes[0] ?? 'banned';
+  const reason = COPY_FRIEND_REASON[first] ?? 'banned';
+  return {
+    ok: false,
+    reason,
+    kinds: codes.length > 0 ? codes : ['unjudged'],
+    count: Math.max(codes.length, 1),
+  };
 }
 
 function ahaTitles(input: FriendVoiceInput): string[] {
@@ -2302,7 +2361,7 @@ export async function speakFriend(
         };
       }
       if (!assembled) return { fail: 'unusable', capture };
-      const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
+      const judged = await judgeFriendReplySweep(assembled.judgedText, judgeInput, judgeOptions);
       // The promises no row can ever back, refused here as dispatch refuses them.
       if (judged.ok && claimsNoLedgerCanBack(assembled.judgedText).length > 0) {
         noteRefusal({ reason: 'unbacked_claim', step: input.step, prompt }, 'unusable');

@@ -6,9 +6,9 @@ import { writeConnectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   type ConnectOfferTarget,
   connectOfferTarget,
-  matchConnectorDisconnectRequest,
-  matchConnectorRequest,
-  matchFreshConnectorFollowUp,
+  matchConnectorDisconnectRequestSweep,
+  matchConnectorRequestSweep,
+  matchFreshConnectorFollowUpSweep,
 } from '~/lib/channel/connect/detect';
 import {
   type DisconnectReader,
@@ -288,10 +288,10 @@ export function connectorLinkHandler(
   return {
     name: 'connector_link',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = matchConnectorRequest(ctx.body);
+      const named = await matchConnectorRequestSweep(ctx.body);
       const fresh = named
         ? null
-        : matchFreshConnectorFollowUp(ctx.body)
+        : (await matchFreshConnectorFollowUpSweep(ctx.body))
           ? await latestConnectOfferTarget(database, ctx.conversationId)
           : null;
       if (!named && !fresh) return { claimed: false };
@@ -449,7 +449,7 @@ export function connectorDisconnectHandler(
   return {
     name: 'connector_disconnect',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const provider = matchConnectorDisconnectRequest(ctx.body);
+      const provider = await matchConnectorDisconnectRequestSweep(ctx.body);
       if (!provider) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
