@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "turn_off_autonomy ran this turn for send_email and reply_to_email, so saying \"Done\" is true. The reply says plainly that Hale will now ask before each email, which is exactly what the parent wanted. Nothing is invented, there is no internal machinery, no greeting and no sign-off. One clean answer that does the job and stops.",
+    "score": 5
+  }
+}

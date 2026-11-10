@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked in French to stop sending emails without asking. autonomySwitchOff shows send_email and reply_to_email were turned off this turn, so 'C'est fait' is true. The reply is in the parent's language, short, exact, and has no greeting or sign-off.",
+    "score": 5
+  }
+}

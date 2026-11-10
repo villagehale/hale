@@ -1,0 +1,53 @@
+{
+  "response": {
+    "id": "msg_011CgsAzoSApPHLQYUbCCx1U",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwAYKEAgTGAI4AUIIdGhpbmtpbmcSDOxm29sCKJybnTcB4xoMSicBex34mwxfQzJUIjDUNWFVu/4ym/4aB3KF97Oq3YVxjZQI9qqgBeqemRqQhpxRfo5TTgkXQ7oNVGmY070q3QVftmpntrBEUSrfMKwSngstXpeoOybSwErjnC2dJTU8mAatPKH/EMIYjG1/RC6IUe7M+Uw8jKk8NgXRPS8n+c9co9o/8NZFnoPhPpMLm+Og16w3UIQRRFH1Aij56V0celKjqo6aClYML0NJbbNHjld97pUAFp6Yo+fyQ78dYEuLRC1GWFcpDdlqlUoYmn6CxgLsuvauNWRj2fWSj7ag4X8041/3fAy8XN8MLZYAOECksRwiFxsTQYu+U+lMf3kf9eeWSacba5IQ3n4/lBvsEuuzTecES4DDg4TIorbyGStiqIkNevAp7fzfBel40B7M8Mlm+kxlTjV9UGUOwhOA1fcmVYWMJNKhAqIfdbyw5nQSVW2314UpUfQGWG81jKGv7PHDyoeVSOFZ35pz85yXWMoEnO0dj18iNG81V6YZPLOP/i5RlRM/NCB6PP05+nJmNZFCpRjc5JQJCdy5fmvWa/ug2bZvIFMwCCI9crSdellNm9fSVnIUBM5fTJIagio4YwKyPlhGuiSmioIsDdl2qR3PQ9jztWwXoAguOMpwAw0lLWH9ZGlflJpfhYrgIotcsfFRPR7JIvjv3sKDWISETm/Z38ltm1MSqdIh9VpLl6Gys6uHfMLIYle2u6ozx1/3GTgT2wUMwel+EJ+oX0tao58NKndH0ZyiWtBNfR50HVb3fMZ22Q6tYXnDdTHJg55YGYce4RoqLROCQmbgQ0cRiVpTLN+FmvehwuOzxNoTpgo1xmSNctD7tohTLgvOvAwc/x8ezkp042jNeay4xDzRgxnNl4vzegq7EM0SBBEA+CJjSLnrQQB0l3CDejhi37cXB0w5eZfZGmVYIX78oy4p/P4ovxUrqdBzNi1GjlowjAZva0igBpVX/PCN1gBuPFIOp7bMNs5orXCVKYIl7Xv/tJpRwG5Zmq1zIcV8w5zCLGQn5keMZoYFR0v+J0JecBL8cDzpXdFUwif5EYFoMMevGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XYjUAwW8Cz4PWWcw4pqsLG",
+        "name": "find_activities",
+        "input": {
+          "query": "weekend activities for a 30-month-old toddler this weekend Columbus OH"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016SL2aqXgJ524LYYxGJmuKw",
+        "name": "reply_as_voice_memo",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 689,
+      "cache_read_input_tokens": 18816,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 689,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 155,
+      "output_tokens_details": {
+        "thinking_tokens": 51
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

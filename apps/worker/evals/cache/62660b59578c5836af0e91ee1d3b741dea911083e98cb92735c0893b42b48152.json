@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgrY1Lvi1A8uFyVB3vqh5",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Maple Tree Montessori says they can set up a visit for the tour. Their director, Morgan, will be the one to arrange a time, so you'll likely hear from Morgan next. They didn't give a date or time yet."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 770,
+      "cache_read_input_tokens": 18727,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 770,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 72,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

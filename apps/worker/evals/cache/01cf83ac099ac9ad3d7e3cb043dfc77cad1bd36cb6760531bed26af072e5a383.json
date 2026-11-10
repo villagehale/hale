@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "D'accord, pas de souci, je ne te demande pas ton code postal complet. Est-ce que tu peux me donner juste les trois premiers caractères de ton code postal? Ça me suffit pour trouver ce qui est près de chez toi, sans adresse précise.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1662
+}

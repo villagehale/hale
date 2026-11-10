@@ -2,6 +2,7 @@ import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/
 import { z } from 'zod';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { foreignLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { dayKeyIn } from '~/lib/plan/spine';
 
@@ -161,9 +162,6 @@ export function groupPlanReportUserMessage(
   return JSON.stringify(lastDraftRefused.length > 0 ? { ...input, lastDraftRefused } : input);
 }
 
-const URL_SHAPE = /https?:\/\/\S+/gi;
-const TRAILING_PUNCTUATION = /[.,;:!)\]}"'\u00BB\u201D\u2019\u3002\uFF0C]+$/u;
-
 /** The messages as they would go out, in order: trimmed, with any blank one dropped. */
 export function groupPlanReportMessages(drafted: readonly string[]): string[] {
   return drafted.map((message) => message.trim()).filter((message) => message !== '');
@@ -174,7 +172,10 @@ export function groupPlanReportMessages(drafted: readonly string[]): string[] {
  * handed link that did not make it in exactly once, in the last message. The group counts
  * as told only once its last message lands, so the link rides there: anywhere earlier, it
  * could reach the group while what follows it did not. Length, how many messages, tone
- * and whether it asks anything are read by the judge, not matched.
+ * and whether it asks anything are read by the judge, not matched. A refused link is
+ * named ('other_link: <words>') so the retry can change exactly that; the members' names
+ * come from Hale's records, so they are not links, unless a member chose a link-shaped one. The event's title and place are not
+ * trusted: they may come from a page or an invite.
  */
 export function groupPlanReportRefusals(
   drafted: readonly string[],
@@ -184,18 +185,27 @@ export function groupPlanReportRefusals(
   if (messages.length === 0) return ['empty'];
   const text = messages.join('\n');
   const found: string[] = [];
-  const urls = text.match(URL_SHAPE) ?? [];
   const link = input.link;
+  const others = foreignLinks(text, {
+    handed: link === null ? [] : [link],
+    email: null,
+    words: [...input.onCalendarOf, ...input.notYet],
+  });
   if (link === null) {
-    if (urls.length > 0) found.push('carries_link');
+    if (others.length > 0) found.push(`carries_link: ${others.join(', ')}`);
     return found;
   }
   const copies = text.split(link).length - 1;
   if (copies === 0) found.push('link_missing');
   if (copies > 1) found.push('link_repeated');
   if (copies === 1 && !messages[messages.length - 1]?.includes(link)) found.push('link_not_last');
-  if (urls.some((url) => url.replace(TRAILING_PUNCTUATION, '') !== link)) found.push('other_link');
+  if (others.length > 0) found.push(`other_link: ${others.join(', ')}`);
   return found;
+}
+
+/** A log carries the codes, never the draft's words. */
+function refusalCodes(refusals: readonly string[]): string[] {
+  return refusals.map((refusal) => refusal.split(':')[0] ?? refusal);
 }
 
 const outputSchema = z.object({ messages: z.array(z.string()) });
@@ -247,7 +257,10 @@ export async function composeGroupPlanReport(
       });
       refused = groupPlanReportRefusals(value.messages, input);
       if (refused.length === 0) return groupPlanReportMessages(value.messages);
-      console.warn({ attempt: index + 1, refusals: refused }, 'group plan report: draft refused');
+      console.warn(
+        { attempt: index + 1, refusals: refusalCodes(refused) },
+        'group plan report: draft refused',
+      );
     } catch (err) {
       console.warn(
         { attempt: index + 1, err: err instanceof Error ? err.name : 'unknown' },

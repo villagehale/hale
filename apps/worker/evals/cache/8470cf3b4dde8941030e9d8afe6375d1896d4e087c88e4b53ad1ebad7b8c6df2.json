@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says Hale will sign Max and Mia up. The facts make no such claim, and an approval_card must say plainly that Hale never registers for them. It also leaves out each listed text and its timing (week ahead, three days before, the evening before, 15 minutes before open). It drops the course-link tip even though courseLinkTip is true, and it says nothing about the residents-first date. The date, time and link are correct.",
+    "score": 1
+  }
+}

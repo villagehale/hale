@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Great, I'll keep it simple for you both. Whenever you want to start it, text the number and phrase right below from your phone, and use them in a new group text with Mia's other parent.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "coparentGroup": true
+  },
+  "latencyMs": 1732
+}

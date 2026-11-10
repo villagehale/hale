@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the opening moved and gives the new date, Wednesday, September 23, with no clock time. It notes the page shows no time, which is correct since opens.time is null. It names the old date so the parent knows which one to drop, credits the registration page, and includes the handed link. It is in English, names no child, asks nothing, and makes no unsupported claims. The tone is friendly, though a bit formal.",
+    "score": 5
+  }
+}

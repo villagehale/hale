@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a course_link_refused message with reason wrong_municipality. It plainly says why Hale did not take the link: the page is from another town and the registration morning is in Springfield. It carries no link and confirms nothing was saved. It asks once for the course page from the handed portal (Springfield's portal), which this reason requires. It makes no invented claims, though 'the registration morning I'm holding' is a slight embellishment that still fits the context. It is in English and reads naturally.",
+    "score": 5
+  }
+}

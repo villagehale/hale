@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says 'Reminder set!' which tells the group a reminder was set, the opposite of the cancellation in facts. Misses both mustSay items and is wrong about the outcome."
+  }
+}

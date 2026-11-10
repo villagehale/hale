@@ -3,6 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { HeadsUpFacts } from './copy';
 import { type CheckRegistrationText, checkRegistrationText } from './text-check';
@@ -19,20 +20,12 @@ export interface HeadsUpComposeInput extends HeadsUpFacts {
   language: ReplyLanguage;
 }
 
-const URL_SHAPE = /https?:\/\/\S+/gi;
-
-/** A scheme-free web address a phone would still make tappable: `www.` anything, or a
- * bare host on a common TLD (`richmondhill.ca/programs`). Clock words such as "a.m."
- * never match: no TLD here is one letter. */
-const BARE_WEB_ADDRESS =
-  /\bwww\.\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|ca|org|net|io|gov|edu|info|app|co|us|fr|ly|me)\b/i;
-
 /** Structural refusals only: empty, or any link, with or without a scheme (the heads-up
  * is handed none). */
 export function headsUpRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return (text.match(URL_SHAPE) ?? []).length > 0 || BARE_WEB_ADDRESS.test(text) ? ['link'] : [];
+  return hasLinkShape(text) ? ['link'] : [];
 }
 
 const outputSchema = z.object({ text: z.string() });

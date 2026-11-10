@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message makes a claim the facts do not support: it says the class costs $120, but price is null in the facts. Other parts are fine. \"Swapped\" matches replaced=true. The Tuesday, Sept 15, 7 a.m. opening is correct. The prerequisite warning to leave time is right. However, it never says the course details could not be read, although they are null. The invented price alone puts it at 2 or below.",
+    "score": 2
+  }
+}

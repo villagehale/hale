@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states the opening date, time and link correctly. It names each listed text with its timing, says Hale never registers, gives the course-link tip correctly and handles the age band accurately. It ends with 'Do you approve?', and approval_card must ask nothing, so a question here is wrong.",
+    "score": 2
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrxfaugdFGRom3qy1rf3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqAYKEAgTGAI4AUIIdGhpbmtpbmcSDFiKYvEVCpYpDEYwRxoMncKrVg+GMLoiqWeRIjCDO9FZM6c05Rh6OWfqmTOVcOW1lFL4Tx8jMmCK6y9ii5rqkbXTppcKYbGuj3X5Js4qxQXcceehAcipGmcCcug9BS9oEIRHSYFk/PGhU7wquV9iHHTBdbBtX2wGzLSUCg5NcRmMuxYO0LjMA9Y7ptDUEBa477RYMkZg7w4taCVkFjhh7s/zKz8o9emN4CzEfzmppKhRFJwFF4KsbKyrgg6YAg8XDiR46n/5jVpC3mAJoPpI/aJjBHitUIkEN9fRedi8uVknvtSB8Z6G+OYWZoH1TRA0BoqhvPgsLRVHvAeFlrN+thRgJsgqKSZYZFhD0g2H5BKp3DTZuSNHqotUQs46aqK27BMpSuLXYNeL1Vdmvknwdpm35n+vY0TWlZSUQrAkpgf+0teMIKtNmm3oKmXo+N1JDivWlAThi5pnkYIT1ao5rYdBiUDpgSmHARuAV3AXZwXLS+iOlbxeusnD//kcCsWQTKiPi1ebnOlqmLtENXetUTHBGdW9zEX0HzJUWSzc6Omj6UayUeJ7WEQYRCjaZFSShaBMYTenLeOUHPP5HaTFKGpDAd851NGHQ3STnhqiXl0TZOPdiDe59xTLzBO+r6w6GBNeNG8fDjgwmTrLb8lWjyNg7PUHRfco4tsoVTI3hE7miytw+BpjswR5izPLrwQ7hu+88vHkTdlQParLqEwwVFZmGd/4agGWizzfTz7RNoydKe509o5wvFMyvknLd4zMoKzpu5D6IuEnc+aTFjKeRm93bz2nuNj/DKKJw9q0LZNZVJd3kwZst6bhl4goaLVQK6yZwJ9hJ+VF8kCcMQ4/cEd2o0LT6a3DMUQYXiAvfJy6nObfxWHasRqoD/br/B56rBshfoHP1IMRb0l3kUZdExmJ4SUhXSCbx5GTZuuJ4EfirN27VDjJ3HZ5CKzB1QxBPbJNUnriGKxyQebYcyS7ZR2G0pL0BiYzJsfOkTjL+06ABW3g2qSwzIWbmIFXw/GSE2j3yw3uWZKdDZx6It6wv9yxZyBTGAE="
+      },
+      {
+        "type": "text",
+        "text": "You've got swim lesson Saturday at 10 at the Community pool, and that's the only thing on your calendar this weekend. I searched for toddler stuff around Columbus and nothing came back that I can pass along yet."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 143,
+      "cache_read_input_tokens": 19685,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 143,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 110,
+      "output_tokens_details": {
+        "thinking_tokens": 38
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

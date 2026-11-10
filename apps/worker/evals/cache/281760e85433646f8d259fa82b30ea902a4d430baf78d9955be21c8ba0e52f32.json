@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message makes an invented claim: it says Hale will sign Max and Mia up, which contradicts the rule that Hale never registers. It also leaves out the required content. It does not name the listed texts with their timing (week ahead, checklist 3 days before, evening before, 15 minutes before), does not say plainly that Hale never registers, and omits the course-link tip even though courseLinkTip is true.",
+    "score": 1
+  }
+}

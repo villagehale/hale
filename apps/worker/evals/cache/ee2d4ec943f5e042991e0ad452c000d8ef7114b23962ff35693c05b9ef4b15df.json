@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Undo what, exactly? No worries, nothing's saved under a name yet. What should I call you?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1598
+}

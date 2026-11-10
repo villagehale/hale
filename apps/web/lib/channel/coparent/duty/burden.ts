@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte } from 'drizzle-orm';
-import { writeFact } from '~/lib/memory/facts';
+import { HALE_RECORD, writeFact } from '~/lib/memory/facts';
 import { dutyCopyMayLeave, dutyTitleMayBeSpoken } from './copy';
 import {
   coparentDutyBurdenSurfaceEnabled,
@@ -268,6 +268,7 @@ export async function noteDutyBurden(
     },
     confidence: 1,
     inferredBy: 'coparent_duty_burden',
+    heard: HALE_RECORD,
     validFrom: input.now,
   });
   if (offer) {

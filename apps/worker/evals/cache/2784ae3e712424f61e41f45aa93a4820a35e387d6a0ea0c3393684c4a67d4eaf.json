@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text meets every requirement. It says registration for the handed window (Springfield Fall 2026 swim lessons) is coming up and names only Max and Mia, who were handed. It says plainly that Hale could not confirm the opening date on the page, which fits page_unconfirmed. It asks the parent to check the page and includes the handed link. It is in English. It offers help on the morning it opens exactly once, which is right since offer is true. It gives no opening date, weekday, time or relative day, and makes no unsupported claims. The tone is friendly. \"Just reply yes\" is a light follow-on, not a second question.",
+    "score": 5
+  }
+}

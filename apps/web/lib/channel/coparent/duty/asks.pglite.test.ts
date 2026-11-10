@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { schema } from '@hale/db';
+import { type CalendarStanding, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -93,9 +93,11 @@ async function kidBlock(input: {
   familyId: string;
   userId: string;
   eventId: string;
-  title: string;
+  title: string | null;
   start: Date;
   status?: string;
+  standing?: CalendarStanding | null;
+  childId?: string;
 }): Promise<void> {
   const [existing] = await db.database
     .select({ id: schema.integrations.id })
@@ -119,6 +121,8 @@ async function kidBlock(input: {
     endAt: new Date(input.start.getTime() + 60 * 60 * 1000),
     kidRelated: true,
     title: input.title,
+    calendarStanding: input.standing === undefined ? 'organizer' : input.standing,
+    childId: input.childId ?? null,
     status: input.status ?? 'confirmed',
     updatedStamp: '1',
   });
@@ -252,6 +256,78 @@ describe('duty ask sweep', () => {
     expect(text).toContain('Maya');
     expect(text).not.toContain('Noor');
     expect(text).not.toMatch(/hockey/i);
+  });
+
+  it("never speaks someone else's invite title, and asks nothing about an unanswered one (VIL-651)", async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    const family = await seedDutyFamily('Stranger invite');
+    await secondParent(family.familyId, 'Alex');
+    await claimGroup(family.familyId, 'chat-stranger');
+    await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_AFTERNOON);
+    const teen = await seedChild(
+      db.database,
+      family.familyId,
+      'Noor',
+      14 * 12,
+      undefined,
+      SUNDAY_AFTERNOON,
+    );
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-teen',
+      title: null,
+      start: MONDAY,
+      standing: 'accepted',
+      childId: teen,
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-accepted',
+      title: 'Maya pickup, Ms. Vale collects at the north gate',
+      start: MONDAY,
+      standing: 'accepted',
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-legacy',
+      title: 'Maya swim, ask for the side door code',
+      start: TUESDAY,
+      standing: null,
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-invited',
+      title: 'Maya dance trial',
+      start: TUESDAY,
+      standing: 'invited',
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-own',
+      title: 'Maya soccer',
+      start: TUESDAY,
+    });
+    const view = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: SUNDAY_AFTERNOON,
+      bubbleLeaving: true,
+    });
+    if (!('plan' in view)) throw new Error('expected a duty plan');
+    const labels = new Map(view.render.occasions.map((row) => [row.eventKey, row.eventLabel]));
+    expect(Object.fromEntries(labels)).toEqual({
+      'evt-accepted': null,
+      'evt-legacy': null,
+      'evt-own': 'soccer',
+    });
+    const text = (renderDutyLines(view.plan.foldLines, view.render)?.facts ?? []).join(' ');
+    for (const words of ['north gate', 'Vale', 'door code', 'dance']) {
+      expect(text).not.toContain(words);
+    }
   });
 
   it('asks when both parents claim and does not pick a winner', async () => {
@@ -675,13 +751,21 @@ describe('duty ask sweep', () => {
     tag: string;
     bookings: Array<{
       location: string | null;
+      address?: string | null;
       linked: 'this' | 'other' | 'none' | 'mirror';
       sessionKey?: string | null;
       /** A location on the linked `family_events` row itself (a calendar's, not the provider's). */
       eventLocation?: string | null;
     }>;
     /** Other families joined to this family's group chat, with the sessions they hold. */
-    others?: Array<{ sessionKeys: string[] }>;
+    others?: Array<{
+      sessionKeys: string[];
+      address?: string | null;
+      /** 'their-event': their own household event placed on this same calendar event.
+       * 'our-event': a row pointing at THIS family's event, so only the family filter
+       * stands between it and this family's text. */
+      linkedTo?: 'their-event' | 'our-event';
+    }>;
   }): Promise<unknown[]> {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     const chatId = `chat-venue-${input.tag}`;
@@ -699,6 +783,7 @@ describe('duty ask sweep', () => {
     });
     const mail = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gmail');
     let index = 0;
+    let ourEventId: string | null = null;
     for (const booking of input.bookings) {
       index += 1;
       let eventId: string | null = null;
@@ -722,6 +807,7 @@ describe('duty ask sweep', () => {
           })
           .returning({ id: schema.familyEvents.id });
         eventId = row?.id ?? null;
+        if (booking.linked === 'this') ourEventId = eventId;
       }
       await db.database.insert(schema.activityBookings).values({
         familyId: family.familyId,
@@ -732,6 +818,7 @@ describe('duty ask sweep', () => {
         title: 'Swim level 2',
         firstSessionAt: MONDAY,
         location: booking.location,
+        address: booking.address ?? null,
         sessionKey: booking.sessionKey ?? null,
         eventId,
       });
@@ -750,6 +837,20 @@ describe('duty ask sweep', () => {
         'gmail',
       );
       for (const [m, sessionKey] of other.sessionKeys.entries()) {
+        let theirEventId: string | null = other.linkedTo === 'our-event' ? ourEventId : null;
+        if (other.linkedTo === 'their-event') {
+          const [row] = await db.database
+            .insert(schema.familyEvents)
+            .values({
+              familyId: neighbour.familyId,
+              title: 'Swim level 2',
+              startsAt: MONDAY,
+              source: 'email',
+              placedGoogleEventId: eventKey,
+            })
+            .returning({ id: schema.familyEvents.id });
+          theirEventId = row?.id ?? null;
+        }
         await db.database.insert(schema.activityBookings).values({
           familyId: neighbour.familyId,
           parentUserId: neighbour.parentUserId,
@@ -759,7 +860,9 @@ describe('duty ask sweep', () => {
           title: 'Swim level 2',
           firstSessionAt: MONDAY,
           location: 'Their own pool',
+          address: other.address ?? null,
           sessionKey,
+          eventId: theirEventId,
         });
       }
     }
@@ -801,11 +904,49 @@ describe('duty ask sweep', () => {
 
   const POOL = 'Pan Am Centre pool';
   const SESSION = 'pool.example.ca|swim level 2|2026-09-28T19:00:00.000Z';
+  const ADDRESS = '450 Example Road';
+  const THEIR_ADDRESS = '9 Sample Street';
 
   it('hands the venue name from a booking linked to this event, with no invented address', async () => {
     expect(
       await venueScenario({ tag: 'own', bookings: [{ location: POOL, linked: 'this' }] }),
     ).toEqual([{ name: POOL, address: null }]);
+  });
+
+  it('hands the street address the booking email gave, beside the place', async () => {
+    expect(
+      await venueScenario({
+        tag: 'sourced',
+        bookings: [{ location: POOL, address: ADDRESS, linked: 'this' }],
+      }),
+    ).toEqual([{ name: POOL, address: ADDRESS }]);
+  });
+
+  it("never hands another family's address, even for the session the group shares", async () => {
+    // Positive control first: the same group, with this family's own address, carries it.
+    expect(
+      await venueScenario({
+        tag: 'multi-own-address',
+        bookings: [{ location: POOL, address: ADDRESS, linked: 'this', sessionKey: SESSION }],
+        others: [{ sessionKeys: [SESSION], address: THEIR_ADDRESS, linkedTo: 'their-event' }],
+      }),
+    ).toEqual([{ name: POOL, address: ADDRESS }]);
+    // This family's booking has no address: the neighbour's never fills it.
+    expect(
+      await venueScenario({
+        tag: 'multi-no-address',
+        bookings: [{ location: POOL, linked: 'this', sessionKey: SESSION }],
+        others: [{ sessionKeys: [SESSION], address: THEIR_ADDRESS, linkedTo: 'our-event' }],
+      }),
+    ).toEqual([{ name: POOL, address: null }]);
+    // No booking of its own at all: no venue, though the neighbour's is on this event.
+    expect(
+      await venueScenario({
+        tag: 'multi-none-own',
+        bookings: [],
+        others: [{ sessionKeys: [SESSION], address: THEIR_ADDRESS, linkedTo: 'their-event' }],
+      }),
+    ).toEqual([null]);
   });
 
   it('hands no venue when the linked booking has no location', async () => {

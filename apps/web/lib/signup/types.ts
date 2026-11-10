@@ -19,6 +19,8 @@ export interface SignupOffer {
   id: string;
   familyId: string;
   childId: string;
+  /** The parent Hale made the offer to. */
+  parentUserId: string;
   activityKey: string;
   registrationUrl: string;
   sessions: SignupSession[];

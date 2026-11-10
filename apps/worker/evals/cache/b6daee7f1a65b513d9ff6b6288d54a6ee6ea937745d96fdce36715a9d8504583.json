@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Sure, we can do Gmail first. Google shares everything in your inbox with me, but I only keep what's about the kids. Want me to connect it now?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1341
+}

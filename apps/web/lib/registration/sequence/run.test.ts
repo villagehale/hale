@@ -108,6 +108,11 @@ function live(overrides: Partial<LiveSequence> = {}): LiveSequence {
     courseUrl: null,
     courseOpensAt: null,
     readinessReady: null,
+    lastReading: null,
+    // The scheduled re-read is not due in these cases: they pin the send-time check on
+    // its own. date-recheck.pglite.test.ts drives the re-read.
+    nextCheckAt: new Date('2099-01-01T00:00:00.000Z'),
+    pendingChange: null,
     ...overrides,
   };
 }
@@ -340,8 +345,14 @@ function harness(
       options.composeDateUnconfirmed ??
       (async (_client, facts) => {
         unconfirmed.push(facts);
-        return `composed unconfirmed ${facts.why} ${facts.link}`;
+        return `composed unconfirmed ${facts.why}`;
       }),
+    saveDateWatch: async () => {
+      throw new Error('unexpected date re-read');
+    },
+    composeDateMoved: async () => {
+      throw new Error('unexpected change note');
+    },
     ...(options.clock ? { clock: options.clock } : {}),
   };
 
@@ -850,6 +861,7 @@ describe('the legs', () => {
     expect(h.notes[0]).toMatchObject({
       kind: 'waitlist_halfway',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
     });
     expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:waitlist_half:user-1']);
@@ -2236,7 +2248,6 @@ describe('VIL-423 · the send-time date check (REGISTRATION_DATE_CHECK)', () => 
     expect(result.sent).toBe(1);
     expect(h.unconfirmed).toHaveLength(1);
     expect(h.unconfirmed[0]).toMatchObject({
-      link: win().sourceUrl,
       why: 'page_unconfirmed',
       offer: true,
       window: expect.stringContaining('Fall 2026'),
@@ -2245,6 +2256,12 @@ describe('VIL-423 · the send-time date check (REGISTRATION_DATE_CHECK)', () => 
     });
     // The facts carry no opening at all, so the text cannot state the unconfirmed one.
     expect(JSON.stringify(h.unconfirmed[0])).not.toMatch(/September 15|6:30/);
+    // The link is data: the writer is never handed it, and code puts it on its own line
+    // after the writer's text, exactly once.
+    expect(JSON.stringify(h.unconfirmed[0])).not.toContain(win().sourceUrl);
+    const wire = h.transport.bodies()[0] ?? '';
+    expect(wire.startsWith(`composed unconfirmed page_unconfirmed\n${win().sourceUrl}`)).toBe(true);
+    expect(wire.split(win().sourceUrl)).toHaveLength(2);
     expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
       leg: 'heads_up',
       dateCheck: 'unread',
