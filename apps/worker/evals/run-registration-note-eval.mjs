@@ -18,7 +18,8 @@
 //   HALE_SPEND_LEDGER=... node --env-file=../../.env evals/run-registration-note-eval.mjs --live --max-usd 1   # PAID
 //
 // --live and --cached-only also score the broken drafts: each claims something the facts
-// do not, and the judge must score every one 2 or lower, or the run fails.
+// do not, and the judge must score every one 2 or lower, or the run fails. They score the
+// handed drafts too: each does what its kind asks, and the judge must pass every one.
 
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -382,6 +383,23 @@ export const NOTE_BROKEN = [
     facts: BY_ID['outcome-waitlisted-clock'],
     text: "Got it, you're on the waitlist at spot 12 for Springfield. Springfield gives a 36-hour window to accept an offer, so this one runs out Wednesday, September 16 at 11:00 p.m. I'll remind you before it closes. Keep an eye on your email in case an offer comes through.",
   },
+  {
+    // The near miss: the right deadline, but the clock starts when an offer arrives.
+    id: 'broken-waitlisted-clock-at-offer',
+    facts: BY_ID['outcome-waitlisted-clock'],
+    text: "Got it, you're number 12 on Springfield's waitlist. Once an offer comes in, you'll have 36 hours to accept it, until Wednesday, September 16 at 11:00 p.m. I'll remind you before then, so keep an eye on your email for the offer.",
+  },
+];
+
+/** Drafts that do what their kind asks. The judge must score each JUDGE_MIN or higher. */
+export const NOTE_HANDED = [
+  {
+    // Scored 2 under the rubric that read "window to accept an offer" as the clock
+    // starting at the offer, while drafts with the same wording scored 4 and 5.
+    id: 'handed-waitlist-halfway-offer-window',
+    facts: BY_ID['waitlist-halfway'],
+    text: "You're on Springfield's waitlist, and half of the 36-hour window to accept an offer has passed. Your clock started from your message yesterday at 11:00 a.m., so it runs out tonight at 11:00 p.m. Keep an eye on your email and the portal in case an offer comes through before then.",
+  },
 ];
 
 /** --broken, offline: the composer's own gate must refuse every planted draft. */
@@ -418,10 +436,10 @@ function worst(model, inTokens, maxOut) {
 async function main() {
   const raw = process.argv.slice(2);
   const modeArgs = raw.filter((a, i) => a !== '--max-usd' && raw[i - 1] !== '--max-usd');
-  const knownIds = [...NOTE_FIXTURES, ...NOTE_BROKEN].map((f) => f.id);
+  const knownIds = [...NOTE_FIXTURES, ...NOTE_BROKEN, ...NOTE_HANDED].map((f) => f.id);
   const { mode, only } = parseEvalArgsOrExit('registration-note', knownIds, modeArgs);
   if (only) {
-    for (const list of [NOTE_FIXTURES, NOTE_BROKEN]) {
+    for (const list of [NOTE_FIXTURES, NOTE_BROKEN, NOTE_HANDED]) {
       list.splice(0, list.length, ...list.filter((f) => only.includes(f.id)));
     }
   }
@@ -459,7 +477,7 @@ async function main() {
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 600, judgeMaxOut);
       calls += note.NOTE_MAX_ATTEMPTS + 1;
     }
-    for (const b of NOTE_BROKEN) {
+    for (const b of [...NOTE_BROKEN, ...NOTE_HANDED]) {
       const msg = JSON.stringify({ facts: b.facts, text: b.text });
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += 1;
@@ -531,12 +549,22 @@ async function main() {
       `${low ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | judge ${verdict.score}`,
     );
   }
+  let kept = 0;
+  for (const h of NOTE_HANDED) {
+    const verdict = await judge(h.id, { facts: h.facts, text: h.text });
+    const high = verdict.score >= JUDGE_MIN;
+    if (high) kept += 1;
+    console.info(`${high ? 'HANDED-PASSES (good)' : 'HANDED-FAILED (bad)'} ${h.id} | judge ${verdict.score}`);
+    if (!high) console.info(`     reason: ${verdict.reason}`);
+  }
   const brokenOk = caught === NOTE_BROKEN.length && brokenOffline(note);
+  const handedOk = kept === NOTE_HANDED.length;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
+  console.info(`handed calibration (must pass): ${handedOk ? 'PASS' : 'FAIL'}`);
   console.info(
     `registration-note | ${NOTE_FIXTURES.length - failed} of ${NOTE_FIXTURES.length} passed | live calls: ${cost.liveCalls} | spent $${totalUsd(cost).toFixed(6)}`,
   );
-  if (failed > 0 || !brokenOk) process.exit(1);
+  if (failed > 0 || !brokenOk || !handedOk) process.exit(1);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

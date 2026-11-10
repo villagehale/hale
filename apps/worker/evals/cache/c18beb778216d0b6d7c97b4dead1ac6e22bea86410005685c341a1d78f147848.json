@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The position (12), town, 36-hour window and deadline (Wednesday, September 16 at 11:00 p.m.) are all correct, the reminder promise is handed, it asks nothing, and the tone is friendly English. But it never says the clock started from the parent's own message (Tuesday 11:00 a.m.). Framing it as a 36-hour window to accept an offer, with no start, could suggest the clock begins when an offer arrives. A deadline note with no start for the clock fails the waitlist rule.",
+    "score": 2
+  }
+}
