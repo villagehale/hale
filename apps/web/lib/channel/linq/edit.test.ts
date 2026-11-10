@@ -405,6 +405,8 @@ describe('VIL-479 Linq message edit', () => {
     expect(skill).toContain('There is no list of words to match.');
     expect(skill).toContain('any language');
     expect(skill).toContain('not a second message');
+    expect(skill).toContain('`direct` is **tu**');
+    expect(skill).toContain('`group` is **vous**');
     expect(skill).not.toContain('a time, a place, a name, or a count');
     expect(skill).not.toContain('When you are unsure, return `edit` null.');
     expect(LINQ_EDIT_TOOL_DESCRIPTION).toBe(

@@ -7,7 +7,8 @@
 // privacy and tone against a situation; nothing here names the replacement wording.
 //
 // The cache is recorded on this branch and CI replays it cached-only as a hard gate.
-// A miss never spends; it prints the price and fails.
+// A miss never spends; it prints the price and fails, unless the fixture is on
+// LINQ_EDIT_NEEDS_RERECORD (writer key moved; paid re-record is batched).
 //
 //   node evals/run-linq-edit-eval.mjs --dry           # worst-case price to record; no API, nothing written
 //   node evals/run-linq-edit-eval.mjs --estimate      # same as --dry
@@ -24,6 +25,8 @@ import {
   JUDGE_SCHEMA,
   PRICE,
   REPO_ROOT,
+  cacheGet,
+  cacheKey,
   cachedToolCall,
   installEvalSpendCap,
   lazyAnthropic,
@@ -33,7 +36,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
-import { LINQ_EDIT_FIXTURES } from './linq-edit-fixtures.mjs';
+import { LINQ_EDIT_FIXTURES, LINQ_EDIT_NEEDS_RERECORD } from './linq-edit-fixtures.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -50,6 +53,64 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 export function linqEditRecordingTag(fixtureId, toolDescription) {
   const description = createHash('sha256').update(toolDescription).digest('hex').slice(0, 12);
   return `linq-edit:${fixtureId}:${description}`;
+}
+
+/** Same key cachedToolCall uses for a linq-edit writer draw. */
+export function linqEditWriterCacheKey({
+  fixtureId,
+  toolDescription,
+  lane,
+  system,
+  userMessage,
+  toolName,
+  toolSchema,
+}) {
+  const tag = linqEditRecordingTag(fixtureId, toolDescription);
+  const canonical = JSON.stringify({
+    model: lane.model,
+    system,
+    userMessage,
+    toolName,
+    toolSchema,
+    lane,
+  });
+  return { tag, key: cacheKey(tag, canonical) };
+}
+
+/**
+ * Listed writer misses are the batched re-record, not a surprise. A listed id
+ * that still hits is stale. An unlisted miss is still a hard fail.
+ */
+export function linqEditRerecordGate({ pending, stale, listed, knownIds }) {
+  const listedSet = new Set(listed);
+  const known = new Set(knownIds);
+  const expectedPending = pending.filter((id) => listedSet.has(id));
+  const unexpectedMiss = pending.filter((id) => !listedSet.has(id));
+  const staleListed = stale.filter((id) => listedSet.has(id));
+  const unknown = listed.filter((id) => !known.has(id));
+  const lines = [];
+  if (expectedPending.length > 0) {
+    lines.push(`need-rerecord (French tu/vous on linq-edit.md): ${expectedPending.join(', ')}`);
+  }
+  if (unexpectedMiss.length > 0) {
+    lines.push(`FAIL unexpected writer cache miss: ${unexpectedMiss.join(', ')}`);
+  }
+  if (staleListed.length > 0) {
+    lines.push(
+      `FAIL need-rerecord case still hits cache, remove it from LINQ_EDIT_NEEDS_RERECORD: ${staleListed.join(', ')}`,
+    );
+  }
+  if (unknown.length > 0) {
+    lines.push(`FAIL LINQ_EDIT_NEEDS_RERECORD lists unknown case ids: ${unknown.join(', ')}`);
+  }
+  return {
+    ok: unexpectedMiss.length === 0 && staleListed.length === 0 && unknown.length === 0,
+    expectedPending,
+    unexpectedMiss,
+    staleListed,
+    unknown,
+    lines,
+  };
 }
 
 /** makeJudge's live ceiling for a Haiku judge. The worst case is priced at it. */
@@ -170,8 +231,28 @@ async function main() {
     `linq-edit eval | mode=${record ? 'record' : 'cached-only'} | subject=${lane.model} judge=${judgeModel}`,
   );
   const results = [];
+  const pending = [];
+  const stale = [];
+  const listed = new Set(LINQ_EDIT_NEEDS_RERECORD);
   for (const fixture of LINQ_EDIT_FIXTURES) {
     const userMessage = edit.linqEditUserMessage(fixture.input);
+    if (cachedOnly) {
+      const { key } = linqEditWriterCacheKey({
+        fixtureId: fixture.id,
+        toolDescription: edit.LINQ_EDIT_TOOL_DESCRIPTION,
+        lane,
+        system: skill.instructions,
+        userMessage,
+        toolName: edit.LINQ_EDIT_TOOL,
+        toolSchema: edit.LINQ_EDIT_TOOL_SCHEMA,
+      });
+      const hit = await cacheGet(key);
+      if (!hit) {
+        pending.push(fixture.id);
+        continue;
+      }
+      if (listed.has(fixture.id)) stale.push(fixture.id);
+    }
     const { value } = await cachedToolCall({
       tag: linqEditRecordingTag(fixture.id, edit.LINQ_EDIT_TOOL_DESCRIPTION),
       lane,
@@ -193,6 +274,13 @@ async function main() {
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
     results.push({ fixture, decision, failures });
   }
+  const rerecord = linqEditRerecordGate({
+    pending,
+    stale,
+    listed: LINQ_EDIT_NEEDS_RERECORD,
+    knownIds: LINQ_EDIT_FIXTURES.map((fixture) => fixture.id),
+  });
+  for (const line of rerecord.lines) console.info(line);
   for (const r of results) {
     const chosen = r.decision.edit
       ? `edit=${r.decision.edit.messageId}#${r.decision.edit.partIndex}`
@@ -205,7 +293,8 @@ async function main() {
   console.info(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
-  process.exit(results.every((r) => r.failures.length === 0) ? 0 : 1);
+  const passed = results.every((r) => r.failures.length === 0);
+  process.exit(passed && rerecord.ok ? 0 : 1);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

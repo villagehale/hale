@@ -10,9 +10,25 @@
  * meaning, in any language. The skill's other decision edges are here too:
  * a follow-up that also asks something new is its own message, and in a group
  * an edit corrects only a fact the bubble already said.
+ *
+ * `LINQ_EDIT_NEEDS_RERECORD`: writer recordings miss until the French tu/vous
+ * line in linq-edit.md is re-recorded. Paid re-record is batched; cached-only
+ * lists these instead of treating the miss as a surprise. A listed id that
+ * still hits cache is stale and fails, so the list cannot outlive the record.
  */
 
 const SENT = '2026-10-31T16:00:00.000Z';
+
+/** Writer cases whose cache key moved with the French address line. Empty after re-record. */
+export const LINQ_EDIT_NEEDS_RERECORD = Object.freeze([
+  'correct-time',
+  'ack-not-a-fix',
+  'parent-asks',
+  'correct-and-asks',
+  'correct-time-fr',
+  'group-correct-place',
+  'group-private',
+]);
 
 function bubble(messageId, text) {
   return { messageId, partIndex: 0, text, sentAt: SENT, editsUsed: 0 };
@@ -81,7 +97,7 @@ export const LINQ_EDIT_FIXTURES = [
       ],
     },
     situation:
-      'French. Hale sent this bubble in the same turn, and the follow-up only corrects the time from 16 h to 17 h. An edit is right. The replacement stays in French, keeps the pool and the easy tone, and is the whole bubble with the corrected time. A second message would leave the wrong time standing.',
+      'French, 1:1. Hale sent this bubble in the same turn, and the follow-up only corrects the time from 16 h to 17 h. An edit is right. The replacement stays in French, addresses the parent as tu never vous, keeps the pool and the easy tone, and is the whole bubble with the corrected time. A second message would leave the wrong time standing.',
   },
   {
     id: 'group-correct-place',

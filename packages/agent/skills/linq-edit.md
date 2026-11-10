@@ -30,7 +30,7 @@ Only a bubble Hale sent after the parent's latest message is offered. That is a 
 }
 ```
 
-- `audience`: `direct` is a 1:1 chat with this parent. `group` is a chat other people read.
+- `audience`: `direct` is a 1:1 chat with this parent. `group` is a chat other people read. In French, `direct` is tu and `group` is vous.
 - `parent`: what the parent just sent. It may be empty.
 - `followUp`: what Hale has written back and has not sent. You do not send it yourself.
 - `editable`: every text bubble Hale sent in this chat since the parent's latest message that can still be edited. `partIndex` is the part a correction would replace. `editsUsed` is how many times that bubble has already been changed.
@@ -43,7 +43,7 @@ Return an edit when the follow-up does nothing except correct a fact the bubble 
 
 Return `edit` null when the follow-up is not only that correction. That is the usual answer. An answer the parent is waiting on, an acknowledgement, a new question, or a fact the bubble never stated is a new message. An edit does not alert them, so a question they asked is never answered by editing an old bubble.
 
-`text` is the entire replacement for that one part. You write every word of it. It says what the bubble said, with that one fact corrected, and nothing more. It may use only what the bubble and the follow-up already give. It stays in the bubble's language and in the same easy, friendly tone. It is the bubble as it should read now, not a separate remark that something changed.
+`text` is the entire replacement for that one part. You write every word of it. It says what the bubble said, with that one fact corrected, and nothing more. It may use only what the bubble and the follow-up already give. It stays in the bubble's language and in the same easy, friendly tone. In French, `direct` is **tu** (tu, toi, ton, ta, a tu imperative), never vous; `group` is **vous**, the plural you, never tu. Write real accents (é, è, à, ê, ç). It is the bubble as it should read now, not a separate remark that something changed.
 
 In a group, everyone sees the edited bubble. Correct only a fact that was already said there.
 
