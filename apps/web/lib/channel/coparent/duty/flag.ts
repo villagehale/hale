@@ -101,3 +101,35 @@ export const COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV = 'COPARENT_DUTY_BURDEN_SU
 export function coparentDutyBurdenSurfaceEnabled(): boolean {
   return process.env[COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV] === 'true';
 }
+
+/**
+ * VIL-661 — split-duty day plan: two kids, overlapping activities, two drivers.
+ * Off unless exactly `true`. The allowlist can name families while the global
+ * flag is still off. Unset, empty, `on`, and `TRUE` stay dark.
+ */
+export const COPARENT_SPLIT_DUTY_ENABLED_ENV = 'COPARENT_SPLIT_DUTY_ENABLED';
+export const COPARENT_SPLIT_DUTY_ALLOWLIST_ENV = 'COPARENT_SPLIT_DUTY_FAMILY_ALLOWLIST';
+
+export function coparentSplitDutyEnabled(): boolean {
+  return process.env[COPARENT_SPLIT_DUTY_ENABLED_ENV] === 'true';
+}
+
+export function coparentSplitDutyAllowlist(): Set<string> {
+  return new Set(
+    (process.env[COPARENT_SPLIT_DUTY_ALLOWLIST_ENV] ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0),
+  );
+}
+
+/** Global flag, or a non-empty allowlist. False means overlap detection does no work. */
+export function coparentSplitDutyArmed(): boolean {
+  return coparentSplitDutyEnabled() || coparentSplitDutyAllowlist().size > 0;
+}
+
+/** This family may get a split-duty ask. Single-parent is a separate refusal. */
+export function coparentSplitDutyActive(familyId: string): boolean {
+  if (coparentSplitDutyEnabled()) return true;
+  return coparentSplitDutyAllowlist().has(familyId);
+}
