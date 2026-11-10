@@ -850,6 +850,7 @@ describe('the legs', () => {
     expect(h.notes[0]).toMatchObject({
       kind: 'waitlist_halfway',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
     });
     expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:waitlist_half:user-1']);
