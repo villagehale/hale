@@ -64,7 +64,8 @@ export type PlanRunOutcome = PlanEngineOutcome;
 export type PlanRunDetail =
   | PlanEngineDetail
   | 'missed_open'
-  | 'assisted_town'
+  /** A town with no plan mode: the parent registers. */
+  | 'parent_town'
   | 'url_refused'
   | 'missing_detail'
   | 'choices_gone'
@@ -109,7 +110,9 @@ export type PlanSweepResult =
  * VIL-558 · carries out every day-before plan whose open is now. Dark behind its own
  * kill switch. Each plan writes one audit row per step: started, checkout, spending
  * cap, payment, finished (rule #6). A plan whose yes no longer stands ({@link planLapse},
- * read at the claim and again before payment) ends `cancelled` and texts no one.
+ * read at the claim and again before payment) ends `cancelled` and texts no one. On an
+ * assisted town (ActiveNet) the engine only fills the registration and the parent gets the
+ * live browser to submit and pay: no cap is asked because Hale moves no money there.
  */
 export async function runDueSignupPlans(
   database: Database,
@@ -159,7 +162,7 @@ async function runOnePlan(
     });
   const allowed = registrationUrlAllowed(plan.registrationUrl);
   const host = allowed.ok ? new URL(allowed.href).hostname : null;
-  const mode = host ? planModeFor(host, deps.autoHosts) : 'assisted';
+  const mode = host ? planModeFor(host, deps.autoHosts) : 'parent';
   await audit({
     step: 'plan_started',
     choices: plan.choiceIds.length,
@@ -246,7 +249,7 @@ async function runOnePlan(
   }
   if (!allowed.ok || !host) return handBack('url_refused');
   if (now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) return handBack('missed_open');
-  if (mode === 'assisted') return handBack('assisted_town');
+  if (mode === 'parent') return handBack('parent_town');
   const choices = plan.choiceIds.flatMap((id) => plan.sessions.filter((s) => s.id === id));
   if (choices.length !== plan.choiceIds.length) return handBack('choices_gone');
   const identity = await loadSignupIdentity(database, {
@@ -288,6 +291,7 @@ async function runOnePlan(
   let result: BrowserUsePlanResult;
   try {
     result = await runner.run({
+      mode,
       correlationId: plan.offerId,
       registrationUrl: allowed.href,
       identity,

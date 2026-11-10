@@ -31,6 +31,10 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
+  "browser-use-assisted-signup.md": {
+    "file": "browser-use-assisted-signup.md",
+    "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
+  },
   "browser-use-confirmation.md": {
     "file": "browser-use-confirmation.md",
     "sha256": "346a0f5250505a31aa9c5327a35e7699ef84c30319583eea044f80ecdb12cce8"
@@ -517,7 +521,7 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "ee71e350446bfba4484c994565a6cddb7cf500d90832762463c972d39f495406"
+    "sha256": "7a0319f7e100b646081932352c3096d31580a22f3526f1162e6c4f96bbc13be0"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
