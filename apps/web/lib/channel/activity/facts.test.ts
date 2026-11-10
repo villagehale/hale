@@ -5,6 +5,8 @@ import {
   activityCalendarDate,
   activityDateRange,
   bindActivityFacts,
+  pageOwningOccurrence,
+  statedAgeExclusion,
 } from './facts';
 
 const now = new Date('2026-10-15T16:00:00Z');
@@ -304,5 +306,120 @@ describe('activity facts stay attached to their source', () => {
       when: '2026-10-16 10:30–11:30; 2026-10-21 09:30–10:30',
       evidence: { windowConfirmed: false },
     });
+  });
+
+  it('links a stated date to the page that date leads, not the listing that mentions it later', () => {
+    const oct30 = 'Fri, Oct 30, 10:30-11:00am';
+    const listing = 'https://attend.example/event/16944994';
+    const occurrence = 'https://attend.example/event/16944995';
+    const pages = [
+      {
+        url: listing,
+        text: `Family Storytime Fri, Oct 23, 10:30-11:00am. Upcoming: ${oct30}`,
+      },
+      { url: occurrence, text: `Family Storytime ${oct30}. Central branch.` },
+    ];
+    const item: RawActivityFact = {
+      ...raw,
+      name_evidence: 'Family Storytime',
+      age_fit: 'ages 2-5',
+      age_evidence: 'ages 2-5',
+      price_evidence: 'not on the page',
+      source_url: listing,
+      occurrence_url: occurrence,
+      sessions: [
+        {
+          date: '2026-10-30',
+          start_time: '10:30',
+          end_time: '11:00',
+          evidence: oct30,
+          occurrence_url: occurrence,
+        },
+      ],
+    };
+    const result = bindActivityFacts(
+      [item],
+      pages.map((page) => ({ ...page, text: `${page.text} ages 2-5.` })),
+      'October 2026',
+      now,
+    );
+    expect(pageOwningOccurrence(pages, oct30, '2026-10-30')).toBeNull();
+    expect(pageOwningOccurrence(pages, oct30, '2026-10-30', occurrence)).toBe(occurrence);
+    expect(result.picks[0]?.source_url).toBe(occurrence);
+    expect(result.picks[0]?.evidence.occurrenceUrl).toBe(occurrence);
+  });
+
+  it('keeps a fact the model says matches the requested season, in any wording', () => {
+    const fall = 'Session du 12 sept. au 18 dec.';
+    const page = `Parent and Tot. ${fall}`;
+    for (const season of ['automne', '秋季', 'autumn']) {
+      const item: RawActivityFact = {
+        ...raw,
+        sessions: [],
+        season,
+        matches_requested_season: true,
+        when: fall,
+        schedule_kind: 'recurring',
+        when_evidence: fall,
+      };
+      const matched = bindActivityFacts(
+        [item],
+        [{ url, text: `${text} ${page}` }],
+        'this fall',
+        now,
+      );
+      expect(matched.picks[0]?.when, season).toBe(fall);
+      expect(matched.picks[0]?.evidence.season, season).toBe(season);
+    }
+  });
+
+  it('drops a fact only when the model says it does not match the requested season', () => {
+    const winter = 'Session du 2 janv. au 1 avr.';
+    const page = `Parent and Tot. ${winter}`;
+    const item: RawActivityFact = {
+      ...raw,
+      sessions: [],
+      season: 'hiver',
+      matches_requested_season: false,
+      when: winter,
+      schedule_kind: 'recurring',
+      when_evidence: winter,
+    };
+    const other = bindActivityFacts([item], [{ url, text: `${text} ${page}` }], 'this fall', now);
+    expect(other.picks).toEqual([]);
+    expect(other.references[0]).toMatchObject({
+      when: winter,
+      season: 'hiver',
+      sourceUrl: url,
+    });
+  });
+
+  it('does not compare season strings when the model omits the yes/no', () => {
+    const winter = 'Session du 2 janv. au 1 avr.';
+    const page = `Parent and Tot. ${winter}`;
+    const item: RawActivityFact = {
+      ...raw,
+      sessions: [],
+      season: 'hiver',
+      when: winter,
+      schedule_kind: 'recurring',
+      when_evidence: winter,
+    };
+    const kept = bindActivityFacts([item], [{ url, text: `${text} ${page}` }], 'this fall', now);
+    expect(kept.picks[0]?.when).toBe(winter);
+    expect(kept.picks[0]?.evidence.season).toBe('hiver');
+  });
+
+  it('states ages 8+ above the toddler ceiling and not above the child ceiling', () => {
+    const page = {
+      url: 'https://www.northfield-fencing.example/youth-programs',
+      text: 'FOIL FUNDAMENTALS (ages 8 - 12)\nOur youngest program starts at age 8.',
+    };
+    expect(statedAgeExclusion([page], 'toddler')?.quote).toBe('FOIL FUNDAMENTALS (ages 8 - 12)');
+    expect(statedAgeExclusion([page], 'toddler')?.sourceUrl).toBe(page.url);
+    expect(statedAgeExclusion([page], 'child')).toBeNull();
+    expect(statedAgeExclusion([{ url: page.url, text: 'Ages 8+' }], 'toddler')?.quote).toBe(
+      'Ages 8+',
+    );
   });
 });

@@ -34,6 +34,9 @@
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs           # live, then caches
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs --broken  # calibration: must FAIL
 //   node evals/run-activity-finder-eval.mjs --cached-only                   # CI: replay only
+//   node evals/run-activity-finder-eval.mjs --estimate                      # no API: price the travel writer
+//   node evals/run-activity-finder-eval.mjs --max-usd 7                     # live, booked on HALE_SPEND_LEDGER
+//   node evals/run-activity-finder-eval.mjs --skip-travel-brief             # compose and picks only
 //   node --env-file=../../launch.env evals/run-activity-finder-eval.mjs \
 //     --anthropic-model=claude-sonnet-5-5 --only=<id,id>
 //
@@ -60,8 +63,6 @@
 //     nowhere to land (2026-08-22: it landed on an unrelated approvals queue).
 //   · unbacked promise / silent watch - the text and the ledger disagree about whether
 //     Hale is coming back.
-//   · research log - after every redraft the follow-up judge still names a sentence that
-//     reports the search, or names text the draft does not contain (production sends nothing).
 //   · links a URL / unsendable - Hale never texts a link, and an empty follow-up is unsendable.
 // Everything else is the judge's bar (JUDGE_MIN): are these real, local, age-fitting things
 // a parent could turn up to, and is the message honest about where the facts came from?
@@ -69,19 +70,20 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { ACTIVITY_FIXTURES } from './activity-finder-fixtures.mjs';
 import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
-import { loadFollowUpProcessJudge } from './lib/followup-process.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
+  PRICE,
   cacheGet,
   cacheKey,
   cachePut,
   cachedToolCall,
   evalRunTag,
-  installEvalSpendCap,
   lazyAnthropic,
+  priceRates,
   loadAgent,
   makeCost,
   makeJudge,
@@ -95,11 +97,11 @@ import {
   statesAFigure,
   statesNoCost,
 } from './lib/quote-match.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
+const SPOKEN_LINE_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'spoken-line.md');
 const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
 
 // Mirrors the lane's own constants (activity/lane.ts, activity/followup-note.ts).
@@ -118,7 +120,22 @@ const {
   parentURL: import.meta.url,
   tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
 });
-const { renderTravelBrief } = await tsImport(join(REPO_ROOT, 'apps/web/lib/travel/copy.ts'), {
+const { renderTravelBrief, travelWriterPlans } = await tsImport(
+  join(REPO_ROOT, 'apps/web/lib/travel/copy.ts'),
+  {
+    parentURL: import.meta.url,
+    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+  },
+);
+const {
+  acceptSpokenLine,
+  spokenLineUserMessage,
+  spokenLineLanes,
+  spokenLineJsonSchema,
+  SPOKEN_LINE_MAX_TOKENS,
+  SPOKEN_LINE_TOOL,
+  SPOKEN_LINE_TOOL_DESCRIPTION,
+} = await tsImport(join(REPO_ROOT, 'apps/web/lib/channel/spoken-line.ts'), {
   parentURL: import.meta.url,
   tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
 });
@@ -157,7 +174,6 @@ function groundUserMessage(q) {
     ...(q.town ? { town: q.town } : {}),
     ...(q.stage ? { stage: q.stage } : {}),
     ...(q.window ? { window: q.window } : {}),
-    ...(q.today ? { today: q.today } : {}),
   });
 }
 
@@ -597,7 +613,7 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-function followUpViolations(body, picks, watch, commitsToReturn) {
+function followUpViolations(body, picks, pageEvidence, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (LINK_SHAPE.test(body)) {
@@ -633,13 +649,17 @@ function followUpViolations(body, picks, watch, commitsToReturn) {
         'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     });
   }
-  // Mirrors the runtime (VIL-571): only a promise with no row behind it is refused. With
-  // a row, whether the watch is worth a sentence is the model's call.
-  if (commitsToReturn && !watch) {
+  if (watch !== commitsToReturn) {
     violations.push({
-      tag: 'unbacked_promise',
-      reason:
-        'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
+      tag: watch ? 'silent_watch' : 'unbacked_promise',
+      // The EXAMPLE is page-state-aware or the two corrections fight: under
+      // `page_has_schedule` the gate above refuses the very sentence this one used to
+      // hand the model as the fix.
+      reason: watch
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
+            pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
+          }.`
+        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
   return violations;
@@ -766,7 +786,64 @@ function tracesToEvidence(pick, evidence) {
   return hits >= Math.min(2, words.length);
 }
 
-const JUDGE_SYSTEM = judgePrompt('activity-finder');
+const JUDGE_SYSTEM = [
+  'You are a strict reviewer scoring ONE SMS Hale sent a parent who asked what their young',
+  'child could do locally. Hale searched the live web first, then wrote this from what it',
+  'found - it never saw the child, only a de-identified subject, the family town and a',
+  'coarse stage. You are given the subject, the town, the stage, `notes` (what the search',
+  'and any opened pages actually said), the picks Hale extracted, the message it wrote, and',
+  'watchFor (fixture-specific notes). Score 1-5.',
+  'A 5: every pick is a real, specific, local thing a parent could turn up to - a named',
+  'place, plausibly fitting the stage - and at most three of them. The message leads with',
+  'the best one by name, says whose information it is ("their site says", "listed as"), and',
+  'attributes rather than claiming to have confirmed.',
+  'It is plain text with no link and NO QUESTION AT ALL. Do not score it down for length.',
+  'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
+  'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
+  'down; nothing on this path can write one, so a "want me to..." here is a yes with',
+  'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
+  'message down for ending on a statement.',
+  'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
+  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
+  'watching and text you when they post"): that is a commitment that exists, not an',
+  'unverified claim. When it is FALSE no such row exists and any coming-back sentence is a',
+  'promise nothing is behind - THAT is the low score.',
+  'You are given `pageEvidence`. It bears on ONE thing: whether a NEGATIVE claim about what',
+  'a page carries is earned. A message that makes no such claim is correct under every',
+  'state and is never marked down for the field, and attribution is not such a claim - a',
+  'snippet off the venue\'s own site IS "their site says" in all three states.',
+  '`page_has_no_schedule` - a page was opened today and carries no time and no price, so',
+  '"no fall days, times or prices are up yet" is TRUE here and is not a fault.',
+  '`no_page_read` - nobody opened a page today, so "not posted yet" would be a report on a',
+  'page nobody read; where that sentence is wanted it is "I could not get into their page',
+  'today".',
+  '`page_has_schedule` - a page was opened and DOES publish times and prices, and Hale could',
+  "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
+  'first person - "I could not pin down the day or the price" - never "not posted yet".',
+  'Score an UNEARNED negative claim low. Score nothing else off this field.',
+  'Length is not a fault. Dropping a find so the text is shorter is withholding; withholding',
+  'is going quiet about a find, or hedging instead of naming anything at all.',
+  'A pick whose `when` or `price` is null is CORRECT when the source had not published it -',
+  'a real program whose fall times are not up yet, or whose schedule sits behind a',
+  'registration login, is a genuine find. Score it a 5 when the message NAMES the gap in',
+  'the form `pageEvidence` earns - "their site lists it, the fall times are not posted yet"',
+  'only under `page_has_no_schedule`, and "their site lists it, I could not pin down the',
+  'day or the price" otherwise - and says what Hale is already doing about it.',
+  'Score it low only if the message invents a day, a time or a price the picks do not carry,',
+  'or quietly writes around the gap as though the detail were known.',
+  'A LOW score is any of: a venue that looks invented or generic ("your local community',
+  'centre"); a directory-style list; a pick whose source is a listings site or an',
+  "aggregator rather than that venue's own page (a museum guide or a things-to-do roundup",
+  'is that kind of page; Museums Montréal is an example); a pick for a',
+  'different town; a message that presents web-read facts as verified; a message that',
+  'WITHHOLDS a find because it is unverified, or hedges instead of naming something (a',
+  'parent who got "I will come back to you" was handed nothing - that is the failure this',
+  'lane exists to fix); a price or a time that appears nowhere in the picks.',
+  'An EMPTY pick list is correct when nothing is genuinely running, and the message should',
+  'then say plainly what was looked at and found nothing. Score that a 5 if it is honest and',
+  'specific; score it low if it is vague or apologetic.',
+  'Reply with ONLY the score tool.',
+].join(' ');
 
 /**
  * THE TRAVEL RUBRIC — the picks alone, because the caller writes its own text.
@@ -783,7 +860,344 @@ const JUDGE_SYSTEM = judgePrompt('activity-finder');
  * Its own tag (`activity-finder-travel`) keeps it in a separate cache namespace, so this
  * rubric can be tuned without re-minting a single sample of the eight-fixture corpus above.
  */
-const TRAVEL_JUDGE_SYSTEM = judgePrompt('activity-finder-travel');
+const TRAVEL_JUDGE_SYSTEM = [
+  'You are a strict reviewer scoring what Hale FOUND for a family who are visiting a city',
+  'they do not live in, with a young child, for a few days. Hale searched the live web and',
+  'saw only a de-identified subject, the destination and a coarse stage - never the child.',
+  'You are given the subject, the destination, the stage, the dates, `pagesRead` and',
+  '`pagesRefused` (how many pages Hale opened or was refused), `notes` (what the search and',
+  'those pages actually said), the picks, and watchFor (fixture-specific notes). Judge the',
+  'picks against the notes. There is NO MESSAGE to score: the caller composes the',
+  'text deterministically from these picks, so judge the FINDS. Score 1-5.',
+  'A 5: every pick is a real, specific, named place in that destination that this family',
+  'could TURN UP TO inside those dates - a museum, a zoo, an aquarium, a science centre, a',
+  'park, a library or a drop-in - and at most three of them.',
+  'THE FAILURE THIS RUBRIC EXISTS FOR, and score it 1 or 2 wherever it appears: a pick that',
+  'is a TERM rather than a visit. A multi-week session, a weekly class, a programme whose',
+  'value to the parent is a registration date, a "fall session starts in September" - all of',
+  'those are correct answers to a question about a family who LIVE there, and useless to one',
+  'who will be on a plane home. One such pick is a serious fault even if the other two are',
+  'right.',
+  'A pick whose `when` or `price` is NULL is CORRECT and is never a fault. This lane reads',
+  'search snippets and does not open pages, so an unpublished admission price is a gap the',
+  'caller names rather than a find to withhold - and requiring a price is what once lost',
+  'this corpus a real find outright. Score DOWN only an invented figure: a time or a price',
+  'that appears in the pick but nowhere in what a source would have published.',
+  'A LOW score is also: a venue that looks invented or generic ("a local playground"); a',
+  'pick in a different city; a directory-style list; a pick whose source is an aggregator or',
+  "a listings site rather than that venue's own page. A guide or roundup that covers many",
+  'venues is a fault even when the venue is real; Museums Montréal is that kind of page.',
+  "The venue's own organisation, or its municipality, is the source.",
+  'Seasonal reality is not a fault: a city in late December where much is closed should come',
+  'back with the things that are OPEN, and three of them is better than a longer list.',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
+/**
+ * THE BRIEF the writer actually sent. Grounding against the facts it was given, and
+ * the tone of a text a parent would get. A miss on this judge is a miss, never a pass.
+ * Separate from the finds rubric above so a verdict on the picks is not replayed as a
+ * verdict on the words.
+ */
+const TRAVEL_BRIEF_JUDGE_SYSTEM = [
+  'You score the one text Hale is about to send a parent about a short trip.',
+  'You are given the purpose, the facts the writer was given, and the text. Score 1-5.',
+  'Fact grounding: a place, a price, or a name in the text has to be in those facts.',
+  'Name, price, and source must appear unchanged.',
+  "`language` is the parent's language. Null means English.",
+  "Every day, time, and date stated in a pick's `when` must still be in the text, written in `language`, not in the source's wording.",
+  'A schedule left in another language is a 1 or 2. A dropped or invented day, time, or date is a 1 or 2.',
+  'A detail the facts do not carry is invented. A 5 names only what the facts carry.',
+  'An empty price or time in the facts is a gap, and naming that gap is correct.',
+  'A 1 or 2 also invents a place, a price, a child, or a claim that someone went.',
+  'Tone: one short text a person would send. Not a form, not a set of instructions,',
+  'not a question, and not a claim that the visit is confirmed or that anyone has been.',
+  'Length is not a fault. Leaving a fact out is not a fault when this text is the shorter',
+  'ask after a first draft did not fit.',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
+// Non-Haiku judges in makeJudge are billed at this ceiling. The estimate uses the same one.
+const TRAVEL_BRIEF_JUDGE_MAX_TOKENS = 8192;
+
+const TRAVEL_PICK = {
+  name: 'American Museum of Natural History',
+  ageFit: 'all ages',
+  when: 'open daily 10am-5:30pm',
+  price: 'USD 28 adults / 16 kids',
+  sourceName: 'American Museum of Natural History',
+  source: 'web',
+};
+const TRAVEL_ZOO = {
+  name: 'Central Park Zoo',
+  ageFit: 'all ages',
+  when: '10am-5pm',
+  price: 'USD 20',
+  sourceName: 'Central Park Zoo',
+  source: 'web',
+};
+const TRAVEL_LONG = {
+  name: 'Long Island Childrens Museum',
+  ageFit: 'all ages',
+  // Dated facts, not a quoted sentence. Keeping every one, in any language, does not fit.
+  when: Array.from({ length: 36 }, (_, index) => {
+    const day = String((index % 28) + 1).padStart(2, '0');
+    return `2026-11-${day} 10:00-11:30`;
+  }).join('; '),
+  price: 'USD 17',
+  sourceName: 'Long Island Childrens Museum',
+  source: 'web',
+};
+const TRAVEL_REFERENCE = {
+  name: 'Discovery Club',
+  sourceName: 'City Museum',
+  sourceUrl: 'https://example.org/discovery',
+  ageFit: null,
+  when: null,
+  price: null,
+  status: 'unconfirmed',
+  evidence: {
+    program: 'Discovery Club',
+    age: null,
+    sessions: [],
+    schedule: null,
+    price: null,
+    history: null,
+    windowConfirmed: false,
+  },
+};
+const TRAVEL_TRIP = {
+  city: 'New York',
+  startsOn: '2026-11-12',
+  endsOn: '2026-11-15',
+  childNames: [],
+  teenNames: [],
+};
+
+/**
+ * Fixed briefs, so the writer is recorded even when extraction has not been re-recorded.
+ * `retry` keeps a long list of days and times in the facts, not in verbatim. Writing
+ * every one of them, in the parent's language, goes past the segment ceiling. The
+ * one-fewer-fact ask is the text judged. `zh` is a parent whose schedule must not
+ * stay in English.
+ */
+const TRAVEL_WRITER_CASES = [
+  {
+    id: 'travel-writer-picks-only',
+    expectsRetry: false,
+    input: { ...TRAVEL_TRIP, picks: [TRAVEL_PICK, TRAVEL_ZOO], references: [] },
+  },
+  {
+    id: 'travel-writer-references',
+    expectsRetry: false,
+    input: { ...TRAVEL_TRIP, picks: [], references: [TRAVEL_REFERENCE] },
+  },
+  {
+    id: 'travel-writer-retry',
+    expectsRetry: true,
+    input: { ...TRAVEL_TRIP, picks: [TRAVEL_PICK, TRAVEL_LONG], references: [] },
+  },
+  {
+    id: 'travel-writer-zh',
+    expectsRetry: false,
+    input: {
+      ...TRAVEL_TRIP,
+      language: 'zh',
+      picks: [
+        {
+          ...TRAVEL_PICK,
+          when: 'Saturdays 10:00-11:30, from September 12 to December 18',
+        },
+      ],
+      references: [],
+    },
+  },
+];
+
+function estimateTokens(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  let latin = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (ch.codePointAt(0) <= 0x024f) latin += 1;
+    else other += 1;
+  }
+  return Math.ceil(latin / 4) + other;
+}
+
+function priced(model, input, output) {
+  const price = PRICE[model];
+  if (!price) throw new Error(`activity-finder estimate: no list price for ${model}`);
+  return (input / 1e6) * price.input + (output / 1e6) * price.output;
+}
+
+/** The cache key `cachedToolCall` uses for one spoken-line attempt. */
+function travelWriterCacheKey(tag, lane, system, userMessage) {
+  const canonical = JSON.stringify({
+    model: lane.model,
+    system,
+    userMessage,
+    toolName: SPOKEN_LINE_TOOL,
+    toolSchema: spokenLineJsonSchema,
+    lane,
+  });
+  return cacheKey(tag, canonical);
+}
+
+function createTravelWriter({ tag, lanes, system, cachedOnly, getClient, cost, asks, drafts }) {
+  return {
+    async write(request) {
+      asks.push(request);
+      for (let attempt = 0; attempt < lanes.length; attempt += 1) {
+        const lane = lanes[attempt];
+        if (!lane) continue;
+        // A miss exits. It is not a null write, and it is not a pass.
+        const result = await cachedToolCall({
+          tag: attempt === 0 ? tag : `${tag}:fallback`,
+          model: lane.model,
+          lane,
+          system,
+          userMessage: spokenLineUserMessage(request),
+          toolName: SPOKEN_LINE_TOOL,
+          toolSchema: spokenLineJsonSchema,
+          toolDescription: SPOKEN_LINE_TOOL_DESCRIPTION,
+          maxTokens: SPOKEN_LINE_MAX_TOKENS,
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        const text = acceptSpokenLine(result?.value?.text, request.verbatim);
+        if (text) {
+          drafts.push(text);
+          return text;
+        }
+      }
+      return null;
+    },
+  };
+}
+
+async function gradeTravelBrief({
+  id,
+  input,
+  expectsRetry,
+  spokenSkill,
+  lanes,
+  travelBriefJudge,
+  cachedOnly,
+  getClient,
+  cost,
+}) {
+  const asks = [];
+  const drafts = [];
+  const writer = createTravelWriter({
+    tag: evalRunTag(`activity-travel-writer:${id}`),
+    lanes,
+    system: spokenSkill.instructions,
+    cachedOnly,
+    getClient,
+    cost,
+    asks,
+    drafts,
+  });
+  const failures = [];
+  let brief = { body: '', rendered: [], renderedReferences: [] };
+  try {
+    brief = await renderTravelBrief(input, writer);
+  } catch (err) {
+    failures.push(`travel_copy:${err instanceof Error ? err.message : 'refused'}`);
+  }
+  if (expectsRetry && asks.length < 2) failures.push('retry_not_taken');
+  const text = brief.body || (expectsRetry && asks.length >= 2 ? (drafts.at(-1) ?? '') : '');
+  if (text && !failures.includes('retry_not_taken')) {
+    const request = asks[asks.length - 1];
+    const verdict = await travelBriefJudge(id, {
+      purpose: request.purpose,
+      language: request.language,
+      facts: request.facts ?? {},
+      text,
+    });
+    if (verdict.score < JUDGE_MIN) {
+      failures.push(
+        `brief_judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`,
+      );
+    }
+  }
+  return { brief, failures };
+}
+
+async function priceTravelWriters(spokenSkill, judgeModel) {
+  const lanes = spokenLineLanes();
+  const lane = lanes[0];
+  const system = spokenSkill.instructions;
+  const tool = {
+    name: SPOKEN_LINE_TOOL,
+    description: SPOKEN_LINE_TOOL_DESCRIPTION,
+    input_schema: spokenLineJsonSchema,
+  };
+  const lines = [];
+  let usd = 0;
+  let calls = 0;
+  const priceOne = async (id, request, tag) => {
+    const userMessage = spokenLineUserMessage(request);
+    const key = travelWriterCacheKey(tag, lane, system, userMessage);
+    const hit = Boolean(await cacheGet(key));
+    if (hit) {
+      lines.push(`  ${id}  ${tag}  HIT  ${key}`);
+      return;
+    }
+    const input =
+      estimateTokens(system) + estimateTokens(userMessage) + estimateTokens(tool);
+    const row = priced(lane.model, input, SPOKEN_LINE_MAX_TOKENS);
+    usd += row;
+    calls += 1;
+    lines.push(
+      `  ${id}  ${tag}  MISS  ${key}  $${row.toFixed(4)}  in≈${input} out=${SPOKEN_LINE_MAX_TOKENS}`,
+    );
+  };
+  const priceJudge = (id) => {
+    const standIn = JSON.stringify({
+      purpose: 'travel_source_listings',
+      facts: {},
+      text: 'body not recorded yet',
+    });
+    const input =
+      estimateTokens(TRAVEL_BRIEF_JUDGE_SYSTEM) +
+      estimateTokens(standIn) +
+      estimateTokens({ name: 'score', description: 'Return the score.', input_schema: { type: 'object' } });
+    const row = priced(judgeModel, input, TRAVEL_BRIEF_JUDGE_MAX_TOKENS) * JUDGE_SAMPLES_MEDIAN;
+    usd += row;
+    calls += JUDGE_SAMPLES_MEDIAN;
+    lines.push(
+      `  ${id}  brief judge x${JUDGE_SAMPLES_MEDIAN}  key minted with the text  $${row.toFixed(4)}  out=${TRAVEL_BRIEF_JUDGE_MAX_TOKENS} each`,
+    );
+  };
+  for (const travelCase of TRAVEL_WRITER_CASES) {
+    const plans = travelWriterPlans(travelCase.input);
+    const tag = `activity-travel-writer:${travelCase.id}`;
+    await priceOne(travelCase.id, plans.first, tag);
+    if (travelCase.expectsRetry && plans.retry) await priceOne(travelCase.id, plans.retry, tag);
+    priceJudge(travelCase.id);
+  }
+  const standIn = travelWriterPlans({
+    ...TRAVEL_TRIP,
+    picks: [TRAVEL_PICK],
+    references: [],
+  }).first;
+  const standInUser = spokenLineUserMessage(standIn);
+  const standInInput =
+    estimateTokens(system) + estimateTokens(standInUser) + estimateTokens(tool);
+  const standInUsd = priced(lane.model, standInInput, SPOKEN_LINE_MAX_TOKENS);
+  for (const fixture of ACTIVITY_FIXTURES.filter((item) => item.composesOwnText === true)) {
+    usd += standInUsd;
+    calls += 1;
+    lines.push(
+      `  ${fixture.id}  activity-travel-writer:${fixture.id}  key pending the activity-picks re-record  $${standInUsd.toFixed(4)} sized as one short pick`,
+    );
+    priceJudge(fixture.id);
+  }
+  return { usd, calls, lines, model: lane.model, judgeModel };
+}
 
 /**
  * The deterministic broken stand-in - one failure per gate, so `--broken` proves each one
@@ -930,6 +1344,12 @@ export async function readSourcePages(ground, fetchPage, stripHtml) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const estimateOnly = process.argv.includes('--estimate');
+  const skipTravelBrief = process.argv.includes('--skip-travel-brief');
+  if (estimateOnly && (cachedOnly || broken)) {
+    console.error('activity-finder: --estimate does not combine with --cached-only or --broken');
+    process.exit(1);
+  }
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
   const candidateModel = process.argv
     .find((arg) => arg.startsWith('--anthropic-model='))
@@ -941,7 +1361,8 @@ async function main() {
   const followupMaxTokensArg = process.argv
     .find((arg) => arg.startsWith('--followup-max-tokens='))
     ?.split('=')[1];
-  const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);  const followupMaxTokens =
+  const picksMaxTokens = picksMaxTokensArg === undefined ? 2000 : Number(picksMaxTokensArg);
+  const followupMaxTokens =
     followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
   if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
     throw new Error('--picks-max-tokens must be a positive integer');
@@ -949,8 +1370,15 @@ async function main() {
   if (!Number.isInteger(followupMaxTokens) || followupMaxTokens < 1) {
     throw new Error('--followup-max-tokens must be a positive integer');
   }
-  installEvalSpendCap();
-  const getClient = lazyAnthropic('activity-finder');
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
+  const rawClient = lazyAnthropic();
+  const getClient = () => capSdkClient(rawClient(), { rates: priceRates, tag: 'activity-finder' });
   const cost = makeCost();
 
   const agent = await loadAgent();
@@ -1008,12 +1436,22 @@ async function main() {
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-events.md'),
   );
   const skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
-  const judgeProcess = await loadFollowUpProcessJudge(agent);
-  // VIL-435: the lane appends activity-finder-day only when the query carries `today`.
-  const day = await agent.loadSkill(
-    join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-day.md'),
-  );
-  const daySkill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
+  const spokenSkill = await agent.loadSkill(SPOKEN_LINE_SKILL);
+  if (estimateOnly) {
+    const judgeModel = await readJudgeModel('sonnet');
+    const pricedWriters = await priceTravelWriters(spokenSkill, judgeModel);
+    console.log(
+      `activity-finder travel writer | estimate | live API calls: 0 | model=${pricedWriters.model} judge=${pricedWriters.judgeModel}`,
+    );
+    console.log(
+      'Input at 1x, no cache discount. Writer output at its max_tokens. Brief judge output at the makeJudge ceiling, three draws, body not recorded so the judge key is not minted yet.',
+    );
+    for (const line of pricedWriters.lines) console.log(line);
+    console.log(
+      `calls≈${pricedWriters.calls} | estimated cost of every miss, at the gate ceiling: $${pricedWriters.usd.toFixed(4)} USD`,
+    );
+    return;
+  }
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   const extractLane = subjectLane ? (agent.withoutThinking(subjectLane) ?? subjectLane) : null;
@@ -1042,6 +1480,16 @@ async function main() {
     cost,
     { samples: JUDGE_SAMPLES_MEDIAN },
   );
+  const travelBriefJudge = makeJudge(
+    judgeModel,
+    TRAVEL_BRIEF_JUDGE_SYSTEM,
+    'activity-finder-travel-brief',
+    cachedOnly,
+    getClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+  const spokenLanes = spokenLineLanes();
 
   console.log(
     `activity-finder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | lane=${model} judge=${judgeModel}`,
@@ -1050,7 +1498,14 @@ async function main() {
   const fixtures = only
     ? ACTIVITY_FIXTURES.filter((fixture) => selectedIds.has(fixture.id))
     : ACTIVITY_FIXTURES;
-  if (fixtures.length !== (only ? selectedIds.size : ACTIVITY_FIXTURES.length)) {
+  const writerCases = (
+    only ? TRAVEL_WRITER_CASES.filter((item) => selectedIds.has(item.id)) : TRAVEL_WRITER_CASES
+  ).filter(() => !broken && !skipTravelBrief);
+  const matched = fixtures.length + (broken ? 0 : writerCases.length);
+  const expected = only
+    ? selectedIds.size
+    : ACTIVITY_FIXTURES.length + (broken || skipTravelBrief ? 0 : TRAVEL_WRITER_CASES.length);
+  if (matched !== expected) {
     throw new Error(`one or more fixtures did not match --only=${only}`);
   }
   if (preflight) {
@@ -1064,6 +1519,31 @@ async function main() {
   let readPasses = 0;
 
   const results = [];
+  for (const travelCase of writerCases) {
+    const graded = await gradeTravelBrief({
+      id: travelCase.id,
+      input: travelCase.input,
+      expectsRetry: travelCase.expectsRetry,
+      spokenSkill,
+      lanes: spokenLanes,
+      travelBriefJudge,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    results.push({
+      fixture: { id: travelCase.id },
+      picks: travelCase.input.picks,
+      body: graded.brief.body,
+      renderedPicks: graded.brief.rendered,
+      renderedReferences: graded.brief.renderedReferences,
+      searchCount: 0,
+      pagesRead: 0,
+      pagesRefused: 0,
+      failures: graded.failures,
+      firstDraftViolations: [],
+    });
+  }
   for (const fixture of fixtures) {
     const failures = [];
     const query = {
@@ -1071,8 +1551,9 @@ async function main() {
       town: fixture.town,
       stage: fixture.stage,
       window: fixture.window,
-      ...(fixture.today ? { today: fixture.today } : {}),    };
-    const laneSkill = query.today ? daySkill : skill;
+      ...(fixture.dateRange ? { dateRange: fixture.dateRange } : {}),
+      ...(fixture.timeZone ? { timeZone: fixture.timeZone } : {}),
+    };
 
     // ── the border: what actually leaves ─────────────────────────────────────
     // The de-identification is DETERMINISTIC in the runtime, so what is checked here is
@@ -1089,7 +1570,7 @@ async function main() {
       : await cachedGround({
           tag: evalRunTag(`activity-ground:${fixture.id}`),
           model,
-          system: laneSkill.instructions,
+          system: skill.instructions,
           userMessage: groundUserMessage(query),
           // The wire shape production sends for THIS subject — search-only for a general
           // question, search plus fetch when it names a place (see groundTools).
@@ -1119,9 +1600,16 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`activity-picks:${fixture.id}`),
             model,
-            lane: subjectLane,
-            system: laneSkill.instructions,
-            userMessage: composeUserMessage(query, ground.notes),            toolName: 'activity_picks',
+            lane: extractLane,
+            system: skill.instructions
+              .replace(/^[\s\S]*?(?=## Step 2 — EXTRACT)/, '')
+              .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
+              .trimEnd(),
+            userMessage: composeUserMessage(
+              query,
+              (ground.pages ?? []).map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+            ),
+            toolName: 'activity_picks',
             toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
             toolDescription: 'Return the concrete programs the search actually found.',
             maxTokens: picksMaxTokens,
@@ -1148,7 +1636,7 @@ async function main() {
       ground = await cachedGround({
         tag: evalRunTag(`activity-ground-read:${fixture.id}`),
         model,
-        system: laneSkill.instructions,
+        system: skill.instructions,
         userMessage: groundUserMessage(query),
         tools: groundTools(fixture.subject, true),
         cachedOnly,
@@ -1160,9 +1648,16 @@ async function main() {
         await cachedToolCall({
           tag: evalRunTag(`activity-picks-read:${fixture.id}`),
           model,
-          lane: subjectLane,
-          system: laneSkill.instructions,
-          userMessage: composeUserMessage(query, ground.notes),          toolName: 'activity_picks',
+          lane: extractLane,
+          system: skill.instructions
+            .replace(/^[\s\S]*?(?=## Step 2 — EXTRACT)/, '')
+            .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
+            .trimEnd(),
+          userMessage: composeUserMessage(
+            query,
+            (ground.pages ?? []).map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+          ),
+          toolName: 'activity_picks',
           toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
           toolDescription: 'Return the concrete programs the search actually found.',
           maxTokens: picksMaxTokens,
@@ -1198,17 +1693,18 @@ async function main() {
 
     // ── phase 3: THE FOLLOW-UP TEXT — unless the caller writes its own ───────
     //
-    // Travel uses its real deterministic renderer, never the AI follow-up composer.
-    // References can be delivered honestly but never satisfy the expectPicks gate above.
+    // Travel does not use the follow-up composer. The brief is the spoken-line writer,
+    // cached like the other calls. A miss fails. References never satisfy expectPicks.
     if (fixture.composesOwnText === true) {
       let brief = { body: '', rendered: [], renderedReferences: [] };
       const range = activityDateRange(query.window, EVAL_NOW, query.timeZone, query.dateRange);
       if (!range) failures.push('travel_dates_unresolved');
       else if (range.end < activityCalendarDate(EVAL_NOW, query.timeZone)) {
         failures.push('travel_dates_past');
-      } else {
-        try {
-          brief = await renderTravelBrief({
+      } else if (!broken && !skipTravelBrief) {
+        const graded = await gradeTravelBrief({
+          id: fixture.id,
+          input: {
             city: fixture.town,
             startsOn: range.start,
             endsOn: range.end,
@@ -1216,10 +1712,17 @@ async function main() {
             teenNames: [],
             picks: kept,
             references,
-          });
-        } catch (err) {
-          failures.push(`travel_copy:${err instanceof Error ? err.message : 'refused'}`);
-        }
+          },
+          expectsRetry: false,
+          spokenSkill,
+          lanes: spokenLanes,
+          travelBriefJudge,
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        brief = graded.brief;
+        failures.push(...graded.failures);
       }
       // Skipped in broken mode for the same reason the other judge is: the deterministic
       // layer proves the calibration, and `brokenPicks` hands an `expectPicks` fixture an
@@ -1274,7 +1777,6 @@ async function main() {
     const pageEvidence = readPageVerdict(ground);
     const watch = watchWarranted(kept);
     let body = '';
-    let mentionsWatch = false;
     let violations = [];
     let firstDraftViolations = [];
     for (let attempt = 1; attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
@@ -1315,26 +1817,17 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      mentionsWatch = composed.commits_to_return === true;
-      violations = followUpViolations(body, kept, watch, mentionsWatch);
-      // The process judge reads only a draft the mechanical gates passed, as in
-      // followup-note.ts. Skipped in broken mode with the quality judge below.
-      if (violations.length === 0 && !broken) {
-        const searchLog = await judgeProcess(body, {
-          tag: evalRunTag(`activity-followup-process:${fixture.id}:${attempt}`),
-          cachedOnly,
-          getClient,
-          cost,
-        });
-        if (searchLog) violations = [searchLog];
-      }      if (attempt === 1) firstDraftViolations = violations;
-      // An unjudged draft is not redrafted: production sends nothing.
-      if (violations.length === 0 || broken || violations[0]?.tag === 'process_unjudged') break;
+      violations = followUpViolations(
+        body,
+        kept,
+        pageEvidence,
+        watch,
+        composed.commits_to_return === true,
+      );
+      if (attempt === 1) firstDraftViolations = violations;
+      if (violations.length === 0 || broken) break;
     }
     failures.push(...violations.map((v) => v.tag));
-    // A watch row the sent text never tells the parent about. Not a runtime gate (whether
-    // to mention it is the model's call), so it is scored here and logged in production.
-    if (watch && violations.length === 0 && !mentionsWatch) failures.push('silent_watch');
 
     // ── the judge (skipped in broken mode; the deterministic layer proves calibration) ──
     if (!broken) {
@@ -1415,9 +1908,6 @@ async function main() {
   );
   console.log(
     `silent watch:            ${count('silent_watch')}  (a row was written and the text never said so)`,
-  );
-  console.log(
-    `research log:            ${count('reports_process') + count('process_unjudged')}  (the follow-up judge still named a search sentence, or named text not in the draft)`,
   );
   // NOT a gate, and deliberately: a fetch refused (`url_not_allowed`) is a real and common
   // shape on these very venues, production logs it and answers from the snippets anyway.

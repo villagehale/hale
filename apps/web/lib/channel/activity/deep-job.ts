@@ -13,8 +13,9 @@ import { type DueCommitment, loadOpenCommitmentById } from '~/lib/commitments/le
 import { cancelActivityPromise } from './commitment';
 import { type DeepLaneDeps, type DeepLaneRun, defaultDeepLaneDeps, runDeepLane } from './deep-lane';
 import { deidentifyActivityQuery } from './deidentify';
-import { type FollowUpDelivery, deliverFollowUp, textSlots } from './deliver';
+import { type FollowUpDelivery, deliverFollowUp } from './deliver';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
+import { SLOTS_IN_TEXT } from './share-page';
 import { defaultActivityFollowUpDeps, resolveFollowUpRecipient } from './sweep';
 
 /**
@@ -185,7 +186,7 @@ export async function runDeepResearchJob(
   if (!deidentified.ok) {
     console.error(
       { commitmentId: commitment.id, refusal: deidentified.refusal },
-      'activity deep job: the stored subject or the family place no longer clears de-identification',
+      'activity deep job: the stored subject no longer clears de-identification',
     );
     return { status: 'left_open', reason: 'unsendable' };
   }
@@ -233,13 +234,14 @@ export async function runDeepResearchJob(
       dedupeKey,
       optOut: verdict.optOut,
       // The text carries the best one or two. The rest stay in the chat until the parent asks.
-      ...textSlots(run.result.slots),
+      picks: run.result.slots.slice(0, SLOTS_IN_TEXT),
+      held: run.result.slots.slice(SLOTS_IN_TEXT),
       // READ OFF THE PAGES BY THE LANE (deep-lane.ts), not recomputed here from counts:
       // a second reader of "may Hale report an absence" is a second answer waiting to
       // disagree with the first.
       pageEvidence: run.result.pageVerdict,
       evidence: run.evidence,
-      heardFacts: commitment.heardFacts,
+      ...(run.result.ageExclusion ? { pageAge: run.result.ageExclusion } : {}),
     },
     now,
   );
