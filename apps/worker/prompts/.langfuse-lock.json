@@ -152,7 +152,7 @@
   "judges/group-lists": {
     "name": "judges/group-lists",
     "version": null,
-    "sha256": "b2c8a1d7dde629b691f3db0d951457593ad4750ec9eaa984d7c72215b35f9877"
+    "sha256": "623dcf789b518f6a8f1b38a87451b48b62a182dda90cd14c1eed30a33d2ae299"
   },
   "judges/group-plan-calendar-report": {
     "name": "judges/group-plan-calendar-report",

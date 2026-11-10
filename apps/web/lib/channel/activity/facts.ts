@@ -2,6 +2,13 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { FAMILY_STAGES, type FamilyStage, STAGE_BOUNDARIES_MONTHS } from '@hale/types';
 import { parseStatedAgeBand } from '../../social/age-band';
 
+/**
+ * Wire schema for `activity_picks`. Nested session objects and string enums
+ * made Anthropic reject the request (`Schema is too complex`) once source
+ * binding added evidence fields (#875 / #998). Sessions travel as one string
+ * per occurrence; code parses them. Enums are strings here and checked in Zod.
+ * Binding still requires the evidence + URL fields.
+ */
 export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
   type: 'object',
   properties: {
@@ -17,7 +24,10 @@ export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
           age_fit: { type: 'string' },
           when: { type: 'string' },
           when_evidence: { type: 'string' },
-          schedule_kind: { type: 'string', enum: ['hours', 'recurring', 'term'] },
+          schedule_kind: {
+            type: 'string',
+            description: 'hours, recurring, or term. Omit when when is omitted.',
+          },
           historical_evidence: { type: 'string' },
           season: {
             type: 'string',
@@ -37,16 +47,9 @@ export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
           sessions: {
             type: 'array',
             items: {
-              type: 'object',
-              properties: {
-                evidence: { type: 'string' },
-                date: { type: 'string' },
-                start_time: { type: 'string' },
-                end_time: { type: 'string' },
-                timezone: { type: 'string' },
-                occurrence_url: { type: 'string' },
-              },
-              required: ['evidence', 'date'],
+              type: 'string',
+              description:
+                'One dated occurrence: `YYYY-MM-DD | evidence quote`, or `YYYY-MM-DD | HH:MM | HH:MM | evidence quote` when times are published.',
             },
           },
           price_evidence: { type: 'string' },
@@ -56,15 +59,14 @@ export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
             type: 'string',
             description: 'The exact source URL from this research, never guess one.',
           },
-          event_date: {
+          indoor_outdoor: {
             type: 'string',
-            description: 'YYYY-MM-DD only when the source dates this session. Omit if unknown.',
+            description: 'indoor, outdoor, or both. Omit if unknown.',
           },
-          indoor_outdoor: { type: 'string', enum: ['indoor', 'outdoor', 'both'] },
           access: {
             type: 'string',
-            enum: ['drop_in', 'register_at_venue'],
-            description: 'Only the published attendance requirement. Omit if unknown.',
+            description:
+              'drop_in or register_at_venue. Only the published attendance requirement. Omit if unknown.',
           },
         },
         // `when` and `price` are OMITTED from required for the reason ActivityPick states:
@@ -85,6 +87,45 @@ export interface ActivitySession {
   timezone?: string | null;
   /** The page this occurrence was read from, when the model named one. */
   occurrence_url?: string | null;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * One session from the wire: either the object bindActivityFacts already uses,
+ * or the flattened `YYYY-MM-DD | …` line the extract schema asks for.
+ */
+export function decodeSessionEntry(value: unknown): ActivitySession | unknown {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const session = value as Record<string, unknown>;
+    if (typeof session.evidence === 'string' && typeof session.date === 'string') {
+      return {
+        evidence: session.evidence,
+        date: session.date,
+        start_time: typeof session.start_time === 'string' ? session.start_time : null,
+        end_time: typeof session.end_time === 'string' ? session.end_time : null,
+        timezone: typeof session.timezone === 'string' ? session.timezone : null,
+        occurrence_url: typeof session.occurrence_url === 'string' ? session.occurrence_url : null,
+      };
+    }
+    return value;
+  }
+  if (typeof value !== 'string') return value;
+  const parts = value.split('|').map((part) => part.trim());
+  const date = parts[0] ?? '';
+  const evidence = parts.at(-1) ?? '';
+  const start = parts[1] ?? '';
+  const end = parts[2] ?? '';
+  if (!ISO_DATE.test(date) || parts.length < 2 || evidence.length === 0) return value;
+  if (parts.length === 2) return { date, evidence };
+  if (parts.length === 3 && CLOCK.test(start)) {
+    return { date, start_time: start, evidence };
+  }
+  if (parts.length >= 4 && CLOCK.test(start) && CLOCK.test(end)) {
+    return { date, start_time: start, end_time: end, evidence: parts[3] ?? evidence };
+  }
+  return { date, evidence };
 }
 
 export interface ActivityFactEvidence {

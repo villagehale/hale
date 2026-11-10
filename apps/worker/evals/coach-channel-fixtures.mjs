@@ -1122,9 +1122,6 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['get_framework_guidance'],
       mustNotDraft: true,
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
-      // The first draw with the day facts on asked the readiness cues as a question next
-      // to the plan offer. A finding, not re-drawn (coach-channel-known-miss.mjs).
-      knownMiss: { ticket: 'VIL-652', failure: 'questions in one message' },
     },
   },
   /**

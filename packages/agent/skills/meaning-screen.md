@@ -36,7 +36,7 @@ Call `meaning_screen` once.
 `hit` is `yes` when the line is clear of the three faults. `no` otherwise. `violations` uses only `promised_a_retry`, `promised_a_time`, `points_at_the_app`.
 
 - `promised_a_retry` — Hale will try again, is still working on it, or the request is waiting. Inviting the parent to text again is not this fault.
-- `promised_a_time` — a moment Hale will be back (shortly, in a minute, any second now, and the same idea in another language).
+- `promised_a_time` — a moment Hale will be back: shortly, in a minute, any second now, "back in a minute", "give me a sec", and the same idea in another language. Informal or paraphrased still counts. `hit` is `no` and `violations` includes `promised_a_time`.
 - `points_at_the_app` — the line sends them to an app, a dashboard, or the website by name, without being a URL (URLs are a shape check).
 
 ### `copy_reply_banned`
@@ -91,13 +91,13 @@ Call `meaning_screen` once.
 
 `text` is a parent message about a duty Hale just recorded.
 
-`kind` is `clear` when they take the duty back (undo, never mind, scratch that), `reassign` when they name another person who is doing it instead, `none` otherwise. A question is `none`. On `reassign`, `name` is the first name they gave. `hit` is `yes` for clear or reassign.
+`kind` is `clear` when they take the duty back — undoing it, never mind, scratch that, cancel that duty, in any language, including a one-word take-back. `reassign` when they name another person who is doing it instead. `none` otherwise. A question is `none`. On `reassign`, `name` is the first name they gave. `hit` is `yes` for clear or reassign. Always set `kind`; do not leave it blank on a take-back.
 
 ### `duty_stop_asking`
 
 `text` is a parent message.
 
-`hit` is `yes` only when they want Hale to stop asking about pickup/drop-off/who-takes-it duties. A carrier STOP, or stopping some other kind of message, is `no`.
+`hit` is `yes` only when they want Hale to stop asking about pickup/drop-off/who-takes-it duties, including a polite ask to stop asking. A carrier STOP or unsubscribe, or stopping some other kind of message, is `no`.
 
 ### `both_free`
 

@@ -13,5 +13,5 @@ These fields are on this reply, in any language. Code reads them instead of matc
 - `asksName` - true when the reply asks what to call them.
 - `speaksAsParent` - true when the reply calls itself by the parent's name, or talks about the parent by name instead of to them.
 - `joinInProse` - true when the reply writes the join number or the phrase that code places under it.
-- `parentPlainYes` - true when their message is a yes to the open item (`answering`), in any language, with or without a mark. A question is not a yes.
+- `parentPlainYes` - true when their message is a yes to the open item (`answering`), in any language, with or without a mark. A question is not a yes. Checking what Hale sees, whether it reads their mail, or whether connecting is private is not a yes: leave `connectGmail` unset and set `parentQuestion`.
 - `parentLoneName` - their own name when this message is only that name, answering the name ask; otherwise null. A take-back is not a name.

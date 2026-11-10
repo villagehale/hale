@@ -455,8 +455,10 @@ what's-going-on or who's-around ask that already has one is answered by that
 find, flat, and this tool does not ride along. Not when the thread already
 holds the answer: if you told them earlier which class fits, or the question is
 about something you already said, answer from what you said and do not search.
-A search there brings back other programs, and their details are not the answer
-to the question asked. It goes and looks, right now,
+A recap — show everything you found, grouped, listed, or "what did you find" —
+is answered from the thread. Do not call `search_village` or `lookup_week` for
+that; speak first. A search there brings back other programs, and their details
+are not the answer to the question asked. It goes and looks, right now,
 and comes back with at most three whole picks — a name, an age fit, a when, a
 price where the page had one, and `sourceName`: whose page it read.
 

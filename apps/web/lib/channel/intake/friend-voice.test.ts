@@ -20,7 +20,9 @@ import {
   judgeFriendReply,
   lastInboundFact,
   nameAskVoiceInput,
+  onboardingReplyMaxTokens,
   onboardingReplyToolSchema,
+  parseReplyTool,
   parentReading,
   readGroupLeads,
   speakFriend,
@@ -2690,6 +2692,55 @@ describe('leftover marks: model fields, not ? or word lists', () => {
       { page: async () => undefined },
     );
     expect(named.capture.parentName).toBe('Dana');
+  });
+
+  it('drops a Gmail yes the model wrote when leftover marks do not call the message a plain yes', async () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply:
+              'Google partage toute la boîte. Je ne garde que ce qui concerne les enfants. Tu veux la connecter?',
+            capture: { connectGmail: true },
+            parentQuestion: true,
+            parentPlainYes: false,
+            asksCount: 1,
+            asks: true,
+          };
+        },
+      },
+      blank({
+        step: 'email',
+        parentWords: 'tu vas lire tous mes courriels',
+        language: 'fr',
+        checklist: { ...checklist },
+        recentTurns: [{ role: 'hale', body: 'Tu veux connecter Gmail?', asked: true }],
+      }),
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(spoken.capture.connectGmail).not.toBe(true);
+  });
+
+  it('reads a connector yes without parentPlainYes as a parent question', () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const composed = parseReplyTool({
+      reply: 'Google shares the whole inbox. Want to connect it?',
+      asks: true,
+      parentQuestion: false,
+      connectGmail: true,
+      parentPlainYes: false,
+      connectorsOffered: [],
+      joinPointer: null,
+      claimsSaved: false,
+    });
+    expect(composed.parentQuestion).toBe(true);
+  });
+
+  it('gives household-group compose a larger completion budget', () => {
+    expect(onboardingReplyMaxTokens()).toBe(1000);
+    expect(onboardingReplyMaxTokens({ householdGroup: null })).toBe(1000);
+    expect(onboardingReplyMaxTokens({ householdGroup: 'unclaimed' })).toBe(2000);
   });
 
   it('the judge counts questions from asksCount, not from a mark', () => {

@@ -106,17 +106,18 @@ all three in for does not go in the list:
   sessions. A calculated weekday describes that date only, not a weekly recurrence.
   Keep a published term range or registration date when that is all the source
   provides. "Ongoing" is not a when. **Leave it out when the page has not posted one.**
-- **Dated occurrences use `sessions`, not `when`.** Each session has its own
-  `evidence` passage identifying the program/branch and date/time, `date` in
-  YYYY-MM-DD, and local `start_time`/`end_time` in HH:MM only where published.
-  Include `timezone` only if the source publishes it; never infer a year or zone.
-  Keep dates/times paired. Include historical occurrences as evidence too: code
-  removes expired/out-of-window sessions from recommendations but retains their
-  provenance. If a page is only an archive, include a verbatim `historical_evidence`
-  passage; an old program page does not establish that the program still runs.
-  Use `when` only for explicitly published undated hours, recurrence or term ranges,
-  with `schedule_kind` (`hours`, `recurring`, `term`) and verbatim `when_evidence`.
-  Do not copy another program's sidebar schedule into this program.
+- **Dated occurrences use `sessions`, not `when`.** `sessions` is an array of
+  strings, one per dated occurrence. Write `YYYY-MM-DD | evidence quote`, or
+  `YYYY-MM-DD | HH:MM | HH:MM | evidence quote` when local start and end times
+  are published. The evidence quote identifies this program/branch and date/time,
+  verbatim from `source_url`. Never infer a year. Keep dates/times paired.
+  Include historical occurrences as evidence too: code removes expired/out-of-window
+  sessions from recommendations but retains their provenance. If a page is only an
+  archive, include a verbatim `historical_evidence` passage; an old program page
+  does not establish that the program still runs. Use `when` only for explicitly
+  published undated hours, recurrence or term ranges, with `schedule_kind`
+  (`hours`, `recurring`, or `term`) and verbatim `when_evidence`. Do not copy
+  another program's sidebar schedule into this program.
 - **`price_evidence`** — before `price`, quote the exact text from the cited page
   that explicitly states this program's cost. If none is published, omit both
   `price_evidence` and `price`. `Drop in` and `Register` are not price evidence.
@@ -271,12 +272,15 @@ applies wins.
 **1. NO SUPPORTED PICKS — report what this search could establish, not that
 nothing exists.** `picks_empty: true` means no recommendation passed the evidence
 checks. It does not prove that no matching activity is running or that a page
-has published nothing. If `searched.references` contains a program, name it with
+has published nothing. **When `page_age` is present, that is the reason:** quote
+it in your own words and say the site's youngest program starts at that age, so
+there is nothing for this child on that page. Do not hedge that a younger class
+might still exist. If `searched.references` contains a program, name it with
 its source and retain its historical or unconfirmed status. Do not turn an old
 listing into a current offering, or an unknown age fit into a match. If only
-`searched.checkedSources` is available, say you could not establish a matching
-option from the sources checked. Say why only when the supplied evidence says
-why. A watch sentence is allowed only when `watch: true`.
+`searched.checkedSources` is available and there is no `page_age`, say you could
+not establish a matching option from the sources checked. Say why only when the
+supplied evidence says why. A watch sentence is allowed only when `watch: true`.
 **2. THE PAGE SAID WHERE THE FACT LIVES — then that is the fact, and you scope it
 to ITS OWN FIELD.** A price behind a login and a schedule in a PDF nobody could
 open are two different sentences in one reply. Never let one field's reason

@@ -72,11 +72,19 @@ import {
  * returns an opener, a bubble per group (up to three) and the kids; a cut-off at max_tokens
  * is a failed attempt, so the budget is well over what a good reply uses. The short
  * retry has the same budget: its prompt is smaller, its answer is not. A reply that
- * fills every optional field ran past 600 tokens live (VIL-617).
+ * fills every optional field ran past 600 tokens live (VIL-617). Household-group
+ * turns append household-group.md and were truncating or dumping tool markup at 1000
+ * (#1219); those draws get a larger completion budget.
  */
 const MAX_TOKENS = 1000;
+const HOUSEHOLD_GROUP_MAX_TOKENS = 2000;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
+export const ONBOARDING_HOUSEHOLD_GROUP_MAX_TOKENS = HOUSEHOLD_GROUP_MAX_TOKENS;
+
+export function onboardingReplyMaxTokens(input?: Pick<FriendVoiceInput, 'householdGroup'>): number {
+  return input?.householdGroup ? HOUSEHOLD_GROUP_MAX_TOKENS : MAX_TOKENS;
+}
 export const ONBOARDING_REPLY_TOOL = 'reply';
 export const ONBOARDING_REPLY_TOOL_DESCRIPTION =
   'Return the onboarding reply and any facts the parent just gave.';
@@ -588,17 +596,21 @@ const replySchema = replyFields.transform((value) => ({
  * Fails closed: a value that is there but not a boolean may hide a question, and a
  * question must never stand as a yes. A missing value is a question too when the turn
  * holds a yes, because a consent turn the model did not mark must not keep one.
+ * Leftover marks: a connector yes without `parentPlainYes` is not consent — the parent
+ * was checking, not agreeing (#1213).
  */
 function readParentQuestion(value: {
   parentQuestion?: unknown;
   connectGmail: boolean | null;
   connectCalendar: boolean | null;
   coparentGroup: boolean | null;
+  parentPlainYes?: boolean;
 }): boolean {
-  if (value.parentQuestion === undefined) {
-    return (
-      value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true
-    );
+  const connectorYes =
+    value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true;
+  if (value.parentQuestion === undefined) return connectorYes;
+  if (friendVoiceLeftoverMarksEnabled() && connectorYes && value.parentPlainYes !== true) {
+    return true;
   }
   return value.parentQuestion !== false;
 }
@@ -2958,7 +2970,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
         inputJsonSchema: onboardingReplyToolSchema(input),
         schema: replySchema,
-        maxTokens: MAX_TOKENS,
+        maxTokens: onboardingReplyMaxTokens(input),
         transport: llmTransport(),
       });
       return composedFromReply(value);
