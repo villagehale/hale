@@ -24,6 +24,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { ageFitCorrectionEnabled } from './age-fit-correction';
 import type { HouseholdGroupFact } from './household-group';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
@@ -2724,7 +2725,10 @@ export async function friendVoiceSystem(
       : null;
   const group = input.householdGroup ? await loadCronSkill('household-group') : null;
   const place = placeInPlay(input) ? await loadCronSkill('onboarding-friend-place') : null;
-  const system = [skill, choice, group, place]
+  // VIL-568: the age-fit correction addendum rides only when the flag is on, so
+  // every other onboarding turn (and its eval cache key) keeps its bytes.
+  const ageFit = ageFitCorrectionEnabled() ? await loadCronSkill('age-fit-correction') : null;
+  const system = [skill, choice, group, place, ageFit]
     .flatMap((part) => (part ? [part.instructions] : []))
     .join('\n\n');
   return { skill, system };
