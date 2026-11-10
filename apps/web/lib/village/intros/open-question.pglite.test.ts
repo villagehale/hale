@@ -7,10 +7,9 @@ import { introAskDedupeKey, introCardDedupeKey } from './run';
 /**
  * VIL-302 · the intro asks are dated through the router's REAL reader.
  *
- * A bare yes is read against Hale's newest ask first, and an undated question turns
- * that preference off for the whole list. The unit tests inject the sources, so
- * blinding the production intro readers would fail nothing there. This file reads the
- * way production does, against real Postgres.
+ * Recency only works when every open question is dated. The unit tests inject the
+ * sources, so blinding the production intro readers would fail nothing there. This
+ * file reads the way production does, against real Postgres.
  */
 
 const NOW = new Date('2026-08-20T18:18:00.000Z');

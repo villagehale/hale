@@ -103,7 +103,8 @@ describe('newest-solicited precedence (ads-week audit, 2026-08-28)', () => {
  *
  * 2026-08-20: Hale offered an introduction, later answered a search with an offer to add
  * the find, and the parent said yes. The yes landed on the introduction. The preference
- * below picks the newest ask; the router reads the parent's words against it first.
+ * below picks the newest ask; the router reads the whole open list first and narrows to
+ * this subset only when that read is `ambiguous`.
  */
 describe('latestAsked — the ask a bare reply answers (VIL-302)', () => {
   const T2 = new Date('2026-08-28T02:00:00.000Z');
