@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The dates, times and day phrasing are all correct, and it does say the clock started from the parent's message yesterday at 11:00 a.m. However, it calls this a window \"to accept an offer\" and ends with \"in case an offer comes through before then.\" That ties the deadline to an offer still to come, which contradicts the clock already running from the parent's own message.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message answers the reported miss, uses the handed promise to flag the next window early, asks nothing, invents no dates, children or claims, and reads naturally in English. It is brief and friendly, and does exactly what an outcome_missed message should.",
+    "score": 5
+  }
+}

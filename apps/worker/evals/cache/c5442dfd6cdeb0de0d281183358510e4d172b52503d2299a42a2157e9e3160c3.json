@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for both send_email and reply_to_email, so 'C'est fait' is true. The reply answers in the parent's language, is one plain sentence, confirms the change, and stops. Reply-to-email is covered by the general 'courriels' phrasing.",
+    "score": 5
+  }
+}

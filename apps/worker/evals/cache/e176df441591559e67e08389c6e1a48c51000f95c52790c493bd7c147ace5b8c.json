@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails course_link_throttled with alreadyBound false. It is supposed to say Hale just tried an earlier page, that Hale has not opened this link and will not come back to it, and that the parent should send it again in 7 minutes. Instead it promises to open this link later and text back what it says. That is a follow-up message the facts do not hand, and it contradicts the will-not-come-back rule. It also leaves out the 7-minute resend instruction and claims Hale is reading another page 'right now' rather than having just tried one.",
+    "score": 1
+  }
+}

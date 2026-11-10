@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Names the window, both children, and the correct day and time (Tuesday, September 15 at 7:00 a.m., three days after Saturday the 12th) on Springfield's portal. It lists all four readiness items and asks once for confirmation, in a natural English text tone. The ask is phrased as an instruction rather than a question, and 'I'll make a note of it' slightly edges toward a promised record, though it reasonably reflects Hale tracking readiness.",
+    "score": 4
+  }
+}

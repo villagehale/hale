@@ -314,6 +314,8 @@ export function clashCalendar(input: {
   const drafts: Draft[] = [];
   const bySignature = new Map<string, Draft>();
   const byPlaced = new Map<string, Draft>();
+  const byCalendarId = new Map<string, Draft>();
+  const untitled: Array<{ block: ClashSourceBlock; start: Date; end: Date }> = [];
   /** A private plan's id hides every row with it, on any calendar: a Google invite keeps
    * the id on each attendee's copy, and a hidden row is only title-less busy time. */
   const privatePlaced = new Set<string>();
@@ -385,6 +387,10 @@ export function clashCalendar(input: {
       placed.rows.push(row);
       continue;
     }
+    if (block.kidRelated && !block.title && !hidden) {
+      untitled.push({ block, start: block.start, end: block.end });
+      continue;
+    }
     if (!block.kidRelated || !block.title || hidden) {
       busy.push({
         key: `busy:${block.integrationId}:${block.eventId}`,
@@ -415,6 +421,25 @@ export function clashCalendar(input: {
     }
     draft.holders.add(block.userId);
     draft.rows.push(row);
+    if (!byCalendarId.has(block.eventId)) byCalendarId.set(block.eventId, draft);
+  }
+  // VIL-651: a kid copy whose title the group may not hear (someone else's invite) joins the
+  // plan its titled copy on another calendar made, since an invite keeps its id on each
+  // attendee's copy. With no such copy it is busy time, never a plan named by a stranger.
+  for (const { block, start, end } of untitled) {
+    const draft = byCalendarId.get(block.eventId);
+    if (draft) {
+      draft.holders.add(block.userId);
+      draft.rows.push({ integrationId: block.integrationId, eventId: block.eventId });
+      continue;
+    }
+    busy.push({
+      key: `busy:${block.integrationId}:${block.eventId}`,
+      personId: block.userId,
+      start,
+      end,
+      known: false,
+    });
   }
 
   return {

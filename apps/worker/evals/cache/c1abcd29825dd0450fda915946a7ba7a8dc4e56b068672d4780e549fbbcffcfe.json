@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own. The autonomy switch was actually turned off this turn for send_email and reply_to_email, so 'Done' is true. The reply confirms the change plainly and says Hale will show each email first, which matches the fact that Hale asks before each one now. It is short, has no greeting or sign-off, and needs no question. It does the job and stops.",
+    "score": 5
+  }
+}

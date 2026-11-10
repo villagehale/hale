@@ -139,6 +139,11 @@
     "version": null,
     "sha256": "9b97acde7a073332efb646666ab42e7580b2674de39b1265fe9d9498f4561f56"
   },
+  "judges/friend-place": {
+    "name": "judges/friend-place",
+    "version": null,
+    "sha256": "e2816b4a1fd6ae26233daf116e75f61cf286fbc6841a2cae972684db51d4eed4"
+  },
   "judges/general-answer": {
     "name": "judges/general-answer",
     "version": null,
@@ -319,6 +324,11 @@
     "version": null,
     "sha256": "e036c093b2e1e85e38a14c15ad912adc7b62ec350333a92a2d2e36174091a63c"
   },
+  "judges/registration-date-moved": {
+    "name": "judges/registration-date-moved",
+    "version": null,
+    "sha256": "c34600c43abe5e5d5737d0f34037d12392408ef52064d79f2c9b92acafd92fce"
+  },
   "judges/registration-date-unconfirmed": {
     "name": "judges/registration-date-unconfirmed",
     "version": null,
@@ -327,7 +337,7 @@
   "judges/registration-note": {
     "name": "judges/registration-note",
     "version": null,
-    "sha256": "1a44b18c816dc0c4c6bb46ba649971b098b87dbf47259dcf1c40fe9b20882027"
+    "sha256": "bb8a43b144cafc255f315f2975dc2bedf28dcb9d40df4ce9f0856dfcc48d0b74"
   },
   "judges/reminder": {
     "name": "judges/reminder",
@@ -352,7 +362,7 @@
   "judges/signup-plan-reply": {
     "name": "judges/signup-plan-reply",
     "version": null,
-    "sha256": "586fa48cbcace921151bc456fdc6fc3416055aec8672e24d76dd052e3a54594b"
+    "sha256": "974bedbe39392a04aa42f0454a398b1972157839e7211e221a5efd1fbba97b25"
   },
   "judges/spot-open-voice": {
     "name": "judges/spot-open-voice",

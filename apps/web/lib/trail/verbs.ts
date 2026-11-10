@@ -225,6 +225,9 @@ export const AUDIT_VERBS = [
   'linq_multi_family_reply_sent',
   'linq_multi_family_common_time_proposed',
   'linq_multi_family_common_time_unsent',
+  'linq_multi_family_common_time_picked',
+  'linq_multi_family_common_time_placed',
+  'linq_multi_family_common_time_place_failed',
   'linq_multi_family_free_busy_shared',
   'linq_multi_family_ask_sent',
   'linq_multi_family_ask_capped',
@@ -491,6 +494,10 @@ export const AUDIT_VERBS = [
   'registration_morning_unwritten',
   'registration_heads_up_unwritten',
   'registration_leg_unwritten',
+  'registration_date_moved',
+  'registration_date_moved_sent',
+  'registration_date_moved_unwritten',
+  'registration_date_moved_dropped',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -991,6 +998,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_multi_family_common_time_unsent: {
     sentence:
       'Hale held its suggested times for a shared thread because it could not write them well',
+    family: 'problem',
+  },
+  linq_multi_family_common_time_picked: {
+    sentence: 'Someone in a shared thread picked one of the times Hale suggested',
+    family: 'note',
+  },
+  linq_multi_family_common_time_placed: {
+    sentence: 'Hale updated a plan from a shared thread on your calendar',
+    family: 'done',
+  },
+  linq_multi_family_common_time_place_failed: {
+    sentence: 'Hale could not update a plan from a shared thread on your calendar',
     family: 'problem',
   },
   linq_multi_family_free_busy_shared: {
@@ -1822,6 +1841,23 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   registration_leg_unwritten: {
     sentence: 'Hale did not send a registration reminder text',
+    family: 'note',
+  },
+  registration_date_moved: {
+    sentence: 'Hale saw the registration page move an opening date and moved its reminders',
+    family: 'note',
+  },
+  registration_date_moved_sent: {
+    sentence: 'Hale texted you that a registration opening date moved',
+    family: 'done',
+  },
+  registration_date_moved_unwritten: {
+    sentence: 'Hale did not send the text about a moved registration date',
+    family: 'note',
+  },
+  registration_date_moved_dropped: {
+    sentence:
+      'Hale did not text you about a moved registration date, because the reminders had stopped',
     family: 'note',
   },
   registration_outcome_recorded: {

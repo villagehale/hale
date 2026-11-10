@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The position, the 36 hours, the deadline (Wed Sept 16, 11:00 p.m.) and the promised reminder are all correct, and nothing is asked. But the note never says the clock started from the parent's own message at 11:00 a.m. today. Calling it a 36-hour window to accept an offer, with no stated start, also implies it begins when an offer arrives. A deadline with no stated start fails the outcome_waitlisted rule.",
+    "score": 2
+  }
+}

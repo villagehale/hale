@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately offers the plan with both sessions, opening time, and asks preference, maximum price, and waiver. However it omits the required note that queueing on the parent's own phone or computer holds two places in line, which is mandatory on the offer moment, and it lacks the stated opening-time context of the day before. Otherwise no invented facts or false registration claims.",
+    "score": 2
+  }
+}

@@ -2,7 +2,8 @@
 //
 // Expectations come from the SPEC (packages/agent/skills/signup-plan-reply.md): one text
 // per moment of a day-before plan — the offer, the approval, a take-back, a question, a
-// refusal and the notice after the run — in en, fr and zh. No fixed copy and no wording
+// refusal and the notice after the run — in en, fr and zh, for a town where Hale pays
+// (`auto`) and one where Hale fills and the parent submits and pays (`assisted`, step 6). No fixed copy and no wording
 // checks: the code gate refuses any link, a judge reads the facts and the tone.
 //
 // Invented provider, family and values only (the repo is public).
@@ -22,6 +23,7 @@ const SUN = {
 };
 
 const BASE = {
+  mode: 'auto',
   childFirstName: 'Ada',
   opensAt: OPENS,
   sessions: [SAT, SUN],
@@ -193,6 +195,63 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
     },
     watchFor: `In Chinese. Says Hale could not get into the parent's city account at the open, so nothing was registered; they can register at the page that follows. ${NO_SPOT} ${NO_RETRY}`,
   },
+  {
+    id: 'offer-assisted-en',
+    facts: { ...BASE, mode: 'assisted', moment: 'offer' },
+    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m.; lists both sessions; asks which ones in order of preference and the most they will pay. Says Hale will get in line at the open and fill in the registration, then text the open browser so the parent checks it, submits and pays themselves, soon after the open. Does NOT ask about a waiver and never says Hale pays or uses a saved card. ${TWO_PLACES} ${NO_SPOT}`,
+  },
+  {
+    id: 'approved-assisted-fr',
+    facts: {
+      ...BASE,
+      mode: 'assisted',
+      moment: 'approved',
+      language: 'fr',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      waiverAccepted: false,
+    },
+    watchFor: `In French with tu. Confirms the plan: Sunday first, then Saturday; at most $110; Hale joins at the open on Tuesday December 1 at 7 p.m., fills in the registration and texts the open browser for the parent to submit and pay. Never says Hale pays or ticks the waiver. ${TWO_PLACES} ${NO_SPOT}`,
+  },
+  {
+    id: 'finished-ready-en',
+    facts: {
+      ...BASE,
+      mode: 'assisted',
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'ready_for_parent',
+        detail: 'none',
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `Says Hale filled in Ada's registration for Preschool Swim Sun 10:00 ($98) and stopped before submitting; it is not done yet: the parent checks it in the open browser at the link that follows, ticks anything left such as a waiver, submits and pays, within about 15 minutes. Never says Hale paid. ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-assisted-login-zh',
+    facts: {
+      ...BASE,
+      mode: 'assisted',
+      moment: 'run_finished',
+      language: 'zh',
+      sessions: [SUN],
+      maxPriceCents: 9800,
+      run: {
+        ...RUN,
+        outcome: 'needs_login',
+        detail: 'login_wall',
+        sessionLabel: null,
+        cartTotalCents: null,
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `In Chinese. Says the town's site asked for a sign-in, so Hale could not fill in the registration; the parent can sign in and register in the open browser at the link that follows, within about 15 minutes. ${NO_SPOT} ${NO_RETRY}`,
+  },
 ];
 
 /** Texts that break the spec. Every one must be caught (code gate or judge). */
@@ -214,6 +273,18 @@ export const SIGNUP_PLAN_REPLY_BROKEN = [
     fixtureId: 'finished-sold-out',
     text: "Both swims were full by the time we got in. I'll keep an eye out and grab a spot if one opens.",
     breaks: 'promises to keep watching',
+  },
+  {
+    id: 'ready-claimed-registered',
+    fixtureId: 'finished-ready-en',
+    text: 'Done! Ada is registered for Sunday 10:00 swim. Just open the browser and pay.',
+    breaks: 'says registered when the form is only filled',
+  },
+  {
+    id: 'assisted-offer-says-hale-pays',
+    fixtureId: 'offer-assisted-en',
+    text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Tell me which first and your max, and I will register and pay with the card saved on your city account. If you also queue on your phone, the family holds two places in line.',
+    breaks: 'says Hale pays on an assisted town',
   },
   {
     id: 'carries-link',

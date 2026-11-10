@@ -131,10 +131,10 @@ async function main() {
         cost,
       });
       const draft = writer.signupPlanReplySchema.safeParse(call.value);
-      const raw = draft.success ? draft.data.text : '';
-      const violations = writer.planReplyViolations(raw);
+      const sent = writer.planReplyText(draft.success ? draft.data.text : '');
+      const violations = writer.planReplyViolations(sent);
       if (violations.length === 0) {
-        text = raw.replace(/\s+/g, ' ').trim();
+        text = sent;
         break;
       }
       violation = violations.join('; ');

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a $120 price, but the handed price is null, and that alone forces a 2 or lower. It also never says the course details could not be read, even though name, day and time are all null. Several parts are right: the swap matches replaced:true, the opening day and time are correct, the prerequisite warning to leave time is there, it carries no link and asks nothing.",
+    "score": 2
+  }
+}

@@ -715,6 +715,9 @@ async function runToddlerJourney(): Promise<Journey> {
           courseUrl: (row.courseUrl as string | null) ?? null,
           courseOpensAt: (row.courseOpensAt as Date | null) ?? null,
           readinessReady: (row.readinessReady as boolean | null) ?? null,
+          lastReading: null,
+          nextCheckAt: null,
+          pendingChange: null,
         };
       });
     },
@@ -770,6 +773,10 @@ async function runToddlerJourney(): Promise<Journey> {
       throw new Error('the date check is off: no reader');
     },
     composeDateUnconfirmed: async () => null,
+    saveDateWatch: async () => {
+      throw new Error('the date check is off: nothing is re-read');
+    },
+    composeDateMoved: async () => null,
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);
