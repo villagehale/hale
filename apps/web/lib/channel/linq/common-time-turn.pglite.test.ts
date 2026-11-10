@@ -586,7 +586,8 @@ describe('common time in a shared group', () => {
   it('a grant and a withdrawal stamped in the same instant leave no say-so', async () => {
     const { ada } = await threeFamilies();
     const { reader } = findTime();
-    await turn({ reader, write: writer().write }, sender(), 'in-0');
+    // Ada's own ask is her household's join; nothing joins a household for it.
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
     const say = (granted: boolean, at: Date) => ({
       userId: ada.userId,
       familyId: ada.familyId,
