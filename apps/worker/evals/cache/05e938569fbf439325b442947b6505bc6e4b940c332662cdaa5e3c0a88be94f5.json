@@ -1,0 +1,21 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Drop-in Playgroup, Village Playgroup - Family Resource Centre, Children's Village of Ottawa-Carleton (333 Churchill Ave North)",
+        "age_fit": "Ages 0-5yrs",
+        "when": "Tuesdays 9:15am-11:15am per their weekly timetable; the page may be an older copy and no notice about today was seen either way",
+        "price": "Free",
+        "source_name": "Children's Village of Ottawa-Carleton"
+      },
+      {
+        "name": "EarlyON Drop-In, Blackburn Hamlet Community Centre (190 Glen Park Drive)",
+        "age_fit": "Infants, toddlers and preschoolers",
+        "when": "Tuesday and Thursday mornings, 9 a.m., September 8 - December 10, 2026",
+        "price": "Free",
+        "source_name": "Global Child Care Services"
+      }
+    ]
+  },
+  "latencyMs": 8337
+}

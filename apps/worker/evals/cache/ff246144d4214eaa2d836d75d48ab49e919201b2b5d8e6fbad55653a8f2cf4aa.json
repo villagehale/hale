@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads by name with the strongest pick, Family Play at the YMCA at Rocky Ridge, and attributes its times to YMCA Calgary. All three picks are Calgary and toddler-appropriate, with no Ontario programs and no aggregator sources. The only price is the library's 'free', which the picks carry; nothing is invented. Under no_page_read it correctly uses 'I could not get into their pages' rather than 'not posted yet'. With watch true, it makes a first-person 'I'll keep watching' commitment. It is plain text with no link and no question. Minor weaknesses: the Connect + Play locations (Horizon, Midnapore, Triwood) are dropped, which costs the parent somewhere specific to go. The library pick names no branch. The second and third picks get parenthetical source tags rather than clear 'their site says/listed as' attribution. The watch line is terse and does not say Hale will text back.",
+    "score": 4
+  }
+}

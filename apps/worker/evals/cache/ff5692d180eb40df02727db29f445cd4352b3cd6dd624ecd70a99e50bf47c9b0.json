@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are mostly sound and cited to the right pages. Tiny Gym's age band, length and parent requirement come from programs.php. The Term 1 and Term 2 dates come from the schedule PDF, and the weekday the grid would not yield is honestly hedged. The July 22, 2026 8:00am Term 1/Fall registration date is carried in a slot cited to the home page. Nothing borrowed from elsewhere, such as the $45 Gymnastics Ontario fee, is presented as a program price. The message leads with Tiny Gym by name and attributes its facts ('their site says'). It puts the missing weekday in the first person ('I could not pin down'), which is correct for page_has_schedule. Saying the price only shows after login is true to the page. It asks no question. Because watch is true, 'I'll keep watching and text you' is legitimate. However, the message drops the registration date that the slots carried: Term 1/Fall registration on Wednesday July 22, 2026 at 8:00am is nowhere in the text. That is an explicit low-score condition.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are well grounded. Tiny Gym and Rock n' Roll are taken from the programs page with the correct ages. The term dates Sept 14-Nov 1 and Nov 2-Dec 20, 2026 come from the PDF. The PDF times are hedged honestly where the weekday could not be matched. No figure is borrowed from elsewhere: the $45 Gymnastics Ontario fee is not used as a price. One slot correctly carries the registration date the homepage prints (Wednesday July 22, 2026, 8:00am online). The message does several things right. It leads with Tiny Gym by name, attributes with 'their site says', and uses the first-person 'I could not pin down the weekday', which is correct under page_has_schedule. It notes that the price is behind a login, uses first person for the watch line (watch is true), and has no question or link. However, the message drops the July 22 registration date that the slots carried, which is an explicit low-score condition.",
+    "score": 2
+  }
+}
