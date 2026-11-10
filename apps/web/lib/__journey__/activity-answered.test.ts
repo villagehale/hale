@@ -15,6 +15,7 @@ import {
   defaultActivityFollowUpDeps,
   runActivityFollowUpSweep,
 } from '~/lib/channel/activity/sweep';
+import { findReplyNotJudged } from '~/lib/channel/coach/find-reasoning-judge';
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -469,7 +470,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
           villageTool: searchVillageTool(database),
           // The REAL reader over the REAL rows, and the REAL lane over the web port.
           activity: {
-            reader: bindActivityReader(database, productionActivityFamilyReader()),
+            reader: bindActivityReader(database, productionActivityFamilyReader(), 'every_adult'),
             finder: createActivityFinder(client),
           },
           spots: null,
@@ -493,6 +494,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         },
       },
       client,
+      judgeFindReply: findReplyNotJudged,
       runAgent: scriptedRunAgent(steps, write),
       recordRun: async () => {},
       now: () => new Date(),

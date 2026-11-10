@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gives the page's opening as Tuesday, November 3 at 7 a.m., but the handed pageOpens is Tuesday, October 27, 2026. That is a wrong date, which forces a score of 2 or lower. The rest fits the kind: haleHas (Tuesday, September 15) is named, the different-season reason is plain, there is no link, it asks nothing and leaves things unchanged. 'Holding' could hint at a reservation, but it is minor next to the wrong date.",
+    "score": 2
+  }
+}

@@ -6,6 +6,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -98,10 +99,10 @@ function parseSpokenLine(answer: string | null, questions: 0 | 1): { line: strin
 function lineUsable(line: string, input: GroupOnboardingLine): boolean {
   // VIL-438: the member welcome has no word or punctuation gate. Whether it carries
   // the facts is the model's (and the eval judge's) call, not a string match.
-  if (input.kind === 'member_welcome') return line.trim().length > 0 && !/https?:\/\//i.test(line);
+  if (input.kind === 'member_welcome') return line.trim().length > 0 && !hasLinkShape(line);
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
-  if (/https?:\/\//i.test(line)) return false;
+  if (hasLinkShape(line)) return false;
   return input.mustMention.every((slot) => line.includes(slot));
 }
 

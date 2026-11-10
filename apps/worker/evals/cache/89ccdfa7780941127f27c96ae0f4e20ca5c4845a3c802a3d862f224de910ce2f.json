@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives a clock time (7 a.m.) for the new opening, but opens.time is null, so that time is carried over from the old opening without support. It also never says the date came from the registration page, and it attributes the move to Springfield instead. The new day and the handed link are correct, and the tone is fine.",
+    "score": 2
+  }
+}

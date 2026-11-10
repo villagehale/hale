@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Naperville venues that fit the toddler stage, each sourced from the venue's own site rather than an aggregator. The message leads with Naperville Gymnastics by name and attributes throughout (\"their site says\", \"per Naperville Park District's open gym page\"). It carries the Friday 12-1 time with its 'not confirmed for winter' caveat, which matches the picks. It invents no days, times or prices. With no_page_read, it correctly names the gap in the first person: \"I could not get into their pages today\" rather than \"not posted yet.\" With watch true, it correctly states the first-person follow-up commitment. Plain text, no link, no question.",
+    "score": 5
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Totally fair. A rough area is enough for me to find things nearby: just the first three characters of your postal code, or the first five digits of your ZIP.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1728
+}

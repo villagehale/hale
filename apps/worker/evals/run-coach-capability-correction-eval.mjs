@@ -9,7 +9,8 @@
 // objectively and a judge reads each reply against the case's rubric, by meaning.
 //
 //   node evals/run-coach-capability-correction-eval.mjs --max-usd 1.5   # live, then caches
-//   node evals/run-coach-capability-correction-eval.mjs --broken        # calibration: must FAIL
+//   node evals/run-coach-capability-correction-eval.mjs --broken        # calibration: must FAIL,
+//                                                                      # and calibrationPasses pass
 //   node evals/run-coach-capability-correction-eval.mjs --cached-only   # CI: replay only
 
 import { dirname, join } from 'node:path';
@@ -338,8 +339,34 @@ async function main() {
   }
   if (!broken) process.exit(results.every((r) => r.failures.length === 0) ? 0 : 1);
   const allFail = results.every((r) => r.failures.length > 0);
-  console.log(`broken-mode calibration (every case must fail): ${allFail ? 'PASS' : 'FAIL'}`);
-  process.exit(allFail ? 0 : 1);
+  let passesHeld = true;
+  for (const fixture of COACH_CAPABILITY_CORRECTION_FIXTURES) {
+    for (const [index, reply] of (fixture.calibrationPasses ?? []).entries()) {
+      const verdict = await judge(`calibration:${fixture.id}:${index}`, {
+        parentText: fixture.text,
+        facts: {
+          notYetPossible: fixture.dark,
+          possibleNowButEarlierRefused: fixture.owed,
+          alsoPossible: fixture.judgeCan,
+        },
+        rubric: fixture.rubric,
+        reply,
+      });
+      const ok = verdict.score >= JUDGE_MIN;
+      if (!ok) passesHeld = false;
+      console.log(
+        `${ok ? 'OK  ' : 'OFF '}  calibration pass ${fixture.id} score=${verdict.score} "${reply}" (${verdict.reason})`,
+      );
+    }
+  }
+  console.log(
+    `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
+  );
+  const calibrated = allFail && passesHeld;
+  console.log(
+    `broken-mode calibration (every case must fail, calibrationPasses pass): ${calibrated ? 'PASS' : 'FAIL'}`,
+  );
+  process.exit(calibrated ? 0 : 1);
 }
 
 main().catch((err) => {

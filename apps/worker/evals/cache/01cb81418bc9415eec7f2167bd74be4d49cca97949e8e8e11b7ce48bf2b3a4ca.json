@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is an outcome_waitlisted message in French with no position, no responseHours and no deadline, and it does what that kind asks. It acknowledges the waitlist for Riverton. It notes there is no number, which is a plain restatement of position: null. It says the town publishes no response window and so there is no clock to watch, and it tells the parent to watch their email for an offer, which is handed. It asks no question and invents no claims. The tone reads friendly enough in French using vous. The phrasing 'Je n'ai pas votre numéro sur la liste' is slightly awkward, since it could read as Hale lacking the info rather than none being given, but it is not false.",
+    "score": 5
+  }
+}

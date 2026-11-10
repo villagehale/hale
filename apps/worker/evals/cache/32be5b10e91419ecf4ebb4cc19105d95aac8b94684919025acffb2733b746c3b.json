@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Pour trouver ce qui est près de chez toi sans ton adresse exacte, les trois premiers caractères de ton code postal suffisent, ça me donne juste ton secteur. Tu peux me les donner ?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "language": "fr",
+    "address": "tu"
+  },
+  "latencyMs": 1641
+}

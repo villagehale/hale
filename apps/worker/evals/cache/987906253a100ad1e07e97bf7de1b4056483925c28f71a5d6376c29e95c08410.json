@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what a check_in_ask should. It asks how the Riverton Fall 2026 recreation registration went and offers the three outcomes: got in, waitlisted with their number, or missed. It is in French, as handed, and using vous is allowed. It invents no claims, names no child and gets no dates wrong. The tone is friendly, though a bit formal and long for a text from a friend.",
+    "score": 5
+  }
+}

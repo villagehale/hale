@@ -78,6 +78,7 @@ import {
 } from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
@@ -186,7 +187,7 @@ export async function loadInboundContext(
   ]);
 
   return {
-    body: message.body ?? '',
+    body: withoutLiveViewLinks(message.body ?? ''),
     role,
     primaryParentName,
     reply,

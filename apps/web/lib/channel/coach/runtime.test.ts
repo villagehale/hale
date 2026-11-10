@@ -12,6 +12,7 @@ import {
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { findReplyNotJudged } from './find-reasoning-judge';
 import {
   type ChannelCoachPorts,
   channelCoachRuntime,
@@ -98,6 +99,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     guardDeps: { async writeAudit() {} },
     // Never reached: `runAgent` is injected below, and it is the only consumer.
     client: () => ({ messages: {} }) as never,
+    judgeFindReply: findReplyNotJudged,
     runAgent: answering('Move swim to Tue 4:30? YES to confirm.'),
     recordRun: async (run) => {
       recorded.push({
@@ -201,6 +203,16 @@ describe('channelCoachRuntime', () => {
     const p = ports();
     await channelCoachRuntime(p).respond(turn(), []);
     expect(p.contextInputs).toEqual([expect.objectContaining({ readerUserId: PARENT })]);
+  });
+
+  it('asks for a group turn’s context as every adult, a 1:1 turn’s as that parent (VIL-599)', async () => {
+    const p = ports();
+    await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    await channelCoachRuntime(p).respond({ ...turn(), audience: 'direct' }, []);
+    expect(p.contextInputs).toEqual([
+      expect.objectContaining({ readerUserId: PARENT, inGroup: true }),
+      expect.objectContaining({ readerUserId: PARENT, inGroup: false }),
+    ]);
   });
 
   it('hands the loop the channel context: the surface and the family clock', async () => {
@@ -1437,10 +1449,34 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     error.mockRestore();
   });
 
-  it('sends the draft when no judge is wired, and names that', async () => {
+  it("the judge reads the draft with a teen's name already redacted", async () => {
+    const drafts: string[] = [];
+    const p = ports({
+      judgeFindReply: async (draft) => {
+        drafts.push(draft);
+        return { verdict: 'send' };
+      },
+      runAgent: answering('Nora and Sam can do Storytime Saturday at 10.'),
+    });
+    await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).not.toContain('Nora');
+    // POSITIVE CONTROL: the rest of the draft reaches the judge as written.
+    expect(drafts[0]).toContain('Sam can do Storytime Saturday at 10.');
+  });
+
+  it('production wires the model judge, not the pass-through', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    const gate = await productionChannelCoachPorts({} as Database).judgeFindReply(
+      'EarlyON Saturday at 10.',
+    );
+    expect(gate).toEqual({ verdict: 'unjudged', reason: 'client_unavailable' });
+  });
+
+  it('the scripted pass-through sends the draft and names that', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
-    const p = ports({ runAgent: answering(draft) });
+    const p = ports({ judgeFindReply: findReplyNotJudged, runAgent: answering(draft) });
     const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
     expect(reply).toBe(draft);
     expect(error).toHaveBeenCalledWith(

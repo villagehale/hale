@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type CalendarStanding, type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
@@ -23,12 +23,7 @@ import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { speak } from '~/lib/channel/spoken-line';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
-import {
-  KID_NOTICE_PURPOSE,
-  kidNoticeDedupeKey,
-  kidNoticeTitle,
-  readKidNoticeGates,
-} from './calendar-kid-notice';
+import { KID_NOTICE_PURPOSE, kidNoticeDedupeKey, readKidNoticeGates } from './calendar-kid-notice';
 
 /**
  * A change on a connected Google Calendar becomes ONE text to the parent.
@@ -112,10 +107,11 @@ export interface CalendarChange {
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
   location?: string;
-  /** `organizer.self` — this family's own event rather than one they were invited to.
-   * Carried because it is a fact about the change worth having in one place; nothing
-   * branches on it today. */
-  selfOrganized?: boolean;
+  /** Where the connecting parent stands on it (calendar-standing.ts, VIL-651). Read
+   * from the organizer and the attendee list, which are never stored. A tombstone carries
+   * neither, so it reads as `own`; nothing is spoken about one from its own fields. Null on
+   * a held text rebuilt from memory, which never kept it: not known, so not the parent's. */
+  standing: CalendarStanding | null;
 }
 
 /**
@@ -173,6 +169,13 @@ export const CALENDAR_ALERT_OUTCOMES = [
   /** A teenager's event, or a kid event tied to no child in a family with a teenager. The
    * deterministic age gate keeps it from the parent (rule #1). */
   'teen_held',
+  /** VIL-633. Someone else's invite the parent has not accepted (unanswered or tentative).
+   * It stays mirrored for the week view, but its title is a stranger's words, so Hale says
+   * nothing about it. */
+  'invite_not_accepted',
+  /** VIL-633. A kid copy mirrored before Hale read where the parent stands on it. Held the
+   * same way until the next mirror sweep writes it. */
+  'standing_unknown',
   /** The writer returned no text, so nothing was sent and the key was not spent. */
   'notice_unwritten',
   /** CALENDAR_ALERT_ENABLED is not `true`. The shape is remembered and a text already
@@ -355,7 +358,8 @@ type KidNews =
 
 interface KidPlaced extends Placed {
   news: KidNews;
-  /** The event's name for the writer: Google's, or the kid copy's for a bare tombstone. */
+  /** The event's name for the writer, '' unless the parent organized it or it is their own
+   * (readKidNoticeGates): Google's, or the kid copy's for a bare tombstone. */
   title: string;
   kidName: string | null;
 }
@@ -469,22 +473,25 @@ async function kidNoticeSweep(
   const gates = await readKidNoticeGates(
     database,
     { familyId, integrationId, now },
-    fresh.map((placed) => placed.change.eventId),
+    fresh.map((placed) => placed.change),
   );
   const cleared: KidPlaced[] = [];
+  const notTheParents = { inviteNotAccepted: 0, standingUnknown: 0 };
   for (const placed of fresh) {
     const gate = gates.get(placed.change.eventId);
     if (gate === undefined || !gate.cleared) {
-      placed.write(gate?.why ?? 'not_kid_tracked');
+      const why = gate?.why ?? 'not_kid_tracked';
+      if (why === 'invite_not_accepted') notTheParents.inviteNotAccepted += 1;
+      if (why === 'standing_unknown') notTheParents.standingUnknown += 1;
+      placed.write(why);
       remember(writes, placed, null);
       continue;
     }
-    const own = kidNoticeTitle(placed.change.title);
-    cleared.push({
-      ...placed,
-      title: own === '' ? kidNoticeTitle(gate.title) : own,
-      kidName: gate.kidName,
-    });
+    cleared.push({ ...placed, title: gate.title, kidName: gate.kidName });
+  }
+  if (notTheParents.inviteNotAccepted + notTheParents.standingUnknown > 0) {
+    // Counts only: no family, connection, event or title (rule #1).
+    console.info(notTheParents, "calendar kid notice: not the parent's own event");
   }
 
   let language: Promise<string> | undefined;
@@ -1426,6 +1433,7 @@ function revive(
       start: point(startAt),
       end: point(endAt),
       location: row.heldLocation ?? undefined,
+      standing: null,
     },
     span: { startMs: startAt.getTime(), endMs: endAt.getTime(), allDay: row.allDay },
     // The prior's OWN shape, never this row's: an all-day start is a local midnight, and

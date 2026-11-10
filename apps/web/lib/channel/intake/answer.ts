@@ -6,6 +6,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
@@ -61,10 +62,6 @@ import {
  */
 
 const MAX_TOKENS = 300;
-
-/** No links, held structurally: this stage has no tool it could have gotten one from,
- * so a URL here is a URL it invented. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /**
  * The doctrine's standing rule (skill audit P0 #4), and doubly true here: a parent three
@@ -263,7 +260,7 @@ export function refusals(
 ): IntakeAnswerRefusal[] {
   const found: IntakeAnswerRefusal[] = [];
   const joined = `${answer} ${returnLine}`;
-  if (LINK_SHAPE.test(joined)) found.push('carries_link');
+  if (hasLinkShape(joined)) found.push('carries_link');
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
   if (returnLine === input.pendingAsk.trim()) found.push('return_repeats_the_ask');

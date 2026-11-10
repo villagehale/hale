@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The note says the 36-hour window started from the parent's own message yesterday at 11:00 a.m. and ends tonight at 11:00 p.m., which matches clockFrom plus 36 hours. 'Halfway' is right, since it is 18 hours in at 5 a.m. Wednesday. 'Yesterday' and 'tonight' fit the current day. The email and portal reminder is allowed, and it asks no question, invents no claims and is in English.",
+    "score": 5
+  }
+}

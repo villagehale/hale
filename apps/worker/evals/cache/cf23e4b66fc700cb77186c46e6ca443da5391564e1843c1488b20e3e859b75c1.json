@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. Both fetches failed and the notes say so honestly. The single slot is grounded in a search snippet: the program name and the 4 months to 3 years age band fit a toddler, and the age field is explicitly labelled snippet-only. When, price and registration are null rather than invented, and nothing claims the schedule is unposted. No figures are borrowed from elsewhere. The sourceUrl points to a page that could not be opened, but it is the operator's page the snippet came from, and the slot discloses that it was not opened. This is the correct snippet-grounded result.",
+    "score": 5
+  }
+}

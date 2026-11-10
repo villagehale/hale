@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message misses what the kind requires and invents promises. With alreadyBound false it should say Hale reads one course page at a time, that it just tried an earlier page, that it has not opened this link and will not come back to it, and that the parent should send it again in 7 minutes. Instead it says Hale will open this link when free and text the result, which is an unhanded promise and the opposite of 'will not come back to it'. It also gives no retry time.",
+    "score": 1
+  }
+}

@@ -10,7 +10,7 @@ import {
   familyOutboundTarget,
 } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
-import { splitKidEvent, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
+import { splitKidEvent, spokenBlockTitle, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -26,7 +26,7 @@ import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
-import { closeFacts, writeFact } from '~/lib/memory/facts';
+import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
 import {
   type CadenceLine,
   type CadencePlan,
@@ -566,14 +566,26 @@ async function buildOccasions(
       status: schema.parentCalendarBlocks.status,
       kidRelated: schema.parentCalendarBlocks.kidRelated,
       familyId: schema.parentCalendarBlocks.familyId,
+      standing: schema.parentCalendarBlocks.calendarStanding,
+      childName: schema.children.name,
     })
     .from(schema.parentCalendarBlocks)
+    .leftJoin(schema.children, eq(schema.children.id, schema.parentCalendarBlocks.childId))
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
+  // VIL-651: an unanswered invite is not asked about, a row stored against a teen is left
+  // out, and only the parent's own or organized event lends its title to the group.
   const kidBlocks = withoutTeenTitles(
-    blocks.filter((row) => row.familyId === familyId),
+    blocks.filter(
+      (row) =>
+        row.familyId === familyId &&
+        row.standing !== 'invited' &&
+        !(row.childName !== null && home.teenNames.includes(row.childName)),
+    ),
     home.childNames,
     home.teenNames,
-  ).filter((row) => row.kidRelated);
+  )
+    .filter((row) => row.kidRelated)
+    .map((row) => ({ ...row, title: spokenBlockTitle(row.standing, row.title) }));
   const byEvent = new Map<string, typeof kidBlocks>();
   for (const block of kidBlocks) {
     const list = byEvent.get(block.eventId) ?? [];
@@ -1028,6 +1040,7 @@ async function noteLinesSent(
       }),
       confidence: 1,
       inferredBy: 'coparent_duty_ask',
+      heard: HALE_RECORD,
       validFrom: input.now,
     });
     await auditDuty(database, {
@@ -1049,6 +1062,7 @@ async function noteLinesSent(
       },
       confidence: 1,
       inferredBy: 'coparent_duty_ask',
+      heard: HALE_RECORD,
       validFrom: input.now,
     });
     await auditDuty(database, {
@@ -1405,6 +1419,7 @@ export async function answerParentDutyAsk(
       },
       confidence: 1,
       inferredBy: 'coparent_duty_ask',
+      heard: { in: 'family', userId: input.actorUserId },
       validFrom: input.now,
     });
     await auditDuty(database, {

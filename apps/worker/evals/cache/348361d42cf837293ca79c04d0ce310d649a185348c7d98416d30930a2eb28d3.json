@@ -1,0 +1,53 @@
+{
+  "response": {
+    "id": "msg_011CgsFihRA6kLuV7eMTfVWm",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStQUKEAgTGAI4AUIIdGhpbmtpbmcSDJ5VU+8TCpBZRNizQBoM8WM3ZfiMX8tt6bQTIjDpEmKHCKhP93iMr7HTHpmX+TK5XHgkfI7Q6gvMtI676yMOB/cwTQ3uMpGOfXhC7/0q0gS1WVZ3AGpaBGYBuNzzOV/IjnTUnZctAWmLfB0ysnvivxM6FkTCre2GnxFxtysUyXS6OHYAQw+jOv29K2nGL7UnC81kVQiOMbevX7Crquyns+Teml3rdhGE5CL5gnYz4ydkeoB+ZB0VRnFrFmCi1/Qv/g9us10Bi7D/qCun/zv5x8MKQMvqap+y31QcokDfT+9+JejOzdc7h2sZF0qKAJ96Ig/aPBMvE6G4QBrNKMMIqfA8k18cmRanW/Ou4dilSAcyhXPy0b+VTEXiKzkGytdXmdrsaz8/+ipEg9Blg79OP3DVv6aYFvL+vEIaqdtttdOftwRQaoY4Lta8TBa/ZtK4ze9n+t48JsmfxGUYcp7+SIEnSvMVzC4NkFR5KheCCRyiIg+WMXyRAPT5W4kaZya+9ImoiYQIV4oCEfzGjPoBid2rsTfmlyeVxrBSBMKKkwQMykj1+iJR6mErvdpeFNGCYH8ALmt02KNB891Kp7g1OogI7X5ADH2sgPhypbjV+m49TLScOGPYojAP0c3WSajARA6YB5buY1JR9fYABxh+gQTb58agoDMGDaRGPVvKCA7saFFNdoyYXKkodLb09fgjKGfxVj+HRcybd+JMWh12L9AzzEC8El3Lf1XXfzeSe1uDQYE64TQwaO20h9K26tNvbjyAA9oiuV5ppeExkmSJXKPP+MRiE1VevdUzN/i4WZLBu9LMBIgo57jH96xXs+CUQeKGsJ5mmbcj2I+rx0/rkHpoQDv9sntm+YRT2bAcXSIc+rcmZ/1hhRyRanKkFR4m5Y8YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01P2xepfnfWnFdYnsDnWSa9M",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01VGtDT4NrehzHDQzWSAHJ6w",
+        "name": "search_village",
+        "input": {
+          "window": "today"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 443,
+      "cache_creation_input_tokens": 20227,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 20227,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 106,
+      "output_tokens_details": {
+        "thinking_tokens": 33
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
