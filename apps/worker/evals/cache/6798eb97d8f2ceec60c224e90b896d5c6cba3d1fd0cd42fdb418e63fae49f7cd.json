@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says reminder set but omits the required Thursday 9 AM detail and never explains the reminder will post in the group chat instead of privately, which is a mustSay failure."
+  }
+}

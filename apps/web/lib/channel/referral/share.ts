@@ -1,5 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
+import { hasLinkShape } from '../../format/link-shape';
 import { referralLink } from './code';
 
 /**
@@ -54,9 +55,9 @@ export interface ReferralShare {
  * replaces, and "settings" is where the invented referral page was said to live. */
 const APP_POINTER = /\b(app|apps|settings|account|dashboard|website|download)\b/i;
 
-/** Anything that looks like the model writing a URL. It is handed none, so a URL in the
+/** The model naming Hale's own domain without a dot. It is handed no link, so a link in the
  * forward line is either invented or a copy of one it was told not to repeat. */
-const ANY_URL = /(https?:\/\/|www\.|villagehale|\.com\b|\.ca\b)/i;
+const OWN_DOMAIN_NAME = /villagehale/i;
 
 /**
  * Everything wrong with a proposed forward line, phrased for the model that has to
@@ -69,7 +70,7 @@ export function forwardViolations(forward: string): string[] {
   const text = forward.trim();
 
   if (text === '') return ['The line was empty.'];
-  if (ANY_URL.test(text)) {
+  if (hasLinkShape(text) || OWN_DOMAIN_NAME.test(text)) {
     violations.push(
       'The line contains a link. Do not write one - the real link is added after your message, and any URL you compose is one you invented.',
     );

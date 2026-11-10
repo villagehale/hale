@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgsEqrpJFjgWBkbV4VF3q",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSyQgKEAgTGAI4AUIIdGhpbmtpbmcSDHJLYGRHuLD76I+f5hoM60IhSO+rkeBRHH5oIjAgcuZLVmaYmGCRc+b/i/MdnwbjK/NRCN1m5S8JgoyTJQgCUr5+50l66ceu1IVdzaAq5gc46q9Y8HC4SdB9mXFG4PHfrks7PzjMiU9LjdF3K0iUW7VLCPRI3D5uW3/Uip1pT9oI6vsMOExAgIAy+Xs/ZI/gwz69Pfa7Yp20VM1QU9SO9XqGWnaVaNSGg7rfSaJv5Uw8C5j0sMak1fRgamoIBl7ease/E+LbXX3hUWjXLVwg1LkPsuPU7PxaLO/hh4sfqxk2+7y8pe6ASNslo+04owNnpzK4/Cjw8UuYSNJ41R2yONwoO6adkMj1O4Ow7OiTLaVwmwGrVFgMBhmS6kXRBnQz9sOpKuNcDg8MnwOU5B9QHecYvXgUXONiE5dcHPGgglhdqAr+pCVOGhk5TLQej66+hK4xOe/oVcw7MJKpBqeZlxzLRo2yLe4NViRie8o2Ncwse1nE8wxKQzdzt+gfPQgYU/b1/4Lvl+Zfuwx6zEdfgbkzeqnWbKoCU4IolanU4+M3h4C7++2XifCDaIrrnBlEJQ1go44QHHExKyC6b7osp4s2cIxt+XGvvRzp5fvgGNLam9frCZ/nvTw1Js+2LSDcSnaTO1d39tkBG2tv8G4zyA8NdAuxOrydrl/zW13DVfQSf1FJyppXXSbmlf2ewjpbBNnBRK1x7I5PH7jZZj9OA0GCW80Fjn2O2Bd3e/ZZSXxV7o9AZEr9zTk/2ektcgiOZKsqIm3pZ8x8AicCYCmIcK1Oo5vvoQQP1muUDhv7B/O38EspX4lZ7qG4LTiH7SPzz3UrFvo220A0DR1BXDUl5EwP0ZDBVDISmGzR6bB02lWl6It/Rel1YaDRwLvV7d3Sg0sIykjBGi/tzYAWQ/F6mLnPM0vdpo5muV3OYOxK4YnQkhVw5HaYi9uVgdHoCnZs/Dd35iFOBnffpa9TI/9pC2wFHpFGqJTlTMaVbJfX7/LlusBciziz+2ZVX6jKJjdEBf//zP9hRxvhVjzWwo748PtLeP8lMW41dvsXapEQmq8vD0AMYeN5Yj09drWzmaPsY+fidqZH1xqD1pcK7rOr44gmTeBstaBZqV3NZ526IgyZHwtdJTGu0J49ihn4h5kothNEjsqWYiKa2HRBU+TXGuooFPugdNDFhfzcPFWXmHl0KNm3fodoeuRKj6jkiEDuEnJLY9YzSF7SHqNs+w+RbaW5scv3EzmVO5edaBa/cfNF5SEkiJ6QGZ89vtiRsprpLSSekI9v9RJNbghFiS8N2y0xEZ7YqX6kDyUvfK/LdyBcbdrCcVB5AcH1/tAm+CDgn9noz3oNwXGjdbDrZJgg9Bh/i//himGTRIXudUHp0UTeToIpLJjldWRB7pL5Kxm2sJd34N48V4j6pAxsj0GF4TNan1p6EBgB"
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Sat 10:00am at Cedarvale Park. After that, High Park on Bloor St W / Parkside Dr is an easy pick for both kids. It has the Jamie Bell Adventure Playground, a free animal display with bison, llamas and peacocks, plus a wading pool and splash pads. The park is open daily, but the water play is seasonal, so I can't promise what's running that day."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1167,
+      "cache_read_input_tokens": 22386,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1167,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 280,
+      "output_tokens_details": {
+        "thinking_tokens": 142
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3626
+}

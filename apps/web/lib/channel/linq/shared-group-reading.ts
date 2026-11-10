@@ -18,6 +18,8 @@ export const SHARED_GROUP_INTENTS = [
   'join',
   'leave',
   'stop_me',
+  'find_time',
+  'pick_time',
   'question',
   'yes',
   'no',
@@ -53,6 +55,18 @@ export interface SharedGroupReadInput {
   language: string | null;
   people: readonly SharedGroupPersonFact[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
+  /** The speaker's clock, so `ruledOut` can be placed. Absent when no zone is known. */
+  clock?: { now: string; timeZone: string };
+  /**
+   * VIL-459: the times Hale last offered in this chat, still ahead. A pick is one of
+   * these or nothing. `local` is the speaker's wall clock, null when no zone is known.
+   */
+  offered?: readonly { start: string; local: string | null }[];
+}
+
+export interface RuledOutSpan {
+  start: Date;
+  end: Date;
 }
 
 export interface SharedGroupReading {
@@ -61,6 +75,12 @@ export interface SharedGroupReading {
   familyLabel: string | null;
   kidName: string | null;
   confidence: SharedGroupConfidence;
+  /** VIL-459: on `find_time`, the times the chat said do not work. Empty otherwise. */
+  ruledOut?: readonly RuledOutSpan[];
+  /** VIL-459: on `pick_time`, the offered time they chose. Null otherwise. */
+  picked?: Date | null;
+  /** VIL-459: on `find_time` / `pick_time`, a short calendar title in their words. */
+  planTitle?: string | null;
 }
 
 export interface SharedGroupReader {
@@ -74,6 +94,9 @@ const readingSchema = z
     familyLabel: z.string().nullable(),
     kidName: z.string().nullable(),
     confidence: z.enum(['high', 'low']),
+    ruledOut: z.array(z.object({ start: z.string(), end: z.string() }).strict()).optional(),
+    picked: z.string().nullable().optional(),
+    planTitle: z.string().nullable().optional(),
   })
   .strict();
 
@@ -86,8 +109,28 @@ export const sharedGroupReadingJsonSchema = {
     familyLabel: { type: ['string', 'null'] },
     kidName: { type: ['string', 'null'] },
     confidence: { type: 'string', enum: ['high', 'low'] },
+    ruledOut: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { start: { type: 'string' }, end: { type: 'string' } },
+        required: ['start', 'end'],
+      },
+    },
+    picked: { type: ['string', 'null'] },
+    planTitle: { type: ['string', 'null'] },
   },
-  required: ['intent', 'role', 'familyLabel', 'kidName', 'confidence'],
+  required: [
+    'intent',
+    'role',
+    'familyLabel',
+    'kidName',
+    'confidence',
+    'ruledOut',
+    'picked',
+    'planTitle',
+  ],
 };
 
 const UNCLEAR: SharedGroupReading = {
@@ -96,6 +139,9 @@ const UNCLEAR: SharedGroupReading = {
   familyLabel: null,
   kidName: null,
   confidence: 'low',
+  ruledOut: [],
+  picked: null,
+  planTitle: null,
 };
 
 const STATE_CHANGE: ReadonlySet<SharedGroupIntent> = new Set([
@@ -103,6 +149,7 @@ const STATE_CHANGE: ReadonlySet<SharedGroupIntent> = new Set([
   'join',
   'leave',
   'stop_me',
+  'pick_time',
 ]);
 
 /** The user-turn payload. Shared with the eval, which replays this request shape. */
@@ -113,7 +160,21 @@ export function sharedGroupUserMessage(input: SharedGroupReadInput): string {
     language: input.language,
     people: input.people,
     recent: input.recent.slice(-6),
+    ...(input.clock ? { clock: input.clock } : {}),
+    ...(input.offered?.length ? { offered: input.offered } : {}),
   });
+}
+
+function spansOf(raw: readonly { start: string; end: string }[] | undefined): RuledOutSpan[] {
+  const spans: RuledOutSpan[] = [];
+  for (const span of raw ?? []) {
+    const start = new Date(span.start);
+    const end = new Date(span.end);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+    if (end.getTime() <= start.getTime()) continue;
+    spans.push({ start, end });
+  }
+  return spans;
 }
 
 function blankToNull(value: string | null): string | null {
@@ -122,21 +183,50 @@ function blankToNull(value: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Validate a model object. Anything outside the contract is `unclear`. */
-export function parseSharedGroupReading(value: unknown): SharedGroupReading {
+const PLAN_TITLE_MAX = 80;
+
+/** The offered start the model named, matched to the instant. Null when it named none of them. */
+function offeredPick(raw: string | null | undefined, offered: readonly string[]): Date | null {
+  if (!raw) return null;
+  const at = new Date(raw).getTime();
+  if (Number.isNaN(at)) return null;
+  const match = offered.find((start) => new Date(start).getTime() === at);
+  return match ? new Date(match) : null;
+}
+
+/**
+ * Validate a model object. Anything outside the contract is `unclear`. A pick counts only
+ * as one of `offered` (the starts Hale showed the reader), so the model can never place
+ * a time Hale did not propose.
+ */
+export function parseSharedGroupReading(
+  value: unknown,
+  offered: readonly string[] = [],
+): SharedGroupReading {
   const parsed = readingSchema.safeParse(value);
   if (!parsed.success) return UNCLEAR;
-  const { intent, role, familyLabel, kidName, confidence } = parsed.data;
+  const { intent, role, familyLabel, kidName, confidence, ruledOut, picked, planTitle } =
+    parsed.data;
   if (STATE_CHANGE.has(intent) && confidence !== 'high') return UNCLEAR;
   if (intent === 'unclear') return UNCLEAR;
+  const pick = intent === 'pick_time' ? offeredPick(picked, offered) : null;
+  if (intent === 'pick_time' && !pick) return UNCLEAR;
+  const title =
+    intent === 'find_time' || intent === 'pick_time' ? blankToNull(planTitle ?? null) : null;
   return {
     intent,
     role,
     familyLabel: blankToNull(familyLabel),
     kidName: blankToNull(kidName),
     confidence,
+    ruledOut: intent === 'find_time' ? spansOf(ruledOut) : [],
+    picked: pick,
+    planTitle: title && title.length <= PLAN_TITLE_MAX ? title : null,
   };
 }
+
+/** Room for a find-time reading's spans ("after 5 on weekdays" is five of them). */
+export const SHARED_GROUP_READ_MAX_TOKENS = 400;
 
 export function createSharedGroupReader(
   clientOrResolver: AgentClient | (() => AgentClient),
@@ -153,9 +243,12 @@ export function createSharedGroupReader(
       toolDescription: 'What this person meant in the shared group.',
       inputJsonSchema: sharedGroupReadingJsonSchema,
       schema: readingSchema,
-      maxTokens: 200,
+      maxTokens: SHARED_GROUP_READ_MAX_TOKENS,
     });
-    return parseSharedGroupReading(value);
+    return parseSharedGroupReading(
+      value,
+      (input.offered ?? []).map((slot) => slot.start),
+    );
   };
   return {
     async read(input) {

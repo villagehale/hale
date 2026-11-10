@@ -3,7 +3,7 @@ import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizz
 import { channelMessages } from './channel-messages.js';
 
 /**
- * An email alert quiet hours held, which Hale still owes (migration 0211).
+ * An email alert quiet hours held, which Hale still owes (migration 0225).
  *
  * The Gmail cursor moves past a message the moment the sweep reads it, so a hold with
  * nothing behind it is a drop: an email at 07:50 was never mentioned while one at 08:05

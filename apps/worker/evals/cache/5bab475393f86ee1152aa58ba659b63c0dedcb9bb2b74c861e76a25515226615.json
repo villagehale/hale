@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a price. The facts give price as null, but the text says the class is $120. That is a claim the facts do not make, which caps the score at 2. Course details are all null, so it should have said they could not be read rather than calling it \"that class\" with a price. The prerequisite warning and the opening date and time are correct, and it carries no link and asks nothing.",
+    "score": 1
+  }
+}

@@ -51,6 +51,7 @@ async function watchedFamily() {
       instant: false,
       lastState: 'full',
       sessionStartsAt: null,
+      sessionAnchor: null,
     },
     channelMessageId: 'CM-ack',
     now: NOW,
@@ -93,6 +94,9 @@ describe('stop_watching — production wiring', () => {
         noop,
         noop,
         createTurnOfferLedger(),
+        undefined,
+        undefined,
+        'CA',
       )
       .find((candidate) => candidate.name === 'stop_watching');
     if (!tool) throw new Error('production buildTools registers no stop_watching');

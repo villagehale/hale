@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment follow-up, context not visible; defaults to in_domain",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 834
+}

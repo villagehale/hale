@@ -5,10 +5,14 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { seatParticipantAdded, unseatParticipantRemoved } from './group-members';
-import { groupMemberWelcome } from './group-members';
+import {
+  retryMemberWelcome,
+  seatParticipantAdded,
+  unseatParticipantRemoved,
+} from './group-members';
 import { groupMemberByPhone, memberPlanTier, readGroupMembership } from './group-membership';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
+import { LinqSendError } from './transport';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT = '+14165550111';
@@ -127,6 +131,7 @@ async function seat(phone: string) {
     isFromMe: false,
     now: NOW,
     send: wire.send,
+    voice: fakeGroupOnboardingComposer(),
   });
 }
 
@@ -184,27 +189,7 @@ describe('VIL-438 group membership read model', () => {
 });
 
 describe('VIL-438 member welcome written from facts', () => {
-  it('flag off sends the spoken welcome (main) and never calls the voice', async () => {
-    await seedFamily(PARENT, 'Barton');
-    await seedLegacyMember('+14165550122');
-    const voice = fakeGroupOnboardingComposer();
-    const wire = sender();
-    await seatParticipantAdded(db.database, {
-      chatId: CHAT,
-      participantHandle: '+14165550122',
-      actorHandle: PARENT,
-      isFromMe: false,
-      now: NOW,
-      send: wire.send,
-      voice,
-    });
-    expect(voice.calls).toHaveLength(0);
-    const spoken = await groupMemberWelcome('en', 'Barton');
-    expect(wire.texts).toEqual(spoken ? [spoken] : []);
-  });
-
-  it('flag on hands the T22 facts to the voice and sends what it wrote', async () => {
-    vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
+  it('hands the T22 facts to the voice and sends what it wrote, with no flag to set', async () => {
     await seedFamily(PARENT, 'Barton');
     await seedLegacyMember('+14165550122');
     const voice = fakeGroupOnboardingComposer({
@@ -236,8 +221,7 @@ describe('VIL-438 member welcome written from facts', () => {
     expect(wire.texts).toEqual(['Hi from Hale, Barton added you. What should I call you?']);
   });
 
-  it('flag on: a welcome with a nickname and no question mark is not thrown out', async () => {
-    vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
+  it('a welcome with a nickname and no question mark is not thrown out', async () => {
     await seedFamily(PARENT, 'Barton');
     await seedLegacyMember('+14165550122');
     const body = 'Bart a ajouté Hale ici, dis-moi comment tu veux que je t’appelle';
@@ -255,8 +239,7 @@ describe('VIL-438 member welcome written from facts', () => {
     expect(wire.texts).toEqual([body]);
   });
 
-  it('flag on with a failed voice sends nothing but keeps the seat', async () => {
-    vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
+  it('a failed voice sends nothing but keeps the seat', async () => {
     await seedFamily(PARENT, 'Barton');
     await seedLegacyMember('+14165550122');
     const wire = sender();
@@ -272,5 +255,158 @@ describe('VIL-438 member welcome written from facts', () => {
     expect(result).toMatchObject({ outcome: 'group_member_seated', notice: 'not_sent' });
     expect(wire.texts).toHaveLength(0);
     expect((await readGroupMembership(db.database, CHAT))?.members).toHaveLength(1);
+  });
+});
+
+const MEMBER = '+14165550122';
+const LATER = new Date('2026-09-30T19:00:00.000Z');
+const WELCOME = 'Hi from Hale, Barton added you. What should I call you?';
+
+async function welcomedAt(phone: string): Promise<Date | null | undefined> {
+  const [row] = await db.database
+    .select({ welcomedAt: schema.linqGroupMembers.welcomedAt })
+    .from(schema.linqGroupMembers)
+    .where(eq(schema.linqGroupMembers.phoneE164Hash, phoneBlindIndex(phone)));
+  return row?.welcomedAt;
+}
+
+/** A seat row as a given door left it. `addedBy` null is a roster (v2) seat. */
+async function insertSeat(
+  familyId: string,
+  phone: string,
+  seat: { role: 'co_parent' | 'other_family'; addedBy: string | null; removedAt?: Date },
+): Promise<void> {
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({ externalAuthId: `sms:${phoneBlindIndex(phone)}` })
+    .returning({ id: schema.users.id });
+  await db.database.insert(schema.linqGroupMembers).values({
+    familyId,
+    chatId: CHAT,
+    userId: user?.id as string,
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    role: seat.role,
+    addedByUserId: seat.addedBy,
+    seatedAt: NOW,
+    removedAt: seat.removedAt ?? null,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+}
+
+function retry(
+  phone: string,
+  wire: ReturnType<typeof sender>,
+  voice = fakeGroupOnboardingComposer(),
+) {
+  return retryMemberWelcome(db.database, {
+    chatId: CHAT,
+    senderHandle: phone,
+    now: LATER,
+    send: wire.send,
+    voice,
+  });
+}
+
+describe('VIL-461 a welcome that did not land is tried on the member’s next group message', () => {
+  it('retries after the voice failed, then never again once it lands', async () => {
+    await seedFamily(PARENT, 'Barton');
+    await seedLegacyMember(MEMBER);
+    const wire = sender();
+    const seated = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: MEMBER,
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+      voice: fakeGroupOnboardingComposer({ fail: true }),
+    });
+    expect(seated).toMatchObject({ outcome: 'group_member_seated', notice: 'not_sent' });
+    expect(await welcomedAt(MEMBER)).toBeNull();
+
+    const voice = fakeGroupOnboardingComposer({ body: WELCOME });
+    expect(await retry(MEMBER, wire, voice)).toEqual({
+      outcome: 'welcome_retried',
+      notice: 'sent',
+    });
+    expect(wire.texts).toEqual([WELCOME]);
+    expect(voice.calls[0]?.input).toMatchObject({
+      kind: 'member_welcome',
+      facts: { adderName: 'Barton' },
+    });
+    expect(await welcomedAt(MEMBER)).toEqual(LATER);
+
+    expect(await retry(MEMBER, wire, voice)).toEqual({ outcome: 'not_owed' });
+    expect(wire.texts).toHaveLength(1);
+    expect(voice.calls).toHaveLength(1);
+  });
+
+  it('a send that failed is not read as delivered: the next message sends it', async () => {
+    await seedFamily(PARENT, 'Barton');
+    await seedLegacyMember(MEMBER);
+    const seated = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: MEMBER,
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: async () => {
+        throw new LinqSendError('timeout', 0, false);
+      },
+      voice: fakeGroupOnboardingComposer({ body: WELCOME }),
+    });
+    expect(seated).toMatchObject({ outcome: 'group_member_seated', notice: 'not_sent' });
+    expect(await welcomedAt(MEMBER)).toBeNull();
+
+    const wire = sender();
+    expect(await retry(MEMBER, wire, fakeGroupOnboardingComposer({ body: WELCOME }))).toEqual({
+      outcome: 'welcome_retried',
+      notice: 'sent',
+    });
+    expect(wire.texts).toEqual([WELCOME]);
+    expect(await welcomedAt(MEMBER)).toEqual(LATER);
+    const ledger = await db.database
+      .select({
+        status: schema.channelMessages.status,
+        providerMessageId: schema.channelMessages.providerMessageId,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.templateKey, 'linq:group_member_welcome'));
+    expect(ledger).toHaveLength(2);
+    expect(ledger.filter((row) => row.status === 'failed')).toHaveLength(1);
+    expect(ledger.filter((row) => row.providerMessageId === 'msg-1')).toHaveLength(1);
+  });
+
+  it('owes no welcome to a co-parent, a roster seat, a removed seat, or a stranger', async () => {
+    const { familyId, userId } = await seedFamily(PARENT, 'Barton');
+    await insertSeat(familyId, '+14165550133', { role: 'co_parent', addedBy: userId });
+    await insertSeat(familyId, '+14165550144', { role: 'other_family', addedBy: null });
+    await insertSeat(familyId, '+14165550155', {
+      role: 'other_family',
+      addedBy: userId,
+      removedAt: NOW,
+    });
+    await insertSeat(familyId, '+14165550166', { role: 'other_family', addedBy: userId });
+    const wire = sender();
+    for (const phone of ['+14165550133', '+14165550144', '+14165550155', '+14165550177']) {
+      expect(await retry(phone, wire)).toEqual({ outcome: 'not_owed' });
+    }
+    expect(wire.texts).toEqual([]);
+    expect(await retry('+14165550166', wire)).toEqual({
+      outcome: 'welcome_retried',
+      notice: 'sent',
+    });
+    expect(wire.texts).toHaveLength(1);
+  });
+
+  it('does nothing when the members flag is off', async () => {
+    const { familyId, userId } = await seedFamily(PARENT, 'Barton');
+    await insertSeat(familyId, MEMBER, { role: 'other_family', addedBy: userId });
+    vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', '');
+    const wire = sender();
+    expect(await retry(MEMBER, wire)).toEqual({ outcome: 'flag_off' });
+    expect(wire.texts).toEqual([]);
   });
 });

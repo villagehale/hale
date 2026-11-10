@@ -11,6 +11,7 @@ import {
 } from './booked';
 import type { CalendarAlertOutcome, CalendarAlertSweep, CalendarChange } from './calendar-alert';
 import type { CalendarMirrorCounts } from './calendar-mirror';
+import { calendarStandingOf } from './calendar-standing';
 import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
 import { parentsOwnMail } from './gmail-labels';
 import type { ConnectorProvider } from './google-oauth';
@@ -738,7 +739,7 @@ function calendarChangeOf(item: Record<string, unknown>, runStamp: string): Cale
     start,
     end: timePoint(item.end) ?? start,
     location: readString(item.location),
-    selfOrganized: readSelf(item.organizer),
+    standing: calendarStandingOf(item),
   };
 }
 
@@ -750,11 +751,6 @@ function timePoint(value: unknown): { dateTime?: string; date?: string } | undef
   const dateTime = readString(point.dateTime);
   const date = readString(point.date);
   return dateTime === undefined && date === undefined ? undefined : { dateTime, date };
-}
-
-function readSelf(organizer: unknown): boolean | undefined {
-  if (typeof organizer !== 'object' || organizer === null) return undefined;
-  return (organizer as { self?: unknown }).self === true ? true : undefined;
 }
 
 // ── Gmail ────────────────────────────────────────────────────────────────────

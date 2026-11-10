@@ -113,6 +113,18 @@ export const ACTIVITY_FIXTURES = [
     watchFor:
       'A Canadian family outside Ontario. Picks must be in Calgary - a library, a community association, a city recreation centre - never an EarlyON or other Ontario program. `price` should come back free or absent, never invented.',
   },
+  {
+    id: 'home-us-park-district-tumbling',
+    subject: 'toddler tumbling and parent-and-child classes',
+    window: 'this winter',
+    town: 'Naperville, Illinois, United States',
+    stage: 'toddler',
+    rawSubject: 'tumbling for my 2 year old near our place on Elm St',
+    dropsFromQuery: ['elm st', '2 year'],
+    expectPicks: true,
+    watchFor:
+      "A US suburb where recreation is run by a park district rather than a city department. Picks must be in or near Naperville - the park district, a YMCA, a library, a gymnastics club - never an Ontario or Canadian program. Each venue's source is that venue's own page, not a listings aggregator.",
+  },
 
   // ── named place: answer about THAT place ──────────────────────────────────
   {

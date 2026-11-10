@@ -462,8 +462,10 @@ async function driveOne(
     return { ...base, outcome, note, ...(invite ? { invite } : {}) };
   };
 
+  // Unclear never takes a copy back: a yes the read can no longer place is not an out.
+  if (attendance === 'unclear') return { ...base, outcome: hasCopy ? 'unchanged' : 'not_in' };
   if (attendance !== 'in') {
-    // Cancelled plan, or a family that backed out / never said yes: take back any copy.
+    // Cancelled plan, or the family's own out: take back any copy.
     if (!hasCopy) return { ...base, outcome: 'not_in' };
     let eventId: string | null;
     try {

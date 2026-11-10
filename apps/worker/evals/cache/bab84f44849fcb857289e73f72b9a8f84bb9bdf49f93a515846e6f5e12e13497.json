@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a readiness_answer with ready=false, and the message does what that kind asks. It names the four things correctly: the account, each child added with a birthday, the address, and a saved card. It says Hale will ask again the evening before, asks nothing now, and invents no claims. It uses only the handed names, Max and the teen, in English. The tone is friendly. The account is shortened to \"a recreation account\" rather than \"a Springfield recreation account\", but since it is already tied to Springfield's portal that is fine.",
+    "score": 5
+  }
+}

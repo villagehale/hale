@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives a clock time (7 a.m.) for the new opening, but opens.time is null, so that time is invented. It was carried over from the old opening. It also never says the date came from the registration page. It frames the change as Springfield moving it, which leans toward attributing the change to the town without sourcing. The new day and the link are correct and the tone is casual, but the fabricated time is disqualifying.",
+    "score": 2
+  }
+}

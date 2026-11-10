@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "parent wants to find a family doctor, not a medical answer",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1015
+}

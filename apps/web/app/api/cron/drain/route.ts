@@ -3,6 +3,7 @@ import type { FirstReplyRecoveryResult } from '~/lib/channel/intake/first-reply-
 import type { OptOutRecoveryResult } from '~/lib/channel/intake/opt-out-recovery';
 import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
+import { defaultKickedDrainTiming, runKickedDrain } from '~/lib/cron/kicked-drain';
 import type { GroupReminderTickSummary } from '~/lib/loop/reminders/group/fire';
 import type { HeldReminderRecheck } from '~/lib/loop/reminders/run';
 import { isPreviewDeploy } from '~/lib/preview/family-scope';
@@ -51,19 +52,18 @@ export const GET = cronRoute('drain', async (req: Request) => {
   // queue's expiry (observed 2026-09-17). `after` keeps this instance alive for the work
   // once the 202 is out, up to maxDuration, and the kicker is free the moment it hears
   // back. The cost is the 503 contract below: a kicked run can no longer tell the kicker
-  // its database is out of connections, so that failure is logged here and the scheduled
-  // run picks the turn up. The scheduled run stays synchronous — nothing aborts it, and
-  // its summary is the heartbeat's evidence.
+  // its database is out of connections, so the run tries again itself a few times
+  // (kicked-drain.ts) and then logs it, leaving the turn to the scheduled run. The
+  // scheduled run stays synchronous — nothing aborts it, and its summary is the
+  // heartbeat's evidence.
   if (queues) {
     after(async () => {
       try {
-        const summary = await runDrainCron({ queues });
-        console.info({ ...summary, queues }, 'cron/drain kicked run complete');
-      } catch (err) {
-        console.error(
-          { err, queues, dbUnavailable: isConnectionExhaustion(err) },
-          'cron/drain kicked run failed',
-        );
+        await runKickedDrain(queues, {
+          run: () => runDrainCron({ queues }),
+          log: console,
+          ...defaultKickedDrainTiming,
+        });
       } finally {
         await flushTelemetry();
       }

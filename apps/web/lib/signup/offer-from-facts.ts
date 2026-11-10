@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { redactSignupAudit } from './audit';
 import {
@@ -8,6 +9,15 @@ import {
   type SignupOfferWriter,
   createSignupOfferWriter,
 } from './offer-writer';
+import { parentTimeZone, replySessions } from './plan/conversation';
+import { registrationPlanRunEnabled } from './plan/flag';
+import { planModeFor } from './plan/towns';
+import {
+  type PlanReplyWriter,
+  createPlanReplyWriter,
+  planOpensAtLocal,
+  planReplyBody,
+} from './plan/writer';
 import { recordSignupOffer } from './store';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
@@ -41,11 +51,17 @@ export interface OfferSignupInput {
   childId: string;
   now: Date;
   facts: Omit<SignupOfferFacts, 'childFirstName'> & { childFirstName?: string | null };
+  /** VIL-558 · when registration opens, as Hale saw it. Null when it did not say. */
+  planOpensAt?: Date | null;
 }
 
 export interface OfferSignupDeps {
   /** Undefined uses the reply model. Tests inject a writer. */
   writer?: SignupOfferWriter;
+  /** The day-before plan's writer, for an offer Hale can carry out at the open. */
+  planWriter?: PlanReplyWriter;
+  /** Undefined uses `PLAN_AUTO_HOSTS`. */
+  autoHosts?: readonly string[];
 }
 
 const KEY = /^[a-z0-9][a-z0-9._:-]{0,79}$/i;
@@ -89,17 +105,24 @@ export async function offerSignupFromFacts(
     return { ok: false, reason: 'child_missing' };
   }
 
-  const writer = deps.writer ?? defaultWriter();
-  const facts: SignupOfferFacts = {
-    source: input.facts.source,
-    evidence,
-    registrationUrl: allowed.href,
-    sessions: input.facts.sessions,
-    approvedPriceCents: input.facts.approvedPriceCents,
-    childFirstName: input.facts.childFirstName ?? child.name,
-    language: input.facts.language,
-  };
-  const text = await writer.write(facts);
+  const host = new URL(allowed.href).hostname;
+  const mode = planModeFor(host, deps.autoHosts);
+  const planOpensAt =
+    input.planOpensAt &&
+    input.planOpensAt.getTime() > input.now.getTime() &&
+    registrationPlanRunEnabled() &&
+    mode !== 'parent'
+      ? input.planOpensAt
+      : null;
+  const text =
+    planOpensAt && mode !== 'parent'
+      ? await writePlanOffer(database, input, deps, {
+          mode,
+          opensAt: planOpensAt,
+          childName: input.facts.childFirstName ?? child.name,
+          registrationUrl: allowed.href,
+        })
+      : await writeOffer(input, deps, { childName: child.name, registrationUrl: allowed.href });
   if (!text) {
     await writeAudit(database, input, null, { step: 'offer', reason: 'unwritten' });
     return { ok: false, reason: 'unwritten' };
@@ -113,6 +136,7 @@ export async function offerSignupFromFacts(
     registrationUrl: allowed.href,
     sessions: [...input.facts.sessions],
     approvedPriceCents: input.facts.approvedPriceCents,
+    planOpensAt,
     now: input.now,
   });
   if (!stored.ok) {
@@ -122,10 +146,63 @@ export async function offerSignupFromFacts(
   await writeAudit(database, input, stored.id, {
     step: 'offer',
     source: input.facts.source,
-    host: new URL(allowed.href).hostname,
+    host,
     sessionCount: input.facts.sessions.length,
+    plan: planOpensAt !== null,
   });
   return { ok: true, offerId: stored.id, text };
+}
+
+async function writeOffer(
+  input: OfferSignupInput,
+  deps: OfferSignupDeps,
+  known: { childName: string; registrationUrl: string },
+): Promise<string | null> {
+  const writer = deps.writer ?? defaultWriter();
+  const facts: SignupOfferFacts = {
+    source: input.facts.source,
+    evidence: input.facts.evidence.trim(),
+    registrationUrl: known.registrationUrl,
+    sessions: input.facts.sessions,
+    approvedPriceCents: input.facts.approvedPriceCents,
+    childFirstName: input.facts.childFirstName ?? known.childName,
+    language: input.facts.language,
+  };
+  return writer.write(facts);
+}
+
+/**
+ * VIL-558 · an offer Hale can carry out at the open is offered as a plan: the sessions to
+ * rank, a maximum price, the waiver question (auto towns only: on an assisted town the
+ * parent ticks it), and the two-places note. The model writes it; code adds the
+ * registration link after it.
+ */
+async function writePlanOffer(
+  database: Database,
+  input: OfferSignupInput,
+  deps: OfferSignupDeps,
+  known: { mode: 'auto' | 'assisted'; opensAt: Date; childName: string; registrationUrl: string },
+): Promise<string | null> {
+  const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
+  const text = await writer.write({
+    moment: 'offer',
+    mode: known.mode,
+    childFirstName: known.childName,
+    opensAt: planOpensAtLocal(known.opensAt, await parentTimeZone(database, input.parentUserId)),
+    sessions: replySessions(input.facts.sessions),
+    maxPriceCents: input.facts.approvedPriceCents,
+    waiverAccepted: null,
+    question: null,
+    refusal: null,
+    run: null,
+    language:
+      input.facts.language ??
+      (await readParentLanguage(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+      })),
+  });
+  return text ? planReplyBody(text, known.registrationUrl) : null;
 }
 
 function defaultWriter(): SignupOfferWriter {

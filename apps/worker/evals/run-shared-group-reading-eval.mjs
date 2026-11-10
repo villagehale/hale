@@ -2,7 +2,9 @@
 //
 // The subject is the REAL skill through the REAL request shape. The gate is the
 // intent label: a wrong reading seats the wrong family or answers banter.
-// Judges score meaning. Paid recording is not approved on this PR.
+// Judges score meaning. VIL-459: a find-time reading is also checked on the times the
+// chat ruled out (objective instants per fixture), parsed by the REAL parser. A pick must
+// name the exact offered start the fixture expects, and a titled ask must carry a title.
 //
 //   node evals/run-shared-group-reading-eval.mjs --estimate     # no API
 //   node evals/run-shared-group-reading-eval.mjs --cached-only  # CI once recorded
@@ -31,7 +33,7 @@ const READER_SRC = join(WEB_ROOT, 'lib', 'channel', 'linq', 'shared-group-readin
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-const MAX_TOKENS = 200;
+const MAX_TOKENS = 400; // SHARED_GROUP_READ_MAX_TOKENS in shared-group-reading.ts
 const SONNET_IN = 3;
 const SONNET_OUT = 15;
 
@@ -73,52 +75,71 @@ async function main() {
   const getClient = lazyAnthropic('shared-group-reading');
   const cost = makeCost();
   const agent = await importTs(AGENT_SRC);
-  const { SHARED_GROUP_INTENTS, sharedGroupUserMessage } = await importTs(READER_SRC);
+  const { parseSharedGroupReading, sharedGroupReadingJsonSchema, sharedGroupUserMessage } =
+    await importTs(READER_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const lane = agent.pickLane(skill.meta.task);
-  const toolSchema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      intent: { type: 'string', enum: [...SHARED_GROUP_INTENTS] },
-      role: { type: 'string' },
-      familyLabel: { type: ['string', 'null'] },
-      kidName: { type: ['string', 'null'] },
-      confidence: { type: 'string', enum: ['high', 'low'] },
-    },
-    required: ['intent', 'role', 'familyLabel', 'kidName', 'confidence'],
-  };
+  const toolSchema = sharedGroupReadingJsonSchema;
+  const held = (spans, iso) =>
+    spans.some(
+      (span) =>
+        span.start.getTime() <= new Date(iso).getTime() &&
+        new Date(iso).getTime() < span.end.getTime(),
+    );
 
   console.log(
     `shared-group-reading eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | model=${model}`,
   );
   const results = [];
   for (const fixture of SHARED_GROUP_READING_FIXTURES) {
-    const intent = broken
-      ? 'question'
-      : (
-          await cachedToolCall({
-            tag: `shared-group-reading:${fixture.id}`,
-            model,
-            lane,
-            system: skill.instructions,
-            userMessage: sharedGroupUserMessage(fixture.input),
-            toolName: 'record_shared_group_reading',
-            toolSchema,
-            toolDescription: 'What this person meant in the shared group.',
-            maxTokens: MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value.intent;
-    results.push({ fixture, intent, pass: fixture.accept.includes(intent) });
+    const offered = (fixture.input.offered ?? []).map((slot) => slot.start);
+    const reading = broken
+      ? { intent: 'question', ruledOut: [], picked: null, planTitle: null }
+      : parseSharedGroupReading(
+          (
+            await cachedToolCall({
+              tag: `shared-group-reading:${fixture.id}`,
+              model,
+              lane,
+              system: skill.instructions,
+              userMessage: sharedGroupUserMessage(fixture.input),
+              toolName: 'record_shared_group_reading',
+              toolSchema,
+              toolDescription: 'What this person meant in the shared group.',
+              maxTokens: MAX_TOKENS,
+              cachedOnly,
+              getClient,
+              cost,
+            })
+          ).value,
+          offered,
+        );
+    const intent = reading.intent;
+    const spans = reading.ruledOut ?? [];
+    const timesOk =
+      (fixture.covers ?? []).every((iso) => held(spans, iso)) &&
+      !(fixture.open ?? []).some((iso) => held(spans, iso));
+    const pickOk = !fixture.picked || reading.picked?.toISOString() === fixture.picked;
+    const titleOk = !fixture.titled || Boolean(reading.planTitle);
+    results.push({
+      fixture,
+      intent,
+      pass: fixture.accept.includes(intent) && timesOk && pickOk && titleOk,
+      spans,
+      picked: reading.picked ? reading.picked.toISOString() : null,
+      title: reading.planTitle ?? null,
+    });
   }
   for (const r of results) {
     console.log(
-      `${r.pass ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(28)} intent=${r.intent} accept=${r.fixture.accept.join('|')}`,
+      `${r.pass ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(32)} intent=${r.intent} accept=${r.fixture.accept.join('|')} ruledOut=${r.spans.length} picked=${r.picked ?? '-'} title=${r.title ?? '-'}`,
     );
+    if (!r.pass && r.spans.length > 0) {
+      console.log(
+        `      spans: ${r.spans.map((x) => `${x.start.toISOString()}..${x.end.toISOString()}`).join(', ')}`,
+      );
+    }
   }
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,

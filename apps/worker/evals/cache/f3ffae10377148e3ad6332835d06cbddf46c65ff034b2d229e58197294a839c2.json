@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits an approval_card. It gets the window right (Riverton fall 2026), with the date Saturday, September 12 at 9 a.m. phrased correctly against Tuesday, September 1. It names only Léa. It handles the unpublished age band by telling the parent to check suitability themselves, which restates a handed fact. It includes the exact handed link, says plainly that Hale never registers for them, and lists each text with its timing (7 days before, the evening before, 15 minutes before). It correctly omits the course-link tip since courseLinkTip is false. It asks no question, invents no claims, and reads as natural, friendly French.",
+    "score": 5
+  }
+}

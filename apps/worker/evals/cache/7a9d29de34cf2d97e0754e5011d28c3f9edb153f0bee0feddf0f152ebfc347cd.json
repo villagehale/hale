@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Yes, Google shares the whole inbox with me, so I can see all of it. What I keep and use is only what's about the kids: school notices, camp and class emails, that kind of thing. I never send email, and you can disconnect any time. Want me to connect your Gmail? The link is above.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "language": "en"
+  },
+  "latencyMs": 1672
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Good, that's what it's for. The number and a short phrase are right below. Start a group text with the other parent, add the number, then send the phrase in it, and from there they'll both see the same kid plans and reminders.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "coparentGroup": true
+  },
+  "latencyMs": 1465
+}

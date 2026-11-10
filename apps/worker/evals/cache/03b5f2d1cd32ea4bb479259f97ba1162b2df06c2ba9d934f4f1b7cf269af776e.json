@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "news-or-politics",
+    "reason": "question about current political office holder, nothing to do with the family's week",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 869
+}

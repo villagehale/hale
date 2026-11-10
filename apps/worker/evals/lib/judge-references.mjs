@@ -6,6 +6,8 @@
 //
 // Shape: { facts: string, text: string, score: 1-5, why: string }
 
+import { judgePrompt } from './judge-prompt.mjs';
+
 export const GENERAL_REFERENCE_TEXTS = [
   {
     facts: 'Event "Parent & Tot Skate", Tuesday Oct 27, 10:30 AM. Now: Monday evening.',
@@ -33,10 +35,5 @@ export function renderReferenceTexts(references) {
   const lines = references.map(
     (r, i) => `${i + 1}. Facts: ${r.facts}\n   Text: "${r.text}"\n   Score: ${r.score}. ${r.why}`,
   );
-  return [
-    '',
-    'SCORED REFERENCE TEXTS. These calibrate your scale; they are examples, not phrases to',
-    'look for. Judge every reply as a whole by how it reads, the way these were judged.',
-    ...lines,
-  ].join('\n');
+  return ['', judgePrompt('reference-texts'), ...lines].join('\n');
 }

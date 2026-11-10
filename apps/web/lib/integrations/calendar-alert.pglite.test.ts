@@ -67,6 +67,7 @@ const TIMED: CalendarChange = {
   title: 'Cartwheels Gym',
   start: { dateTime: '2026-09-17T20:15:00.000Z' },
   end: { dateTime: '2026-09-17T21:00:00.000Z' },
+  standing: 'organizer',
 };
 
 interface Harness {
@@ -196,7 +197,8 @@ describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
 
   it('sends no fixed template text, not even for a timed event in the window', async () => {
     const h = harness();
-    await expect(sweep(h)).resolves.toEqual(['fixed_copy_retired']);
+    // VIL-570: a first sighting is not news for the model-written kid notice either.
+    await expect(sweep(h)).resolves.toEqual(['not_material']);
     expect(h.transport.sent).toEqual([]);
     expect(h.threaded).toEqual([]);
     await expect(ledgerRows()).resolves.toEqual([]);
@@ -204,7 +206,7 @@ describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
 
   it('skips an adult meeting — nothing reaches the parent', async () => {
     const h = harness();
-    await expect(sweep(h, { changes: [ADULT] })).resolves.toEqual(['fixed_copy_retired']);
+    await expect(sweep(h, { changes: [ADULT] })).resolves.toEqual(['not_material']);
     expect(h.transport.sent.map((m) => m.body).join(' ')).not.toContain('on your calendar');
     expect(h.transport.sent).toEqual([]);
   });
@@ -562,6 +564,7 @@ describe('alertParentForCalendarChanges', () => {
       status: 'cancelled',
       start: { dateTime: '2026-09-18T20:15:00.000Z' },
       end: { dateTime: '2026-09-18T20:15:00.000Z' },
+      standing: 'own',
     };
 
     await expect(sweep(h, { changes: [instance] })).resolves.toEqual(['sent']);

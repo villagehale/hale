@@ -399,7 +399,7 @@ describe('syncConnection — Calendar', () => {
         start: { dateTime: '2026-09-17T20:15:00-04:00', date: undefined },
         end: { dateTime: '2026-09-17T21:00:00-04:00', date: undefined },
         location: 'Stouffville Leisure Centre',
-        selfOrganized: true,
+        standing: 'organizer',
       },
     ]);
   });
@@ -589,7 +589,7 @@ describe('syncConnection — Calendar', () => {
         start: { dateTime: '2026-09-18T20:15:00-04:00', date: undefined },
         end: { dateTime: '2026-09-18T20:15:00-04:00', date: undefined },
         location: undefined,
-        selfOrganized: undefined,
+        standing: 'own',
       },
     ]);
     // ...and a one-off carries none, so nothing groups two unrelated events together.

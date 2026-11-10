@@ -9,7 +9,8 @@
 // Nothing matches words.
 //
 // Recorded 2026-10-27 (8/8, ledger 914-evals); re-recorded 2026-11-03 (17/17, VIL-550,
-// ledger reminders-bundle). CI replays it cached-only:
+// ledger reminders-bundle); re-recorded 2026-11-08 (VIL-551, voice and overlaps, ledger
+// vil551-evals). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
@@ -33,6 +34,7 @@ import {
 } from './lib/harness.mjs';
 import { reminderJudgeModel } from './lib/reminder-judge-model.mjs';
 import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -82,90 +84,7 @@ export function readTexts(value) {
   return texts.map((t) => String(t ?? '').trim());
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE reminder text Hale sends a parent about what is on',
-  'their calendar. The model wrote the whole text; nothing is added around it. You are given',
-  'the facts (offset, now, events with date, allDay, start, end, minutesUntilStart, location;',
-  'planLink; language),',
-  'the text and watchFor notes. Score 1-5 on FACTS only: whether every event keeps the facts',
-  'it was given, and whether anything was invented. Do not score phrasing, sentence shape,',
-  'register, whether a place name is translated or left as given, or whether a title is quoted',
-  'as-is, woven in, or left bare.',
-  'planLink is OPTIONAL: the writer may include it or leave it out. Its absence is never a',
-  'fault and never lowers the score; only a link other than planLink is.',
-  'A 5: every event is there with every fact it was given — its day (said truly from now),',
-  'its start, and when given its end (as a clock time or as a duration from the start), its',
-  'venue name and its address, and who it is for — and nothing invented; each time given is',
-  'correct INCLUDING morning versus afternoon or evening (AM/PM or the natural equivalent in',
-  'that language); no clock time for an all-day event; entirely in the requested language.',
-  'A LOW score (1-2) is any of: a missing or vague start, end, venue name, or address that',
-  'the facts gave; an invented end or duration when the facts gave none; implying the family',
-  'has nothing to be at, or that the day is open, free,',
-  'quiet, a break or breathing room, when ANY event has a start time, whatever its title',
-  'says (naming an all-day item as what the day is, such as a PD day or day off, is a true',
-  'fact and fine, as long as the timed events are also clearly there); a wrong or ambiguous',
-  'AM/PM; a wrong time, date, or place; an invented detail (what to bring, who is going, how',
-  'it will go); guessing what a generic "an appointment" is; the wrong language or mixed',
-  'languages; a link other than planLink.',
-  'FACT CHECK every logistics claim against the facts you are given: when to leave or set',
-  'off, how long getting there takes, traffic, parking, arrival or pickup times, and any',
-  'other timing or travel detail. If the facts do not contain it (there is never a travel',
-  'time or departure time in these facts), stating it as fact is an invented detail and a',
-  'LOW score (1-2), in any language, however it is phrased. Saying how far away the event',
-  'is from now (tomorrow afternoon, in twenty minutes) is fine only when it matches the time',
-  'from now to start, which minutesUntilStart gives in minutes: a relative time that does not',
-  'match it, such as about an hour for an event 18 minutes away, is a wrong time and a LOW',
-  'score (1-2). Turning how far away it is into when to leave is an invented detail.',
-  'NOTHING GIVEN MAY BE LEFT OUT: check every date, start, end, venue name and address in',
-  "the facts against the text. Each event's day (said truly from now, such as tomorrow or",
-  'today, or as a date), its start time and, when the facts give one, its end (as a clock',
-  'time or as a duration from the start), its venue name and its street address must all be',
-  'in the text, in any natural form for the language. When the facts give no end, inventing',
-  'one is a fact failure and a LOW score (1-2). A text that drops any given fact, such as',
-  'giving only the start when an end is given, or a venue name with no address when an',
-  'address was given, leaves out a fact the parent needs: that is a fact failure and a LOW',
-  'score (1-2), however the rest reads. Name in the reason which fact is missing.',
-  "KEEP EACH TITLE AS THE EVENT'S NAME: the title is what the event is called, not a",
-  'statement about the day or the family. Turning a title into a claim it does not make, such',
-  'as recasting it as what the day is, what is closed, or what the event involves, changes a',
-  'fact: that is a fact failure and a LOW score (1-2), in any language, even when every time',
-  'and place is right. Quoting the title as-is, leaving it bare, or weaving it into a sentence',
-  'are all fine as long as what the title means is unchanged. Changing what the title says is',
-  'a fact failure; say in the reason how it changed.',
-  'Judge the title by MEANING, not wording: first say what the title names in the facts, then',
-  'what the text presents it as. Translating, rewording, or changing case or quotes is fine',
-  'when the text still presents it as the name of that event. Words that match the title are',
-  'not enough: when the text no longer uses it as the name of the event but as a plain',
-  'description of what is happening or what the day is, the meaning changed even if every word',
-  'is the same, and that is a LOW score (1-2).',
-  'NO UNSTATED INFERENCES: state only what the facts say. A consequence the text draws from a',
-  'title or from the facts (what is closed or open, who is affected, why it is happening, what',
-  'it means for the family) is not in the facts, even when it is likely: stating it as fact is a',
-  'fact failure and a LOW score (1-2), in any language, however it is phrased.',
-  'Do not lower the score for how the sentence is shaped, whether it reads like a list or a',
-  'notification, whether a generic place word stayed in the source language, or whether the',
-  'title is quoted or bare. Those are not fact failures.',
-  'The text arrives as one or more numbered texts ([text 1], [text 2]...) sent in that order;',
-  'read them together as one reminder.',
-  'BOLD CHECK (VIL-474), always: the last line is [bold] with the words the writer chose to',
-  'show in bold, or "none". Bold is meant for, at most, one fact the parent might have to',
-  'act on and would cost them if skimmed; most reminders should have none. A [bold] of none',
-  'is always fine. Bold on something that does not stand out as a fact to act on (a',
-  'greeting, a title, the day of a routine event, a whole sentence, or several facts at once)',
-  'scores at most 3 even with every fact right. Say in the reason what was bolded and why it',
-  'does or does not fit.',
-  'CHANGED FACT: when an event in the facts has `changed` (which of time, date or venue, and',
-  'its old value `from`), the text must tell the new value and make clear it changed; leaving',
-  'out that it changed, or presenting the old value as current, is a fact failure and a LOW',
-  'score (1-2). On such an event, bold on its new value is exactly what bold is for and fits;',
-  'with no bold at all, the score is at most 3.',
-  'VOICE CHECK, ONLY when watchFor asks for it: then also judge, by meaning, whether the',
-  'texts read like a person texting or like a form filled in, such as every event poured',
-  'into the same sentence frame with only the facts swapped, or several events packed into',
-  'one long block. A text that reads like a filled-in frame or one long block scores at most',
-  '3 even with every fact right. With no VOICE CHECK in watchFor, phrasing is never scored.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('reminder');
 
 // Reminder-specific scored references. Facts only: a list shape or an untranslated
 // place name still scores 5 when every given fact is there.
@@ -279,6 +198,30 @@ export const BROKEN_CASES = [
       "Theo's Montessori tour is at 10 at Little Oaks Montessori, 41 Mill St, about an hour",
       'then storytime for Léa at the library, 1:30 to 2:15',
     ].join('\n'),
+  },
+  // VIL-551 · the reported notice, every fact right: it must fail on the voice alone.
+  {
+    fixtureId: 'en-voice-single-today',
+    tag: 'en-voice-single-today:notice',
+    body: "Léa's Toddler Storytime starts at 1:30 PM today at the Maple Branch Library, 9 Elm Street, Riverton, Ontario. It runs until 2:00 PM.",
+  },
+  // VIL-551 · the reported clash text: both events right, but it never says they overlap.
+  {
+    fixtureId: 'en-overlap-two-kids',
+    tag: 'en-overlap-two-kids:plan-around',
+    body: "Tomorrow Léa has her swim lesson 9:30 to 10:30 at Cedar Park Pool, 40 Lake Rd, and Theo has music class 10 to 10:45 at Brightside Music, 7 Oak Ave. Both are on Thursday morning, so you'll want to plan around them.",
+  },
+  // VIL-551 · says they overlap, but leaves the parent with no next step.
+  {
+    fixtureId: 'en-overlap-two-kids',
+    tag: 'en-overlap-two-kids:no-next-step',
+    body: "Tomorrow Léa's swim lesson is 9:30 to 10:30 at Cedar Park Pool, 40 Lake Rd, and Theo's music class is 10 to 10:45 at Brightside Music, 7 Oak Ave, so the two overlap.",
+  },
+  // VIL-551 · nothing overlaps here (10-11 AM and 1:30-2:15 PM); the clash is invented.
+  {
+    fixtureId: 'en-next-day-multi-event',
+    tag: 'en-next-day-multi-event:invented-clash',
+    body: "Tomorrow Theo's Montessori tour is 10 to 11 at Little Oaks Montessori, 41 Mill St, and Léa's storytime is 1:30 to 2:15 at Georgetown Branch, 9 Church St. Those two clash, so who's taking which?",
   },
   // VIL-550 · the reported wording: every fact right, but "in about an hour" for an event 18
   // minutes away. Must fail on the wrong relative time alone.

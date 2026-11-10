@@ -1,13 +1,20 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
+import {
+  type FactSource,
+  type FactSourceLabel,
+  loadFactSources,
+  readerTimeZone,
+} from '@hale/worker/fact-sources';
+import { type FactReader, audiencePredicate, newestPerIdentity } from '@hale/worker/memory-context';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
 import { replyFrame, replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { promptKind, readDisposition } from './classify-write';
-import { writeFact } from './facts';
+import { type FactHeard, closeFacts, writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
 import { renderMemoryGroupSync } from './group-sync';
 import {
@@ -32,12 +39,6 @@ import {
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
-import {
-  type FactSource,
-  type FactSourceLabel,
-  loadFactSources,
-  readerTimeZone,
-} from './source-label';
 import { SYNTHESIS_WRITERS } from './synthesis';
 
 const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
@@ -285,13 +286,17 @@ function beliefRow(row: { factKey: string; inferredBy: string | null }): boolean
 /**
  * What a parent may be told Hale holds. Lasting, unexpired temporary, and
  * one-off beliefs. Expired temporary rows are already gone at read time.
- * Teen-attributed rows and control-plane receipts stay out.
+ * Teen-attributed rows and control-plane receipts stay out, and so does what another
+ * adult said in their own 1:1 (VIL-599, the rule every prompt read uses).
  */
 export async function recallFamilyMemory(
   database: Database,
-  input: { familyId: string; now: Date },
+  input: { familyId: string; now: Date; reader: FactReader },
 ): Promise<RecallFact[]> {
-  const teens = await teenIds(database, input.familyId, input.now);
+  const [teens, audience] = await Promise.all([
+    teenIds(database, input.familyId, input.now),
+    audiencePredicate(database, input.familyId, input.reader),
+  ]);
   const rows = await database
     .select({
       id: schema.familyMemoryFacts.id,
@@ -306,18 +311,21 @@ export async function recallFamilyMemory(
       expiresAt: schema.familyMemoryFacts.expiresAt,
       validUntil: schema.familyMemoryFacts.validUntil,
       sourceEventId: schema.familyMemoryFacts.sourceEventId,
+      validFrom: schema.familyMemoryFacts.validFrom,
+      createdAt: schema.familyMemoryFacts.createdAt,
     })
     .from(schema.familyMemoryFacts)
     .where(
       and(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         isNull(schema.familyMemoryFacts.validUntil),
+        audience,
       ),
     )
     .orderBy(desc(schema.familyMemoryFacts.sourcedAt))
     .limit(40);
 
-  return rows
+  return newestPerIdentity(rows)
     .filter((row) => !row.childId || !teens.has(row.childId))
     .filter((row) => beliefRow(row))
     .filter((row) => includeInRecommendations(row, input.now, true) || row.memoryKind === 'one_off')
@@ -373,8 +381,8 @@ async function familyDoor(
 async function inboundOrigin(
   database: Database,
   messageId: string | null,
-): Promise<{ chatId: string | null; oneToOne: boolean }> {
-  if (!messageId) return { chatId: null, oneToOne: false };
+): Promise<{ chatId: string | null; oneToOne: boolean; inGroup: boolean }> {
+  if (!messageId) return { chatId: null, oneToOne: false, inGroup: false };
   const [row] = await database
     .select({
       providerChatId: schema.channelMessages.providerChatId,
@@ -383,7 +391,11 @@ async function inboundOrigin(
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.id, messageId))
     .limit(1);
-  return { chatId: row?.providerChatId ?? null, oneToOne: row?.inGroup === false };
+  return {
+    chatId: row?.providerChatId ?? null,
+    oneToOne: row?.inGroup === false,
+    inGroup: row?.inGroup === true,
+  };
 }
 
 export async function syncMemoryDecisionToGroup(
@@ -540,8 +552,14 @@ export async function handleParentMemory(
     surface: 'memory' as const,
   };
 
+  const reader: FactReader = inbound.oneToOne ? { adult: input.parentUserId } : 'every_adult';
+
   if (intent.kind === 'recall') {
-    const facts = await recallFamilyMemory(database, { familyId: input.familyId, now: input.now });
+    const facts = await recallFamilyMemory(database, {
+      familyId: input.familyId,
+      now: input.now,
+      reader,
+    });
     const [sources, timeZone] = await Promise.all([
       loadFactSources(database, {
         familyId: input.familyId,
@@ -598,6 +616,7 @@ export async function handleParentMemory(
     const forgotten = await forgetMatchingFacts(database, {
       familyId: input.familyId,
       actor: input.parentUserId,
+      reader,
       now: input.now,
       needle: intent.needle,
     });
@@ -634,6 +653,12 @@ export async function handleParentMemory(
   const corrected = await correctFamilyFact(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
+    reader,
+    // A correction is the speaker's own unless the door recorded the family group: a turn
+    // it could not place stays with the adult who sent it (decision R7).
+    heard: inbound.inGroup
+      ? { in: 'family', userId: input.parentUserId }
+      : { in: 'one_to_one', userId: input.parentUserId },
     factKey: intent.factKey ?? '',
     value: intent.value ?? '',
     now: input.now,
@@ -670,9 +695,12 @@ export async function handleParentMemory(
 
 async function forgetMatchingFacts(
   database: Database,
-  input: { familyId: string; actor: string; now: Date; needle: string | null },
+  input: { familyId: string; actor: string; reader: FactReader; now: Date; needle: string | null },
 ): Promise<{ forgotten: number; refused: number; keys: string[] }> {
-  const teens = await teenIds(database, input.familyId, input.now);
+  const [teens, audience] = await Promise.all([
+    teenIds(database, input.familyId, input.now),
+    audiencePredicate(database, input.familyId, input.reader),
+  ]);
   const rows = await database
     .select({
       id: schema.familyMemoryFacts.id,
@@ -687,6 +715,7 @@ async function forgetMatchingFacts(
       and(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         isNull(schema.familyMemoryFacts.validUntil),
+        audience,
       ),
     )
     .orderBy(desc(schema.familyMemoryFacts.sourcedAt));
@@ -720,10 +749,21 @@ async function forgetMatchingFacts(
 
 async function correctFamilyFact(
   database: Database,
-  input: { familyId: string; actor: string; factKey: string; value: string; now: Date },
+  input: {
+    familyId: string;
+    actor: string;
+    reader: FactReader;
+    heard: FactHeard;
+    factKey: string;
+    value: string;
+    now: Date;
+  },
 ): Promise<{ corrected: boolean }> {
   if (isReceiptKey(input.factKey) || !input.factKey || !input.value) return { corrected: false };
-  const teens = await teenIds(database, input.familyId, input.now);
+  const [teens, audience] = await Promise.all([
+    teenIds(database, input.familyId, input.now),
+    audiencePredicate(database, input.familyId, input.reader),
+  ]);
   const rows = await database
     .select({
       id: schema.familyMemoryFacts.id,
@@ -731,6 +771,7 @@ async function correctFamilyFact(
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
       inferredBy: schema.familyMemoryFacts.inferredBy,
+      sourceAudience: schema.familyMemoryFacts.sourceAudience,
     })
     .from(schema.familyMemoryFacts)
     .where(
@@ -738,22 +779,48 @@ async function correctFamilyFact(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         eq(schema.familyMemoryFacts.factKey, input.factKey),
         isNull(schema.familyMemoryFacts.validUntil),
+        audience,
       ),
     );
 
+  // Only what the sender may hear decides anything here. A key nobody holds and a key
+  // only another adult's private fact holds read the same: the sender's word is written
+  // as their own fact, in their own scope, and the other adult's row is not touched
+  // (VIL-599). So the outcome can never say whether a fact the sender cannot hear exists.
   const live = rows.filter((row) => !row.childId || !teens.has(row.childId));
-  const subjects: Array<{
-    childId: string | null;
-    factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
-  }> =
-    live.length > 0
-      ? live.map((row) => ({ childId: row.childId, factType: row.factType }))
-      : [{ childId: null, factType: factTypeFor(input.factKey) }];
+  // The correction is written in the sender's scope and, like every write, supersedes only
+  // within it. A household row it corrects from a 1:1 stays live for the other adult; the
+  // sender's 1:1 reads the newer row, so they hear their correction (R7). Retiring the
+  // household's row here would leave the other adult with no value at all.
+  // The one exception is an `unrecorded` row (the nightly writer's guess, or a row saved
+  // before speakers were kept), retired as a forget would retire it. The sender can see
+  // one only while no other adult is on record, so this never takes a value from anyone.
+  const subjects = new Map<
+    string,
+    {
+      childId: string | null;
+      factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
+      unrecorded: string[];
+    }
+  >();
+  for (const row of live) {
+    const key = `${row.childId ?? ''}|${row.factType}`;
+    const subject = subjects.get(key) ?? {
+      childId: row.childId,
+      factType: row.factType,
+      unrecorded: [],
+    };
+    if (row.sourceAudience === 'unrecorded') subject.unrecorded.push(row.id);
+    subjects.set(key, subject);
+  }
+  if (subjects.size === 0) {
+    subjects.set('', { childId: null, factType: factTypeFor(input.factKey), unrecorded: [] });
+  }
 
   await database.transaction(async (tx) => {
     let superseded = 0;
     let factId = input.familyId;
-    for (const subject of subjects) {
+    for (const subject of subjects.values()) {
       const written = await writeFact(tx, {
         familyId: input.familyId,
         childId: subject.childId,
@@ -762,6 +829,7 @@ async function correctFamilyFact(
         factValue: input.value,
         confidence: 1,
         inferredBy: 'ask-hale',
+        heard: input.heard,
         validFrom: input.now,
         memoryKind: 'lasting',
         memorySource: 'parent_message',
@@ -771,6 +839,12 @@ async function correctFamilyFact(
       });
       factId = written.factId;
       superseded += written.supersededFactIds.length;
+      const closed = await closeFacts(tx, {
+        factIds: subject.unrecorded,
+        closedAt: input.now,
+        supersededBy: written.factId,
+      });
+      superseded += closed.closedFactIds.length;
     }
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,

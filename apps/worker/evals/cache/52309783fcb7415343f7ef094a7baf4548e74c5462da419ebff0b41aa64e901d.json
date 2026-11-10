@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "news-or-politics",
+    "reason": "asks about a sports result, a fact about the world unrelated to the family's week",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 915
+}

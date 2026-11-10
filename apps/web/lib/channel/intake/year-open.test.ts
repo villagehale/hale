@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { namesAVenue } from '~/lib/channel/activity/evidence';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { ACTIVITY_CATEGORIES } from './activity-map';
 import { WEEK_FIND_SUBJECT } from './first-touch-find';
 import { type WeekendPick, YEAR_FIND_CAP } from './radar-decide';
@@ -130,6 +131,30 @@ describe('collectYearOpenLines', () => {
     expect(opened.lines.join('\n')).toContain('Story time');
     expect(opened.lines.join('\n')).toContain('Music');
     expect(opened.titles).toEqual(['Parent and tot swim', 'Story time', 'Music']);
+  });
+
+  it('drops a link-shaped word from a find line and keeps the rest of it', async () => {
+    const find = vi.fn(async () => ({
+      found: true as const,
+      picks: [webPick('Kidsclub.ca Swim', '12-24 months')],
+    }));
+    const opened = await collectYearOpenLines({
+      civic: [
+        {
+          ...pick('Story time'),
+          candidateRef: { id: 's', title: 'Story time', venueName: 'Funhall.app Library' },
+        },
+      ],
+      children: [SEB],
+      town: 'Halton Hills',
+      finder: { find },
+      familyId: 'fam',
+      today: TODAY,
+    });
+    expect(opened.lines).toHaveLength(2);
+    expect(opened.lines[0]).toContain('Swim (12-24 months)');
+    expect(opened.lines[1]).toContain('Story time at Library');
+    for (const line of opened.lines) expect(hasLinkShape(line), line).toBe(false);
   });
 
   it('names a missing search instead of inventing a registration date', async () => {

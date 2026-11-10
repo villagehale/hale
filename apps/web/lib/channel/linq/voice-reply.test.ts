@@ -12,8 +12,12 @@ const base = {
 
 function deps(over: Partial<Parameters<typeof sendReplyAsVoiceMemo>[1]> = {}) {
   return {
-    tts: vi.fn(async () => new Uint8Array([1, 2, 3])),
-    host: vi.fn(async () => 'https://cdn.test/memo.m4a'),
+    tts: vi.fn(async () => ({ audio: new Uint8Array([1, 2, 3]), contentType: 'audio/mpeg' })),
+    host: vi.fn(
+      async (): Promise<{ url: string } | { attachmentId: string }> => ({
+        url: 'https://cdn.test/memo.m4a',
+      }),
+    ),
     capability: vi.fn(async () => ({
       status: 'available' as const,
       selectedService: 'iMessage',
@@ -47,6 +51,7 @@ describe('sendReplyAsVoiceMemo (VIL-476 Design lock)', () => {
     ['not_one_to_one', () => {}, { isGroup: true }],
     ['not_one_to_one', () => {}, { chatId: null }],
     ['text_only_turn', () => {}, { textOnly: true }],
+    ['has_link', () => {}, { text: 'Their page: https://example.org/swim' }],
   ])('stays text: %s', async (why, setup, over) => {
     setup();
     const d = deps();
@@ -66,12 +71,41 @@ describe('sendReplyAsVoiceMemo (VIL-476 Design lock)', () => {
 
   it('TTS failure is text, and nothing is sent', async () => {
     const d = deps({ tts: vi.fn(async () => Promise.reject(new Error('tts down'))) });
-    expect(await sendReplyAsVoiceMemo(base, d)).toEqual({ sent: 'text', why: 'tts_failed' });
+    expect(await sendReplyAsVoiceMemo(base, d)).toEqual({
+      sent: 'text',
+      why: 'tts_failed',
+      code: 'Error',
+    });
     expect(d.send).not.toHaveBeenCalled();
+  });
+
+  it('a hosting failure is text, named by its code', async () => {
+    const d = deps({
+      host: vi.fn(async () => Promise.reject(Object.assign(new Error('x'), { code: 'http_500' }))),
+    });
+    expect(await sendReplyAsVoiceMemo(base, d)).toEqual({
+      sent: 'text',
+      why: 'tts_failed',
+      code: 'http_500',
+    });
+    expect(d.send).not.toHaveBeenCalled();
+  });
+
+  it('sends a pre-uploaded attachment by id', async () => {
+    const d = deps({ host: vi.fn(async () => ({ attachmentId: 'att-1' })) });
+    expect(await sendReplyAsVoiceMemo(base, d)).toEqual({
+      sent: 'voice_memo',
+      providerMessageId: 'm1',
+    });
+    expect(d.send).toHaveBeenCalledWith({ chatId: 'chat-1', audio: { attachmentId: 'att-1' } });
   });
 
   it('a failed send is text', async () => {
     const d = deps({ send: vi.fn(async () => Promise.reject(new Error('x'))) });
-    expect(await sendReplyAsVoiceMemo(base, d)).toEqual({ sent: 'text', why: 'send_failed' });
+    expect(await sendReplyAsVoiceMemo(base, d)).toEqual({
+      sent: 'text',
+      why: 'send_failed',
+      code: 'Error',
+    });
   });
 });

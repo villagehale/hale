@@ -45,6 +45,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { NUDGE_FIXTURES, NUDGE_OPT_OUT } from './nudge-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -283,23 +284,7 @@ function checkMessage(fixture, message, judgeScore, askScore) {
   return failures;
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring an UNSOLICITED text message Hale sends a parent.',
-  'Nobody asked for it; the phone just buzzed. You are given the FACTS Hale decided on',
-  'and the message written from them.',
-  'Score VOICE & FAITHFULNESS on a 1-5 integer scale. A 5 earns the interruption: quiet,',
-  'plain-spoken, specific, ONE thing, at most two short sentences, and it states only the',
-  'given facts. Two shapes are both correct and are scored the same way. When the facts',
-  'carry a DEADLINE (a registration date), the message leads with it. When they carry a',
-  'WEEKEND SUGGESTION, there is no deadline to lead with: leading with the forecast and',
-  'then naming the thing it points to is exactly right, and must not be marked down for',
-  'lacking urgency it was never given.',
-  'A LOW score is hype or exclamation marks, brand/corporate voice ("We are excited to"),',
-  'apologising for texting or explaining why it is texting ("just a quick heads up"),',
-  'reciting the facts like a database row, asking a question, sounding like an ad,',
-  'inventing urgency or advice, or any detail not present in the facts.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('nudge');
 
 /**
  * The second judge, and it scores ONE property: does the text ask the parent for anything?
@@ -307,21 +292,7 @@ const JUDGE_SYSTEM = [
  * "?": "Reply YES and I'll hold a spot" asks with no question mark, and a question mark
  * inside an activity's own title asks nothing.
  */
-const ASK_JUDGE_SYSTEM = [
-  'You are scoring ONE property of an UNSOLICITED text message Hale sends a parent: does',
-  'the message ask the parent for anything? Nothing else. Not voice, not length, not',
-  'whether the facts are the right ones.',
-  'Nobody asked for this message and nothing in it needs an answer, so the right number',
-  'of asks is zero. An unprompted text that asks something turns a favour into a chore.',
-  'Score 1-5.',
-  'A 5 asks nothing: it tells the parent the one thing and stops.',
-  'A 3 leaves a soft opening the parent may still feel they owe a reply to.',
-  'A 1 asks, in any wording and any language, with or without a question mark: a',
-  'question, a request to reply or confirm, an offer that waits on a yes, or a',
-  'rhetorical question. A question mark that is not an ask (inside an activity title,',
-  'say) is not an ask, and you never mark a message down for one.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const ASK_JUDGE_SYSTEM = judgePrompt('nudge-ask');
 
 // Deterministic broken stand-in: invents a venue, a price and a time none of which are
 // in any fixture's nudge, writes the opt-out line itself, asks for a reply, and rambles
