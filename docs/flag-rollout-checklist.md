@@ -56,6 +56,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `FIRST_TOUCH_LADDER_ENABLED` | `apps/web/lib/channel/intake/first-touch-flag.ts:20` | `on` | OFF | empty, or `off` | Sloane |
 | `FIRST_TOUCH_LOCATION_CARD_ENABLED` | `apps/web/lib/channel/intake/first-touch-flag.ts:26` | `true` | OFF | `false` | Noah |
 | `FOLLOWUP_ASKS_ENABLED` | `apps/web/lib/channel/followup/run.ts:92` | `true` | OFF | `false` | Noah |
+| `FRIEND_VOICE_LEFTOVER_MARKS_ENABLED` | `apps/web/lib/channel/intake/friend-voice-flag.ts:16` | `true` | OFF | unset | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | `packages/types/src/gcal-classify.ts:31` (trim, `!== 'false'`) | unset (anything except `false`) | ON | `false` | Noah |
 | `GENERAL_ANSWER_SEARCH_ENABLED` | `apps/web/lib/channel/off-domain/answer.ts:133` (`!== 'false'`, no trim) | kill switch: `false` (no trim) turns it off | ON | `false` | Barton |
 | `GOING_COUNT_ENABLED` | `apps/web/lib/integrations/going.ts:148` | `true` | OFF | `false` | Noah |
@@ -219,6 +220,7 @@ Code is merged for every row.
 | `FIRST_REPLY_ACTION_LINE` | The first radar reply may include the action URL. | Replies that contain a URL the parent did not ask for. | `false` | Sloane |
 | `FIRST_TOUCH_LADDER_ENABLED` | A new parent is asked for a place, then shown a week find, before the older hello. | First-session `channel_messages` with status `failed`. | empty, or `off` | Sloane |
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |
+| `FRIEND_VOICE_LEFTOVER_MARKS_ENABLED` | Onboarding leftover decisions (a plain yes, a lone name, how many questions, a name ask, speaking as the parent, the join number in the prose) come from model fields instead of `?` or English/French word lists. Off keeps today's regex path. | A yes stored when the parent asked, a name ask on the wrong step, or a join number written into the prose. | unset | Noah |
 | `GOING_COUNT_ENABLED` | A sweep may count how many others are going. | A count that does not match the booking rows. | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | Gmail and Calendar can sync from push, not only the 15-minute poll. | Log lines `google push: skipped, flag_off` after the flip, and webhook failures. | `false` | Noah |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for event classification. Unset stays on Sonnet 5. | Classify errors and fallback count in the web logs. | `current` | Eugene |

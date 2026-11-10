@@ -407,6 +407,10 @@
     "file": "offer-receipt.md",
     "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
   },
+  "onboarding-friend-leftover-marks.md": {
+    "file": "onboarding-friend-leftover-marks.md",
+    "sha256": "488f0637c7865d06dc21c7924c06564c2f63af683f335720343ed4ba900c53e1"
+  },
   "onboarding-friend-place.md": {
     "file": "onboarding-friend-place.md",
     "sha256": "75792b8151d9da5d31d755f76d6b495089a61410af6de2956be52e29bae3850b"

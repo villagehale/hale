@@ -23,6 +23,7 @@ import {
   parentReading,
   readGroupLeads,
   speakFriend,
+  tidyProse,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
 
@@ -2558,5 +2559,232 @@ describe('a declined place, closed in code', () => {
     expect(
       (await composerReplying({ ...fields, placeAsk: 'town' }).compose(secondNo)).placeAsk,
     ).toBeNull();
+  });
+});
+
+describe('leftover marks: model fields, not ? or word lists', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const checklist = {
+    postal: true,
+    kids: true,
+    ages: true,
+    name: true,
+    gmail: false,
+    calendar: false,
+    schedule: false,
+    coparent: false,
+  } as const;
+
+  it("stays on today's regex path while the flag is off", () => {
+    const gmail = blank({
+      step: 'email',
+      parentWords: 'oui',
+      checklist: { ...checklist },
+      recentTurns: [{ role: 'hale', body: 'Want me to watch email?', asked: true }],
+    });
+    expect(parentReading(gmail)).toEqual({ kind: 'yes', item: 'gmail' });
+    expect(onboardingReplyToolSchema(gmail).required).not.toContain('asksCount');
+  });
+
+  it('does not match a yes or a lone name from the words when the flag is on', () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const asked = [{ role: 'hale' as const, body: 'What should I call you?', asked: true }];
+    expect(
+      parentReading(
+        blank({
+          step: 'email',
+          parentWords: 'oui',
+          checklist: { ...checklist },
+          recentTurns: asked,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parentReading(
+        blank({
+          step: 'names',
+          parentWords: 'Dana',
+          checklist: { ...checklist, name: false },
+          recentTurns: asked,
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('holds a yes or a lone name from the model fields when the flag is on', async () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const yes = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply:
+              'Google shares the whole inbox, and I keep what is about the kids. The link is above.',
+            capture: {},
+            parentPlainYes: true,
+            asksCount: 0,
+            asks: false,
+          };
+        },
+      },
+      blank({
+        step: 'email',
+        parentWords: '好',
+        checklist: { ...checklist },
+        recentTurns: [{ role: 'hale', body: '想连接邮箱吗？', asked: true }],
+      }),
+      { page: async () => undefined, linkAbove: true, yesToLink: true },
+    );
+    expect(yes.source).toBe('composed');
+    expect(yes.capture.connectGmail).toBe(true);
+
+    const skipped = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply:
+              'Google shares the whole inbox, and I keep what is about the kids. Want to connect it?',
+            capture: {},
+            asksCount: 1,
+            asks: true,
+          };
+        },
+      },
+      blank({
+        step: 'email',
+        parentWords: 'oui',
+        checklist: { ...checklist },
+        recentTurns: [{ role: 'hale', body: 'Want me to watch email?', asked: true }],
+      }),
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(skipped.capture.connectGmail).toBeNull();
+
+    const named = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Nice to meet you, what are the kids called?',
+            capture: {},
+            parentLoneName: 'Dana',
+            asksCount: 1,
+            asks: true,
+          };
+        },
+      },
+      blank({
+        step: 'names',
+        parentWords: 'Dana',
+        checklist: { ...checklist, name: false },
+        recentTurns: [{ role: 'hale', body: 'What should I call you?', asked: true }],
+      }),
+      { page: async () => undefined },
+    );
+    expect(named.capture.parentName).toBe('Dana');
+  });
+
+  it('the judge counts questions from asksCount, not from a mark', () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const place = blank({ step: 'place', parentWords: 'hi' });
+    expect(judgeFriendReply("What's your postal code?", place)).toEqual({
+      ok: false,
+      reason: 'question',
+    });
+    expect(
+      judgeFriendReply("What's your postal code? Which one fits?", place, { asksCount: 1 }),
+    ).toEqual({ ok: true });
+    expect(judgeFriendReply("What's your postal code?", place, { asksCount: 2 })).toMatchObject({
+      ok: false,
+      reason: 'question',
+    });
+    expect(
+      judgeFriendReply('What should I call you?', blank({ step: 'email', parentWords: 'hi' }), {
+        asksCount: 1,
+        asksName: true,
+      }),
+    ).toMatchObject({ ok: false, reason: 'question' });
+    expect(
+      judgeFriendReply("I'm Barton. What's your postal code?", place, {
+        asksCount: 1,
+        speaksAsParent: true,
+      }),
+    ).toEqual({ ok: false, reason: 'identity' });
+  });
+
+  it('does not rewrite a question out of a receipt when the flag is on', () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const connected = blank({ step: 'connected', parentWords: 'ok', connector: 'gmail' });
+    expect(tidyProse('Your Gmail is in. What next?', connected, 'connected')).toBe(
+      'Your Gmail is in. What next?',
+    );
+  });
+
+  it('a join number in the prose is refused only when the model says so', async () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const input = blank({
+      step: 'coparent',
+      parentWords: 'oui',
+      checklist: { ...checklist, gmail: true, calendar: true, schedule: true, coparent: false },
+      coparentJoin: { line: '+1 555-555-0100', phrase: 'this is our year' },
+      recentTurns: [{ role: 'hale', body: 'On fait un groupe ?', asked: true }],
+    });
+    const reply = 'Le numéro est juste en dessous, pour quand tu veux.';
+    const kept = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply,
+            capture: { coparentGroup: true },
+            joinPointer: 'below',
+            joinInProse: false,
+            asksCount: 0,
+            asks: false,
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(kept.source).toBe('composed');
+    const refused = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply,
+            capture: { coparentGroup: true },
+            joinPointer: 'below',
+            joinInProse: true,
+            asksCount: 0,
+            asks: false,
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(refused.source).toBe('unsent');
+  });
+
+  it('appends the leftover skill and the extra fields only when the flag is on', async () => {
+    const base = (await loadOnboardingFriendSkill()).instructions;
+    const leftover = (await loadCronSkill('onboarding-friend-leftover-marks')).instructions;
+    expect((await friendVoiceSystem({ step: 'email' }, false)).system).toBe(base);
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    expect((await friendVoiceSystem({ step: 'email' }, false)).system).toBe(
+      `${base}\n\n${leftover}`,
+    );
+    const schema = onboardingReplyToolSchema(blank({ step: 'email' }));
+    expect(schema.required).toEqual(
+      expect.arrayContaining([
+        'asksCount',
+        'asksName',
+        'speaksAsParent',
+        'joinInProse',
+        'parentPlainYes',
+        'parentLoneName',
+      ]),
+    );
   });
 });
