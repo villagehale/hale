@@ -274,6 +274,11 @@
     "version": null,
     "sha256": "d69dc1963baf19b20603b6269bdd2c9ff7568913edbc7d9af01e025854885cf0"
   },
+  "judges/offer-receipt": {
+    "name": "judges/offer-receipt",
+    "version": null,
+    "sha256": "8de36a431c303f079a6603d6f473c84aac02ee6e355f2855b9040866e1fe13e8"
+  },
   "judges/opt-out-read": {
     "name": "judges/opt-out-read",
     "version": null,
