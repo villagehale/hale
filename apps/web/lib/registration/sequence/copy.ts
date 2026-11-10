@@ -2,6 +2,7 @@ import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { dayKeyIn } from '~/lib/plan/spine';
+import type { DateMovedFacts } from './date-moved-compose.js';
 import type { DateUnconfirmedFacts } from './date-unconfirmed-compose.js';
 import type { Moment, RegistrationNoteFacts } from './note-compose.js';
 import {
@@ -19,6 +20,7 @@ import {
   type SequenceLeg,
   type SequenceOptIn,
   WAITLIST_FINAL_LEAD_HOURS,
+  openTimeIsPublished,
   waitlistDeadline,
 } from './schedule.js';
 import type { FitNote, Shortlist } from './shortlist.js';
@@ -575,6 +577,32 @@ export function dateUnconfirmedFacts(
     who: whoPhrase(input.shortlist.fitNotes),
     why,
     offer: leg === 'heads_up' && !headsUpPromisesPlan(input.optIn),
+  };
+}
+
+/** VIL-423 · facts for the note a household gets when the page moved an opening Hale
+ * already told them. The old opening names a time only where it carried one. */
+export function dateMovedFacts(input: {
+  shortlist: Shortlist;
+  timeZone: string;
+  now: Date;
+  was: Date;
+  opens: Date;
+  opensTimePrinted: boolean;
+}): DateMovedFacts {
+  const { timeZone } = input;
+  return {
+    now: moment(input.now, timeZone),
+    window: windowPhrase(input.shortlist),
+    who: whoPhrase(input.shortlist.fitNotes),
+    was: {
+      date: writtenDate(input.was, timeZone),
+      time: openTimeIsPublished(input.was, timeZone) ? timeOfDay(input.was, timeZone) : null,
+    },
+    opens: {
+      date: writtenDate(input.opens, timeZone),
+      time: input.opensTimePrinted ? timeOfDay(input.opens, timeZone) : null,
+    },
   };
 }
 

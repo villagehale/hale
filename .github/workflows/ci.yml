@@ -360,6 +360,9 @@ jobs:
       - name: Registration date-unconfirmed text eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-date-unconfirmed
 
+      - name: Registration date-moved text eval (cached-only)
+        run: pnpm --filter @hale/worker eval:registration-date-moved
+
       - name: Spot-opened text eval (cached-only)
         run: pnpm --filter @hale/worker eval:spot-open-voice
 
