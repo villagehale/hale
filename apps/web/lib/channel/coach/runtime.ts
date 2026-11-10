@@ -13,9 +13,9 @@ import {
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { type FamilyCountry, familyCountryOf } from '@hale/types';
-import type { FactReader } from '@hale/worker/memory-context';
+import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
-import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
@@ -259,10 +259,11 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
-  /** VIL-628 · the values of the facts the parent told Hale (`memory_source =
+  /** VIL-628 · the values of the facts this parent told Hale (`memory_source =
    * parent_message`), read only on a turn that read an email: what its reply may repeat.
-   * Optional: absent, the reply may repeat only the parent's words in this thread. */
-  loadParentStatedFacts?(familyId: string, now: Date): Promise<string[]>;
+   * Optional: absent, the reply may repeat only the parent's words in this thread.
+   * Goes through `factsForContext` so another adult's 1:1 never trusts a token (VIL-599). */
+  loadParentStatedFacts?(familyId: string, parentUserId: string, now: Date): Promise<string[]>;
   /** The family's own IANA time zone, or null when Hale does not know it (VIL-435).
    * Optional: absent or null, the turn carries only the UTC instant, as before. */
   loadTimeZone?(familyId: string): Promise<string | null>;
@@ -811,7 +812,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 emails.length > 0
                   ? [
                       ...trustedAfterEmail(turn, transcript),
-                      ...((await ports.loadParentStatedFacts?.(turn.familyId, now)) ?? []),
+                      ...((await ports.loadParentStatedFacts?.(
+                        turn.familyId,
+                        turn.parentUserId,
+                        now,
+                      )) ?? []),
                     ]
                   : [],
             });
@@ -921,23 +926,17 @@ const PARENT_STATED_FACT_LIMIT = 500;
 async function loadParentStatedFactValues(
   database: Database,
   familyId: string,
+  parentUserId: string,
   now: Date,
 ): Promise<string[]> {
-  const facts = schema.familyMemoryFacts;
-  const rows = await database
-    .select({ factKey: facts.factKey, factValue: facts.factValue })
-    .from(facts)
-    .where(
-      and(
-        eq(facts.familyId, familyId),
-        eq(facts.memorySource, 'parent_message'),
-        isNull(facts.validUntil),
-        or(isNull(facts.expiresAt), gt(facts.expiresAt, now)),
-      ),
-    )
-    .orderBy(desc(facts.createdAt))
-    .limit(PARENT_STATED_FACT_LIMIT);
-  return rows.map((row) => JSON.stringify(row));
+  const rows = await factsForContext(database, familyId, {
+    now,
+    reader: { adult: parentUserId },
+    limit: PARENT_STATED_FACT_LIMIT,
+  });
+  return rows
+    .filter((row) => row.memorySource === 'parent_message')
+    .map((row) => JSON.stringify({ factKey: row.factKey, factValue: row.factValue }));
 }
 
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
@@ -1022,7 +1021,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         );
         return [];
       }),
-    loadParentStatedFacts: (familyId, now) => loadParentStatedFactValues(database, familyId, now),
+    loadParentStatedFacts: (familyId, parentUserId, now) =>
+      loadParentStatedFactValues(database, familyId, parentUserId, now),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(
