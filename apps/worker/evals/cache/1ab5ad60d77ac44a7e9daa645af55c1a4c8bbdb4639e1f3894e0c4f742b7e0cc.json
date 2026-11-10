@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a price of $120 when the handed price is null, so it scores 2 or lower. The rest holds up. 'Swapped' fits replaced:true, the Tuesday, Sept 15 at 7 a.m. date and time are right, and the prerequisite warning to leave time is correct. It carries no link and asks nothing. It never says the course details could not be read, though they are all null.",
+    "score": 2
+  }
+}

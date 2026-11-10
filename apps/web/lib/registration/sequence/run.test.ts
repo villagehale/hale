@@ -108,6 +108,11 @@ function live(overrides: Partial<LiveSequence> = {}): LiveSequence {
     courseUrl: null,
     courseOpensAt: null,
     readinessReady: null,
+    lastReading: null,
+    // The scheduled re-read is not due in these cases: they pin the send-time check on
+    // its own. date-recheck.pglite.test.ts drives the re-read.
+    nextCheckAt: new Date('2099-01-01T00:00:00.000Z'),
+    pendingChange: null,
     ...overrides,
   };
 }
@@ -342,6 +347,12 @@ function harness(
         unconfirmed.push(facts);
         return `composed unconfirmed ${facts.why}`;
       }),
+    saveDateWatch: async () => {
+      throw new Error('unexpected date re-read');
+    },
+    composeDateMoved: async () => {
+      throw new Error('unexpected change note');
+    },
     ...(options.clock ? { clock: options.clock } : {}),
   };
 
@@ -850,6 +861,7 @@ describe('the legs', () => {
     expect(h.notes[0]).toMatchObject({
       kind: 'waitlist_halfway',
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
     });
     expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:waitlist_half:user-1']);

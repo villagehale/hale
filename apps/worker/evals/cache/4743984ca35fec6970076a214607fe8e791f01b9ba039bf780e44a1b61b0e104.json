@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message confirms the replaced page and correctly says the course name, day and time could not be read. The date (Tuesday, September 15, 7:00 a.m.) is right against now. It warns about the prerequisite and has no link and no question. There are minor issues: \"going by what's on the portal\" is an odd phrase when haleHad is null, and \"on the residents date\" is clunky wording of the clockName. Otherwise it is faithful and friendly.",
+    "score": 4
+  }
+}

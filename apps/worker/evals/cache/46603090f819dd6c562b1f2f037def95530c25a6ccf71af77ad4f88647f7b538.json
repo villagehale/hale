@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The note correctly acknowledges spot 12 in Springfield, gives the right deadline (Wednesday, September 16 at 11:00 p.m.) and promises the handed reminder, without asking anything. But it never says where the 36-hour clock starts. The facts set clockFrom to the parent's own message (Tuesday 11:00 a.m.), and a deadline with no start for the clock is a required failure.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly handles a 'no' readiness answer. It names all four setup items (the account, each child added with a birthday, the address and a saved card). It uses the handed portal and the handed names Max and 'your teen'. It promises to check in again the evening before, which is a handed promise, and asks nothing now. It invents no dates or claims and reads naturally in English.",
+    "score": 5
+  }
+}

@@ -1,8 +1,9 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, type FamilyEventNotes, schema } from '@hale/db';
+import { type CalendarStanding, type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { REMINDER_HORIZON_MS, type SuppressReason } from '~/lib/loop/reminders/schedule';
 import { zonedMidnight } from '~/lib/memory/period';
+import { calendarStandingOf } from './calendar-standing';
 import {
   EVENT_NOTES_CONCURRENCY,
   EVENT_NOTES_FAILED,
@@ -84,6 +85,9 @@ export interface CalendarMirrorCandidate {
   transparency?: 'opaque' | 'transparent' | null;
   /** The event's description, IN MEMORY ONLY: handed to the notes reader, never stored. */
   description?: string | null;
+  /** Where the connecting parent stands on it (VIL-633). Read from the attendee list,
+   * which itself is never stored. */
+  standing: CalendarStanding;
 }
 
 export type CalendarMirrorClass =
@@ -247,6 +251,7 @@ export function classifyCalendarMirrorItem(
       location,
       ...(transparency === 'transparent' || transparency === 'opaque' ? { transparency } : {}),
       ...(description ? { description } : {}),
+      standing: calendarStandingOf(item),
     },
   };
 }
@@ -371,6 +376,7 @@ export async function reconcileCalendarMirrors(
       deletedAt: schema.familyEvents.deletedAt,
       childId: schema.familyEvents.childId,
       kidVerdictId: schema.familyEvents.kidVerdictId,
+      calendarStanding: schema.familyEvents.calendarStanding,
     })
     .from(schema.familyEvents)
     .where(
@@ -466,6 +472,7 @@ export async function reconcileCalendarMirrors(
           integrationId: input.integrationId,
           kidVerdictId: judgement.verdictId,
           childId: judgement.childId,
+          calendarStanding: candidate.standing,
         })
         .onConflictDoNothing()
         .returning({ id: schema.familyEvents.id });
@@ -493,7 +500,8 @@ export async function reconcileCalendarMirrors(
       !sameEventNotes(existing.notes, notes) ||
       existing.deletedAt !== null ||
       existing.kidVerdictId !== judgement.verdictId ||
-      (existing.childId === null && judgement.childId !== null);
+      (existing.childId === null && judgement.childId !== null) ||
+      existing.calendarStanding !== candidate.standing;
     if (!changed) continue;
     // One transaction, so the copy never comes back live with the reminders its drop
     // cancelled still cancelled: a later sweep sees it live and has nothing to restore.
@@ -513,6 +521,7 @@ export async function reconcileCalendarMirrors(
           createdBy: input.userId,
           kidVerdictId: judgement.verdictId,
           childId: existing.childId ?? judgement.childId,
+          calendarStanding: candidate.standing,
         })
         .where(eq(schema.familyEvents.id, existing.id));
       // Devin #1007: the reminders this copy's drop cancelled come back with it; any other

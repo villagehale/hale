@@ -1,6 +1,7 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
+import { findReplyNotJudged } from './find-reasoning-judge';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
@@ -79,6 +80,7 @@ describe('VIL-439 group privacy scope', () => {
         nearbySaid: async () => null,
         guardDeps: { async writeAudit() {} },
         client: () => ({ messages: {} }) as never,
+        judgeFindReply: findReplyNotJudged,
         runAgent: async (args) => {
           seen.push(JSON.stringify(args.context));
           return {
@@ -111,6 +113,29 @@ describe('VIL-439 group privacy scope', () => {
       const seen: string[] = [];
       await channelCoachRuntime(ports(seen)).respond(turn('direct'), []);
       expect(seen[0]).toContain(SECRET_FACT);
+    });
+
+    it('a group turn gets no registration windows; a 1:1 turn keeps them', async () => {
+      const WINDOW = {
+        town: 'Riverside',
+        programs: 'Winter swim lessons',
+        opensFor: 'Dec 1, 7:00 a.m.',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: false,
+      };
+      const contexts = async (audience: 'group' | 'direct') => {
+        const seen: string[] = [];
+        await channelCoachRuntime({
+          ...ports(seen),
+          loadRegistrationWindows: async () => [WINDOW] as never,
+        }).respond(turn(audience), []);
+        return JSON.parse(seen[0] as string) as { registrationWindows: unknown[] };
+      };
+      expect((await contexts('group')).registrationWindows).toEqual([]);
+      // Positive control: the same window reaches the parent's own 1:1 turn.
+      expect((await contexts('direct')).registrationWindows).toEqual([WINDOW]);
     });
 
     it('every group flag off: a group turn is still scoped', async () => {
@@ -242,6 +267,7 @@ describe('VIL-439 review: group tools and group history', () => {
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as never,
+      judgeFindReply: findReplyNotJudged,
       runAgent: async (args) => {
         seenTools.push(args.tools.map((t) => t.name));
         return {

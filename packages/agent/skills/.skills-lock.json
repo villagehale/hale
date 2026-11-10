@@ -1,7 +1,7 @@
 {
   "activity-deep.md": {
     "file": "activity-deep.md",
-    "sha256": "b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca"
+    "sha256": "96f7e289daac854476c384093fc07ffea749e7391cf691273f6e5dde981f79d4"
   },
   "activity-finder-day.md": {
     "file": "activity-finder-day.md",
@@ -13,15 +13,19 @@
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "90f074ed912a23bb83debf43b35b235b1703ba050313cf0bd62927c98ae1d4a6"
+    "sha256": "fb5903ad7e966cf619a770981cc7072882a288f129dc247bde8fcdc5d8419c88"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
-    "sha256": "6c0d3f55ef83e0bbc3f34d0335235f028fe902d26d431b06a71798a9cc42688f"
+    "sha256": "8c2255e22c6e93fa82308ed6b7eaaf245096ca63ab0d9103761d40a94bd5a21a"
   },
   "activity-verdict.md": {
     "file": "activity-verdict.md",
     "sha256": "49c3038cbec9faa0dad50bf3dffe6190588b994eae0e1a4a62500422d44acd4b"
+  },
+  "activity-watch-calendar-read.md": {
+    "file": "activity-watch-calendar-read.md",
+    "sha256": "dd5fde530caca83910ef056b36ad6df9a23f3822689b9f1fb4a4f1504e7eceee"
   },
   "area-read.md": {
     "file": "area-read.md",
@@ -30,6 +34,10 @@
   "autonomy-notice.md": {
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
+  },
+  "browser-use-assisted-signup.md": {
+    "file": "browser-use-assisted-signup.md",
+    "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
   },
   "browser-use-confirmation.md": {
     "file": "browser-use-confirmation.md",
@@ -213,7 +221,7 @@
   },
   "followup-process-judge.md": {
     "file": "followup-process-judge.md",
-    "sha256": "ada88b83e297ffca0bec4bd264743a6b9ea9ed86fbc6dbbae5999ce906c0dce5"
+    "sha256": "c92b4e4cc6221c6641e38155c87729a4ef63633aa7290e675f4ae3072e50e6f0"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -399,13 +407,17 @@
     "file": "offer-receipt.md",
     "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
   },
+  "onboarding-friend-place.md": {
+    "file": "onboarding-friend-place.md",
+    "sha256": "75792b8151d9da5d31d755f76d6b495089a61410af6de2956be52e29bae3850b"
+  },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
     "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "bc7cab3654c8842dc3f30b191ece289974489b4d870970fd85ea5e5cf4eb401a"
+    "sha256": "bfd5e3f4398bd07818b56e898c765b5a914f36ee9003dca694e4f2604657df22"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
@@ -443,6 +455,10 @@
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
   },
+  "registration-date-moved.md": {
+    "file": "registration-date-moved.md",
+    "sha256": "a342dc7a85379a9a0718ddef6f08f27286281a4c8093d359e41b2a47a5f62510"
+  },
   "registration-date-unconfirmed.md": {
     "file": "registration-date-unconfirmed.md",
     "sha256": "fae715649681313c25d563d4d387d7bb6ab7c210719e5e2be1f9e1d0db84df6d"
@@ -461,7 +477,7 @@
   },
   "registration-note.md": {
     "file": "registration-note.md",
-    "sha256": "3ff9e76330bcbd0d9386738d7d926e83e2983a4ac1f45e69077536c02c1e8b81"
+    "sha256": "cff18881826efd412bbfcf53b1f79956a55abd29297288468ae6e7175bb89117"
   },
   "registration-text-check.md": {
     "file": "registration-text-check.md",
@@ -493,7 +509,7 @@
   },
   "shared-group-reading.md": {
     "file": "shared-group-reading.md",
-    "sha256": "b2334c61d886addf4ba1661ed6be424c1acd23fd56dcbccbae7007f5a46f2506"
+    "sha256": "0d710370b2c517fbad3ef0945c17ccc4446f49971a5b15ed7b25e764accfcf4f"
   },
   "shared-group-voice.md": {
     "file": "shared-group-voice.md",
@@ -517,7 +533,7 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "ee71e350446bfba4484c994565a6cddb7cf500d90832762463c972d39f495406"
+    "sha256": "7a0319f7e100b646081932352c3096d31580a22f3526f1162e6c4f96bbc13be0"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
@@ -525,7 +541,7 @@
   },
   "spoken-line.md": {
     "file": "spoken-line.md",
-    "sha256": "4b84abf92a80056cee020c38c179511159e33e399b506451d1b9431bdc4ff782"
+    "sha256": "e98921611445203f0d1a6263b6ba92932c5844bc8467b1db34a44f27bf8faa7c"
   },
   "spot-open-voice.md": {
     "file": "spot-open-voice.md",

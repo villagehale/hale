@@ -278,6 +278,7 @@ function calendarChange(eventId: string, title: string, start: string): Calendar
     status: 'confirmed',
     start: { dateTime: start },
     end: { dateTime: end },
+    standing: 'organizer',
   };
 }
 

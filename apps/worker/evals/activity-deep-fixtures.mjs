@@ -107,6 +107,20 @@ Saturdays 10:00 a.m. $290 per term.
 
 Our youngest program starts at age 8. We do not offer preschool or toddler classes.`;
 
+const PARK_DISTRICT_PAGE = `--- page: https://www.lakeviewparks.example/programs/early-childhood ---
+Lakeview Park District - Early Childhood Programs, Winter 2027
+
+PARENT/TOT TUMBLING (18 - 36 months, with an adult)
+Wednesdays 9:30 - 10:15 a.m., January 13 to March 3. 8 weeks.
+Resident $72 / Non-resident $108
+
+LITTLE KICKERS SOCCER (3 - 5 years, drop off)
+Saturdays 10:00 - 10:45 a.m., January 16 to March 6. Resident $80 / Non-resident $120
+
+Winter registration opens Monday, December 7 at 8:00 a.m. for park district residents and
+Monday, December 14 at 8:00 a.m. for non-residents. Register online, by phone or at the
+Community Center front desk.`;
+
 export const DEEP_FIXTURES = [
   // ── the live one: prod's own wire shape against the real web ──────────────
   {
@@ -161,6 +175,24 @@ export const DEEP_FIXTURES = [
     brokenMode: 'text_drops_registration',
     watchFor:
       "Registration has NOT opened yet, which is a different sentence to a parent than 'open since July 22' and the one that decides whether they set an alarm. The page prints no fee, so the price must be null. Both preschool levels are the same class at two times - two slots is right, an invented third is not.",
+  },
+
+  // ── a US family (VIL-590): a park district, resident and non-resident dates ─
+  {
+    id: 'us-park-district-registration',
+    subject: 'toddler tumbling',
+    town: 'Springfield, Illinois, United States',
+    stage: 'toddler',
+    window: 'this winter',
+    rawSubject: 'tumbling for my 2 year old',
+    dropsFromQuery: ['2 year'],
+    notes: PARK_DISTRICT_PAGE,
+    expectSlots: true,
+    expectPagesRead: true,
+    registrationMustSay: ['December 7', 'Dec 7', 'Dec. 7'],
+    brokenMode: 'drop_registration',
+    watchFor:
+      'A US park district page: one toddler class, a resident and a non-resident fee, and registration that opens December 7 for residents and a week later for everyone else. The slot must carry the registration fact and the text must reach the parent with it. The 3 to 5 drop-off soccer class is not a slot for a toddler.',
   },
 
   // ── must not invent a figure ──────────────────────────────────────────────
