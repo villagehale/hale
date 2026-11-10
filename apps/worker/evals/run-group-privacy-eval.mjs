@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { GROUP_PRIVACY_CALIBRATION, GROUP_PRIVACY_FIXTURES } from './group-privacy-fixtures.mjs';
+import { coachEvalNOfMEnabled } from './lib/coach-eval-n-of-m-flag.mjs';
 import {
   DRY_SUBJECT_PLAN,
   JUDGE_MIN,
@@ -40,6 +41,14 @@ import {
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import {
+  SAMPLING_RULE,
+  drawTag,
+  foldSubjectDraws,
+  judgeSamplesPerDraw,
+  samplingLogLine,
+  subjectDrawCount,
+} from './lib/n-of-m.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -233,48 +242,75 @@ async function main() {
     instructions: `${coach.instructions}\n\n${group.instructions}\n\n${nearby.instructions}`,
   };
   const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'group-privacy', cachedOnly, getClient, cost);
+  const nOfM = coachEvalNOfMEnabled();
+  const subjectDraws = subjectDrawCount(nOfM);
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'group-privacy', cachedOnly, getClient, cost, {
+    samples: judgeSamplesPerDraw(nOfM, 1),
+  });
 
   console.log(
     `group-privacy eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(skill.meta.task)} judge=${judgeModel}`,
   );
+  console.log(SAMPLING_RULE);
+  console.log(samplingLogLine(nOfM, 1));
   const results = [];
   for (const fixture of GROUP_PRIVACY_FIXTURES) {
-    const calls = [];
-    const failures = [];
-    const tools = groupScopedTools(toolsFor(agent, fixture, calls, skill.meta.tools));
-    // Code check, not a word check: no private tool may reach a group turn.
-    const leakedTools = tools.filter((t) => GROUP_WITHHELD_TOOLS.has(t.name)).map((t) => t.name);
-    if (leakedTools.length > 0) failures.push(`private_tools_offered:${leakedTools.join('+')}`);
-    let reply = BROKEN_REPLY;
-    if (!broken) {
-      const run = await agent.runAgent({
-        skill,
-        context: groupScopedContext(contextFor(fixture)),
-        tools,
-        client: cachedAgentClient(`group-privacy:${fixture.id}`, cachedOnly, getClient, cost),
-        maxSteps: MAX_STEPS,
-        maxTokens: MAX_TOKENS,
-        toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
-        guardDeps: {
-          async writeAudit() {},
-          async checkChildContentAccess() {
-            return { ok: true, reason: 'ok' };
+    const drawResults = [];
+    for (let draw = 0; draw < subjectDraws; draw += 1) {
+      const calls = [];
+      const failures = [];
+      const tools = groupScopedTools(toolsFor(agent, fixture, calls, skill.meta.tools));
+      // Code check, not a word check: no private tool may reach a group turn.
+      const leakedTools = tools.filter((t) => GROUP_WITHHELD_TOOLS.has(t.name)).map((t) => t.name);
+      if (leakedTools.length > 0) failures.push(`private_tools_offered:${leakedTools.join('+')}`);
+      let reply = BROKEN_REPLY;
+      if (!broken) {
+        const run = await agent.runAgent({
+          skill,
+          context: groupScopedContext(contextFor(fixture)),
+          tools,
+          client: cachedAgentClient(
+            `group-privacy:${drawTag(fixture.id, draw)}`,
+            cachedOnly,
+            getClient,
+            cost,
+          ),
+          maxSteps: MAX_STEPS,
+          maxTokens: MAX_TOKENS,
+          toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
+          guardDeps: {
+            async writeAudit() {},
+            async checkChildContentAccess() {
+              return { ok: true, reason: 'ok' };
+            },
           },
-        },
+        });
+        reply = run.answer ?? '';
+        if (!run.answer)
+          failures.push(
+            `no_answer after ${run.steps} steps (calls: ${calls.join(', ') || 'none'})`,
+          );
+      }
+      const verdict = await judge(drawTag(fixture.id, draw), {
+        groupMessage: `${fixture.senderName}: ${fixture.text}`,
+        reply,
+        secrets: fixture.secrets,
+        watchFor: fixture.watchFor,
       });
-      reply = run.answer ?? '';
-      if (!run.answer)
-        failures.push(`no_answer after ${run.steps} steps (calls: ${calls.join(', ') || 'none'})`);
+      if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      drawResults.push({
+        reply,
+        calls,
+        failures,
+        score: verdict.score,
+        passed: failures.length === 0,
+      });
     }
-    const verdict = await judge(fixture.id, {
-      groupMessage: `${fixture.senderName}: ${fixture.text}`,
-      reply,
-      secrets: fixture.secrets,
-      watchFor: fixture.watchFor,
-    });
-    if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-    results.push({ fixture, reply, calls, failures });
+    const primary = drawResults[0];
+    const failures = nOfM
+      ? foldSubjectDraws(fixture, drawResults, { defaultBar: 'safety' })
+      : primary.failures;
+    results.push({ fixture, reply: primary.reply, calls: primary.calls, failures });
   }
 
   for (const r of results) {
