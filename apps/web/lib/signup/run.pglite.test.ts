@@ -303,6 +303,46 @@ describe('authorized signup runner', () => {
     expect(offer?.status).toBe('handed_back');
   });
 
+  it("leaves a co-parent's yes unclaimed: only the parent Hale offered it to answers the offer", async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${seeded.familyId}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!coParent) throw new Error('no co-parent');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: seeded.familyId, userId: coParent.id, role: 'co_parent' });
+    const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+    const consentReader = stubConsentReader(() => ({ verdict: 'consent', sessionId: null }));
+    const yesFrom = (parentUserId: string, id: string) =>
+      runAuthorizedSignup(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId,
+          body: 'yes please book it',
+          inboundChannelMessageId: id,
+          existingThread: true,
+          now: NOW,
+        },
+        { browser, consentReader, outcomeWriter: echoOutcomeWriter() },
+      );
+
+    expect(await yesFrom(coParent.id, 'msg-co-yes')).toMatchObject({ claimed: false });
+    expect(consentReader.calls).toEqual([]);
+    expect(calls.opened).toBe(0);
+    const consents = await db.database
+      .select({ id: schema.authorizedSignupConsents.id })
+      .from(schema.authorizedSignupConsents)
+      .where(eq(schema.authorizedSignupConsents.familyId, seeded.familyId));
+    expect(consents).toEqual([]);
+
+    // Positive control: the offered parent's own yes registers.
+    expect((await yesFrom(seeded.parentUserId, 'msg-own-yes')).outcome).toBe('completed');
+    expect(calls.submitted).toBe(1);
+  });
+
   it('does not claim the message when the consent read is unreadable (no model)', async () => {
     const seeded = await familyWithOffer({ ageMonths: 36 });
     const { browser, calls } = browserFor(SAFE);
@@ -2300,14 +2340,10 @@ describe('authorized signup runner', () => {
             .set({ primaryLanguage: family })
             .where(eq(schema.families.id, seeded.familyId));
           const outcomeWriter = echoOutcomeWriter();
-          await runAuthorizedSignup(
-            db.database,
-            yes(seeded, await inboundYes(seeded, false)),
-            {
-              browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
-              outcomeWriter,
-            },
-          );
+          await runAuthorizedSignup(db.database, yes(seeded, await inboundYes(seeded, false)), {
+            browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+            outcomeWriter,
+          });
           return outcomeWriter.facts[0]?.language;
         };
         expect(await languageFor('fr', 'en')).toBe('fr');
