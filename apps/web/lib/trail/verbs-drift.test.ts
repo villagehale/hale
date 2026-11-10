@@ -133,6 +133,13 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'linq_multi_family_private_withheld',
     'linq_multi_family_data_refused',
   ],
+  // VIL-459. A picked common time: the pick on the picker's family, and each family's
+  // calendar copy changing or failing to.
+  'apps/web/lib/channel/linq/common-time-plan.ts': [
+    'linq_multi_family_common_time_picked',
+    'linq_multi_family_common_time_placed',
+    'linq_multi_family_common_time_place_failed',
+  ],
   // VIL-457. One helper writes the per-family private aside verb.
   'apps/web/lib/channel/linq/group-private-aside.ts': ['linq_private_aside_sent'],
   // The loop dispatch names its send by WHO received it: a caregiver leg is a disclosure

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Super, je m'en occupe. Est-ce que ce serait un groupe que vous avez déjà avec l'autre parent, auquel je peux être ajouté, ou préfères-tu que je lance un nouveau groupe avec lui ou elle ?",
+    "asks": true,
+    "parentQuestion": "false</parentQuestion>\n<parameter name=\"connectorsOffered\">[]",
+    "joinPointer": null,
+    "claimsSaved": false,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "fr"
+  },
+  "latencyMs": 1812
+}

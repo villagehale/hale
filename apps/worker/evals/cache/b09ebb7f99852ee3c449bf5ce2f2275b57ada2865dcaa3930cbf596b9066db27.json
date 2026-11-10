@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message answers about the one place the parent asked for. It names Cartwheels Gym Centre's Tiny Gym, a parent-and-tot class for ages 1 (walking) to 3, at 45 minutes. All of this comes from the venue's own programs page and is attributed with \"their site says\", with no claim of having confirmed it. pageEvidence is page_has_schedule, so the gap is correctly put in the first person (\"I could not pin down the day or the price\"), not \"not posted yet\". watch is true, so \"I'll keep watching and text you\" is a commitment that actually exists. No invented times or prices, no link, no question. Minor: the subject said \"Cartwheel Gym\" and the venue is \"Cartwheels\", but it is clearly the same place.",
+    "score": 5
+  }
+}

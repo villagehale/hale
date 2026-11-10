@@ -6,7 +6,7 @@ import {
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import type { ExtractedChild } from './extract';
 import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place';
-import type { IntakeSession } from './session';
+import { type IntakeSession, placeSettled } from './session';
 
 /**
  * One activity the parent agreed to put on the calendar. The model settles
@@ -75,6 +75,8 @@ export interface OnboardingCapture {
   nameTakenBack: boolean;
   /** They do not want to give the kids' names. Do not ask that again. */
   kidsNamesDeclined: boolean;
+  /** They will not give a place, not even the coarse code. Do not ask it again. */
+  placeDeclined: boolean;
   /** Not now for the calendar. Do not ask it again in this onboarding. */
   calendarLater: boolean;
   /** Not now for email. Do not ask it again in this onboarding. */
@@ -100,6 +102,7 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   nameDeclined: false,
   nameTakenBack: false,
   kidsNamesDeclined: false,
+  placeDeclined: false,
   calendarLater: false,
   gmailLater: false,
   stopAsking: false,
@@ -472,6 +475,7 @@ export function acceptOnboardingCapture(
     nameDeclined: row.nameDeclined === true,
     nameTakenBack: row.nameTakenBack === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
+    placeDeclined: row.placeDeclined === true,
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
@@ -503,7 +507,7 @@ export function storedChecklist(
     ? linesOfFind(session.firstTouch.coldStart.findBody)
     : [];
   return {
-    postal: session.firstTouch?.place != null,
+    postal: placeSettled(session.firstTouch),
     kids: given?.kidsNamesDeclined === true || kidsAreNamed(children),
     ages: agesAreComplete(children),
     name: nameStored || Boolean(given?.parentName) || given?.nameDeclined === true,
@@ -522,6 +526,7 @@ export function checklistAfter(
   return {
     postal:
       prior.postal ||
+      capture.placeDeclined ||
       placeFromGivenFields({ postalCode: capture.postalCode, city: capture.city }) != null,
     kids: prior.kids || capture.kidsNamesDeclined || kidsAreNamed(capture.children),
     ages: prior.ages || agesAreComplete(capture.children),
@@ -562,6 +567,7 @@ export function mergeCaptures(
     nameDeclined: next.nameDeclined || prior.nameDeclined,
     nameTakenBack: next.nameTakenBack === true,
     kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
+    placeDeclined: next.placeDeclined || prior.placeDeclined,
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,

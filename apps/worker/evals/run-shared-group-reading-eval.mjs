@@ -3,7 +3,8 @@
 // The subject is the REAL skill through the REAL request shape. The gate is the
 // intent label: a wrong reading seats the wrong family or answers banter.
 // Judges score meaning. VIL-459: a find-time reading is also checked on the times the
-// chat ruled out (objective instants per fixture), parsed by the REAL parser.
+// chat ruled out (objective instants per fixture), parsed by the REAL parser. A pick must
+// name the exact offered start the fixture expects, and a titled ask must carry a title.
 //
 //   node evals/run-shared-group-reading-eval.mjs --estimate     # no API
 //   node evals/run-shared-group-reading-eval.mjs --cached-only  # CI once recorded
@@ -92,8 +93,9 @@ async function main() {
   );
   const results = [];
   for (const fixture of SHARED_GROUP_READING_FIXTURES) {
+    const offered = (fixture.input.offered ?? []).map((slot) => slot.start);
     const reading = broken
-      ? { intent: 'question', ruledOut: [] }
+      ? { intent: 'question', ruledOut: [], picked: null, planTitle: null }
       : parseSharedGroupReading(
           (
             await cachedToolCall({
@@ -111,17 +113,27 @@ async function main() {
               cost,
             })
           ).value,
+          offered,
         );
     const intent = reading.intent;
     const spans = reading.ruledOut ?? [];
     const timesOk =
       (fixture.covers ?? []).every((iso) => held(spans, iso)) &&
       !(fixture.open ?? []).some((iso) => held(spans, iso));
-    results.push({ fixture, intent, pass: fixture.accept.includes(intent) && timesOk, spans });
+    const pickOk = !fixture.picked || reading.picked?.toISOString() === fixture.picked;
+    const titleOk = !fixture.titled || Boolean(reading.planTitle);
+    results.push({
+      fixture,
+      intent,
+      pass: fixture.accept.includes(intent) && timesOk && pickOk && titleOk,
+      spans,
+      picked: reading.picked ? reading.picked.toISOString() : null,
+      title: reading.planTitle ?? null,
+    });
   }
   for (const r of results) {
     console.log(
-      `${r.pass ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(32)} intent=${r.intent} accept=${r.fixture.accept.join('|')} ruledOut=${r.spans.length}`,
+      `${r.pass ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(32)} intent=${r.intent} accept=${r.fixture.accept.join('|')} ruledOut=${r.spans.length} picked=${r.picked ?? '-'} title=${r.title ?? '-'}`,
     );
     if (!r.pass && r.spans.length > 0) {
       console.log(

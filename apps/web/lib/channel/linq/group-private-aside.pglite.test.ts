@@ -89,7 +89,16 @@ async function seedFamily(phone: string, name: string, kid: string, memory: stri
   return { familyId, userId, phone };
 }
 
+/** In the chat (presence, which is what an aside keys on) and joined by the parent's words. */
 async function join(f: { familyId: string; userId: string; phone: string }, at: Date) {
+  await db.database.insert(schema.linqSharedGroupPeople).values({
+    chatId: CHAT,
+    phoneE164Encrypted: encryptString(f.phone),
+    phoneE164Hash: phoneBlindIndex(f.phone),
+    familyId: f.familyId,
+    userId: f.userId,
+    seatedAt: at,
+  });
   await joinFamilyToSharedGroup(db.database, {
     chatId: CHAT,
     familyId: f.familyId,
@@ -392,7 +401,7 @@ describe('VIL-457 private aside', () => {
     expect(await asideRows()).toHaveLength(0);
   });
 
-  it('never addresses a family that left or never joined, and does nothing with no joined family', async () => {
+  it('never addresses a family that left or is not in the chat, and does nothing with no family here', async () => {
     const { ada, bao } = await twoFamilies();
     const outsider = await seedFamily('+14165550333', 'Cy', 'Zoe', 'zoe-private');
     await leaveFamilyFromSharedGroup(db.database, {
@@ -406,16 +415,30 @@ describe('VIL-457 private aside', () => {
     const r = recorder({ read: ['f2'] });
     const out = await runPrivateAside(db.database, r, turn({ senderFamilyId: ada.familyId }));
     expect(out).toEqual({ outcome: 'unknown_ref', refs: ['f2'] });
-    // Only Ada is listed: Bao left and Cy never joined or consented.
+    // Only Ada is listed: Bao's parent said they are out, and Cy is not in this chat.
     expect(r.reads[0]?.families.map((f) => f.ref)).toEqual(['f1']);
     expect(JSON.stringify(r.reads[0])).not.toMatch(/Leo|Zoe/);
     expect(r.sent.map((s) => s.familyId)).not.toContain(outsider.familyId);
     expect(r.sent).toHaveLength(0);
 
-    await db.exec('truncate table linq_multi_family_joins cascade');
+    await db.exec('truncate table linq_shared_group_people cascade');
     expect(await runPrivateAside(db.database, recorder({ read: ['f1'] }), turn())).toEqual({
       outcome: 'no_families',
     });
+  });
+
+  it('never addresses a household whose only person here stopped Hale here', async () => {
+    const { ada, bao } = await twoFamilies();
+    await db.database
+      .update(schema.linqSharedGroupPeople)
+      .set({ stoppedAt: NOW })
+      .where(eq(schema.linqSharedGroupPeople.familyId, bao.familyId));
+    const r = recorder({ read: ['f1'] });
+    await runPrivateAside(db.database, r, turn({ senderFamilyId: ada.familyId }));
+    // Positive control: Ada, still here and not stopped, is offered and hears.
+    expect(r.reads[0]?.families.map((f) => f.ref)).toEqual(['f1']);
+    expect(JSON.stringify(r.reads[0])).not.toMatch(/Leo/);
+    expect(r.sent.map((s) => s.familyId)).toEqual([ada.familyId]);
   });
 
   it("hands the read and draft the plan and this family's event times as facts", async () => {

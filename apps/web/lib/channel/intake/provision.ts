@@ -70,7 +70,12 @@ export interface ProvisionInput {
   phoneE164: string;
   phoneHash: string;
   children: readonly ProvisionChild[];
-  location: IntakeLocation;
+  /**
+   * Null when the parent declined to give a place. The family row then holds no
+   * country, code or area, and the user keeps the column's zone default: nothing is
+   * guessed from the phone number.
+   */
+  location: IntakeLocation | null;
   sourceCode: string | null;
   /** The parent's first message, stored as the consent's evidence. */
   firstMessage: string;
@@ -102,18 +107,20 @@ export interface ProvisionResult {
 async function ensureIntakeUser(
   tx: Database,
   externalAuthId: string,
-  timezone: string,
+  timezone: string | null,
 ): Promise<string> {
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null, timezone })
+    .values({ externalAuthId, email: null, name: null, ...(timezone ? { timezone } : {}) })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
   // A row created before this place was known still has the column default.
   // The postal code is the source of the zone, so the signup write wins.
-  await tx
-    .update(schema.users)
-    .set({ timezone, updatedAt: new Date() })
-    .where(eq(schema.users.externalAuthId, externalAuthId));
+  if (timezone) {
+    await tx
+      .update(schema.users)
+      .set({ timezone, updatedAt: new Date() })
+      .where(eq(schema.users.externalAuthId, externalAuthId));
+  }
 
   const [row] = await tx
     .select({ id: schema.users.id })
@@ -149,7 +156,7 @@ export async function provisionFromIntake(
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const userId = await ensureIntakeUser(tx, externalAuthId, location.timezone);
+    const userId = await ensureIntakeUser(tx, externalAuthId, location?.timezone ?? null);
 
     const [family] = await tx
       .insert(schema.families)
@@ -160,10 +167,14 @@ export async function provisionFromIntake(
         // is what the sweeps select on, and it must not flip before that row.
         onboardingStage: 'sms_intake',
         primaryLanguage: input.language && input.language.length > 0 ? input.language : 'en',
-        country: location.country,
-        countryCode: location.countryCode,
-        postalCode: location.postalCode,
-        areaCoarse: location.areaCoarse,
+        ...(location
+          ? {
+              country: location.country,
+              countryCode: location.countryCode,
+              postalCode: location.postalCode,
+              areaCoarse: location.areaCoarse,
+            }
+          : {}),
         ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
       })
       .returning({ id: schema.families.id });
@@ -301,7 +312,7 @@ export async function provisionFromIntake(
         targetId: familyId,
         after: {
           childCount: childRows.length,
-          areaCoarse: location.areaCoarse,
+          areaCoarse: location?.areaCoarse ?? null,
           sourceCode: input.sourceCode,
           referredByFamilyId,
           maskedPhone: maskPhoneE164(phoneE164),

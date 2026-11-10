@@ -26,6 +26,18 @@ describe('inventedName', () => {
     expect(inventedName('"Theo\'s"', HAY)).toBeNull();
   });
 
+  it('reads the first word of a quoted line as a sentence start, not a name', () => {
+    // coaching-night-wakeups: `the same one-line reassurance every time, like "You're safe,
+    // it's still night, back to sleep."` - the quote's grammar capitalises its first word.
+    expect(inventedName('"You\'re', HAY)).toBeNull();
+    expect(inventedName("\u201cYou're", HAY)).toBeNull();
+    // Positive controls: the same word outside a quote, and a one-word quoted name, which
+    // closes on itself and is a name claim whatever the quotes around it.
+    expect(inventedName("You're", HAY)).toBe("You're");
+    expect(inventedName('"Marcus"', HAY)).toBe('Marcus');
+    expect(inventedName('\u201cMarcus\u201d,', HAY)).toBe('Marcus');
+  });
+
   it('ignores words that make no claim about this family', () => {
     expect(inventedName('sitting', HAY)).toBeNull();
     expect(inventedName('Want', HAY)).toBeNull();

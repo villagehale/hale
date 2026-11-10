@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { type SQL, and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -10,24 +10,32 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { type FamilyAvailability, composeCommonTime, familyClock } from './common-time';
-import { linqGroupCommonTimeEnabled, linqMultiFamilyGroupsEnabled } from './config';
 import {
-  type PrivateAsideModel,
-  type PrivateAsideOutcome,
-  type SendOneToOne,
-  runPrivateAside,
-} from './group-private-aside';
+  type CommonTimePlanPorts,
+  type CommonTimeProposal,
+  latestCommonTimeProposal,
+  placePickedTime,
+} from './common-time-plan';
+import { linqGroupCommonTimeEnabled, linqMultiFamilyGroupsEnabled } from './config';
+import { linqChatAuditKey } from './family-audit';
 import {
   FREE_BUSY_CONSENT,
   freeBusyScope,
   latestFreeBusyRows,
   withdrawFreeBusyConsent,
 } from './free-busy-consent';
-import { familyFreeBusy } from './household-calendar';
+import type { GroupFamilyDirectory } from './group-plan-invites';
+import {
+  type PrivateAsideModel,
+  type PrivateAsideOutcome,
+  type SendOneToOne,
+  runPrivateAside,
+} from './group-private-aside';
+import { familyFreeBusy, formatWhen } from './household-calendar';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
@@ -112,6 +120,8 @@ export interface MultiFamilyTurnPorts {
   language?: string;
   /** VIL-459: writes the common-time line. Production: the spoken-line writer. */
   commonTimeWriter?: (request: SpokenLineRequest) => Promise<string | null>;
+  /** VIL-459: a picked time becomes a plan with per-family invites. Production: inbound. */
+  commonTimePlan?: CommonTimePlanPorts;
 }
 
 const LEFT_TEMPLATE = 'linq:multi_family_left';
@@ -188,6 +198,7 @@ async function audit(
     targetTable: string;
     targetId: string;
     after?: Record<string, unknown>;
+    occurredAt?: Date;
   },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
@@ -197,6 +208,7 @@ async function audit(
     targetTable: input.targetTable,
     targetId: input.targetId,
     after: input.after,
+    ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
   });
 }
 
@@ -430,7 +442,7 @@ export async function joinFamilyToSharedGroup(
         evidence: {
           verbatim: input.verbatim,
           interpretation:
-            input.interpretation ?? 'known Hale parent in this chat, linked by their number',
+            input.interpretation ?? 'this parent said in this chat that their family is in',
           channel: 'imessage',
         },
       })
@@ -455,7 +467,7 @@ export async function joinFamilyToSharedGroup(
       actionTaken: 'linq_multi_family_joined',
       targetTable: 'linq_multi_family_joins',
       targetId: join.id,
-      after: { chat: true, linkedBy: 'known_number' },
+      after: { chat: true, linkedBy: 'own_words' },
     });
   });
 
@@ -653,10 +665,119 @@ export async function unseatMultiFamilyMember(
 }
 
 /**
+ * A shared-chat people row is presence: it holds a number, a first name and an inferred kid
+ * name, non-customers' included, so it lives only while the person and Hale are both in the
+ * chat. Hale removed forgets the whole chat; anyone else removed forgets that one number.
+ * A STOP is the exception: CASL needs it to hold if the person or Hale comes back, so a
+ * stopped row stays as a tombstone with its number's hash and stop time, and nothing that
+ * names the person or a family. Re-adding fills the family back in from the verified number.
+ * Runs whatever the multi-family flag says: a flag may turn a send off, never retention.
+ */
+export async function forgetSharedGroupPresence(
+  database: Database,
+  input: { chatId: string; participantHandle: string | null; participantIsMe: boolean; now: Date },
+): Promise<number> {
+  const people = schema.linqSharedGroupPeople;
+  const removedPhone = input.participantHandle ? normalizePhoneE164(input.participantHandle) : null;
+  // Only Linq's own mark on the participant, or Hale's own line: one member's removal that
+  // carries `is_from_me` must never forget the whole chat.
+  const haleRemoved = input.participantIsMe || (removedPhone !== null && haleLine(removedPhone));
+  const phone = input.participantHandle ? seatablePhone(input.participantHandle) : null;
+  const scope = haleRemoved
+    ? eq(people.chatId, input.chatId)
+    : phone
+      ? and(eq(people.chatId, input.chatId), eq(people.phoneE164Hash, phoneBlindIndex(phone)))
+      : null;
+  if (!scope) return 0;
+  return forgetSharedGroupPeople(database, scope, input.now);
+}
+
+/**
+ * Forgets the shared-chat people rows `scope` matches: a row with no stop is deleted, and a
+ * stopped row keeps only its chat, number hash and stop time, so the STOP still holds when
+ * the number comes back. Presence leaving and family erasure both forget through here.
+ */
+export async function forgetSharedGroupPeople(
+  database: Database,
+  scope: SQL,
+  now: Date,
+): Promise<number> {
+  const people = schema.linqSharedGroupPeople;
+  const forgotten = await database
+    .delete(people)
+    .where(and(scope, isNull(people.stoppedAt)))
+    .returning({ id: people.id });
+  const tombstoned = await database
+    .update(people)
+    .set({
+      phoneE164Encrypted: null,
+      familyId: null,
+      userId: null,
+      firstName: null,
+      inferredKidName: null,
+      inferredFamilyLabel: null,
+      inferredRole: null,
+      updatedAt: now,
+    })
+    .where(and(scope, isNotNull(people.stoppedAt)))
+    .returning({ id: people.id });
+  if (forgotten.length + tombstoned.length > 0) {
+    console.info(
+      {
+        outcome: 'shared_group_presence_forgotten',
+        count: forgotten.length,
+        stopsKept: tombstoned.length,
+      },
+      'linq multi-family: presence forgotten',
+    );
+  }
+  return forgotten.length + tombstoned.length;
+}
+
+/**
+ * Households with someone in this chat now, in the order Hale first saw them. Presence, not
+ * a join: it is what lets Hale keep a household's own terms out of the group line and text
+ * that household its own aside. Showing its data to anyone else still takes its parent's
+ * yes. Everyone present counts for the deny list. For an aside, a household is left out once
+ * its parent said it is out of this chat (`includeLeft`), and a person who stopped Hale here
+ * does not keep their household in (`includeStopped`).
+ */
+export async function presentHouseholds(
+  database: Database,
+  chatId: string,
+  options: { includeStopped: boolean; includeLeft: boolean },
+): Promise<string[]> {
+  const people = schema.linqSharedGroupPeople;
+  const rows = await database
+    .select({ familyId: people.familyId, stoppedAt: people.stoppedAt })
+    .from(people)
+    .where(and(eq(people.chatId, chatId), isNotNull(people.familyId)))
+    .orderBy(asc(people.seatedAt), asc(people.createdAt));
+  const present = [
+    ...new Set(
+      rows
+        .filter((row) => options.includeStopped || row.stoppedAt == null)
+        .map((row) => row.familyId as string),
+    ),
+  ];
+  if (options.includeLeft) return present;
+  const joins = await database
+    .select({
+      familyId: schema.linqMultiFamilyJoins.familyId,
+      leftAt: schema.linqMultiFamilyJoins.leftAt,
+    })
+    .from(schema.linqMultiFamilyJoins)
+    .where(eq(schema.linqMultiFamilyJoins.chatId, chatId));
+  const live = new Set(joins.filter((row) => row.leftAt == null).map((row) => row.familyId));
+  const left = new Set(joins.filter((row) => row.leftAt != null).map((row) => row.familyId));
+  return present.filter((familyId) => live.has(familyId) || !left.has(familyId));
+}
+
+/**
  * Private surfaces for one audience. The shared thread always gets an empty
  * slice, and the read does not touch the family's tables. Another family
  * gets an empty slice the same way. The owning family gets its rows only
- * when its live join has a granted consent record.
+ * while someone from it is in this chat.
  */
 /** Whether this family's live join here carries its own granted, unrevoked consent for this chat. */
 async function joinConsent(
@@ -694,43 +815,41 @@ export async function readFamilySliceForAudience(
   database: Database,
   input: { chatId: string; dataFamilyId: string; audience: string },
 ): Promise<{
-  reason: 'shared_thread' | 'other_family' | 'no_consent' | 'consented';
+  reason: 'shared_thread' | 'other_family' | 'not_present' | 'present';
   slice: FamilyPrivateSlice;
 }> {
   const empty = emptyFamilySlice(input.dataFamilyId);
   if (input.audience === 'shared_thread') return { reason: 'shared_thread', slice: empty };
   if (input.audience !== input.dataFamilyId) return { reason: 'other_family', slice: empty };
 
-  const consent = await joinConsent(database, input.chatId, input.dataFamilyId);
-  if (!consent.consentRecordId) {
+  const present = await presentHouseholds(database, input.chatId, {
+    includeStopped: true,
+    includeLeft: true,
+  });
+  if (!present.includes(input.dataFamilyId)) {
     await audit(database, {
       familyId: input.dataFamilyId,
       actor: 'system',
       actionTaken: 'linq_multi_family_data_refused',
-      targetTable: 'linq_multi_family_joins',
+      targetTable: 'linq_shared_group_people',
       targetId: input.dataFamilyId,
-      after: { reason: 'no_consent' },
+      after: { reason: 'not_present' },
     });
-    return { reason: 'no_consent', slice: empty };
+    return { reason: 'not_present', slice: empty };
   }
-  if (!consent.allowed) {
-    await audit(database, {
-      familyId: input.dataFamilyId,
-      actor: 'system',
-      actionTaken: 'linq_multi_family_data_refused',
-      targetTable: 'consent_records',
-      targetId: consent.consentRecordId,
-      after: { reason: 'no_consent' },
-    });
-    return { reason: 'no_consent', slice: empty };
-  }
+  return { reason: 'present', slice: await readFamilyPrivateSlice(database, input.dataFamilyId) };
+}
 
-  // Consented path only: the owning family's live calendar rows, rendered as
-  // clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone so
-  // the private aside can compare plan times (privateTimesOf). This list is read
-  // for the family's own 1:1 aside and for the shared-thread deny list; a
-  // shared-thread send never carries it (shared_thread / other_family above get
-  // an empty slice before any table is touched).
+/**
+ * One family's private terms, ungated. Its callers gate it: the family's own aside reads it
+ * only while the family is present, and the deny list reads it only to refuse those terms.
+ * Calendar rows are clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone
+ * so the private aside can compare plan times (privateTimesOf).
+ */
+async function readFamilyPrivateSlice(
+  database: Database,
+  familyId: string,
+): Promise<FamilyPrivateSlice> {
   const [kids, facts, mail, bookings, events, zoneRows] = await Promise.all([
     database
       .select({
@@ -740,28 +859,28 @@ export async function readFamilySliceForAudience(
         dateOfBirth: schema.children.dateOfBirth,
       })
       .from(schema.children)
-      .where(eq(schema.children.familyId, input.dataFamilyId)),
+      .where(eq(schema.children.familyId, familyId)),
     database
       .select({
         familyId: schema.familyMemoryFacts.familyId,
         factKey: schema.familyMemoryFacts.factKey,
       })
       .from(schema.familyMemoryFacts)
-      .where(eq(schema.familyMemoryFacts.familyId, input.dataFamilyId)),
+      .where(eq(schema.familyMemoryFacts.familyId, familyId)),
     database
       .select({
         familyId: schema.emailForwardsPending.familyId,
         subject: schema.emailForwardsPending.subject,
       })
       .from(schema.emailForwardsPending)
-      .where(eq(schema.emailForwardsPending.familyId, input.dataFamilyId)),
+      .where(eq(schema.emailForwardsPending.familyId, familyId)),
     database
       .select({
         familyId: schema.activityBookings.familyId,
         title: schema.activityBookings.title,
       })
       .from(schema.activityBookings)
-      .where(eq(schema.activityBookings.familyId, input.dataFamilyId)),
+      .where(eq(schema.activityBookings.familyId, familyId)),
     database
       .select({
         familyId: schema.familyEvents.familyId,
@@ -771,12 +890,12 @@ export async function readFamilySliceForAudience(
         sensitive: schema.familyEvents.sensitive,
       })
       .from(schema.familyEvents)
-      .where(and(eq(schema.familyEvents.familyId, input.dataFamilyId), householdFamilyEvent())),
+      .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent())),
     database
       .select({ timezone: schema.users.timezone })
       .from(schema.familyMembers)
       .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
-      .where(eq(schema.familyMembers.familyId, input.dataFamilyId))
+      .where(eq(schema.familyMembers.familyId, familyId))
       .limit(1),
   ]);
   // `users.timezone` defaults to UTC (migration 0178) and that value means "never
@@ -788,37 +907,45 @@ export async function readFamilySliceForAudience(
       : DEFAULT_TIMEZONE;
 
   return {
-    reason: 'consented',
-    slice: {
-      familyId: input.dataFamilyId,
-      children: kids.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.name),
-      memory: facts.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.factKey),
-      // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
-      // one parent's own Google mirror is excluded by the household-row predicate.
-      calendar: events
-        .filter((row) => row.familyId === input.dataFamilyId)
-        .filter(
-          (row) =>
-            !isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, kids, new Date()),
-        )
-        .map((row) => `${row.title} · ${formatDateTime(row.startsAt, zone)}`),
-      email: mail.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.subject),
-      signups: bookings
-        .filter((row) => row.familyId === input.dataFamilyId)
-        .map((row) => row.title),
-    },
+    familyId: familyId,
+    children: kids.filter((row) => row.familyId === familyId).map((row) => row.name),
+    memory: facts.filter((row) => row.familyId === familyId).map((row) => row.factKey),
+    // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
+    // one parent's own Google mirror is excluded by the household-row predicate.
+    calendar: events
+      .filter((row) => row.familyId === familyId)
+      .filter(
+        (row) =>
+          !isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, kids, new Date()),
+      )
+      .map((row) => `${row.title} · ${formatDateTime(row.startsAt, zone)}`),
+    email: mail.filter((row) => row.familyId === familyId).map((row) => row.subject),
+    signups: bookings.filter((row) => row.familyId === familyId).map((row) => row.title),
   };
 }
 
+/**
+ * Every household whose terms must stay out of the group line: anyone present, any live join
+ * (present or not), and the family whose group this chat is. A union, so losing one source
+ * (a forgotten presence row, an ended seat) never narrows it.
+ */
 async function denyListForChat(database: Database, chatId: string): Promise<string[]> {
-  const joins = await liveJoins(database, chatId);
+  const [present, joins, hosts] = await Promise.all([
+    presentHouseholds(database, chatId, { includeStopped: true, includeLeft: true }),
+    liveJoins(database, chatId),
+    database
+      .select({ id: schema.families.id })
+      .from(schema.families)
+      .where(eq(schema.families.linqGroupChatId, chatId)),
+  ]);
+  const households = new Set([
+    ...present,
+    ...joins.map((join) => join.familyId),
+    ...hosts.map((host) => host.id),
+  ]);
   const tokens: string[] = [];
-  for (const join of joins) {
-    const { slice } = await readFamilySliceForAudience(database, {
-      chatId,
-      dataFamilyId: join.familyId,
-      audience: join.familyId,
-    });
+  for (const familyId of households) {
+    const slice = await readFamilyPrivateSlice(database, familyId);
     tokens.push(...slice.children, ...slice.memory, ...slice.email, ...slice.signups);
     // Calendar titles block leaks too; the clock suffix is not a deny token.
     tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));
@@ -898,41 +1025,6 @@ async function rememberHandle(
     userId: channel?.userId ?? null,
     now: input.now,
   });
-}
-
-async function linkKnownFamilies(
-  database: Database,
-  input: { chatId: string; people: readonly PersonRow[]; verbatim: string; now: Date },
-): Promise<void> {
-  const seen = new Set<string>();
-  for (const person of input.people) {
-    if (!person.familyId || !person.userId || seen.has(person.familyId)) continue;
-    seen.add(person.familyId);
-    const parentPhone = await phoneForHash(database, person.phoneE164Hash);
-    if (!parentPhone) continue;
-    await joinFamilyToSharedGroup(database, {
-      chatId: input.chatId,
-      familyId: person.familyId,
-      userId: person.userId,
-      phone: parentPhone,
-      verbatim: input.verbatim,
-      now: input.now,
-      interpretation: 'known Hale parent in this chat, linked by their number',
-    });
-  }
-}
-
-async function phoneForHash(database: Database, hash: string): Promise<string | null> {
-  const rows = await database
-    .select({
-      phoneE164Encrypted: schema.parentChannels.phoneE164Encrypted,
-      phoneE164Hash: schema.parentChannels.phoneE164Hash,
-    })
-    .from(schema.parentChannels)
-    .where(eq(schema.parentChannels.phoneE164Hash, hash));
-  const row = rows[0];
-  if (!row) return null;
-  return decryptString(row.phoneE164Encrypted);
 }
 
 function distinctFamilies(people: readonly PersonRow[]): string[] {
@@ -1044,9 +1136,10 @@ async function privateAsideFor(
 }
 
 /**
- * VIL-459 — "when can we all do it?" in a shared group. Each joined family whose join
- * carries its consent for this chat is read as free/busy only (spans, never a title);
- * every other family, and one with no calendar syncing, is asked instead of guessed at.
+ * VIL-459 — "when can we all do it?" in a shared group. Every household present here is
+ * in the proposal. One whose own parent's words joined it to this chat is read as free/busy
+ * only (spans, never a title); every other household, and one with no calendar syncing, is
+ * asked instead of guessed at. A parent's own ask is those words for their household.
  * Times the chat ruled out arrive read by the model. Each family's own zone and quiet
  * hours bound every proposal; a zone never set is read on the asking family's clock.
  * The model writes the line from those facts, or nothing is sent. Null: no family here
@@ -1062,18 +1155,26 @@ async function proposeCommonTime(
     host: { familyId: string; parentUserId: string };
     askerFamilyId: string;
     /** The asking parent, when the sender is a known Hale parent; null for a guest. */
-    asker: { familyId: string; userId: string } | null;
+    asker: { familyId: string; userId: string; phone: string } | null;
     verbatim: string;
     people: readonly PersonRow[];
     ruledOut: readonly RuledOutSpan[];
+    /** What the group is planning, read from the ask; the plan's title when a time is picked. */
+    planTitle: string | null;
     ports: MultiFamilyTurnPorts;
   },
 ): Promise<Extract<MultiFamilyTurnResult, { handled: true }> | null> {
-  const joins = (await liveJoins(database, input.chatId)).sort(
-    (a, b) =>
-      Number(b.familyId === input.askerFamilyId) - Number(a.familyId === input.askerFamilyId),
-  );
   if (input.asker) {
+    await joinFamilyToSharedGroup(database, {
+      chatId: input.chatId,
+      familyId: input.asker.familyId,
+      userId: input.asker.userId,
+      phone: input.asker.phone,
+      verbatim: input.verbatim,
+      now: input.now,
+      interpretation:
+        'this parent asked Hale to find a time for everyone in this chat, which counts their own family in',
+    });
     await recordFreeBusyConsent(database, {
       chatId: input.chatId,
       familyId: input.asker.familyId,
@@ -1082,15 +1183,15 @@ async function proposeCommonTime(
       now: input.now,
     });
   }
-  const seen = new Set<string>();
+  const households = (
+    await presentHouseholds(database, input.chatId, { includeStopped: true, includeLeft: true })
+  ).sort((a, b) => Number(b === input.askerFamilyId) - Number(a === input.askerFamilyId));
   const loaded: { family: Omit<FamilyAvailability, 'timeZone'>; timeZone: string | null }[] = [];
-  for (const join of joins) {
-    if (seen.has(join.familyId)) continue;
-    seen.add(join.familyId);
-    const label = familyLabel(input.people, join.familyId, loaded.length);
-    const consent = await joinConsent(database, input.chatId, join.familyId);
+  for (const familyId of households) {
+    const label = familyLabel(input.people, familyId, loaded.length);
+    const consent = await joinConsent(database, input.chatId, familyId);
     const sharing = consent.allowed
-      ? await freeBusyConsenters(database, input.chatId, join.familyId)
+      ? await freeBusyConsenters(database, input.chatId, familyId)
       : [];
     const [first] = sharing;
     if (!first) {
@@ -1098,12 +1199,12 @@ async function proposeCommonTime(
       loaded.push({ timeZone: null, family: { label, busy: null } });
       continue;
     }
-    const clock = await familyClock(database, join.familyId, first);
+    const clock = await familyClock(database, familyId, first);
     loaded.push({
       timeZone: clock.timeZone,
       family: {
         label,
-        busy: await familyFreeBusy(database, join.familyId, sharing, input.now),
+        busy: await familyFreeBusy(database, familyId, sharing, input.now),
         quietStartHour: clock.quietStartHour,
         quietEndHour: clock.quietEndHour,
       },
@@ -1158,7 +1259,14 @@ async function proposeCommonTime(
     actionTaken: 'linq_multi_family_common_time_proposed',
     targetTable: 'linq_multi_family_joins',
     targetId: input.host.familyId,
-    after: { ...counts, slots: composed.slots.map((slot) => slot.toISOString()), notice },
+    after: {
+      ...counts,
+      ...linqChatAuditKey(input.chatId),
+      slots: composed.slots.map((slot) => slot.toISOString()),
+      ...(input.planTitle ? { title: input.planTitle } : {}),
+      notice,
+    },
+    occurredAt: input.now,
   });
   return { handled: true, outcome: 'common_time_proposed', count: 'intake', notice };
 }
@@ -1170,6 +1278,90 @@ async function proposeCommonTime(
 function familyLabel(people: readonly PersonRow[], familyId: string, index: number): string {
   const named = people.find((row) => row.familyId === familyId && row.firstName?.trim());
   return named?.firstName?.trim() || `family ${index + 1}`;
+}
+
+/**
+ * VIL-459 — the families a plan made in this chat can reach: each live join that still
+ * carries that family's own consent for this chat. A family that left, or whose consent
+ * is gone, is not here, so its calendar is never touched.
+ */
+function joinedFamiliesDirectory(
+  database: Database,
+  people: readonly PersonRow[],
+): GroupFamilyDirectory {
+  return {
+    async familiesInGroup(chatId) {
+      const seen = new Set<string>();
+      const families: Awaited<ReturnType<GroupFamilyDirectory['familiesInGroup']>> = [];
+      for (const join of await liveJoins(database, chatId)) {
+        if (seen.has(join.familyId)) continue;
+        seen.add(join.familyId);
+        if (!(await joinConsent(database, chatId, join.familyId)).allowed) continue;
+        families.push({
+          familyId: join.familyId,
+          label: familyLabel(people, join.familyId, families.length),
+          memberFirstNames: people
+            .filter((row) => row.familyId === join.familyId && !row.stoppedAt && row.firstName)
+            .map((row) => row.firstName as string),
+        });
+      }
+      return families;
+    },
+  };
+}
+
+/**
+ * VIL-459 — someone in a linked family settled on one of the times Hale offered. The
+ * proposal becomes a plan at that time and each family that said it is in gets its own
+ * calendar copy and invite (VIL-455). Hale says nothing more in the group: the invites
+ * are the answer.
+ */
+async function pickCommonTime(
+  database: Database,
+  input: {
+    chatId: string;
+    proposal: CommonTimeProposal;
+    picked: Date;
+    planTitle: string | null;
+    asker: { familyId: string; userId: string };
+    people: readonly PersonRow[];
+    ports: MultiFamilyTurnPorts;
+  },
+): Promise<Extract<MultiFamilyTurnResult, { handled: true }>> {
+  const title = input.proposal.title ?? input.planTitle;
+  if (!title) {
+    console.warn({ outcome: 'common_time_pick_untitled' }, 'linq multi-family: pick not placed');
+    return { handled: true, outcome: 'common_time_pick_untitled', count: 'ignored' };
+  }
+  if (!input.ports.commonTimePlan) {
+    console.warn({ outcome: 'common_time_pick_unwired' }, 'linq multi-family: pick not placed');
+    return { handled: true, outcome: 'common_time_pick_unwired', count: 'ignored' };
+  }
+  const report = await placePickedTime(
+    database,
+    {
+      chatId: input.chatId,
+      proposal: input.proposal,
+      picked: input.picked,
+      title,
+      picker: input.asker,
+      directory: joinedFamiliesDirectory(database, input.people),
+      names: new Map(
+        input.people.flatMap((row) => (row.userId ? [[row.userId, row.firstName]] : [])),
+      ),
+      stopped: new Set(
+        input.people.flatMap((row) => (row.userId && row.stoppedAt ? [row.userId] : [])),
+      ),
+    },
+    input.ports.commonTimePlan,
+  );
+  if (report.status === 'picker_not_joined') {
+    return { handled: true, outcome: 'common_time_pick_not_joined', count: 'ignored' };
+  }
+  if (report.status === 'picker_stopped') {
+    return { handled: true, outcome: 'common_time_pick_stopped', count: 'ignored' };
+  }
+  return { handled: true, outcome: 'common_time_picked', count: 'intake', notice: report.status };
 }
 
 /**
@@ -1326,19 +1518,11 @@ export async function takeMultiFamilyTurn(
     }
   }
 
-  const people = await peopleInChat(database, input.chatId);
-  const families = distinctFamilies(people);
+  const live = await peopleInChat(database, input.chatId);
+  const families = distinctFamilies(live);
   const joins = await liveJoins(database, input.chatId);
   if (families.length < 2 && joins.length < 2) return { handled: false };
 
-  await linkKnownFamilies(database, {
-    chatId: input.chatId,
-    people,
-    verbatim: input.text || 'known number in this chat',
-    now: input.now,
-  });
-
-  const live = await peopleInChat(database, input.chatId);
   const me = live.find((row) => row.phoneE164Hash === sender.phoneE164Hash) ?? sender;
   const channel = me.familyId && me.userId ? { familyId: me.familyId, userId: me.userId } : null;
   const ledgerFamily = channel?.familyId ?? (await hostLedger(database, input.chatId, me.familyId));
@@ -1384,6 +1568,14 @@ export async function takeMultiFamilyTurn(
   const opt = wired.optOut ? await wired.optOut(input.text) : null;
   const commonTimeOn = linqGroupCommonTimeEnabled();
   const askerZone = commonTimeOn ? await knownHouseholdTimezone(database, familyId) : null;
+  const proposal =
+    commonTimeOn && channel
+      ? await latestCommonTimeProposal(database, {
+          chatId: input.chatId,
+          familyIds: (await liveJoins(database, input.chatId)).map((join) => join.familyId),
+          now: input.now,
+        })
+      : null;
   const reader = wired.reader ?? sharedGroupReader();
   const reaction = input.targetIsHale === false ? null : reactionAsVote(input.reactionType ?? null);
   const reading: SharedGroupReading = reader
@@ -1398,6 +1590,16 @@ export async function takeMultiFamilyTurn(
         })),
         recent: context.threadTexts.map((text) => ({ from: 'member' as const, text })),
         ...(askerZone ? { clock: { now: input.now.toISOString(), timeZone: askerZone } } : {}),
+        ...(proposal
+          ? {
+              offered: proposal.slots.map((slot) => ({
+                start: slot.toISOString(),
+                local: askerZone
+                  ? formatWhen(slot, askerZone, acceptReplyLanguage(wired.language ?? 'en') ?? 'en')
+                  : null,
+              })),
+            }
+          : {}),
       })
     : {
         intent:
@@ -1505,6 +1707,19 @@ export async function takeMultiFamilyTurn(
         updatedAt: input.now,
       })
       .where(eq(schema.linqSharedGroupPeople.id, me.id));
+    // A household joins only on its own parent's words here; nothing joins it for them.
+    if (intent === 'join' && channel) {
+      const joined = await joinFamilyToSharedGroup(database, {
+        chatId: input.chatId,
+        familyId: channel.familyId,
+        userId: channel.userId,
+        phone,
+        verbatim: input.text,
+        now: input.now,
+        send: wired.send,
+      });
+      return { handled: true, outcome: joined.outcome, count: 'intake' };
+    }
     if (intent === 'who_i_am' && reading.role !== 'unclear') {
       const notice = await speak(database, {
         familyId: host.familyId,
@@ -1559,16 +1774,31 @@ export async function takeMultiFamilyTurn(
       language,
       host,
       askerFamilyId: familyId,
-      asker: channel,
+      asker: channel ? { ...channel, phone } : null,
       verbatim: input.text,
       people: live,
       ruledOut: reading.ruledOut ?? [],
+      planTitle: reading.planTitle ?? null,
       ports: wired,
     });
     if (proposed) {
       const aside = await runAside();
       return aside ? { ...proposed, aside: aside.outcome } : proposed;
     }
+  }
+
+  if (intent === 'pick_time' && commonTimeOn && channel && proposal && reading.picked) {
+    const picked = await pickCommonTime(database, {
+      chatId: input.chatId,
+      proposal,
+      picked: reading.picked,
+      planTitle: reading.planTitle ?? null,
+      asker: channel,
+      people: live,
+      ports: wired,
+    });
+    const aside = await runAside();
+    return aside ? { ...picked, aside: aside.outcome } : picked;
   }
 
   if (intent === 'question' || intent === 'find_time' || intent === 'yes' || intent === 'no') {
@@ -1662,12 +1892,6 @@ export async function noticeSharedGroupAdded(
   }
   const people = await peopleInChat(database, input.chatId);
   if (distinctFamilies(people).length < 2) return { handled: false };
-  await linkKnownFamilies(database, {
-    chatId: input.chatId,
-    people,
-    verbatim: 'Hale added to this chat',
-    now: input.now,
-  });
   const host = await hostLedger(
     database,
     input.chatId,

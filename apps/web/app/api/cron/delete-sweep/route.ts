@@ -23,10 +23,9 @@ export const runtime = 'nodejs';
  * a thirty-day stamp and are purged here rather than on their own feature's cron for one
  * reason: that cron is behind the F14 dark-launch flag, and a retention promise that
  * stops being kept when a feature flag flips is not a retention promise. The Linq group
- * roster's numbers ride on this same cron, but only while group onboarding v2 is on.
- * Flag off the call returns `flag_off` and releases nothing, which is today's sweep.
- * 0158 and 0159 have to be applied together before that flag goes on: 0159 is what
- * makes the number column nullable, and the release UPDATE throws if it is still NOT NULL.
+ * roster's numbers ride on this same cron for the same reason, whatever the group flags
+ * say. 0159 is what makes the number column nullable; the release UPDATE throws if it is
+ * still NOT NULL.
  *
  * MESSAGE RETENTION IS NOT FLAG-GATED. A message body or transcript older than
  * 365 days is removed on this same hourly run (`sweepMessageRetention`). The

@@ -396,6 +396,86 @@ describe('the scheduled re-read of a watched registration page', () => {
     expect(p.asked).toHaveLength(1);
   });
 
+  describe('a change note owed when the household stops the ladder', () => {
+    /** Heads-up told, then the move is seen on a tick where the gate holds the parent,
+     * so the change stays owed on the row for a later tick to send. */
+    async function owedChange(name: string) {
+      const windowId = await seedWindow('larchmere', PAGE);
+      const family = await seedLadder(name, windowId);
+      const p = ports(new Map([[family.familyId, family.parentUserId]]));
+      p.pages.set(PAGE, verified(PAGE, STORED));
+      await runRegistrationSequenceCron(db.database, p.deps, HEADS_UP);
+      const open = p.deps.buildGate;
+      p.deps.buildGate = (database) => ({ ...open(database), channelEnrolled: async () => false });
+      p.pages.set(PAGE, verified(PAGE, MOVED));
+      const held = await runRegistrationSequenceCron(db.database, p.deps, MOVE_SEEN);
+      expect(held.dateMovedSent).toBe(0);
+      expect((await sequenceRow(family.sequenceId)).pendingChange).toMatchObject({
+        to: MOVED.toISOString(),
+      });
+      p.deps.buildGate = open;
+      return { windowId, family, p };
+    }
+    const LATER = new Date(MOVE_SEEN.getTime() + 5 * 60_000);
+
+    it('sends nothing and clears the change once the household opted out', async () => {
+      const { windowId, family, p } = await owedChange('Opted Out Family');
+      const [sequence] = await db.database
+        .select({ actionId: schema.registrationSequences.actionId })
+        .from(schema.registrationSequences)
+        .where(eq(schema.registrationSequences.id, family.sequenceId));
+      await db.database
+        .update(schema.actions)
+        .set({ revertedAt: MOVE_SEEN })
+        .where(eq(schema.actions.id, sequence?.actionId as string));
+
+      const result = await runRegistrationSequenceCron(db.database, p.deps, LATER);
+
+      expect(result.dateMovedSent).toBe(0);
+      expect(result.dateMovedDropped).toBe(1);
+      expect(p.moved).toEqual([]);
+      expect(p.transport.bodies()).toHaveLength(1);
+      expect((await sequenceRow(family.sequenceId)).pendingChange).toBeNull();
+      const trail = await audits(family.familyId);
+      expect(trail.find((a) => a.actionTaken === 'registration_date_moved_dropped')?.after).toEqual(
+        { windowId, outcome: 'registration_date_moved_dropped', reason: 'not_opted_in' },
+      );
+      expect(trail.filter((a) => a.actionTaken === 'registration_date_moved_sent')).toEqual([]);
+    });
+
+    it('sends nothing and clears the change once the parent reported an outcome', async () => {
+      const { windowId, family, p } = await owedChange('Waitlisted Family');
+      await db.database
+        .update(schema.registrationSequences)
+        .set({ outcome: 'waitlisted' })
+        .where(eq(schema.registrationSequences.id, family.sequenceId));
+
+      const result = await runRegistrationSequenceCron(db.database, p.deps, LATER);
+
+      expect(result.dateMovedSent).toBe(0);
+      expect(result.dateMovedDropped).toBe(1);
+      expect(p.moved).toEqual([]);
+      expect(p.transport.bodies()).toHaveLength(1);
+      expect((await sequenceRow(family.sequenceId)).pendingChange).toBeNull();
+      const trail = await audits(family.familyId);
+      expect(trail.find((a) => a.actionTaken === 'registration_date_moved_dropped')?.after).toEqual(
+        { windowId, outcome: 'registration_date_moved_dropped', reason: 'outcome_reported' },
+      );
+    });
+
+    it('still sends one note to a household that stayed opted in', async () => {
+      const { family, p } = await owedChange('Still Opted In Family');
+
+      const result = await runRegistrationSequenceCron(db.database, p.deps, LATER);
+
+      expect(result.dateMovedSent).toBe(1);
+      expect(result.dateMovedDropped).toBe(0);
+      expect(p.moved).toHaveLength(1);
+      expect(p.transport.bodies()).toHaveLength(2);
+      expect((await sequenceRow(family.sequenceId)).pendingChange).toBeNull();
+    });
+  });
+
   it('shadow logs a moved page and stores no date', async () => {
     vi.stubEnv('REGISTRATION_DATE_CHECK', 'shadow');
     const windowId = await seedWindow('larchmere', PAGE);

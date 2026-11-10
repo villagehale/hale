@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Dans ce cas je ne peux pas te trouver d'activités près de chez toi, donc on laisse le code de côté. Par contre, quel est le prénom de ton enfant (ou de tes enfants)?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 1764
+}

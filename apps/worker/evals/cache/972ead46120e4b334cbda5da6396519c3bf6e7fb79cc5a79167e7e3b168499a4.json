@@ -1,0 +1,50 @@
+{
+  "response": {
+    "id": "msg_011CgtS16vtKX4goGoF4NrTA",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpAkKEAgTGAI4AUIIdGhpbmtpbmcSDIZ749lA7o3d60AzixoMLepBCDR8RiUAaMM0IjAdZhXeKr8hXVqVMecSVfkCY/pgbe7YipoL+Ted9dhFoMmxl2/JBb3PocPGHmf7kewqwQjPyp+2zVLLXdF52FsYADCnMcnzuj1ekT0YczFGB73L7JSv9cqUvUrXGG2qAxeJV4nNfcpEYZ20LL0Ti7qzHPNV5/vPWFFCl2kyVir4DE1reEOeU4mAV05/cOzQP7xn9NdU7mlZxNTJn2lOLW7/f1Cfvxej07t5Qm19PltHWO/BNVbd/krzc69vpQUd49nmALV48+JNP5Ra/92pnMFLpN3WmIEam1S6esCzs1kDroyU1Hk4cJgIfahMlqXhoplTCyXCuBdx0eMwx3rUMVfpBLDeIQzXyDmIGtt2LCrVQLtqO1vi5tBT3r4LGPFPIaAbOprJ1eZPbHKcAzrMi44yMOzE81A2ItRKFa6z6ReIwu5rwdEtybmfbEpOXCegLnaINrLvAIoKjPmGxox4lYtQngGlNxi/y47e0dSQe53rJwA4v2Mo3mml0PtW/tAIJLrMXlV/Bfrl6zi/6AzihL9IQaOWMTx6mypmfqwAODimAl9qGpkrk+n5vHH32QJ7hOBxDvdep0HK1sfG3WtHjC/3hz5/pTO9smbNeHB7oa+g6FefJmEiDaai0OZLcdmxqT8WMd+vqi04ZnZgdVeZodh3kYDufODNXrqbqCTDuJ5yj6+9AqAuNjONT/OjTzp6zDnHjhbEXADgrfJD+ysyYQpYCIUW8vpEkMUUQm58NAdoWqQxcpKJSCCG2u1IbHjRyel9LmRiMkmFQR+gHw8xbEFVWX4jriPXalNv1sF03dqY+4TVS1UmNI81Gc7ypomn2r19tATo6BhG4zhVwY5ceGZr61Z2Gn8cfuu8FF6eUiRPhDnz4ee2Aw/WDWo3E4ZaSr0Vu5mIi5hr9l4kNtc8vcG7z21IIJb8fWlQeVkTZaRZThlPMA96PBbP1rtvhf9pfSUjNarmVBsn+SnRtIm9NCgKGOe9pA0RRpbOXOx9UUKGg2QQmE8nMw5IxIhhbmrP+bOAFm0WrHz9dCqDZ9lNHJDdyDj8szYjbSvKy9ADxtdpNrnL7kuTVfGK+l1by8pbeYfhLkgrBTZEyIQ4tbkx6ZVWhwHPDADlcHptUPXI6kyhHJtLv1YMIV3D2p94Ri21OrlYX+t+sZ5OXrVhTcznCwBVWxZ/X8WO5HwB0hZQF03jX0Q7mwz2OGLEik6B5XDYC84od6EJXlDRfLBf6KgAT/3iHijOkqKtH+oB7OAhs0yKJsT7UCz+4vFQDmYlAGdO8ZQNaUIo3zihTgme0cm/LN941QS/uDAQ6JlPAL59Q8Ojb77UsPi3qQgWUHUqLNXNpNkev+s4VYzr/qykTLZwD6JCJMkrh9THHL4M5YT8h7q4cDnI6vBs0cBibFTzP1ShLHwd1WMP+PNds1q099lFvsBcUI3OSr+O+jqCULfAS1cPxS1XwNcjwCS/AzBR1DA5zaAFQxg7AANjy0019mNdabtgEVyWk/8z+CuOl2enpYC8MvdRqoYYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Got it. I'll keep an eye on Cartwheels for Remy's fall Tiny Gym dates and text you as soon as they're posted."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014xih8ES7nWRFDK2GyjsciP",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "Cartwheels toddler Tiny Gym fall dates",
+          "childId": "kid-remy"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 894,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22908,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 346,
+      "output_tokens_details": {
+        "thinking_tokens": 200
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4660
+}

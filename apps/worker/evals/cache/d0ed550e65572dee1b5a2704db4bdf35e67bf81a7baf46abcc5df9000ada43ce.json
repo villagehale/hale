@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It gives the reason plainly (the link isn't secure), carries no link and says nothing was saved. It asks once for the course page from Springfield's portal, which is right for not_https, in a friendly English tone. 'I'll pick it up from there' is a natural follow-on to the handed request, not a new promise.",
+    "score": 5
+  }
+}

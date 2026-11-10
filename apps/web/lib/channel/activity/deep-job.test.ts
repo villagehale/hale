@@ -253,6 +253,32 @@ describe('runDeepResearchJob', () => {
     ]);
   });
 
+  it('carries a registration date the merge put past the text cut', async () => {
+    const undated = { ...SLOT, registration: null };
+    const registrationRow = {
+      ...SLOT,
+      name: 'Fall registration (covers Tiny Gym)',
+      when: null,
+      price: null,
+      registration: 'Open since July 22',
+    };
+    const h = harness({
+      result: {
+        ...READ,
+        slots: [undated, { ...undated, name: 'Tiny Gym (schedule)' }, registrationRow],
+      },
+    });
+
+    await runDeepResearchJob(database, PAYLOAD, h.deps, NOW);
+
+    const picks = (h.composed[0] as { picks: { name: string }[] }).picks;
+    expect(picks.map((pick) => pick.name)).toEqual([
+      'Tiny Gym, Cartwheels Gym Centre',
+      'Tiny Gym (schedule)',
+      'Fall registration (covers Tiny Gym)',
+    ]);
+  });
+
   it('claims the send under the SAME dedupe key the hourly sweep would use', async () => {
     const h = harness();
     const keys: string[] = [];
