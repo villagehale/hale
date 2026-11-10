@@ -1,14 +1,20 @@
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import { INTAKE_CONTENT_REDACTED, redactIntakeSessionsById } from '~/lib/rights/message-retention';
 import { decodeIntakeForRecovery, isUnreadableIntakeBlob } from './session';
 
-/** Joins a colliding provider id to the random suffix of the second number's own row. */
+/** Joins a colliding provider id to a digest of the second number. The digest is not the
+ * number: phone_hash stays its own column, and a replay of the same pair writes this same
+ * key, so two deliveries cannot leave two rows. */
 const COLLISION_KEY_INFIX = '#collision:';
+
+function collisionKeyOf(providerMessageId: string, phoneHash: string): string {
+  return `${providerMessageId}${COLLISION_KEY_INFIX}${createHash('sha256').update(phoneHash).digest('hex')}`;
+}
 
 /** A hold on one text, released once that text is read. */
 export const MESSAGE_HOLD = 'message';
@@ -51,8 +57,9 @@ export type HoldOutcome = 'held' | 'already_held' | 'held_id_collision';
  * hold above, and the legacy re-point in opt-out-recovery.ts). The provider id is the key
  * across every transport, so an id another number's text already holds never holds this
  * number by nothing. Fail closed: this number gets a collision hold of its own, under a key
- * no store can place, which only an operator clears. The key names no number; a replay
- * finds the row by the id it extends and its own phone_hash.
+ * no store can place, which only an operator clears. The key names no number. A second
+ * delivery of the same pair writes that same key and returns already_held, so it cannot
+ * leave a second row.
  */
 export async function placeHold(
   database: Database,
@@ -70,24 +77,16 @@ export async function placeHold(
     .where(eq(schema.optOutHeldMessages.providerMessageId, input.providerMessageId))
     .limit(1);
   if (existing?.phoneHash === input.phoneHash) return 'already_held';
-  const prefix = `${input.providerMessageId}${COLLISION_KEY_INFIX}`;
-  const [replayed] = await database
-    .select({ id: schema.optOutHeldMessages.providerMessageId })
-    .from(schema.optOutHeldMessages)
-    .where(
-      and(
-        eq(schema.optOutHeldMessages.phoneHash, input.phoneHash),
-        ne(schema.optOutHeldMessages.kind, MESSAGE_HOLD),
-        sql`starts_with(${schema.optOutHeldMessages.providerMessageId}, ${prefix})`,
-      ),
-    )
-    .limit(1);
-  if (replayed) return 'already_held';
-  await database.insert(schema.optOutHeldMessages).values({
-    ...input,
-    providerMessageId: `${prefix}${randomUUID()}`,
-    kind: ID_COLLISION_HOLD,
-  });
+  const collision = await database
+    .insert(schema.optOutHeldMessages)
+    .values({
+      ...input,
+      providerMessageId: collisionKeyOf(input.providerMessageId, input.phoneHash),
+      kind: ID_COLLISION_HOLD,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.optOutHeldMessages.providerMessageId });
+  if (collision.length === 0) return 'already_held';
   // A site of its own, so an unrelated failed hold this hour cannot use up its page.
   await pageOps(database, { site: 'opt_out_hold_id_collision', facts: {} });
   return 'held_id_collision';

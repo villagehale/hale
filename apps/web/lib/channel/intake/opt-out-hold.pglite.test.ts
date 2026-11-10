@@ -135,6 +135,35 @@ describe('#868 failed-read hold', () => {
     expect(await releaseHeldMessage(db, 'pm-shared')).toBe('released');
     expect(await isSenderHeld(db, 'hash-one')).toBe(false);
     expect(await isSenderHeld(db, 'hash-two')).toBe(true);
+    // The replay kept the same one row: the key is determined by the pair, so a second
+    // insert cannot leave another hold for the operator to miss.
+    const two = await db
+      .select({ id: schema.optOutHeldMessages.providerMessageId })
+      .from(schema.optOutHeldMessages)
+      .where(eq(schema.optOutHeldMessages.phoneHash, 'hash-two'));
+    expect(two).toHaveLength(1);
+    expect(two[0]?.id).toBe(collisionKey);
+  }, 30_000);
+
+  it('two deliveries of one colliding text hold that number once', async () => {
+    const db = (await createTestDb()).database;
+    const now = new Date('2026-10-14T20:00:00Z');
+    const posted = stubWebhook();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await holdSender(db, { phoneHash: 'hash-one', providerMessageId: 'pm-shared', now });
+
+    const outcomes = await Promise.all([
+      holdSender(db, { phoneHash: 'hash-two', providerMessageId: 'pm-shared', now }),
+      holdSender(db, { phoneHash: 'hash-two', providerMessageId: 'pm-shared', now }),
+    ]);
+    expect(outcomes.sort()).toEqual(['already_held', 'held_id_collision']);
+    const two = await db
+      .select({ id: schema.optOutHeldMessages.providerMessageId })
+      .from(schema.optOutHeldMessages)
+      .where(eq(schema.optOutHeldMessages.phoneHash, 'hash-two'));
+    expect(two).toHaveLength(1);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('opt_out_hold_id_collision');
   }, 30_000);
 
   it('only the operator path clears a collision hold, and it writes the holder an audit row', async () => {
