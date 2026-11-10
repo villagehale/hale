@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names a child (Max) who is not in the facts. It also claims Hale registered and paid, which the facts never say and which Hale never does. Hale did not book anything; outcome_registered is meant to answer what the parent reported. These are invented claims plus an unhanded child.",
+    "score": 1
+  }
+}

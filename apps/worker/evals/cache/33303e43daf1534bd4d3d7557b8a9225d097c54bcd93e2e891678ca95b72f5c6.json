@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says the 36-hour clock starts once an offer comes in. The facts start it at the parent's own message (Tuesday, 11:00 a.m.), and the rules mark that framing for a 2 or lower. It also pairs the offer-arrival start with a fixed Wednesday 11:00 p.m. deadline, which contradicts itself. The position, town, hours, deadline date and reminder promise are otherwise correct.",
+    "score": 2
+  }
+}
