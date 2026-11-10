@@ -161,6 +161,7 @@ Built from every `process.env.X`, `process.env['X']`, `env.X`, `env['X']`, `_ENV
 | `MID_ACTIVITY_SIGNUP_TOOL_ENABLED` | `apps/web/lib/channel/mid-activity/said-tool.ts:23` | `true` | OFF | unassigned |
 | `PREVIEW_CAPTURE_GROUPS` | `apps/web/lib/channel/preview-linq-capture.ts:36` | `on`; also needs `VERCEL_ENV === 'preview'` (:34) and the capture transport requested (:35) | OFF (preview-only) | unassigned |
 | `PREVIEW_CAPTURE_TRANSPORT` | `apps/web/lib/channel/preview-capture-transport.ts:31` | `on`; also needs `VERCEL_ENV` exactly `preview` (docstring :8) | OFF (preview-only) | unassigned |
+| `SITTING_REMINDER_STALE_RELEASE_ENABLED` | `apps/web/lib/channel/intake/sitting-reminder.ts:68` | `true` (exact, no trim) | OFF | unassigned |
 | `VILLAGE_INTRO_GROUPS_ENABLED` | `apps/web/lib/village/intros/group.ts:18` | `true` (trimmed) | OFF | unassigned |
 
 ## What to watch
