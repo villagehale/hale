@@ -3,6 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type AhaSnapshot, ahaClockLabel, ahaWhenLabel } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
+import { friendVoiceLeftoverMarksEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import {
   type ReplyLanguage,
   acceptReplyLanguage,
@@ -319,6 +320,18 @@ export interface FriendComposed {
   claimsSaved?: boolean;
   /** What this reply asks for about where they live. Null or omitted: the model did not say. */
   placeAsk?: PlaceAsk | null;
+  /** How many questions this reply asks. Used when leftover marks are on. */
+  asksCount?: number;
+  /** This reply asks what to call them. */
+  asksName?: boolean;
+  /** This reply calls itself by the parent's name, or talks about them by name. */
+  speaksAsParent?: boolean;
+  /** This reply writes the join number or phrase that code places under it. */
+  joinInProse?: boolean;
+  /** Their message is a yes to the open item. */
+  parentPlainYes?: boolean;
+  /** Their message is only their own name, answering the name ask. */
+  parentLoneName?: string | null;
 }
 
 export type OfferedConnector = 'gmail' | 'calendar';
@@ -431,6 +444,10 @@ export interface SpeakOptions {
 /** The judge sees the link decision already made for the step it judges. */
 type JudgeOptions = Omit<SpeakOptions, 'linkFollows'> & {
   linkFollows?: boolean;
+  /** Leftover marks: question count the model reported, not a '?' count. */
+  asksCount?: number;
+  asksName?: boolean;
+  speaksAsParent?: boolean;
 };
 
 const childSchema = z.object({
@@ -545,6 +562,12 @@ const replyFields = z.object({
     .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   placeAsk: z.enum(PLACE_ASKS).nullable().optional().default(null).catch(null),
+  asksCount: z.number().optional(),
+  asksName: z.boolean().optional(),
+  speaksAsParent: z.boolean().optional(),
+  joinInProse: z.boolean().optional(),
+  parentPlainYes: z.boolean().optional(),
+  parentLoneName: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
 });
@@ -647,6 +670,15 @@ const replyJsonSchema = {
   required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
+const LEFTOVER_MARK_PROPERTIES = {
+  asksCount: { type: 'number' },
+  asksName: { type: 'boolean' },
+  speaksAsParent: { type: 'boolean' },
+  joinInProse: { type: 'boolean' },
+  parentPlainYes: { type: 'boolean' },
+  parentLoneName: { type: ['string', 'null'] },
+} as const;
+
 /**
  * Flag off omits the choice field, so the tool the model fills is today's. `placeAsk`
  * rides only while the place is in play; without a turn it is not.
@@ -662,11 +694,18 @@ export function onboardingReplyToolSchema(
   const schema = linqGroupOnboardingV2Enabled()
     ? replyJsonSchema
     : { ...replyJsonSchema, properties: flagOff };
-  if (!input || !placeInPlay(input)) return schema;
+  const leftover = friendVoiceLeftoverMarksEnabled()
+    ? {
+        ...schema,
+        properties: { ...schema.properties, ...LEFTOVER_MARK_PROPERTIES },
+        required: [...schema.required, ...Object.keys(LEFTOVER_MARK_PROPERTIES)],
+      }
+    : schema;
+  if (!input || !placeInPlay(input)) return leftover;
   return {
-    ...schema,
-    properties: { ...schema.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
-    required: [...schema.required, 'placeAsk'],
+    ...leftover,
+    properties: { ...leftover.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
+    required: [...leftover.required, 'placeAsk'],
   };
 }
 
@@ -975,6 +1014,8 @@ export function nameAskVoiceInput(
 export function parentReading(
   input: FriendVoiceInput,
 ): { kind: 'name'; name: string } | { kind: 'yes'; item: OnboardingItem } | null {
+  // Flag on: the model names a yes or a lone name. EN/FR word lists are not the signal.
+  if (friendVoiceLeftoverMarksEnabled()) return null;
   const words = input.parentWords.trim();
   const item = answeringItem(input);
   if (!item) return null;
@@ -1048,7 +1089,14 @@ function settleSchedule(capture: OnboardingCapture): OnboardingCapture {
 }
 
 /** The capture, held to what code read for certain. */
-function withReading(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
+function withReading(
+  capture: OnboardingCapture,
+  input: FriendVoiceInput,
+  composed?: FriendComposed,
+): OnboardingCapture {
+  if (friendVoiceLeftoverMarksEnabled()) {
+    return withModelReading(capture, input, composed);
+  }
   const reading = parentReading(input);
   if (!reading) return capture;
   if (reading.kind === 'name') {
@@ -1065,6 +1113,34 @@ function withReading(capture: OnboardingCapture, input: FriendVoiceInput): Onboa
   // "Sounds good" to the reminders just confirmed closes the schedule.
   if (reading.item === 'schedule') return { ...capture, scheduleDone: true };
   return { ...capture, coparentGroup: true };
+}
+
+/**
+ * The hold, from the model's leftover fields. A missing field is not a yes
+ * and not a name: code never fills one from the parent's words.
+ */
+function withModelReading(
+  capture: OnboardingCapture,
+  input: FriendVoiceInput,
+  composed?: FriendComposed,
+): OnboardingCapture {
+  const item = answeringItem(input);
+  if (!item) return capture;
+  const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
+  if (lastHale?.asked !== true) return capture;
+  const lone = composed?.parentLoneName?.trim() ?? '';
+  if (item === 'name' && lone.length > 0) {
+    if (capture.nameDeclined || capture.nameTakenBack) return capture;
+    const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
+    if (capture.parentName || kids.includes(lone.toLowerCase())) return capture;
+    return { ...capture, parentName: lone };
+  }
+  if (composed?.parentPlainYes !== true) return capture;
+  if (item === 'gmail') return { ...capture, connectGmail: true, gmailLater: false };
+  if (item === 'calendar') return { ...capture, connectCalendar: true, calendarLater: false };
+  if (item === 'schedule') return { ...capture, scheduleDone: true };
+  if (item === 'coparent') return { ...capture, coparentGroup: true };
+  return capture;
 }
 
 /**
@@ -1643,29 +1719,33 @@ export function judgeFriendReply(
   const trimmed = body.trim();
   if (trimmed.length === 0) return { ok: false, reason: 'empty' };
   const needed = ZERO_QUESTION_STEPS.has(input.step) ? 0 : 1;
+  const leftover = friendVoiceLeftoverMarksEnabled();
   const groupLines = (input.findGroups ?? []).flatMap((group) => group.lines);
-  const asked = questionsBeyondFacts(trimmed, [
-    ...input.findLines,
-    ...groupLines,
-    ...trailerFacts(options),
-  ]);
+  const asked = leftover
+    ? typeof options.asksCount === 'number'
+      ? options.asksCount
+      : null
+    : questionsBeyondFacts(trimmed, [...input.findLines, ...groupLines, ...trailerFacts(options)]);
   const flex =
     FLEX_QUESTION_STEPS.has(input.step) ||
     (options.yesToLink === true && LINK_STEPS.has(input.step)) ||
     options.scheduleRecorded === true;
+  if (asked == null) return { ok: false, reason: 'question' };
   if (flex) {
     if (asked > 1) return { ok: false, reason: 'question' };
   } else if (asked !== needed) {
     return { ok: false, reason: 'question' };
   }
   // The question may sit anywhere in the prose, but never above a list it asks about.
-  if (asked === 1 && /[?\uFF1F\u061F][\s\S]*\n\s*\d+\.\s/u.test(trimmed))
+  if (!leftover && asked === 1 && /[?\uFF1F\u061F][\s\S]*\n\s*\d+\.\s/u.test(trimmed))
     return { ok: false, reason: 'question' };
-  if (NAME_ASK.test(trimmed) && !NAME_STEPS.has(input.step)) {
-    return { ok: false, reason: 'question' };
+  if (leftover ? options.asksName === true : NAME_ASK.test(trimmed)) {
+    if (!NAME_STEPS.has(input.step)) return { ok: false, reason: 'question' };
   }
   // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
-  if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
+  if (leftover ? options.speaksAsParent === true : speaksAsParent(trimmed, input.parentName)) {
+    return { ok: false, reason: 'identity' };
+  }
   if (replyAddressesByOtherName(trimmed, input)) {
     return { ok: false, reason: 'identity', detail: 'unknown_name', kinds: ['unknown_name'] };
   }
@@ -2144,6 +2224,7 @@ export async function speakFriend(
                         marks.parentQuestion,
                       ),
                       input,
+                      composed,
                     ),
                     input,
                   ),
@@ -2213,7 +2294,12 @@ export async function speakFriend(
       };
       // A stop closes intake and tidyProse would strip its question, so a stop
       // that still asks goes back to the model rather than out with the ask cut.
-      if (capture.stopAsking && (marks.asks || draft.normalize('NFKC').includes('?'))) {
+      const stopStillAsks = friendVoiceLeftoverMarksEnabled()
+        ? typeof composed.asksCount === 'number'
+          ? composed.asksCount > 0
+          : marks.asks
+        : marks.asks || draft.normalize('NFKC').includes('?');
+      if (capture.stopAsking && stopStillAsks) {
         noteRefusal({ reason: 'stop_still_asking', step: input.step, prompt }, 'unusable');
         return {
           fail: 'unusable',
@@ -2245,7 +2331,10 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('join') },
         };
       }
-      if (input.coparentJoin && carriesJoin(prose, input.coparentJoin)) {
+      const joinWritten = friendVoiceLeftoverMarksEnabled()
+        ? composed.joinInProse === true
+        : Boolean(input.coparentJoin && carriesJoin(prose, input.coparentJoin));
+      if (input.coparentJoin && joinWritten) {
         noteRefusal({ reason: 'join_in_prose', step: input.step, prompt }, 'unusable');
         return {
           fail: 'unusable',
@@ -2261,6 +2350,13 @@ export async function speakFriend(
         ahaMention: composed.ahaMention ?? null,
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
+        ...(friendVoiceLeftoverMarksEnabled()
+          ? {
+              asksCount: composed.asksCount,
+              asksName: composed.asksName === true,
+              speaksAsParent: composed.speaksAsParent === true,
+            }
+          : {}),
       };
       // A card is for one connector. The model lists what the reply offers to connect.
       const linkInPlay = judgeOptions.linkFollows === true || Boolean(judgeOptions.link);
@@ -2626,7 +2722,8 @@ export function tidyProse(
   asksNothing = false,
 ): string {
   let sentences = sentencesOf(reply.trim());
-  if (ZERO_QUESTION_STEPS.has(judgedStep) || asksNothing) {
+  const leftover = friendVoiceLeftoverMarksEnabled();
+  if (!leftover && (ZERO_QUESTION_STEPS.has(judgedStep) || asksNothing)) {
     sentences = sentences.filter((sentence) => !sentence.includes('?'));
   }
   // A wow line, or the reply to a yes whose link is out, is about that one
@@ -2646,9 +2743,10 @@ export function tidyProse(
   // The map opener is one framing sentence; the group leads say the rest.
   // Length is not a reason to drop it.
   if (input.step === 'find_show') {
-    const opener = sentences.find(
-      (sentence) => !sentence.includes('?') && sentence.split(/\s+/u).length >= 3,
-    );
+    const opener = sentences.find((sentence) => {
+      if (sentence.split(/\s+/u).length < 3) return false;
+      return leftover || !sentence.includes('?');
+    });
     sentences = opener ? [opener] : [];
   }
   return ZERO_QUESTION_STEPS.has(judgedStep) || input.step === 'connected' || asksNothing
@@ -2729,6 +2827,10 @@ export async function friendVoiceSystem(
   // every other onboarding turn (and its eval cache key) keeps its bytes.
   const ageFit = ageFitCorrectionEnabled() ? await loadCronSkill('age-fit-correction') : null;
   const system = [skill, choice, group, place, ageFit]
+  const leftover = friendVoiceLeftoverMarksEnabled()
+    ? await loadCronSkill('onboarding-friend-leftover-marks')
+    : null;
+  const system = [skill, choice, group, place, leftover]
     .flatMap((part) => (part ? [part.instructions] : []))
     .join('\n\n');
   return { skill, system };
@@ -2769,6 +2871,12 @@ function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
     joinPointer: value.joinPointer,
     claimsSaved: value.claimsSaved,
     placeAsk: value.placeAsk,
+    asksCount: value.asksCount,
+    asksName: value.asksName,
+    speaksAsParent: value.speaksAsParent,
+    joinInProse: value.joinInProse,
+    parentPlainYes: value.parentPlainYes,
+    parentLoneName: value.parentLoneName,
   };
 }
 
