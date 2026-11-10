@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gives the page's opening date as Tuesday, November 3. The handed pageOpens is Tuesday, October 27 at 7 a.m., so this date is wrong. The haleHas date of September 15 is correct but leaves out the 7 a.m. time. The tone fits and the message correctly asks nothing, but a wrong date caps the score at 2 or lower.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what a course_bound note should. It confirms the new page replaces the earlier one and says the course name, day and time could not be read, which is correct when they are null. It gives the right opening date and time (Tuesday, September 15 at 7:00 a.m.) under the residents-date clock and warns to leave time for the prerequisite. It has no link and no question, and it sounds natural. One small weakness: 'going by what's on the portal' is slightly off-frame, since haleHad is null and Hale is going by the page itself. It is not a real invented claim.",
+    "score": 4
+  }
+}
