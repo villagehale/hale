@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no and asks one question: would the first three characters of the postal code work, with a ZIP as an alternative. It does not ask for a town or street and makes no promise to find things nearby. It is warm and not pushy. It is slightly wordy, though, and \"no need to share your full code\" is a little redundant.",
+    "score": 4
+  }
+}

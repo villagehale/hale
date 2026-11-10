@@ -130,11 +130,10 @@ describe('firstReplyRecoveryEligible', () => {
     firstReplyRecoveredAt: null,
     familyId: null,
     lastProviderId: INBOUND_SID,
-    hasInbound: true,
-    hasOutbound: false,
+    owesReply: true,
   };
 
-  it('accepts awaiting_details + SID + an inbound and no outbound', () => {
+  it('accepts awaiting_details + SID + a transcript that ends on an unanswered inbound', () => {
     expect(firstReplyRecoveryEligible(open)).toBe(true);
   });
 
@@ -143,12 +142,8 @@ describe('firstReplyRecoveryEligible', () => {
     expect(firstReplyRecoveryEligible({ ...open, state: 'awaiting_ages' })).toBe(true);
   });
 
-  it('refuses a session whose inbound is not on the transcript yet', () => {
-    expect(firstReplyRecoveryEligible({ ...open, hasInbound: false })).toBe(false);
-  });
-
-  it('refuses a session that already has outbound', () => {
-    expect(firstReplyRecoveryEligible({ ...open, hasOutbound: true })).toBe(false);
+  it('refuses a session whose last text was answered, or is not on the transcript yet', () => {
+    expect(firstReplyRecoveryEligible({ ...open, owesReply: false })).toBe(false);
   });
 
   it('refuses a session with no inbound SID', () => {

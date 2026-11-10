@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "That's fine, no need to share your full code. A coarse one works too: just the first three characters of your postal code, or the first five digits of a US ZIP. That only places you by area. Would that work for you?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse"
+  },
+  "latencyMs": 1427
+}

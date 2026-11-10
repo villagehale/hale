@@ -1,7 +1,7 @@
 {
   "activity-deep.md": {
     "file": "activity-deep.md",
-    "sha256": "b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca"
+    "sha256": "96f7e289daac854476c384093fc07ffea749e7391cf691273f6e5dde981f79d4"
   },
   "activity-finder-day.md": {
     "file": "activity-finder-day.md",
@@ -13,11 +13,11 @@
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "90f074ed912a23bb83debf43b35b235b1703ba050313cf0bd62927c98ae1d4a6"
+    "sha256": "fb5903ad7e966cf619a770981cc7072882a288f129dc247bde8fcdc5d8419c88"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
-    "sha256": "6c0d3f55ef83e0bbc3f34d0335235f028fe902d26d431b06a71798a9cc42688f"
+    "sha256": "8c2255e22c6e93fa82308ed6b7eaaf245096ca63ab0d9103761d40a94bd5a21a"
   },
   "activity-verdict.md": {
     "file": "activity-verdict.md",
@@ -407,13 +407,17 @@
     "file": "offer-receipt.md",
     "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
   },
+  "onboarding-friend-place.md": {
+    "file": "onboarding-friend-place.md",
+    "sha256": "75792b8151d9da5d31d755f76d6b495089a61410af6de2956be52e29bae3850b"
+  },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
     "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "bc7cab3654c8842dc3f30b191ece289974489b4d870970fd85ea5e5cf4eb401a"
+    "sha256": "bfd5e3f4398bd07818b56e898c765b5a914f36ee9003dca694e4f2604657df22"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",

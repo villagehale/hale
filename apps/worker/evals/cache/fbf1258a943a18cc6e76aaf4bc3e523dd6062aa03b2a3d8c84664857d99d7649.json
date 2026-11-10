@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is real and cited to the page it came from. Tiny Gym's age band and 45-minute length come off programs.php. The Term 1 and Term 2 dates come off the schedule PDF that was opened. The registration date (Wednesday July 22, 2026, 8:00am online) comes off the home page. No price was invented: the page says pricing sits behind the login, and the $45 Gymnastics Ontario fee was correctly not used as a program price. The PDF slot admits it could not match weekdays from the jumbled grid. Its list of Tiny Gym times is a somewhat speculative reading of that grid, but it is hedged and none of those times reach the message. The message leads with Tiny Gym by name, gives the Term 1 dates and attributes them ('their site says'), and carries the July 22 8am registration date. Under page_has_schedule it correctly owns the gap in the first person ('I could not pin down the weekday or the price') rather than saying 'not posted'. With watch true, 'I'll keep watching and text you' is a promise that exists. It is plain ASCII with no link and no question.",
+    "score": 5
+  }
+}

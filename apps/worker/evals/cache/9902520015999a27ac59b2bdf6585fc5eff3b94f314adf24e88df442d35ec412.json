@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan",
+        "age_fit": "children ages 0-6",
+        "when": "Tuesday-Sunday, 10 am-5 pm, closed Mondays (regular hours from their page; Sept 12-15 not specifically confirmed). Daily Circle Time 10:30 am and storytime 4:00 pm",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo (includes the Children's Zoo)",
+        "age_fit": "Admission includes the Main Zoo and Children's Zoo; no preschool age range posted",
+        "when": "Open daily at 10am; April-October closes 5pm Mon-Fri, 5:30pm weekends and holidays (regular hours from an FAQ page that may be older; Sept 12-15 not specifically confirmed)",
+        "source_name": "Central Park Zoo"
+      }
+    ]
+  },
+  "latencyMs": 6816
+}

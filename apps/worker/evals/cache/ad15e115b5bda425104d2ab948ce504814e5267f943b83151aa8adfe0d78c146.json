@@ -1,0 +1,23 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent & Tot, Naperville Gymnastics",
+        "age_fit": "toddlers ages 18-36 months (or 3-year-olds who need their parents' support)",
+        "source_name": "Naperville Gymnastics"
+      },
+      {
+        "name": "Parent-Child classes, The Little Gym of Naperville",
+        "age_fit": "classes start at 4 months; for children under 3, a parent or caregiver must take part in class",
+        "source_name": "The Little Gym of Naperville"
+      },
+      {
+        "name": "Gymnastics Parent Tot Playtime, Fort Hill Activity Center",
+        "age_fit": "Parent Tot (no age range listed)",
+        "when": "Fridays 12:00-1:00 pm per the open gym page, not confirmed for winter; pre-registration required, closes 11:00 am on the day of the playtime",
+        "source_name": "Naperville Park District"
+      }
+    ]
+  },
+  "latencyMs": 6142
+}
