@@ -13,10 +13,21 @@ const NOW = new Date('2026-11-08T15:00:00.000Z');
 
 let db: TestDb;
 let familyId: string;
+let parentUserId: string;
+let coParentUserId: string;
 
 beforeAll(async () => {
   db = await createTestDb();
-  ({ familyId } = await seedFamily(db.database));
+  ({ familyId, parentUserId } = await seedFamily(db.database));
+  const [co] = await db.database
+    .insert(schema.users)
+    .values({ email: `co-${familyId}@example.test`, name: 'Other Parent' })
+    .returning({ id: schema.users.id });
+  if (!co) throw new Error('co-parent insert returned no row');
+  coParentUserId = co.id;
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId, userId: coParentUserId, role: 'co_parent' });
   const fact = (
     factKey: string,
     phone: string,
@@ -31,17 +42,30 @@ beforeAll(async () => {
     ...extra,
   });
   await db.database.insert(schema.familyMemoryFacts).values([
-    fact('told_by_parent', '555-0101', { memorySource: 'parent_message' }),
+    fact('told_by_parent', '555-0101', {
+      memorySource: 'parent_message',
+      sourceAudience: 'one_to_one',
+      sourceUserId: parentUserId,
+    }),
+    fact('told_by_co_parent', '555-0106', {
+      memorySource: 'parent_message',
+      sourceAudience: 'one_to_one',
+      sourceUserId: coParentUserId,
+    }),
     fact('read_off_email', '555-0102', { memorySource: 'inferred' }),
     fact('read_off_calendar', '555-0103', { memorySource: 'calendar' }),
     fact('no_longer_true', '555-0104', {
       memorySource: 'parent_message',
       validUntil: new Date('2026-10-15T00:00:00.000Z'),
+      sourceAudience: 'one_to_one',
+      sourceUserId: parentUserId,
     }),
     fact('expired', '555-0105', {
       memorySource: 'parent_message',
       memoryKind: 'temporary',
       expiresAt: new Date('2026-11-01T00:00:00.000Z'),
+      sourceAudience: 'one_to_one',
+      sourceUserId: parentUserId,
     }),
   ]);
 });
@@ -51,12 +75,12 @@ afterAll(async () => {
 });
 
 describe('loadParentStatedFacts (VIL-628)', () => {
-  it('returns only the live facts the parent told Hale', async () => {
+  it('returns only the live facts this parent told Hale', async () => {
     const port = productionChannelCoachPorts(db.database).loadParentStatedFacts;
     if (!port) throw new Error('production ports do not wire loadParentStatedFacts');
-    const values = (await port(familyId, NOW)).join('\n');
+    const values = (await port(familyId, parentUserId, NOW)).join('\n');
     expect(values).toContain('555-0101');
-    for (const phone of ['555-0102', '555-0103', '555-0104', '555-0105']) {
+    for (const phone of ['555-0102', '555-0103', '555-0104', '555-0105', '555-0106']) {
       expect(values).not.toContain(phone);
     }
   });
