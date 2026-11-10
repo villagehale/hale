@@ -12,7 +12,7 @@ import {
   groupPlanCopyKey,
 } from './group-plan-invites';
 import { formatWhen } from './household-calendar';
-import { takeMultiFamilyTurn } from './multi-family';
+import { joinFamilyToSharedGroup, takeMultiFamilyTurn } from './multi-family';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupReadInput, SharedGroupReader } from './shared-group-reading';
 import { fakeSharedGroupComposer } from './shared-group-voice-fake';
@@ -84,11 +84,23 @@ async function seedParent(
   return { familyId, userId };
 }
 
+async function joined(family: { familyId: string; userId: string }, phone: string) {
+  await joinFamilyToSharedGroup(db.database, {
+    chatId: CHAT,
+    ...family,
+    phone,
+    verbatim: 'our family is in this group',
+    now: NOW,
+    send: async () => ({ providerMessageId: `join-${phone}` }),
+  });
+  return family;
+}
+
 async function threeFamilies() {
   return {
-    mei: await seedParent(MEI, 'Mei'),
-    ada: await seedParent(ADA, 'Ada'),
-    priya: await seedParent(PRIYA, 'Priya'),
+    mei: await joined(await seedParent(MEI, 'Mei'), MEI),
+    ada: await joined(await seedParent(ADA, 'Ada'), ADA),
+    priya: await joined(await seedParent(PRIYA, 'Priya'), PRIYA),
   };
 }
 
