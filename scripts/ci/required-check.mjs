@@ -4,7 +4,7 @@
 // lint/typecheck/build passed, every workspace test shard passed, AND worker
 // evals either passed or were skipped because the path filter said the diff
 // was site-only. A skip is not success when the filter asked for evals — that
-// is a failed closed gate.
+// is a failed closed gate. The every-eval job is not part of this aggregator.
 
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
