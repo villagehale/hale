@@ -44,6 +44,7 @@ import {
   ageFitCorrectionEnabled,
   appendAgeFitCorrectionSkill,
 } from '~/lib/channel/intake/age-fit-correction';
+import {
   type PhotoFacts,
   type ReadPhotoFactsInput,
   augmentCoachSkillForPhotoFacts,
@@ -515,23 +516,23 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         : null;
       const composedSkill = augmentCoachSkillForContactCard(
         augmentCoachSkillForReadEmail(
-      const composedSkill = augmentCoachSkillForReadEmail(
-        augmentCoachSkillForFindPrivate(
           augmentCoachSkillForFindPrivate(
-            augmentCoachSkillForGroupLeave(
-              augmentCoachSkillForVoiceMemos(
-                augmentCoachSkillForExperienceCards(
-                  baseSkill,
-                  cardsLit ? await loadCronSkill('experience-card-coach') : null,
+            augmentCoachSkillForFindPrivate(
+              augmentCoachSkillForGroupLeave(
+                augmentCoachSkillForVoiceMemos(
+                  augmentCoachSkillForExperienceCards(
+                    baseSkill,
+                    cardsLit ? await loadCronSkill('experience-card-coach') : null,
+                  ),
+                  voiceLit ? await loadCronSkill('coach-voice-memo') : null,
                 ),
-                voiceLit ? await loadCronSkill('coach-voice-memo') : null,
+                leaveLit,
               ),
-              leaveLit,
+              findPrivate,
             ),
-            findPrivate,
+            findDay,
           ),
           emailLit ? await loadCronSkill(READ_EMAIL_SKILL) : null,
-          findDay,
         ),
         contactCard,
       );
@@ -991,6 +992,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
 function augmentCoachSkillForContactCard(skill: Skill, addendum: Skill | null): Skill {
   if (addendum === null) return skill;
   return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
+}
+
 /**
  * VIL-628 · what a reply written after read_email may repeat from this turn: the
  * parent's own words in this 1:1 and the app's own origin. Hale's earlier turns are not
@@ -1305,6 +1308,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         audience === 'direct' && linqVoiceMemosEnabled()
           ? (part) => hearVoiceMemo(part, audience)
           : undefined,
+        undefined,
         inboundPhotoFactsEnabled() ? { documents: true } : undefined,
       ),
     readPhotoFacts: (input) => extractInboundPhotoFacts({ ...input, client: anthropicClient() }),

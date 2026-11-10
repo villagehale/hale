@@ -1,10 +1,19 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { invokeTool } from '@hale/agent';
+import { linkRef } from '~/lib/channel/coach/activity-links';
+import { toSmsReply } from '~/lib/channel/coach/reply';
+import type { ActivityQuery } from './deidentify';
+import { findActivitiesTool } from './tools';
 import { loadAgentContext } from '~/lib/coach/context';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { FAMILY_FIT_PREFERENCE_LIMIT, productionActivityFamilyReader } from './reader';
+import {
+  FAMILY_FIT_PREFERENCE_LIMIT,
+  bindActivityReader,
+  productionActivityFamilyReader,
+} from './reader';
 
 const NOW = new Date('2026-10-30T12:00:00Z');
 const DAYS = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
@@ -270,16 +279,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     expect(fit.preferences).toEqual([]);
     expect(fit.recheck).toEqual([]);
   });
-import { invokeTool } from '@hale/agent';
-import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, expect, it } from 'vitest';
-import { linkRef } from '~/lib/channel/coach/activity-links';
-import { toSmsReply } from '~/lib/channel/coach/reply';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import type { ActivityQuery } from './deidentify';
-import { bindActivityReader, productionActivityFamilyReader } from './reader';
-import { findActivitiesTool } from './tools';
+});
 
 let db: TestDb;
 beforeAll(async () => {

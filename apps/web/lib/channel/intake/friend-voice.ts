@@ -2885,11 +2885,10 @@ export async function friendVoiceSystem(
   // VIL-568: the age-fit correction addendum rides only when the flag is on, so
   // every other onboarding turn (and its eval cache key) keeps its bytes.
   const ageFit = ageFitCorrectionEnabled() ? await loadCronSkill('age-fit-correction') : null;
-  const system = [skill, choice, group, place, ageFit]
   const leftover = friendVoiceLeftoverMarksEnabled()
     ? await loadCronSkill('onboarding-friend-leftover-marks')
     : null;
-  const system = [skill, choice, group, place, leftover]
+  const system = [skill, choice, group, place, ageFit, leftover]
     .flatMap((part) => (part ? [part.instructions] : []))
     .join('\n\n');
   return { skill, system };

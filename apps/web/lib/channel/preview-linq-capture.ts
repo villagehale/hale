@@ -62,7 +62,7 @@ export type CapturedLinqKind =
   | 'roster'
   | 'voice_memo'
   | 'capability_check'
-  | 'chat_background';
+  | 'chat_background'
   | 'message_edit';
 
 export type CapturedLinqCall = {

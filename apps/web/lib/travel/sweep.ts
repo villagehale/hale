@@ -87,8 +87,17 @@ const PREFILTER_SLACK_DAYS = 1;
 
 /** THE CORRECTNESS GUARD. One text per trip, forever, enforced by a unique index rather
  * than by a read a concurrent tick can race. */
+const TRAVEL_BRIEF_KEY_PREFIX = 'travel_brief:';
+
 export function travelBriefDedupeKey(tripId: string): string {
-  return `travel_brief:${tripId}`;
+  return `${TRAVEL_BRIEF_KEY_PREFIX}${tripId}`;
+}
+
+/** The trip a brief's key names, for the decider's send to close (VIL-612). */
+export function tripIdFromBriefDedupeKey(dedupeKey: string): string | null {
+  return dedupeKey.startsWith(TRAVEL_BRIEF_KEY_PREFIX)
+    ? dedupeKey.slice(TRAVEL_BRIEF_KEY_PREFIX.length)
+    : null;
 }
 
 /**
@@ -621,6 +630,50 @@ async function briefOne(
 
   result.sent += 1;
   result.merged += merged.length;
+}
+
+/**
+ * The sweep calls it after its own send, and the hourly decider after one it made.
+ */
+export async function closeBriefedTrip(
+  database: Database,
+  input: { tripId: string; channelMessageId: string; now: Date },
+): Promise<number> {
+  const [trip] = await database
+    .select({
+      familyId: schema.familyTrips.familyId,
+      startsOn: schema.familyTrips.startsOn,
+      endsOn: schema.familyTrips.endsOn,
+    })
+    .from(schema.familyTrips)
+    .where(eq(schema.familyTrips.id, input.tripId));
+  if (!trip) throw new Error('closeBriefedTrip: no trip behind the brief');
+  const merged = await database
+    .update(schema.familyTrips)
+    .set({
+      closedAt: input.now,
+      closedReason: 'merged',
+      briefChannelMessageId: input.channelMessageId,
+    })
+    .where(
+      and(
+        eq(schema.familyTrips.familyId, trip.familyId),
+        isNull(schema.familyTrips.closedAt),
+        ne(schema.familyTrips.id, input.tripId),
+        lte(schema.familyTrips.startsOn, trip.endsOn),
+        gte(schema.familyTrips.endsOn, trip.startsOn),
+      ),
+    )
+    .returning({ id: schema.familyTrips.id });
+  await database
+    .update(schema.familyTrips)
+    .set({
+      closedAt: input.now,
+      closedReason: 'sent',
+      briefChannelMessageId: input.channelMessageId,
+    })
+    .where(and(eq(schema.familyTrips.id, input.tripId), isNull(schema.familyTrips.closedAt)));
+  return merged.length;
 }
 
 /** The under-13s' first names and the 13+ names, from ONE read. The age gate is

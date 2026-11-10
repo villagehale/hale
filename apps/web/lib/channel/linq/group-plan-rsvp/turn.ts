@@ -177,7 +177,7 @@ export async function takeGroupPlanRsvpTurn(
   const calendarLanguage =
     input.calendarLanguage === undefined ? input.language : input.calendarLanguage;
   const senderKey = await senderMemberKey(
-    { handle: input.senderHandle, name: input.senderName },
+    { handle: input.senderHandle },
     async () => [
       ...(liveTally ? [...liveTally.rows, ...liveTally.expected].map((row) => row.memberKey) : []),
       ...(livePoll ? await deps.store.pollVoterKeys(livePoll.id) : []),
@@ -259,13 +259,6 @@ export async function takeGroupPlanRsvpTurn(
     if (!somethingLive) return { handled: false };
     return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
   }
-
-  const senderKey = await senderMemberKey({ handle: input.senderHandle }, async () => [
-    ...(liveTally ? [...liveTally.rows, ...liveTally.expected].map((row) => row.memberKey) : []),
-    ...(livePoll ? await deps.store.pollVoterKeys(livePoll.id) : []),
-  ]);
-  const senderSeat = seated.find((person) => person.memberKey === senderKey);
-  const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
 
   if (isGroupPollIntent(reading.intent)) {
     if (!pollsOn) {

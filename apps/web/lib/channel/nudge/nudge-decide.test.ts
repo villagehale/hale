@@ -435,7 +435,6 @@ describe('decideNudge — no health checkpoint', () => {
 
   it('says nothing about the 18-month window either', () => {
     const toddler = [healthChild({ ageMonths: 18 })];
-    expect(inWindow(toddler, FIXTURE_FSA)).toContain('immunization_18_months');
     expect(decide({ healthChildren: toddler, areaCoarse: FIXTURE_FSA })).toBeNull();
     expect(decide({ healthChildren: toddler, areaCoarse: 'L7G' })).toBeNull();
   });

@@ -245,9 +245,13 @@ describe('readInboundMedia', () => {
     expect(dark.blocks).toEqual([]);
     expect(dark.unwatched).toEqual([{ kind: 'file' }]);
 
-    const lit = await readInboundMedia([part], fetchImpl as unknown as typeof fetch, undefined, {
-      documents: true,
-    });
+    const lit = await readInboundMedia(
+      [part],
+      fetchImpl as unknown as typeof fetch,
+      undefined,
+      undefined,
+      { documents: true },
+    );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(lit.blocks[0]).toMatchObject({ type: 'document' });
     expect(lit.unwatched).toEqual([]);

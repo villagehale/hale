@@ -331,10 +331,7 @@ describe('pageOps: the one primitive', () => {
 
 describe('each site family pages through the primitive', () => {
   it('a spoken line no model could write pages spoken_line_unwritten, once an hour', async () => {
-    const writer = createSpokenLineWriter(
-      downClient,
-      failurePageOpsPager(() => db.database, { post, now: BASE }),
-    );
+    const writer = createSpokenLineWriter(downClient);
     expect(await writer.write({ purpose: 'group_welcome', language: 'en' })).toBeNull();
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain('site spoken_line_unwritten.');
@@ -348,20 +345,14 @@ describe('each site family pages through the primitive', () => {
     // vitest.setup.ts imports spoken-line before this file's mock exists: load it afresh.
     vi.resetModules();
     const fresh = await import('~/lib/channel/spoken-line');
-    const writer = fresh.createSpokenLineWriter(
-      recorded().client,
-      failurePageOpsPager(() => db.database, { post, now: BASE }),
-    );
+    const writer = fresh.createSpokenLineWriter(recorded().client);
     expect(await writer.write({ purpose: 'group_welcome', language: 'en' })).toBeNull();
     expect(posted).toEqual(['Hale: ops page. site spoken_line_unwritten. stage skill_load.']);
   }, 30_000);
 
   it('positive control: a spoken line the model wrote pages nobody', async () => {
     const model = recorded();
-    const writer = createSpokenLineWriter(
-      model.client,
-      failurePageOpsPager(() => db.database, { post, now: BASE }),
-    );
+    const writer = createSpokenLineWriter(model.client);
     const text = await writer.write({ purpose: 'group_welcome', language: 'en' });
     expect(model.misses).toEqual([]);
     expect(text?.trim().length ?? 0).toBeGreaterThan(0);

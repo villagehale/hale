@@ -568,8 +568,6 @@ describe('decideRadar — honest degradation', () => {
  * 48h nudge about what applies to a child.
  */
 describe('decideRadar — the age checkpoint', () => {
-  it('names an Ontario checkpoint for a family with no window and no candidate at all', () => {
-    // An Ontario FSA outside every civic adapter, no registration windows.
   it('never names a health checkpoint, even when the household is inside an Ontario window', () => {
     const decision = decide({
       candidates: [],
@@ -580,69 +578,6 @@ describe('decideRadar — the age checkpoint', () => {
 
     expect(decision.weekendPick).toBeNull();
     expect(decision.registrationLine).toBeNull();
-    expect(decision.checkpoint?.checkpointRef.id).toBe('immunization_18_months');
-    expect(decision.checkpoint?.task).toContain('18 months');
-    expect(decision.checkpoint?.kidNames).toEqual(['Maya']);
-  });
-
-  it('holds the band edges the reviewed table draws, and says nothing between them', () => {
-    const at23 = decide({
-      healthChildren: [healthChild({ ageMonths: 23 })],
-      areaCoarse: FIXTURE_FSA,
-    });
-    expect(at23.checkpoint?.checkpointRef.id).toBe('immunization_18_months');
-
-    // 24 months is past the last infant band and years short of the first school one.
-    // The verified table has no row there, and a checkpoint is never invented to fill it.
-    const at24 = decide({
-      healthChildren: [healthChild({ ageMonths: 24 })],
-      areaCoarse: FIXTURE_FSA,
-    });
-    expect(at24.checkpoint).toBeNull();
-  });
-
-  it('speaks about the YOUNGEST child — one message, one thing', () => {
-    const decision = decide({
-      healthChildren: [
-        healthChild({ id: 'kid-1', name: 'Leo', ageMonths: 60 }),
-        healthChild({ id: 'kid-2', name: 'Maya', ageMonths: 18 }),
-      ],
-      areaCoarse: 'M5V',
-    });
-
-    expect(decision.checkpoint?.checkpointRef.id).toBe('immunization_18_months');
-    expect(decision.checkpoint?.kidNames).toEqual(['Maya']);
-  });
-
-  it('says nothing when the area is unknown or outside Ontario', () => {
-    const children = [healthChild({ ageMonths: 18 })];
-    expect(decide({ healthChildren: children, areaCoarse: null }).checkpoint).toBeNull();
-    // H2X is Montreal: the provincial rows are not this family's rules.
-    expect(decide({ healthChildren: children, areaCoarse: 'H2X' }).checkpoint).toBeNull();
-  });
-
-  it('honours the suppression set, so the radar cannot re-raise what was already told', () => {
-    const children = [healthChild({ id: 'kid-1', ageMonths: 18 })];
-    const suppressed = new Set(['immunization_18_months:kid-1:0']);
-
-    const decision = decide({
-      healthChildren: children,
-      areaCoarse: FIXTURE_FSA,
-      suppressedCheckpointRefs: suppressed,
-    });
-    // The next row in the same band, not silence and not the suppressed one.
-    expect(decision.checkpoint?.checkpointRef.id).toBe('well_baby_18_months');
-  });
-
-  it('uses the generic wording, and no name, for a 13+ child (rule #1)', () => {
-    const decision = decide({
-      healthChildren: [healthChild({ id: 'kid-1', name: null, ageMonths: 156, isTeen: true })],
-      areaCoarse: 'M5V',
-    });
-
-    expect(decision.checkpoint?.checkpointRef.id).toBe('immunization_grade_7');
-    expect(decision.checkpoint?.task).toBe('A school immunization consent form is due.');
-    expect(decision.checkpoint?.kidNames).toEqual([]);
     expect(decision.checkpoint).toBeNull();
   });
 
@@ -678,17 +613,6 @@ describe('decideRadar — the age checkpoint', () => {
     expect(decision.registrationLine).not.toBeNull();
     expect(decision.weekendPick).not.toBeNull();
     expect(decision.checkpoint).toBeNull();
-  });
-
-  it('carries the identity the told-marker keys on, not just the row id', () => {
-    const decision = decide({
-      healthChildren: [healthChild({ id: 'kid-1', ageMonths: 18 })],
-      areaCoarse: FIXTURE_FSA,
-    });
-
-    // The matcher's own ref: per child for a one-time visit. Rebuilding it downstream is
-    // how the scope goes wrong (checkpoints.ts checkpointRef).
-    expect(decision.checkpoint?.ref).toBe('immunization_18_months:kid-1:0');
   });
 });
 

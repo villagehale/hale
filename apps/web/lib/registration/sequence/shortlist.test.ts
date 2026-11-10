@@ -1,4 +1,4 @@
-import type { RegistrationSourceState } from '@hale/db';
+import type { RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { type SequenceChild, buildShortlist } from './shortlist.js';
@@ -19,7 +19,7 @@ import { type SequenceChild, buildShortlist } from './shortlist.js';
 
 const NOW = new Date('2026-09-05T12:00:00.000Z');
 
-function window(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
+function window(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
   return {
     id: 'win-1',
     municipality: 'toronto',
@@ -38,7 +38,7 @@ function window(overrides: Partial<RegistrationSourceState> = {}): RegistrationS
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
-  } as RegistrationSourceState;
+  } as RegistrationWindow;
 }
 
 function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {

@@ -1438,7 +1438,7 @@ describe('the key a calendar ask is kept under', () => {
     const ask = await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya');
     const rsvpKeys = (await store.loadTally(plan?.id ?? '')).rows.map((row) => row.memberKey);
     expect(ask?.status).toBe('asked');
-    expect(ask?.memberKey).toBe(await senderMemberKey({ handle, name: null }, async () => []));
+    expect(ask?.memberKey).toBe(await senderMemberKey({ handle }, async () => []));
     expect(rsvpKeys).toContain(ask?.memberKey);
     expect(ask?.memberKey).not.toContain(handle);
   });

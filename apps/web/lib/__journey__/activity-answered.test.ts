@@ -886,7 +886,6 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     expect(JSON.parse(sweepWeb.searched[0] ?? '{}')).toMatchObject({
       subject: 'Cartwheel Gym fall spots and other toddler fall programs',
       town: FIXTURE_FIND_TOWN,
-      town: 'Halton Hills, Ontario, Canada',
     });
 
     // The debt is discharged, and stops standing.

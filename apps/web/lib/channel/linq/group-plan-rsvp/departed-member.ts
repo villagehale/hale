@@ -105,14 +105,14 @@ export async function renameDepartedMember(
             ),
           )
           .returning({ id: schema.linqGroupPlanCalendarConsents.id });
-  return rsvps.length + expected.length + votes.length + waitingLists + calendarAsks.length;
   const keysCleared = await rekeyIdentifyingKeys(
     tx,
     { familyId: input.familyId, plans, polls },
     keys,
   );
   return {
-    namesCleared: rsvps.length + expected.length + votes.length + waitingLists,
+    namesCleared:
+      rsvps.length + expected.length + votes.length + waitingLists + calendarAsks.length,
     keysCleared,
   };
 }

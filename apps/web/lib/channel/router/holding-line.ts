@@ -48,6 +48,11 @@ export const MAX_COMPOSE_ATTEMPTS = 2;
 
 const MAX_TOKENS = 96;
 
+/** A time nobody scheduled: nobody knows when the answer lands. */
+const PROMISED_TIME =
+  /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
+const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
+
 export type HoldingLineRefusal =
   | 'empty'
   | 'carries_link'
@@ -175,7 +180,7 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
           return unavailable('model_failed');
         }
         const line = plainText(raw);
-        const problems = refusals(line);
+        const problems = await holdingLineRefusals(line);
         // A line the mechanical facts already block is not judged: the writer can fix
         // a digit or a link without a second model. A line that passes is judged for
         // meaning. A verdict that does not arrive sends nothing — the unchecked line
@@ -189,7 +194,6 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
           }
           if (judged.verdict === 'refuse') problems.push(...judged.problems);
         }
-        const problems = await holdingLineRefusals(line);
         if (problems.length === 0) return { status: 'composed', line };
         rejected.push({ line, problems });
       }
