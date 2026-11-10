@@ -75,20 +75,23 @@ afterEach(() => {
 });
 
 describe('VIL-479 Linq message edit', () => {
-  it('is off unless the flag is exactly true on Preview', () => {
-    vi.stubEnv('VERCEL_ENV', 'preview');
+  it('is off unless the flag is exactly true', () => {
     expect(linqMessageEditEnabled()).toBe(false);
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'on');
     expect(linqMessageEditEnabled()).toBe(false);
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     expect(linqMessageEditEnabled()).toBe(true);
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true\n');
+    expect(linqMessageEditEnabled()).toBe(true);
   });
 
-  it('stays off in production and development even when the flag is true', () => {
+  it('can turn on in production when the flag is exactly true', () => {
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'production');
-    expect(linqMessageEditEnabled()).toBe(false);
+    expect(linqMessageEditEnabled()).toBe(true);
     vi.stubEnv('VERCEL_ENV', 'development');
+    expect(linqMessageEditEnabled()).toBe(true);
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'TRUE');
     expect(linqMessageEditEnabled()).toBe(false);
   });
 

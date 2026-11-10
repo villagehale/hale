@@ -16,12 +16,13 @@ import { LinqSendError } from './transport';
  * VIL-479 — edit one text part of a bubble Hale already sent, when the model
  * says the follow-up is a correction of that bubble.
  *
- * On only when `LINQ_MESSAGE_EDIT_ENABLED` is exactly `true` and
- * `VERCEL_ENV` is `preview`. Off in production and development. The
- * `linq-edit` skill reads the follow-up Hale has written and the bubbles that
- * can still be edited, and returns the replacement text or null. Code never
- * writes the replacement: a failed or unusable read sends the follow-up as its
- * own message, which is what would have happened without this feature.
+ * On only when `LINQ_MESSAGE_EDIT_ENABLED` is exactly `true` (trimmed). Unset,
+ * empty, `on`, and `false` stay dark. Default off. Production may light it the
+ * same way as any other environment. The `linq-edit` skill reads the follow-up
+ * Hale has written and the bubbles that can still be edited, and returns the
+ * replacement text or null. Code never writes the replacement: a failed or
+ * unusable read sends the follow-up as its own message, which is what would
+ * have happened without this feature.
  *
  * Linq allows five edits within 15 minutes of the original send, text parts
  * only, iMessage only. A refusal falls through to the follow-up.
@@ -32,9 +33,7 @@ export const LINQ_EDIT_MAX = 5;
 const TEXT_MAX = 10_000;
 
 export function linqMessageEditEnabled(): boolean {
-  return (
-    process.env.VERCEL_ENV === 'preview' && process.env.LINQ_MESSAGE_EDIT_ENABLED?.trim() === 'true'
-  );
+  return process.env.LINQ_MESSAGE_EDIT_ENABLED?.trim() === 'true';
 }
 
 /** A bubble the model may replace. `channelMessageId` stays off the model payload. */
