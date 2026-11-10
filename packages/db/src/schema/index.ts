@@ -62,6 +62,7 @@ export * from './pending-disambiguations.js';
 export * from './watched-spots.js';
 export * from './email-alert-offers.js';
 export * from './email-alert-occasions.js';
+export * from './email-alert-holds.js';
 export * from './activity-bookings.js';
 export * from './check-in.js';
 export * from './email-forwards.js';

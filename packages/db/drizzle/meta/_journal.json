@@ -1485,6 +1485,13 @@
       "when": 1793665985430,
       "tag": "0227_team_schedule_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1793665986430,
+      "tag": "0228_email_alert_holds",
+      "breakpoints": true
     }
   ]
 }
