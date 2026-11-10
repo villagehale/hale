@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
-import * as sourcePage from '~/lib/registration/page';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { isStage } from '~/lib/testing/structured-reply';
 import type { ActivityQuery } from './deidentify';
 import {
@@ -8,15 +8,27 @@ import {
   composeUserMessage,
   createActivityFinder,
   groundUserMessage,
+  preferVenuePage,
+  stampReadPageUrl,
   toPicks,
 } from './lane';
+import * as activityPage from './page';
 
 const PROGRAM_TEXT =
   'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.';
 
-vi.mock('~/lib/registration/page', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
-  createRegistrationPageFetch: () => async () => `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+beforeEach(() => {
+  vi.stubEnv('FINDER_SOURCE_BINDING_ENABLED', 'true');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+vi.mock('./page', () => ({
+  createActivityPageFetch: () => async (url: string) => ({
+    url,
+    text: `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+  }),
 }));
 
 /**
@@ -154,10 +166,45 @@ describe('the payloads', () => {
     );
   });
 
-  it('omits a town and a stage it does not have rather than sending a placeholder', () => {
+  it('carries the family-local day when it is known, and no key when it is not (VIL-435)', () => {
+    expect(JSON.parse(groundUserMessage({ ...QUERY, today: '2026-10-12 (Monday)' }))).toEqual({
+      subject: 'toddler gymnastics',
+      town: QUERY.town,
+      stage: 'toddler',
+      window: 'this fall',
+      today: '2026-10-12 (Monday)',
+    });
+    expect(groundUserMessage(QUERY)).not.toContain('today');
+  });
+
+  it('reads the day-check addendum only when the query carries the day (VIL-435)', async () => {
+    const addendum = (await loadCronSkill('activity-finder-day')).instructions;
+    const systems = async (query: ActivityQuery) => {
+      const seen: Seen[] = [];
+      await createActivityFinder(
+        makeClient(
+          { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+          seen,
+        ),
+      ).find(query);
+      return seen.map((s) =>
+        typeof s.system === 'string'
+          ? s.system
+          : (s.system as Array<{ text: string }>).map((block) => block.text).join(''),
+      );
+    };
+
+    const dated = await systems({ ...QUERY, today: '2026-10-12 (Monday)' });
+    const plain = await systems(QUERY);
+
+    expect(dated.some((system) => system.includes(addendum))).toBe(true);
+    expect(plain.every((system) => !system.includes(addendum))).toBe(true);
+  });
+
+  it('omits a stage it does not have rather than sending a placeholder', () => {
     expect(
-      groundUserMessage({ subject: 'story time', window: null, town: null, stage: null }),
-    ).toBe('{"subject":"story time"}');
+      groundUserMessage({ subject: 'story time', window: null, town: 'Toronto', stage: null }),
+    ).toBe('{"subject":"story time","town":"Toronto"}');
   });
 
   it('gives the compose stage the research and still no identity', () => {
@@ -278,11 +325,11 @@ describe('an ungrounded find never ships', () => {
   it('extracts from the canonical moved page without first spending a call on thinking', async () => {
     const current = 'https://venue.example/current';
     const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(async (url) => {
-        if (url !== current) throw new sourcePage.RegistrationPageRedirect(current);
-        return `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`;
-      });
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url: url === current ? url : current,
+        text: `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+      }));
     const seen: Seen[] = [];
     try {
       const result = await createActivityFinder(
@@ -309,14 +356,16 @@ describe('an ungrounded find never ships', () => {
     const results = ground.content[1]!.content as Array<{ url: string }>;
     results[3]!.url = officialUrl;
     const urls: string[] = [];
-    const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(async (url) => {
-        urls.push(url);
-        return url === officialUrl
-          ? `Burlington, ON, L7R 1J4. ${PROGRAM_TEXT}`
-          : 'Burlington, WA 98233 United States';
-      });
+    const fetch = vi.spyOn(activityPage, 'createActivityPageFetch').mockReturnValue(async (url) => {
+      urls.push(url);
+      return {
+        url,
+        text:
+          url === officialUrl
+            ? `Burlington, ON, L7R 1J4. ${PROGRAM_TEXT}`
+            : 'Burlington, WA 98233 United States',
+      };
+    });
     try {
       const found = await createActivityFinder(
         makeClient({
@@ -334,12 +383,13 @@ describe('an ungrounded find never ships', () => {
 
   it('excludes wrong-region page text and cannot cite that page after composition', async () => {
     const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(async (url) =>
-        url.endsWith('/0')
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url,
+        text: url.endsWith('/0')
           ? 'Burlington, WA 98233 United States'
           : `2331 New Street, Burlington, ON L7R 1J4. Preschool storytime. ${PROGRAM_TEXT}`,
-      );
+      }));
     const seen: Seen[] = [];
     try {
       const found = await createActivityFinder(
@@ -367,11 +417,11 @@ describe('an ungrounded find never ships', () => {
 
   it('holds the real wrong-country page before compose and admits its matching location', async () => {
     const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(
-        async () =>
-          `Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States. ${PROGRAM_TEXT}`,
-      );
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url,
+        text: `Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States. ${PROGRAM_TEXT}`,
+      }));
     const seen: Seen[] = [];
     const finder = createActivityFinder(
       makeClient(
@@ -396,7 +446,7 @@ describe('an ungrounded find never ships', () => {
   });
 
   it('does not compose from date-bearing snippets when every fresh source read fails', async () => {
-    const fetch = vi.spyOn(sourcePage, 'createRegistrationPageFetch').mockReturnValue(async () => {
+    const fetch = vi.spyOn(activityPage, 'createActivityPageFetch').mockReturnValue(async () => {
       throw Error('source unavailable');
     });
     const seen: Seen[] = [];
@@ -829,5 +879,167 @@ describe('an empty find says what it searched', () => {
       searched: { town: QUERY.town },
     });
     expect(result.found === false && result.searched?.notes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('VIL-499 · source_url stamped from pages read this turn', () => {
+  const studio = {
+    name: 'Fall Art Classes',
+    age_fit: 'ages 5-12',
+    source_name: 'The Danforth Art Studio',
+  };
+  const page = {
+    url: 'https://example-studio.test/fall-classes',
+    text: 'The Danforth Art Studio — Fall Art Classes, 6-week session, ages 5 to 12.',
+  };
+
+  it('stamps the one read https page that names the pick when compose omits source_url', () => {
+    const [pick] = toPicks([studio], [page]);
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('keeps the model url when compose supplied one', () => {
+    const [pick] = toPicks([{ ...studio, source_url: 'https://other.test/x' }], [page]);
+    expect(pick?.url).toBe('https://other.test/x');
+  });
+
+  it('no page read, no https, or no page naming the pick: still no url', () => {
+    expect(toPicks([studio], [])[0]?.url).toBeUndefined();
+    expect(
+      toPicks([studio], [{ ...page, url: 'http://example-studio.test/x' }])[0]?.url,
+    ).toBeUndefined();
+    expect(
+      toPicks([studio], [{ url: 'https://unrelated.test/', text: 'Library storytime hours.' }])[0]
+        ?.url,
+    ).toBeUndefined();
+  });
+
+  it('two different pages naming the pick: no guess', () => {
+    const second = { ...page, url: 'https://aggregator.test/danforth' };
+    expect(
+      stampReadPageUrl({ name: studio.name, sourceName: studio.source_name }, [page, second]),
+    ).toBeNull();
+  });
+
+  it('punctuation and a leading "The" do not block the match', () => {
+    const [pick] = toPicks(
+      [{ ...studio, name: 'Fall Art Classes - 6-Week Session' }],
+      [{ url: page.url, text: 'Danforth Art Studio: Fall Art Classes 6 Week Session' }],
+    );
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('no page text names it: falls back to the one web_search result that does', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://danforthartstudio.example/fall', title: 'Fall classes' },
+        { url: 'https://library.example/storytime', title: 'Storytime' },
+      ],
+    );
+    expect(pick?.url).toBe('https://danforthartstudio.example/fall');
+  });
+
+  it('search results that do not name the pick stamp nothing', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [{ url: 'https://library.example/x', title: 'Storytime' }],
+    );
+    expect(pick?.url).toBeUndefined();
+  });
+
+  it('several matching pages on one host (the venue site): the first opened page is used', () => {
+    const second = { ...page, url: 'https://example-studio.test/drawing' };
+    expect(
+      stampReadPageUrl({ name: studio.name, sourceName: studio.source_name }, [page, second]),
+    ).toBe(page.url);
+  });
+
+  it('opened pages win over search results when both match', () => {
+    const [pick] = toPicks(
+      [studio],
+      [page],
+      [{ url: 'https://other.test/danforth-art-studio', title: 'The Danforth Art Studio' }],
+    );
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('several hosts: the one whose hostname carries the venue name wins', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://listings.example/toronto-art', title: 'The Danforth Art Studio — kids' },
+        { url: 'https://thedanforthartstudio.example/collections/kids', title: 'Kids classes' },
+        { url: 'https://thedanforthartstudio.example/drawing', title: 'Drawing' },
+      ],
+    );
+    expect(pick?.url).toBe('https://thedanforthartstudio.example/collections/kids');
+  });
+
+  it('several hosts and none carries the venue name: nothing', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://listings.example/a', title: 'The Danforth Art Studio' },
+        { url: 'https://other.example/b', title: 'Danforth Art Studio fall' },
+      ],
+    );
+    expect(pick?.url).toBeUndefined();
+  });
+});
+
+describe('VIL-510 · Wikipedia is never stamped as a pick url', () => {
+  it('drops a Wikipedia compose source_url', () => {
+    const wiki = {
+      name: 'Halton Hills Public Library storytime',
+      age_fit: 'all ages',
+      source_name: 'Halton Hills Public Library',
+      source_url: 'https://en.wikipedia.org/wiki/Halton_Hills_Public_Library',
+    };
+    const [pick] = toPicks([wiki], []);
+    expect(pick?.url).toBeUndefined();
+  });
+
+  it('does not stamp Wikipedia from search hits that name the venue', () => {
+    const hit = {
+      url: 'https://en.wikipedia.org/wiki/Halton_Hills_Public_Library',
+      title: 'Halton Hills Public Library - Wikipedia',
+    };
+    expect(
+      stampReadPageUrl(
+        { name: 'Halton Hills Public Library', sourceName: 'Halton Hills Public Library' },
+        [],
+        [hit],
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('VIL-510 preferVenuePage', () => {
+  it('prefers the venue own page over a listing aggregator', () => {
+    expect(
+      preferVenuePage(
+        'https://torontonicity.com/halloween-events',
+        'https://blackcreek.ca/halloween',
+        'Black Creek',
+      ),
+    ).toBe('https://blackcreek.ca/halloween');
+  });
+  it('keeps the composed url when no own-host page was read', () => {
+    expect(preferVenuePage('https://haltonhillstoday.ca/x', null, 'Living Hope Church')).toBe(
+      'https://haltonhillstoday.ca/x',
+    );
+    expect(preferVenuePage(null, 'https://livinghope.ca/trunk', 'Living Hope')).toBe(
+      'https://livinghope.ca/trunk',
+    );
+  });
+  it('keeps a composed own-host page', () => {
+    expect(
+      preferVenuePage('https://blackcreek.ca/a', 'https://torontonicity.com/b', 'Black Creek'),
+    ).toBe('https://blackcreek.ca/a');
   });
 });

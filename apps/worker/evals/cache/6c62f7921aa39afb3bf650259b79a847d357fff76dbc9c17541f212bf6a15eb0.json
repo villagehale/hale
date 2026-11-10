@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states tomorrow, 15 h to 16 h, and the Georgetown library, all matching the facts. However, it turns the title 'Jour de congé' into a statement that there is a day off at the library, recasting the event name as a closure-like claim the facts do not make ('un jour de congé à la bibliothèque' reads as the library being on holiday). The title is meant to name an event at the library, so this changes a fact and the native speaker check also fails: a French speaker would say 'Rappel : demain de 15 h à 16 h, tu as « Jour de congé » à la bibliothèque de Georgetown' or similar, not frame it as a day off at the library.",
+    "score": 2
+  }
+}

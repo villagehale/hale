@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
 import { conversations } from './conversations.js';
 import {
@@ -182,8 +182,14 @@ export const channelMessages = pgTable(
      */
     inboundMedia:
       jsonb('inbound_media').$type<
-        Array<{ kind: 'image' | 'video' | 'file'; url: string | null; mime: string | null }>
+        Array<{ kind: 'image' | 'video' | 'audio' | 'file'; url: string | null; mime: string | null }>
       >(),
+    /**
+     * INBOUND only (VIL-463): whether the door saw this text in a group chat. Null on
+     * rows written before the column existed and on outbound rows. A re-drive reads it
+     * so a group text is never run as a 1:1 turn.
+     */
+    inGroup: boolean('in_group'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

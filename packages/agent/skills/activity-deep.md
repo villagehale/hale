@@ -39,8 +39,9 @@ covers all three angles badly is worse than three that each cover one well.
 - **`venue_site`** — the operator's OWN domain, and nothing else. The programme
   page, the schedule grid, the "our classes" page. If the subject names a place,
   this is that place's site.
-- **`municipal`** — the town's recreation pages and the documents hanging off
-  them. This is where a FEE TABLE and a SESSION-DATE GRID actually live, and they
+- **`municipal`** — the town's recreation pages (parks and rec, a park
+  district, a school district's community education) and the documents hanging
+  off them. This is where a FEE TABLE and a SESSION-DATE GRID actually live, and they
   are very often in a linked PDF rather than on the page. Open the PDF.
 - **`registration`** — how and when a parent signs up: the registration page, the
   portal, the "resident registration opens" notice, the account/waitlist page.
@@ -51,8 +52,9 @@ in that order, within your budget.
 
 ## Step 1 — RESEARCH (`web_search` and `web_fetch`)
 
-**Find the operator's own domain first.** One search. The club, the municipality,
-the community centre — never an aggregator, never a listings site that scrapes
+**Find the operator's own domain first.** One search. The club, the town's
+recreation department or park district, the community centre, the YMCA, the
+library — never an aggregator, never a listings site that scrapes
 them. When the subject NAMES a place, that place's site is the answer to the
 question; do not substitute three other venues for the one that was asked about.
 
@@ -99,7 +101,7 @@ Registration for a fall session usually opened weeks ago, so "not running yet" i
 almost never the right answer.
 
 **A POSTED SCHEDULE AND AN OPEN REGISTRATION ARE TWO DIFFERENT FACTS.** Do not
-infer either from the other. Halton Hills publishes the whole fall swim grid in
+infer either from the other. One town publishes the whole fall swim grid in
 August — "Parent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM | Oct 05 - Dec 07 |
 108969", $86.22 for nine lessons — and opens registration to residents on
 September 1 at 7 a.m. On 2026-08-21 Hale said that schedule "posts when
@@ -115,16 +117,16 @@ Return what you READ, as structured rows. Never a paragraph, never a guess.
 
 ```json
 {
-  "pages_read": ["https://example.ca/programs.php"],
+  "pages_read": ["https://riverbendgym.example/programs"],
   "slots": [
     {
-      "name": "Tiny Gym, Cartwheels Gym Centre",
+      "name": "Tiny Gym, Riverbend Gym Centre",
       "age_fit": "walking to 3.5 years, with a parent",
       "when": "Sundays 9:30-10:15, Sept 14 to Oct 26",
       "price": "$124 per term",
       "registration": "Registration has been open since July 22",
-      "source_name": "Cartwheels Gym Centre",
-      "source_url": "https://example.ca/programs.php"
+      "source_name": "Riverbend Gym Centre",
+      "source_url": "https://riverbendgym.example/programs"
     }
   ]
 }

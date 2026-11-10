@@ -1,15 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
-import { cityRecLine } from '~/lib/channel/rec-morning';
+import { TORONTO_FOLLOW, cityRecLine } from '~/lib/channel/rec-morning';
+import { setSharedRecMorningReader } from '~/lib/channel/rec-morning/read';
+import { scriptedRecMorningReader } from '~/lib/channel/rec-morning/scripted-reader.fixture';
+import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
-import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
+import type { RegistrationNoteFacts } from '~/lib/registration/sequence/note-compose';
 import type {
   BindReadClaimResult,
   PrepareReplyDeps,
@@ -18,6 +21,7 @@ import type {
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
 import {
@@ -107,6 +111,9 @@ const NO_PREPARE: PrepareReplyDeps = {
   },
   recordReadinessState: async () => {
     throw new Error('the pre-open branch must not write');
+  },
+  writeNote: async () => {
+    throw new Error('the pre-open branch must not write a note');
   },
 };
 
@@ -372,6 +379,7 @@ function sequenceDeps(
     recordReask: async () => {
       reasks.n += 1;
     },
+    writeNote: async (_db, _familyId, facts) => `note:${facts.kind}`,
   } as SequenceReplyDeps & {
     recorded: Array<{ outcome: string; position: number | null }>;
     reasks: number;
@@ -391,7 +399,11 @@ describe('sequenceReplyHandler', () => {
     const deps = sequenceDeps();
     const verdict = await sequenceReplyHandler(deps, NO_PREPARE).handle(DB, turn("we're in"));
 
-    expect(verdict.claimed).toBe(true);
+    expect(verdict).toEqual({
+      claimed: true,
+      outcome: 'recorded',
+      reply: 'note:outcome_registered',
+    });
     expect(deps.recorded).toEqual([{ outcome: 'registered', position: null }]);
   });
 
@@ -539,9 +551,24 @@ describe('the village intro lane and the lanes behind it', () => {
 });
 
 describe('recMorningHandler', () => {
+  /** The families row both reads in this handler select from: language, then stored place.
+   * No primary parent row, so no zone is on file. */
+  function familyRow(row: { primaryLanguage: string | null; city: string | null }): Database {
+    const found = { ...row, postalCode: null, areaCoarse: null, country: 'Canada', province: null };
+    return {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => [found] }),
+          innerJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+        }),
+      }),
+    } as unknown as Database;
+  }
+  const TORONTO_FAMILY = familyRow({ primaryLanguage: null, city: 'Toronto' });
+
   it("answers a Toronto swim clock question with the dataset's Toronto dates", async () => {
     const verdict = await recMorningHandler().handle(
-      DB,
+      TORONTO_FAMILY,
       turn('When does Toronto swim registration open?'),
     );
     expect(verdict.claimed).toBe(true);
@@ -558,7 +585,10 @@ describe('recMorningHandler', () => {
   });
 
   it("answers a named Markham rec ask with Markham's own cycle, not Toronto", async () => {
-    const verdict = await recMorningHandler().handle(DB, turn('Markham fall rec dates?'));
+    const verdict = await recMorningHandler().handle(
+      TORONTO_FAMILY,
+      turn('Markham fall rec dates?'),
+    );
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed || verdict.reply === null) return;
     expect(verdict.reply).toBe(cityRecLine('markham', TURN_NOW));
@@ -568,16 +598,215 @@ describe('recMorningHandler', () => {
     expect(verdict.reply.toLowerCase()).not.toContain('activeto');
   });
 
+  it('passes the family speech language into the rec-morning line', async () => {
+    const seen: Array<string | null> = [];
+    setSharedSpokenLineWriter({
+      write: async (request) => {
+        seen.push(request.language);
+        return request.facts?.answer ?? null;
+      },
+    });
+    const database = familyRow({ primaryLanguage: 'zh', city: 'Toronto' });
+    try {
+      const verdict = await recMorningHandler().handle(
+        database,
+        turn('When does Toronto swim registration open?'),
+      );
+      expect(seen).toEqual(['zh']);
+      expect(verdict.claimed).toBe(true);
+    } finally {
+      setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+    }
+  });
+
+  it('VIL-545: leaves a swim pickup to the coach when the read says the facts do not answer it', async () => {
+    const pickup = "Hale, can you loop in Sam about Saturday's swim pickup? I can't make it.";
+    const texts: string[] = [];
+    setSharedRecMorningReader(async (input) => {
+      texts.push(input.text);
+      return 'other';
+    });
+    try {
+      expect(await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).toEqual({
+        claimed: false,
+      });
+      expect(texts).toEqual([pickup]);
+    } finally {
+      setSharedRecMorningReader(scriptedRecMorningReader);
+    }
+    // Positive control: the same text, read as answered, is claimed by the lane.
+    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).claimed).toBe(true);
+  });
+
   it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
-    expect((await recMorningHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
+    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn('waitlisted #3'))).claimed).toBe(
+      false,
+    );
     expect(
       (
         await recMorningHandler().handle(
-          DB,
+          TORONTO_FAMILY,
           turn('can you watch swim registration for Milo this fall?'),
         )
       ).claimed,
     ).toBe(false);
+  });
+});
+
+/**
+ * VIL-591. The rec-morning facts are GTA facts, so the family's own stored place decides
+ * whether this lane may answer at all - never the words of the text. Real Postgres, so the
+ * stored-place read is the production one.
+ */
+describe('recMorningHandler · only a family whose place is in the GTA', () => {
+  let placeDb: TestDb;
+
+  beforeAll(async () => {
+    placeDb = await createTestDb();
+  }, 120_000);
+
+  afterAll(async () => {
+    await placeDb.close();
+  });
+
+  async function familyAt(place: {
+    countryCode: string;
+    city: string | null;
+    postalCode: string | null;
+    country?: string | null;
+    areaCoarse?: string | null;
+  }): Promise<string> {
+    const [row] = await placeDb.database
+      .insert(schema.families)
+      .values({ displayName: 'Rivera household', ...place })
+      .returning({ id: schema.families.id });
+    if (!row) throw new Error('family not inserted');
+    return row.id;
+  }
+
+  async function handleFor(familyId: string, body: string, now: Date = TURN_NOW) {
+    return recMorningHandler().handle(placeDb.database, { ...turn(body), familyId, now });
+  }
+
+  async function primaryParentIn(familyId: string, timezone: string): Promise<void> {
+    const [user] = await placeDb.database
+      .insert(schema.users)
+      .values({ name: 'Sam', timezone })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('user not inserted');
+    await placeDb.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user.id, role: 'primary_parent' });
+  }
+
+  /** Hand-derived: the Y opened fall swim Thursday Aug 27 2026 at 9:00 a.m. */
+  const YMCA_OPEN_FACT =
+    'YMCA GTA swim registration opens Thursday, Aug 27, 2026 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.';
+
+  it("leaves the Y's opening morning to the coach once that day has passed", async () => {
+    const toronto = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(toronto, 'America/Toronto');
+    const ask = 'when does ymca swim open';
+    expect(await handleFor(toronto, ask, new Date('2026-11-04T14:00:00.000Z'))).toEqual({
+      claimed: false,
+    });
+    // Positive control: a week before that morning, the lane answers with the fact.
+    expect(await handleFor(toronto, ask, new Date('2026-08-20T14:00:00.000Z'))).toEqual({
+      claimed: true,
+      outcome: 'rec_morning',
+      reply: YMCA_OPEN_FACT,
+    });
+  });
+
+  it("reads that day in the zone the family's parent has on file", async () => {
+    // 02:00Z on Aug 28 is still Aug 27 in Eastern time, and already Aug 28 in UTC.
+    const lateOnTheDay = new Date('2026-08-28T02:00:00.000Z');
+    const eastern = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(eastern, 'America/Toronto');
+    const utc = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(utc, 'UTC');
+    expect(await handleFor(eastern, 'when does ymca swim open', lateOnTheDay)).toEqual({
+      claimed: true,
+      outcome: 'rec_morning',
+      reply: YMCA_OPEN_FACT,
+    });
+    expect(await handleFor(utc, 'when does ymca swim open', lateOnTheDay)).toEqual({
+      claimed: false,
+    });
+  });
+
+  it('leaves a Markham family texting "waitlist" to the coach', async () => {
+    const markham = await familyAt({
+      countryCode: 'CA',
+      country: 'Canada',
+      city: 'Markham',
+      postalCode: null,
+    });
+    expect(await handleFor(markham, 'waitlist')).toEqual({ claimed: false });
+    // Positive control: the same family's rec ask is still this lane's.
+    expect((await handleFor(markham, 'Markham fall rec dates?')).claimed).toBe(true);
+  });
+
+  it("leaves the Y's opening morning to the coach when no parent zone is on file", async () => {
+    // No primary parent row: Hale does not know the family's today, so it does not say
+    // the morning is still ahead (the eastern-parent test above is the positive control).
+    const zoneless = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    expect(
+      await handleFor(zoneless, 'when does ymca swim open', new Date('2026-08-20T14:00:00.000Z')),
+    ).toEqual({ claimed: false });
+  });
+
+  it('places a town name with no postal only for a family whose stored country is Canada', async () => {
+    // Burlington is a town in Vermont too; country_code defaults to CA, so it is no signal.
+    const vermont = await familyAt({
+      countryCode: 'CA',
+      country: 'United States',
+      city: 'Burlington',
+      postalCode: null,
+    });
+    expect(await handleFor(vermont, 'Burlington fall rec dates?')).toEqual({ claimed: false });
+    // Positive control: the Family page stores the city as the coarse area too.
+    const ontario = await familyAt({
+      countryCode: 'CA',
+      country: 'Canada',
+      city: 'Burlington',
+      postalCode: null,
+      areaCoarse: 'Burlington',
+    });
+    expect((await handleFor(ontario, 'Burlington fall rec dates?')).claimed).toBe(true);
+  });
+
+  it('leaves a Texas family texting "waitlist" to the coach', async () => {
+    const texas = await familyAt({ countryCode: 'US', city: 'Austin', postalCode: '78701' });
+    expect(await handleFor(texas, 'waitlist')).toEqual({ claimed: false });
+  });
+
+  it('leaves a Texas family texting "YMCA swim" to the coach', async () => {
+    const texas = await familyAt({ countryCode: 'US', city: 'Austin', postalCode: '78701' });
+    expect(await handleFor(texas, 'YMCA swim')).toEqual({ claimed: false });
+  });
+
+  it('leaves a US family whose town shares a GTA name to the coach', async () => {
+    const georgia = await familyAt({
+      countryCode: 'US',
+      city: 'Richmond Hill',
+      postalCode: '31324',
+    });
+    expect(await handleFor(georgia, 'YMCA swim')).toEqual({ claimed: false });
+  });
+
+  it('leaves a Vancouver family asking about the parents login to the coach', async () => {
+    const vancouver = await familyAt({ countryCode: 'CA', city: 'Vancouver', postalCode: 'V6B' });
+    expect(await handleFor(vancouver, 'both parents need the login')).toEqual({
+      claimed: false,
+    });
+  });
+
+  it('still answers a family with a Toronto FSA texting "waitlist" (positive control)', async () => {
+    const toronto = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    const verdict = await handleFor(toronto, 'waitlist');
+    // The scripted writer restates the facts it was handed: the Toronto waitlist mechanics.
+    expect(verdict).toEqual({ claimed: true, outcome: 'rec_morning', reply: TORONTO_FOLLOW });
   });
 });
 
@@ -855,6 +1084,8 @@ function prepareDeps(
     /** The household's already-approved shortlist, while its ask is still this
      * parent's last word — null (the default) is every household but that one. */
     approved?: { sequenceId: string } | null;
+    /** Every note write fails: nothing is sent. */
+    unwritten?: boolean;
   } = {},
 ) {
   const bound: Array<{ url: string; courseOpensAt: Date; inbound: string }> = [];
@@ -891,6 +1122,10 @@ function prepareDeps(
       });
       return 'recorded' as const;
     },
+    // The composer seam: the note's kind stands in for the text the model writes, or
+    // null for a write that failed (options.unwritten).
+    writeNote: async (_db: unknown, _familyId: string, facts: RegistrationNoteFacts) =>
+      options.unwritten ? null : `note:${facts.kind}`,
   } satisfies PrepareReplyDeps & {
     bound: Array<{ url: string; courseOpensAt: Date; inbound: string }>;
     readiness: Array<{ ready: boolean; inbound: string; read: string; actor: string }>;
@@ -923,7 +1158,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed) throw new Error('unreachable');
     expect(verdict.outcome).toBe('bound');
-    expect(verdict.reply).toContain("Markham's portal");
+    expect(verdict.reply).toBe('note:course_bound');
     expect(prepare.bound).toEqual([
       {
         url: LEGO_URL,
@@ -1013,7 +1248,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     if (!verdict.claimed) throw new Error('unreachable');
     expect(prepare.bound).toHaveLength(1);
     expect(prepare.readiness).toEqual([]);
-    expect(verdict.reply).toContain("Markham's portal");
+    expect(verdict.reply).toBe('note:course_bound');
     expect(verdict.outcome).toBe('bound');
   });
 
@@ -1052,7 +1287,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed) throw new Error('unreachable');
     expect(verdict.outcome).toBe('read_throttled');
-    expect(verdict.reply).toContain('in 7 minutes');
+    expect(verdict.reply).toBe('note:course_link_throttled');
     expect(prepare.bound).toEqual([]);
     expect(prepare.readiness).toEqual([]);
   });
@@ -1274,10 +1509,26 @@ describe('sequenceReplyHandler · a yes to a card the household already approved
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed) throw new Error('unreachable');
     expect(verdict.outcome).toBe('already_approved');
-    expect(verdict.reply).toBe(SHORTLIST_ALREADY_APPROVED_ACK);
+    expect(verdict.reply).toBe('note:already_approved');
     // It acted on nothing: no second approval, no readiness fact invented out of a
     // word that was answering the card.
     expect(prepare.readiness).toEqual([]);
+  });
+
+  it('claims the turn and sends nothing when the answer cannot be written', async () => {
+    const prepare = prepareDeps({
+      askedAt: null,
+      approved: { sequenceId: 'seq-1' },
+      unwritten: true,
+    });
+
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('yes', { resolved: placed('approval', 'seq-1') }),
+    );
+
+    // Claimed, so the coach cannot invent a confirmation; null, so nothing is sent.
+    expect(verdict).toEqual({ claimed: true, outcome: 'already_approved', reply: null });
   });
 
   /**

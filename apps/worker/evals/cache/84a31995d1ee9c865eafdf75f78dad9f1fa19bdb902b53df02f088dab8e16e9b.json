@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message claims Hale will sign Max and Mia up, which contradicts the rule that Hale never registers and invents a registration. It also leaves out the listed texts and their timing, the course-link tip even though courseLinkTip is true, and the residents-first and age-band context.",
+    "score": 1
+  }
+}

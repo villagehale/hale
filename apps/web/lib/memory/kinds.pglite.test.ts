@@ -97,6 +97,7 @@ describe('family memory kinds', () => {
       factValue: 'saturday class',
       confidence: 0.9,
       inferredBy: 'memory_inferencer',
+      heard: 'unrecorded',
       validFrom: NOW,
       memoryKind: kind,
       memorySource: kind === 'lasting' ? 'legacy' : 'inferred',
@@ -154,6 +155,7 @@ describe('family memory kinds', () => {
         factValue: row.factKey,
         confidence: 0.9,
         inferredBy: 'memory_inferencer',
+        heard: 'unrecorded',
         validFrom: NOW,
         memoryKind: row.kind,
         memorySource: 'inferred',
@@ -356,6 +358,7 @@ describe('family memory kinds', () => {
       factValue: 'asked once',
       confidence: 0.9,
       inferredBy: 'chat_distiller',
+      heard: 'unrecorded',
       validFrom: NOW,
       ...first,
     });
@@ -383,6 +386,7 @@ describe('family memory kinds', () => {
       factValue: 'midtown',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: new Date(NOW.getTime() - 2000),
       memoryKind: 'lasting',
       memorySource: 'parent_message',
@@ -397,6 +401,7 @@ describe('family memory kinds', () => {
       factValue: 'saturday',
       confidence: 0.9,
       inferredBy: 'memory_inferencer',
+      heard: 'unrecorded',
       validFrom: NOW,
       memoryKind: 'one_off',
       memorySource: 'inferred',
@@ -411,6 +416,7 @@ describe('family memory kinds', () => {
       factValue: 'SECRET_TEEN',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
       memoryKind: 'lasting',
       memorySource: 'parent_message',
@@ -425,6 +431,7 @@ describe('family memory kinds', () => {
       factValue: 'done',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
       memoryKind: 'lasting',
       memorySource: 'receipt',
@@ -466,6 +473,7 @@ describe('family memory kinds', () => {
       factValue: 'once',
       confidence: 0.9,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
       memoryKind: 'one_off',
       memorySource: 'inferred',
@@ -480,6 +488,7 @@ describe('family memory kinds', () => {
       factValue: 'done',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
       memoryKind: 'temporary',
       memorySource: 'parent_message',
@@ -487,7 +496,11 @@ describe('family memory kinds', () => {
       expiresAt: new Date(NOW.getTime() - 1000),
       signalCount: 0,
     });
-    const recalled = await recallFamilyMemory(db.database, { familyId, now: NOW });
+    const recalled = await recallFamilyMemory(db.database, {
+      familyId,
+      now: NOW,
+      reader: 'every_adult',
+    });
     expect(recalled.map((row) => row.factKey)).toEqual(['swimming']);
     expect(recalled[0]).toMatchObject({ kind: 'one_off', source: 'inferred' });
   });

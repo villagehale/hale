@@ -1,8 +1,8 @@
 /**
- * The sentence that offers to try a signup (VIL-397).
+ * The cancelled locked offer sentence (VIL-396 / VIL-397).
  *
- * It may leave only when the parent has already approved the price. Nothing
- * in the signup path interpolates it into a reply. The signup flag stays off.
+ * It must not be sent. Production offers are written from facts by
+ * `offer-writer.ts` (skill `signup-offer`) and recorded by `offerSignupFromFacts`.
  */
 
 import { copyLanguage } from '~/lib/channel/language';

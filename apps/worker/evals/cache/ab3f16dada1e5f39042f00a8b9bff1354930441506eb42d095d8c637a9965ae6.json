@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French and English mixed (\"Jour de congé\" is French, the rest English) despite language en. It gives the wrong time: 3:00 instead of 9:30 AM to 12:00 PM, and omits the location. It also says the day is open with breathing room, which is false because a timed event exists. Multiple fact failures and wrong language.",
+    "score": 1
+  }
+}

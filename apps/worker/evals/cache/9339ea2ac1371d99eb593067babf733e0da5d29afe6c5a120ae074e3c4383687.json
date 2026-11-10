@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It correctly notes that the new page replaces the earlier one and says plainly that the course name, day and time could not be read, which is right since they are null. The date, Tuesday, September 15 at 7:00 a.m., is accurate, and 'for residents' matches the residents-date clock name. It gives the prerequisite warning to leave time, has no link and asks nothing. Two small weaknesses: it never says who the course is for ('your teen'), and 'I'm going by the registration date' is slightly odd phrasing when haleHad is null, though it makes no false claim.",
+    "score": 4
+  }
+}

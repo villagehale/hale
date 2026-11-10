@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple failures: the text is in French ('Jour de congé') when the requested language is English; the swim class is misreported as a 3:00 event instead of 10:00 AM to 11:00 AM; the day is wrong ('Tomorrow' when the event is today); the claim that the day is open with breathing room is false because a timed event exists; the title 'Swim class' is dropped and replaced with an invented all-day description.",
+    "score": 1
+  }
+}

@@ -1,14 +1,19 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { linqVoiceMemosEnabled } from '~/lib/channel/linq/config';
 import { attachmentContentBlock } from '~/lib/coach/attachment-blocks';
 
 /**
  * A Linq attachment, small enough to store on the inbound row and re-drive.
  *
  * Bytes are never stored. A photo is fetched when the coach runs, and only then.
- * A video or a file is named so the model can write the reply; it is not downloaded.
+ * A video, a voice memo, or a file is named so the model can write the reply; it is
+ * not downloaded. `audio` (VIL-476) exists only while LINQ_VOICE_MEMOS_ENABLED is
+ * `true`; dark, audio reads as `file`, exactly as before.
  */
 
-export type InboundMediaKind = 'image' | 'video' | 'file';
+export type InboundMediaKind = 'image' | 'video' | 'audio' | 'file';
+
+const KINDS: readonly InboundMediaKind[] = ['image', 'video', 'audio', 'file'];
 
 export interface InboundMediaPart {
   kind: InboundMediaKind;
@@ -19,12 +24,17 @@ export interface InboundMediaPart {
 
 export interface ReadInboundMedia {
   blocks: Anthropic.ContentBlockParam[];
-  /** What this turn carried that the model did not see as bytes. */
-  unwatched: Array<{ kind: InboundMediaKind }>;
+  /** What this turn carried that the model did not see as bytes. A voice memo that was
+   * transcribed (VIL-495) carries the parent's words as `heard`. */
+  unwatched: Array<{ kind: InboundMediaKind; heard?: string }>;
 }
+
+/** VIL-495 · the words in one voice memo, or null when it could not be heard. */
+export type HearVoiceMemo = (part: InboundMediaPart & { url: string }) => Promise<string | null>;
 
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|heic|heif)(?:$|\?)/i;
 const VIDEO_EXT = /\.(mp4|mov|webm|m4v)(?:$|\?)/i;
+const AUDIO_EXT = /\.(m4a|mp3|aac|caf|wav|aiff?|amr)(?:$|\?)/i;
 const IMAGE_BLOCK_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 /** Anthropic's image block cap, with room under it. */
 const IMAGE_BYTE_CAP = 4_000_000;
@@ -48,12 +58,15 @@ export function classifyInboundMedia(
   mime: string | null,
   url: string | null,
   filename: string | null,
+  voiceMemos: boolean = linqVoiceMemosEnabled(),
 ): InboundMediaKind {
   const normalized = (mime ?? '').toLowerCase().split(';')[0]?.trim() ?? '';
   if (normalized.startsWith('image/')) return 'image';
   if (normalized.startsWith('video/')) return 'video';
+  if (voiceMemos && normalized.startsWith('audio/')) return 'audio';
   if (IMAGE_EXT.test(filename ?? '') || IMAGE_EXT.test(url ?? '')) return 'image';
   if (VIDEO_EXT.test(filename ?? '') || VIDEO_EXT.test(url ?? '')) return 'video';
+  if (voiceMemos && (AUDIO_EXT.test(filename ?? '') || AUDIO_EXT.test(url ?? ''))) return 'audio';
   return 'file';
 }
 
@@ -83,7 +96,7 @@ export function persistableMedia(
 ): InboundMediaPart[] | null {
   if (!parts || parts.length === 0) return null;
   return parts.slice(0, MAX_PARTS).map((part) => ({
-    kind: part.kind === 'image' || part.kind === 'video' ? part.kind : 'file',
+    kind: KINDS.includes(part.kind) ? part.kind : 'file',
     url: httpsMediaUrl(part.url),
     mime: part.mime && part.mime.length <= 80 ? part.mime : null,
   }));
@@ -95,8 +108,9 @@ export function inboundMediaFromStored(value: unknown): InboundMediaPart[] {
   for (const item of value) {
     if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
-    const kind =
-      row.kind === 'image' || row.kind === 'video' || row.kind === 'file' ? row.kind : null;
+    const kind = KINDS.includes(row.kind as InboundMediaKind)
+      ? (row.kind as InboundMediaKind)
+      : null;
     if (!kind) continue;
     out.push({
       kind,
@@ -137,17 +151,24 @@ function headerMime(header: string | null): string | null {
 }
 
 /**
- * Fetch the images on this turn into model blocks. Videos and files are not
- * fetched. A failed fetch is named in the return (unwatched), never thrown,
- * and the URL is not logged.
+ * Fetch the images on this turn into model blocks, and hear its voice memos when a
+ * `hear` port is given (VIL-495). Videos and files are not fetched. A failed fetch is
+ * named in the return (unwatched), never thrown, and the URL is not logged.
  */
 export async function readInboundMedia(
   parts: readonly InboundMediaPart[],
   fetchImpl: typeof fetch = fetch,
+  hear?: HearVoiceMemo,
 ): Promise<ReadInboundMedia> {
   const blocks: Anthropic.ContentBlockParam[] = [];
-  const unwatched: Array<{ kind: InboundMediaKind }> = [];
+  const unwatched: Array<{ kind: InboundMediaKind; heard?: string }> = [];
   for (const part of parts.slice(0, MAX_PARTS)) {
+    if (part.kind === 'audio') {
+      const url = httpsMediaUrl(part.url);
+      const heard = hear && url ? await hear({ ...part, url }) : null;
+      unwatched.push(heard ? { kind: 'audio', heard } : { kind: 'audio' });
+      continue;
+    }
     if (part.kind !== 'image') {
       unwatched.push({ kind: part.kind });
       continue;

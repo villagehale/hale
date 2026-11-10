@@ -4,9 +4,9 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ActivityReference } from '~/lib/channel/activity/facts';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { linkRef } from '~/lib/channel/coach/activity-links';
-import { attachLinks } from '~/lib/channel/coach/activity-links';
+import { attachLinks, linkRef } from '~/lib/channel/coach/activity-links';
 import { type NamedLink, createTurnOfferLedger } from '~/lib/channel/coach/tools';
+import type { NamedAreaReader } from '~/lib/channel/named-area';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
@@ -45,15 +45,16 @@ async function search(
   finder: ActivityFinder,
   recorder?: Parameters<typeof searchVillageTool>[1],
   input: unknown = {},
+  areaReader?: NamedAreaReader,
   onLinks?: (links: readonly NamedLink[]) => void,
 ) {
   return invokeTool(
-    searchVillageTool(db.database, recorder, finder, onLinks),
+    searchVillageTool(db.database, recorder, finder, areaReader, onLinks),
     input,
     { familyId, actor: 'test' },
     { writeAudit: async () => {} },
   ) as Promise<{
-    candidates: { title: string; when: string; url?: string; ref?: string }[];
+    candidates: { title: string; when?: string; url?: string; ref?: string }[];
     liveRead: string;
     references?: (Omit<ActivityReference, 'sourceUrl'> & { ref: string })[];
     checkedSources?: { ref: string }[];
@@ -75,8 +76,45 @@ describe('search_village uses this operation’s live evidence', () => {
     expect(find.mock.calls[0]?.[0]).toMatchObject({
       subject: 'Toronto Public Library storytimes',
       window: 'October 2026',
-      town: 'Toronto, Ontario, Canada',
+      town: 'Toronto',
     });
+  });
+
+  it('searches the place the parent named instead of the home area (VIL-523)', async () => {
+    const familyId = await household(false, 'Toronto');
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({ found: true, picks: [pick] });
+    const kingston: NamedAreaReader = {
+      read: async () => ({ locality: 'Kingston', region: 'Ontario', granularity: 'locality' }),
+    };
+    await search(
+      familyId,
+      { find },
+      undefined,
+      { query: 'trick or treat', window: 'this weekend', area: 'Kingston' },
+      kingston,
+    );
+    expect(find.mock.calls[0]?.[0]).toMatchObject({
+      subject: 'trick or treat',
+      window: 'this weekend',
+      town: 'Kingston, Ontario',
+    });
+  });
+
+  it('reports a street as area_unusable with no candidates and no search of home', async () => {
+    const familyId = await household(false, 'Toronto');
+    const find = vi.fn<ActivityFinder['find']>();
+    const street: NamedAreaReader = {
+      read: async () => ({ locality: null, region: 'Ontario', granularity: 'street' }),
+    };
+    const result = await search(
+      familyId,
+      { find },
+      undefined,
+      { query: 'story time', area: 'Bayview Drive ON' },
+      street,
+    );
+    expect(result).toMatchObject({ candidates: [], liveRead: 'area_unusable' });
+    expect(find).not.toHaveBeenCalled();
   });
 
   it('hands Coach an unconfirmed find and its source without recording it as an offer', async () => {
@@ -116,6 +154,7 @@ describe('search_village uses this operation’s live evidence', () => {
       },
       undefined,
       {},
+      undefined,
       (read) => links.push(...read),
     );
     const { sourceUrl, ...facts } = reference;
@@ -183,6 +222,7 @@ describe('search_village uses this operation’s live evidence', () => {
       { find: async () => ({ found: true, picks: [source] }) },
       ledger.record,
       {},
+      undefined,
       ledger.recordLinks,
     );
     const links = [
@@ -222,7 +262,7 @@ describe('search_village uses this operation’s live evidence', () => {
     const result = await search(familyId, {
       find: async () => ({ found: true, picks: [{ ...pick, when: null }] }),
     });
-    expect(result.candidates[0]?.when).toBe('Current time could not be verified');
+    expect(result.candidates[0]).not.toHaveProperty('when');
   });
 
   it('does not search for a teen-only household', async () => {
@@ -239,6 +279,75 @@ describe('search_village uses this operation’s live evidence', () => {
     const find = vi.fn<ActivityFinder['find']>();
     const result = await search(familyId, { find });
     expect(find).not.toHaveBeenCalled();
-    expect(result.liveRead).toBe('no_area');
+    expect(result.liveRead).toBe('no_place');
+  });
+});
+
+describe('VIL-522 search_village tops up a short radar', () => {
+  const fair: ActivityPick = {
+    ...pick,
+    name: 'Harvest fair',
+    sourceName: 'Fairgrounds',
+    sourceUrl: 'https://fair.example/harvest',
+  };
+
+  it('fires one live search when the radar returns a single suitable find', async () => {
+    const familyId = await household();
+    let calls = 0;
+    const find = vi.fn<ActivityFinder['find']>(async () => {
+      calls += 1;
+      return calls === 1 ? { found: true, picks: [pick] } : { found: true, picks: [fair] };
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(2);
+    expect(find.mock.calls[1]?.[0]).toEqual(find.mock.calls[0]?.[0]);
+    expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');
+    expect(result.candidates.map((row) => row.title)).toEqual(['Current swim', 'Harvest fair']);
+  });
+
+  it('does not search again when the radar already has two suitable finds', async () => {
+    const familyId = await household();
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({
+      found: true,
+      picks: [pick, fair],
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(result.candidates.map((row) => row.title)).toEqual(['Current swim', 'Harvest fair']);
+  });
+
+  it('drops a Wikipedia page and still tops up from the one real find', async () => {
+    const familyId = await household();
+    const wiki: ActivityPick = {
+      ...pick,
+      name: 'Public library',
+      sourceName: 'Wikipedia',
+      sourceUrl: 'https://en.wikipedia.org/wiki/Public_library',
+    };
+    let calls = 0;
+    const find = vi.fn<ActivityFinder['find']>(async () => {
+      calls += 1;
+      return calls === 1 ? { found: true, picks: [pick, wiki] } : { found: true, picks: [fair] };
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(2);
+    expect(result.candidates.map((row) => row.title)).toEqual(['Current swim', 'Harvest fair']);
+    expect(JSON.stringify(result)).not.toContain('wikipedia');
+  });
+
+  it('does not spend a top-up when the radar read itself failed', async () => {
+    const familyId = await household();
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({
+      found: false,
+      reason: 'ground_failed',
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(result.candidates).toEqual([]);
+    expect(result.liveRead).toBe('ground_failed');
   });
 });

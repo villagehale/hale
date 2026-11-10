@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly stays generic and private, says a school message was rescheduled, keeps details out, offers nothing, and asks nothing since offer is null. Casual English matches language. Minor issue: 'rescheduled' is a specific claim slightly beyond the generic category, but it matches the kind field.",
+    "score": 5
+  }
+}

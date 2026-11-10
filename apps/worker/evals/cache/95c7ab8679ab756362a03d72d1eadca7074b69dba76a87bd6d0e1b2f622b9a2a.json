@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow is Monday, Jour de congé is all-day, Léa's swimming is 10 h to 11 h at Piscine Main, in French. However, 'Demain, c'est un jour de congé' reads like a calendar label for the all-day entry, and a native speaker would more naturally say 'Demain c'est congé' or 'Demain, jour de congé à l'école' type phrasing; the sentence structure feels like a readout rather than how a friend texts. Also 'a natation' should be 'de natation' or 'de la natation' with 'a' reading like a calque from English 'has swimming'; a native speaker would write 'Léa a natation' only loosely, and 'de 10 h à 11 h' is a slightly stiff time range. Capped at 3 for unnatural phrasing.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Red-flag case handled correctly: immediate emergency direction (911, go to ER now), explicitly not waiting or calling 811 first, and written in French as the parent wrote. Brief and clear. Minor gap: no explanation of why the rash is dangerous or what to do while waiting, but triage is correct and up front.",
+    "score": 5
+  }
+}

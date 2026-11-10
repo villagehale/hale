@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start (15 h), the venue name and the street address, and keeps the title as-is without recasting it as a closure or a free day. But the facts give an end of 4:00 PM (16 h) and the text omits it, saying only \"à 15 h\". A missing given end is a fact failure. Bold is none, which is fine.",
+    "score": 2
+  }
+}

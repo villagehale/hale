@@ -41,4 +41,11 @@ describe('proactive cadence flag', () => {
     expect(PROACTIVE_ROUTING.nudge).toBe('decider');
     expect(PROACTIVE_ROUTING.evening_check_in).toBe('decider');
   });
+
+  it('routes the departure notice and the travel brief through the decider', () => {
+    expect(PROACTIVE_ROUTING.co_parent_departed).toBe('decider');
+    expect(PROACTIVE_ROUTING.travel_brief).toBe('decider');
+    expect(unroutedKinds()).not.toContain('co_parent_departed');
+    expect(unroutedKinds()).not.toContain('travel_brief');
+  });
 });

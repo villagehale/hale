@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and `turnedOffThisTurn` shows the switch for both send_email and reply_to_email was actually flipped this turn, so saying \"Done\" is true. The reply confirms the change plainly and tells Sam each email will come to them first. It is short and accurate, with no greeting, sign-off or question. The last sentence slightly restates the one before it, but that is negligible.",
+    "score": 5
+  }
+}

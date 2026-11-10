@@ -3,6 +3,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -16,15 +17,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * name, the stage band they share, and the activity if there is one. The phone numbers
  * cross by being in the group, never by being written.
  */
-
-/** Linq refuses a link in the first message of a new chat (1005), and this stage has no
- * tool that could produce one anyway. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
-
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|makes|make|made|might|may|does|knows|thinks|found|sends|texts|introduces)\b/i;
-
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
 
 export const MAX_INTRO_GROUP_CHARS = 480;
 export const MAX_INTRO_GROUP_ATTEMPTS = 3;
@@ -46,8 +38,6 @@ export type IntroGroupRefusal =
   | 'over_char_cap'
   | 'carries_link'
   | 'not_a_sentence'
-  | 'third_person_self'
-  | 'first_person_plural'
   | 'parent_name_missing'
   | 'anchor_missing'
   | 'carries_address'
@@ -63,10 +53,9 @@ export function introGroupRefusals(body: string, request: IntroGroupRequest): In
   if (body === '') return ['empty'];
   const found: IntroGroupRefusal[] = [];
   if (body.length > MAX_INTRO_GROUP_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  // Linq refuses a link in the first message of a new chat (1005).
+  if (hasLinkShape(body)) found.push('carries_link');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
   const lower = body.toLowerCase();
   if (
     !lower.includes(request.parentAFirstName.toLowerCase()) ||

@@ -5,6 +5,8 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type SpotUrlRefusal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import type { RegistrationNoteFacts } from './note-compose';
+import { BIND_READ_WINDOW_MS } from './prepare';
 import {
   BIND_READ_ROUTE,
   COURSE_BIND_REFUSALS,
@@ -18,9 +20,6 @@ import {
   loadPreparingSequence,
   readinessQuestion,
 } from './prepare-reply';
-import { BIND_READ_WINDOW_MS } from './prepare';
-import { MAX_PORTAL_SEGMENTS, preparedCopyViolations } from './copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
 
 /**
  * VIL-338 · the inbound half, against the REAL DDL and the bytes a PerfectMind page
@@ -72,12 +71,20 @@ function serving(body: string | (() => never)): PrepareReplyDeps['fetchBody'] {
   return async () => (typeof body === 'string' ? body : body());
 }
 
+/** The facts every ack was written from, in order. The composer seam returns the
+ * note's kind; what the model writes is the eval's (vil543-note-eval.mjs). */
+let notes: RegistrationNoteFacts[] = [];
+
 function deps(overrides: Partial<PrepareReplyDeps> = {}): PrepareReplyDeps {
   return {
     ...defaultPrepareReplyDeps(),
     fetchBody: serving(() => {
       throw new Error('this case must state what the portal serves');
     }),
+    writeNote: async (_db, _familyId, facts) => {
+      notes.push(facts);
+      return `note:${facts.kind}`;
+    },
     ...overrides,
   };
 }
@@ -214,6 +221,7 @@ afterEach(() => {
 });
 
 beforeEach(async () => {
+  notes = [];
   const seeded = await seedFamily(db.database, `Prepare Reply ${Math.random()}`);
   familyId = seeded.familyId;
   parentUserId = seeded.parentUserId;
@@ -364,12 +372,11 @@ describe('the bind refusals', () => {
 
   /**
    * Kills three things at once: a reason that never reaches its own refusal (drive each
-   * one from the page that causes it and assert the reason back), a reason that shares
-   * another's sentence, and a writer that runs before the paste has been judged.
+   * one from the page that causes it and assert the reason back), a reason the model is
+   * not handed, and a writer that runs before the paste has been judged.
    */
-  it('reaches every refusal by its own cause, in its own sentence, and writes nothing', async () => {
+  it('reaches every refusal by its own cause, hands the model its reason, and writes nothing', async () => {
     const sequence = await preparing();
-    const sentences = new Set<string>();
 
     // ONE BIND-READ WINDOW PER ITERATION, because four of these ten reasons reach the
     // portal and the read claim is real here (`deps()` spreads the prod wiring). A stub
@@ -379,18 +386,22 @@ describe('the bind refusals', () => {
       const now = new Date(NOW.getTime() + index * BIND_READ_WINDOW_MS);
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, answeredByUserId: parentUserId, rawUrl: drive.rawUrl, inboundChannelMessageId: inboundId, now },
+        {
+          sequence,
+          answeredByUserId: parentUserId,
+          rawUrl: drive.rawUrl,
+          inboundChannelMessageId: inboundId,
+          now,
+        },
         deps({ fetchBody: async () => drive.page() }),
       );
 
-      expect(outcome).toMatchObject({ status: 'refused', reason });
-      if (outcome.status !== 'refused') throw new Error('unreachable');
-      expect(outcome.reply.length).toBeGreaterThan(20);
-      expect(outcome.reply).not.toMatch(/https?:\/\//);
-      sentences.add(outcome.reply);
+      expect(outcome).toEqual({ status: 'refused', reason, reply: 'note:course_link_refused' });
     }
 
-    expect(sentences.size).toBe(COURSE_BIND_REFUSALS.length);
+    expect(notes.map((n) => (n.kind === 'course_link_refused' ? n.reason : n.kind))).toEqual([
+      ...COURSE_BIND_REFUSALS,
+    ]);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect(await auditRows('registration_readiness_stated')).toHaveLength(0);
     expect(await auditRows('registration_bind_read_throttled')).toHaveLength(0);
@@ -405,13 +416,20 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: oakvilleUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('oakville-course')) }),
     );
 
     expect(outcome).toMatchObject({ status: 'refused', reason: 'wrong_municipality' });
-    if (outcome.status !== 'refused') throw new Error('unreachable');
-    expect(outcome.reply).toContain('Markham');
+    expect(notes).toEqual([
+      expect.objectContaining({ kind: 'course_link_refused', town: 'Markham' }),
+    ]);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect((await sequenceRow()).courseUrl).toBeNull();
   });
@@ -421,15 +439,25 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(nextSeason()) }),
     );
 
     expect(outcome).toMatchObject({ status: 'refused', reason: 'different_season' });
-    if (outcome.status !== 'refused') throw new Error('unreachable');
-    // Both dates, so a parent can see which one Hale thought it was holding.
-    expect(outcome.reply).toMatch(/Sep/);
-    expect(outcome.reply).toMatch(/Aug/);
+    // Both mornings, so a parent can see which one Hale thought it was holding.
+    expect(notes).toEqual([
+      expect.objectContaining({
+        kind: 'course_link_refused',
+        pageOpens: expect.objectContaining({ date: 'Tuesday, September 22, 2026' }),
+        haleHas: expect.objectContaining({ date: 'Tuesday, August 11, 2026' }),
+      }),
+    ]);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect((await sequenceRow()).courseUrl).toBeNull();
   });
@@ -439,7 +467,13 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({
         fetchBody: async () => {
           throw new Error('ETIMEDOUT');
@@ -450,6 +484,22 @@ describe('the bind refusals', () => {
     expect(outcome).toMatchObject({ status: 'refused', reason: 'page_unreadable' });
     expect((await sequenceRow()).courseUrl).toBeNull();
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
+  });
+
+  it('sends nothing when the refusal cannot be written — there is no fallback sentence', async () => {
+    const outcome = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        answeredByUserId: parentUserId,
+        rawUrl: oakvilleUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({ fetchBody: serving(fixture('oakville-course')), writeNote: async () => null }),
+    );
+
+    expect(outcome).toEqual({ status: 'refused', reason: 'wrong_municipality', reply: null });
   });
 
   it('declines an already-open course to the coach rather than refusing it', async () => {
@@ -463,7 +513,13 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -479,7 +535,13 @@ describe('the bind write', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -519,7 +581,13 @@ describe('the bind write', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({
         fetchBody: serving(fixture('open-window-open-markham')),
         recordCourseBinding: async (_database, input) => {
@@ -538,7 +606,13 @@ describe('the bind write', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -552,15 +626,46 @@ describe('the bind write', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
     if (outcome.status !== 'bound') throw new Error(`expected a bind, got ${outcome.status}`);
-    expect(outcome.reply).toContain("Markham's portal");
-    expect(outcome.reply).toMatch(/Course [0-9]/);
-    expect(outcome.reply).toMatch(/\$\d/);
-    expect(outcome.reply).toMatch(/Opens /);
+    expect(outcome.reply).toBe('note:course_bound');
+    const facts = notes.at(-1);
+    if (facts?.kind !== 'course_bound') throw new Error('expected course_bound facts');
+    expect(facts.portal).toBe("Markham's portal");
+    expect(facts.course.name).not.toBeNull();
+    expect(facts.course.day).not.toBeNull();
+    expect(facts.courseCode).toMatch(/^[0-9]/);
+    expect(facts.price).toMatch(/\$\d/);
+    expect(facts.opensOn).toMatch(/2026/);
+    expect(facts.replaced).toBe(false);
+  });
+
+  it('keeps the bind when the ack cannot be written, and sends nothing', async () => {
+    const outcome = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({
+        fetchBody: serving(fixture('open-window-open-markham')),
+        writeNote: async () => null,
+      }),
+    );
+    expect(outcome).toEqual({ status: 'bound', reply: null });
+    expect(await auditRows('registration_course_bound')).toHaveLength(1);
   });
 
   it('is idempotent: the same link again re-renders the ack and writes no second audit row', async () => {
@@ -570,7 +675,13 @@ describe('the bind write', () => {
     const bind = (now: Date) =>
       handleCourseBind(
         db.database,
-        { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
+        {
+          sequence,
+          answeredByUserId: parentUserId,
+          rawUrl: legoUrl,
+          inboundChannelMessageId: inboundId,
+          now,
+        },
         deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
       );
 
@@ -587,7 +698,13 @@ describe('the bind write', () => {
   it('marks a replacement as replaced — kills an ack that says nothing changed', async () => {
     await handleCourseBind(
       db.database,
-      { sequence: await preparing(), answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence: await preparing(),
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
     // A second course on the same portal whose clock is inside the drift ceiling, a
@@ -603,15 +720,13 @@ describe('the bind write', () => {
       },
       deps({
         fetchBody: serving(
-          fixture('open-window-open-markham').replace(
-            new RegExp(LEGO, 'g'),
-            CHESS,
-          ),
+          fixture('open-window-open-markham').replace(new RegExp(LEGO, 'g'), CHESS),
         ),
       }),
     );
 
     expect(outcome.status).toBe('bound');
+    expect(notes.at(-1)).toMatchObject({ kind: 'course_bound', replaced: true });
     const rows = await auditRows('registration_course_bound');
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => (row.after as { replaced: boolean }).replaced)).toEqual([false, true]);
@@ -644,20 +759,35 @@ describe('the read throttle', () => {
 
     const first = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
     const second = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: chessUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
 
     expect(first.status).toBe('bound');
     expect(net.calls).toHaveLength(1);
-    expect(second).toMatchObject({ status: 'read_throttled' });
-    if (second.status !== 'read_throttled') throw new Error('unreachable');
-    expect(second.reply).toContain('10 minutes');
+    expect(second).toEqual({ status: 'read_throttled', reply: 'note:course_link_throttled' });
+    expect(notes.at(-1)).toMatchObject({
+      kind: 'course_link_throttled',
+      alreadyBound: false,
+      retryMinutes: 10,
+    });
     // The refusal is a receipt, never a silence — and it says nothing about the paste
     // beyond the host the sequence already holds.
     const [receipt] = await auditRows('registration_bind_read_throttled');
@@ -681,7 +811,13 @@ describe('the read throttle', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
     const later = await handleCourseBind(
@@ -704,8 +840,8 @@ describe('the read throttle', () => {
    * The commonest second paste there is — an SMS resend, a double tap, a parent making
    * sure the first one landed — and the window is spent, so the reply is the throttle's.
    * "I have not opened that link" is FALSE of this one: Hale opened that exact link
-   * seconds ago, bound it, and texted the ack back. Kills a sentence that says it
-   * anyway.
+   * seconds ago, bound it, and texted the ack back. Kills facts that hand the model a
+   * fresh paste (and a resend time) for it anyway.
    */
   it('tells the same link, pasted again inside the window, that it already has it', async () => {
     const net = counting();
@@ -739,15 +875,11 @@ describe('the read throttle', () => {
     expect(first.status).toBe('bound');
     expect(net.calls).toHaveLength(1);
     expect(again.status).toBe('read_throttled');
-    if (again.status !== 'read_throttled') throw new Error('unreachable');
-    expect(again.reply).toContain('I already have that class from you');
-    expect(again.reply).not.toContain('I have not opened that link');
-    expect(again.reply).not.toContain('send it again');
-    expect(
-      preparedCopyViolations(again.reply, { url: null, printed: [], backed: [], optOut: null }),
-    ).toEqual([]);
-    expect(again.reply).not.toContain('?');
-    expect(smsSegments(again.reply)).toBeLessThanOrEqual(MAX_PORTAL_SEGMENTS);
+    expect(notes.at(-1)).toMatchObject({
+      kind: 'course_link_throttled',
+      alreadyBound: true,
+      retryMinutes: null,
+    });
   });
 
   /** Kills hoisting the claim above the sanitizer and the municipality check: one
@@ -758,12 +890,24 @@ describe('the read throttle', () => {
 
     const refused = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: oakvilleUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
     const good = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
 
@@ -773,13 +917,8 @@ describe('the read throttle', () => {
     expect(await auditRows('registration_bind_read_throttled')).toHaveLength(0);
   });
 
-  /**
-   * The sentence is the promise, so it runs the composer's own gate. Kills a curly dash
-   * or apostrophe (which flips the whole body to UCS-2 and halves the segment), an
-   * interrogative rewrite, a template that grows past three segments, and a plural that
-   * says "in 1 minutes" — none of which any other test here would see.
-   */
-  it('says it in one sentence the prepared-copy gate accepts, in both plurals', async () => {
+  /** Kills a resend time that is the window's length rather than the slot's remainder. */
+  it('hands the slot’s own remainder, not the window’s length', async () => {
     const sequence = await preparing();
     const net = counting();
     // A SECOND class, not the one just bound: the link already bound has its own
@@ -787,40 +926,44 @@ describe('the read throttle', () => {
     const throttled = async (now: Date) => {
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now },
+        {
+          sequence,
+          answeredByUserId: parentUserId,
+          rawUrl: chessUrl,
+          inboundChannelMessageId: inboundId,
+          now,
+        },
         deps({ fetchBody: net.fetchBody }),
       );
       if (outcome.status !== 'read_throttled')
         throw new Error(`expected a throttle, got ${outcome.status}`);
-      return outcome.reply;
+      return notes.at(-1);
     };
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
-    const plural = await throttled(NOW);
-    const singular = await throttled(new Date(NOW.getTime() + BIND_READ_WINDOW_MS - 5_000));
+    const early = await throttled(NOW);
+    const late = await throttled(new Date(NOW.getTime() + BIND_READ_WINDOW_MS - 5_000));
 
-    for (const reply of [plural, singular]) {
-      expect(
-        preparedCopyViolations(reply, { url: null, printed: [], backed: [], optOut: null }),
-      ).toEqual([]);
-      expect(reply).not.toContain('?');
-      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_PORTAL_SEGMENTS);
-    }
-    expect(plural).toContain('in 10 minutes');
-    expect(singular).toContain('in 1 minute and');
+    expect(early).toMatchObject({ kind: 'course_link_throttled', retryMinutes: 10 });
+    expect(late).toMatchObject({ kind: 'course_link_throttled', retryMinutes: 1 });
   });
 
   /**
-   * Kills a sentence that asserts the read landed. The claim is spent by the REQUEST,
-   * not by the answer, so the paste that follows a six-second timeout is the one case
-   * where "I just read a course page" is false — and it arrives right after the
-   * sentence that told the same parent the page could not be read.
+   * The claim is spent by the REQUEST, not by the answer, so the paste that follows a
+   * six-second timeout is throttled too — and its write still names the miss: a null
+   * note sends nothing, while the receipt the throttle owes the trail still lands.
    */
-  it('does not claim a read the timed-out request never made', async () => {
+  it('throttles the paste after a timed-out read, and a failed write sends nothing', async () => {
     const sequence = await preparing();
     const timesOut = vi.fn(async (): Promise<string> => {
       throw new Error('bind fetch timed out');
@@ -828,23 +971,31 @@ describe('the read throttle', () => {
 
     const first = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: timesOut }),
     );
     const second = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
-      deps({ fetchBody: timesOut }),
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: chessUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({ fetchBody: timesOut, writeNote: async () => null }),
     );
 
     expect(first).toMatchObject({ status: 'refused', reason: 'page_unreadable' });
     expect(timesOut).toHaveBeenCalledTimes(1);
-    expect(second.status).toBe('read_throttled');
-    if (second.status !== 'read_throttled') throw new Error('unreachable');
-    // The positive control on the negative below: the sentence still says what Hale
-    // spent the window on, in the one verb that is true of a timeout and of a read.
-    expect(second.reply).toContain('I just tried a course page');
-    expect(second.reply).not.toContain('I just read a course page');
+    expect(second).toEqual({ status: 'read_throttled', reply: null });
+    expect(await auditRows('registration_bind_read_throttled')).toHaveLength(1);
   });
 });
 
@@ -867,10 +1018,12 @@ describe('the readiness writer', () => {
     );
 
     expect(outcome.status).toBe('readiness_recorded');
-    // Case-insensitive: the ack now OPENS on the attribution (docs/voice.md rule 3 took
-    // the `Noted - ` prefix off it), and what this pins is that the sentence is the
-    // parent's own statement rather than a claim of Hale's.
-    expect(outcome.reply).toMatch(/you told me/i);
+    expect(outcome.reply).toBe('note:readiness_answer');
+    expect(notes.at(-1)).toMatchObject({
+      kind: 'readiness_answer',
+      ready: true,
+      portal: "Markham's portal",
+    });
     expect((await sequenceRow()).readinessReady).toBe(true);
     const [audit] = await auditRows('registration_readiness_stated');
     expect(audit).toMatchObject({ actor: parentUserId, targetId: inboundId });
@@ -972,9 +1125,7 @@ describe('the readiness writer', () => {
     expect(outcome.status).toBe('readiness_recorded');
     expect((await sequenceRow()).readinessReady).toBe(false);
     expect(await auditRows('registration_readiness_stated')).toHaveLength(2);
-    // The NO ack does not re-ask: under the last-word rule an ack that asked again
-    // would hold the question open across days of unrelated conversation.
-    expect(outcome.reply).not.toContain('?');
+    expect(notes.at(-1)).toMatchObject({ kind: 'readiness_answer', ready: false });
   });
 });
 

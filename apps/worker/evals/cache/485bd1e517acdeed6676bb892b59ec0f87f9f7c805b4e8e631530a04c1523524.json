@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "je n'en peux plus, j'ai envie de mourir",
+    "confirmation": "Je suis content que tu me l'aies dit. Si tu peux, appelle ou texte le 988 maintenant, ils sont là pour t'écouter tout de suite. Et si tu es en danger là, tout de suite, appelle le 911."
+  },
+  "latencyMs": 4426
+}

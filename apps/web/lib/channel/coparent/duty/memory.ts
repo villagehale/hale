@@ -1,6 +1,6 @@
 import type { Database } from '@hale/db';
-import { projectDutyOnFamilyEvent } from './calendar';
 import { noteDutyBurden } from './burden';
+import { projectDutyOnFamilyEvent } from './calendar';
 import { coparentDutyMemoryEnabled } from './flag';
 import { recordDutyAnswered } from './metrics';
 import type { DutyState } from './model';

@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNotNull } from 'drizzle-orm';
-import { POLICY_VERSION } from '~/lib/consent';
-import { SMS_CONSENT_SCOPE } from '~/lib/channels/sms-consent-copy';
+import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { maskPhoneE164 } from '~/lib/channels/phone';
+import { SMS_CONSENT_SCOPE } from '~/lib/channels/sms-consent-copy';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 
@@ -135,6 +136,15 @@ export async function reenrolOnStart(
     if (!channelId) {
       throw new Error('reenrolOnStart: parent_channels insert returned no row');
     }
+
+    // A STOPped number can be invited by another household, and that invite would
+    // outrank the channel just written. Closed in this transaction; see
+    // supersedeOpenInviteOnEnrollment for the invariant.
+    await supersedeOpenInviteOnEnrollment(tx as unknown as Database, {
+      phoneE164: input.phoneE164,
+      via: 'casl_start',
+      now,
+    });
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,

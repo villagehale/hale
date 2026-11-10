@@ -25,9 +25,7 @@ export const UNDO_WINDOW_HOURS = 24;
  * created. A move/cancel undo would need the pre-mutation state, which is not
  * persisted, so they are not reversible via this primitive.
  */
-export const UNDOABLE_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
-  'calendar_add',
-]);
+export const UNDOABLE_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>(['calendar_add']);
 
 /** Whether the undo window is still open for something executed at `executedAt`. */
 export function withinUndoWindow(executedAt: Date, now: Date): boolean {

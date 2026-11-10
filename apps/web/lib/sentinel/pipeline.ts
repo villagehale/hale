@@ -2,7 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { stageFromAgeInMonths } from '@hale/types';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { guardBookingConfirmation } from './booking-guard';
-import { type CorrelationCandidate, correlateExtraction } from './correlate';
+import { type CorrelationCandidate, correlateExtraction, correlationMatchCount } from './correlate';
 import { extractChildEvent } from './extract';
 import { triageEmail } from './triage';
 import type {
@@ -155,15 +155,14 @@ export async function classifyChildEventEmail(
     teenAttributed,
   );
 
-  const matchedEventRef = correlateExtraction(
-    {
-      kind,
-      title: extracted.event.title,
-      originalTime: extracted.event.originalTime,
-      newTime: extracted.event.newTime,
-    },
-    deps.correlationCandidates,
-  );
+  const correlationInput = {
+    kind,
+    title: extracted.event.title,
+    originalTime: extracted.event.originalTime,
+    newTime: extracted.event.newTime,
+  };
+  const matchedEventRef = correlateExtraction(correlationInput, deps.correlationCandidates);
+  const matchedEventCount = correlationMatchCount(correlationInput, deps.correlationCandidates);
 
   return {
     status: 'classified',
@@ -180,6 +179,7 @@ export async function classifyChildEventEmail(
       teenContent,
       teenAttributed,
       matchedEventRef,
+      matchedEventCount,
     },
     usage: { triage: triage.usage, extract: extracted.usage },
   };

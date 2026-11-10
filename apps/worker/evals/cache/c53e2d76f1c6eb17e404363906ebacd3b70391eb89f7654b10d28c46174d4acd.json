@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "There is only one soccer event in the week, Saturday's practice, so the reference is resolved. The reply drafts the move and asks plainly whether to go ahead, with no YES keyword. Every detail (day, park, both times) traces to the week. It is short and exact.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The description states parking and bring facts only for the spring recital, not for this regular lesson, and the trap note says those facts belong to a different event. The reading correctly returned empty strings for both fields, invented nothing, and kept no extra content, so it matches the expected output.",
+    "score": 5
+  }
+}

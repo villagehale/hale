@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_QUERY_FIELD_CHARS, deidentifyActivityQuery, refusalSentence, townFor } from './deidentify';
-
+import {
+  MAX_QUERY_FIELD_CHARS,
+  deidentifyActivityQuery,
+  deidentifyActivitySubject,
+  refusalSentence,
+} from './deidentify';
 /**
  * PHASE 0 — the rule-#1 gate in front of a cross-border search.
  *
@@ -13,7 +17,7 @@ import { MAX_QUERY_FIELD_CHARS, deidentifyActivityQuery, refusalSentence, townFo
 const HOUSEHOLD = ['Noah', 'Chloé', 'Sam'];
 
 const base = {
-  municipality: 'halton_hills' as const,
+  town: 'Halton Hills',
   stage: 'toddler' as const,
   householdNames: HOUSEHOLD,
 };
@@ -41,7 +45,7 @@ describe('a name never crosses the border', () => {
       query: {
         subject: 'toddler gymnastics',
         window: null,
-        town: 'Halton Hills, Ontario, Canada',
+        town: 'Halton Hills',
         stage: 'toddler',
       },
     });
@@ -131,7 +135,7 @@ describe('a street-level location never crosses the border', () => {
       query: {
         subject: 'Cartwheel Gym parent and tot classes',
         window: 'fall term',
-        town: 'Halton Hills, Ontario, Canada',
+        town: 'Halton Hills',
         stage: 'toddler',
       },
     });
@@ -188,17 +192,27 @@ describe('the shape of what may be sent', () => {
     ).toEqual({ ok: false, refusal: 'subject_too_long' });
   });
 
-  it('carries a town only when the postal code named one', () => {
+  it('refuses a search with no place, and carries the town it was given', () => {
+    expect(deidentifyActivityQuery({ ...base, town: null, subject: 'story time' })).toEqual({
+      ok: false,
+      refusal: 'no_place',
+    });
     expect(
-      deidentifyActivityQuery({ ...base, municipality: null, subject: 'story time' }),
-    ).toMatchObject({ ok: true, query: { town: null } });
+      deidentifyActivityQuery({
+        ...base,
+        town: 'Seattle, Washington, United States',
+        subject: 'story time',
+      }),
+    ).toMatchObject({ ok: true, query: { town: 'Seattle, Washington, United States' } });
   });
 
-  it('turns a municipality id into the words a search engine reads', () => {
-    expect(townFor('halton_hills')).toBe('Halton Hills, Ontario, Canada');
-    expect(townFor('richmond_hill')).toBe('Richmond Hill, Ontario, Canada');
-    expect(townFor('toronto')).toBe('Toronto, Ontario, Canada');
-    // The search query must not name a town by a spelling the radar never uses.
-    expect(townFor('whitchurch_stouffville')).toBe('Stouffville, Ontario, Canada');
-  });
+  it('gates a stored subject alone, with the same refusals', () => {
+    expect(deidentifyActivitySubject('toddler gymnastics', HOUSEHOLD)).toEqual({
+      ok: true,
+      value: 'toddler gymnastics',
+    });
+    expect(deidentifyActivitySubject('gymnastics for Noah', HOUSEHOLD)).toEqual({
+      ok: false,
+      refusal: 'names_a_person',
+    });  });
 });

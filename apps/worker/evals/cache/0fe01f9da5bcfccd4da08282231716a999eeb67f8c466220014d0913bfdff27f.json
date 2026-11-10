@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgZP15io4MGt18VEob5JV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Two wakings at 19 months is really common. Try a short pause tonight when he wakes. Wait a couple of minutes before going in, so he gets a chance to settle himself back down. If you do go in, keep it boring: low voice, a quick pat, then leave while he's still a bit awake. Keep it the same every time, because the consistency is what makes it work. If something seems off, like fever or pain, check with your provider."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 142,
+      "cache_read_input_tokens": 22789,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 142,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 135,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2237
+}

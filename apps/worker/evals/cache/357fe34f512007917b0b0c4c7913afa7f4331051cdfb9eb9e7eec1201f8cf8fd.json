@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgYX96vd5p8h7zZVfbBhN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrQkKEAgTGAI4AUIIdGhpbmtpbmcSDF+g3kdkss8z7T40PBoMULMdWeULC2N7kQGWIjDNaOEs9xsmLADLSmqqsNiIiED0RdLxUG+Liq04PL3EAWF8o8a05NWdrO40wuFxzSQqygiix2PHPwxpoGjLYG4xtO0h6CHPTx+nBzWJNrN9Lwepru2fIDWXhrBZorM609AC9B7vtBHjrcBp4tfDTp10A7vHF3nf78aR31NdXMWj7qQVXhJigzN1wUipJL+JJoK4juK8xWDveWyb719VV16xCJ3kXr4DSbaguXcbJKVx854HMThQ2kE/BiXPOHPIBpviFgVHWsE2KJtigty/c/YchtvOH29IOgPQjqQuzBNtx+m+X6zLI8ajRem5Tk8csNpM+CjHWmWmzv98pR24evFoe3Nmv+dRINGVA4LXyLbTfWtitCsJl8GQosqUAR1LtpcEOeUnnVp7UB6uIJqPban72DSVWJ79UqHk7wH7kX69+6KLAh1DWq6IMPBT/hYvz+tCTA4tPu5xKkuXy5EiokB5uR0iHOT6Z51KFdALmoRKrKiYi3PElX3jDymN/xpeEQERR1AqrSXZXxKq2vPYCye8SdD1lOK3gl9ebBdeAdd7iu4YmWrTJyWS2pPFof/azS+/eoyP+rufyvnKybZesZ/0N1vNk0XRmeQmSpN9CCuNXIqGBTTWxSZ4lqWUXF6kUCwwfnYEdPBXEg36sTY1rOUC4tuoJpvclw3ljwOELmU++ORjpw1rwY3CFd98c9tZXJEzey8+oyOSsTO/CVJviV+2lPqHn162MQjeTQHritMB0wdONBtEJfC8tfNxL6wGiTPuXSNSVU1DFJ0z0FtFMmZeYvqnp9lWTrR8r1vDuD02POz7s/GTC7NjLxhuOd8bgtadRbeaa3MO5/cCyGymG6P0qyKJ8DhsOzOpCZ3eJZM3P3FAeBgDLUJ0s/U+vf1X+9/0Lprps91TkynshxXuGPP3ZqQa2OEJPgWmMdOZ0ket8XP3tVKGtj0kUNLf3ZveszqGRaoYK8t8WwFCfK5FVaVGtgv2w/0Ze0A5TEk/OTYWUARTHig8fASyTmex7NgS19/lvXcD0rbq2Aluqhygd+awP7OvLpH+upUJgH/YsSF8X5Wtn2S8T1ICr969dwNoEGPOrKeVQbentoqtQIk5F5VaMukEhzS94QzOwpzIwjpTjWiKrg6sM6HeH3XR9KfhiYt6dkDVR3+1bT9Ii5kHKYAZbFLXoTm0WfjIuPRr5ecxO3s2eHtEVRCMLM0fgAzSBYbjRvq5KWg6BrQRdQcR+knCh3p/rQ1MsdiOGpi9m6eFDGM55U9NywpRpIc1tBOLmzWFbsudKMFEKSV2pRAECArWqm93GZrk8Rsj0DA2V5321xiMi2XI09dbqvlctqjJWlc74EXG30dx5BVsAvzJLk3Jnb14XNZWeLcOJZJlD67NT/pozz6VZWhxk0Zh9Nq8aX6+BzkfNfaaEoSFHy5KrPXPNoiCCqTQPwofw7YqeazWlCGZqnIAFGdYVphXOhlqqZ99xVjPHiURgtRgsIfJh2qFb950vowbBR8BcbQwXqNJDrp9A9ffzUbveJbVCVcYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Anyone's personal calendar isn't something I share in the group. Text me directly and I'll sort out Thursday afternoon for Maya's dentist from there."
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17866,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 256,
+      "output_tokens_details": {
+        "thinking_tokens": 203
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

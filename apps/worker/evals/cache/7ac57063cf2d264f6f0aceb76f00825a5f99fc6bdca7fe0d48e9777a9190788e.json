@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly names the all-day PD Day as tomorrow with no clock time. However, 'so there is no school' is an unstated inference drawn from the title, not a fact given in the input, which is a fact failure. 'Hope you can plan around it' is a wish and planning suggestion nobody asked for, which is unrequested filler. Both point to a score of 2 or lower on the fact and filler rules.",
+    "score": 2
+  }
+}

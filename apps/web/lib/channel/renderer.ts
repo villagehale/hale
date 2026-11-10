@@ -21,6 +21,8 @@ export const defaultLoopRenderer: TemplateRenderer = {
     if (typeof p.text !== 'string' || p.text.length === 0) {
       throw new Error(`default renderer: payload has no text (templateKey ${message.templateKey})`);
     }
-    return { kind: 'sms', text: p.text };
+    // Not known to be the model's: a caller's pre-rendered text stays on the
+    // deterministic claim gate only (VIL-581).
+    return { kind: 'sms', text: p.text, modelWritten: false };
   },
 };

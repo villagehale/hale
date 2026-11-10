@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is first person, warm, in English, and tells the parent that many messages arrived at once and Hale is not answering this one now. However, it says 'I'll get back to you then,' which promises a later answer to this text, and it implies a timing ('in a bit'). Those are explicit violations of the watchFor criteria, so the score is reduced.",
+    "score": 2
+  }
+}

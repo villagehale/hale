@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The turn_off_autonomy call fired for send_email and reply_to_email, so 'Done' is true and backed by state. The reply confirms the change plainly and matches what Sam asked for: they see each email first and nothing goes out without their say. No machinery, no greeting or sign-off, no question. The final clause slightly repeats the one before it, but it is still tight.",
+    "score": 5
+  }
+}

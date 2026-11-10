@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what an approval_card asks. It names the window, the date (Saturday, September 12, 2026), the 9:00 time, Léa and the handed link. It lists all three texts with correct timing: the week-ahead Saturday, September 5 is exactly 7 days before, then the evening before and 15 minutes before. It says plainly that Hale never registers, leaves out the course-link tip as courseLinkTip is false, and asks no question. It is in French, and saying no age band is published restates a handed fact. Nothing is invented. The closing sentence 'ce matin-là' is awkward and confusing, and the tone is a bit stiff rather than a friend texting, so it falls short of a 5.",
+    "score": 4
+  }
+}

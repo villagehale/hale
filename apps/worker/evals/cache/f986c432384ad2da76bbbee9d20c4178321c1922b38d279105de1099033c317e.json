@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks for indoor activity for the family's Saturday, a plan for their week",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 953
+}

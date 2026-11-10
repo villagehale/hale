@@ -1,12 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   MAX_REDRIVE_PER_RUN,
   REDRIVE_MAX_AGE_MS,
   isRedriveSlot,
   redriveParentTimeZone,
 } from '~/lib/channel/redrive-slot';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   WELCOME_CARD_TEMPLATE_KEY,
   type WelcomeCardPorts,
@@ -57,6 +57,9 @@ export interface WelcomeCardRedriveResult {
   noSendTarget: number;
   heldAgain: number;
   sendFailed: number;
+  /** VIL-505: the model wrote no usable line, so nothing went out and nothing was
+   * spent — the family stays owed and the next due tick tries again. */
+  noLine: number;
 }
 
 function emptyResult(): WelcomeCardRedriveResult {
@@ -69,6 +72,7 @@ function emptyResult(): WelcomeCardRedriveResult {
     noSendTarget: 0,
     heldAgain: 0,
     sendFailed: 0,
+    noLine: 0,
   };
 }
 
@@ -92,10 +96,7 @@ interface HeldCard {
  * be the same wrong hundred every morning until the seven-day bound ages the rest out
  * unserved.
  */
-export async function selectHeldWelcomeCards(
-  database: Database,
-  now: Date,
-): Promise<HeldCard[]> {
+export async function selectHeldWelcomeCards(database: Database, now: Date): Promise<HeldCard[]> {
   const held = await database
     .select({
       familyId: schema.channelMessages.familyId,
@@ -107,10 +108,7 @@ export async function selectHeldWelcomeCards(
         eq(schema.channelMessages.templateKey, WELCOME_CARD_TEMPLATE_KEY),
         eq(schema.channelMessages.status, 'suppressed_quiet_hours'),
         isNull(schema.channelMessages.dedupeKey),
-        gte(
-          schema.channelMessages.createdAt,
-          new Date(now.getTime() - REDRIVE_MAX_AGE_MS),
-        ),
+        gte(schema.channelMessages.createdAt, new Date(now.getTime() - REDRIVE_MAX_AGE_MS)),
       ),
     )
     .orderBy(asc(schema.channelMessages.createdAt));
@@ -178,6 +176,7 @@ export async function runWelcomeCardRedrive(
     if (outcome.status === 'sent') result.sent += 1;
     else if (outcome.reason === 'already_sent') result.alreadySent += 1;
     else if (outcome.reason === 'suppressed_quiet_hours') result.heldAgain += 1;
+    else if (outcome.reason === 'no_line') result.noLine += 1;
     else result.sendFailed += 1;
   }
 

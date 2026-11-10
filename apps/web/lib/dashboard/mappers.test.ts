@@ -90,8 +90,12 @@ describe('toTrailView — the honest frame', () => {
     expect(reversible.reversalKept).toBe(true);
     expect(JSON.stringify(reversible)).not.toContain('fe-77');
     // Only an EXECUTION row can carry one; a draft row with the same blob cannot.
-    expect(trail({ actionTaken: 'action.drafted', after: { reversalHandle: 'fe-77' } }).reversalKept).toBe(false);
-    expect(trail({ actionTaken: 'action.executed', after: { kind: 'email_sent' } }).reversalKept).toBe(false);
+    expect(
+      trail({ actionTaken: 'action.drafted', after: { reversalHandle: 'fe-77' } }).reversalKept,
+    ).toBe(false);
+    expect(
+      trail({ actionTaken: 'action.executed', after: { kind: 'email_sent' } }).reversalKept,
+    ).toBe(false);
   });
 
   it("shows an email Hale sent on its own as Hale's executed row, never its decision payload", () => {
@@ -213,7 +217,10 @@ describe('toTrailView — teen-content redaction', () => {
   const TEEN_BODY = 'Mom I think I might be failing math, please do not tell dad';
 
   it('drops the summary and keeps the frame when teen-content', () => {
-    const view = trail({ actionTaken: TEEN_BODY, targetTable: 'actions', targetId: 'act-teen' }, true);
+    const view = trail(
+      { actionTaken: TEEN_BODY, targetTable: 'actions', targetId: 'act-teen' },
+      true,
+    );
     expect(JSON.stringify(view)).not.toContain(TEEN_BODY);
     expect(view.summary).toBe(TEEN_REDACTED_PLACEHOLDER);
     expect(view.actor).toBe('hale');

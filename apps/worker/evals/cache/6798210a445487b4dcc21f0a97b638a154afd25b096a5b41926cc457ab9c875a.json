@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind is check_in_ask, and the message does that job. It is in French, which is the handed language. It names the window correctly and asks how it went, covering all three outcomes: got in, waitlisted (with their number) or missed. It invents nothing, names no child and gets no date wrong. It is a little formal and wordy for a friend's text (the full program name, the 'vous' forms), but that is acceptable.",
+    "score": 5
+  }
+}

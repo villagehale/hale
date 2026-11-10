@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: both events are present with correct days (tomorrow), 11 AM as 上午11点, and soccer 5:30-6:30 PM as 下午5:30到6:30, with the story time correctly given no end time. Nothing invented, no filler, and the only link is planLink. Language is entirely Chinese. It reads like a friend's text in a single smooth sentence rather than a calendar readout. The one slightly stiff spot is 图书馆讲故事时间 as a rendering of 'Library story time', which is understandable but a touch less idiomatic than 图书馆故事时间; still acceptable as a natural title rendering. 足球课 is a natural rendering of 'Soccer'.",
+    "score": 5
+  }
+}

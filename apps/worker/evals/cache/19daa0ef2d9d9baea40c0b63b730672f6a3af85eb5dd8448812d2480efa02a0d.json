@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says sign-up not done, not confirmed, gives the registration link exactly, and lists only the pack values (Lena Ferreira, Sam, sam@example.test). No promise to retry, no technical detail, language zh, warm and short. Minor: it uses 「」 quotes and a space before the link but nothing misleading.",
+    "score": 5
+  }
+}

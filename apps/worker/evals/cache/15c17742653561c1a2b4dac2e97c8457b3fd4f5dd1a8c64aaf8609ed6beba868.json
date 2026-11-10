@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and correctly says Hale could not read the page. It carries no link, saves nothing, and asks once for the same link again, which is what page_unreadable calls for. The closing \"Je réessaierai dès que possible\" is slightly ambiguous: it could suggest Hale will retry on its own, which goes a little beyond what the facts hand. Otherwise it is accurate and natural.",
+    "score": 4
+  }
+}

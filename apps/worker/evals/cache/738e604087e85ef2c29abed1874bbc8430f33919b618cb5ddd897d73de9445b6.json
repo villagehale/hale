@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give one event: Swim class today, Monday Oct 26, 10:00-11:00 AM. The text never mentions Swim class, names a different event ('Jour de congé'), gives the wrong time (3:00 with no AM/PM instead of 10:00-11:00 AM), omits the end, and wrongly says 'Tomorrow's a day off' with 'breathing room' when a timed event is today. Wrong event, wrong time, and implies a free day despite a timed event.",
+    "score": 1
+  }
+}

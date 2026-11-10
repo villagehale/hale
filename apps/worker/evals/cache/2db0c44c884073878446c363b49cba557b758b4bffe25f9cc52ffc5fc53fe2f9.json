@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the correct day (demain, lundi 26 octobre), start and end times (15 h 00 to 16 h 00), and place. However, it presents 'jour de congé' as a bare label after a colon, which reads like a calendar readout rather than how a friend would text; a native speaker would write something like 'demain, à 15 h, tu as le jour de congé à la bibliothèque de Georgetown' or similar. The title is kept as the event name without a claim beyond the facts, but the construction is stiff and unnatural, capping the score at 3.",
+    "score": 3
+  }
+}

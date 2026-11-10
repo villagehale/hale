@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: both events are there, tomorrow is correct, 11:00 AM is rendered as 上午11点, soccer 5:30-6:30 PM as 下午5:30到6:30, no invented details, no clock time on all-day items, and the link is exactly planLink. Chinese throughout. Two small naturalness problems: '足球' alone is slightly bare compared to the 足球训练 phrasing a native speaker would use (the reference text for Soccer used 足球训练), and '下午5:30到6:30' mixes Arabic numerals with colon format where a native text would more naturally say '5点半到6点半'. The sentence is also a bit list-like. These make it read slightly stiffer than a friend's text, so it is capped at 3.",
+    "score": 3
+  }
+}

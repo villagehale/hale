@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "before": "Still waiting on one reply for soccer Saturday.",
+    "question": "Ben, are you in for Saturday?",
+    "why": "follow_up"
+  },
+  "latencyMs": 1698
+}

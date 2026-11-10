@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is fully in French, names the event as Jour de congé at Georgetown library, gives tomorrow lundi 26 octobre, and states both 15 h and 16 h with the correct afternoon times. It keeps the title as the event name without recasting it as a closure or claiming the library is closed, and includes no invented details, emoji, or unrequested filler. The phrasing is natural and short, though 'il y a' is slightly stiff for a text and 'Jour de congé' is kept as the event name rather than rephrased, which fits the watchFor instructions.",
+    "score": 5
+  }
+}

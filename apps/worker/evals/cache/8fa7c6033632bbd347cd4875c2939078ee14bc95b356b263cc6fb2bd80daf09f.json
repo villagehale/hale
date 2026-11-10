@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: tomorrow, 15 h to 16 h, Georgetown library, titled 'Jour de congé'. The text does name the title, but it reads 'il y a un jour de congé à la bibliothèque', which recasts the title as a statement that the day is a day off at the library, the watchFor warns against turning the title into a claim about the day. A native speaker would more naturally write 'il y a un événement « Jour de congé » à la bibliothèque' or similar. The phrasing also shifts the title's meaning, a fact change, so this is a LOW score.",
+    "score": 2
+  }
+}

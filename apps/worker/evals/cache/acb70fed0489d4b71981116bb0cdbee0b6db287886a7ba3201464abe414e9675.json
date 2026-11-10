@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says tomorrow is a PD Day with no school, and gives no clock time, which matches the all-day event. However, 'Hope you can plan around it' is an unrequested wish/suggestion that does not come from the facts, so it is filler. The native-speaker check passes otherwise, and the day is phrased truly from now. The filler sentence caps the score at 3.",
+    "score": 3
+  }
+}

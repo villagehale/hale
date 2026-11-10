@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't push it. Next up: want me to check your inbox for kid stuff like school notes and class emails? Only if you're comfortable with it.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "nameDeclined": true,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1459
+}

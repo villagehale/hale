@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy for send_email and reply_to_email was turned off this turn. The reply confirms that accurately, in the parent's language and in one plain sentence. It addresses Sam by the name in knows, which is fine. There is no sign-off and no machinery talk.",
+    "score": 5
+  }
+}

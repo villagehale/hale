@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts present: tomorrow (lundi), 15 h to 16 h, title and location. However 'il y a Jour de congé à la bibliothèque' reads like a calendar readout and is awkward French; a native speaker would say something like 'Rappel : demain lundi de 15 h à 16 h, Jour de congé à la bibliothèque de Georgetown.' The 'il y a' construction and the colon-led label style make it stiff, capping the score at 3.",
+    "score": 3
+  }
+}

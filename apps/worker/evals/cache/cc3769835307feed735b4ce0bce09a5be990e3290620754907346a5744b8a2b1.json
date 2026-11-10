@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: both events on 10月26日 (tomorrow), story time at 上午11:00 with no end given, soccer 下午5:30-6:30 with AM/PM right, planLink not used (none needed). However the text is a calendar readout: 'Library story time：10月26日 上午11:00。Soccer：10月26日 下午5:30-6:30。' is a title-colon-date-time label per entry, which reads like a system notification rather than how a friend would text, and it gives the full calendar date instead of saying 明天 as a friend would. Caps the score at 3.",
+    "score": 3
+  }
+}

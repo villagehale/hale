@@ -1,6 +1,5 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
-import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { sendLinqChatMessage, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import type { ReplySent, ReplyTransport } from './reply-route';
 
 /**
@@ -25,15 +24,27 @@ export function createReplyTransport(deps: {
     chatId: string;
     body: string;
     replyToMessageId: string | null;
+    mention?: string;
   }) => Promise<{ providerMessageId: string }>;
+  /**
+   * VIL-475 — pick one seated handle for this group reply, or undefined.
+   * Production is `resolveGroupMention`. Absent sends no mention.
+   */
+  mentionFor?: (input: { chatId: string; body: string }) => Promise<string | undefined>;
 }): ReplyTransport {
   const sendImessage =
     deps.imessage ??
-    ((input: { chatId: string; body: string; replyToMessageId: string | null }) =>
+    ((input: {
+      chatId: string;
+      body: string;
+      replyToMessageId: string | null;
+      mention?: string;
+    }) =>
       sendLinqChatMessage({
         chatId: input.chatId,
         text: input.body,
         replyTo: input.replyToMessageId ? { messageId: input.replyToMessageId } : undefined,
+        ...(input.mention ? { mention: input.mention } : {}),
       }));
   return {
     async send({ route, body }): Promise<ReplySent> {
@@ -48,10 +59,14 @@ export function createReplyTransport(deps: {
           };
         }
         case 'imessage': {
+          const mention = deps.mentionFor
+            ? await deps.mentionFor({ chatId: route.chatId, body })
+            : undefined;
           const sent = await sendImessage({
             chatId: route.chatId,
             body,
             replyToMessageId: route.replyToMessageId,
+            ...(mention ? { mention } : {}),
           });
           return { providerMessageId: sent.providerMessageId, channel: 'imessage' };
         }

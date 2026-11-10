@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give a single event, \"Swim class\", today (Mon Oct 26) 10:00-11:00 AM, with no location. The text names a different event (\"Jour de congé\"), gives the wrong start time (3:00 with no AM/PM instead of 10:00 AM), omits the end time, and says \"Tomorrow's a day off\" when the event is today. It also implies breathing room even though a timed event exists. The title is invented and the facts are wrong or missing.",
+    "score": 1
+  }
+}

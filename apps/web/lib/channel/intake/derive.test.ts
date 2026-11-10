@@ -1,6 +1,7 @@
 import { ageInMonths, deriveStage } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import {
+  crisisRegionForPlace,
   deriveDateOfBirth,
   intakeFamilyName,
   parseIntakePostal,
@@ -54,6 +55,13 @@ describe('parseIntakePostal', () => {
       timezone: 'America/Edmonton',
       areaCoarse: 'T2P',
     });
+  });
+
+  it('reads a region only from a Canadian or US code', () => {
+    expect(crisisRegionForPlace(['T2P 1J9', null])).toBe('CA');
+    expect(crisisRegionForPlace(['V6B'])).toBe('CA');
+    expect(crisisRegionForPlace([undefined, '10001'])).toBe('US');
+    expect(crisisRegionForPlace(['Maplewick Heights', 'SW1A 1AA', null])).toBeNull();
   });
 
   it('returns null for a code that is neither Canadian nor US', () => {

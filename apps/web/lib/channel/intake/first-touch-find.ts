@@ -1,8 +1,6 @@
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { qualifyActivityLocation } from '~/lib/channel/activity/location';
-import { placeOf } from '~/lib/channel/off-domain/place';
-import type { FirstTouchPlace } from './first-touch-place';
+import { activityPlaceOfPostal } from '~/lib/channel/activity/place';import type { FirstTouchPlace } from './first-touch-place';
 import { asciiCopy } from './radar-decide';
 
 /**
@@ -13,7 +11,7 @@ import { asciiCopy } from './radar-decide';
  * locked empty line. This subject is a search seed, not a parent-facing string.
  */
 export const WEEK_FIND_SUBJECT =
-  'kids week drop-ins, examples not a limit: swim soccer gym earlyon library parks storytime music';
+  'kids week drop-ins, examples not a limit: swim soccer gym library parks rec centre storytime music';
 
 export type WeekFindOutcome =
   | 'found'
@@ -38,24 +36,11 @@ export async function findThisWeek(input: {
     return { lines: [], outcome: 'not_configured' };
   }
   const municipality = input.place.municipality;
-  const place = input.place.country
-    ? await placeOf({
-        country: input.place.country,
-        province: null,
-        city: null,
-        postalCode: input.place.postalCode,
-        areaCoarse: input.place.areaCoarse,
-      })
-    : null;
+  const place = await activityPlaceOfPostal(input.place.postalCode ?? input.place.areaCoarse);
   const query = deidentifyActivityQuery({
     subject: WEEK_FIND_SUBJECT,
     window: 'this week',
-    municipality,
-    location:
-      place?.status === 'known' && place.city
-        ? qualifyActivityLocation(place.city, place.provinceOrState, place.country)
-        : null,
-    stage: null,
+    town: place.status === 'known' ? place.town : null,    stage: null,
     householdNames: [],
   });
   if (!query.ok) {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Answers the waitlist report with the correct spot (12), town, 36-hour window and deadline (Wednesday, September 16 at 11:00 p.m., which is tomorrow relative to now). It promises the handed reminder before the deadline, includes the allowed email tip, asks nothing, and reads naturally in English. One flaw: calling it a window 'to accept an offer' and saying 'this one runs out' loosely suggests an offer already exists, rather than a response clock started from the parent's own message.",
+    "score": 4
+  }
+}

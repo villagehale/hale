@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event name (PD Day), the correct day (tomorrow, Monday, Oct 26) and says it is all-day, with no clock time, no invented plans, and no inferred consequence such as school being closed or who it affects. No location or end was given and none was invented. Bold is none, which is fine. All facts given are present and nothing is invented.",
+    "score": 5
+  }
+}

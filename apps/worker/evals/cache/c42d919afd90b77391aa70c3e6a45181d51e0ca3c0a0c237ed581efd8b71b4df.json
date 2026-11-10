@@ -1,0 +1,16 @@
+{
+  "value": {
+    "kind": "reminder_only",
+    "event": {
+      "title": "Picture Day",
+      "child_ref": "child-maya",
+      "original_time": "2026-07-24T09:00:00-04:00",
+      "new_time": null,
+      "location": "Riverside High School"
+    },
+    "source_confidence": 0.85,
+    "quote_evidence": "A reminder that Picture Day for all Grade 9 students, including Maya, is this Friday, July 24th during homeroom.",
+    "teen_content": false
+  },
+  "latencyMs": 8731
+}

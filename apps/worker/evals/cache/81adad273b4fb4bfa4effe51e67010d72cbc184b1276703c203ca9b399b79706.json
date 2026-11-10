@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the given facts. The only event is Natation (swimming) today at 5:00 PM-5:45 PM at Mold-Masters SportsPlex, 221 Guelph St, and the text never mentions it, so the event, start, end, venue and address are all missing. It invents an event, 'Jour de congé' at 3:00, which is not in the facts. It claims tomorrow is a day off and speaks of 'breathing room', implying the family has nothing to attend when a swim is an hour away. It is also written in English rather than the requested French.",
+    "score": 1
+  }
+}

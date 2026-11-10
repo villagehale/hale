@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct and complete: tomorrow (Monday), start 15 h and end 16 h (PM correctly given via 24-hour format), the place Georgetown library, and the title kept as the event's name in quotes. Nothing invented, no closure or free-day inference, no filler, no link. But it reads like a calendar readout: a title-then-time-then-place label with no verb (\"Demain lundi, \\\"Jour de congé\\\" de 15 h à 16 h, à la bibliothèque de Georgetown\"). A friend would write a full sentence (e.g. \"Demain à 15 h, il y a «Jour de congé» à la bibliothèque de Georgetown, jusqu'à 16 h\"), and the French quotes are straight English-style quotes rather than guillemets. It sounds like a notification rather than a friend's text, so it is capped at 3.",
+    "score": 3
+  }
+}

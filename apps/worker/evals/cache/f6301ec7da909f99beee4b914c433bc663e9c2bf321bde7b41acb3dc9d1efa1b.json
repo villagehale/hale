@@ -1,0 +1,18 @@
+{
+  "value": {
+    "intent": "find_time",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidName": null,
+    "confidence": "high",
+    "ruledOut": [
+      {
+        "start": "2026-10-31T08:00:00-04:00",
+        "end": "2026-10-31T12:00:00-04:00"
+      }
+    ],
+    "picked": null,
+    "planTitle": "Zoo trip"
+  },
+  "latencyMs": 3520
+}

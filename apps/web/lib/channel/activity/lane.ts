@@ -3,7 +3,7 @@ import { type AgentClient, pickLane, pickModel, withoutThinking } from '@hale/ag
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { safeHttpUrl } from '~/lib/format/http-url';
+import { parentFacingActivityUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { stripHtml } from '~/lib/registration/fetch';
 import type { ActivityQuery } from './deidentify';
@@ -16,6 +16,7 @@ import {
   activityPicksJsonSchema,
   bindActivityFacts,
 } from './facts';
+import { finderSourceBindingEnabled } from './flag';
 import { activityLocationMatches, activitySourceLocationScore } from './location';
 import { createActivityPageFetch } from './page';
 import { namesRetiredRecPortal } from './retired-portal';
@@ -343,6 +344,7 @@ export function groundUserMessage(query: ActivityQuery): string {
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.stages && query.stages.length > 0 ? { stages: query.stages } : {}),
     ...(query.window ? { window: query.window } : {}),
+    ...(query.today ? { today: query.today } : {}),
   });
 }
 
@@ -437,7 +439,105 @@ function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUni
  * A MISSING `when` OR `price` IS NOT A DROP — see {@link ActivityPick}. Those are facts a
  * source may simply not have published, they arrive here as null, and the answer says so.
  */
-export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPick[] {
+/**
+ * VIL-499 · The page a pick was read off, when compose left `source_url` empty.
+ *
+ * Compose often names the venue and quotes its page but omits the URL (2026-10-30 Preview,
+ * Danforth Art Studio: real sessions and price, no link). The URL is not the model's to
+ * write, so it is taken from what THIS TURN's tools returned: first the opened https pages,
+ * then the web_search results. A source matches when its text, title or host names the
+ * pick (name or source, compared on letters and digits only). Exactly one matching URL is
+ * stamped; zero or several stamp nothing, because a guess between two pages would be the
+ * invented link this lane refuses to send.
+ */
+function squash(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^the\s+/, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function uniqueMatch(
+  venue: string,
+  needles: readonly string[],
+  sources: ReadonlyArray<{ url: string; text: string }>,
+): string | null {
+  const matched: string[] = [];
+  for (const source of sources) {
+    const url = parentFacingActivityUrl(source.url);
+    if (url === null || !url.startsWith('https://')) continue;
+    let host = '';
+    try {
+      host = squash(new URL(url).hostname);
+    } catch {}
+    const text = squash(source.text);
+    if (needles.some((needle) => text.includes(needle) || host.includes(needle))) {
+      if (!matched.includes(url)) matched.push(url);
+    }
+  }
+  if (matched.length === 0) return null;
+  if (matched.length === 1) return matched[0]!;
+  // Several matches on ONE https host are the venue's own site (Danforth Art Studio:
+  // three of its pages named the class). Any of them is a real page read this turn, so
+  // the first one is used. Several hosts would be a guess, so nothing is attached.
+  const hosts = new Set(matched.map((url) => new URL(url).hostname.toLowerCase()));
+  if (hosts.size === 1) return matched[0]!;
+  // Several hosts (the venue's site plus listings that name it): prefer the one whose
+  // hostname carries the venue's own name. Exactly one such host, or nothing (Design OK).
+  const own = matched.filter((url) => {
+    const host = squash(new URL(url).hostname);
+    return venue.length >= 6 && host.includes(venue);
+  });
+  const ownHosts = new Set(own.map((url) => new URL(url).hostname.toLowerCase()));
+  return ownHosts.size === 1 ? own[0]! : null;
+}
+
+export function stampReadPageUrl(
+  pick: { name: string; sourceName: string },
+  pages: ReadonlyArray<{ url: string; text: string }>,
+  searchHits: ReadonlyArray<{ url: string; title: string }> = [],
+): string | null {
+  const needles = [pick.sourceName, pick.name].map(squash).filter((value) => value.length >= 6);
+  if (needles.length === 0) return null;
+  return (
+    uniqueMatch(squash(pick.sourceName), needles, pages) ??
+    uniqueMatch(
+      squash(pick.sourceName),
+      needles,
+      searchHits.map((hit) => ({ url: hit.url, text: hit.title })),
+    )
+  );
+}
+
+/**
+ * VIL-510 · When compose cited a listing/aggregator page but this turn's tools also
+ * returned the venue's OWN page (its hostname carries the venue name), the venue's
+ * page wins. Otherwise compose's URL stands, then the stamped one.
+ */
+export function preferVenuePage(
+  composed: string | null,
+  stamped: string | null,
+  sourceName: string,
+): string | null {
+  if (composed === null) return stamped;
+  if (stamped === null || stamped === composed) return composed;
+  const venue = squash(sourceName);
+  if (venue.length < 6) return composed;
+  const ownHost = (url: string): boolean => {
+    try {
+      return squash(new URL(url).hostname).includes(venue);
+    } catch {
+      return false;
+    }
+  };
+  return !ownHost(composed) && ownHost(stamped) ? stamped : composed;
+}
+
+export function toPicks(
+  raw: z.infer<typeof composeSchema>['picks'],
+  pages: ReadonlyArray<{ url: string; text: string }> = [],
+  searchHits: ReadonlyArray<{ url: string; title: string }> = [],
+): ActivityPick[] {
   const picks: ActivityPick[] = [];
   for (const item of raw) {
     const name = field(item.name);
@@ -446,7 +546,11 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
     if (name === '' || ageFit === '' || sourceName === '') continue;
     const when = field(item.when);
     const price = field(item.price);
-    const url = safeHttpUrl(field(item.source_url));
+    const url = preferVenuePage(
+      parentFacingActivityUrl(field(item.source_url)),
+      stampReadPageUrl({ name, sourceName }, pages, searchHits),
+      sourceName,
+    );
     const pick: ActivityPick = {
       name,
       ageFit,
@@ -479,7 +583,11 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
 async function runActivityOnce(
   client: () => AgentClient,
   query: ActivityQuery,
-): Promise<{ picks: ActivityPick[]; references: ActivityReference[]; checkedSources: string[] }> {
+): Promise<{
+  picks: ActivityPick[];
+  references?: ActivityReference[];
+  checkedSources?: string[];
+}> {
   const now = new Date();
   let resolved: AgentClient;
   try {
@@ -490,7 +598,18 @@ async function runActivityOnce(
 
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
-    skill = await loadCronSkill('activity-finder');
+    const [base, events] = await Promise.all([
+      loadCronSkill('activity-finder'),
+      loadCronSkill('activity-finder-events'),
+    ]);
+    // VIL-510: the dated-event / venue-name addendum rides the inline research + extract
+    // only; activity-finder.md bytes (and the eval recordings keyed on them) stay put.
+    skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+    // VIL-435: the day check rides only when the query carries the family-local day.
+    if (query.today) {
+      const day = await loadCronSkill('activity-finder-day');
+      skill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
+    }
   } catch (err) {
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }
@@ -611,43 +730,63 @@ async function runActivityOnce(
     } catch (err) {
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
-    const bound = bindActivityFacts(
-      composed.picks,
-      pages,
-      query.window,
-      now,
-      query.timeZone,
-      query.dateRange,
-      query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
-    );
-    const cited = bound.picks.flatMap((raw) =>
-      toPicks([raw]).map((pick) => ({
-        ...pick,
-        sourceUrl: raw.source_url!,
-        url: raw.source_url!,
-        evidence: raw.evidence,
-      })),
-    );
+    let picks: ActivityPick[];
+    let references: ActivityReference[] = [];
+    let checkedSources: string[] = [];
+    if (finderSourceBindingEnabled()) {
+      const bound = bindActivityFacts(
+        composed.picks,
+        pages,
+        query.window,
+        now,
+        query.timeZone,
+        query.dateRange,
+        query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
+      );
+      picks = bound.picks.flatMap((raw) =>
+        toPicks([raw]).map((pick) => ({
+          ...pick,
+          sourceUrl: raw.source_url!,
+          url: raw.source_url!,
+          evidence: raw.evidence,
+        })),
+      );
+      references = bound.references;
+      checkedSources = pages.map((page) => page.url);
+    } else {
+      picks = toPicks(composed.picks, evidence.pages, evidence.searchHits ?? []);
+      console.info(
+        {
+          picks: picks.length,
+          withUrl: picks.filter((pick) => pick.url).length,
+          pagesWithText: evidence.pages.length,
+          searchHits: evidence.searchHits?.length ?? 0,
+        },
+        'activity lane: pick urls',
+      );
+    }
     return {
-      picks: cited,
-      references: bound.references,
-      checkedSources: pages.map((page) => page.url),
+      picks,
+      ...(finderSourceBindingEnabled() ? { references, checkedSources } : {}),
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };
   };
 
   let { picks, references, checkedSources, searchResults, notes } = await groundAndCompose(false);
+  references ??= [];
+  checkedSources ??= [];
   if (references.length === 0 && needsReadPass(query, { searchResults }, picks)) {
     console.error({ searchResults }, 'activity lane: no picks off snippets - reading pages once');
     ({ picks, references, checkedSources, notes } = await groundAndCompose(true));
+    references ??= [];
+    checkedSources ??= [];
   }
   if (picks.length === 0) {
     throw new ActivityUnresolvable('no_picks', undefined, {
       town: query.town,
       notes: notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
-      references,
-      checkedSources,
+      ...(finderSourceBindingEnabled() ? { references, checkedSources } : {}),
     });
   }
   // The never-a-directory ceiling, enforced after the model rather than asked of it. It
@@ -661,11 +800,17 @@ async function runActivityOnce(
     );
     return {
       picks: picks.slice(0, MAX_PICKS),
-      references: references.slice(0, MAX_PICKS),
-      checkedSources,
+      ...(finderSourceBindingEnabled()
+        ? { references: references.slice(0, MAX_PICKS), checkedSources }
+        : {}),
     };
   }
-  return { picks, references: references.slice(0, MAX_PICKS), checkedSources };
+  return {
+    picks,
+    ...(finderSourceBindingEnabled()
+      ? { references: references.slice(0, MAX_PICKS), checkedSources }
+      : {}),
+  };
 }
 
 function logActivityFailure(err: unknown, attempt: number): void {

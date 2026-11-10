@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgYZcnjkiapTmbUemwJ3Y",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5AcKEAgTGAI4AUIIdGhpbmtpbmcSDBGR3+OvfOC53rij8xoM0o932/qi+jeuPItjIjAYfNOOUuH8rZELGB8xQZ7qzy/Z+aLU4vAIzuOZ6qmuuOz0tiKOerIgyZ9gu0esY+QqgQc5/QWClxgguHI9AaAIjBxrELyPsKih/fVdq9n/goiqeUzv3pb6HiftvTKQ2yvAo06TdGNPoXN5Z9I8mH/0scc4dM+A9qHLpoy1MKH+cirA2ivDiT9IfN0cDy6fKf9qqdw/63v91kMykEad+AP+653l08awZlLzXyB0r1wLQYD87LI/QPHBseI1cFf4sS5X/6LMLkZiaWGhTeJ/++ZWpzW62kp8xUo9kYq2+Swm69fHl/7VJwPn+HzFr2FmrABbqSKg3/Jv5A9/zuxygftzEUjD6QEb0qoeZQE7+KFjJXd2AaLhZM7XWM6dQpgag/Ba9xp+2wFqMBCYikyfLfTRsFdvQwsWaZYC8vkKqL9pu1S9GIGFqj9o1x+9mg5luJ6OKpec9/AGntVNEkcCo+LpAOBig0a+QWLgxSbABNWY0T7Va6h3efsyHjN0JGcfQ4n2b1l/6mhL+mCd9+fSPum/Ow2lCcywHXzur9SM/JtCZdqfNkEQAPq99JT9AdlAXqI235UpG1tOHQe87rZs1Pp+ZfdNmwTZ5AI1YgROCBbNqHP4rk8//JBTdPCOgKs1QRAUqLqiAnKBDpmryQ2WkIl25U+uXkJrwJKpbiUH5VH3uQA9bJTbMWR685i2nOGpBzKX47t8z6DEC+hxTAck83Xso4tg5xygK7NL0NaBFRLivy7goZOUk0QE6R3UtRKGdD6FrRLsOtOxJmd9Rb3YkLEXT93Z7PPEKlbCSgofPeo3q9YeicG+grpQgcyEcVz/e54omC78vFg1Nh3Dbmzg+JaBEG5vCoRaD4KDlgn88pFD4pFSbMR1PjemPLJ0nQRS2yu2MGfGK8LEh5NED7eqzbNPY66XlhNGFx30KRWXEj6oAbQkPdSmLNQ0UlmiUiHePoiL5vw+FjGA+c60EjBSECuRwdqT4YZb3t7aa5M5onnzXl0y4yfwAuCFWIIl/oBM32Y4EtPstf9sr9aJfOzKBuYzq+m3oLWwZZVLL1i1qQbuwFuDF6TC40ObEE3H86/Kh+m3YtJKTVotgNmGjQ377c5feNnckfVG2TwqlFZrpF9DjOxV/4otvj8DCjZAcgwFws9V1FLPFNZaB99eoxEhyvERnkrUf+9efFaGtgmvfx/XQCt0zI5GZ5D1vOpJ8BG5WJApS6oVkNqczDcePUfMABZ8O/lt6Dg9VqqsHi89ol6MhbGwLrQYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Theo's at 5 months, so you've got about a month. Health Canada says around 6 months, when he can sit with support, hold his head steady and show interest in your food. Until then it's just breast milk or formula. A good thing to try now is having him sit on your lap at family meals, so he gets used to watching you eat."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1537,
+      "cache_read_input_tokens": 21173,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1537,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 223,
+      "output_tokens_details": {
+        "thinking_tokens": 122
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2854
+}

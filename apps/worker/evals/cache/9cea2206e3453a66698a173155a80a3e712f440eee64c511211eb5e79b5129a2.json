@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011CgZZpFAHr4oHNM7jo7TrW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvAYKEAgTGAI4AUIIdGhpbmtpbmcSDPrIrcB3dhEceeQWABoMQJCILktZvLC52wclIjB/iEhiqKDcMij1JijK1uqWNBcN+Z1rLsw0SGZ+Ywamr37R3QLNu42N9zyDH9l33tYq2QXxGmNaSoHzPQXYmtP0SSHytp98AXjXItuXKgzvdy0C+MUSj8bFtXdgBNf4MBv+qkZEcjqsulaaKhhWL0wEjcrK81ARxsHIkmulMjdD8ScsejR6XcwNB6oO6aEGIDMXURYHwyGLGrW9u5he2Dy0FuUXNxYjKUfCivIVgC6V+QWbRWJwVolEtjIidjimAxhpUOFx1bUuVLTGjad4BxTZEcIIGbzPmYTRY9I4r+UIck9hTMhAYy0ijKuaLRsLAINYbbLSTdLeQKT/rotf937BkKgRMB+nRUMUTSX/vr7JLh3vcWmu4UorsMcnzh1D+8LKMJPlxii7jMMp/1Se+NA0XB1E3Q5PmE6hQ4tzTxLidnUxs4EpjoduJUEVGVdLZSIdah8bQOpQ93ghTx6Pv9vuY3BJh++07DdWa0gbakkRACJgZBefaMw2xWYzQHbt6wx+qZ8G0yIXmPTB35SIspYpIaZgj4Wp7jd9/3KhH9ablIo45IRh1BzSldPuSiq7aXBN2bIXT6tUEYftQihl790IEXQk3vuW31JrfuC9NEBd4knWlAjsCwVsi2HpJNxpsbhrQqnomuEbx2CZTx6bvv87HQoihN0OFdqnhpoFEnI15cUVnBNKcOaS3ccN6HZde1zShw8CeN4EejtoBWZ/zU/XT9Ehq9Vwd88DJ5jyQAOBzRYQNcbvSTvQLyWEMzUiDSmxUMCSFngngwdV2OX2UTj1jpzrdwprBNeLehkmKrJbu7Gm0XoBy1wfq9JtAnRIPnuvKaA4Ya+dMp2m5Kml2w5ym0khmsWLhgHO2B15OWGKngiDRd2DGCRxvClWmB4cAJJdzZoJ3ODhEBMHqx7jBLR6oSXOv0k+V1WIZlgj/pkYrBhk4NoMatVGccLa2hOz8Pk7qi4EmaKpQWqG5L6KpENVPGvZMKepwqX3JNEmRJglMreKwaXw2OYrNirGVehAnn6bIljPSefxJ8NskDYYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01E5qC87JdHDw4KgM7UXmF3G",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01QAULiY3N29Ki2x7GY8UgQd",
+        "name": "search_village",
+        "input": {
+          "query": "park playground"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 379,
+      "cache_creation_input_tokens": 21928,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 21928,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 151,
+      "output_tokens_details": {
+        "thinking_tokens": 76
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3086
+}

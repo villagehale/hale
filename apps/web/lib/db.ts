@@ -1,4 +1,4 @@
-import { createDb, type Database } from '@hale/db';
+import { type Database, createDb } from '@hale/db';
 
 let cached: Database | undefined;
 

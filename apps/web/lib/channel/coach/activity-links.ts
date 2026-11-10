@@ -4,10 +4,10 @@
  * STRUCTURAL, NOT WORD MATCHING. Every find a tool hands the model this turn that has a
  * page carries a `ref` (see `linkRef`) instead of its URL. When the reply is about that
  * exact program, the model writes the ref in square brackets (`[link-1a2b3c]`); code
- * removes the marker and appends that find's URL. A URL the model typed itself is
- * dropped, whatever it says, because the only way a page reaches a parent is a ref that
- * a tool returned this turn. An unknown ref is dropped too. Nothing here reads titles,
- * venues or words.
+ * removes the marker and appends that find's URL, and only when it is absolute https.
+ * A URL the model typed itself is dropped, whatever it says, because the only way a
+ * page reaches a parent is a ref that a tool returned this turn. An unknown ref is
+ * dropped too. Nothing here reads titles, venues, or the word "ref".
  *
  * No imports. The coach-channel eval loads this file under tsx, where the `~/` alias
  * does not resolve.
@@ -48,7 +48,9 @@ export function attachLinks(
   const urls: string[] = [];
   const withoutRefs = text.replace(REF_MARKER, (_marker, ref: string) => {
     const url = byRef.get(ref.toLowerCase());
-    if (url && !urls.includes(url)) urls.push(url);
+    // Only an absolute https page from this turn's table. http, a bare host, or a
+    // non-URL never reaches a parent (VIL-501).
+    if (url && isAbsoluteHttps(url) && !urls.includes(url)) urls.push(url);
     return ' ';
   });
   const body = withoutRefs
@@ -58,4 +60,11 @@ export function attachLinks(
     .replace(/\s+/g, ' ')
     .trim();
   return { body, urls };
+}
+
+/** Absolute https only. http, a bare host, or a non-URL is not a page we text. */
+const ABSOLUTE_HTTPS = /^https:\/\/\S+$/i;
+
+function isAbsoluteHttps(url: string): boolean {
+  return ABSOLUTE_HTTPS.test(url.trim());
 }

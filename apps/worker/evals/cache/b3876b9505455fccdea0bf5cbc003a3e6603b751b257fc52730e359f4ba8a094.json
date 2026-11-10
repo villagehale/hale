@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says tomorrow is a PD Day all day with no clock time, and the day is relative to now. However, the English is unnatural: 'it is having PD Day the whole of day, school is not' is ungrammatical and a native speaker would not text it. 'School is not' also states an unstated consequence (school closed) that the facts do not give, which is an inference. Fact failure from the unstated inference plus unnatural phrasing.",
+    "score": 2
+  }
+}

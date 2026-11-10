@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The title \"PD Day\" names the all-day event and the text presents it as that day's name (\"Tomorrow, Monday, is PD Day\"), so its meaning is unchanged. The day is correct (Monday, tomorrow from Sunday 6 PM), no clock time appears for the all-day event, nothing is invented (no closure, no affected people, no plans), no location was given and none is stated, and planLink is null with no link included. Bold is none, which is fine.",
+    "score": 5
+  }
+}

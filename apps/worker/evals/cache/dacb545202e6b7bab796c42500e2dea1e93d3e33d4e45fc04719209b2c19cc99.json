@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Names the plan, Saturday Nov 7 and the 3-5 PM time, correctly identifies the failure as the calendar invite not reaching the parent, avoids technical terms and other families' details, and stays warm and brief. Minor issue: it asserts 'you're all set to come' and that the plan hasn't changed, which is a mild claim not fully supported by the input.",
+    "score": 4
+  }
+}

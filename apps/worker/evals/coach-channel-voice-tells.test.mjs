@@ -87,7 +87,7 @@ describe('the register tells', () => {
   it('clears the replies the corpus already passes', () => {
     for (const reply of [
       'Swim moved to Tue 4:30? YES to confirm.',
-      "Thursday has swim at 4:30 and the dentist at 6. Want the dentist moved?",
+      'Thursday has swim at 4:30 and the dentist at 6. Want the dentist moved?',
       'Halton Hills fall registration opens Tue 7:00 a.m. Want me watching it?',
       'Ordering groceries is past what I can do.',
       "That's on your calendar for Saturday morning.",

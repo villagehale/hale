@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Parent just asked to be texted less and did not request this saved find, so the Thursday evening send is not owed; holding the unrequested nudge rather than texting.",
+    "action": "hold",
+    "item_ids": [
+      "extra-idea"
+    ],
+    "hold_until": null,
+    "frequency_direction": "less",
+    "frequency_note": "Parent said: \"Can you text me less?\""
+  },
+  "stopReason": "tool_use"
+}

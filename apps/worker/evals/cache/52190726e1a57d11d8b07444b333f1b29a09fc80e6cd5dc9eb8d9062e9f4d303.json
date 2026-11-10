@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple fact failures. The text is in English and mixed with the French title, not entirely in the requested French. The end time (4:00 PM) is missing, and the venue name and address (Georgetown library, 9 Church St) are both missing. It also draws an unstated inference by calling tomorrow \"a day off\" and claiming \"a bit of breathing room,\" which implies the day is open when a timed event exists. Bold is none, which is fine, but the facts are badly wrong.",
+    "score": 1
+  }
+}

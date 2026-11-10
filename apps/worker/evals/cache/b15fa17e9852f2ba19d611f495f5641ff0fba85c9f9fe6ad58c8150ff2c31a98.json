@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011CgUtg2xoMXv1D8dtzDeH2",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSyQUKEAgTGAI4AUIIdGhpbmtpbmcSDP7SUA2xLDWiBamPOxoMoaNUXrcdEB/dIkVDIjDwlmk8Cw5xzH22bLcooWlxX8grbPBJXA6xrsMZE41Jqk47RiF66IZ0mE+HV99ECsIq5gQYHpow7bzRtuPuHuZfoqM+ZYTjVO7ddZiz/ihrjMIx/GOt2Ho9U/RkNnph3tobBD4x0lAmuQLKO95u7WJ1yx4lcdJm2IHzU+yIgmRoPu/OwrP7/Sa3lTKphTW+W+9zPv/uRhknzdG8HWQL0+8QiDPlOISEp+MkG9+Bnh6bWnGs9c53UCeNEpjNdlrXrFCUeYhETEo2u5nDJ0hceMwAqXq5Tcfl6BsJpvhfbJl4WWqi9kADQDYXkfd5krnyArttdoOhyjlO1he3BIg92JugnNmXz21an0kZV5fKDEy1ia9L+QUldtICCQ3HhHfpmn9FjPnRPEjpGCNx5uPUFHMCiwSj5HVs5Q7O3AZt2q1GunLGx6WLNenLFcarL1UiYVfqobQDFmcjEDUEXDWjlWoZDst0nO9fPfLeAqQ2fEfn1we0t4h22hQWaN6yzHSiwVGMIZc7pLxHxjpoHafUIKzmk1IcBtXCC1hGYQKGmipLW0Q+FMOUwQCzT2liQ3HGnkGe/Nuhpohe1s36S97bcuWVLU92ICsfGA7ze108JgOEUQapSZ/Vr+syRjMwj4HvaGySBS63kZIvdRr6qly1tuZCKpgpSLhb5sxPBk2Mt9xSREX5NwejOuZXOkxGOoEmgDOLzS2MqWvoOEdwU8S+OZLt87STlHjpt/VrTHgZyRgOc09HCwc1O4EFDiJ1FusMLToaUd2PMMeMIEb6GoxuZ96jGFuMkZ4F6erbSFDGDO4T8I7INWg8cOrKLdiNRBaK7unTW2ocoK4SizvHMGrOYyKvVqdvab+5OyMJjEHOEOJpZM1Hbhl2wRmgRxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_011tiJ1hck1QtRQki776eu9q",
+        "name": "search_village",
+        "input": {
+          "query": "weekend kids activities"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01AcXkfMRr84sJ6ng4DdVqiz",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 382,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21045,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 124,
+      "output_tokens_details": {
+        "thinking_tokens": 45
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1809
+}

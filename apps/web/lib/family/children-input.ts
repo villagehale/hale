@@ -1,4 +1,8 @@
-import { type ChildError, type ChildInput as BaseChildInput, validateChild } from '~/lib/onboarding/children';
+import {
+  type ChildInput as BaseChildInput,
+  type ChildError,
+  validateChild,
+} from '~/lib/onboarding/children';
 
 /**
  * Pure (I/O-free) input shaping for the Family page's child + area forms, kept

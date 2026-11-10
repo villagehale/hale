@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch for send_email and reply_to_email was turned off this turn, so the confirmation is true. The reply is in the parent's language and stops after confirming. The second sentence just restates the first, which is a small redundancy.",
+    "score": 4
+  }
+}

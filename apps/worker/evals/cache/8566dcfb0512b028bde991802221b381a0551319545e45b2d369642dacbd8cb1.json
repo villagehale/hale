@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text tells the parent the day is a day off with breathing room, implying the day is free, which contradicts the timed 3:00-4:00 PM event at Georgetown library. It also omits the event's end time and place, and the 'Mon, Oct 26' date and English phrasing with 'at 3:00' and English clock time are not French. Multiple fact failures and wrong language.",
+    "score": 1
+  }
+}

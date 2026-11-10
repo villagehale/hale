@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct, but 'abierto' assumes the parent is male when no fact gives gender; the 'Entendido, queda anotado' phrasing also reads a bit like a log entry. Gender assumption puts it at 2.",
+    "score": 2
+  }
+}

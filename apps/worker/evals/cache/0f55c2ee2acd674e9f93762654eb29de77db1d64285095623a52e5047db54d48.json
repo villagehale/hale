@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request to reply YES so Hale will book, which is an ask for a reply the parent didn't need to give; the STOP opt-out line is standard boilerplate and not an ask for a favour. The unprompted message therefore asks for a response, lowering the score.",
+    "score": 1
+  }
+}

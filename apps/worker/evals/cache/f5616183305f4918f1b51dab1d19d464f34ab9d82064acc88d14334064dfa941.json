@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct and complete: both events, tomorrow, start and end times with correct AM/PM, venues and addresses, no invented details, no link. But the register is a template: 'Heads up, two things tomorrow:' followed by line-broken entries each listing who/what/where/time in a fixed pattern ('Theo has the Montessori tour at Little Oaks Montessori, 41 Mill St, 10:00-11:00 AM'), which reads like a calendar readout rather than a friend texting. The 'Heads up' opener is mildly personable but the body is the stiff list-like format the watchFor warns about. Also 'Theo has the Montessori tour at Little Oaks Montessori' repeats the name awkwardly. Capped at 3 for notification-style register.",
+    "score": 3
+  }
+}

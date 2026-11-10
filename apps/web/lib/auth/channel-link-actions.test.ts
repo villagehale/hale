@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * Where a redeemed text link lands. Before the deep link there was one answer and
  * therefore nothing to clamp; now the link names a provider, so the destination is an
  * ALLOWLISTED path built from it and never a string off the query — an unknown `to`
- * falls back to the surface the flow has always had.
+ * lands on the family page.
  */
 
 const signInMock = vi.fn();
@@ -30,9 +30,9 @@ vi.mock('~/lib/channel/connect/fresh-link', () => ({
 
 /** signIn redirects on success; here it resolves, so the action falls through to its
  * own `redirect` — which throws. The assertion subject is the call, not the throw. */
-async function redeem(token: string, provider: string | null) {
+async function redeem(token: string, to: string | null) {
   const { redeemChannelLinkAction } = await import('./channel-link-actions');
-  await redeemChannelLinkAction(token, provider, { status: 'idle' }, new FormData()).catch(
+  await redeemChannelLinkAction(token, to, { status: 'idle' }, new FormData()).catch(
     () => undefined,
   );
   return signInMock.mock.calls[0]?.[1] as { token: string; redirectTo: string } | undefined;
@@ -64,13 +64,27 @@ describe('redeemChannelLinkAction — the destination the tap earns', () => {
     });
   });
 
-  it('keeps the old Settings destination when the link names no provider', async () => {
-    expect(await redeem('tok-3', null)).toEqual({ token: 'tok-3', redirectTo: '/settings#apps' });
+  it('sends a link that names no destination to the family page', async () => {
+    expect(await redeem('tok-3', null)).toEqual({ token: 'tok-3', redirectTo: '/family' });
+  });
+
+  it('sends a privacy link to the privacy page, and never carries the link id there', async () => {
+    expect(await redeem('tok-5', 'privacy')).toEqual({ token: 'tok-5', redirectTo: '/privacy' });
+
+    signInMock.mockClear();
+    recallMock.mockResolvedValue({
+      userId: 'user',
+      familyId: 'family',
+      tokenId: '55555555-5555-4555-8555-555555555555',
+      usable: true,
+    });
+    expect(await redeem('tok-6', 'privacy')).toEqual({ token: 'tok-6', redirectTo: '/privacy' });
+    expect(freshMock).not.toHaveBeenCalled();
   });
 
   /**
    * THE ALLOWLIST LIVES HERE, not only on the page that renders the button. A bound
-   * server-action argument round-trips through the client, so `provider` arrives as
+   * server-action argument round-trips through the client, so `to` arrives as
    * whatever the browser sends it back as — and the destination is built by string
    * concatenation. The narrowing at this boundary is what keeps that a closed set
    * rather than a path a caller writes.
@@ -119,12 +133,23 @@ describe('redeemChannelLinkAction — the destination the tap earns', () => {
     expect(JSON.stringify(result)).not.toContain('connect my calendar');
   });
 
-  it('refuses to build a destination out of anything but a known connector', async () => {
-    for (const probe of ['../../sign-out', 'gdrive', '//evil.com', 'gcal ', 'GCAL', '']) {
+  it('refuses to build a destination out of anything but a known target', async () => {
+    const probes = [
+      '../../sign-out',
+      'gdrive',
+      '//evil.com',
+      'gcal ',
+      'GCAL',
+      '',
+      'PRIVACY',
+      'privacy ',
+      '/privacy',
+    ];
+    for (const probe of probes) {
       signInMock.mockClear();
       expect(await redeem('tok-4', probe)).toEqual({
         token: 'tok-4',
-        redirectTo: '/settings#apps',
+        redirectTo: '/family',
       });
     }
   });

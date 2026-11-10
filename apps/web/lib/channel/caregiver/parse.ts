@@ -1,5 +1,5 @@
-import { normalizePhoneE164 } from '~/lib/channels/phone';
 import type { CaregiverRole, FamilyRole } from '~/lib/channel/role-scope';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
 
 /**
  * VIL-241 · M6 — reading "add grandma 647-555-0199 as grandparent" off a text.
@@ -139,9 +139,7 @@ export type ParsedAddCaregiver =
  */
 export function looksLikeAddCommand(body: string): boolean {
   const trimmed = body.trim();
-  return (
-    /^add\s/i.test(trimmed) && /\sas\s/i.test(trimmed) && containsPhoneNumber(trimmed)
-  );
+  return /^add\s/i.test(trimmed) && /\sas\s/i.test(trimmed) && containsPhoneNumber(trimmed);
 }
 
 /** A run of digits the phone normalizer accepts as a CA/US line — never merely "some

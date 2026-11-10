@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { UNRECORDED_SCOPE, isPrivateFact, liveScopeSql } from '@hale/worker/memory-context';
+import { type SQL, and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 /**
  * The one way a family memory fact is written.
@@ -12,8 +13,10 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
  * missing primitive, not five bugs, so the protocol lives here and the writers state
  * only what they know.
  *
- * The identity of a fact is `(family, child, type, key)`. Postgres enforces one live
- * row per identity (`memory_facts_one_live_per_key_idx`, migration 0081), which is
+ * The identity of a fact is `(family, child, type, key, scope)`, where the scope names
+ * the speaker of a private fact, is `unrecorded` for a fact no adult is recorded saying,
+ * and is null for the household's (`liveScopeSql`, VIL-599). Postgres enforces one live row per identity
+ * (`memory_facts_one_live_per_scope_idx`, migration 0218), which is
  * what makes this the only correct way in rather than the polite one: a writer that
  * skips the supersede now fails loudly instead of quietly leaving Hale holding two
  * contradictory truths.
@@ -24,12 +27,30 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
  */
 
 /** A fact below this confidence is a hunch. Hunches are refused, never written. */
-export const CONFIDENCE_FLOOR = 0.7;
+export { MEMORY_CONFIDENCE_FLOOR as CONFIDENCE_FLOOR } from '@hale/worker/memory-context';
 
 type MemoryFactType = schema.NewFamilyMemoryFact['factType'];
 
 /** The query surface a write needs — satisfied by both `Database` and a transaction. */
 export type FactWriter = Pick<Database, 'insert' | 'update'>;
+
+/**
+ * VIL-599 · who said a fact, and so which adult may hear it back (decision R7: co-parents
+ * share logistics; anything else said in one adult's 1:1 stays with that adult). Every
+ * writer states it; the read (`factsForContext`) enforces it.
+ *  - `one_to_one`: said in `userId`'s own thread.
+ *  - `family`: said where every adult of the family heard it (the family group, a
+ *    household record). `userId` names the speaker when one adult said it.
+ *  - `unrecorded`: the writer cannot say which adult it came from. Held back from every
+ *    adult while another adult is on record, like a row saved before this was kept.
+ */
+export type FactHeard =
+  | { in: 'one_to_one'; userId: string }
+  | { in: 'family'; userId: string | null }
+  | 'unrecorded';
+
+/** Hale's own household bookkeeping (what it asked, a count it keeps): no adult said it. */
+export const HALE_RECORD: FactHeard = { in: 'family', userId: null };
 
 export interface FactWrite {
   familyId: string;
@@ -43,6 +64,7 @@ export interface FactWrite {
   inferredBy: string;
   /** The event this was derived from, when one is known. */
   sourceEventId?: string;
+  heard: FactHeard;
   /**
    * When the fact BECAME true — the source event's time, not the moment Hale
    * learned it. "Mia started daycare in September", read in November, is valid
@@ -60,6 +82,30 @@ export interface FactWrite {
   sourcedAt?: Date;
   expiresAt?: Date | null;
   signalCount?: number;
+}
+
+/**
+ * The scope a write lands in (`liveScopeSql`): the speaker when the fact is private to
+ * them, the nightly writer's own when it is `unrecorded`, else the household's (null). A
+ * write supersedes only within its own scope, so A's 1:1 never closes B's private fact or
+ * the household's, and the nightly writer never closes anyone's fact but its own.
+ */
+export function sameScope(write: {
+  factType: MemoryFactType;
+  memorySource?: FactWrite['memorySource'];
+  heard: FactHeard;
+}): SQL {
+  if (write.heard === 'unrecorded') return sql`${liveScopeSql()} = ${UNRECORDED_SCOPE}`;
+  const speaker =
+    write.heard.in === 'one_to_one' &&
+    isPrivateFact({
+      factType: write.factType,
+      memorySource: write.memorySource ?? 'legacy',
+      sourceAudience: write.heard.in,
+    })
+      ? write.heard.userId
+      : null;
+  return speaker === null ? sql`${liveScopeSql()} is null` : sql`${liveScopeSql()} = ${speaker}`;
 }
 
 export interface FactWriteResult {
@@ -97,6 +143,7 @@ export async function writeFact(writer: FactWriter, write: FactWrite): Promise<F
         eq(schema.familyMemoryFacts.factType, write.factType),
         eq(schema.familyMemoryFacts.factKey, write.factKey),
         isNull(schema.familyMemoryFacts.validUntil),
+        sameScope(write),
       ),
     )
     .returning({ id: schema.familyMemoryFacts.id });
@@ -112,6 +159,8 @@ export async function writeFact(writer: FactWriter, write: FactWrite): Promise<F
       confidence: write.confidence,
       inferredBy: write.inferredBy,
       sourceEventId: write.sourceEventId,
+      sourceAudience: write.heard === 'unrecorded' ? 'unrecorded' : write.heard.in,
+      sourceUserId: write.heard === 'unrecorded' ? null : write.heard.userId,
       validFrom: write.validFrom,
       ...(write.memoryKind ? { memoryKind: write.memoryKind } : {}),
       ...(write.memorySource ? { memorySource: write.memorySource } : {}),

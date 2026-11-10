@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message claims that Hale registered the child and paid the fee. The facts give neither, and Hale never registers. It also names a child, Max, who is not in the facts. It gets the outcome_registered kind backwards: it should acknowledge that the parent got in, not claim Hale did it.",
+    "score": 1
+  }
+}

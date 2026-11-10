@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text omits all three actual events (Theo's swim, Léa's dentist, Léa's piano) with their times, venues and addresses. It instead mentions \"Jour de congé at 3:00\", an event not in the facts, and says tomorrow is a day off with \"breathing room\", which wrongly implies the day is free when there are three timed events. This is invented content plus missing facts.",
+    "score": 1
+  }
+}

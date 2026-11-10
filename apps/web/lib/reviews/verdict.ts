@@ -1,3 +1,6 @@
+import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import {
   ACTIVITY_REVIEW_TAGS,
   ACTIVITY_VERDICTS,
@@ -5,9 +8,6 @@ import {
   type ActivityVerdict,
   MAX_ACTIVITY_REVIEW_TAGS,
 } from '@hale/db';
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
-import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -48,11 +48,7 @@ export type VerdictOutcome =
  * and each member is something a reader would do a different thing about — raise the cap
  * or drop thinking, tighten the skill, or look at the provider.
  */
-export type ExtractionFailure =
-  | 'truncated'
-  | 'no_tool_call'
-  | 'schema_rejected'
-  | 'call_failed';
+export type ExtractionFailure = 'truncated' | 'no_tool_call' | 'schema_rejected' | 'call_failed';
 
 export interface VerdictReader {
   read(body: string): Promise<VerdictOutcome>;
@@ -84,7 +80,7 @@ const VERDICT_TOOL_SCHEMA: Anthropic.Tool.InputSchema = {
       type: 'array',
       items: { type: 'string' },
       description:
-        'At most three tags from the skill\'s closed list, for things the parent actually said. Empty is normal.',
+        "At most three tags from the skill's closed list, for things the parent actually said. Empty is normal.",
     },
   },
   required: ['verdict'],

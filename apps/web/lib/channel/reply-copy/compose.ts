@@ -54,8 +54,10 @@ export interface ReplyCopyRequest {
   facts: readonly string[];
   sealedValues?: readonly string[];
   questionAllowed: boolean;
-  /** The locked sentence, or the locked header when `shape` is `frame`. */
-  fallback: string;
+  /** What the line is for (VIL-507). Read by the model; no sentence stands behind it. */
+  purpose?: string;
+  /** The locked header when `shape` is `frame`. Never sent. */
+  fallback?: string;
   /** Locked closing sentence. Required for `frame`. */
   fallbackClosing?: string;
   skill?: Skill;
@@ -179,6 +181,7 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
     shape: request.shape,
     questionAllowed: request.questionAllowed,
     facts: request.facts,
+    ...(request.purpose ? { purpose: request.purpose } : {}),
   };
 
   try {

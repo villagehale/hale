@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day truly (tomorrow, Monday), names the event as PD Day, notes it is all-day, and includes no clock time. It draws no inference about school being closed or who is affected, and invents no plans, time, or link. The location and 'for' are null, so nothing is missing. Bold is none, which is fine.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives only the start time (15 h) and omits the end time (16 h) that the facts provide, which is a fact failure. Also, 'tu as « Jour de congé » à la bibliothèque' reads like a calendar readout rather than how a friend would text, and the title is kept but the phrasing is stiff.",
+    "score": 2
+  }
+}

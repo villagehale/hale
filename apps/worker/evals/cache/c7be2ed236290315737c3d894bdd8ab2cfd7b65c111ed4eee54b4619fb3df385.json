@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states that Tomorrow is a PD Day, which matches the all-day fact, and no clock time is given. However, 'so there is no school' is an unstated inference: the facts only give the title 'PD Day' and do not say school is closed or who it affects. 'Hope you get a nice, easy start to the week' is an unrequested wish/filler sentence, not a fact from the calendar. Both fail the no-unstated-inference and no-filler rules.",
+    "score": 2
+  }
+}

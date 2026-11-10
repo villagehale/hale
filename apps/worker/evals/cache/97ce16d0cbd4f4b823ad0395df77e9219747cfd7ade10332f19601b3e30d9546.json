@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgYyQso4p3hyFDf8dfqKX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSgQYKEAgTGAI4AUIIdGhpbmtpbmcSDKPXSA5trUG2xfzhtBoMjKkQdfs1y3EPg1naIjAEhm1D/ClCkgpcfILvfekJPGnop/az6oAzvz5tw85Zw8d/gpiU75Nzm7Dr5HZimqgqngVjHD1aFEIArXoagjUfIslvRQNNNUU/6WvSdS33y2c6uC527z3buRUZcu7JYqBgdF/HIcMsXQubkj2tF2iZpsIeHwyFAvQx1iN95H39P2BIEoRgRqDIF9Kw0M0w2myZg3XmpWok5XWpIiLjOJlnvxYBYzo6urbxFT3vZzu+P3j6PwtiIQIY9Q1WjlsPjvy/dcHAX2a8taorQLHrnk1BOBK608v1h1CQrMaFRCMuDCOFfu4gePSDZK5+n0VBwTEJmKDDxE13l1aUqMXD0WMKj/EZkb7tVeyZFZiJ1TYc1qemPLCC/VU7J1pGrs4cB1u/w9uFrQSkpFdyQAuxkUPBU14SFKMTRVPIRIijzzZ64SDvr8nMga0C827zaNBkxH1obR+w/JXYQ1PYR01zDVNHr0OHPpVFtmYWzg/PZRERjGc1d3Ah8u5/D3HecaWWrl5wevDYn/VAczvbJ5FLt9NX/NeVtc4UtW3SwFtx20M2y2Fp/9Hw6UBBPHWu1ehuC8oITj9MFFyYDLv84e192f+b4M5+G8vqdfCOvTEUIonH2GBPVjKudH7t6sz8PvpkA9IJDdyD/LKvnhG6mAMfgM5BW1XSGm4fCsq5IsNNhJaINUCCvOaZk2uUv0UwCTzaVWm68PIQaRyQMaDHRg/gZ66dX0W7eelJ+Q7wYsK+znpQ9BeJc61wdHvJLU1qT9BIiuN8enffLQ2KuKxeV9ZCBYfFHyc7sRSve11Ajdz3Fp2o1Uwjo56hjpQqQEYR7Q7XFt8Eh9bwmgg4Meewlz07zxmtqQcs0dqNqTH3+aidzhhfH4wk8NH8zZ6VgTb3wvcdiNpdCxnwmV0FhjERsRcdONiCAdOlIuUsRmr/PkrWD2S4bsM57bpSVMrJNBqqK1wVoQD1GAE="
+      },
+      {
+        "type": "text",
+        "text": "Send me the link from that class's own page, and I'll start watching it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 391,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21493,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 84,
+      "output_tokens_details": {
+        "thinking_tokens": 61
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2099
+}

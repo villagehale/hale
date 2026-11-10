@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { CANARY_PHONE_E164, canaryChannel } from './config';
 import { seedCanaryHousehold } from './seed';
 

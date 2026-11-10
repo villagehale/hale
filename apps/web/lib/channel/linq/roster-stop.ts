@@ -1,10 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { departCoParent } from '~/lib/channel/coparent/depart';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { cancelGroupReminders } from '~/lib/loop/reminders/group/store';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { noticeIfGroupQuiet } from './connect-link-1to1';
 import { realHumanPhone } from './group-coparent';
@@ -24,9 +24,10 @@ import type { RosterTurn, RosterTurnPorts } from './roster-turn';
  * (they are still reading it). Either way one acknowledgement is threaded to their
  * message, and nobody's 1:1 channel is revoked.
  *
- * Someone removed from the chat leaves the roster, and a seat the group granted them
- * goes with them: a caregiver's through `unseatCaregiverSeat`, a co-parent's through the
- * departure flow. Hale removed from the chat is the eject.
+ * Someone removed from the chat leaves the roster. A caregiver's seat the group granted
+ * goes with them through `unseatCaregiverSeat`. A co-parent loses only their presence in
+ * the chat: Linq does not say who removed them, so a chat event never changes their place
+ * in the family. Hale removed from the chat is the eject.
  */
 
 const OPEN: readonly schema.LinqGroupRosterStatus[] = ['roles_proposed', 'partial', 'confirmed'];
@@ -89,6 +90,11 @@ export async function ejectWithGroupSeats(
       });
     }
   }
+  await cancelGroupReminders(database, {
+    chatId: input.chatId,
+    reason: 'group_ejected',
+    now: input.now,
+  });
   return ejectHouseholdGroup(database, input);
 }
 
@@ -172,6 +178,12 @@ export async function stopInGroup(
       }
       await settleRosterStatus(database, roster.id, ports.now);
     }
+    await cancelGroupReminders(database, {
+      chatId: message.chatId,
+      phoneHash: hash,
+      reason: 'member_stop',
+      now: ports.now,
+    });
     outcome = 'group_stop_unseated';
   }
 
@@ -219,9 +231,13 @@ export type RemoveParticipantOutcome =
   | { outcome: 'not_migrated' }
   | { outcome: 'ignored' }
   | { outcome: 'roster_member_absent' }
-  | { outcome: 'roster_member_removed'; role: schema.LinqRosterConfirmedRole | null };
+  | { outcome: 'roster_member_removed'; role: schema.LinqRosterConfirmedRole | null }
+  | { outcome: 'removal_is_presence_only'; role: 'co_parent' };
 
-/** Someone else was taken out of the chat: off the roster, and out of any seat the group gave them. */
+/**
+ * Someone else was taken out of the chat: off the roster, and out of any caregiver seat the
+ * group gave them. A co-parent keeps their place in the family; only their presence closes.
+ */
 export async function removeRosterParticipant(
   database: Database,
   input: { chatId: string; participantHandle: string; now: Date },
@@ -240,6 +256,12 @@ export async function removeRosterParticipant(
   const hash = phoneBlindIndex(phone);
   const member = await liveRosterMember(database, roster.id, hash);
   if (!member) return { outcome: 'roster_member_absent' };
+  await cancelGroupReminders(database, {
+    chatId: input.chatId,
+    phoneHash: hash,
+    reason: 'member_removed',
+    now: input.now,
+  });
 
   const role = member.status === 'confirmed' ? member.confirmedRole : null;
   if (role && role !== 'co_parent' && member.userId && roster.familyId) {
@@ -253,20 +275,28 @@ export async function removeRosterParticipant(
     return { outcome: 'roster_member_removed', role };
   }
 
-  if (role === 'co_parent' && member.userId && roster.familyId) {
-    await departCoParent(database, {
-      familyId: roster.familyId,
-      actorUserId: member.userId,
-      now: input.now,
+  if (role === 'co_parent' && roster.familyId) {
+    const familyId = roster.familyId;
+    const rosterId = roster.id;
+    await database.transaction(async (rawTx) => {
+      const tx = rawTx as unknown as Database;
+      await closeGroupSeat(tx, { chatId: input.chatId, phoneHash: hash, now: input.now });
+      await tx
+        .update(schema.linqGroupRosterMembers)
+        .set({ status: 'removed', updatedAt: input.now })
+        .where(eq(schema.linqGroupRosterMembers.id, member.id));
+      await tx.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'linq_group_member_presence_closed',
+        targetTable: 'linq_group_roster_members',
+        targetId: member.id,
+        after: { role, via: 'participant_removed' },
+      });
+      await settleRosterStatus(tx, rosterId, input.now);
     });
-    await database.insert(schema.auditLog).values({
-      familyId: roster.familyId,
-      actor: 'system',
-      actionTaken: 'linq_group_member_unseated',
-      targetTable: 'linq_group_roster_members',
-      targetId: member.id,
-      after: { role, via: 'participant_removed' },
-    });
+    console.info({ outcome: 'removal_is_presence_only', role }, 'linq roster: participant removed');
+    return { outcome: 'removal_is_presence_only', role };
   }
   await closeGroupSeat(database, { chatId: input.chatId, phoneHash: hash, now: input.now });
   await database

@@ -2,6 +2,8 @@ import { type InboundMediaPart, mediaPartFromLinq } from '~/lib/channel/inbound-
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { describeInboundAppCard } from './app-card-inbound';
+import { linqExperiencesEnabled } from './config';
 import { LINQ_WEBHOOK_VERSION } from './signature';
 
 /**
@@ -56,6 +58,11 @@ export interface LinqSignal {
   /** True when Linq says the event is ours. Our own tapback echo is not a parent. */
   isFromMe: boolean;
   /**
+   * True only when Linq marks the added or removed participant as Hale (`participant.is_me`).
+   * Unlike `isFromMe`, a member event that merely carries `is_from_me` never sets it.
+   */
+  participantIsMe: boolean;
+  /**
    * Every member but Hale, on `chat.created` only — the one webhook that lists
    * them. Empty on every other signal. Never logged.
    */
@@ -97,6 +104,18 @@ export interface LinqInboundText {
    * which is not a no: such a text is still routed as a 1:1 text, and the absence rides
    * on to the queued job so the router can treat the chat as one that might be a group. */
   isGroup?: boolean;
+  /**
+   * VIL-475 — every mention Linq put on a text part, in order. Empty when the
+   * parts carried none (or `mentions` was null). Handles are never logged.
+   * `isMe` is whether Hale's line was the one named.
+   */
+  mentions: LinqInboundMention[];
+}
+
+/** One inbound mention on a text part. `handle` is never logged. */
+export interface LinqInboundMention {
+  handle: string;
+  isMe: boolean;
 }
 
 export type LinqLocationEvent = 'location.sharing.started' | 'location.sharing.stopped';
@@ -111,10 +130,13 @@ export interface LinqLocationSignal {
   eventId: string | null;
 }
 
-/** VIL-226 · Linq's status for one of Hale's own sending lines. */
+/** VIL-226 · Linq's status and reputation for one of Hale's own sending lines. */
 export interface LinqLineHealthEvent {
   phoneNumber: string;
+  /** Linq's `new_status` (ACTIVE | FLAGGED). */
   status: string;
+  /** Linq's `new_reputation` (HEALTHY | AT_RISK | CRITICAL). */
+  reputation: string;
 }
 
 export type LinqParsedWebhook =
@@ -178,11 +200,12 @@ function parseLocation(
 function parseLineHealth(payload: Record<string, unknown>): LinqParsedWebhook {
   if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
   // Signed, but still a third party's strings, and the number is the row's key: a
-  // number that is not E.164 or a status that is not a short token is not stored.
+  // number that is not E.164 or a word that is not a short token is not stored.
   const phoneNumber = normalizePhoneE164(stringField(payload.data.phone_number));
-  const status = lineStatusToken(stringField(payload.data.status));
-  if (!phoneNumber || !status) return { kind: 'ignored', reason: 'malformed' };
-  return { kind: 'line_health', line: { phoneNumber, status } };
+  const status = lineStatusToken(stringField(payload.data.new_status));
+  const reputation = lineStatusToken(stringField(payload.data.new_reputation));
+  if (!phoneNumber || !status || !reputation) return { kind: 'ignored', reason: 'malformed' };
+  return { kind: 'line_health', line: { phoneNumber, status, reputation } };
 }
 
 function isSignalEvent(value: unknown): value is LinqSignalEvent {
@@ -238,6 +261,10 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     if (!isRecord(part)) continue;
     if (part.type === 'text' && typeof part.value === 'string' && part.value.trim()) {
       texts.push(part.value);
+    } else if (part.type === 'imessage_app' && linqExperiencesEnabled()) {
+      // VIL-480 · a card a parent sent is read as what it says, not as an unnamed file.
+      const card = describeInboundAppCard(part);
+      if (card) texts.push(card);
     } else if (part.type && part.type !== 'text') {
       media.push(mediaPartFromLinq(part));
     }
@@ -261,8 +288,25 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
       receivedAt,
       otherHandles: otherHandles(data.chat),
       isGroup: saidGroup,
+      mentions: mentionsFromParts(parts),
     },
   };
+}
+
+/** Linq puts every mention on the text part as `mentions`. `is_me` is whether
+ * the named participant is the line reading the webhook — Hale, here. */
+function mentionsFromParts(parts: unknown[]): LinqInboundMention[] {
+  const out: LinqInboundMention[] = [];
+  for (const part of parts) {
+    if (!isRecord(part) || part.type !== 'text' || !Array.isArray(part.mentions)) continue;
+    for (const mention of part.mentions) {
+      if (!isRecord(mention)) continue;
+      const handle = typeof mention.handle === 'string' ? mention.handle : '';
+      if (!handle) continue;
+      out.push({ handle, isMe: mention.is_me === true });
+    }
+  }
+  return out;
 }
 
 function otherHandles(chat: Record<string, unknown>): string[] {
@@ -319,6 +363,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
       participantHandle: participantHandle || null,
       actorHandle: actorHandle || null,
       isFromMe,
+      participantIsMe: participant?.is_me === true,
       handles: [],
       isGroup: null,
     },
@@ -339,6 +384,7 @@ function parseChatCreated(data: Record<string, unknown>): LinqParsedWebhook {
       participantHandle: null,
       actorHandle: null,
       isFromMe: false,
+      participantIsMe: false,
       handles: otherHandles(data),
       isGroup: data.is_group === true,
     },

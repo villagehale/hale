@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific Montreal venues a visiting family can simply turn up to: the Biodôme and the Montréal Science Centre. Each is sourced to the venue's own organisation (Espace pour la vie, Centre des sciences de Montréal), not an aggregator. Neither is a term or programme. Null prices are correct, and the `when` fields don't invent anything: they report exactly what the sources published and flag the gaps honestly. That includes the Monday Dec 28 closure risk, and the decision not to use a non-venue listing's holiday hours. Two picks is within the limit of three, and suits a late-December window when much is closed. Minor weaknesses: neither pick confirms it is open during Dec 27–30. The Biodôme's age fit leans on Tourisme Montréal and the Science Centre's on a third-party guide, though both are disclosed as such and the venue's own page remains the source. Overall these are solid, honest finds.",
+    "score": 4
+  }
+}

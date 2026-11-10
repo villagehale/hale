@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event, Saturday soccer. Hale correctly drafts the move without asking which event was meant. The reply names the change and asks in an ordinary sentence whether to go ahead, with no YES keyword, no greeting and no sign-off. One small blemish: it adds 'Aug 8', which is not on the week row itself and is only inferable from the activity list. Together with the venue, that makes it slightly more than it needed.",
+    "score": 4
+  }
+}

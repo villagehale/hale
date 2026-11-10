@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text matches two swim lessons in the week, so Hale correctly asks which one and drafts nothing. Both are named with their day, time and pool from the week, in one plain question, with no greeting or padding.",
+    "score": 5
+  }
+}

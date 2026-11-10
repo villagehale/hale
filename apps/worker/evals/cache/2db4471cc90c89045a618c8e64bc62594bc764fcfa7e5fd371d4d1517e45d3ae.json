@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single event 'Swim class' is today, 10:00-11:00 AM. The text says it is today, from 10 to 11 in the morning, which gives the correct day, start, end, and AM. No location or address was given, so none is missing, and nothing is invented. The title is kept as the event's name. Bold is none, which is fine.",
+    "score": 5
+  }
+}

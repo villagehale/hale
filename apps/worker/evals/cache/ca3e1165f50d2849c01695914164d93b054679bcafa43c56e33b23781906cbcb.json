@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "ما هو عنوان المسبح؟",
+    "language": "ar",
+    "confirmation": ""
+  },
+  "latencyMs": 1075
+}

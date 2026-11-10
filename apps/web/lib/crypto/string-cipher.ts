@@ -38,15 +38,27 @@ export function encryptString(plaintext: string): string {
   return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64');
 }
 
-/** Reverse of {@link encryptString}. Throws if the key is wrong or the blob was tampered. */
+/** The cipher refused this blob: truncated, tampered, or sealed under another key. Node
+ * throws a TypeError for a short one, so without this type a refused blob and a bug look
+ * the same to a caller. A missing or malformed key is never this. */
+export class SealedBlobRejected extends Error {
+  override name = 'SealedBlobRejected';
+}
+
+/** Reverse of {@link encryptString}. Throws {@link SealedBlobRejected} if the key is wrong
+ * or the blob was tampered. */
 export function decryptString(blob: string): string {
   const key = loadKey();
   const bytes = Buffer.from(blob, 'base64');
   const iv = bytes.subarray(0, IV_BYTES);
   const authTag = bytes.subarray(IV_BYTES, IV_BYTES + TAG_BYTES);
   const ciphertext = bytes.subarray(IV_BYTES + TAG_BYTES);
-  const decipher = createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
-  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  return plaintext.toString('utf8');
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(authTag);
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return plaintext.toString('utf8');
+  } catch (err) {
+    throw new SealedBlobRejected('sealed blob rejected', { cause: err });
+  }
 }

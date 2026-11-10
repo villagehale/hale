@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct in French (Hale, AI assistant, Village Hale Technologies Inc., Barton Dong, email, website), and the tone is warm and plain. But \"Je comprends d'être méfiant\" is ungrammatical (should be \"Je comprends que vous soyez méfiant(e)\") and also assumes a masculine gender for the parent, which no fact gives. That gender assumption caps the score at 2.",
+    "score": 2
+  }
+}

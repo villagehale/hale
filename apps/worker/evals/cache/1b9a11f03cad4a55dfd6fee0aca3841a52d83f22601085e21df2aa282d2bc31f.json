@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Plainly tells the parent a lot came in at once and this message isn't being answered now, invites them to resend later, and explicitly disclaims any promise of when it will be picked up. No wait time, blame, third-person framing, or promise of an answer. Fully meets the watchFor criteria.",
+    "score": 5
+  }
+}

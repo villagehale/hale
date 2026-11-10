@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every given fact is present and correct: the event is kept generic as 'an appointment', the day is tomorrow (Monday, true from Sunday evening), the start is 4:45 PM and the end is 5:45 PM, both with correct PM. No location or 'for' was given and none was invented; nothing was guessed about what the appointment is, and no unsupported logistics or links appear. It is in English as requested.",
+    "score": 5
+  }
+}

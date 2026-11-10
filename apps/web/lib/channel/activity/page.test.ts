@@ -1,15 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RegistrationPageRedirect } from '~/lib/registration/page';
+import type { RegistrationPageFetch } from '~/lib/registration/page';
 import { createActivityPageFetch } from './page';
+
+function fetchOf(
+  impl:
+    | RegistrationPageFetch
+    | ((url: string) => Promise<RegistrationPageFetch> | RegistrationPageFetch),
+) {
+  return vi.fn(async (url: string) => (typeof impl === 'function' ? impl(url) : impl));
+}
 
 describe('activity source redirects', () => {
   it('reads a moved official page and retains the final source URL', async () => {
     const old = 'https://venue.example/old';
     const current = 'https://venue.example/programs';
-    const fetch = vi
-      .fn()
-      .mockRejectedValueOnce(new RegistrationPageRedirect(current))
-      .mockResolvedValueOnce('Current official page');
+    const fetch = fetchOf(async (url) =>
+      url === old
+        ? { outcome: 'redirected', location: current }
+        : { outcome: 'fetched', body: Buffer.from('Current official page') },
+    );
     expect(await createActivityPageFetch(fetch)(old)).toEqual({
       url: current,
       text: 'Current official page',
@@ -22,7 +31,7 @@ describe('activity source redirects', () => {
     'https://127.0.0.1/a',
     'https://venue.example/a?token=private',
   ])('refuses unsafe redirect %s before another request', async (target) => {
-    const fetch = vi.fn().mockRejectedValue(new RegistrationPageRedirect(target));
+    const fetch = fetchOf({ outcome: 'redirected', location: target });
     await expect(createActivityPageFetch(fetch)('https://venue.example/old')).rejects.toThrow(
       'unsafe URL',
     );
@@ -30,12 +39,13 @@ describe('activity source redirects', () => {
   });
 
   it('bounds redirect loops without retrying ordinary fetch failures', async () => {
-    const loop = vi
-      .fn()
-      .mockRejectedValue(new RegistrationPageRedirect('https://venue.example/loop'));
+    const loop = fetchOf({
+      outcome: 'redirected',
+      location: 'https://venue.example/loop',
+    });
     await expect(createActivityPageFetch(loop)('https://venue.example/old')).rejects.toThrow();
     expect(loop).toHaveBeenCalledTimes(4);
-    const failed = vi.fn().mockRejectedValue(new Error('timeout'));
+    const failed = fetchOf({ outcome: 'failed', reason: 'timeout' });
     await expect(createActivityPageFetch(failed)('https://venue.example/old')).rejects.toThrow(
       'timeout',
     );

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says the class is $120, but price is null in the facts. That is an invented price and caps the score at 2. The rest checks out: 'Swapped' fits replaced:true, the date and time are right, the prerequisite warning is there, and there is no link and no question. It could also have said the course details couldn't be read.",
+    "score": 2
+  }
+}

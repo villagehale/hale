@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for send_email and reply_to_email, so saying \"c'est fait\" is true. The reply is in the parent's language, short and exact, and has no greeting, sign-off or question. One small gap: reply_to_email was also turned off, and the reply could be read as covering only sending. That is minor, since a reply to an email is still sending one.",
+    "score": 5
+  }
+}

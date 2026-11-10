@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgZYRP1p6n66Rdb98iX8F",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I don't see piano on this week or next. Want me to check another week?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 249,
+      "cache_read_input_tokens": 22784,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 249,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 22,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 943
+}

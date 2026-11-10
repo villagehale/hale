@@ -48,7 +48,13 @@ export interface ExtractedEvent {
   childRef: string | null;
   originalTime: string | null;
   newTime: string | null;
+  /** When the `newTime` occasion ends, only when the email states it; else null/absent.
+   * Never estimated. */
+  endTime?: string | null;
   location: string | null;
+  /** The street address, only when the email states one word for word (`sourcedAddress`);
+   * else null/absent. Never completed or looked up. */
+  address?: string | null;
 }
 
 /** A reference to the family_events / week_plans row a correlation matched,
@@ -89,6 +95,9 @@ export interface SentinelClassification {
      */
     teenAttributed: boolean;
     matchedEventRef: CorrelatedEventRef | null;
+    /** How many candidates cleared correlation (VIL-474). A source change is recorded
+     * only when this is exactly 1; absent is treated as unknown, so nothing is recorded. */
+    matchedEventCount?: number;
   } | null;
   usage: {
     triage: { promptTokens: number; completionTokens: number };

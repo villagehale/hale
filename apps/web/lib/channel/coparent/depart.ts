@@ -1,8 +1,16 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { liveScopeSql } from '@hale/worker/memory-context';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { withdrawFreeBusyConsent } from '~/lib/channel/linq/free-busy-consent';
+import { renameDepartedMember } from '~/lib/channel/linq/group-plan-rsvp/departed-member';
 import { type PendingAsksForgotten, forgetPendingAsks } from '~/lib/channel/off-domain/lane';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
+import {
+  type GoogleDisconnectPorts,
+  settleGoogleRevocations,
+} from '~/lib/integrations/google-disconnect';
+import { type EndedConnection, endGoogleConnections } from '~/lib/integrations/store';
 import { appendMcpGrantWithdrawals } from '~/lib/mcp/oauth-store';
 import { revokeTeenAccessGrantsForDepartingMember } from '~/lib/teen-access';
 
@@ -24,9 +32,10 @@ import { revokeTeenAccessGrantsForDepartingMember } from '~/lib/teen-access';
  * non-zero total.
  *
  * WHAT IT LEAVES BEHIND, DELIBERATELY, AND SAYS SO. `family_memory_facts` are the
- * HOUSEHOLD's record, not this parent's — the bedtime, the allergy, the sitter's name —
- * and they were never provenanced per author (VIL-353 is where that would come from).
- * Their thread (`channel-sms:<userId>`) is family-scoped too. Their `users` row, the
+ * HOUSEHOLD's record, not this parent's — the bedtime, the sitter's name, the pickup they
+ * texted — with one exception since facts record who said them (VIL-599): a fact only
+ * they could hear (said in their own 1:1, not shared by R7) is deleted, counted in
+ * `privateFactsDeleted`. Nobody else could ever be told it, and it is theirs. Their thread (`channel-sms:<userId>`) is family-scoped too. Their `users` row, the
  * revoked `parent_channels` row holding their encrypted number, and the
  * `caregiver_invites` row that authorised the one text Hale sent them all survive: the
  * number is the EVIDENCE of express consent, which CASL requires be producible for
@@ -56,7 +65,8 @@ export interface CoParentDeparted {
   channelRevoked: number;
   /** Live MCP bearer grants closed — the connected-assistant door into this family. */
   mcpGrantsRevoked: number;
-  /** Their user-scoped connectors (Gmail/Calendar/Drive) disconnected, tokens purged. */
+  /** Their user-scoped connectors (Gmail/Calendar/Drive) disconnected, tokens purged and
+   * revoked at Google after the transaction (VIL-156). */
   connectorsRevoked: number;
   /** Teen raw-content windows closed — rule #1's named exception, held by THEM. */
   teenGrantsRevoked: number;
@@ -65,6 +75,9 @@ export interface CoParentDeparted {
    * read (the search is dark, or the table has not reached this database). */
   openQuestionsDeleted: PendingAsksForgotten;
   membershipRemoved: true;
+  /** Facts only they could hear (their own 1:1, not shared by R7), live or retired,
+   * deleted. */
+  privateFactsDeleted: number;
   /** `granted=false` rows appended — one per messaging scope that was still standing. */
   consentWithdrawn: number;
   /** ── kept on purpose, each named rather than absent (rule #11) ─────────────── */
@@ -133,10 +146,12 @@ async function standingMessagingScopes(
 export async function departCoParent(
   database: Database,
   input: { familyId: string; actorUserId: string; now: Date },
+  ports?: GoogleDisconnectPorts,
 ): Promise<CoParentDeparture> {
   const { familyId, actorUserId, now } = input;
+  let endedGoogle: EndedConnection[] = [];
 
-  return database.transaction(async (rawTx) => {
+  const departure = await database.transaction(async (rawTx): Promise<CoParentDeparture> => {
     const tx = rawTx as unknown as Database;
 
     const removed = await tx
@@ -230,17 +245,14 @@ export async function departCoParent(
       grantedAt: now,
     });
 
-    const revokedConnectors = await tx
-      .update(schema.integrations)
-      .set({ oauthTokensEncrypted: null, status: 'revoked', updatedAt: now })
-      .where(
-        and(
-          eq(schema.integrations.familyId, familyId),
-          eq(schema.integrations.userId, actorUserId),
-          ne(schema.integrations.status, 'revoked'),
-        ),
-      )
-      .returning({ id: schema.integrations.id, provider: schema.integrations.provider });
+    // The one writer that ends a Google connection (VIL-156): keys out of the live column,
+    // calendar mirrors retired, one token held for Google's revoke after commit.
+    const revokedConnectors = await endGoogleConnections(tx, {
+      familyId,
+      userId: actorUserId,
+      now,
+    });
+    endedGoogle = revokedConnectors;
 
     // Asked for by name rather than done here, and that is structural: `lib/channel` is
     // banned from the teen-grant machinery (`teen-access-outbound.test.ts`), because an
@@ -261,6 +273,27 @@ export async function departCoParent(
       parentUserId: actorUserId,
     });
 
+    // Their say-so for a shared group to use their busy times, in every chat (VIL-459).
+    const freeBusyWithdrawn = await withdrawFreeBusyConsent(tx, {
+      familyId,
+      userIds: [actorUserId],
+      chatId: null,
+      now,
+      interpretation: 'the co-parent left the family; their free/busy sharing ends',
+    });
+
+    // Every row scoped to them, history included. The household's rows, and the
+    // logistics they texted, stay.
+    const privateFacts = await tx
+      .delete(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, familyId),
+          sql`${liveScopeSql()} = ${actorUserId}`,
+        ),
+      )
+      .returning({ id: schema.familyMemoryFacts.id });
+
     // ── what is KEPT, counted so the answer can say it out loud ──────────────
     const retainedChannels = await tx
       .select({
@@ -275,6 +308,14 @@ export async function departCoParent(
         ),
       );
     const hashes = retainedChannels.map((row) => row.phoneE164Hash);
+
+    // Their name and words off the household's group plans and polls; their answers stay
+    // counted. The member key of a seated number is its blind index, the same hash.
+    const groupNamesCleared = await renameDepartedMember(tx, {
+      familyId,
+      userId: actorUserId,
+      memberKeys: hashes,
+    });
     const retainedInvites =
       hashes.length === 0
         ? []
@@ -351,6 +392,9 @@ export async function departCoParent(
           role: 'co_parent',
           threadRetained: retainedThreads.length,
           openQuestionsDeleted,
+          freeBusyWithdrawn,
+          groupNamesCleared,
+          privateFactsDeleted: privateFacts.length,
         },
       },
     ]);
@@ -363,6 +407,7 @@ export async function departCoParent(
       teenGrantsRevoked,
       openQuestionsDeleted,
       membershipRemoved: true,
+      privateFactsDeleted: privateFacts.length,
       consentWithdrawn: withdrawals.length,
       threadRetained: retainedThreads.length,
       channelRecordRetained: retainedChannels.length,
@@ -370,4 +415,16 @@ export async function departCoParent(
       identityRetained: true,
     };
   });
+
+  // Google's half runs after commit, as every disconnect's does: the stop and the revoke
+  // are network calls that must not hold the transaction. The tally above is unchanged
+  // (its shape is the erasure answer's), so what Google said is logged per row and
+  // written as Hale's own audit rows, in sentences that read right to the parent who
+  // stayed.
+  if (departure.outcome === 'departed') {
+    for (const settlement of await settleGoogleRevocations(database, endedGoogle, ports)) {
+      console.info(settlement, 'coparent depart: google settled');
+    }
+  }
+  return departure;
 }

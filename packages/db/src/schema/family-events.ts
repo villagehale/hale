@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { children } from './children.js';
 import { familyEventSourceEnum } from './enums.js';
 import { families } from './families.js';
@@ -26,6 +35,13 @@ import { users } from './users.js';
  * concerns one child (so the composer can apply the teen age gate to it), null for a
  * family-wide occasion.
  */
+/**
+ * VIL-633 · `organizer`: the parent made the event. `accepted`: they said yes to someone
+ * else's invite. `own`: no one else is on it. `invited`: someone else's invite, unanswered
+ * or tentative. The 1:1 calendar notice speaks only of the first three.
+ */
+export type CalendarStanding = 'organizer' | 'accepted' | 'own' | 'invited';
+
 export const familyEvents = pgTable(
   'family_events',
   {
@@ -44,6 +60,19 @@ export const familyEvents = pgTable(
      * occasion and on every row written before the column existed. */
     transparency: text('transparency'),
     location: text('location'),
+    /** VIL-474 · the last provider change to this event: 'time', 'date' or 'venue'. Set
+     * only from provider sources (a provider email or registration, via
+     * reminders/provider-change.ts), never a parent's calendar mirror, never inferred. Null when none. */
+    sourceChangedField: text('source_changed_field'),
+    /** The start before that change (time/date), or null. */
+    sourceChangedFromStartsAt: timestamp('source_changed_from_starts_at', { withTimezone: true }),
+    /** The venue before that change, or null. */
+    sourceChangedFromLocation: text('source_changed_from_location'),
+    /** When Hale saw that change. */
+    sourceChangedAt: timestamp('source_changed_at', { withTimezone: true }),
+    /** VIL-468. Parking and what-to-bring facts the source event stated, or null.
+     * Only the extracted facts, never the raw description (rule #1). */
+    notes: jsonb('notes').$type<FamilyEventNotes>(),
     source: familyEventSourceEnum('source').notNull(),
     /** Privacy-sensitive (health) — set by the calendar_add executor from the week_plan
      * item's privacySensitive (VIL-223). The reminder templates read it to genericize
@@ -68,6 +97,10 @@ export const familyEvents = pgTable(
      * (migration 0106; the outbound_sends idiom on this table). Deliberately no FK:
      * the stamp is a claim key, and both tables already cascade on family deletion. */
     placedByActionId: uuid('placed_by_action_id'),
+    /** VIL-455. A group plan's per-family copy claim key, derived from (group plan,
+     * family). Null on every other row. Separate from `placedByActionId`, which readers
+     * join to `actions` (migration 0188). */
+    groupPlanCopyKey: uuid('group_plan_copy_key'),
     /**
      * VIL-383. Who currently owns this kid occasion. Overwritten in place;
      * the previous owner stays in `audit_log` and in the superseded duty
@@ -121,6 +154,10 @@ export const familyEvents = pgTable(
     kidVerdictId: uuid('kid_verdict_id').references(() => kidRelevanceVerdicts.id, {
       onDelete: 'set null',
     }),
+    /** VIL-633. Where the connecting parent stands on this mirrored Google event (migration
+     * 0221). Null on every Hale-authored row and on every mirror written before the column
+     * existed. */
+    calendarStanding: text('calendar_standing').$type<CalendarStanding>(),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index
@@ -130,6 +167,10 @@ export const familyEvents = pgTable(
     placedByActionUniq: uniqueIndex('family_events_placed_by_action_uniq')
       .on(table.placedByActionId)
       .where(sql`${table.placedByActionId} IS NOT NULL`),
+    // One copy per (group plan, family) — the group fan-out's claim (migration 0188).
+    groupPlanCopyKeyUniq: uniqueIndex('family_events_group_plan_copy_key_uniq')
+      .on(table.groupPlanCopyKey)
+      .where(sql`${table.groupPlanCopyKey} IS NOT NULL`),
     dutyFactIdx: index('family_events_duty_fact_idx')
       .on(table.familyId, table.dutyFactKey)
       .where(sql`${table.dutyFactKey} IS NOT NULL`),
@@ -138,6 +179,18 @@ export const familyEvents = pgTable(
       .where(sql`${table.googleEventId} IS NOT NULL`),
   }),
 );
+
+/** Logistics facts for one occasion. Each fact key is present only when the source stated it.
+ * `sourceHash` is a hash of the description the facts were read from (never the text), so an
+ * unchanged description is not read again; a read that found nothing stores only the hash.
+ * `failedReads` counts failed reads of that same hash (no facts are stored then); it is reset by a
+ * success or a new hash, and reading stops at EVENT_NOTES_MAX_FAILED_READS until the text changes. */
+export interface FamilyEventNotes {
+  parking?: string;
+  bring?: string;
+  sourceHash?: string;
+  failedReads?: number;
+}
 
 export type FamilyEvent = typeof familyEvents.$inferSelect;
 export type NewFamilyEvent = typeof familyEvents.$inferInsert;

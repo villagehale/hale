@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text mentions none of the three events given in the facts (Montessori tour, Toddler Storytime, Swim), and drops every start, end, venue name, address and who each is for. It invents a 'Jour de congé at 3:00' event that is not in the facts, and its '3:00' has no AM/PM. It also says tomorrow is a day off with 'breathing room' when three timed events are scheduled, which is exactly the low-score pattern of implying the day is open or free. The bold is none, which is fine, but every fact check fails.",
+    "score": 1
+  }
+}

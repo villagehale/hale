@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text omits Léa's swimming event entirely (Natation, 10:00 AM to 11:00 AM at Piscine Main) and wrongly gives the all-day Jour de congé a clock time of 3:00. It also calls the day breathing room, which implies it is free even though a timed event exists. The French is not natural and is calque-like, and the closing sentence is unrequested filler. Multiple fact failures.",
+    "score": 1
+  }
+}

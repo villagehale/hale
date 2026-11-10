@@ -1,4 +1,4 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import {
   aggregateCommitmentDebt,
@@ -25,12 +25,26 @@ const FAMILY = 'fam-1';
 const NOW = new Date('2026-08-11T14:00:00.000Z');
 const DUE = new Date('2026-08-14T14:00:00.000Z');
 
+/** The writers run inside a transaction and write their audit row through the same
+ * handle; the rows themselves are proven against real Postgres in ledger.pglite.test.ts. */
+function auditingInsert(audits: unknown[], commitmentInsert: () => unknown) {
+  return (table: unknown) =>
+    table === schema.auditLog
+      ? {
+          values: async (payload: unknown) => {
+            audits.push(payload);
+          },
+        }
+      : commitmentInsert();
+}
+
 /** A handle whose insert leg is scripted: it records the values, and returns either the
  * minted row or — the ON CONFLICT DO NOTHING shape — no row at all. */
 function insertingDb(behaviour: { conflicts?: boolean; rejects?: boolean } = {}) {
   const values: Record<string, unknown>[] = [];
-  const database = {
-    insert: () => ({
+  const audits: unknown[] = [];
+  const handle = {
+    insert: auditingInsert(audits, () => ({
       values: (payload: Record<string, unknown>) => {
         values.push(payload);
         return {
@@ -42,15 +56,22 @@ function insertingDb(behaviour: { conflicts?: boolean; rejects?: boolean } = {})
           }),
         };
       },
-    }),
+    })),
+  };
+  const database = {
+    transaction: (run: (tx: typeof handle) => Promise<unknown>) => run(handle),
   } as unknown as Database;
-  return { database, values };
+  return { database, values, audits };
 }
 
 /** A handle whose update leg is scripted, returning the rows the WHERE matched. */
 function updatingDb(behaviour: { matched?: string[]; rejects?: boolean } = {}) {
   const sets: Record<string, unknown>[] = [];
-  const database = {
+  const audits: unknown[] = [];
+  const handle = {
+    insert: auditingInsert(audits, () => {
+      throw new Error('a close inserts only audit rows');
+    }),
     update: () => ({
       set: (payload: Record<string, unknown>) => {
         sets.push(payload);
@@ -64,8 +85,11 @@ function updatingDb(behaviour: { matched?: string[]; rejects?: boolean } = {}) {
         };
       },
     }),
+  };
+  const database = {
+    transaction: (run: (tx: typeof handle) => Promise<unknown>) => run(handle),
   } as unknown as Database;
-  return { database, sets };
+  return { database, sets, audits };
 }
 
 /** A handle whose one select returns exactly these rows, awaited with or without an
@@ -104,6 +128,7 @@ describe('recordCommitment', () => {
         topic: null,
         subjectChildId: null,
         subjectFamilyId: null,
+        heardFacts: null,
         dueAt: DUE,
         createdFrom: 'msg-1',
       },

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, and it gives the wrong time (3:00 instead of 4:45 PM). It also claims the day is a day off and open breathing room despite a timed event at 4:45 PM, which is a fact failure and implies the day is free. It omits the event's end time and invents a 'Jour de congé' title.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is mostly in English, not French (language fr was required), so it fails the language requirement. It omits the end time (4:00 PM), the venue name (Georgetown library) and the address (9 Church St), all of which were given. It also recasts the title \"Jour de congé\" as a statement about the day (\"Tomorrow's a day off\") and says the family has \"a bit of breathing room\" despite a timed event, which is an invented inference the facts do not support.",
+    "score": 1
+  }
+}
