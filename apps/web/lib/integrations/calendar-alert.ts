@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type CalendarStanding, type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
@@ -107,10 +107,11 @@ export interface CalendarChange {
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
   location?: string;
-  /** `organizer.self` — this family's own event rather than one they were invited to.
-   * Carried because it is a fact about the change worth having in one place; nothing
-   * branches on it today. */
-  selfOrganized?: boolean;
+  /** Where the connecting parent stands on it (calendar-standing.ts, VIL-651). Read
+   * from the organizer and the attendee list, which are never stored. A tombstone carries
+   * neither, so it reads as `own`; nothing is spoken about one from its own fields. Null on
+   * a held text rebuilt from memory, which never kept it: not known, so not the parent's. */
+  standing: CalendarStanding | null;
 }
 
 /**
@@ -1432,6 +1433,7 @@ function revive(
       start: point(startAt),
       end: point(endAt),
       location: row.heldLocation ?? undefined,
+      standing: null,
     },
     span: { startMs: startAt.getTime(), endMs: endAt.getTime(), allDay: row.allDay },
     // The prior's OWN shape, never this row's: an all-day start is a local midnight, and
