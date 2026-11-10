@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "question about Hale's own account contact details, which is Hale's domain",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1426
+}

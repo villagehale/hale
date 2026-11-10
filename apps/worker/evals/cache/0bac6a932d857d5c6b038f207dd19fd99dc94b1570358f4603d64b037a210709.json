@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: the Preschool A and B Saturday times, Sept 12 to Nov 28, and ages 3-5. Price is correctly null because the page defers fees to the Recreation Guide, and no third slot is invented. Each slot carries the Aug 11 7 a.m. registration date and cites the page. The message leads with the named program and attributes it ('Town of Oakville's site says'). It carries the not-yet-open registration date and uses the first-person 'I could not pin down the price', which fits page_has_schedule. With watch true, 'I'll keep watching' is a real commitment. It is plain ASCII with no link and no question. Minor nit: it does not mention that the fees sit in the Recreation Guide, which was not opened.",
+    "score": 5
+  }
+}

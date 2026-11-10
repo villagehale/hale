@@ -6,7 +6,6 @@ import {
   getConnectionTokens,
   listActiveConnectorConnections,
   markConnectionError,
-  revokeConnection,
   saveConnection,
   saveConnectionCursor,
   saveConnectionTokensById,
@@ -214,7 +213,7 @@ describe('integrations store', () => {
       scopes: ['s'],
       tokens: TOKENS,
     });
-    expect(returned).toEqual({ connectId: 'a1' });
+    expect(returned).toEqual({ connectId: 'a1', superseded: null });
   });
 
   it('upserts atomically on (family,user,provider) — no select-then-insert race', async () => {
@@ -248,54 +247,6 @@ describe('integrations store', () => {
   it('returns null when there is no active connection', async () => {
     const { database } = fakeDb([]);
     expect(await getConnectionTokens(database, FAMILY, USER, 'gmail')).toBeNull();
-  });
-
-  it('revoke purges the tokens, marks the row revoked, and returns the revoked count', async () => {
-    const { database, cap } = fakeDb([]);
-    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal', 'settings');
-    expect(revoked).toBe(1);
-    expect(cap.updated?.oauthTokensEncrypted).toBeNull();
-    expect(cap.updated?.status).toBe('revoked');
-    // rule #6: a disconnect writes an immutable audit row (provider + family only).
-    expect(cap.audit?.actionTaken).toBe('integration_revoked');
-    expect(cap.audit?.familyId).toBe(FAMILY);
-    expect(cap.audit?.actor).toBe(USER);
-    expect(cap.audit?.after).toEqual({
-      provider: 'gcal',
-      custody: UNNAMED_CUSTODY,
-      via: 'settings',
-      calendarMirrorsRemoved: 0,
-    });
-  });
-
-  /**
-   * ONE VERB, TWO SURFACES. A texted disconnect and a Settings click are the same act
-   * on the same grant and read as the same sentence on the trail; which surface asked
-   * is a field, not a second verb nobody would remember to curate.
-   */
-  it('tags the disconnect with the surface that asked for it, off the same verb', async () => {
-    const { database, cap } = fakeDb([]);
-
-    await revokeConnection(database, FAMILY, USER, 'gcal', 'sms');
-
-    expect(cap.audit?.actionTaken).toBe('integration_revoked');
-    expect(cap.audit?.after).toEqual({
-      provider: 'gcal',
-      custody: UNNAMED_CUSTODY,
-      via: 'sms',
-      calendarMirrorsRemoved: 0,
-    });
-  });
-
-  it('revoke of a non-matching connection returns 0 and writes NO audit row (never a false success)', async () => {
-    const { database, cap } = fakeDb([]);
-    // Nothing matched the (family,user,provider) key — the UPDATE ... RETURNING is
-    // empty. The caller must learn nothing was revoked, and no audit row is minted
-    // (rule #6 rows only for real state changes).
-    cap.revokedRows = [];
-    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal', 'sms');
-    expect(revoked).toBe(0);
-    expect(cap.audit).toBeUndefined();
   });
 
   it('lists sweepable connections with the token blob OPAQUE (decryption is per-row, inside the sweep)', async () => {

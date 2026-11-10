@@ -4,7 +4,7 @@ import { linqGroupPlanRsvpEnabled, linqGroupPollsEnabled, linqPollsEnabled } fro
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
-import { memberKeyFromHandle, memberKeyFromName } from './member-key';
+import { senderMemberKey } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
   GROUP_POLL_KIND,
@@ -83,6 +83,7 @@ export function postgresGroupPollCard(database: Database): GroupPollCardPort {
           options: await store.cardOptions(sent.providerMessageId),
         };
       }
+      if (sent.status === 'held') return { status: 'skipped', reason: sent.reason };
       if (sent.status === 'skipped' && sent.reason === 'flag_off') {
         return { status: 'skipped', reason: 'polls_off' };
       }
@@ -155,8 +156,13 @@ export async function considerGroupPollCardVote(
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const seated = await store.seatedExpected(input.chatId);
   const senderName = await senderNameOf(ports.database, input.senderUserId ?? null);
-  const memberKey =
-    memberKeyFromHandle(input.senderHandle) ?? memberKeyFromName(senderName ?? input.senderHandle);
+  const memberKey = await senderMemberKey(
+    { handle: input.senderHandle, name: senderName },
+    async () => {
+      const poll = await store.pollForCard(input.chatId, input.card.providerMessageId);
+      return poll ? store.pollVoterKeys(poll.id) : [];
+    },
+  );
   const seat = seated.find((person) => person.memberKey === memberKey);
   return takeGroupPollCardVote(
     {

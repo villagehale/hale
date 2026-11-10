@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import {
@@ -78,10 +78,17 @@ const LINQ_RATE_LIMIT_CODE = '1007';
 /** The longest Retry-After a send waits out in-call; a longer one is handed back. */
 const IN_CALL_RETRY_MAX_MS = 1_000;
 
-/** Stable key for one chat and one wire message, so a retry is the same send. */
-export function linqMessageKey(chatId: string, message: unknown): string {
+/**
+ * VIL-611 · Linq's `message.idempotency_key` for one send. It names the send, never its
+ * words: Linq drops a reused key as a duplicate, so a key built from the text would drop
+ * the second of two sends that happen to say the same thing. A caller that owns the
+ * send's identity (its ledger row, or its dedupe key plus leg) passes it as `sendKey`, so
+ * a redelivered retry of that send is the same key. Without one, each call is its own
+ * send. Hashed either way: Hale's ids stay out of Linq, and the key fits Linq's 255.
+ */
+function linqSendKey(sendKey: string | undefined): string {
   return createHash('sha256')
-    .update(`${chatId}\n${JSON.stringify(message)}`)
+    .update(sendKey ?? randomUUID())
     .digest('hex');
 }
 
@@ -121,10 +128,14 @@ export type LinqTextDecoration =
   | { range: readonly [number, number]; animation: LinqTextAnimation; style?: never };
 
 export type LinqOutboundPart =
-  | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[] }
+  | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[]; mention?: string }
   | { type: 'media'; url: string }
   | { type: 'media'; attachmentId: string }
   | { type: 'link'; value: string };
+
+/** Linq refused the mention: not a group (2023), gone from the chat (2015),
+ * or a handle that was never in it (1004). The answer still goes out. */
+const MENTION_REFUSED = new Set(['2023', '2015', '1004']);
 
 /** Thread a follow-up under a message the parent already has. `partIndex` is
  * 0-based and optional — Linq defaults it to the first part. */
@@ -187,7 +198,6 @@ async function linqRequest(input: {
   path: string;
   body?: unknown;
   fetch?: typeof fetch;
-  idempotencyKey?: string;
 }): Promise<LinqHttpResult> {
   // VIL-466 · a Preview capture run never reaches Linq, whatever else is set. Every
   // partner call (1:1, group, tapback, typing, poll, contact card) passes here, so a
@@ -221,7 +231,6 @@ async function linqRequest(input: {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         ...(input.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey } : {}),
       },
       body: input.body !== undefined ? JSON.stringify(input.body) : undefined,
       signal: controller.signal,
@@ -303,12 +312,14 @@ async function linqEffect(input: {
 
 function wirePart(part: LinqOutboundPart): Record<string, unknown> {
   if (part.type === 'text') {
+    const mention = part.mention ? { mention: part.mention } : {};
     if (!part.decorations || part.decorations.length === 0) {
-      return { type: 'text', value: part.value };
+      return { type: 'text', value: part.value, ...mention };
     }
     return {
       type: 'text',
       value: part.value,
+      ...mention,
       text_decorations: part.decorations.map((d) =>
         d.style !== undefined
           ? { range: [d.range[0], d.range[1]], style: d.style }
@@ -396,6 +407,8 @@ export async function sendLinqParts(input: {
   chatId: string;
   parts: readonly LinqOutboundPart[];
   replyTo?: LinqReplyTarget;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   assertParts(input.parts);
@@ -410,13 +423,13 @@ export async function sendLinqParts(input: {
     };
   }
   const armed = cadenceArmed();
+  if (armed) message.idempotency_key = linqSendKey(input.sendKey);
   const send = () =>
     linqRequest({
       method: 'POST',
       path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
       body: { message },
       fetch: input.fetch,
-      ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
     });
   let result = await send();
   // One in-call retry of a rate limit, with the same key, when Linq's wait is short.
@@ -453,19 +466,22 @@ export interface LinqExperienceWire {
 export async function sendLinqExperience(input: {
   chatId: string;
   experience: LinqExperienceWire;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   if (!input.experience.name || !input.experience.action) {
     throw new LinqSendError('invalid_experience', 400, true);
   }
-  const message = { experience: input.experience };
-  const armed = cadenceArmed();
+  const message = {
+    experience: input.experience,
+    ...(cadenceArmed() ? { idempotency_key: linqSendKey(input.sendKey) } : {}),
+  };
   const result = await linqRequest({
     method: 'POST',
     path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
     body: { message },
     fetch: input.fetch,
-    ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
   });
   if (!result.ok) {
     throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
@@ -489,22 +505,61 @@ export async function sendLinqChatMessage(input: {
   /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
   decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
+  /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
+  mention?: string;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
-  const send = (replyTo?: LinqReplyTarget) =>
+  const send = (
+    replyTo: LinqReplyTarget | undefined,
+    mention: string | undefined,
+    sendKey: string | undefined,
+  ) =>
     sendLinqParts({
       chatId: input.chatId,
       parts: [
-        input.decorations && input.decorations.length > 0
-          ? { type: 'text', value: input.text, decorations: input.decorations }
-          : { type: 'text', value: input.text },
+        {
+          type: 'text',
+          value: input.text,
+          ...(input.decorations && input.decorations.length > 0
+            ? { decorations: input.decorations }
+            : {}),
+          ...(mention ? { mention } : {}),
+        },
       ],
       replyTo,
+      sendKey,
       fetch: input.fetch,
     });
   try {
-    return await send(input.replyTo);
-  } catch (err) {
+    return await send(input.replyTo, input.mention, input.sendKey);
+  } catch (first) {
+    let err = first;
+    // Keep a valid mention on the unthreaded retry unless Linq refused the mention itself.
+    let mentionForRetry = input.mention;
+    if (
+      input.mention &&
+      err instanceof LinqSendError &&
+      err.permanent &&
+      MENTION_REFUSED.has(err.code)
+    ) {
+      // Code and status only. The handle, the body, and the chat id stay out (rule #1).
+      console.warn(
+        { code: err.code, httpStatus: err.httpStatus },
+        'linq: mention refused — sending the answer without a mention',
+      );
+      mentionForRetry = undefined;
+      try {
+        return await send(
+          input.replyTo,
+          undefined,
+          input.sendKey === undefined ? undefined : `${input.sendKey}:unmentioned`,
+        );
+      } catch (inner) {
+        err = inner;
+      }
+    }
     if (
       !input.replyTo ||
       !(err instanceof LinqSendError) ||
@@ -518,7 +573,12 @@ export async function sendLinqChatMessage(input: {
       { code: err.code, httpStatus: err.httpStatus },
       'linq: reply_to refused — sending the answer without a thread target',
     );
-    return await send();
+    // The plain resend is a second leg of the same send, so it carries its own key.
+    return await send(
+      undefined,
+      mentionForRetry,
+      input.sendKey === undefined ? undefined : `${input.sendKey}:plain`,
+    );
   }
 }
 
@@ -701,8 +761,11 @@ export function readLinqPollEnvelope(
   return { messageId, options };
 }
 
-/** Non-me handles on a chat payload. Phones stay in the return value for the
- * caller to hash; this function does not log them. */
+/** Non-me handles of the people in the chat now, emails included. Linq keeps a person
+ * who left listed; only an explicit status `left` or `removed` drops them. Any other
+ * status, or none, counts as present, and `left_at` alone never drops anyone: a person
+ * added back can carry a stale one, and an audience gate must not lose them.
+ * Phones stay in the return value for the caller to hash; this function does not log them. */
 export function readLinqChatHandles(payload: unknown): string[] {
   if (!isRecord(payload)) return [];
   const chat = isRecord(payload.chat) ? payload.chat : payload;
@@ -710,6 +773,7 @@ export function readLinqChatHandles(payload: unknown): string[] {
   const out: string[] = [];
   for (const handle of handles) {
     if (!isRecord(handle) || handle.is_me === true) continue;
+    if (handle.status === 'left' || handle.status === 'removed') continue;
     if (typeof handle.handle === 'string' && handle.handle) out.push(handle.handle);
   }
   return out;
@@ -1421,6 +1485,8 @@ export function createLinqTextTransport(deps: {
   chatId: string | null;
   /** The inbound Linq message this turn is answering. Absent sends a plain bubble. */
   replyToMessageId?: string | null;
+  /** VIL-475 — pick one seated handle for this body, or undefined. */
+  mentionFor?: (text: string) => Promise<string | undefined>;
   fetch?: typeof fetch;
 }): ChannelTransport {
   return {
@@ -1429,11 +1495,13 @@ export function createLinqTextTransport(deps: {
         throw new LinqSendError('media_unsupported', 400, true);
       }
       if (!deps.chatId) throw new LinqSendError('missing_chat_id', 400, true);
+      const mention = deps.mentionFor ? await deps.mentionFor(input.body) : undefined;
       const sent = await sendLinqChatMessage({
         chatId: deps.chatId,
         text: input.body,
         decorations: input.decorations,
         replyTo: deps.replyToMessageId ? { messageId: deps.replyToMessageId } : undefined,
+        ...(mention ? { mention } : {}),
         fetch: deps.fetch,
       });
       return {
@@ -1584,10 +1652,72 @@ export async function sendLinqVoiceMemo(input: {
     path: `/chats/${encodeURIComponent(input.chatId)}/voicememo`,
     body,
     fetch: input.fetch,
-    ...(cadenceArmed() ? { idempotencyKey: linqMessageKey(input.chatId, body) } : {}),
   });
   if (!result.ok) {
     throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
   }
   return { providerMessageId: readLinqMessageId(result.payload) };
+}
+
+/**
+ * VIL-495 · Pre-upload Hale's own audio so a voice memo can name it by `attachment_id`
+ * instead of a public URL Hale would have to host:
+ * POST /attachments `{ filename, content_type, size_bytes }` → `{ attachment_id,
+ * upload_url, required_headers }`, then PUT the raw bytes to `upload_url` with exactly
+ * those headers. Dark, it refuses before any fetch. The presigned URL is never logged.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/attachments/
+ */
+export async function uploadLinqAttachment(input: {
+  bytes: Uint8Array;
+  contentType: string;
+  filename: string;
+  fetch?: typeof fetch;
+}): Promise<{ attachmentId: string }> {
+  if (!linqVoiceMemosEnabled()) throw new LinqSendError('voice_memos_dark', 0, true);
+  if (input.bytes.byteLength === 0) throw new LinqSendError('empty_attachment', 0, true);
+  const result = await linqRequest({
+    method: 'POST',
+    path: '/attachments',
+    body: {
+      filename: input.filename,
+      content_type: input.contentType,
+      size_bytes: input.bytes.byteLength,
+    },
+    fetch: input.fetch,
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const payload = result.payload;
+  const attachmentId =
+    isRecord(payload) && typeof payload.attachment_id === 'string' ? payload.attachment_id : '';
+  const uploadUrl =
+    isRecord(payload) && typeof payload.upload_url === 'string' ? payload.upload_url : '';
+  if (!attachmentId || !uploadUrl.startsWith('https://')) {
+    throw new LinqSendError('upload_malformed', result.status, true);
+  }
+  const headers: Record<string, string> = {};
+  if (isRecord(payload) && isRecord(payload.required_headers)) {
+    for (const [name, value] of Object.entries(payload.required_headers)) {
+      if (typeof value === 'string') headers[name] = value;
+    }
+  }
+  // The one fetch outside linqRequest: the presigned PUT, reached only after the POST
+  // above passed linqRequest's capture gate (preview-capture-every-door.test.ts).
+  const putFetch = input.fetch ?? globalThis.fetch;
+  let put: Response;
+  try {
+    put = await putFetch(uploadUrl, {
+      method: 'PUT',
+      headers,
+      body: input.bytes as Uint8Array<ArrayBuffer>,
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === 'TimeoutError';
+    throw new LinqSendError(timedOut ? 'timeout' : 'network', 0, false);
+  }
+  if (!put.ok) throw new LinqSendError(`upload_http_${put.status}`, put.status, put.status < 500);
+  return { attachmentId };
 }

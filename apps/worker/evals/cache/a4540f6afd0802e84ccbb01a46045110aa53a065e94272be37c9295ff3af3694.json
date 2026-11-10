@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgsFecAJHAdGvLaWnzzVy",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9AgKEAgTGAI4AUIIdGhpbmtpbmcSDOPQ3LwckiBRAKF0gxoMbZsvWL9pvDKuN1Z/IjDMh8v26vV8LCNy/+UaVnyZx4Vvy86Mtf+OUIIALu0zqAN2e4cOcUBTS0LjKSFoC78qkQioxJqln+gfUR7Cu5XbbQz8OwvoLIVDJI/GYq9+K48h9A/0KgjqQg/dO11snWYW5szeQGCsl4Z9kjQXAslDdzH6TYq+gyqfy+hOquh7Pfay0OX9Rl/Pi7TMFxYQOssVlzN1X0HyKfBlrbcnU9sqcgJUwG6PBW7EEtZbPTZxrd8qBgzzeslVJ+kDR0JydHHscBBvJ0Qe21UOQNtw1m+mgZgDNXwMRCJZyWSCEuRQSDYAPDqUvBOZl1mUZZPdsY37uEZx36Nm/xrIZVPd33vhnZFWfHAxQ4BXRsaDvEAF7yo1IpO/+8y8zyQZAUHhGS2gYX9Rr2Ve4aer956HTqOl2sNNcMAalVnc8kkQaB22i+VdVlaCwGLnu3Zh+XQ6ESXqrCppVEarZNs2HCLMoDwjC2iOvBnxjKDt/flEr2XVe2K38qawyS9cKvmjhQNc2SWzHnJARaSwZaytxA/pAJphdoNFn3XQKZa20yx+LDgWjzZbgLHvlIxdsiXc4qQSCFNliAPUG/mTFG09RKiOlKAVn1aVGmw0R6JBzdHbvxa5+rZPca9YA5AI3B/acTi05hzl7AxfHU89yOPCDfIiTvxP8WFMWGj66wVnbGuOp8E7h0pEl1dGXwND8LjNWP7G/fu6UBRMOtSlcrgW0gm7I41KCH4hQpeUPAPJLZHRlWXXx9jwYJo3FWdWU5cOYmKMaYRcgqxMRkr9omjy+v5YUn0V7yTEvOxKBsVM4RM8qKNSW22yvKufMaV8FFuuZz/IeevZp09QgkzkShZt4PmvVoGfyL5IXgAcqRrQVQLNTWAobspRxX63SWmDHa9u8U76qeObbJ1qFSc7wDXqApNpTxk6rGNo8jn2rq7Lp17azbvuTjmMMix9ngUbcC8uwcEpUwHvijpF5h2CSbfzwIOsDNnJodE8n6m/6T+huhMZpI67CcXEPGOy3VznQj4vprsEirBSJtCxOMADXG3DvjKoer3q3BA9RakF8XaoKxahtBnJwselb1tB6d4gF2f8fH7nHNbDSJsOoH4yuGyMRy2JLVbelEpPlYENjI6LAyTg7tuqja6UwzT+vT6DIrtP5jy6ObXOaVjcDtCv6/4wfVwAluDk0j1t65BrZy6HMB2/keZc4OwZyC7isapAggXJF//rb8r0tzrCxL3KWT8y7Mqm2Ieqch29ZNI9xQuQOMKJX8D0Cg1loWZVr9O/mIRc6YKJ4NztfQkpmWetls52xVT/N1gRnHELlfk4ngLCqpYrGIaH1Xlt0Er4Hkib2DoC7CNmQhLlD6e66VHvsAYv+zPYWF1jqfQqZTLYfgPdidNWKe59xCWywJKlQ2MBJI9f3tMJXfKQ+jhA/5NOhjv6kL+i6nDKBA+Z8GxHaEkIMw4QfknBetcG8TQYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Wfue618iSvLZWqiapdJnYc",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Picture day",
+          "childId": "c1",
+          "date": "2026-10-30"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18802,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 400,
+      "output_tokens_details": {
+        "thinking_tokens": 276
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

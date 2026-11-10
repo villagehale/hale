@@ -1,4 +1,4 @@
-import { type Database, type Municipality, schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
@@ -8,11 +8,15 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
+import { readActivityPlace } from '~/lib/channel/activity/place';
+import { readActivityTimeZone } from '~/lib/channel/activity/reader';
+import {
+  type NamedAreaReader,
+  resolveNamedArea,
+  sharedNamedAreaReader,
+} from '~/lib/channel/named-area';
 import { safeHttpUrl } from '~/lib/format/http-url';
-import { readActivityLocation, readActivityTimeZone } from '~/lib/channel/activity/reader';
 import { activityClient } from '~/lib/pipeline/client';
-import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
-import { resolveActiveAreaCoarse } from './areas';
 
 /**
  * VIL-452 · the Finder's link field is `url`; receipts and dedupe read `sourceUrl`.
@@ -150,6 +154,9 @@ export async function findFamilyActivities(
   options: {
     subject?: string;
     window?: string;
+    /** A town, city, or area the parent named, searched instead of home (VIL-523). */
+    area?: string;
+    areaReader?: NamedAreaReader;
     now?: Date;
     finder?: ActivityFinder;
     excludePreviouslyOffered?: boolean;
@@ -161,13 +168,12 @@ export async function findFamilyActivities(
   checkedSources?: string[];
 }> {
   const now = options.now ?? new Date();
-  const [city, children, area, parents, timeZone] = await Promise.all([
-    readActivityLocation(database, familyId),
+  const [children, place, parents, timeZone] = await Promise.all([
     database
       .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId)),
-    resolveActiveAreaCoarse(database, familyId),
+    readActivityPlace(database, familyId),
     database
       .select({ name: schema.users.name })
       .from(schema.familyMembers)
@@ -177,23 +183,30 @@ export async function findFamilyActivities(
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
-  const towns = area
-    ? municipalitiesForFsa(area.replace(/\s+/g, '').toUpperCase().slice(0, 3))
-    : [];
-  if (towns.length !== 1 && !city) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
+  const householdNames = [...children, ...parents].flatMap(({ name }) =>
+    name ? [name, name.trim().split(/\s+/)[0]!] : [],
+  );
+  let town = place.status === 'known' ? place.town : null;
+  if (options.area !== undefined) {
+    // A named place that cannot be searched is a refusal, never a search of home.
+    const named = await resolveNamedArea({
+      reader: options.areaReader ?? sharedNamedAreaReader(),
+      text: options.area,
+      householdNames,
+    });
+    if (!named.ok) return { picks: [], reason: named.refusal };
+    town = named.label;
+  }
   const query = deidentifyActivityQuery({
     timeZone,
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
-    municipality: towns.length === 1 ? (towns[0]! as Municipality) : null,
-    location: city,
+    town,
     stage: deriveStage(youngest.dateOfBirth, now),
-    householdNames: [...children, ...parents].flatMap(({ name }) =>
-      name ? [name, name.trim().split(/\s+/)[0]!] : [],
-    ),
+    householdNames,
   });
   if (!query.ok) return { picks: [], reason: query.refusal };
   // A stored city is coarse context, not a postal code or precise home address.
@@ -241,11 +254,9 @@ export async function findFamilyActivities(
     : {
         picks: [],
         reason: found.reason,
-        ...(found.searched
-          ? {
-              references: found.searched.references ?? [],
-              checkedSources: found.searched.checkedSources ?? [],
-            }
+        ...(found.searched?.references?.length ? { references: found.searched.references } : {}),
+        ...(found.searched?.checkedSources?.length
+          ? { checkedSources: found.searched.checkedSources }
           : {}),
       };
 }

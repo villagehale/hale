@@ -40,6 +40,14 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-423. One household delivery writes the verb its caller names: a ladder leg, or
+  // the note about a moved opening date.
+  'apps/web/lib/registration/sequence/run.ts': [
+    'registration_sequence_leg_sent',
+    'registration_date_moved_sent',
+  ],
+  // VIL-559. The crisis pager writes its audit row from CRISIS_UNANSWERED_AUDIT_ACTION.
+  'apps/web/lib/monitoring/failure-page.ts': ['crisis_unanswered'],
   // VIL-472. One recorder writes the tapback and the sticker moment.
   'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_sticker'],
   // VIL-226. One audit helper writes every verb of the hourly proactive review, and a
@@ -124,6 +132,13 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'linq_multi_family_send_capped',
     'linq_multi_family_private_withheld',
     'linq_multi_family_data_refused',
+  ],
+  // VIL-459. A picked common time: the pick on the picker's family, and each family's
+  // calendar copy changing or failing to.
+  'apps/web/lib/channel/linq/common-time-plan.ts': [
+    'linq_multi_family_common_time_picked',
+    'linq_multi_family_common_time_placed',
+    'linq_multi_family_common_time_place_failed',
   ],
   // VIL-457. One helper writes the per-family private aside verb.
   'apps/web/lib/channel/linq/group-private-aside.ts': ['linq_private_aside_sent'],
@@ -272,7 +287,12 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'proactive_watch_granted',
     'proactive_watch_declined',
   ],
-  'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
+  'apps/web/lib/integrations/store.ts': ['integration_connected'],
+  // Google's answer to a disconnect's revoke: confirmed, or not (VIL-156).
+  'apps/web/lib/integrations/google-disconnect.ts': [
+    'integration_google_grant_revoked',
+    'integration_google_grant_revoke_failed',
+  ],
   // The placement and draft services forward the verb they already chose. The
   // literals above the insert are scanned directly; this line is the pass-through.
   'apps/web/lib/integrations/google-calendar-placement.ts': [

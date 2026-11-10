@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The event is Piano lesson (钢琴课), kept as the event's name. Day is today (今晚), start 7:00 evening (晚), end 8:00 given, and 'in an hour' (一小时后) matches minutesUntilStart 60. The venue name 'Ms. Chen studio' is given as-is. The facts include no address (location is only the name), so none is missing. Nothing invented, no wrong link (planLink is null and none was included), and the language is Chinese. Bold is none, which is fine. A minor oddity is that '8:00结束' lacks 晚 but follows clearly from 今晚 and the evening start, so it is not wrong.",
+    "score": 5
+  }
+}

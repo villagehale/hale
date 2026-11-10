@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a $120 price, but the handed price is null. It also skips that the course details could not be read, though name, day and time are all null. A price not in the facts is an invented claim, which caps the score at 2 or lower. The date, time and prerequisite warning are correct, and it asks nothing and carries no link.",
+    "score": 2
+  }
+}

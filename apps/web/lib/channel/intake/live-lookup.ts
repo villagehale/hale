@@ -1,8 +1,13 @@
 import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
 import { readEvidence } from '~/lib/channel/activity/evidence';
+import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
+import { regionOfPostal } from '~/lib/channel/off-domain/place';
+import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import type { ExtractedChild } from './extract';
+import { type GroundPlace, groundUserMessage } from './ground-message';
 import { officialPageReturnLine } from './official-page';
 
 /**
@@ -11,7 +16,8 @@ import { officialPageReturnLine } from './official-page';
  * Rec-morning reviewed pins still win when they match. Official-page rec/camp
  * clocks stay on `intake-official-ground`. This module is everything else that
  * is a real question: raising-kids, leftover current-source facts, and a
- * caregiver looking for care. Search first. The SMS may only restate what
+ * caregiver looking for care — the `current_source` read of the intake-answer
+ * model (VIL-555), never a word list. Search first. The SMS may only restate what
  * search returned. Framework-only / model memory is not a path.
  */
 
@@ -20,64 +26,6 @@ const MAX_SEARCHES = 2;
 const GROUND_MAX_TOKENS = 2048;
 
 const NO_CURRENT_SOURCE_MARK = /no current source/i;
-
-function fold(body: string): string {
-  return body.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-/** Nap / solids / potty / tantrum and the rest of raising-kids. */
-export function isRaisingKidsAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  return /\b(naps?|napping|sleep(?:ing|s)?|bedtime|solids?|potty|toilet|tantrums?|teething|formula|breastfeed(?:ing)?|weaning|colic|reflux|tummy time|picky eater|night wak(?:e|ing)|co-?sleep)\b/.test(
-    text,
-  );
-}
-
-/**
- * Current-source leftover facts. Office holders and results that change —
- * not "who is the GOAT" and not the capital of Peru.
- */
-export function isLeftoverFactAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  const office =
-    /\b(presidents?|prime ministers?|premiers?|mayors?)\b/.test(text) &&
-    /\b(who(?:'s| is| was)|current|today)\b/.test(text);
-  const result =
-    /\bwho won\b/.test(text) && /\b(world cup|election|championship|finals?)\b/.test(text);
-  return office || result || /\bworld cup\b/.test(text);
-}
-
-/** They asked Hale to find care — live lookup for Canadian resources. */
-export function isTherapistFindAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  const care = /\b(therapists?|therapy|counsell?ors?|counsell?ing|psychologists?)\b/.test(text);
-  if (!care) return false;
-  return /\b(find|finding|need|need a|looking for|get|want|where)\b/.test(text);
-}
-
-/**
- * Cheer-up / burnout / a hard day. Not a fact, not a care-find, not a crisis.
- * Reviewed warmth, then (if not crisis) one return ask.
- */
-export function isCheerUpAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  if (isTherapistFindAsk(text) || isRaisingKidsAsk(text)) return false;
-  return (
-    /\bcheer(?: me)? up\b/.test(text) ||
-    /\b(burnt? out|burnout)\b/.test(text) ||
-    /\bi(?:'m| am) (?:so )?(?:exhausted|tired|overwhelmed)\b/.test(text) ||
-    /\bhaving a hard (?:day|time)\b/.test(text) ||
-    /\bpep talk\b/.test(text)
-  );
-}
-
-export function isLiveLookupAsk(body: string): boolean {
-  return isRaisingKidsAsk(body) || isLeftoverFactAsk(body) || isTherapistFindAsk(body);
-}
 
 export function liveLookupReturnLine(pendingAsk: string): string {
   return officialPageReturnLine(pendingAsk);
@@ -118,7 +66,7 @@ export function notesGroundACurrentSource(notes: string): boolean {
 function sendableJoined(joined: string): string | null {
   if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
   if (smsEncoding(joined) !== 'gsm7') return null;
-  if (/https?:\/\/|www\./i.test(joined)) return null;
+  if (hasLinkShape(joined)) return null;
   if (/\bi('?m| am) a therapists?\b/i.test(joined)) return null;
   return joined;
 }
@@ -145,31 +93,21 @@ export function afterProvisionReplyFromNotes(notes: string): string | null {
 
 /**
  * What may cross the border to Anthropic's US web_search (rule #1): the
- * question with household names and postal codes stripped.
+ * question with household names, postal codes and ZIPs stripped. A child name
+ * the scrub cannot remove is a refusal, and the caller does not search.
  */
 export function deidentifyLiveQuery(
   parentWords: string,
   children: readonly ExtractedChild[],
-): string {
-  let query = parentWords.replace(/\s+/g, ' ').trim();
-  for (const child of children) {
-    if (child.name) {
-      query = query.replace(new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi'), '');
-    }
-  }
-  query = query
-    .replace(/\b[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d\b/g, '')
-    .replace(/\b[A-Za-z]\d[A-Za-z]\b/g, '')
+): ChildNameScrub {
+  const names = children.flatMap((child) => (child.name ? [child.name] : []));
+  const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
+  if (!scrub.ok) return scrub;
+  const withoutContacts = scrub.text
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (query === '') return 'current official reputable source';
-  return query;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    .replace(/\+?\d[\d\s.-]{7,}\d/g, '');
+  const query = scrubPlaceTokens(withoutContacts, ' ').replace(/\s+/g, ' ').trim();
+  return { ok: true, text: query === '' ? 'current official reputable source' : query };
 }
 
 export type LiveGround =
@@ -180,16 +118,24 @@ function message(err: unknown): string {
   return err instanceof Error ? err.constructor.name : 'unknown';
 }
 
+/** Where the intake searches look: the country and province or state of the session's
+ * first Canadian or US code, or null when it holds none. */
+export async function groundPlaceOf(regionToken: string | null): Promise<GroundPlace | null> {
+  return regionToken === null ? null : regionOfPostal(regionToken);
+}
+
 /**
  * GROUND a raising-kids, leftover-fact, or therapist-find ask against a
  * current official / reputable page. Zero searches, empty notes, or notes
  * that do not restate a source are the same parent-facing sentence — no
  * current source yet — and each reason is named in the log (rule #11).
  */
+
 export async function groundCurrentSource(
   client: AgentClient,
   parentWords: string,
-  children: readonly ExtractedChild[] = [],
+  children: readonly ExtractedChild[],
+  regionToken: string | null,
 ): Promise<LiveGround> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
@@ -199,13 +145,15 @@ export async function groundCurrentSource(
   }
 
   const query = deidentifyLiveQuery(parentWords, children);
+  if (!query.ok) return { status: 'ungrounded', reason: query.refusal };
   try {
+    const place = await groundPlaceOf(regionToken);
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: GROUND_MAX_TOKENS,
       system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
-      messages: [{ role: 'user', content: query }],
+      messages: [{ role: 'user', content: groundUserMessage(query.text, place) }],
     });
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };

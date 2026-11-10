@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the sign-up was not completed (confirmed false), gives the registration link exactly, and lists only the pack values (child and parent names, email). No promise to retry, no invented details, no technical talk. Language is zh and tone is plain and warm. Minor issue: it is written as an apology and uses a neutral register rather than the friendly tone desired, but facts and privacy are sound.",
+    "score": 5
+  }
+}

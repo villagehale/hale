@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what an approval_card asks and keeps every handed fact right. The opening date, Tuesday, September 15 at 7:00 a.m., is correct and is not shifted by residentsFirstDays. The residents-first access is attributed to the family's postal code, and the general public opening 7 days later is a handed fact. Max fits the age band and Mia is described as just outside it, which matches the facts. The link is included. All four texts are named with their correct timing: a week ahead, three days before, the evening before and 15 minutes before. It says plainly that Hale can't register for them. The course-link tip is given correctly because courseLinkTip is true. There are no questions and nothing is invented. The tone reads like a friend texting, in English.",
+    "score": 5
+  }
+}

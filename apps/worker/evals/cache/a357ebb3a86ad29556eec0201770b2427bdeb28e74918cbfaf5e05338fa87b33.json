@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says Hale will 'sign Max and Mia up', but approval_card must say plainly that Hale never registers. That is an invented claim of registration. It also leaves out the listed texts and their timing (week ahead, checklist 3 days before, evening before, 15 minutes before) and the course-link tip, even though courseLinkTip is true. The date, time and link are correct.",
+    "score": 1
+  }
+}

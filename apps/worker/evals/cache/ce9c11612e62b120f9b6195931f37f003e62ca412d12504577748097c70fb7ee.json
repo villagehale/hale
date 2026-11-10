@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts and tone are accurate: states the Saturday 9:30 session is full (sold_out), confirmed is false and the text does not claim sign-up, booking or a held spot. Link is the registration_page exactly as given. No personal details, no retry promise, no hint of a reopening spot. Language is zh and the text is short and plain. Minor point: 'the parent does next' is only implied by the link to browse other options, which is within the facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no warmly and asks once for a coarse code. The promise of finding things nearby depends on them sharing it, so it doesn't overpromise. It asks for no town or street and doesn't press. It falls short of a 5 for three reasons: it is a bit wordy, 'first five digits of a ZIP' is awkward since a ZIP is only five digits, and the open-ended 'What would you like to share?' blurs the single clear ask for the ZIP.",
+    "score": 4
+  }
+}

@@ -2,8 +2,9 @@ import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
-import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
@@ -87,7 +88,7 @@ export function acceptSpoken(value: unknown, questions: 0 | 1): SpokenSharedLine
 }
 
 const BANNED =
-  /\b(www\.|unsubscribe|yes\/no|reply yes|reply no|imessage|assistant|automation|tapback)\b/i;
+  /\b(unsubscribe|yes\/no|reply yes|reply no|imessage|assistant|automation|tapback)\b/i;
 
 export function sharedLineUsable(
   line: string,
@@ -96,14 +97,13 @@ export function sharedLineUsable(
 ): boolean {
   const text = line.trim();
   if (!text) return false;
-  if (/https?:\/\//i.test(text)) return false;
+  if (hasLinkShape(text)) return false;
   if (/\+\d[\d\s-]{7,}/.test(text)) return false;
   const questions = (text.match(/\?/g) ?? []).length;
   if (input.questions === 1 && questions !== 1) return false;
   if (input.questions === 0 && questions !== 0) return false;
   if (text.includes('TODO-Design')) return false;
   if (BANNED.test(text) && !input.wayOut) return false;
-  if (input.wayOut && /https?:\/\//i.test(text)) return false;
   const folded = text.toLowerCase();
   for (const token of deny) {
     const needle = token.trim();
@@ -112,10 +112,15 @@ export function sharedLineUsable(
   return true;
 }
 
-async function pageUnsent(kind: SharedGroupVoiceKind, fallback: SharedGroupLineFallback) {
-  const outcome = await postOpsSlack(
-    `Hale shared group: a ${kind} line was not sent (${fallback}). Nothing went to the parent.`,
-  );
+async function pageUnsent(
+  database: Database,
+  kind: SharedGroupVoiceKind,
+  fallback: SharedGroupLineFallback,
+) {
+  const outcome = await pageOps(database, {
+    site: 'shared_group_unwritten',
+    facts: { kind, fallback },
+  });
   console.warn({ kind, fallback, page: outcome }, 'linq shared group: line not sent');
 }
 
@@ -201,7 +206,7 @@ export async function composeSharedGroupLine(
   });
   const composer = input.voice ?? productionComposer({ familyId: input.familyId, database });
   if (!composer) {
-    await pageUnsent(input.request.kind, 'voice_unavailable');
+    await pageUnsent(database, input.request.kind, 'voice_unavailable');
     await auditUnsent(database, input.familyId, input.request.kind, 'voice_unavailable');
     return { send: false, fallback: 'voice_unavailable' };
   }
@@ -224,7 +229,7 @@ export async function composeSharedGroupLine(
       last = 'model_failed';
     }
   }
-  await pageUnsent(input.request.kind, last);
+  await pageUnsent(database, input.request.kind, last);
   await auditUnsent(database, input.familyId, input.request.kind, last);
   return { send: false, fallback: last };
 }

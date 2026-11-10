@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states a plan and a reason for it without asking the parent anything, requesting no reply, confirmation, or decision. It contains no question or offer awaiting a yes.",
+    "score": 5
+  }
+}

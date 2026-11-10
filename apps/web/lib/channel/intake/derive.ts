@@ -47,6 +47,20 @@ export function parseIntakePostal(raw: string | null): PostalContext | null {
 }
 
 /**
+ * CA or US when one of these tokens is a Canadian or US code. A city name, a
+ * sentence, or another country's code is not a region: null, never a guess.
+ */
+export function crisisRegionForPlace(
+  tokens: readonly (string | null | undefined)[],
+): 'CA' | 'US' | null {
+  for (const token of tokens) {
+    const parsed = parseIntakePostal(typeof token === 'string' ? token : null);
+    if (parsed) return parsed.countryCode;
+  }
+  return null;
+}
+
+/**
  * Months to add to a stated age to reach the MIDPOINT of the band that statement
  * actually covers. This is the entire reason {@link AgePrecision} exists.
  *

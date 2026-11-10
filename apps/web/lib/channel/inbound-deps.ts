@@ -23,21 +23,30 @@ import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
-import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import { createOptOutReader, sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import type { OptOutRecoveryDeps } from '~/lib/channel/intake/opt-out-recovery';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
+import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import {
   createChatReplyTransport,
   createOutboundTransport,
 } from '~/lib/channel/outbound-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { threadProactiveMessage } from '~/lib/channel/thread';
+import { threadIfParent, threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
-import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { failurePageCrisisPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
+import { providerPreflight } from '~/lib/monitoring/provider-health';
+import {
+  HOT_SMS_CLIENT_OPTIONS,
+  OPT_OUT_RECOVERY_CLIENT_OPTIONS,
+  activityClient,
+  budgetedAnthropic,
+} from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
@@ -65,7 +74,7 @@ function anthropicClient(): AgentClient {
  * webhook turn. */
 export function buildIntakeDeps(
   inboundTransport: MessageTransport = 'sms',
-  linq: { chatId: string; replyToMessageId?: string | null } | null = null,
+  linq: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean } | null = null,
 ): IntakeDeps {
   const database = db();
   const client = anthropicClient();
@@ -76,6 +85,15 @@ export function buildIntakeDeps(
       ? createChatReplyTransport({
           chatId: linq?.chatId ?? null,
           replyToMessageId: linq?.replyToMessageId ?? null,
+          mentionFor: linq?.chatId
+            ? (text) =>
+                resolveGroupMention({
+                  database,
+                  chatId: linq.chatId,
+                  text,
+                  isGroup: linq.isGroup,
+                })
+            : undefined,
         })
       : createOutboundTransport();
   return {
@@ -251,4 +269,27 @@ export async function enqueueChannelMessageReceived(job: ChannelMessageReceivedJ
   }
   await sendChannelMessageReceived(queue, job);
   queueEnsured = true;
+}
+
+/**
+ * VIL-553 · the opt-out recovery pass's ports. Its own reader client (12s, no SDK retry)
+ * so one held text that keeps failing cannot eat the drain's headroom, and a pre-flight
+ * against that same client on its own window. VIL-602: a crisis read late is answered by
+ * the live crisis writer on the live paths' client (30s, one retry), not the reader's: a
+ * timeout that short would turn a working writer into a failed one.
+ */
+export function optOutRecoveryPorts(database: Database, now: Date): OptOutRecoveryDeps {
+  const client = budgetedAnthropic(OPT_OUT_RECOVERY_CLIENT_OPTIONS);
+  return {
+    reader: createOptOutReader(
+      client,
+      failurePageOpsPager(() => database),
+    ),
+    transport: createOutboundTransport(),
+    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    crisisPager: failurePageCrisisPager(database),
+    threadMessage: threadIfParent,
+    preflight: () => providerPreflight(database, 'opt_out_recovery', client, now),
+    now,
+  };
 }

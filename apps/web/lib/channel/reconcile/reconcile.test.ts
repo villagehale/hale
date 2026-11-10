@@ -2,13 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import type { CommitmentKind } from '~/lib/commitments/ledger';
 import { extractStateClaims } from './claims';
-import { claimsForActivityContinuation } from './gate';
-import {
-  type ReconcileView,
-  reconcile,
-  reconcileViolations,
-  withoutRefusedClaims,
-} from './reconcile';
+import { type ReconcileView, reconcile, reconcileViolations, refusedClaimSpans } from './reconcile';
+import { subtractSpans } from './sentences';
 
 const OPENS = new Date('2026-09-01T11:00:00.000Z');
 
@@ -25,6 +20,10 @@ function view(overrides: Partial<ReconcileView> = {}): ReconcileView {
 }
 
 const verdictFor = (body: string, v: ReconcileView) => reconcile(extractStateClaims(body), v);
+const withoutRefusedClaims = (body: string, verdict: ReturnType<typeof reconcile>) => {
+  const cut = subtractSpans(body, refusedClaimSpans(body, verdict));
+  return cut.status === 'cut' ? cut.text : cut.status;
+};
 
 describe('reconcile — the registration watch', () => {
   const body = "I'm watching that morning and I'll text you before it goes live.";
@@ -405,6 +404,39 @@ describe('reconcile — what a refused body produces', () => {
     );
   });
 
+  it('cuts a claim naming "St. Mary\'s" whole, never leaving "at St." (VIL-575)', () => {
+    const named = "Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked.";
+    expect(withoutRefusedClaims(named, verdictFor(named, view()))).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts a claim ending "Sat." together with the question it was joined to', () => {
+    const body = 'Swim runs Tuesdays at 4. Your visit is booked for Sat. Want me to add swim?';
+    const verdict = verdictFor(body, view());
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_scheduled_row']);
+    expect(withoutRefusedClaims(body, verdict)).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts a joined sentence once when two of its pieces are refused', () => {
+    const body = "Swim runs Tuesdays at 4. I'll send an invite Sat. Your visit is booked.";
+    const verdict = verdictFor(body, view());
+    expect(verdict.refused.map((r) => r.reason)).toEqual([
+      'no_coparent_invite',
+      'no_scheduled_row',
+    ]);
+    expect(withoutRefusedClaims(body, verdict)).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts every copy of a repeated joined sentence', () => {
+    const twice = "I'll send an invite Sat. Your visit is booked.";
+    const body = `${twice} Swim runs Tuesdays at 4. ${twice}`;
+    expect(withoutRefusedClaims(body, verdictFor(body, view()))).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('a cut that leaves a dangling clause is a fragment, not a reply', () => {
+    const dangling = "Here's where things stand:\nYour visit is booked.";
+    expect(withoutRefusedClaims(dangling, verdictFor(dangling, view()))).toBe('fragment');
+  });
+
   it('returns empty when the whole reply was the unbacked claim', () => {
     const only = "I'll cut the one sec messages and just answer.";
     expect(withoutRefusedClaims(only, verdictFor(only, view()))).toBe('');
@@ -427,33 +459,6 @@ describe('reconcile — a co-parent invite the model did not send', () => {
     expect(verdict.refused.map((r) => r.reason)).toEqual(['no_coparent_invite']);
     expect(withoutRefusedClaims(live, verdict)).toBe('');
     expect(reconcileViolations(verdict)[0]).toContain('Only the co-parent invite path');
-  });
-
-  it('arms an activity continuation instead of demanding a registration watch', () => {
-    const sentence =
-      "Registration opens Tuesday, September 1, and I'll keep watching and text you when they post them.";
-    expect(extractStateClaims(sentence).map((claim) => claim.kind)).toEqual(['registration_watch']);
-    const open = reconcile(
-      claimsForActivityContinuation(extractStateClaims(sentence)),
-      view({
-        openKinds: new Set(['activity_followup']),
-      }),
-    );
-    expect(open.refused).toEqual([]);
-    expect(open.resolutions[0]).toMatchObject({
-      status: 'matched',
-      matchedBy: 'open_commitment',
-    });
-    const unarmed = reconcile(claimsForActivityContinuation(extractStateClaims(sentence)), view());
-    expect(unarmed.refused.map((resolution) => resolution.reason)).toEqual(['no_activity_promise']);
-    const booked = `Your well-baby visit is booked. ${sentence}`;
-    const both = reconcile(
-      claimsForActivityContinuation(extractStateClaims(booked)),
-      view({
-        openKinds: new Set(['activity_followup']),
-      }),
-    );
-    expect(both.refused.map((resolution) => resolution.reason)).toEqual(['no_scheduled_row']);
   });
 
   it('does not refuse the ack the invite path actually sends', async () => {

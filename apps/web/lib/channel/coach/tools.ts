@@ -1,6 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import type { CalendarPlacementPayload } from '@hale/types';
+import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
+import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
@@ -13,6 +14,7 @@ import {
 } from '~/lib/channel/mid-activity/said-tool';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
 import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
+import { type SpotReleasePorts, stopWatchingTool } from '~/lib/channel/spots/stop-tool';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
@@ -25,7 +27,7 @@ import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
-import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import type { ChannelDraftInput, ChannelDraftPort, GroupApprovalPlace } from './draft';
 import {
   type GmailDraftNoticeBox,
   type GmailDraftToolPorts,
@@ -188,10 +190,16 @@ export interface ChannelCoachToolArgs {
   /** The Browser Use watch verbs (signup/browser-use/watch/tools.ts). Wired only while
    * BROWSER_USE_WATCH_ENABLED is on; absent leaves the tool set unchanged. */
   providerWatch?: WatchToolPorts | null;
+  /** VIL-447 shared-list verbs (channel/lists/tools.ts). Wired only on a group turn while
+   * GROUP_SHARED_LISTS_ENABLED is on; absent leaves the tool set unchanged. */
+  groupLists?: GroupListToolPorts | null;
   /** VIL-470 · record a signup offer Hale's AI wrote from facts. Wired only while
    * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
   signupOffer?: SignupOfferToolPorts | null;
   familyId: string;
+  /** The family row's country (familyCountryOf). Only a Canadian family's guidance carries
+   * a routine health schedule (D6); null is a family Hale cannot place. */
+  familyCountry: FamilyCountry | null;
   reader: ChannelScheduleReader;
   draftPort: ChannelDraftPort;
   /** The shared Village read (coach/tools.ts `searchVillageTool`), or null in a test
@@ -282,6 +290,8 @@ export interface ChannelCoachToolArgs {
   onGmailNotice?: (box: GmailDraftNoticeBox) => void;
   /** The switch-off verb's ports. Absent in a test that is not exercising it. */
   autonomySwitchOff?: AutonomySwitchOffPorts;
+  /** The stop-watching verb's ports. Absent in a test that is not exercising it. */
+  spotRelease?: SpotReleasePorts;
   /** The texting parent. The allowlist arms this user while the global flag is unset. */
   parentUserId?: string | null;
   now: Date;
@@ -445,6 +455,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
 
+  /** Where a group turn's yes is given (VIL-595); nothing on a 1:1 turn's result. */
+  async function approvalPlace(
+    actionType: ChannelDraftInput['actionType'],
+  ): Promise<{ approvalWaitsIn?: GroupApprovalPlace }> {
+    const place = await draftPort.approvalWaitsIn?.({ familyId, actionType });
+    return place ? { approvalWaitsIn: place } : {};
+  }
+
   /** The one place a draft is minted, so the turn's ledger cannot miss one. */
   async function mint(input: ChannelDraftInput): Promise<string> {
     const { actionId } = await draftPort.draft(input);
@@ -587,6 +605,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         actionId,
         newWhen: localWhen(startsAt, timeZone),
         when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_move')),
       };
     },
   });
@@ -621,7 +640,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
-      return { drafted: true as const, actionId };
+      return { drafted: true as const, actionId, ...(await approvalPlace('calendar_cancel')) };
     },
   });
 
@@ -670,13 +689,18 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         familyId,
         title: input.title,
         startsAt: startsAt.toISOString(),
+        childId: input.childId ?? null,
       });
-      if (already) {
+      if (already?.outcome === 'group_chat_unknown') {
+        return { drafted: false as const, outcome: already.outcome };
+      }
+      if (already?.outcome === 'already_pending' || already?.outcome === 'already_asked') {
         return {
           drafted: true as const,
-          actionId: already,
+          actionId: already.id,
           when: longWhen(startsAt, timeZone),
           alreadyPending: true as const,
+          ...(await approvalPlace('calendar_add')),
         };
       }
       claimDraftBudget();
@@ -708,7 +732,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
+      return {
+        drafted: true as const,
+        actionId,
+        when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_add')),
+      };
     },
   });
 
@@ -748,7 +777,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     // "Parenting questions are yours" section calls get_framework_guidance, and
     // until now only the WEB coach carried it — the SMS runtime would have made
     // a tool call into a void. Shared definition: ~/lib/coach/framework-tool.
-    frameworkGuidanceTool(),
+    frameworkGuidanceTool(args.familyCountry),
   ];
   if (args.villageTool) tools.push(args.villageTool);
   // The live web verb. Registered only where the lane and the reader are both wired,
@@ -807,7 +836,10 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   }
   // Offered to the model only where the skill lists it (augmentCoachSkillForAutonomySwitchOff).
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
+  // Offered only where the skill lists it (augmentCoachSkillForStopWatching).
+  if (args.spotRelease) tools.push(stopWatchingTool(args.spotRelease));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
+  if (args.groupLists) tools.push(...groupListTools(args.groupLists));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
   if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));
   return tools;

@@ -18,6 +18,7 @@ import { MAX_PAGE_NOTE_CHARS, boundEvidence } from '~/lib/channel/activity/fanou
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { findReplyNotJudged } from '~/lib/channel/coach/find-reasoning-judge';
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -583,11 +584,12 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
       buildTools: (turn, onDraft, onOffer, onShare, onPromise) =>
         buildChannelCoachTools({
           familyId: turn.familyId,
+          familyCountry: 'CA',
           reader: {} as never,
           draftPort: {} as never,
           villageTool: searchVillageTool(database),
           activity: {
-            reader: bindActivityReader(database, productionActivityFamilyReader()),
+            reader: bindActivityReader(database, productionActivityFamilyReader(), 'every_adult'),
             finder: createActivityFinder(client),
           },
           spots: null,
@@ -611,6 +613,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         },
       },
       client,
+      judgeFindReply: findReplyNotJudged,
       runAgent: scriptedRunAgent(steps, write),
       recordRun: async () => {},
       now: () => new Date(),

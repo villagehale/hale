@@ -9,6 +9,7 @@ import {
 } from './aha-read';
 
 const NOW = new Date('2026-09-10T15:00:00.000Z');
+const EASTERN = 'America/Toronto';
 
 describe('aha snapshot from fixture calendars and mail', () => {
   it('keeps upcoming events, a busy block, and a real overlap, and drops what is not upcoming', () => {
@@ -59,11 +60,12 @@ describe('aha snapshot from fixture calendars and mail', () => {
         },
       ],
       NOW,
+      EASTERN,
     );
 
     expect(facts.map((fact) => fact.title)).toEqual(['Swim at the rec centre', 'Dentist', 'Busy']);
     expect(facts[0]).toMatchObject({ location: 'Rec centre', declined: false, allDay: false });
-    expect(calendarOverlaps(facts)).toEqual([
+    expect(calendarOverlaps(facts, EASTERN)).toEqual([
       { earlier: 'Swim at the rec centre', later: 'Dentist' },
     ]);
     expect(JSON.stringify(facts)).not.toMatch(/kind|deadline|intent|registration/i);
@@ -104,6 +106,104 @@ describe('aha snapshot from fixture calendars and mail', () => {
     expect(facts[0]?.snippet).not.toMatch(/@|416/);
     expect(facts[1]).toMatchObject({ subject: 'Picnic', fromName: null });
     expect(JSON.stringify(facts)).not.toMatch(/"deadline"|"kind"/);
+  });
+
+  it('drops a link from a title, a subject and a snippet however it is written (VIL-632)', () => {
+    const at = (id: string, summary: string) => ({
+      id,
+      status: 'confirmed',
+      summary,
+      start: { dateTime: '2026-09-12T13:00:00.000Z' },
+      end: { dateTime: '2026-09-12T14:00:00.000Z' },
+    });
+    const titles = calendarFactsFromItems(
+      [
+        at('scheme', 'Verify at https://evil.app/login'),
+        at('wide', 'Verify at https：//evil.app/login'),
+        at('bare', 'Verify at evil.app/login'),
+        at('only', 'evil.app/login'),
+      ],
+      NOW,
+      EASTERN,
+    ).map((fact) => fact.title);
+    expect(titles).toEqual(['Verify at', 'Verify at', 'Verify at']);
+
+    const mail = emailFactsFromMessages(
+      [
+        ['Order at https：//evil.app/pay today', 'Picture day https://evil.app/pay'],
+        ['Order at evil.app/pay today', 'Picture day evil.app/pay'],
+      ].map(([snippet, subject], index) => ({
+        id: `m${index}`,
+        internalDate: '1757606400000',
+        snippet,
+        payload: { headers: [{ name: 'Subject', value: subject }] },
+      })),
+    );
+    expect(mail.map((fact) => [fact.subject, fact.snippet])).toEqual([
+      ['Picture day', 'Order at today'],
+      ['Picture day', 'Order at today'],
+    ]);
+  });
+
+  it('a length cut never leaves a link behind (VIL-632)', () => {
+    // 'evil.co9xyz' is not link-shaped; cut right after 'evil.co' it would be.
+    const titleWords = 'Swim '.repeat(22).concat('ab');
+    const snippetWords = 'Swim '.repeat(30).concat('ab');
+    const event = (id: string, summary: string) => ({
+      id,
+      status: 'confirmed',
+      summary,
+      start: { dateTime: '2026-09-12T13:00:00.000Z' },
+      end: { dateTime: '2026-09-12T14:00:00.000Z' },
+    });
+    const message = (id: string, subject: string, snippet: string) => ({
+      id,
+      internalDate: '1757606400000',
+      snippet,
+      payload: { headers: [{ name: 'Subject', value: subject }] },
+    });
+    const longPlain = 'Swim lesson at the pool '.repeat(10);
+
+    const placeWords = 'Rec '.repeat(17).concat('abcd');
+    const calendar = calendarFactsFromItems(
+      [
+        { ...event('cut', `${titleWords} evil.co9xyz`), location: `${placeWords} evil.co9xyz` },
+        { ...event('plain', longPlain), location: longPlain },
+      ],
+      NOW,
+      EASTERN,
+    );
+    expect(calendar.map((fact) => [fact.title, fact.location])).toEqual([
+      [titleWords, placeWords],
+      [longPlain.slice(0, 120).trimEnd(), longPlain.slice(0, 80).trimEnd()],
+    ]);
+
+    const mail = emailFactsFromMessages([
+      message('cut', `${titleWords} evil.co9xyz`, `${snippetWords} evil.co9xyz`),
+      message('plain', longPlain, longPlain),
+    ]);
+    expect(mail.map((fact) => [fact.subject, fact.snippet])).toEqual([
+      [titleWords, snippetWords],
+      [longPlain.slice(0, 120).trimEnd(), longPlain.slice(0, 160).trimEnd()],
+    ]);
+  });
+
+  it("reads today on the family's own clock, so an all-day event today is still upcoming", () => {
+    // 05:30Z on Nov 10: still Nov 9 in Chicago, already Nov 10 in Toronto.
+    const lateEvening = new Date('2026-11-10T05:30:00.000Z');
+    const items = [
+      {
+        id: 'fair',
+        status: 'confirmed',
+        summary: 'Fall fair',
+        start: { date: '2026-11-09' },
+        end: { date: '2026-11-10' },
+      },
+    ];
+    expect(
+      calendarFactsFromItems(items, lateEvening, 'America/Chicago').map((fact) => fact.title),
+    ).toEqual(['Fall fair']);
+    expect(calendarFactsFromItems(items, lateEvening, 'America/Toronto')).toEqual([]);
   });
 
   it('withholds mailbox facts when a teenager is in the family, and keeps calendar facts', () => {
@@ -168,6 +268,7 @@ describe('aha snapshot from fixture calendars and mail', () => {
       provider: 'gcal',
       accessToken: 'ya29.test',
       now: NOW,
+      timeZone: EASTERN,
       googleFetch,
     });
     expect(calendar.read).toBe('ok');
@@ -178,6 +279,7 @@ describe('aha snapshot from fixture calendars and mail', () => {
       provider: 'gmail',
       accessToken: 'ya29.test',
       now: NOW,
+      timeZone: EASTERN,
       googleFetch,
     });
     expect(mail).toMatchObject({ read: 'failed', email: [] });
@@ -196,6 +298,7 @@ describe('aha snapshot from fixture calendars and mail', () => {
       provider: 'gmail',
       accessToken: 'ya29.test',
       now: NOW,
+      timeZone: EASTERN,
       googleFetch,
     });
     expect(mail.read).toBe('empty');

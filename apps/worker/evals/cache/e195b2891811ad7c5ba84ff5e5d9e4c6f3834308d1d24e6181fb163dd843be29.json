@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the registration is confirmed ('C'est fait... est confirmée') while facts say confirmed is false and reason is unconfirmed. It should say Hale could not confirm it went through and direct the parent to check the link. Link and tu usage are correct, but the false confirmation is a major fault.",
+    "score": 1
+  }
+}

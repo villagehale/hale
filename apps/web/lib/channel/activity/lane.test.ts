@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
-import * as sourcePage from '~/lib/registration/page';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { isStage } from '~/lib/testing/structured-reply';
 import type { ActivityQuery } from './deidentify';
 import {
@@ -12,13 +12,23 @@ import {
   stampReadPageUrl,
   toPicks,
 } from './lane';
+import * as activityPage from './page';
 
 const PROGRAM_TEXT =
   'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.';
 
-vi.mock('~/lib/registration/page', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
-  createRegistrationPageFetch: () => async () => `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+beforeEach(() => {
+  vi.stubEnv('FINDER_SOURCE_BINDING_ENABLED', 'true');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+vi.mock('./page', () => ({
+  createActivityPageFetch: () => async (url: string) => ({
+    url,
+    text: `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+  }),
 }));
 
 /**
@@ -156,10 +166,45 @@ describe('the payloads', () => {
     );
   });
 
-  it('omits a town and a stage it does not have rather than sending a placeholder', () => {
+  it('carries the family-local day when it is known, and no key when it is not (VIL-435)', () => {
+    expect(JSON.parse(groundUserMessage({ ...QUERY, today: '2026-10-12 (Monday)' }))).toEqual({
+      subject: 'toddler gymnastics',
+      town: QUERY.town,
+      stage: 'toddler',
+      window: 'this fall',
+      today: '2026-10-12 (Monday)',
+    });
+    expect(groundUserMessage(QUERY)).not.toContain('today');
+  });
+
+  it('reads the day-check addendum only when the query carries the day (VIL-435)', async () => {
+    const addendum = (await loadCronSkill('activity-finder-day')).instructions;
+    const systems = async (query: ActivityQuery) => {
+      const seen: Seen[] = [];
+      await createActivityFinder(
+        makeClient(
+          { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+          seen,
+        ),
+      ).find(query);
+      return seen.map((s) =>
+        typeof s.system === 'string'
+          ? s.system
+          : (s.system as Array<{ text: string }>).map((block) => block.text).join(''),
+      );
+    };
+
+    const dated = await systems({ ...QUERY, today: '2026-10-12 (Monday)' });
+    const plain = await systems(QUERY);
+
+    expect(dated.some((system) => system.includes(addendum))).toBe(true);
+    expect(plain.every((system) => !system.includes(addendum))).toBe(true);
+  });
+
+  it('omits a stage it does not have rather than sending a placeholder', () => {
     expect(
-      groundUserMessage({ subject: 'story time', window: null, town: null, stage: null }),
-    ).toBe('{"subject":"story time"}');
+      groundUserMessage({ subject: 'story time', window: null, town: 'Toronto', stage: null }),
+    ).toBe('{"subject":"story time","town":"Toronto"}');
   });
 
   it('gives the compose stage the research and still no identity', () => {
@@ -280,11 +325,11 @@ describe('an ungrounded find never ships', () => {
   it('extracts from the canonical moved page without first spending a call on thinking', async () => {
     const current = 'https://venue.example/current';
     const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(async (url) => {
-        if (url !== current) throw new sourcePage.RegistrationPageRedirect(current);
-        return `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`;
-      });
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url: url === current ? url : current,
+        text: `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+      }));
     const seen: Seen[] = [];
     try {
       const result = await createActivityFinder(
@@ -311,14 +356,16 @@ describe('an ungrounded find never ships', () => {
     const results = ground.content[1]!.content as Array<{ url: string }>;
     results[3]!.url = officialUrl;
     const urls: string[] = [];
-    const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(async (url) => {
-        urls.push(url);
-        return url === officialUrl
-          ? `Burlington, ON, L7R 1J4. ${PROGRAM_TEXT}`
-          : 'Burlington, WA 98233 United States';
-      });
+    const fetch = vi.spyOn(activityPage, 'createActivityPageFetch').mockReturnValue(async (url) => {
+      urls.push(url);
+      return {
+        url,
+        text:
+          url === officialUrl
+            ? `Burlington, ON, L7R 1J4. ${PROGRAM_TEXT}`
+            : 'Burlington, WA 98233 United States',
+      };
+    });
     try {
       const found = await createActivityFinder(
         makeClient({
@@ -336,12 +383,13 @@ describe('an ungrounded find never ships', () => {
 
   it('excludes wrong-region page text and cannot cite that page after composition', async () => {
     const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(async (url) =>
-        url.endsWith('/0')
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url,
+        text: url.endsWith('/0')
           ? 'Burlington, WA 98233 United States'
           : `2331 New Street, Burlington, ON L7R 1J4. Preschool storytime. ${PROGRAM_TEXT}`,
-      );
+      }));
     const seen: Seen[] = [];
     try {
       const found = await createActivityFinder(
@@ -369,11 +417,11 @@ describe('an ungrounded find never ships', () => {
 
   it('holds the real wrong-country page before compose and admits its matching location', async () => {
     const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
-      .mockReturnValue(
-        async () =>
-          `Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States. ${PROGRAM_TEXT}`,
-      );
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url,
+        text: `Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States. ${PROGRAM_TEXT}`,
+      }));
     const seen: Seen[] = [];
     const finder = createActivityFinder(
       makeClient(
@@ -398,7 +446,7 @@ describe('an ungrounded find never ships', () => {
   });
 
   it('does not compose from date-bearing snippets when every fresh source read fails', async () => {
-    const fetch = vi.spyOn(sourcePage, 'createRegistrationPageFetch').mockReturnValue(async () => {
+    const fetch = vi.spyOn(activityPage, 'createActivityPageFetch').mockReturnValue(async () => {
       throw Error('source unavailable');
     });
     const seen: Seen[] = [];

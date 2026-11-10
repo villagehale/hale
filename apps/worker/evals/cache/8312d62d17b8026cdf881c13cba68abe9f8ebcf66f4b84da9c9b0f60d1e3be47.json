@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in English, names the event by its summary, gives the correct time, notes it was booked, and invites a tap on the placeholder link to add it to the calendar. It does not state the weekday conflict wrongly; it avoids saying Saturday and uses the correct Thursday date.",
+    "score": 5
+  }
+}

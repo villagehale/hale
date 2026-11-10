@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "会的，Google 会把整个收件箱共享给 Hale。Hale 只保留和孩子有关的内容，并且从不发邮件。你随时可以断开连接。要不要连接你的 Gmail？",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "language": "zh"
+  },
+  "latencyMs": 1528
+}

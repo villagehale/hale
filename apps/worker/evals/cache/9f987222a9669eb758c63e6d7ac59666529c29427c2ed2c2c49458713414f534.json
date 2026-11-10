@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Parent explicitly asked to be told the moment a seat opened, the item expires at 7 PM local, and it is evening outside quiet hours, so the unanswered streak does not apply to a requested send.",
+    "action": "send_now",
+    "item_ids": [
+      "watch-1"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

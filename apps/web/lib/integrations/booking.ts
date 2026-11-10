@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { promoteMatchingInferredFacts } from '~/lib/memory/store';
 import type { CorrelatedEventRef, ExtractedEvent, ExtractionKind } from '~/lib/sentinel';
@@ -52,6 +52,9 @@ export interface BookingDraft {
   title: string;
   firstSessionAt: Date;
   location: string | null;
+  /** The street address the email gave for `location`, or null. Null whenever there is
+   * no place, or the place already carries it. */
+  address: string | null;
   /**
    * The `family_events` row this booking duplicates, when the correlation found one AND
    * it is a family_events ref. A `week_plans_item` ref is NOT written here: the follow-up
@@ -124,6 +127,9 @@ export function bookingDraft(input: {
   /** The place, through the SAME fold the offer row keeps (`gsm7`, clamped), for the same
    * reason: this string reaches a parent later, in a reminder. */
   location: string | null;
+  /** The street address the extraction kept from the email (`sourcedAddress`), through
+   * the same fold as the place. */
+  address: string | null;
   now: Date;
 }): BookingDraftResult {
   if (input.kind !== 'booking_confirmation') return { ok: false, reason: 'not_a_booking' };
@@ -145,6 +151,7 @@ export function bookingDraft(input: {
       title: input.title,
       firstSessionAt,
       location: input.location,
+      address: addressBeside(input.location, input.address),
       eventId: input.matchedEventRef?.table === 'family_events' ? input.matchedEventRef.id : null,
       // One decision, two readers - the row the count is read from and the row it is
       // written on carry the SAME string, because there is one function and one call.
@@ -158,12 +165,20 @@ export function bookingDraft(input: {
   };
 }
 
+/** The address only beside a place, and only when the place does not already say it. */
+function addressBeside(location: string | null, address: string | null): string | null {
+  if (location === null || address === null) return null;
+  const fold = (text: string) => (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
+  return ` ${fold(location)} `.includes(` ${fold(address)} `) ? null : address;
+}
+
 interface LiveClassBooking {
   id: string;
   providerHost: string;
   title: string;
   firstSessionAt: Date;
   location: string | null;
+  address: string | null;
   eventId: string | null;
   createdAt: Date;
 }
@@ -190,6 +205,7 @@ async function findLiveClassBooking(
       title: schema.activityBookings.title,
       firstSessionAt: schema.activityBookings.firstSessionAt,
       location: schema.activityBookings.location,
+      address: schema.activityBookings.address,
       eventId: schema.activityBookings.eventId,
       createdAt: schema.activityBookings.createdAt,
     })
@@ -268,11 +284,23 @@ export async function recordActivityBooking(
      * outbound row. */
     channelMessageId: string | null;
     draft: BookingDraft;
+    /** The email's own received time, kept so a cancellation older than it cannot close the
+     * row. Unset, the row may be closed by any cancellation, as before migration 0200. */
+    receivedAt?: Date;
+    /** A cancellation the parent was told, newer than this email: a new row is written
+     * closed at it, and a refreshed row closes at it unless a newer email recorded it (the
+     * closer's own rule). */
+    cancelledAt?: Date;
     /** Set on live mail only. With it, a refresh whose booking is linked to a Hale event
      * applies the provider's new time or venue there and records the change (VIL-474). */
     timeZone?: string;
   },
-): Promise<{ outcome: 'recorded' | 'already_recorded' | 'refreshed'; bookingId: string | null }> {
+): Promise<{
+  outcome: 'recorded' | 'already_recorded' | 'refreshed';
+  bookingId: string | null;
+  /** The row, when this write left it cancelled: its offer and trail are the caller's. */
+  closed: ClosedBooking | null;
+}> {
   const [sameEmail] = await database
     .select({ id: schema.activityBookings.id })
     .from(schema.activityBookings)
@@ -282,7 +310,7 @@ export async function recordActivityBooking(
         eq(schema.activityBookings.messageId, input.messageId),
       ),
     );
-  if (sameEmail) return { outcome: 'already_recorded', bookingId: null };
+  if (sameEmail) return { outcome: 'already_recorded', bookingId: null, closed: null };
 
   const existing = await findLiveClassBooking(database, {
     familyId: input.familyId,
@@ -291,7 +319,7 @@ export async function recordActivityBooking(
     firstSessionAt: input.draft.firstSessionAt,
   });
   if (existing) {
-    await database
+    const [refreshed] = await database
       .update(schema.activityBookings)
       .set({
         dedupeKey: bookingDedupeKey({
@@ -300,9 +328,30 @@ export async function recordActivityBooking(
           firstSessionAt: input.draft.firstSessionAt,
         }),
         location: input.draft.location ?? existing.location,
+        // The address belongs to the place it was given with: a receipt naming no place
+        // keeps both, and one naming a place replaces both.
+        address: input.draft.location === null ? existing.address : input.draft.address,
         eventId: existing.eventId ?? input.draft.eventId,
+        // The newer of the two emails: GREATEST ignores a NULL on either side.
+        ...(input.receivedAt === undefined
+          ? {}
+          : {
+              sourceReceivedAt: sql`greatest(${schema.activityBookings.sourceReceivedAt}, ${input.receivedAt.toISOString()}::timestamptz)`,
+            }),
+        // Read against the row's received time BEFORE this update, as the closer reads it.
+        ...(input.cancelledAt === undefined
+          ? {}
+          : {
+              cancelledAt: sql`case when ${schema.activityBookings.sourceReceivedAt} is null or ${schema.activityBookings.sourceReceivedAt} <= ${input.cancelledAt.toISOString()}::timestamptz then ${input.cancelledAt.toISOString()}::timestamptz else ${schema.activityBookings.cancelledAt} end`,
+            }),
       })
-      .where(eq(schema.activityBookings.id, existing.id));
+      .where(eq(schema.activityBookings.id, existing.id))
+      .returning({
+        id: schema.activityBookings.id,
+        integrationId: schema.activityBookings.integrationId,
+        messageId: schema.activityBookings.messageId,
+        cancelledAt: schema.activityBookings.cancelledAt,
+      });
     const linkedEventId = existing.eventId ?? input.draft.eventId;
     if (input.timeZone && linkedEventId) {
       // A re-sent receipt arrives by live email, so it RECORDS the change only and never
@@ -321,7 +370,18 @@ export async function recordActivityBooking(
       });
     }
     await noteBookingMemory(database, input.familyId, input.draft.title);
-    return { outcome: 'refreshed', bookingId: existing.id };
+    return {
+      outcome: 'refreshed',
+      bookingId: existing.id,
+      closed:
+        refreshed === undefined || refreshed.cancelledAt === null
+          ? null
+          : {
+              id: refreshed.id,
+              integrationId: refreshed.integrationId,
+              messageId: refreshed.messageId,
+            },
+    };
   }
 
   try {
@@ -336,6 +396,7 @@ export async function recordActivityBooking(
         title: input.draft.title,
         firstSessionAt: input.draft.firstSessionAt,
         location: input.draft.location,
+        address: input.draft.address,
         sessionKey: input.draft.sessionKey,
         dedupeKey: bookingDedupeKey({
           providerHost: input.draft.providerHost,
@@ -344,11 +405,20 @@ export async function recordActivityBooking(
         }),
         eventId: input.draft.eventId,
         channelMessageId: input.channelMessageId,
+        sourceReceivedAt: input.receivedAt,
+        cancelledAt: input.cancelledAt,
       })
       .returning({ id: schema.activityBookings.id });
-    if (!row) return { outcome: 'already_recorded', bookingId: null };
+    if (!row) return { outcome: 'already_recorded', bookingId: null, closed: null };
     await noteBookingMemory(database, input.familyId, input.draft.title);
-    return { outcome: 'recorded', bookingId: row.id };
+    return {
+      outcome: 'recorded',
+      bookingId: row.id,
+      closed:
+        input.cancelledAt === undefined
+          ? null
+          : { id: row.id, integrationId: input.integrationId, messageId: input.messageId },
+    };
   } catch (err) {
     if (!isUniqueViolation(err)) throw err;
     // The other writer won the class, or this email landed between the read and the
@@ -361,9 +431,9 @@ export async function recordActivityBooking(
     });
     if (raced) {
       await noteBookingMemory(database, input.familyId, input.draft.title);
-      return { outcome: 'refreshed', bookingId: raced.id };
+      return { outcome: 'refreshed', bookingId: raced.id, closed: null };
     }
-    return { outcome: 'already_recorded', bookingId: null };
+    return { outcome: 'already_recorded', bookingId: null, closed: null };
   }
 }
 
@@ -502,26 +572,6 @@ export function bookingDedupeKey(input: {
   return `${host}|${title}|${input.firstSessionAt.toISOString().slice(0, 10)}`;
 }
 
-/**
- * The identity a cancellation and a receipt are the same class BY — the provider's domain
- * and the canonical title, the exact pair {@link closeCancelledBookings} matches a row on.
- *
- * It exists because one sweep reads a batch NEWEST FIRST, so a cancellation arrives at the
- * closer BEFORE the receipt it cancels has been written down, and the closer has nothing to
- * close. The sweep therefore has to carry the fact forward in memory, and the fact it
- * carries must be the same fact the table is matched on — a second hand-rolled key here is
- * how "recreation.brookfield.ca / swim level 2" stops meaning the same thing in the two
- * places that decide with it.
- *
- * NULL when the cancellation names no class. A nameless email closes nothing (the same
- * refusal the closer makes) and must suppress nothing either, or one unreadable subject
- * line would silence every receipt from that provider for the rest of the sweep.
- */
-export function bookingCancellationKey(from: string, title: string): string | null {
-  const folded = canonicalBookingTitle(title);
-  return folded === '' ? null : `${senderHost(from)}\u0000${folded}`;
-}
-
 /** A booking the provider called off, and the email it was born from — the pair that also
  * addresses the standing calendar offer that email wrote. */
 export interface ClosedBooking {
@@ -539,10 +589,11 @@ export interface ClosedBooking {
  * two days earlier is exactly the case where that question is worst: the parent was told
  * about the cancellation, in a text from Hale, and Hale then asks how it went.
  *
- * BOUNDED BY THE PROVIDER AND THE TITLE, and by nothing else. Same family, same
- * `provider_host`, same canonical title, still live, still in the future. A cancellation
- * from a different provider that happens to name the same generic class ("Swim Level 2" is
- * not a rare string) closes nothing.
+ * BOUNDED BY THE PROVIDER AND THE TITLE, and by the email's age. Same family, same
+ * `provider_host`, same canonical title, still live, still in the future, and not recorded
+ * from an email NEWER than this cancellation. A cancellation from a different provider that
+ * happens to name the same generic class ("Swim Level 2" is not a rare string) closes
+ * nothing, and a cancellation read late does not undo a booking confirmed after it.
  *
  * It takes the RAW sender and folds it with `senderHost` — the same private function
  * `bookingDraft` wrote the row's host with, rather than a host handed in by a caller that
@@ -557,7 +608,7 @@ export interface ClosedBooking {
  */
 export async function closeCancelledBookings(
   database: Database,
-  input: { familyId: string; from: string; title: string; now: Date },
+  input: { familyId: string; from: string; title: string; receivedAt: Date; now: Date },
 ): Promise<ClosedBooking[]> {
   const wanted = canonicalBookingTitle(input.title);
   // A cancellation that names no class closes nothing. Without this, every booking whose
@@ -579,6 +630,10 @@ export async function closeCancelledBookings(
         // The FUTURE only. A session that already happened is a class the family went to,
         // and closing it would take its "how did it go?" down with it.
         gt(schema.activityBookings.firstSessionAt, input.now),
+        or(
+          isNull(schema.activityBookings.sourceReceivedAt),
+          lte(schema.activityBookings.sourceReceivedAt, input.receivedAt),
+        ),
       ),
     );
   // Folded in TS rather than in SQL so there is ONE normaliser and not a hand-written

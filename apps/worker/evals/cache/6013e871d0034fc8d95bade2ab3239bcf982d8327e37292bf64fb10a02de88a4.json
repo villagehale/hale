@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event 'Swim class' on Thursday, July 23 at 10:23 AM. The actual start is Thursday, July 23, 2026 at 10:30 AM. The day matches, but the text states 10:23, a different minute from the start's 30, so it does not match.",
+    "match": false
+  },
+  "latencyMs": 1822
+}

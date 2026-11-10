@@ -1,8 +1,13 @@
 import { NextResponse, after } from 'next/server';
 import { cronRoute } from '~/lib/cron/auth';
 import { connectorSyncDeps, runConnectorSync } from '~/lib/cron/connector-sync';
+import { runConnectorSweepLegs } from '~/lib/cron/connector-sync-legs';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
+import {
+  expireStaleGoogleRevocations,
+  retryPendingGoogleRevocations,
+} from '~/lib/integrations/google-disconnect';
 import { renewDueGooglePushWatches } from '~/lib/integrations/google-push-runtime';
 import { getQueue } from '~/lib/queue';
 
@@ -22,16 +27,28 @@ export const maxDuration = 300;
  */
 export const GET = cronRoute('connector-sync', async (req: Request) => {
   const database = db();
-  const queue = await getQueue();
-  const summary = await runConnectorSync(connectorSyncDeps(database, queue));
-  // The poll above is the fallback. This renews push channels when the flag is on
-  // and names flag_off when it is not — it never replaces the sweep.
-  const pushRenewal = await renewDueGooglePushWatches(database);
+  // The revoke legs first, each leg isolated and named (connector-sync-legs.ts): a
+  // pending revoke holds a live token, and the sweep behind it must not starve it.
+  const legs = await runConnectorSweepLegs({
+    googleRevokeExpiry: () => expireStaleGoogleRevocations(database, new Date()),
+    googleRevokeRetry: () => retryPendingGoogleRevocations(database),
+    sync: async () => runConnectorSync(connectorSyncDeps(database, await getQueue())),
+    // The poll above is the fallback. This renews push channels when the flag is on
+    // and names flag_off when it is not — it never replaces the sweep.
+    pushRenewal: () => renewDueGooglePushWatches(database),
+  });
 
   // Kick the drain so freshly-enqueued events flow through the pipeline now rather
   // than waiting up to 60s for the next cron tick (the cron is the safety net).
   const origin = process.env.APP_URL ?? new URL(req.url).origin;
   after(() => kickDrain(origin));
 
-  return NextResponse.json({ ok: true, ...summary, pushRenewal }, { status: 200 });
+  // cronRoute stamps the heartbeat whenever the handler RETURNS, even a 500. A leg that
+  // throws every run must read stale on /api/health/crons and page, so the run throws
+  // once here, after every leg has run; the outcomes stay in the log.
+  if (!legs.ok) {
+    console.error(legs, 'connector-sync: a leg failed, heartbeat withheld');
+    throw new Error('connector-sync: a leg failed');
+  }
+  return NextResponse.json(legs, { status: 200 });
 });

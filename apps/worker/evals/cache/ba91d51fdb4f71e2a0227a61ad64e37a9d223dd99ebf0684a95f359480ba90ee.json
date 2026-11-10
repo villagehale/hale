@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It acknowledges the replaced page, correctly says the null course name, day and time could not be read, and gives the right opening date and time (Tuesday, September 15 at 7:00 a.m., which checks out against now) for 'your teen'. It names the handed clock, warns to leave time because prerequisite is true, and skips the going-by-the-page line, which is correct since haleHad is null. It carries no link, asks nothing, invents no claims and reads naturally in English. 'Using the residents date' is slightly awkward with residentsOn null, but it simply restates the handed clockName.",
+    "score": 5
+  }
+}

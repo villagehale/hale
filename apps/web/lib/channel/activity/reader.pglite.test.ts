@@ -23,8 +23,8 @@ it('keeps legacy city/region context when country was never recorded, without gu
     .update(schema.families)
     .set({ city: 'New York', province: 'NY', country: null })
     .where(eq(schema.families.id, familyId));
-  const reader = bindActivityReader(db.database, productionActivityFamilyReader());
-  expect(await reader.location?.(familyId)).toBe('New York, NY');
+  const reader = bindActivityReader(db.database, productionActivityFamilyReader(), 'every_adult');
+  expect(await reader.place(familyId)).toEqual({ status: 'known', town: 'New York, NY' });
 });
 
 it('resolves a US ZIP without sending it to the Finder tool', async () => {
@@ -36,8 +36,11 @@ it('resolves a US ZIP without sending it to the Finder tool', async () => {
   await db.database
     .insert(schema.children)
     .values({ familyId, name: 'Fixture child', dateOfBirth: '2023-01-01' });
-  const reader = bindActivityReader(db.database, productionActivityFamilyReader());
-  expect(await reader.location?.(familyId)).toBe('Burlington, Vermont, United States');
+  const reader = bindActivityReader(db.database, productionActivityFamilyReader(), 'every_adult');
+  expect(await reader.place(familyId)).toEqual({
+    status: 'known',
+    town: 'Burlington, Vermont, United States',
+  });
   const queries: ActivityQuery[] = [];
   const finder = {
     find: async (query: ActivityQuery) => {
@@ -60,7 +63,10 @@ it('resolves a US ZIP without sending it to the Finder tool', async () => {
   await db.database
     .insert(schema.familyAreas)
     .values({ familyId, city: 'Burlington', province: 'VT', postalCode: '05401', isActive: true });
-  expect(await reader.location?.(familyId)).toBe('Burlington, Vermont, United States');
+  expect(await reader.place(familyId)).toEqual({
+    status: 'known',
+    town: 'Burlington, Vermont, United States',
+  });
 });
 
 it('keeps the London request and exact filtered page through the tool-to-SMS path', async () => {
@@ -73,7 +79,7 @@ it('keeps the London request and exact filtered page through the tool-to-SMS pat
   const queries: ActivityQuery[] = [];
   const links: { title: string; url: string }[] = [];
   const tool = findActivitiesTool({
-    reader: bindActivityReader(db.database, productionActivityFamilyReader()),
+    reader: bindActivityReader(db.database, productionActivityFamilyReader(), 'every_adult'),
     finder: {
       find: async (query) => {
         queries.push(query);
@@ -126,15 +132,21 @@ it('reads a saved non-GTA location and then its active area without leaking a po
     .update(schema.families)
     .set({ city: 'London', province: 'ON', country: 'Canada', areaCoarse: 'N6A' })
     .where(eq(schema.families.id, familyId));
-  const reader = bindActivityReader(db.database, productionActivityFamilyReader());
-  expect(await reader.location?.(familyId)).toBe('London, Ontario, Canada');
+  const reader = bindActivityReader(db.database, productionActivityFamilyReader(), 'every_adult');
+  expect(await reader.place(familyId)).toEqual({
+    status: 'known',
+    town: 'London, Ontario, Canada',
+  });
   await db.database
     .insert(schema.familyAreas)
     .values({ familyId, city: 'Victoria', province: 'BC', postalCode: 'V8W 1P6', isActive: true });
-  expect(await reader.location?.(familyId)).toBe('Victoria, British Columbia, Canada');
+  expect(await reader.place(familyId)).toEqual({
+    status: 'known',
+    town: 'Victoria, British Columbia, Canada',
+  });
   await db.database
     .update(schema.familyAreas)
     .set({ city: '42 Main Street', postalCode: null })
     .where(eq(schema.familyAreas.familyId, familyId));
-  expect(await reader.location?.(familyId)).toBeNull();
+  expect((await reader.place(familyId)).status).toBe('unknown');
 });

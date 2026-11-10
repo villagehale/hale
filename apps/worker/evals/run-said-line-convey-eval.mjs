@@ -11,10 +11,8 @@
 //   node --env-file=../../.env evals/run-said-line-convey-eval.mjs --live   # PAID
 //
 // Meaning is this cached judge, not a scripted verdict. CI runs --cached-only as a
-// soft path until the Nov 1 ~9:05 ET paid re-record: there is no recording yet, a
-// miss fails this process, and the workflow marks that step continue-on-error.
-// Do not delete the judge to keep the step green. --dry stays a hard $0 check of
-// the request. This file does not spend.
+// hard gate: a miss fails this process and the step. Do not delete the judge to
+// keep the step green. --dry stays a hard $0 check of the request. Only --live spends.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -31,6 +29,7 @@ import {
   SAID_LINE_CONVEY_FIXTURES,
   conveyFacts,
   conveyUserMessage,
+  fixtureConveyFacts,
 } from './said-line-convey-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -51,11 +50,10 @@ function grade(conveyed, expected) {
   return null;
 }
 
-async function loadRequest(draft) {
+async function loadRequest(draft, facts) {
   const convey = await importTs(CONVEY_SRC);
-  const facts = conveyFacts();
   const request = await convey.saidLineConveyRequest(draft, facts);
-  const pinned = conveyUserMessage(draft);
+  const pinned = conveyUserMessage(draft, facts);
   if (request.userMessage !== pinned) {
     throw new Error('convey judge user message drifted from the fixture payload');
   }
@@ -79,7 +77,7 @@ async function dryRun() {
   let calls = 0;
   let model = '';
   for (const fixture of SAID_LINE_CONVEY_FIXTURES) {
-    const request = await loadRequest(fixture.draft);
+    const request = await loadRequest(fixture.draft, fixtureConveyFacts(fixture));
     model = request.lane.model;
     // forceToolJson may re-ask once, so a miss is priced as two calls at the ceiling.
     const once = worstCaseUsd(
@@ -96,6 +94,14 @@ async function dryRun() {
   );
 }
 
+/** Only these fixtures when set (comma list of id prefixes): record the changed cases only. */
+function selectedFixtures() {
+  const only = (process.env.CONVEY_ONLY ?? '').split(',').filter(Boolean);
+  return SAID_LINE_CONVEY_FIXTURES.filter(
+    (fixture) => only.length === 0 || only.some((prefix) => fixture.id.startsWith(prefix)),
+  );
+}
+
 async function runJudged(mode) {
   const broken = mode === 'broken';
   const cachedOnly = mode !== 'live';
@@ -104,10 +110,11 @@ async function runJudged(mode) {
     mode === 'live' ? lazyAnthropic('said-line-convey') : noClient('said-line-convey');
   const cost = makeCost();
   const failures = [];
-  for (const fixture of SAID_LINE_CONVEY_FIXTURES) {
+  const fixtures = selectedFixtures();
+  for (const fixture of fixtures) {
     const draft = broken ? OMISSION : fixture.draft;
     const expected = broken ? 'omit' : fixture.expect;
-    const request = await loadRequest(draft);
+    const request = await loadRequest(draft, fixtureConveyFacts(fixture));
     const judged = await cachedToolCall({
       tag: `said-line-convey:${broken ? 'broken:' : ''}${fixture.id}`,
       lane: request.lane,
@@ -125,7 +132,7 @@ async function runJudged(mode) {
     if (problem) failures.push(`${fixture.id}: ${problem}`);
   }
   console.log(
-    `said-line-convey | ${mode} | fixtures=${SAID_LINE_CONVEY_FIXTURES.length} | failures=${failures.length} | $${totalUsd(cost).toFixed(4)} | live calls: ${cost.liveCalls}`,
+    `said-line-convey | ${mode} | fixtures=${fixtures.length} | failures=${failures.length} | $${totalUsd(cost).toFixed(4)} | live calls: ${cost.liveCalls}`,
   );
   for (const line of failures) console.error(line);
   if (failures.length > 0) process.exit(1);

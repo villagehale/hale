@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states the login failed, sign-up not done (confirmed false), gives the live browser link with ~8 minutes hold as the open-browser window (not a reservation), no personal details, no retry promise, and uses tu in French for a direct audience.",
+    "score": 5
+  }
+}

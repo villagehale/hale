@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The dates and times are right: the 36-hour clock runs from Tuesday 11:00 a.m. to Wednesday 11:00 p.m., and 5:00 a.m. Wednesday is the halfway point. It correctly says the clock started from the parent's own message, the day phrasing (yesterday, tonight) is accurate, and it reads naturally in English. However, it calls the window one 'to accept an offer' and then says to watch 'in case an offer comes through before then'. That ties the deadline to an offer still to come, which is a misframing of the town's response window that the rubric penalizes.",
+    "score": 2
+  }
+}

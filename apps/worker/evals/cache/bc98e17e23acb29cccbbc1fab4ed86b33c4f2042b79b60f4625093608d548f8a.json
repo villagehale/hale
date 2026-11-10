@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Toddler gym starts \"in about an hour\", but minutesUntilStart is 18 (now 10:12 AM, start 10:30 AM). That relative time does not match the real gap, so it is a wrong time. The clock time 10:30 AM, the end 11:15 AM, the venue name and address are all present and correct, and bold is none, but the wrong relative time is a fact failure.",
+    "score": 1
+  }
+}

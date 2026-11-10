@@ -7,8 +7,10 @@
 // apps/web/lib/loop/reminders/group, not replicated. Code gates only structure — the
 // reading's fields, the plan the runtime derives from it (where each reminder goes, quiet
 // hours, a non-customer never 1:1, nobody reminded who is not in the chat), the STOP drop,
-// the refusals and fixed copy. Whether a text carries its facts, in the right language and
-// register, is the judge's call.
+// the refusals and fixed copy. Whether a text carries its facts in the right language is the
+// judge's call. Register is a separate fact check (VIL-493): an address read reports how the
+// text says "you", and code holds that against who reads it. In French that result is a
+// warning, not a failure, until the read holds steady across re-records.
 //
 //   node evals/group-reminder-eval.mjs --dry                    # offline: gates + worst case
 //   node evals/group-reminder-eval.mjs --broken --dry           # offline calibration: must FAIL
@@ -29,8 +31,10 @@ import {
   GROUP_REMINDER_FIXTURES,
   GROUP_REMINDER_HOUSEHOLDS,
   GROUP_REMINDER_NOW,
+  GROUP_REMINDER_REGISTER_CALIBRATION,
 } from './group-reminder-fixtures.mjs';
 import {
+  ADDRESS_FORMS,
   JUDGE_REASON_MAX_CHARS,
   READ_ATTEMPTS,
   brokenPlan,
@@ -39,6 +43,7 @@ import {
   planFailures,
   priceCall,
   readingFailures,
+  registerFinding,
 } from './lib/group-reminder-gates.mjs';
 import {
   JUDGE_MIN,
@@ -54,6 +59,7 @@ import {
   scoreFirstJudgeSchema,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -61,28 +67,32 @@ const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const GROUP = join(WEB_ROOT, 'lib', 'loop', 'reminders', 'group');
 const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 
-const JUDGE_SYSTEM = [
-  "You are a strict reviewer scoring ONE text that Hale, a planner for a family's kids that",
-  'lives in their group text, wrote about a reminder.',
-  'You get `kind`, `facts` (everything Hale was told, and the only true facts), `text` (what',
-  'Hale wrote) and `mustSay` (what this text has to get across, described, not quoted).',
-  'Score 1-5 on whether the text gets the facts across and reads right, NOT on its wording:',
-  'any phrasing a person would read as saying the same thing counts.',
-  '5: every mustSay item comes across, in the language facts.language names, plainly and',
-  'kindly, with nothing added that is not in facts. 4: the same with one small slip of style.',
-  '3: the facts are right but clarity or tone has a real flaw: padded or longer than the',
-  'facts need, gushing or salesy, or Hale speaking as a company or a team.',
-  'LOW (1-2) is any of: a mustSay item missing or wrong; a wrong time, day or person; saying',
-  'it will come as a private text when facts say it arrives here, or the reverse; anything',
-  'invented (a time, place, person, child, reason or feature); the wrong language; in French,',
-  'tu where vous is due; telling anyone to reply with a keyword, a code or STOP; a link or',
-  'phone number; a form-letter or robotic register.',
-  'A day and time is right when it matches facts the way a person would say it from',
-  'facts.now ("tomorrow at 9", "Thursday at 9 AM", "tonight at 8:45").',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('group-reminder');
 
 const JUDGE_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
+
+/**
+ * Who-is-reading, as a fact check apart from the score (VIL-493). The reader sees only the
+ * text and its language, never who reads it, and reports how the text says "you"; code
+ * holds that against `facts.audience` (registerFinding). Asked inside the score, the
+ * register question moved scores on texts that were fine.
+ */
+const ADDRESS_JUDGE_SYSTEM = judgePrompt('group-reminder-address');
+
+const ADDRESS_TOOL = 'address';
+const ADDRESS_TOOL_DESCRIPTION = 'Return how the text says "you".';
+const ADDRESS_MAX_TOKENS = 1024;
+const ADDRESS_SCHEMA = {
+  type: 'object',
+  properties: {
+    you: { type: 'array', items: { type: 'string' } },
+    address: { type: 'string', enum: ADDRESS_FORMS },
+  },
+  required: ['you', 'address'],
+};
+
+/** Draws per calibration text: one is a measurement only if the next draws agree. */
+const CALIBRATION_DRAWS = 3;
 
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
@@ -176,6 +186,38 @@ async function main() {
       inputJsonSchema: JUDGE_SCHEMA,
     });
 
+  const addressRequest = (userMessage) =>
+    agent.structuredRequest({
+      lane: judgeLane,
+      maxTokens: ADDRESS_MAX_TOKENS,
+      system: ADDRESS_JUDGE_SYSTEM,
+      userMessage,
+      toolName: ADDRESS_TOOL,
+      toolDescription: ADDRESS_TOOL_DESCRIPTION,
+      inputJsonSchema: ADDRESS_SCHEMA,
+    });
+
+  /** How a text says "you" (ADDRESS_JUDGE_SYSTEM). Priced on every run, read only when not --dry. */
+  async function readAddress(entry, tag, language, body) {
+    const userMessage = JSON.stringify({ language, text: body });
+    price(entry, addressRequest(userMessage), judgeLane, 1);
+    if (dry) return null;
+    const { value } = await cachedToolCall({
+      tag: `group-reminder:address:${tag}`,
+      lane: judgeLane,
+      system: ADDRESS_JUDGE_SYSTEM,
+      userMessage,
+      toolName: ADDRESS_TOOL,
+      toolSchema: ADDRESS_SCHEMA,
+      toolDescription: ADDRESS_TOOL_DESCRIPTION,
+      maxTokens: ADDRESS_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    return { address: value?.address, you: Array.isArray(value?.you) ? value.you : [] };
+  }
+
   /** The runtime reader: up to READ_ATTEMPTS reads, the first that parses wins (read.ts). */
   async function read(id, userMessage, notes) {
     for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt += 1) {
@@ -243,7 +285,7 @@ async function main() {
       fullName: fullName ?? null,
     }));
     const open = fixture.open ?? [];
-    const result = { arm, fixture, failures: [], notes: [], texts: [] };
+    const result = { arm, fixture, failures: [], warnings: [], notes: [], texts: [] };
     const isReal = arm === 'real';
 
     const readUser = web.groupReminderReadUserMessage({
@@ -332,7 +374,7 @@ async function main() {
         groupHeld: true,
         askerSeated: fire.askerSeated,
         recipientSeated: item.forKind === 'person' ? item.forPhoneHash !== null : null,
-        audienceAllowed: true,
+        audience: { allowed: true, reason: 'in_scope' },
         askerCustomer: item.delivery === 'direct' ? asker.haleCustomer : true,
         quietNow: web.inQuiet(item.deliverAt, quiet.timeZone, quiet.windows),
         directReachable: item.delivery === 'direct' ? reachable : true,
@@ -396,13 +438,63 @@ async function main() {
       mustSay,
     };
     price({ ...entry, kind: `judge ${kind}` }, judgeRequest(payload), judgeLane, 1);
+    const read = await readAddress(
+      { ...entry, kind: `address ${kind}` },
+      `${arm}:${fixture.id}:${kind}`,
+      facts.language,
+      payload.text,
+    );
     if (dry) return true;
     const verdict = await judge(`${arm}:${fixture.id}:${kind}`, payload);
-    result.verdicts = [...(result.verdicts ?? []), `${kind} ${verdict.score}`];
+    result.verdicts = [...(result.verdicts ?? []), `${kind} ${verdict.score}/${read.address}`];
     if (verdict.score < JUDGE_MIN) {
       result.failures.push(`judge ${kind}: ${verdict.score} (${verdict.reason})`);
     }
+    const register = registerFinding({
+      audience: facts.audience,
+      language: facts.language,
+      address: read.address,
+    });
+    if (register) {
+      const finding = `${kind} ${register.finding} [${read.you.join(', ')}]`;
+      (register.soft ? result.warnings : result.failures).push(finding);
+    }
     return true;
+  }
+
+  /**
+   * The judge's read of address on texts whose address is known (VIL-493), several draws
+   * each. Reported, never a failure: it is the evidence for making French register blocking
+   * again, and that waits until every draw comes back right across re-records.
+   */
+  async function calibrateRegister() {
+    let right = 0;
+    let drawn = 0;
+    for (const calibration of GROUP_REMINDER_REGISTER_CALIBRATION) {
+      const reads = [];
+      for (let n = 1; n <= CALIBRATION_DRAWS; n += 1) {
+        const read = await readAddress(
+          { arm: 'real', id: calibration.id, kind: 'calibrate' },
+          `calibrate:${calibration.id}#${n}`,
+          calibration.language,
+          calibration.text,
+        );
+        if (read) reads.push(`${read.address} [${read.you.join(', ')}]`);
+      }
+      if (dry) continue;
+      const hits = reads.filter((read) => read.split(' ')[0] === calibration.address).length;
+      right += hits;
+      drawn += reads.length;
+      const flagged = registerFinding(calibration) !== null;
+      console.info(
+        `REGISTER ${hits === reads.length ? 'ok  ' : 'MISS'} ${calibration.id.padEnd(16)} want ${calibration.address} (${calibration.audience}: ${flagged ? 'flagged' : 'fits'}), read ${reads.join(' / ')}`,
+      );
+    }
+    if (!dry) {
+      console.info(
+        `register calibration (soft, not blocking): ${right}/${drawn} draws read the address right`,
+      );
+    }
   }
 
   const arm = broken ? 'broken' : 'real';
@@ -430,8 +522,10 @@ async function main() {
     );
     for (const t of r.texts) console.info(`      ${t.kind}: "${t.text}"`);
     for (const f of r.failures) console.info(`      · ${f}`);
+    for (const w of r.warnings) console.info(`      ! warning (soft, not blocking): ${w}`);
     for (const n of r.notes) console.info(`      (${n})`);
   }
+  if (!broken || dry) await calibrateRegister();
   if (dry) printProjection(planned);
   else {
     console.info(
@@ -453,7 +547,16 @@ async function main() {
  * each judged) is charged for the rest at the dearest of that kind.
  */
 function printProjection(planned) {
-  const kinds = ['read', 'confirm', 'reminder', 'judge confirm', 'judge reminder'];
+  const kinds = [
+    'read',
+    'confirm',
+    'reminder',
+    'judge confirm',
+    'judge reminder',
+    'address confirm',
+    'address reminder',
+    'calibrate',
+  ];
   console.info('DRY one recording = real arm + broken arm, every call uncached, no network');
   let perSend = 0;
   let ceiling = 0;
@@ -466,13 +569,16 @@ function printProjection(planned) {
       perSend += sendSum;
       ceiling += ceilSum;
       console.info(
-        `DRY   ${arm.padEnd(6)} ${kind.padEnd(14)} ${String(rows.length).padStart(3)} calls | one send each ${usd(sendSum)} | every attempt and re-ask ${usd(ceilSum)}`,
+        `DRY   ${arm.padEnd(6)} ${kind.padEnd(16)} ${String(rows.length).padStart(3)} calls | one send each ${usd(sendSum)} | every attempt and re-ask ${usd(ceilSum)}`,
       );
     }
   }
   let allowance = 0;
   for (const arm of ['real', 'broken']) {
-    const armKinds = arm === 'real' ? kinds.filter((k) => k !== 'read') : kinds.slice(3);
+    const armKinds =
+      arm === 'real'
+        ? kinds.filter((k) => k !== 'read' && k !== 'calibrate')
+        : ['judge confirm', 'judge reminder', 'address confirm', 'address reminder'];
     const ids = [
       ...new Set(planned.filter((p) => p.arm === 'real' && p.kind === 'read').map((p) => p.id)),
     ];

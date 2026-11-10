@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately reports reaching checkout, states nothing is paid or confirmed, carries the exact live_browser link, gives the 12-minute window, includes no personal details (no pack), no follow-up promise, and is in English as required. Only minor issue: 'the spot isn't confirmed yet' is fine, but no hint of a held spot, so no deductions.",
+    "score": 5
+  }
+}

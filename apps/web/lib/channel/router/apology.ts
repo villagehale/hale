@@ -2,7 +2,11 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
+import { hasLinkShape } from '~/lib/format/link-shape';
+import {
+  type IncidentFailure,
+  classifyChainedProviderFailure,
+} from '~/lib/monitoring/provider-health';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { classifyTurnFailure } from './smoke-alarm';
 
@@ -44,10 +48,6 @@ export const MAX_APOLOGY_CHARS = 160;
 export const MAX_COMPOSE_ATTEMPTS = 3;
 
 const MAX_TOKENS = 96;
-
-/** No links, held structurally: this stage has no tool that could have given it one, so
- * a URL here is a URL it invented. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /** A sentence terminator with more sentence after it. The trailing one is the sentence's
  * own, which is why the pattern requires something following it. */
@@ -104,7 +104,7 @@ export function refusals(body: string): ApologyRefusal[] {
   if (body === '') return ['empty'];
   const found: ApologyRefusal[] = [];
   if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
   if (/\d/.test(body)) found.push('invented_number');
@@ -154,10 +154,11 @@ export type ApologyOutcome =
       status: 'unavailable';
       reason: ApologyFallback;
       /**
-       * Set when the call itself was a billing or auth failure. The provider's
-       * message stays off this object: a request echo can carry a parent's words.
+       * Set when the call itself was an incident-class failure (INCIDENT_FAILURES).
+       * The provider's message stays off this object: a request echo can carry a
+       * parent's words.
        */
-      providerFailure?: 'billing' | 'auth';
+      providerFailure?: IncidentFailure;
     };
 
 export interface TurnApology {

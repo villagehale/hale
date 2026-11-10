@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text keeps every given fact: the event is generic 'an appointment' with no guessing about what it is, the day is correct (tomorrow, Monday, from Sunday 6 PM), the start 4:45 and end 5:45 are both given with 'in the afternoon' correctly marking PM, and there is no location or address to include (none was given, none invented). No travel, departure, or other logistics were invented, no link was added, no overlaps were claimed, and no changed fact applies. Bold is none, which is fine.",
+    "score": 5
+  }
+}

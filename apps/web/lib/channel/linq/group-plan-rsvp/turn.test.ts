@@ -1,15 +1,16 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { memberKeyFromHandle } from './member-key';
+import { memberKeyFromHandle, nameKey } from './member-key';
 import { createMemoryGroupPlanRsvpStore, createMemoryWorld } from './memory-store';
 import type { GroupPlanRsvpReader, GroupPlanRsvpReading } from './reading';
+import { GroupPlanRsvpHeld } from './send';
 import { groupPlanRsvpTakesTheTurn, takeGroupPlanRsvpTurn } from './turn';
 import { fakeGroupPlanRsvpComposer } from './voice-fake';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const CHAT = 'chat-picnic';
-const PRIYA = '+14165550101';
-const SAM = '+14165550102';
-const MAYA = '+14165550103';
+const PRIYA = '+15555550101';
+const SAM = '+15555550102';
+const MAYA = '+15555550103';
 const NOW = new Date('2026-10-28T16:00:00.000Z');
 
 beforeAll(() => {
@@ -373,5 +374,111 @@ describe('takeGroupPlanRsvpTurn', () => {
       outcome: 'group_plan_line_unsent',
       notice: { skipped: 'model_failed' },
     });
+  });
+
+  it('names the family-chat floor reason when the tally is held, not a generic not_sent', async () => {
+    const { store } = await startPicnic();
+    const ask = {
+      chatId: CHAT,
+      senderHandle: PRIYA,
+      senderName: 'Priya',
+      text: 'where do we stand',
+      tapback: null,
+      language: 'en' as const,
+      now: NOW,
+    };
+    const tallyAsk = readerOf({
+      intent: 'ask_tally',
+      planTitle: null,
+      startsAt: null,
+      location: null,
+      deadline: null,
+      response: null,
+      headcount: 1,
+      householdLabel: null,
+      coversNames: [],
+      confidence: 'high',
+    });
+    const held = await takeGroupPlanRsvpTurn(ask, {
+      store,
+      reader: tallyAsk,
+      composer: fakeGroupPlanRsvpComposer(),
+      send: async () => {
+        throw new GroupPlanRsvpHeld('participant_unresolved');
+      },
+      enabled: () => true,
+    });
+    expect(held).toMatchObject({
+      handled: true,
+      outcome: 'group_plan_line_unsent',
+      notice: { skipped: 'participant_unresolved' },
+    });
+
+    // Positive control: any other failed send is still not_sent.
+    const failed = await takeGroupPlanRsvpTurn(ask, {
+      store,
+      reader: tallyAsk,
+      composer: fakeGroupPlanRsvpComposer(),
+      send: async () => {
+        throw new Error('linq refused');
+      },
+      enabled: () => true,
+    });
+    expect(failed).toMatchObject({ notice: { skipped: 'not_sent' } });
+  });
+
+  it('keys a nameless Apple-ID sender without their address, and still finds their legacy row', async () => {
+    const { world, store } = await startPicnic();
+    const plan = [...world.plans.values()][0];
+    if (!plan) throw new Error('no plan');
+    const turn = (handle: string, response: 'yes' | 'no') =>
+      takeGroupPlanRsvpTurn(
+        {
+          chatId: CHAT,
+          senderHandle: handle,
+          senderName: null,
+          text: response === 'yes' ? 'in' : 'out after all',
+          tapback: null,
+          language: 'en',
+          now: NOW,
+        },
+        {
+          store,
+          reader: readerOf(rsvp(response)),
+          composer: fakeGroupPlanRsvpComposer(),
+          send: async () => ({ providerMessageId: 'x' }),
+          enabled: () => true,
+        },
+      );
+
+    await turn('fresh.parent@example.com', 'yes');
+    const freshKeys = [...plan.rsvps.keys()];
+    expect(freshKeys).toHaveLength(1);
+    expect(freshKeys[0]).toMatch(/^handle:[0-9a-f]{64}$/);
+    expect(JSON.stringify([...plan.rsvps.values(), ...plan.expected])).not.toContain('example.com');
+
+    const legacyHandle = 'early.parent@example.com';
+    const legacyKey = nameKey(legacyHandle);
+    plan.expected.push({
+      memberKey: legacyKey,
+      displayName: 'someone',
+      userId: null,
+      haleCustomer: false,
+    });
+    plan.rsvps.set(legacyKey, {
+      memberKey: legacyKey,
+      displayName: 'someone',
+      householdLabel: null,
+      userId: null,
+      haleCustomer: false,
+      response: 'yes',
+      headcount: 1,
+      source: 'text',
+      coversKeys: [],
+      verbatim: null,
+    });
+    await turn(legacyHandle, 'no');
+    expect(plan.rsvps.size).toBe(2);
+    expect(plan.rsvps.get(legacyKey)?.response).toBe('no');
   });
 });

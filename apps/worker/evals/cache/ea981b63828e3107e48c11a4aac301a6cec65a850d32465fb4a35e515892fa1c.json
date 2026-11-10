@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "No problem, let's leave it there for now. Whenever you want, tell me what you'd like me to call you, in whatever words feel right.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1414
+}

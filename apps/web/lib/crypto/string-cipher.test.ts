@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { decryptString, encryptString } from './string-cipher';
+import { SealedBlobRejected, decryptString, encryptString } from './string-cipher';
 
 // Two distinct 32-byte keys, base64-encoded (AES-256).
 const KEY_A = Buffer.alloc(32, 1).toString('base64');
@@ -46,5 +46,17 @@ describe('string cipher (AES-256-GCM)', () => {
     expect(() => encryptString(PLAINTEXT)).toThrow(/APP_ENCRYPTION_KEY/);
     process.env.APP_ENCRYPTION_KEY = Buffer.alloc(16, 1).toString('base64'); // 16 ≠ 32
     expect(() => encryptString(PLAINTEXT)).toThrow(/APP_ENCRYPTION_KEY/);
+  });
+
+  it('names a blob the cipher refuses, truncated or tampered, and never a missing key', () => {
+    const bytes = Buffer.from(encryptString(PLAINTEXT), 'base64');
+    bytes[bytes.length - 1] = ((bytes[bytes.length - 1] ?? 0) ^ 0xff) & 0xff;
+    expect(() => decryptString(bytes.toString('base64'))).toThrow(SealedBlobRejected);
+    expect(() => decryptString('not-a-sealed-blob')).toThrow(SealedBlobRejected);
+    expect(() => decryptString('')).toThrow(SealedBlobRejected);
+    const blob = encryptString(PLAINTEXT);
+    process.env.APP_ENCRYPTION_KEY = '';
+    expect(() => decryptString(blob)).toThrow(/APP_ENCRYPTION_KEY/);
+    expect(() => decryptString(blob)).not.toThrow(SealedBlobRejected);
   });
 });

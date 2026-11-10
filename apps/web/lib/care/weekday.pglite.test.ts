@@ -84,6 +84,7 @@ describe('loadWeekdayCare', () => {
       factValue: { care: 'daycare', provider: 'Little Sprouts' },
       confidence: 1,
       inferredBy: WEEKDAY_CARE_FACT_WRITER,
+      heard: 'unrecorded',
       validFrom: NOW,
     });
 
@@ -115,6 +116,7 @@ describe('loadWeekdayCare', () => {
         factValue: { care: 'daycare', provider },
         confidence: 1,
         inferredBy: WEEKDAY_CARE_FACT_WRITER,
+        heard: 'unrecorded',
         validFrom,
       });
     await write('Little Sprouts', NOW);
@@ -148,6 +150,7 @@ describe('loadWeekdayCare', () => {
       factValue: { care: 'daycare', provider: null },
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
     await writeFact(db.database, {
@@ -158,6 +161,7 @@ describe('loadWeekdayCare', () => {
       factValue: { care: 'home', provider: null },
       confidence: 1,
       inferredBy: WEEKDAY_CARE_FACT_WRITER,
+      heard: 'unrecorded',
       validFrom: NOW,
     });
 
@@ -177,6 +181,7 @@ describe('loadWeekdayCare', () => {
         factValue: { care, provider: null },
         confidence: 1,
         inferredBy: WEEKDAY_CARE_FACT_WRITER,
+        heard: 'unrecorded',
         validFrom,
       });
     await write('home', NOW);

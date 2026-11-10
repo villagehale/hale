@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale will keep looking for toddler activities, which matches the pending activity row p1. It also says the baby's checkup is already booked, but no row covers a checkup, so that claim cites none. The registration opening is a statement about the world, not a watch Hale promises, so I did not list it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "p1"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 4129
+}

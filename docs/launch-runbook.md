@@ -84,7 +84,7 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 
 | Route | Schedule | What it does for iMessage |
 | --- | --- | --- |
-| `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. |
+| `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. Each run expires active jobs past their expiry before it fetches, so one stuck inbound job cannot stall every family until queue-maintenance is called. |
 | `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). |
 | `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null, and pages #ops when the Linq line crosses 70% or 90% of its chat IDs ([linq-chat-capacity.md](linq-chat-capacity.md)). |
 | `/api/cron/intake-sitting-reminder` | hourly | One nudge for a parent who stopped on the place or ages question. |
@@ -117,12 +117,21 @@ Redeploy steps, same for every flag:
 | `LINQ_GROUP_COPARENT` | `off` | In-group co-parent seating stops. Any other value, including empty, leaves it on. |
 | `LINQ_GROUP_MEMBERS_ENABLED` | empty | Extra household seats stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | empty | Hale's own add to a group is acknowledged and nothing else happens (`signal_from_me`; a `chat.created` answers `chat.created`). No roster is read and no chat is claimed. Rosters and claims already written stay. Trimmed `true` enables it. |
+| `LINQ_GROUP_MENTIONS_ENABLED` | empty | Inbound iMessage mentions are parsed and unused. Group replies go out without a `mention` field. Trimmed `true` enables them only when `VERCEL_ENV` is `preview`. Production stays dark. |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_POLLS_ENABLED` | empty | Parent-made group polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`. |
 
 To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-web Production and redeploy with the steps above. The route returns 503 `linq_not_configured` and writes nothing. Linq retries that 503, so put the secret back and redeploy to accept the retries.
 
 Migrations are additive. A bad migration is fixed forward. Do not drop columns from this runbook.
+
+## Rotating APP_ENCRYPTION_KEY
+
+There is no re-encryption or re-index job yet, so a rotation breaks what the old key made. Rotate it only if the key leaked.
+
+- Encrypted values (phone numbers, signup vaults, invites) no longer decrypt.
+- Every blind index changes: phone, email, Google account, Linq chat and email-alert keys. A parent's texts no longer match their number until it is re-indexed.
+- A calendar add drafted in a household group is keyed by its chat (`chatKey`). After a rotation no chat matches it, so it is listed nowhere and cannot be approved. It fails closed: nothing is placed. The parent asks again and a new draft is made.
 
 ## On call
 
@@ -161,7 +170,7 @@ A Linq chat-ID capacity page has its own runbook: [linq-chat-capacity.md](linq-c
 
 **Slack #ops.** A thrown webhook posts `Hale ALERT: linq_inbound threw`. The page is at most once per 15 minutes per instance. The inbound canary and cron dead-man also post here. The webhook URL is `OPS_SLACK_WEBHOOK_URL`.
 
-**Daily #ops post.** At 13:14 UTC, `/api/cron/ops-daily` posts one `Hale daily` summary. The 24h block is over every real family (probe-range households, `METRICS_EXCLUDED_FAMILY_IDS` and the founder excluded): reply p50/p95, gaps over 15 minutes, unanswered steps, failed and held sends, failed turns, cache reads and recorded spend. The same post carries the founder counts: W4 retention and open promises as of the window end, and over the trailing 7 days the intake funnel with median time to first answer, medical answers that used the fixed 811/911 line, whether the registration re-verify sweep ran (and the tally that run recorded), plus the database's Linq chat-ID count against the 200 limit. Counts only. Set `METRICS_EXCLUDED_FAMILY_IDS` to the QA family ids before the first post; an empty list counts those households. A post that did not land is retried by `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/ops-daily`; a day already posted answers `already_posted`. It needs `APP_ENCRYPTION_KEY` and throws without it.
+**Daily #ops post.** At 13:14 UTC, `/api/cron/ops-daily` posts one `Hale daily` summary. The 24h block is over every real family (probe-range households, `METRICS_EXCLUDED_FAMILY_IDS` and the founder excluded): reply p50/p95, gaps over 15 minutes, unanswered steps, failed and held sends, failed turns, cache reads and recorded spend. The same post carries the founder counts: W4 retention and open promises as of the window end, and over the trailing 7 days the intake funnel with median time to first answer, medical answers that used the fixed 811/911 line, whether the registration re-verify sweep ran (and the tally that run recorded), plus the database's Linq chat-ID count against the 200 limit. It also reports the inbound queue: jobs still active past their expiry, unfinished jobs, and the age of the oldest. A stalled queue is named in that line. Counts only. Slack only — this post does not email. Set `METRICS_EXCLUDED_FAMILY_IDS` to the QA family ids before the first post; an empty list counts those households. A post that did not land is retried by `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/ops-daily`; a day already posted answers `already_posted`. It needs `APP_ENCRYPTION_KEY` and throws without it.
 
 ## Linq webhook failure
 

@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011CgsG9QpyPQEWTwiboYKbe",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxwcKEAgTGAI4AUIIdGhpbmtpbmcSDNMbzaa5GSMzlsHRQBoM4uZ9P+2W1Hdx2uvTIjBCL8Ggp3kC2Za7wz5N8UYQ4DPKRn56gjxA34UcNbx4b/iY/vd8kymrtflAsZlDu9cq5AYSEA2GM35Zx+fyNMyCyceDnwnn66Y4vgQnfNYtIu9cHyajn4Zg2Q0ja/iHRP9iUGYlpYC8rkQDwS+7L5s8l3w2sQdatYgiiZkaapkJfyECq9pwIHwkeItxv8gmnij7BvSbuuVMw2PQDOtmeuXvVdyZ/epP54UkXUkhwVYEyILM29Pfg8IWwVmDGPEWg7yKxuld8gQ4mGFHA/Oux6Q5L1FRCW4TD5u8Rap+hary5ahL4Ci7mivdzk6lKo4Yfx3M0wo7wPWvtKJvniBlm9/rKcam+xEjw2fu/tFMrM86bp35+XXl5fOoqray0piCBkUtfhI56w6AGQ5WmfOuxdX5SBtf7d/ECZqK8BGb/7NRqlS9Kc3Q0U4woNDmBm+lQhr+CrKv0H4o54OuLEuq/J5DaKsPdacTqcoCrxuLvPbyxoWWOLILN8EiOTbN6LQYL3TNj2/KeqEk/JP9Iy4uE7NHeHwPqDr75Dm+VdDyRX0836Ze11tRdQKTPvGjGU4fg8z8rsDwvoFRdfsglg4ubIfJ2Eq/TgkINzBSPxdVyckeCpvcF9CVZ305PLO+6XzTz99Wn13rG+9SArgkhuLEMy0DI6Rs8Wm9zD/cXkCCOeFzroca/2WZM9HbvrUX6lpST3n6r4K8rTO4k77RpTi261SNPUHK+L0N11ywZnevrhRrB7Fc3mJpWwp8pgduZ9J8P5XZLktDczcHQv61+qwuoMHJZWCKKvqpbt9iKV14OHk/m9b20GJJJfAoG5Q0MyBkzquyqkk9ToSW67mXwdCkcwskSlfKji8pijff69tauJXmuJO6tzNrhMYW7xlAvyKjGPL5AnPp7EioamLpATVCs0gg/Yn8k1j8nj7AzGQjPBLusoZfLvv6gwoYW0PWV5n/ogme0wGyj80yy7oxJpJoo4Hgvf76NXOiqmN6u9BCHBpEy4unV9hBzcEUhSyjCg4S4W2owvhPbMpB0oYpg26ooVY70IBFDNlWkuzX4NJd+MEUtfr9eGdYl7NGVbqDWXsZbkX9ddHUSwBwj0FWQTIMP6eBX1p10hzurJBAVndMR1JbVLswlMfYoP7p65rNi//GMPn/fex05eJqPkQR0uHbfTIz2ZQe23jbiFwV6vvOa0l4fWvKedTTrv7PdWnRgGkKP25i2DiD+BeJGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DNExtB9n8BeufAMuQUDWLD",
+        "name": "search_village",
+        "input": {
+          "query": "Harbour Art Studio art class"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_013d7JyP25L1zdAHysnYFtfR",
+        "name": "find_activities",
+        "input": {
+          "subject": "Harbour Art Studio art class",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 394,
+      "cache_creation_input_tokens": 23193,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 23193,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 248,
+      "output_tokens_details": {
+        "thinking_tokens": 108
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 14102
+}

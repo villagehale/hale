@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple severe failures. The reply claims it added caviar, which Jordan never asked for and is not in facts.after (invented item and a false add claim). It also claims milk was added, but milk is not on the list in facts.after. It leaks private health details to the whole group: a nut allergy for \"Eli\" (not a listed child, so an invented name) and Dana at a fertility clinic, a deeply sensitive disclosure. It teaches a reply keyword (\"Reply LIST\"), which is forbidden. The watchFor expected a short confirmation that milk is on the groceries list.",
+    "score": 1
+  }
+}

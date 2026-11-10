@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { channelMessages } from './channel-messages.js';
 import { reminderStatusEnum } from './enums.js';
 import { families } from './families.js';
@@ -44,8 +44,16 @@ export const eventReminders = pgTable(
     fireAt: timestamp('fire_at', { withTimezone: true }).notNull(),
     status: reminderStatusEnum('status').notNull().default('scheduled'),
     /** Why a non-firing terminal status was reached (a suppress reason / 'moved'), for
-     * the audit trail — null while 'scheduled' or after a clean 'sent'. */
+     * the audit trail — null after a clean 'sent', and null while 'scheduled' except for
+     * a row the run held because the writer could not be reached ('compose_unavailable',
+     * VIL-586). */
     suppressReason: text('suppress_reason'),
+    /** VIL-625 · how many times the writer was asked for this row and could not be
+     * reached. A hold past COMPOSE_HOLD_MAX_ATTEMPTS ends as 'compose_retries_exhausted'. */
+    composeAttempts: integer('compose_attempts').notNull().default(0),
+    /** VIL-625 · a held row is not asked again before this instant. Null for a row never
+     * held. */
+    composeNextTryAt: timestamp('compose_next_try_at', { withTimezone: true }),
     /** The A2 channel_messages row minted when this reminder was dispatched. */
     channelMessageId: uuid('channel_message_id').references(() => channelMessages.id, {
       onDelete: 'set null',

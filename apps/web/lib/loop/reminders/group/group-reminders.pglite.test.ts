@@ -16,7 +16,8 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { GroupTurnReader } from '~/lib/channel/linq/group-turn-reader';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ListChatHandles } from '~/lib/channel/linq/roster';
+import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -25,7 +26,7 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type GroupReminderTurnPorts, takeGroupReminderTurn } from './capture';
 import { fakeGroupReminderReader, fakeGroupReminderVoice } from './fake';
 import { runGroupReminderTick } from './fire';
-import type { ReminderAsk } from './policy';
+import { LATE_LIMIT_MS, type ReminderAsk } from './policy';
 import type { GroupReminderReading } from './read';
 import {
   SENDING_STALE_MS,
@@ -44,19 +45,42 @@ import type { GroupReminderVoice } from './voice';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const SECRET_BYTES = Buffer.alloc(32, 9);
-const HALE = '+14165550100';
-const PRIYA = '+14165550111';
-const DAN = '+14165550131';
-const RUTH = '+14165550132';
-const NEWCOMER = '+14165550133';
+const HALE = '+15555550100';
+const PRIYA = '+15555550111';
+const DAN = '+15555550131';
+const RUTH = '+15555550132';
+const NEWCOMER = '+15555550133';
 const CHAT = 'chat-family-group';
-const TZ = 'America/Toronto';
-// Wednesday 2026-10-28, 14:00 in Toronto.
+const TZ = 'America/New_York';
+// Wednesday 2026-10-28, 14:00 in New York.
 const NOW = new Date('2026-10-28T18:00:00.000Z');
-// Thursday 2026-10-29, 16:00 in Toronto.
+// Thursday 2026-10-29, 16:00 in New York.
 const THURSDAY_FOUR = new Date('2026-10-29T20:00:00.000Z');
 
 let db: TestDb;
+/** Who Linq lists in CHAT now: the floor's live read. */
+let inChat: string[] = [];
+const liveList: ListChatHandles = async () => ({
+  status: 'ok',
+  handles: [...inChat],
+  isGroup: true,
+});
+/** Linq answers the participant read with a 429: who is in the chat cannot be known now. */
+const readRefused: ListChatHandles = async () => ({
+  status: 'refused',
+  code: 'http_429',
+  httpStatus: 429,
+  permanent: false,
+});
+
+/** The real participant read, with Linq (or whatever answered in front of it) replying `status` and `body`. */
+function readAnswering(status: number, body: unknown): ListChatHandles {
+  return (input) =>
+    listLinqParticipantHandles({
+      ...input,
+      fetch: (async () => Response.json(body, { status })) as typeof fetch,
+    });
+}
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
@@ -73,6 +97,7 @@ beforeEach(() => {
   vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_REMINDERS_ENABLED', 'true');
+  inChat = [PRIYA, DAN, RUTH];
 });
 
 afterEach(async () => {
@@ -149,7 +174,7 @@ async function person(input: {
 async function seedHousehold(): Promise<Household> {
   const [family] = await db.database
     .insert(schema.families)
-    .values({ displayName: 'Priya + kids', provinceOrState: 'ON', linqGroupChatId: CHAT })
+    .values({ displayName: 'Priya + kids', provinceOrState: 'NY', linqGroupChatId: CHAT })
     .returning({ id: schema.families.id });
   const familyId = family?.id as string;
   const priya = await person({
@@ -222,6 +247,7 @@ function inbound(sender: string, text: string, messageId: string): LinqInboundTe
     receivedAt: NOW,
     otherHandles: [],
     isGroup: true,
+    mentions: [],
   };
 }
 
@@ -251,6 +277,7 @@ function turnPorts(read: GroupReminderReading | null, options: { voiceFails?: bo
     now: NOW,
     reader,
     voice,
+    listChatHandles: liveList,
     send: async (input) => {
       sends.push(input);
       return { providerMessageId: `out-${sends.length}` };
@@ -290,6 +317,7 @@ function tickPorts(now: Date, options: { voiceFails?: boolean } = {}) {
     ports: {
       now,
       voice,
+      listChatHandles: liveList,
       send: async (input: { chatId: string; text: string; replyTo?: string }) => {
         sends.push(input);
         return { providerMessageId: `out-tick-${sends.length}` };
@@ -325,6 +353,7 @@ async function someoneJoins() {
     phoneE164Hash: phoneBlindIndex(NEWCOMER),
     status: 'asked',
   });
+  inChat.push(NEWCOMER);
 }
 
 /** A voice that adds someone to the chat while it writes, then writes as usual. */
@@ -558,8 +587,8 @@ describe('asking for a reminder in the group', () => {
   it('sets the reminder for one of two Sams once the asker answers with her whole name', async () => {
     const home = await seedHousehold();
     const sams = [
-      { phone: '+14165550151', name: 'Sam Okafor' },
-      { phone: '+14165550152', name: 'Sam Adeyemi' },
+      { phone: '+15555550151', name: 'Sam Okafor' },
+      { phone: '+15555550152', name: 'Sam Adeyemi' },
     ];
     const [roster] = await db.database
       .select({ id: schema.linqGroupRosters.id })
@@ -853,6 +882,76 @@ describe('asking for a reminder in the group', () => {
     const actions = await verbs(home.familyId);
     expect(actions).toContain('group_reminder_held');
     expect(actions).not.toContain('group_reminder_set');
+  });
+
+  it('keeps the reminder when Linq refuses the participant read for now: the redelivery sets it', async () => {
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+
+    expect(
+      await takeGroupReminderTurn(db.database, inbound(RUTH, 'remind me at 4', 'in-unread'), {
+        ...ports,
+        listChatHandles: readRefused,
+      }),
+    ).toEqual({ handled: true, outcome: 'group_reminder_retry' });
+    expect(sends).toEqual([]);
+    expect(await reminders()).toEqual([]);
+    expect(await verbs(home.familyId)).not.toContain('group_reminder_held');
+
+    const again = turnPorts(reading([ask()]));
+    expect(
+      await takeGroupReminderTurn(
+        db.database,
+        inbound(RUTH, 'remind me at 4', 'in-unread'),
+        again.ports,
+      ),
+    ).toEqual({ handled: true, outcome: 'group_reminder_set' });
+    expect(again.sends).toHaveLength(1);
+    expect(await onlyReminder()).toMatchObject({ status: 'scheduled' });
+  });
+
+  it('holds the confirmation, and sets nothing, when Linq refuses the participant read for this chat (403, its 2005)', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+
+    expect(
+      await takeGroupReminderTurn(db.database, inbound(RUTH, 'remind me at 4', 'in-denied'), {
+        ...ports,
+        listChatHandles: readAnswering(403, { error: { code: 2005 } }),
+      }),
+    ).toEqual({ handled: true, outcome: 'group_reminder_held' });
+    expect(sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'confirm_held',
+    });
+    const held = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, home.familyId),
+          eq(schema.auditLog.actionTaken, 'group_reminder_held'),
+        ),
+      );
+    expect(held).toEqual([{ after: { kind: 'confirm', reason: 'participants_unreadable' } }]);
+  });
+
+  it('positive control: a 403 with no Linq code is not Linq naming the chat, so the redelivery sets the reminder', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+
+    expect(
+      await takeGroupReminderTurn(db.database, inbound(RUTH, 'remind me at 4', 'in-edge'), {
+        ...ports,
+        listChatHandles: readAnswering(403, {}),
+      }),
+    ).toEqual({ handled: true, outcome: 'group_reminder_retry' });
+    expect(sends).toEqual([]);
+    expect(await reminders()).toEqual([]);
+    expect(await verbs(home.familyId)).not.toContain('group_reminder_held');
   });
 
   it('leaves anything that is not a reminder ask to the coach, untouched', async () => {
@@ -1526,6 +1625,164 @@ describe('when a group reminder is due', () => {
     });
   });
 
+  it('positive control: drops a group line, by name, when someone Hale cannot identify is in the chat', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    inChat.push(NEWCOMER);
+    const tick = tickPorts(THURSDAY_FOUR);
+
+    expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({
+      due: 1,
+      dropped: 1,
+      retrying: 0,
+    });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'dropped',
+      statusReason: 'audience_held',
+    });
+  });
+
+  it('keeps a due group line when Linq refuses the participant read for now, and posts it once the read works', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: readRefused }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 0, retrying: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(tick.voice.calls).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ sent: 1 });
+    expect(back.sends).toEqual([
+      { chatId: CHAT, text: 'reminder for Ruth', replyTo: `in-${RUTH}` },
+    ]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sent' });
+  });
+
+  it('drops a due group line, by name, when Linq refuses the participant read for good (403, its 2005)', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const forbidden = readAnswering(403, { error: { code: 2005 } });
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: forbidden }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 1, retrying: 0 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'dropped',
+      statusReason: 'audience_held',
+    });
+  });
+
+  it('keeps a due group line when a 403 or 404 carries no Linq code: an edge page is not Linq naming the chat', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+
+    for (const [at, status] of [
+      [THURSDAY_FOUR, 403],
+      [AFTER_STALE, 404],
+    ] as const) {
+      const tick = tickPorts(at);
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tick.ports,
+          listChatHandles: readAnswering(status, {}),
+        }),
+      ).toMatchObject({ sent: 0, dropped: 0, retrying: 1 });
+      expect(tick.sends).toEqual([]);
+      expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+    }
+  });
+
+  it("keeps a due group line when the participant read is refused for Hale's own credential (401)", async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const unauthorized: ListChatHandles = (input) =>
+      listLinqParticipantHandles({
+        ...input,
+        fetch: (async () => Response.json({}, { status: 401 })) as typeof fetch,
+      });
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: unauthorized }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 0, retrying: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+  });
+
+  it('positive control: keeps a due group line when the participant read answers a 5xx', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const unavailable: ListChatHandles = (input) =>
+      listLinqParticipantHandles({
+        ...input,
+        fetch: (async () => Response.json({}, { status: 503 })) as typeof fetch,
+      });
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: unavailable }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 0, retrying: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+  });
+
+  it('drops a line whose participant read keeps failing as missed, once it is too late to send', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    const first = tickPorts(THURSDAY_FOUR);
+    expect(
+      await runGroupReminderTick(db.database, { ...first.ports, listChatHandles: readRefused }),
+    ).toMatchObject({ retrying: 1 });
+
+    const late = tickPorts(new Date(THURSDAY_FOUR.getTime() + LATE_LIMIT_MS + 60_000));
+    expect(
+      await runGroupReminderTick(db.database, { ...late.ports, listChatHandles: readRefused }),
+    ).toMatchObject({ dropped: 1, retrying: 0 });
+    expect(late.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'dropped', statusReason: 'missed' });
+  });
+
+  it('keeps a written group line when the read at the send is refused for now, and posts it once', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    let refuseNow = false;
+    const flips: ListChatHandles = (input) => (refuseNow ? readRefused(input) : liveList(input));
+    const tick = tickPorts(THURSDAY_FOUR);
+    const voice: GroupReminderVoice = {
+      async write(facts) {
+        refuseNow = true;
+        return tick.voice.write(facts);
+      },
+    };
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, voice, listChatHandles: flips }),
+    ).toMatchObject({ sent: 0, dropped: 0, retrying: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(
+      await db.database
+        .select({ id: schema.channelMessages.id })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.templateKey, 'linq:group_reminder')),
+    ).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ sent: 1 });
+    expect(back.sends).toHaveLength(1);
+  });
+
   it('drops one that comes due inside quiet hours rather than waking the group', async () => {
     await seedHousehold();
     await setFor(RUTH);
@@ -1628,6 +1885,7 @@ describe('the Linq door', () => {
       groupTurnReader: addressed,
       groupReminderReader: fakeGroupReminderReader(read),
       groupReminderVoice: fakeGroupReminderVoice(),
+      listChatHandles: liveList,
       sendGroupText: async (input: { chatId: string; text: string; replyTo?: string }) => {
         sends.push(input);
         return { providerMessageId: `out-${sends.length}` };

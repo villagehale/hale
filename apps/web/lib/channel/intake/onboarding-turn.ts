@@ -6,6 +6,7 @@ import {
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import type { ExtractedChild } from './extract';
 import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place';
+import { type IntakeSession, placeSettled } from './session';
 
 /**
  * One activity the parent agreed to put on the calendar. The model settles
@@ -67,8 +68,15 @@ export interface OnboardingCapture {
   coparentGroupMode: CoparentGroupMode | null;
   /** They do not want to give a parent name. Do not ask it again. */
   nameDeclined: boolean;
+  /**
+   * This message retracts the name. Not a lasting no: the name stays open,
+   * and a later turn does not inherit it.
+   */
+  nameTakenBack: boolean;
   /** They do not want to give the kids' names. Do not ask that again. */
   kidsNamesDeclined: boolean;
+  /** They will not give a place, not even the coarse code. Do not ask it again. */
+  placeDeclined: boolean;
   /** Not now for the calendar. Do not ask it again in this onboarding. */
   calendarLater: boolean;
   /** Not now for email. Do not ask it again in this onboarding. */
@@ -92,7 +100,9 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   coparentGroup: null,
   coparentGroupMode: null,
   nameDeclined: false,
+  nameTakenBack: false,
   kidsNamesDeclined: false,
+  placeDeclined: false,
   calendarLater: false,
   gmailLater: false,
   stopAsking: false,
@@ -197,6 +207,32 @@ function acceptName(value: unknown): string | null {
   if (trimmed.split(/\s+/u).length > 3) return null;
   if (!/\p{L}/u.test(trimmed)) return null;
   return trimmed;
+}
+
+/** One message or name, folded for an equality check: quotes, end marks, accents, case, spaces. */
+export function foldMessage(value: string): string {
+  return value
+    .trim()
+    .replace(/^["“«']+\s*|\s*["”»']+$/gu, '')
+    .replace(/[.!]+$/u, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s+/gu, ' ');
+}
+
+/**
+ * The model says this message takes the name back or refuses one. If it also
+ * copied that whole message into `parentName`, the copy is not a display name.
+ * A held name turned down (`nameConfirmed` false) is not such a read: "Robin"
+ * in reply to "can I call you Bea?" is the name they gave instead.
+ * This does not set `nameDeclined`: a take-back is not a lasting no.
+ */
+export function dropTakeBackName(body: string, capture: OnboardingCapture): OnboardingCapture {
+  const tookBack = capture.nameTakenBack || capture.nameDeclined;
+  if (!tookBack || !capture.parentName) return capture;
+  if (foldMessage(capture.parentName) !== foldMessage(body)) return capture;
+  return { ...capture, parentName: null };
 }
 
 function acceptBool(value: unknown): boolean | null {
@@ -437,11 +473,49 @@ export function acceptOnboardingCapture(
     coparentGroup: acceptBool(row.coparentGroup),
     coparentGroupMode: acceptGroupMode(row.coparentGroupMode),
     nameDeclined: row.nameDeclined === true,
+    nameTakenBack: row.nameTakenBack === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
+    placeDeclined: row.placeDeclined === true,
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
     language: acceptReplyLanguage(typeof row.language === 'string' ? row.language : null),
+  };
+}
+
+/** The numbered lines of a find, without their numbers. */
+export function linesOfFind(message: string): string[] {
+  return message
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^\d+\.\s+/.test(line))
+    .map((line) => line.replace(/^\d+\.\s+/, ''));
+}
+
+/**
+ * What an onboarding session has stored, as the in-turn asks see it (machine.ts).
+ * A connector that just landed counts as answered before it is written down.
+ */
+export function storedChecklist(
+  session: IntakeSession,
+  connected: 'gmail' | 'gcal' | null,
+  nameStored: boolean,
+): OnboardingChecklist {
+  const given = session.firstTouch?.given ?? null;
+  const children = session.collected.children;
+  const lines = session.firstTouch?.coldStart
+    ? linesOfFind(session.firstTouch.coldStart.findBody)
+    : [];
+  return {
+    postal: placeSettled(session.firstTouch),
+    kids: given?.kidsNamesDeclined === true || kidsAreNamed(children),
+    ages: agesAreComplete(children),
+    name: nameStored || Boolean(given?.parentName) || given?.nameDeclined === true,
+    gmail: connected === 'gmail' || given?.connectGmail != null || given?.gmailLater === true,
+    calendar:
+      connected === 'gcal' || given?.connectCalendar != null || given?.calendarLater === true,
+    schedule: lines.length === 0 || given?.scheduleDone === true,
+    coparent: given?.coparentGroup != null,
   };
 }
 
@@ -452,6 +526,7 @@ export function checklistAfter(
   return {
     postal:
       prior.postal ||
+      capture.placeDeclined ||
       placeFromGivenFields({ postalCode: capture.postalCode, city: capture.city }) != null,
     kids: prior.kids || capture.kidsNamesDeclined || kidsAreNamed(capture.children),
     ages: prior.ages || agesAreComplete(capture.children),
@@ -490,7 +565,9 @@ export function mergeCaptures(
     coparentGroup: next.coparentGroup ?? prior.coparentGroup,
     coparentGroupMode: next.coparentGroupMode ?? prior.coparentGroupMode,
     nameDeclined: next.nameDeclined || prior.nameDeclined,
+    nameTakenBack: next.nameTakenBack === true,
     kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
+    placeDeclined: next.placeDeclined || prior.placeDeclined,
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,

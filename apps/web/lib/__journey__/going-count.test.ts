@@ -90,6 +90,7 @@ const FAMILY_TIMEZONE = 'America/Toronto';
 const RECEIPT_ONE = {
   envelope: {
     messageId: 'gmail-rc-88214',
+    labelIds: ['INBOX'],
     subject: 'Registration Confirmation #RC-88214 — Leo Tremblay',
     from: 'City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
     snippet:
@@ -102,6 +103,7 @@ const RECEIPT_ONE = {
 const RECEIPT_TWO = {
   envelope: {
     messageId: 'gmail-rc-88251',
+    labelIds: ['INBOX'],
     subject: 'Registration Confirmation #RC-88251 — Nora Okafor',
     from: 'City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
     snippet:
@@ -247,7 +249,14 @@ async function receiptArrives(
       parentUserId: who.parentUserId,
       integrationId: who.integrationId,
       seeding: false,
-      envelopes: [{ ...receipt.envelope, messageId: over.messageId ?? receipt.envelope.messageId }],
+      envelopes: [
+        {
+          ...receipt.envelope,
+          messageId: over.messageId ?? receipt.envelope.messageId,
+          // One thread per message: the repeat receipt below is a separate email.
+          threadId: `t-${over.messageId ?? receipt.envelope.messageId}`,
+        },
+      ],
       now: RECEIPT_AT,
     },
     alertPorts(who, transport, receipt.body, writer),
@@ -267,14 +276,7 @@ function bookingsFor(familyId: string) {
     .where(eq(schema.activityBookings.familyId, familyId));
 }
 
-/* SOFT-SHIPPED in #956 (Design + Eng approved 2026-10-30), TEMPORARY - VIL-511.
- * #956's `end_time` re-keyed every extraction call and the going-count recording could not be
- * re-minted (api.anthropic.com "Premature close" on every HALE_RECORD=1 attempt). Replay skips
- * these until VIL-511 re-records; a HALE_RECORD=1 run still executes them. Revert to `describe`
- * with the new recording. */
-const SKIP_UNTIL_VIL_511 = process.env.HALE_RECORD !== '1';
-
-describe.skipIf(SKIP_UNTIL_VIL_511)('two real receipts for one class', () => {
+describe('two real receipts for one class', () => {
   it('KEY EQUALITY: the two households key the same session, or this is where we learn they do not', async () => {
     // THE ONLY TEST THAT TOUCHES THE THESIS. Two different bodies — different salutation,
     // different participant, different confirmation number — through the real extraction.
@@ -307,7 +309,7 @@ describe.skipIf(SKIP_UNTIL_VIL_511)('two real receipts for one class', () => {
   });
 });
 
-describe.skipIf(SKIP_UNTIL_VIL_511)('the third family into the class hears a number', () => {
+describe('the third family into the class hears a number', () => {
   it('runs the whole arc: two quiet households, one count, one cancellation, one repeat', async () => {
     // ── A AND B REGISTER, AND HEAR NOTHING ABOUT EACH OTHER ──────────────────
     // Their receipts go through the same real path, because "only the third family ever

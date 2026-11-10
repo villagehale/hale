@@ -51,6 +51,7 @@ function event(over: Partial<LiveEvent> = {}): LiveEvent {
     location: 'Stouffville Public School',
     googleEventId: null,
     createdBy: null,
+    kidVerdict: null,
     ...over,
   };
 }
@@ -66,6 +67,7 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     timezone: TZ,
     role: 'grandparent',
     smsChannelActive: true,
+    composeAttempts: 0,
     ...over,
   };
 }
@@ -90,6 +92,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
+    holdForCompose: async () => {
+      throw new Error('a caregiver reminder is never written by the model, so never held');
+    },
     auditSuppressed: async (_db, row) => {
       audited.push(row);
     },
@@ -107,10 +112,16 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     client: {} as ReminderRunDeps['client'],
     loadLanguage: async () => 'en',
     composeText: async (_client, facts) => ({
-      texts: [facts.events.map((e) => (e.for ? `${e.for}: ${e.what}` : e.what)).join('; ')],
-      bold: null,
+      status: 'written',
+      draft: {
+        texts: [facts.events.map((e) => (e.for ? `${e.for}: ${e.what}` : e.what)).join('; ')],
+        bold: null,
+      },
     }),
+    recordAgentRun: async () => {},
     loadNameLevel: async () => 'first_name',
+    loadPrefs: async () => DEFAULT_LOOP_PREFS,
+    parentPhone: async () => null,
     ...over,
   };
   return { deps, enqueued, marked, upserts, captures, audited };

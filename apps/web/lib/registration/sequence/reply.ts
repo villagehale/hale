@@ -4,7 +4,8 @@ import { normalizeToken } from '~/lib/channel/normalize-token';
 import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { writeFact } from '~/lib/memory/facts';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
-import { renderCheckInReply } from './copy.js';
+import { checkInOutcomeFacts } from './copy.js';
+import { type RegistrationNoteWriter, registrationNoteWriter } from './note-compose.js';
 import {
   CHECK_IN_LEAD_HOURS,
   CHECK_IN_REPLY_WINDOW_HOURS,
@@ -34,11 +35,8 @@ import { type Shortlist, buildShortlist } from './shortlist.js';
  *
  * C2 SEAM (VIL-221). Everything this module declines — every `ignored` verdict — is the
  * conversational layer's to answer, and it never has to relitigate the three
- * certainties. The one place the two could collide is the single re-ask: the FIRST
- * unreadable message inside an open window is answered with the menu rather than
- * conversationally. That is bounded to exactly one message per window by
- * `reasked_at`, and when C2 lands it should take the re-ask branch over — the
- * certainties and the window bookkeeping stay here.
+ * certainties. An unreadable message inside an open window is the coach's too: this
+ * module only spends the `reasked_at` stamp on it.
  */
 
 export type CheckInIntent =
@@ -166,11 +164,16 @@ export interface SequenceReplyDeps {
   ): Promise<AwaitingSequence | null>;
   recordOutcome(database: Database, input: RecordOutcomeInput): Promise<void>;
   recordReask(database: Database, sequenceId: string, now: Date): Promise<void>;
+  /** VIL-543 · the model writes the answer from facts. Null sends nothing. */
+  writeNote: RegistrationNoteWriter;
 }
 
 export type SequenceReplyOutcome =
-  | { status: 'recorded'; outcome: RegistrationOutcome; reply: string }
-  | { status: 'reasked'; reply: string }
+  /** `reply` is null when the answer could not be written: the outcome is still
+   * recorded, and nothing is sent. */
+  | { status: 'recorded'; outcome: RegistrationOutcome; reply: string | null }
+  /** The coach answers an unreadable message (VIL-221 · C2); the stamp is spent. */
+  | { status: 'reasked' }
   | { status: 'ignored'; reason: 'no_open_window' | 'reask_spent' };
 
 export async function handleSequenceReply(
@@ -190,15 +193,7 @@ export async function handleSequenceReply(
   if (intent === null) {
     if (sequence.reaskedAt !== null) return { status: 'ignored', reason: 'reask_spent' };
     await deps.recordReask(database, sequence.sequenceId, input.now);
-    return {
-      status: 'reasked',
-      reply: renderCheckInReply({
-        shortlist: sequence.shortlist,
-        timeZone: sequence.state.timeZone,
-        now: input.now,
-        reply: { outcome: null },
-      }),
-    };
+    return { status: 'reasked' };
   }
 
   const waitlisted = intent.outcome === 'waitlisted';
@@ -231,14 +226,18 @@ export async function handleSequenceReply(
   return {
     status: 'recorded',
     outcome: intent.outcome,
-    reply: renderCheckInReply({
-      shortlist: sequence.shortlist,
-      timeZone: sequence.state.timeZone,
-      now: input.now,
-      reply: waitlisted
-        ? { outcome: 'waitlisted', position: intent.position, deadlineAt }
-        : { outcome: intent.outcome },
-    }),
+    reply: await deps.writeNote(
+      database,
+      sequence.familyId,
+      checkInOutcomeFacts({
+        shortlist: sequence.shortlist,
+        timeZone: sequence.state.timeZone,
+        now: input.now,
+        reply: waitlisted
+          ? { outcome: 'waitlisted', position: intent.position, startedAt: input.now }
+          : { outcome: intent.outcome },
+      }),
+    ),
   };
 }
 
@@ -318,6 +317,7 @@ export async function recordRegistrationOutcome(
       },
       confidence: 1,
       inferredBy: REGISTRATION_FACT_WRITER,
+      heard: { in: 'one_to_one', userId: input.parentUserId },
       validFrom: input.now,
     });
   });
@@ -353,6 +353,8 @@ export async function loadAwaitingSequence(
       courseOpensAt: schema.registrationSequences.courseOpensAt,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: a watch a parent's link created is never asked a check-in
+    // yet (VIL-423, run.ts `linkWatchFate`), so it has no answer to hear.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
@@ -465,5 +467,6 @@ export function defaultSequenceReplyDeps(): SequenceReplyDeps {
         .set({ reaskedAt: now, updatedAt: now })
         .where(eq(schema.registrationSequences.id, sequenceId));
     },
+    writeNote: registrationNoteWriter(),
   };
 }

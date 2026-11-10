@@ -16,6 +16,7 @@ import {
   activityPicksJsonSchema,
   bindActivityFacts,
 } from './facts';
+import { finderSourceBindingEnabled } from './flag';
 import { activityLocationMatches, activitySourceLocationScore } from './location';
 import { createActivityPageFetch } from './page';
 import { namesRetiredRecPortal } from './retired-portal';
@@ -303,9 +304,6 @@ const composeSchema = z.object({
         when: z.string().nullish(),
         when_evidence: z.string().nullish(),
         schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish(),
-        season: z.string().nullish(),
-        matches_requested_season: z.boolean().nullish(),
-        occurrence_url: z.string().nullish(),
         historical_evidence: z.string().nullish(),
         sessions: z
           .array(
@@ -315,7 +313,6 @@ const composeSchema = z.object({
               start_time: z.string().nullish(),
               end_time: z.string().nullish(),
               timezone: z.string().nullish(),
-              occurrence_url: z.string().nullish(),
             }),
           )
           .nullish(),
@@ -347,6 +344,7 @@ export function groundUserMessage(query: ActivityQuery): string {
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.stages && query.stages.length > 0 ? { stages: query.stages } : {}),
     ...(query.window ? { window: query.window } : {}),
+    ...(query.today ? { today: query.today } : {}),
   });
 }
 
@@ -585,7 +583,11 @@ export function toPicks(
 async function runActivityOnce(
   client: () => AgentClient,
   query: ActivityQuery,
-): Promise<{ picks: ActivityPick[]; references: ActivityReference[]; checkedSources: string[] }> {
+): Promise<{
+  picks: ActivityPick[];
+  references?: ActivityReference[];
+  checkedSources?: string[];
+}> {
   const now = new Date();
   let resolved: AgentClient;
   try {
@@ -603,6 +605,11 @@ async function runActivityOnce(
     // VIL-510: the dated-event / venue-name addendum rides the inline research + extract
     // only; activity-finder.md bytes (and the eval recordings keyed on them) stay put.
     skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+    // VIL-435: the day check rides only when the query carries the family-local day.
+    if (query.today) {
+      const day = await loadCronSkill('activity-finder-day');
+      skill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
+    }
   } catch (err) {
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }
@@ -723,58 +730,63 @@ async function runActivityOnce(
     } catch (err) {
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
-    const bound = bindActivityFacts(
-      composed.picks,
-      pages,
-      query.window,
-      now,
-      query.timeZone,
-      query.dateRange,
-      query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
-    );
-    // VIL-499 stamps the page read this turn. Binding still decides which facts are picks.
-    const cited = bound.picks.flatMap((raw) => {
-      const [pick] = toPicks([raw], pages, evidence.searchHits ?? []);
-      if (!pick) return [];
-      // The bound source is the page the fact was read from. `url` stays the
-      // page this turn stamped (VIL-499), which may be that same page.
-      return [
-        {
+    let picks: ActivityPick[];
+    let references: ActivityReference[] = [];
+    let checkedSources: string[] = [];
+    if (finderSourceBindingEnabled()) {
+      const bound = bindActivityFacts(
+        composed.picks,
+        pages,
+        query.window,
+        now,
+        query.timeZone,
+        query.dateRange,
+        query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
+      );
+      picks = bound.picks.flatMap((raw) =>
+        toPicks([raw]).map((pick) => ({
           ...pick,
-          ...(raw.source_url ? { sourceUrl: raw.source_url } : {}),
+          sourceUrl: raw.source_url!,
+          url: raw.source_url!,
           evidence: raw.evidence,
+        })),
+      );
+      references = bound.references;
+      checkedSources = pages.map((page) => page.url);
+    } else {
+      picks = toPicks(composed.picks, evidence.pages, evidence.searchHits ?? []);
+      console.info(
+        {
+          picks: picks.length,
+          withUrl: picks.filter((pick) => pick.url).length,
+          pagesWithText: evidence.pages.length,
+          searchHits: evidence.searchHits?.length ?? 0,
         },
-      ];
-    });
-    console.info(
-      {
-        picks: cited.length,
-        withUrl: cited.filter((pick) => pick.url).length,
-        pagesWithText: evidence.pages.length,
-        searchHits: evidence.searchHits?.length ?? 0,
-      },
-      'activity lane: pick urls',
-    );
+        'activity lane: pick urls',
+      );
+    }
     return {
-      picks: cited,
-      references: bound.references,
-      checkedSources: pages.map((page) => page.url),
+      picks,
+      ...(finderSourceBindingEnabled() ? { references, checkedSources } : {}),
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };
   };
 
   let { picks, references, checkedSources, searchResults, notes } = await groundAndCompose(false);
+  references ??= [];
+  checkedSources ??= [];
   if (references.length === 0 && needsReadPass(query, { searchResults }, picks)) {
     console.error({ searchResults }, 'activity lane: no picks off snippets - reading pages once');
     ({ picks, references, checkedSources, notes } = await groundAndCompose(true));
+    references ??= [];
+    checkedSources ??= [];
   }
   if (picks.length === 0) {
     throw new ActivityUnresolvable('no_picks', undefined, {
       town: query.town,
       notes: notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
-      references,
-      checkedSources,
+      ...(finderSourceBindingEnabled() ? { references, checkedSources } : {}),
     });
   }
   // The never-a-directory ceiling, enforced after the model rather than asked of it. It
@@ -788,11 +800,17 @@ async function runActivityOnce(
     );
     return {
       picks: picks.slice(0, MAX_PICKS),
-      references: references.slice(0, MAX_PICKS),
-      checkedSources,
+      ...(finderSourceBindingEnabled()
+        ? { references: references.slice(0, MAX_PICKS), checkedSources }
+        : {}),
     };
   }
-  return { picks, references: references.slice(0, MAX_PICKS), checkedSources };
+  return {
+    picks,
+    ...(finderSourceBindingEnabled()
+      ? { references: references.slice(0, MAX_PICKS), checkedSources }
+      : {}),
+  };
 }
 
 function logActivityFailure(err: unknown, attempt: number): void {

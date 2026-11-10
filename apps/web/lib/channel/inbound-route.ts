@@ -68,7 +68,7 @@ export interface InboundRouteDeps {
    */
   intake: (
     inboundTransport: MessageTransport,
-    linq?: { chatId: string; replyToMessageId?: string | null },
+    linq?: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean },
   ) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
@@ -162,12 +162,12 @@ export type InboundRouteOutcome =
  */
 function linqTurnBind(
   inbound: InboundMessage,
-): { chatId: string; replyToMessageId?: string | null } | undefined {
+): { chatId: string; replyToMessageId?: string | null; isGroup: boolean } | undefined {
   if (!inbound.chatId) return undefined;
   if (inbound.isGroup === true) {
-    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId };
+    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId, isGroup: true };
   }
-  return { chatId: inbound.chatId };
+  return { chatId: inbound.chatId, isGroup: false };
 }
 
 export async function routeInboundText(
@@ -197,7 +197,7 @@ export async function routeInboundText(
     if (outcome.status === 'first_touch_unsent') {
       deps.log.error(
         { providerMessageId: inbound.providerId, reason: outcome.reason },
-        'inbound: a first text got no reply; the first-reply sweep owes it one',
+        'inbound: an onboarding text got no reply',
       );
       return 'intake_unsent';
     }
@@ -236,10 +236,11 @@ function keywordOutcome(
   if (ack === 'provider_answered') return 'keyword_provider_answered';
   if (ack === 'sent') return 'intake';
   if (ack === 'voice_unsent') {
-    // The opt-out reader revoked the channel; its confirmation was empty, so nothing went out.
+    // The opt-out reader's stop or start ran; its confirmation was empty or withheld, so
+    // nothing went out.
     deps.log.error(
       { providerMessageId: inbound.providerId },
-      'inbound: opt-out revoked, model confirmation unsent',
+      'inbound: opt-out read handled, model confirmation unsent',
     );
     return 'intake_unsent';
   }

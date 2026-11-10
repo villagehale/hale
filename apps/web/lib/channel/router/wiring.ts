@@ -15,6 +15,7 @@ import {
 import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/activity/deep-queue';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
+import { recordCapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { createEveningRequestReader } from '~/lib/channel/checkin/request';
@@ -27,7 +28,7 @@ import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
-import { groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
+import { groupDraftedActionIds, groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
 import {
   defaultCallNameComposer,
   parentCallNameVoice,
@@ -38,11 +39,14 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
+import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
+import { defaultClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
@@ -74,6 +78,7 @@ import {
 } from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
@@ -182,7 +187,7 @@ export async function loadInboundContext(
   ]);
 
   return {
-    body: message.body ?? '',
+    body: withoutLiveViewLinks(message.body ?? ''),
     role,
     primaryParentName,
     reply,
@@ -351,6 +356,11 @@ export function defaultApprovalSpine(): ApprovalSpine {
       // decline, so removing it would take away an answer they have. What it cannot be is
       // approved — `approveDraftedAction` refuses it (rule #3) — so it is listed as
       // no-only, and the resolver stops binding a yes to a row it knows will refuse one.
+      const groupIds = await groupDraftedActionIds(
+        database,
+        familyId,
+        rows.map((row) => row.id),
+      );
       return rows.map((row) => {
         const occasion = calendarOccasion(row.actionType, row.payload);
         return {
@@ -358,6 +368,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
           actionType: row.actionType,
           reviewerApproved: row.reviewerVerdict === 'approved',
           ...(occasion ? { occasion } : {}),
+          ...(groupIds.has(row.id) ? { groupPlan: true as const } : {}),
         };
       });
     },
@@ -726,6 +737,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     transport: createReplyTransport({
       // SMS-shaped answers leave through the shared phone door (Linq by default).
       phone: createOutboundTransport(),
+      mentionFor: ({ chatId, body }) => resolveGroupMention({ database, chatId, text: body }),
     }),
     handlers: defaultHandlers(),
     // What Hale is still waiting to hear back about, and the stage that reads a parent's
@@ -773,6 +785,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     recordActivityPromise: (db, input) =>
       recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    recordCapabilityNotes,
     // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
     // tick is the consumer — so the reply is never waiting on research.
     dispatchDeepResearch: (payload) =>
@@ -815,6 +828,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // the same reason the two writers above it are: the row is minted against the SENT
     // message, and the router is the only thing that knows which row that was.
     reconcileView: loadReconcileView,
+    // VIL-581 · the claim reader in shadow; a no-op while CLAIM_READER_MODE is unset.
+    claimShadow: defaultClaimShadow(),
+    claimEnforcer: defaultClaimEnforcer(),
     recordRegistrationWatch,
     armWatchedSpot,
     limiter: new PostgresRateLimiter(database),

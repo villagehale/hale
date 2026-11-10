@@ -1,21 +1,43 @@
-import type { FetchPage } from '~/lib/registration/fetch';
+import { stripHtml } from '~/lib/registration/fetch';
 import {
-  RegistrationPageRedirect,
-  createRegistrationPageFetch,
+  type RegistrationPageFetch,
+  createRegistrationPageBytesFetch,
   registrationPageUrl,
 } from '~/lib/registration/page';
 
-/** Every redirect uses the same URL validation and DNS-pinned, credential-free fetch. */
-export function createActivityPageFetch(fetchPage: FetchPage = createRegistrationPageFetch()) {
-  return async (raw: string): Promise<{ url: string; text: string }> => {
-    let url = registrationPageUrl(raw);
-    for (let hop = 0; ; hop++) {
-      try {
-        return { url, text: await fetchPage(url) };
-      } catch (error) {
-        if (!(error instanceof RegistrationPageRedirect) || hop === 3) throw error;
-        url = registrationPageUrl(error.location);
+/** One opened activity source: the URL that answered, and the page text. */
+export type ActivityPage = { url: string; text: string };
+
+/**
+ * Open an activity source the way registration pages are opened: DNS-pinned, no
+ * credentials, redirects validated before they are followed. Three hops, then stop.
+ */
+export function createActivityPageFetch(
+  fetchBody: (url: string) => Promise<RegistrationPageFetch> = createRegistrationPageBytesFetch(),
+): (raw: string) => Promise<ActivityPage> {
+  return async (raw) => {
+    const first = registrationPageUrl(raw);
+    if (first.outcome === 'refused') throw new Error(`unsafe URL (${first.reason})`);
+    let url = first.url;
+    for (let hop = 0; hop <= 3; hop++) {
+      const result = await fetchBody(url);
+      if (result.outcome === 'fetched') {
+        return { url, text: stripHtml(result.body.toString('utf8')) };
       }
+      if (result.outcome === 'redirected' && hop < 3) {
+        const next = registrationPageUrl(result.location, url);
+        if (next.outcome === 'refused') throw new Error(`unsafe URL (${next.reason})`);
+        url = next.url;
+        continue;
+      }
+      const detail =
+        result.outcome === 'redirected'
+          ? 'redirect loop'
+          : 'reason' in result
+            ? result.reason
+            : result.outcome;
+      throw new Error(`activity page: ${detail}`);
     }
+    throw new Error('activity page: redirect loop');
   };
 }

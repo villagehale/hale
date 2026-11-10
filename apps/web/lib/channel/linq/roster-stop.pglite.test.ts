@@ -2,13 +2,29 @@ import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { selectOpenDepartures } from '~/lib/channel/coparent/departure-redrive';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
+import {
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  fakeNoOpenQuestions,
+  fakeRadar,
+  fakeSilentAnswerComposer,
+} from '~/lib/channel/intake/fakes';
+import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { groupAudienceAllows } from './group-audience';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
 import type { LinqInboundText } from './payload';
+import type { ListChatHandles } from './roster';
 import { removeRosterParticipant, stopInGroup } from './roster-stop';
 
 /**
@@ -26,6 +42,11 @@ const GRAN = '+14165550132';
 const FRIEND = '+14165550133';
 const GROUP = 'chat-family-group';
 const NOW = new Date('2026-10-06T18:00:00.000Z');
+
+/** The floor's live read: who Linq says is in the chat now. */
+function inChat(...handles: string[]): ListChatHandles {
+  return async () => ({ status: 'ok', handles, isGroup: true });
+}
 
 let db: TestDb;
 
@@ -177,6 +198,7 @@ function stop(sender: string, messageId = 'in-stop'): LinqInboundText {
     mediaCount: 0,
     receivedAt: NOW,
     otherHandles: [],
+    mentions: [],
   };
 }
 
@@ -206,6 +228,45 @@ async function liveChannel(userId: string) {
   return row ? row.revokedAt === null : null;
 }
 
+async function grantDadMcp(familyId: string, userId: string) {
+  await db.database.insert(schema.mcpOauthClients).values({
+    clientId: 'client-example',
+    clientName: 'Example assistant',
+    redirectUris: ['https://assistant.example/callback'],
+  });
+  const [consent] = await db.database
+    .insert(schema.consentRecords)
+    .values({
+      userId,
+      familyId,
+      consentType: 'mcp_third_party_model',
+      granted: true,
+      policyVersion: POLICY_VERSION,
+      grantedAt: NOW,
+    })
+    .returning({ id: schema.consentRecords.id });
+  await db.database.insert(schema.mcpGrants).values({
+    familyId,
+    userId,
+    clientId: 'client-example',
+    consentRecordId: consent?.id as string,
+    tokenHash: 'token-hash-example',
+    resource: 'https://app.example/api/mcp',
+    scopes: ['week_plan.read'],
+    expiresAt: new Date(NOW.getTime() + 30 * 24 * 3_600_000),
+  });
+}
+
+async function connectDadIntegration(familyId: string, userId: string) {
+  await db.database.insert(schema.integrations).values({
+    familyId,
+    userId,
+    provider: 'gmail',
+    status: 'active',
+    oauthTokensEncrypted: encryptString('{"access_token":"tok"}'),
+  });
+}
+
 async function groupChat(familyId: string) {
   const [row] = await db.database
     .select({ chatId: schema.families.linqGroupChatId })
@@ -221,7 +282,10 @@ describe('stopInGroup', () => {
       { phone: GRAN, role: 'grandparent' },
     ]);
     const granId = seeded.users[GRAN] as string;
-    expect((await groupAudienceAllows(db.database, GROUP, 'schedule')).allowed).toBe(true);
+    const everyone = inChat(PARENT, DAD, GRAN);
+    expect((await groupAudienceAllows(db.database, GROUP, 'schedule', everyone)).allowed).toBe(
+      true,
+    );
     const { ports: p, sends, direct } = ports();
 
     const turn = await stopInGroup(db.database, stop(GRAN, 'in-gran-stop'), p);
@@ -242,7 +306,7 @@ describe('stopInGroup', () => {
       );
     expect(withdrawn).toEqual([{ granted: false, scope: 'caregiver:grandparent' }]);
     expect(await liveChannel(granId)).toBe(true);
-    expect(await groupAudienceAllows(db.database, GROUP, 'schedule')).toEqual({
+    expect(await groupAudienceAllows(db.database, GROUP, 'schedule', everyone)).toEqual({
       allowed: false,
       reason: 'group_audience_empty',
     });
@@ -266,7 +330,9 @@ describe('stopInGroup', () => {
     expect(await memberStatus(DAD)).toEqual(['declined']);
     expect(await familyRoles(seeded.familyId)).toEqual(['co_parent', 'primary_parent']);
     expect(await liveChannel(dadId)).toBe(true);
-    expect((await groupAudienceAllows(db.database, GROUP, 'schedule')).allowed).toBe(false);
+    expect(
+      (await groupAudienceAllows(db.database, GROUP, 'schedule', inChat(PARENT, DAD))).allowed,
+    ).toBe(false);
     expect(sends).toHaveLength(1);
   });
 
@@ -307,7 +373,10 @@ describe('stopInGroup', () => {
 describe('removeRosterParticipant', () => {
   it('lets the group speak again once the person who was not family is removed', async () => {
     await seedConfirmedGroup([{ phone: GRAN, role: 'grandparent' }], FRIEND);
-    expect((await groupAudienceAllows(db.database, GROUP, 'schedule')).allowed).toBe(false);
+    expect(
+      (await groupAudienceAllows(db.database, GROUP, 'schedule', inChat(PARENT, GRAN, FRIEND)))
+        .allowed,
+    ).toBe(false);
 
     const removed = await removeRosterParticipant(db.database, {
       chatId: GROUP,
@@ -317,15 +386,25 @@ describe('removeRosterParticipant', () => {
 
     expect(removed).toEqual({ outcome: 'roster_member_removed', role: null });
     expect(await memberStatus(FRIEND)).toEqual(['removed']);
-    expect(await groupAudienceAllows(db.database, GROUP, 'schedule')).toEqual({
+    const afterRemoval = inChat(PARENT, GRAN);
+    expect(await groupAudienceAllows(db.database, GROUP, 'schedule', afterRemoval)).toEqual({
       allowed: true,
       reason: 'in_scope',
     });
-    expect((await groupAudienceAllows(db.database, GROUP, 'registration')).allowed).toBe(false);
+    expect(
+      (await groupAudienceAllows(db.database, GROUP, 'registration', afterRemoval)).allowed,
+    ).toBe(false);
   });
 
-  it('takes away a co-parent seat this group granted when they are removed from the chat', async () => {
+  it('closes only presence when a co-parent is taken out of the chat: they stay a parent on Hale', async () => {
     const seeded = await seedConfirmedGroup([{ phone: DAD, role: 'co_parent' }]);
+    const dadId = seeded.users[DAD] as string;
+    await grantDadMcp(seeded.familyId, dadId);
+    await connectDadIntegration(seeded.familyId, dadId);
+    const [dadMember] = await db.database
+      .select({ id: schema.linqGroupRosterMembers.id })
+      .from(schema.linqGroupRosterMembers)
+      .where(eq(schema.linqGroupRosterMembers.userId, dadId));
 
     const removed = await removeRosterParticipant(db.database, {
       chatId: GROUP,
@@ -333,14 +412,123 @@ describe('removeRosterParticipant', () => {
       now: NOW,
     });
 
-    expect(removed).toEqual({ outcome: 'roster_member_removed', role: 'co_parent' });
-    expect(await familyRoles(seeded.familyId)).toEqual(['primary_parent']);
+    expect(removed).toEqual({ outcome: 'removal_is_presence_only', role: 'co_parent' });
+    expect(await familyRoles(seeded.familyId)).toEqual(['co_parent', 'primary_parent']);
+    expect(await liveChannel(dadId)).toBe(true);
+    expect(await findRevokedChannelOwner(db.database, DAD)).toBeNull();
+    const consents = await db.database
+      .select({
+        type: schema.consentRecords.consentType,
+        scope: schema.consentRecords.consentScope,
+        granted: schema.consentRecords.granted,
+      })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.userId, dadId));
+    expect(consents.sort((a, b) => a.type.localeCompare(b.type))).toEqual([
+      { type: 'mcp_third_party_model', scope: null, granted: true },
+      { type: 'sms_service_messages', scope: 'linq_group_role_reply', granted: true },
+    ]);
+    const grants = await db.database
+      .select({ revokedAt: schema.mcpGrants.revokedAt })
+      .from(schema.mcpGrants)
+      .where(eq(schema.mcpGrants.userId, dadId));
+    expect(grants).toEqual([{ revokedAt: null }]);
+    const [integration] = await db.database
+      .select({
+        status: schema.integrations.status,
+        tokens: schema.integrations.oauthTokensEncrypted,
+      })
+      .from(schema.integrations)
+      .where(eq(schema.integrations.userId, dadId));
+    expect(integration?.status).toBe('active');
+    expect(integration?.tokens).not.toBeNull();
+    expect(await selectOpenDepartures(db.database, NOW)).toEqual([]);
+
+    const audit = await db.database
+      .select({
+        actor: schema.auditLog.actor,
+        actionTaken: schema.auditLog.actionTaken,
+        targetId: schema.auditLog.targetId,
+        after: schema.auditLog.after,
+      })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, seeded.familyId));
+    expect(audit.filter((row) => row.actionTaken === 'linq_group_member_presence_closed')).toEqual([
+      {
+        actor: 'system',
+        actionTaken: 'linq_group_member_presence_closed',
+        targetId: dadMember?.id,
+        after: { role: 'co_parent', via: 'participant_removed' },
+      },
+    ]);
+    expect(audit.filter((row) => row.actor === dadId)).toEqual([]);
+    expect(audit.filter((row) => row.actionTaken.startsWith('co_parent_'))).toEqual([]);
+    expect(audit.filter((row) => row.actionTaken === 'linq_group_member_unseated')).toEqual([]);
+
+    // Positive control: presence itself did close.
     expect(await memberStatus(DAD)).toEqual(['removed']);
+    const [seat] = await db.database
+      .select({ removedAt: schema.linqGroupMembers.removedAt })
+      .from(schema.linqGroupMembers)
+      .where(eq(schema.linqGroupMembers.userId, dadId));
+    expect(seat?.removedAt).toEqual(NOW);
+  });
+
+  it('writes nothing twice when the same removal is delivered again', async () => {
+    const seeded = await seedConfirmedGroup([{ phone: DAD, role: 'co_parent' }]);
+    const input = { chatId: GROUP, participantHandle: DAD, now: NOW };
+
+    await removeRosterParticipant(db.database, input);
+    const again = await removeRosterParticipant(db.database, input);
+
+    expect(again).toEqual({ outcome: 'roster_member_absent' });
+    const presence = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_member_presence_closed'));
+    expect(presence).toHaveLength(1);
+    expect(await familyRoles(seeded.familyId)).toEqual(['co_parent', 'primary_parent']);
+  });
+
+  it("still takes back a caregiver's seat when they are taken out of the chat", async () => {
+    const seeded = await seedConfirmedGroup([
+      { phone: DAD, role: 'co_parent' },
+      { phone: GRAN, role: 'grandparent' },
+    ]);
+    const granId = seeded.users[GRAN] as string;
+
+    const removed = await removeRosterParticipant(db.database, {
+      chatId: GROUP,
+      participantHandle: GRAN,
+      now: NOW,
+    });
+
+    expect(removed).toEqual({ outcome: 'roster_member_removed', role: 'grandparent' });
+    expect(await familyRoles(seeded.familyId)).toEqual(['co_parent', 'primary_parent']);
+    const withdrawn = await db.database
+      .select({ scope: schema.consentRecords.consentScope })
+      .from(schema.consentRecords)
+      .where(
+        and(eq(schema.consentRecords.userId, granId), eq(schema.consentRecords.granted, false)),
+      );
+    expect(withdrawn).toEqual([{ scope: 'caregiver:grandparent' }]);
+    const [seat] = await db.database
+      .select({ removedAt: schema.linqGroupMembers.removedAt })
+      .from(schema.linqGroupMembers)
+      .where(eq(schema.linqGroupMembers.userId, granId));
+    expect(seat?.removedAt).toEqual(NOW);
+    expect(await memberStatus(GRAN)).toEqual(['removed']);
     const unseated = await db.database
       .select({ after: schema.auditLog.after })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'linq_group_member_unseated'));
-    expect(unseated).toEqual([{ after: { role: 'co_parent', via: 'participant_removed' } }]);
+    expect(unseated).toEqual([{ after: { role: 'grandparent', via: 'participant_removed' } }]);
+    expect(await liveChannel(granId)).toBe(true);
+    const presence = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_member_presence_closed'));
+    expect(presence).toEqual([]);
   });
 });
 
@@ -422,6 +610,73 @@ describe('the Linq door', () => {
 
     expect(await response.json()).toMatchObject({ outcome: 'roster_member_removed' });
     expect(await memberStatus(FRIEND)).toEqual(['removed']);
+  });
+
+  it('names the presence-only outcome when a co-parent is taken out of the chat', async () => {
+    const seeded = await seedConfirmedGroup([{ phone: DAD, role: 'co_parent' }]);
+    const { deps: d } = deps();
+
+    const response = await handleLinqInboundRequest(signed(removed(DAD, false)), d);
+
+    expect(await response.json()).toMatchObject({ outcome: 'removal_is_presence_only' });
+    expect(await familyRoles(seeded.familyId)).toEqual(['co_parent', 'primary_parent']);
+  });
+
+  it('still answers the removed co-parent as a parent when they text Hale 1:1', async () => {
+    const seeded = await seedConfirmedGroup([{ phone: DAD, role: 'co_parent' }]);
+    const dadId = seeded.users[DAD] as string;
+    await removeRosterParticipant(db.database, { chatId: GROUP, participantHandle: DAD, now: NOW });
+    const jobs: ChannelMessageReceivedJob[] = [];
+    const intake: IntakeDeps = {
+      transport: new FakeTransport(),
+      threadMessage: async () => 'conv-1',
+      extractor: new FakeExtractor([{ children: [], postalCode: null }]),
+      intentReader: new FakeIntentReader([
+        { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
+      ]),
+      radar: fakeRadar,
+      answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
+      identityAsk: new FakeIdentityAsk(),
+      limiter: new PostgresRateLimiter(db.database),
+      now: NOW,
+    };
+    const direct = {
+      database: db.database,
+      intake: () => intake,
+      enqueue: async (job: ChannelMessageReceivedJob) => {
+        jobs.push(job);
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      now: () => NOW,
+      groupVoice: fakeGroupOnboardingComposer(),
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
+
+    const response = await handleLinqInboundRequest(
+      signed({
+        api_version: 'v3',
+        webhook_version: '2026-02-03',
+        event_type: 'message.received',
+        event_id: 'evt_stop',
+        created_at: NOW.toISOString(),
+        data: {
+          chat: { id: 'chat-direct-dad', is_group: false },
+          id: 'in-dad-direct',
+          direction: 'inbound',
+          sender_handle: { handle: DAD, is_me: false },
+          parts: [{ type: 'text', value: 'is swim still on tomorrow' }],
+          sent_at: NOW.toISOString(),
+          service: 'iMessage',
+        },
+      }),
+      direct,
+    );
+
+    expect(await response.json()).toMatchObject({ outcome: 'handed_off' });
+    expect(jobs.map((job) => [job.family_id, job.parent_user_id])).toEqual([
+      [seeded.familyId, dadId],
+    ]);
   });
 
   it('closes a legacy group seat the roster never listed when that person is taken out', async () => {

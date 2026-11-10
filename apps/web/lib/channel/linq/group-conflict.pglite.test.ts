@@ -48,6 +48,14 @@ const AT_4 = new Date('2026-09-25T20:00:00.000Z');
 const FAKE_LINE = 'FAKE writer line for the clash';
 const FAKE_PASS = 'FAKE pass option';
 
+/** The floor's live read of GROUP: the two parents, and nobody else. Not a send. */
+function chatRead(url: string, init?: RequestInit): Response | null {
+  if (init?.method !== 'GET' || !String(url).endsWith(`/chats/${GROUP}`)) return null;
+  return Response.json({
+    chat: { id: GROUP, is_group: true, handles: [{ handle: BARTON_PHONE }, { handle: SAM_PHONE }] },
+  });
+}
+
 let db: TestDb;
 
 beforeAll(async () => {
@@ -64,6 +72,7 @@ beforeEach(() => {
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
   vi.stubEnv('LINQ_GROUP_CONFLICT_ALERTS_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
 });
 
 afterEach(async () => {
@@ -71,7 +80,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
-  await db.exec('truncate table families, users cascade');
+  await db.exec('truncate table families, users, linq_group_rosters cascade');
 });
 
 /** The alert as the writer would return it; its pass goes only when a poll was offered. */
@@ -105,11 +114,15 @@ function wire(): {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
+      const read = chatRead(url, init);
+      if (read) return read;
       note(url, init);
       return new Response('{}', { status: 500 });
     }),
   );
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const read = chatRead(url, init);
+    if (read) return read;
     note(url, init);
     const body = init?.body
       ? (JSON.parse(String(init.body)) as { poll?: { options?: { text: string }[] } })
@@ -228,6 +241,27 @@ async function seedFamily() {
       },
     ])
     .returning({ id: schema.integrations.id, userId: schema.integrations.userId });
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: GROUP, familyId, source: 'added_to_existing', status: 'confirmed' })
+    .returning({ id: schema.linqGroupRosters.id });
+  await db.database.insert(schema.linqGroupRosterMembers).values([
+    {
+      rosterId: roster?.id as string,
+      chatId: GROUP,
+      phoneE164Hash: phoneBlindIndex(BARTON_PHONE),
+      knownUserId: bartonId,
+      status: 'known_parent',
+    },
+    {
+      rosterId: roster?.id as string,
+      chatId: GROUP,
+      phoneE164Hash: phoneBlindIndex(SAM_PHONE),
+      userId: samId,
+      status: 'confirmed',
+      confirmedRole: 'co_parent',
+    },
+  ]);
   return {
     familyId,
     bartonId,
@@ -254,6 +288,7 @@ async function calendarItem(
     endAt: item.end ?? AT_330,
     kidRelated: item.title !== null,
     title: item.title,
+    calendarStanding: 'organizer',
     status: 'confirmed',
     updatedStamp: `stamp-${item.eventId}`,
     announcedAt: item.announced ? DAY : null,
@@ -338,6 +373,7 @@ describe('group clash alerts (VIL-444)', () => {
           has: 'Barton',
         },
       ],
+      sameKid: null,
       suggested: { name: 'Sam', takes: 'Maya swim pickup' },
       alsoFree: [],
       busy: [],
@@ -626,7 +662,14 @@ function claim(
       sentAt: over.sentAt ?? over.now ?? DAY,
       now: over.now ?? DAY,
     },
-    { reader },
+    {
+      reader,
+      listChatHandles: async () => ({
+        status: 'ok',
+        handles: [BARTON_PHONE, SAM_PHONE],
+        isGroup: true,
+      }),
+    },
   );
 }
 
@@ -1407,6 +1450,25 @@ describe('the who-takes poll on a clash alert (VIL-444, LINQ_POLLS on)', () => {
     });
     expect(writer.calls).toHaveLength(1);
     expect(line.urls()).toEqual([GROUP_MESSAGES, GROUP_POLLS]);
+  });
+
+  it("offers no poll and hands nobody a plan when both are one child's", async () => {
+    const seeded = await seedFamily();
+    await calendarItem(seeded, 'barton', { eventId: 'swim', title: 'Maya swim pickup' });
+    await calendarItem(seeded, 'barton', { eventId: 'dentist', title: 'Maya dentist' });
+    const writer = fakeWriter(FAKE_LINE, FAKE_PASS);
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls).toHaveLength(1);
+    expect(writer.calls[0]).toMatchObject({ sameKid: 'Maya', suggested: null, poll: null });
+    expect(line.urls()).toEqual([GROUP_MESSAGES]);
+    expect(await pollOptionRows()).toEqual([]);
   });
 
   it('sends the alert alone when the model leaves the poll out', async () => {
