@@ -52,6 +52,9 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/cron/inference-tools.ts': 'household',
   'apps/worker/src/tools/registry.ts': 'household',
   'apps/web/lib/loop/reminders/run.ts': 'owner',
+  // household rows plus the mirror of the one parent the activity watch is owed to;
+  // the model's answer only closes that parent's watch, nothing is sent (VIL-564)
+  'apps/web/lib/channel/activity/calendar-check.ts': 'owner',
   'apps/web/lib/integrations/calendar-mirror.ts': 'writer',
   'apps/web/lib/integrations/google-calendar-placement.ts': 'writer',
   'apps/worker/src/services/internal-writes.ts': 'writer',
