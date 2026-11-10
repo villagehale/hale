@@ -181,9 +181,19 @@ import {
   armHoldingLine,
   holdingLineNotArmed,
 } from './holding-line';
-import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import {
+  type OpenQuestion,
+  type OpenQuestionKind,
+  type OpenQuestionReader,
+  latestAsked,
+} from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
-import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
+import {
+  type ReplyConfidence,
+  type ReplyReading,
+  type ReplyResolver,
+  warrantsClarifying,
+} from './resolve';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
 
@@ -2007,18 +2017,17 @@ async function resolveNaturalReply(
   // every inbound text.
   if (questions.length === 0) return { status: 'carry_on', questions };
 
-  // Calendar offers are read by the calendar model, including when the reply is not
-  // English. A draft the reviewer has not cleared does not count as a competing YES
-  // (VIL-513): it used to force the general resolver, which returned not_answerable
-  // and the coach drafted the same add again.
-  const calendarQuestions = questionsForCalendarReader(questions);
-  const read = calendarQuestions
-    ? await deps.calendarOffers.readParent({
-        text: turn.body,
-        questions: calendarQuestions,
-        now: turn.now,
-      })
-    : await deps.replyResolver.read({ text: turn.body, questions });
+  // VIL-302 · the words are read against everything open FIRST, so a reply that names an
+  // older ask ("no thanks to the intro") is placed on it. Only when that read cannot tell
+  // which ask a reply answers (`ambiguous`) are the words read again against the newest
+  // ask: a bare "yes" after a search offer is the search. Narrowing first is unsafe: shown
+  // only the newest ask, the real model put a decline of an older intro on the newest
+  // offer (the `vil-302-declines-*` eval fixtures). If the newest ask is itself two
+  // offers, the second read is still `ambiguous`, and Hale asks which.
+  const whole = await readOpenQuestions(deps, turn, questions);
+  const latest =
+    whole.status === 'unresolved' && whole.reason === 'ambiguous' ? latestAsked(questions) : null;
+  const read = latest ? await readOpenQuestions(deps, turn, latest) : whole;
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
   const reading = approvalForCalendarYes(questions, read);
@@ -2121,6 +2130,29 @@ async function resolveNaturalReply(
       handler: owner.name,
     },
   };
+}
+
+/**
+ * One model read of the parent's words against these questions.
+ *
+ * Calendar offers are read by the calendar model, including when the reply is not
+ * English. A draft the reviewer has not cleared does not count as a competing YES
+ * (VIL-513): it used to force the general resolver, which returned not_answerable
+ * and the coach drafted the same add again.
+ */
+async function readOpenQuestions(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  questions: readonly OpenQuestion[],
+): Promise<ReplyReading> {
+  const calendarQuestions = questionsForCalendarReader(questions);
+  return calendarQuestions
+    ? deps.calendarOffers.readParent({
+        text: turn.body,
+        questions: calendarQuestions,
+        now: turn.now,
+      })
+    : deps.replyResolver.read({ text: turn.body, questions });
 }
 
 /**

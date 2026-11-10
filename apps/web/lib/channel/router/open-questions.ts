@@ -371,9 +371,9 @@ export interface OpenQuestion {
   answerable: Answerable;
   /**
    * When this ask was last put in front of the parent, off the owning row, or null where
-   * no source threads it (an approval draft, the intro asks). Null is a fact, not a
-   * default: it says recency CANNOT be established, which disables the newest-solicited
-   * precedence for the whole list (see {@link newestSolicitedKind}).
+   * no source threads it (an approval draft). Null is a fact, not a default: it says
+   * recency CANNOT be established, which disables both recency preferences for the whole
+   * list (see {@link newestSolicitedKind} and {@link latestAsked}).
    */
   askedAt: Date | null;
   /** True when this class's ask PRINTS an explicit keyword instruction ("Reply YES ...")
@@ -464,17 +464,50 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
  * established is not recency.
  */
 export function newestSolicitedKind(questions: readonly OpenQuestion[]): OpenQuestionKind | null {
-  if (questions.length === 0) return null;
-  if (questions.some((question) => question.askedAt === null)) return null;
-  const byRecency = [...questions].sort(
-    (a, b) => (b.askedAt as Date).getTime() - (a.askedAt as Date).getTime(),
+  const newest = newestAsks(questions);
+  if (newest?.length !== 1) return null;
+  const [only] = newest as [OpenQuestion];
+  return only.solicited ? only.kind : null;
+}
+
+/**
+ * VIL-302 · THE ASK THE PARENT IS REPLYING TO: the open questions Hale asked most
+ * recently, or null when recency may not decide.
+ *
+ * On 2026-08-20 Hale offered an introduction, later answered a search with an offer to
+ * add the find, and the founder's "yes" was bound to the introduction. A parent who says
+ * a bare yes is answering the last thing Hale asked, so when the whole open list cannot
+ * place their words (`ambiguous`), the router reads them again against this subset.
+ *
+ * Every ask on the top tie is kept, so two offers in one message still reach the reader
+ * together and a bare yes between them is ambiguous: Hale asks which. Null when any open
+ * question is undated (an approval draft is: its draft time is not when it was put to the
+ * parent), when nothing is older than the newest, because then there is nothing to prefer
+ * it over, and when the newest ask and an older one are both consequential: a household
+ * disclosure and a calendar write are not picked between by which came last, so Hale asks.
+ */
+export function latestAsked(questions: readonly OpenQuestion[]): readonly OpenQuestion[] | null {
+  const newest = newestAsks(questions);
+  if (!newest || newest.length === questions.length) return null;
+  const consequential = (question: OpenQuestion) => GRADE[question.kind] === 'consequential';
+  const olderConsequential = questions.some(
+    (question) => !newest.includes(question) && consequential(question),
   );
-  const newest = byRecency[0] as OpenQuestion;
-  const runnerUp = byRecency[1];
-  if (runnerUp && (runnerUp.askedAt as Date).getTime() === (newest.askedAt as Date).getTime()) {
-    return null;
+  if (olderConsequential && newest.some(consequential)) return null;
+  return newest;
+}
+
+/** Every question tied at the newest ask time, or null when the list is empty or any ask
+ * time is unknown. Recency that cannot be established is not recency. */
+function newestAsks(questions: readonly OpenQuestion[]): OpenQuestion[] | null {
+  if (questions.length === 0) return null;
+  const times: number[] = [];
+  for (const question of questions) {
+    if (question.askedAt === null) return null;
+    times.push(question.askedAt.getTime());
   }
-  return newest.solicited ? newest.kind : null;
+  const newest = Math.max(...times);
+  return questions.filter((_, index) => times[index] === newest);
 }
 
 /**
@@ -600,13 +633,19 @@ export interface OpenQuestionReaderOptions {
 export interface OpenQuestionSources {
   /** The approvals spine's own pending list, oldest first. */
   pendingApprovals(database: Database, familyId: string): Promise<PendingAction[]>;
-  /** True when the discoverability ask was delivered and carries no answer yet. */
+  /** The discoverability ask, when it was delivered to this parent and carries no answer
+   * yet, or null. `askedAt` is when that ask was written to the outbound ledger. */
   introOptInOpen(
     database: Database,
     input: { familyId: string; parentUserId: string },
-  ): Promise<boolean>;
-  /** The proposal this family may answer right now, or null. */
-  introProposal(database: Database, familyId: string, now: Date): Promise<{ id: string } | null>;
+  ): Promise<{ askedAt: Date } | null>;
+  /** The proposal this family may answer right now, or null. `askedAt` is when the card
+   * went to this family's side of the pair. */
+  introProposal(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<{ id: string; askedAt: Date } | null>;
   /** The live, unexpired plan offer, or null. `askedAt` is the commitment row's own
    * mint time — when the offer sentence went out. */
   planOffer(
@@ -856,7 +895,7 @@ export function createOpenQuestionReader(
           [] as Awaited<ReturnType<OpenQuestionSources['pendingApprovals']>>,
           () => sources.pendingApprovals(database, input.familyId),
         ),
-        readerTask('introOptIn', false, () =>
+        readerTask('introOptIn', null, () =>
           sources.introOptInOpen(database, {
             familyId: input.familyId,
             parentUserId: input.parentUserId,
@@ -989,9 +1028,7 @@ export function createOpenQuestionReader(
           description: 'Whether to be introduced to other Hale families nearby',
           subject: SUBJECT.intro_optin,
           answerable: KIND_ANSWERABLE.intro_optin,
-          // The ask time is not threaded off the ledger row here; null disables the
-          // recency precedence whenever this question is open (fail toward asking).
-          askedAt: null,
+          askedAt: optIn.askedAt,
           solicited: SOLICITED.intro_optin,
         });
       }
@@ -1003,7 +1040,7 @@ export function createOpenQuestionReader(
           description: 'Whether to meet one nearby Hale family',
           subject: SUBJECT.intro_proposal,
           answerable: KIND_ANSWERABLE.intro_proposal,
-          askedAt: null,
+          askedAt: proposal.askedAt,
           solicited: SOLICITED.intro_proposal,
         });
       }
