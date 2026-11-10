@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  FRIEND_MARKS_FIXTURES,
-  friendMarksMisses,
-  knownSeamMiss,
-} from './friend-marks-fixtures.mjs';
+import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
 
 const join = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'coparent-yes-join');
 const zh = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-zh');
@@ -84,7 +80,9 @@ describe('friendMarksMisses', () => {
   });
 
   it('fails a declined place whose reply code would not send', () => {
-    const declined = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-declined-fr');
+    const declined = FRIEND_MARKS_FIXTURES.find(
+      (fixture) => fixture.id === 'place-declined-fr-retry',
+    );
     const value = { asks: true, reply: 'Pas de souci. Tes enfants ont quel âge?' };
     expect(friendMarksMisses(declined, value, { judged: { ok: true } })).toEqual([]);
     expect(
@@ -100,7 +98,8 @@ describe('friendMarksMisses', () => {
   it('fails a declined place the judge scores low, one never judged, and a first no taken as final', () => {
     const first = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-1-en-us');
     const second = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-2-fr');
-    const ok = { judged: { ok: true }, meaning: { score: 5, reason: 'fine' } };
+    const open = { source: 'composed', placeDeclined: false };
+    const ok = { meaning: { score: 5, reason: 'fine' }, sent: open };
     const value = {
       asks: true,
       placeAsk: 'coarse',
@@ -110,9 +109,7 @@ describe('friendMarksMisses', () => {
     expect(
       friendMarksMisses(first, value, { ...ok, meaning: { score: 2, reason: 'promised nearby' } }),
     ).toEqual(['meaning:2 (promised nearby)']);
-    expect(friendMarksMisses(first, value, { judged: { ok: true } })).toEqual([
-      'meaning:not_judged',
-    ]);
+    expect(friendMarksMisses(first, value, { sent: open })).toEqual(['meaning:not_judged']);
     expect(friendMarksMisses(first, { ...value, placeDeclined: true }, ok)).toEqual([
       'placeDeclined:true',
     ]);
@@ -129,7 +126,8 @@ describe('friendMarksMisses', () => {
   it('fails a first no whose coarse ask is not marked, and a second no code would not send', () => {
     const first = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-1-en-ca');
     const second = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-2-en-ca');
-    const ok = { judged: { ok: true }, meaning: { score: 5, reason: 'fine' } };
+    const judgedOnly = { meaning: { score: 5, reason: 'fine' } };
+    const ok = { ...judgedOnly, sent: { source: 'composed', placeDeclined: false } };
     const asked = { asks: true, placeAsk: 'coarse', reply: 'Just the first three?' };
     expect(friendMarksMisses(first, asked, ok)).toEqual([]);
     expect(friendMarksMisses(first, { ...asked, placeAsk: 'full' }, ok)).toEqual([
@@ -150,7 +148,31 @@ describe('friendMarksMisses', () => {
     expect(
       friendMarksMisses(second, draft, { ...ok, sent: { ...sent, placeDeclined: false } }),
     ).toEqual(['sent:placeDeclined:false']);
-    expect(friendMarksMisses(second, draft, ok)).toEqual(['sent:not_run']);
+    expect(friendMarksMisses(second, draft, judgedOnly)).toEqual(['sent:not_run']);
+  });
+
+  // VIL-641 round 3: a first no is graded on what code sends too, and code keeps it open.
+  it('grades every first no on what code sends, with the place still open', () => {
+    const firstNos = [
+      'place-declined-en',
+      'place-declined-fr',
+      'place-decline-1-en-ca',
+      'place-decline-1-en-us',
+      'place-decline-1-fr',
+    ].map((id) => FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === id));
+    for (const fixture of firstNos) expect(fixture?.throughCode).toBe(true);
+    const first = firstNos[3];
+    const ok = { meaning: { score: 5, reason: 'fine' } };
+    const value = { asks: true, placeAsk: 'coarse', reply: 'Just the five-digit ZIP?' };
+    const sent = { source: 'retry', placeDeclined: false };
+    expect(friendMarksMisses(first, value, { ...ok, sent })).toEqual([]);
+    expect(friendMarksMisses(first, value, { ...ok, sent: { ...sent, source: 'unsent' } })).toEqual(
+      ['sent:unsent'],
+    );
+    expect(
+      friendMarksMisses(first, value, { ...ok, sent: { ...sent, placeDeclined: true } }),
+    ).toEqual(['sent:placeDeclined:true']);
+    expect(friendMarksMisses(first, value, ok)).toEqual(['sent:not_run']);
   });
 
   it('fails a calendar ask that offers Gmail under the calendar link', () => {
@@ -189,34 +211,5 @@ describe('friendMarksMisses', () => {
     expect(friendMarksMisses(saved, { ...good, claimsSaved: false })).toEqual([
       'claimsSaved:false',
     ]);
-  });
-});
-
-// VIL-645: only the exact tool-call XML leak is quarantined, and only where the fixture names it.
-describe('knownSeamMiss', () => {
-  const ownQuestion = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'ages-own-question');
-  const leaked = {
-    asks: true,
-    reply: 'Classes, lessons and story times near you. How old are Mia and Leo?',
-    parentQuestion: 'true</parentQuestion>\n<parameter name="connectorsOffered">[]',
-  };
-
-  it('names the ticket for the leak and nothing else wrong', () => {
-    const misses = friendMarksMisses(ownQuestion, leaked);
-    expect(misses.length).toBeGreaterThan(0);
-    expect(knownSeamMiss(ownQuestion, leaked, misses)).toBe('VIL-645');
-  });
-
-  it('still fails the leak when anything else is wrong too', () => {
-    const { asks: _asks, ...noAsks } = leaked;
-    const misses = friendMarksMisses(ownQuestion, noAsks);
-    expect(misses).toContain('asks:omitted');
-    expect(knownSeamMiss(ownQuestion, noAsks, misses)).toBeNull();
-  });
-
-  it('still fails a plain wrong answer, and the leak on a fixture that names no ticket', () => {
-    const wrong = { ...leaked, parentQuestion: false, connectorsOffered: [] };
-    expect(knownSeamMiss(ownQuestion, wrong, friendMarksMisses(ownQuestion, wrong))).toBeNull();
-    expect(knownSeamMiss(fr, leaked, friendMarksMisses(fr, leaked))).toBeNull();
   });
 });

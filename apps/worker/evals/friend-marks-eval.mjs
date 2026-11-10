@@ -20,11 +20,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
-import {
-  FRIEND_MARKS_FIXTURES,
-  friendMarksMisses,
-  knownSeamMiss,
-} from './friend-marks-fixtures.mjs';
+import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -180,6 +176,8 @@ async function record() {
     });
 
   let failed = 0;
+  // A metric, not a gate: how often speakFriend refused the first draft and rewrote it.
+  const firstDrafts = { graded: 0, refused: 0 };
   for (const fixture of FRIEND_MARKS_FIXTURES) {
     const input = inputFor(voice, fixture);
     const tag = `friend-marks:${fixture.id}`;
@@ -199,7 +197,10 @@ async function record() {
         },
       };
       const spoken = await voice.speakFriend(composer, input, { page: async () => undefined });
-      result = draws[0];
+      // The fields graded are the sent draw's, as production keeps them.
+      result = spoken.source === 'retry' ? draws[draws.length - 1] : draws[0];
+      firstDrafts.graded += 1;
+      if (draws.length > 1) firstDrafts.refused += 1;
       sent = {
         source: spoken.source,
         placeDeclined: spoken.capture.placeDeclined,
@@ -244,15 +245,12 @@ async function record() {
       meaningMin: JUDGE_MIN,
       sent,
     });
-    // A quarantined miss is printed with its ticket and does not fail the run.
-    const known = knownSeamMiss(fixture, result.value, misses);
-    if (misses.length > 0 && !known) failed += 1;
-    const mark = misses.length === 0 ? 'PASS' : known ? 'KNOWN' : 'FAIL';
+    if (misses.length > 0) failed += 1;
     console.info(
-      `${mark.padEnd(5)} ${fixture.id.padEnd(24)} ${misses.join(' ')}${known ? ` (${known})` : ''}`,
+      `${(misses.length === 0 ? 'PASS' : 'FAIL').padEnd(5)} ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
     );
     if (fixture.printReply || fixture.groupBubbles)
-      console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);
+      console.info(`      reply: ${JSON.stringify((draws[0] ?? result).value?.reply ?? null)}`);
     if (draws.length > 1) {
       console.info(`      rewrite: ${JSON.stringify(draws[1]?.value?.reply ?? null)}`);
     }
@@ -261,6 +259,9 @@ async function record() {
       console.info(`      groupLeads: ${JSON.stringify(result.value?.groupLeads ?? null)}`);
   }
 
+  console.info(
+    `first drafts refused and rewritten: ${firstDrafts.refused} of ${firstDrafts.graded} turns graded through code`,
+  );
   console.info(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );

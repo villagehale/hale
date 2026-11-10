@@ -271,7 +271,6 @@ export const FRIEND_MARKS_FIXTURES = [
     emits: ['asks', 'parentQuestion', 'connectorsOffered'],
     expect: { parentQuestion: true },
     offersNone: true,
-    knownSeam: 'VIL-645',
     printReply: true,
   },
   {
@@ -279,7 +278,8 @@ export const FRIEND_MARKS_FIXTURES = [
     over: PLACE_DECLINED_EN,
     emits: ['asks'],
     expect: { asks: true, postalCode: null },
-    sendable: true,
+    placeOpen: true,
+    throughCode: true,
     printReply: true,
   },
   {
@@ -297,7 +297,8 @@ export const FRIEND_MARKS_FIXTURES = [
     over: PLACE_DECLINED_FR,
     emits: ['asks'],
     expect: { asks: true, postalCode: null },
-    sendable: true,
+    placeOpen: true,
+    throughCode: true,
     printReply: true,
   },
   {
@@ -316,7 +317,7 @@ export const FRIEND_MARKS_FIXTURES = [
     emits: ['asks', 'placeAsk'],
     expect: { asks: true, postalCode: null, placeAsk: 'coarse' },
     placeOpen: true,
-    sendable: true,
+    throughCode: true,
     watchFor: `Canada. Right: accepts the no and asks, as the one question, for just the first three characters of their postal code (offering a ZIP as well is fine). Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
     printReply: true,
   },
@@ -335,7 +336,7 @@ export const FRIEND_MARKS_FIXTURES = [
     emits: ['asks', 'placeAsk'],
     expect: { asks: true, postalCode: null, placeAsk: 'coarse' },
     placeOpen: true,
-    sendable: true,
+    throughCode: true,
     watchFor: `United States. Right: accepts the no and asks, as the one question, for just their five-digit ZIP, which shows the area and not their street (offering the first three characters of a Canadian postal code as well is fine). Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
     printReply: true,
   },
@@ -354,7 +355,7 @@ export const FRIEND_MARKS_FIXTURES = [
     emits: ['asks', 'placeAsk'],
     expect: { asks: true, postalCode: null, placeAsk: 'coarse' },
     placeOpen: true,
-    sendable: true,
+    throughCode: true,
     watchFor: `French, Canada. Right: accepts the no and asks, as the one question, for just the first three characters of their postal code. Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
     printReply: true,
   },
@@ -543,7 +544,10 @@ export function friendMarksMisses(
   if (fixture.throughCode) {
     if (!sent) misses.push('sent:not_run');
     else if (sent.source === 'unsent') misses.push('sent:unsent');
-    else if (sent.placeDeclined !== true) misses.push('sent:placeDeclined:false');
+    // A first no leaves the place open in what is sent; a second no closes it.
+    else if (sent.placeDeclined !== !fixture.placeOpen) {
+      misses.push(`sent:placeDeclined:${sent.placeDeclined}`);
+    }
   }
   // Graded on meaning by the friend-place judge: a low score, or no verdict, is a miss.
   if (fixture.watchFor) {
@@ -594,22 +598,4 @@ export function friendMarksMisses(
     if (got !== want) misses.push(`${field}:${JSON.stringify(got ?? null)}`);
   }
   return misses;
-}
-
-/** VIL-645: tool-call XML written into `parentQuestion`, swallowing the next field. */
-const TOOL_XML_LEAK = /<\/?(parameter|parentQuestion)\b/;
-
-/**
- * The ticket a fixture's misses are quarantined under, or null. Only the exact leak
- * shape, only on a fixture that names the ticket, and only when every miss is the
- * leak's own: anything else wrong on that turn still fails.
- */
-export function knownSeamMiss(fixture, value, misses) {
-  if (!fixture.knownSeam || misses.length === 0) return null;
-  const leaked = value?.parentQuestion;
-  if (typeof leaked !== 'string' || !TOOL_XML_LEAK.test(leaked)) return null;
-  const leakOnly = misses.every(
-    (miss) => miss.startsWith('parentQuestion:') || miss === 'connectorsOffered:omitted',
-  );
-  return leakOnly ? fixture.knownSeam : null;
 }
