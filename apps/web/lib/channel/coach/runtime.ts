@@ -135,6 +135,7 @@ import {
   localDayContext,
 } from './local-day';
 import { familyLocalNow } from './local-now';
+import { appendNoGroupRelaySkill, group1to1NoGroupRelayEnabled } from './no-group-relay';
 import {
   type CoachEmailReader,
   READ_EMAIL_SKILL,
@@ -540,12 +541,21 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           ? await loadCronSkill('age-fit-correction')
           : null,
       );
+      // VIL-577: a 1:1 yes or ask to tell the group rides only with the flag on.
+      // Dark and group turns keep the skill bytes they already had. The aside
+      // already never offers; this is the later coach turn.
+      const withNoRelay = appendNoGroupRelaySkill(
+        withAgeFit,
+        turn.audience !== 'group' && group1to1NoGroupRelayEnabled()
+          ? await loadCronSkill('coach-no-group-relay')
+          : null,
+      );
       // VIL-447: list reply tone rides last, and only on a group turn with the flag on.
       // Dark and 1:1 turns keep the skill bytes they already had.
       const coachSkill =
         turn.audience === 'group' && groupSharedListsEnabled()
-          ? await appendGroupListsReply(withAgeFit)
-          : withAgeFit;
+          ? await appendGroupListsReply(withNoRelay)
+          : withNoRelay;
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them

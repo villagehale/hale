@@ -62,6 +62,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `GOING_COUNT_ENABLED` | `apps/web/lib/integrations/going.ts:148` | `true` | OFF | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | `apps/web/lib/integrations/google-push-flag.ts:14` | `true` | OFF | `false` | Noah |
 | `GOOGLE_WRITE_SCOPES_ENABLED` | `apps/web/lib/integrations/google-write-flag.ts:23` (the allowlist at :29 arms listed users) | `true` | OFF | unset, or anything except `true` | Noah |
+| `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | `apps/web/lib/channel/coach/no-group-relay.ts:19` | `true` | OFF | `false` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `apps/web/lib/pipeline/classify.ts:166` (`parseModelMode`, `apps/web/lib/pipeline/model-mode.ts:1-5`: trim, unset means `current`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INBOUND_SCREEN_MODEL_MODE` | `apps/web/lib/channel/off-domain/screen.ts:279` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INTAKE_EXTRACT_MODEL_MODE` | `apps/web/lib/channel/intake/extract.ts:164` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
@@ -223,6 +224,7 @@ Code is merged for every row.
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |
 | `GOING_COUNT_ENABLED` | A sweep may count how many others are going. | A count that does not match the booking rows. | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | Gmail and Calendar can sync from push, not only the 15-minute poll. | Log lines `google push: skipped, flag_off` after the flip, and webhook failures. | `false` | Noah |
+| `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | The 1:1 coach never offers, nor agrees, to tell the group for a family. Hale has no path from a 1:1 reply into the group. Dark leaves the coach skill bytes unchanged. The model writes the reply. The private aside already never offers. | A 1:1 reply that offers to tell the group, or promises a group post after the parent asked for one. | `false` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for event classification. Unset stays on Sonnet 5. | Classify errors and fallback count in the web logs. | `current` | Eugene |
 | `HALE_INBOUND_SCREEN_MODEL_MODE` | `candidate` uses JEV for the inbound screen, with Haiku when the margin is thin. | Screen latency and Haiku retry count. | `current` | Eugene |
 | `HALE_INTAKE_EXTRACT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for intake extraction. The benchmark kept `current`. | Extracted ages or place that the parent did not say. | `current` | Eugene |
