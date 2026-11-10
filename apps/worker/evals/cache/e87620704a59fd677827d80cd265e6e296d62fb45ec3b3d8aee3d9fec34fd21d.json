@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gets most things right.\n\nWhat works:\n- All three picks are real Calgary programmes for under-6s, each sourced from the organisation's own page.\n- It leads with the strongest pick, the YMCA Family Play, by name.\n- It attributes rather than verifies (\"YMCA Calgary says\").\n- The YMCA day and time match the picks, and \"free\" for the library matches too. No price is invented for the YMCA.\n- It is plain text, with no link and no question.\n- Under no_page_read, it uses the earned phrasing \"I could not get into their pages for times today\" instead of \"not posted yet\".\n- With watch true, it gives a first-person continuation, \"I'll keep watching\".\n\nWhat holds it back:\n- It drops the Connect + Play locations (Horizon, Midnapore, Triwood), so the parent doesn't know where to go.\n- The watch commitment is terse and never says Hale will text when the times post.",
+    "score": 4
+  }
+}
