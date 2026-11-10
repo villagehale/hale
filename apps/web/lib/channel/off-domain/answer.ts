@@ -248,7 +248,10 @@ const sanitizeSchema = z.object({
 /** The compose's reading of the text and its `answer`, and nothing else. It also writes
  * its `grounding` (answer-request.ts); zod drops it here, so no line after this one has
  * it to send, keep or log. The reading is taken loosely, like the sanitizer's. */
-const answerSchema = z.object({ hurt_ill_or_danger: z.unknown(), answer: z.string() });
+const answerSchema = z.object({
+  hurt_ill_or_danger: z.unknown().optional(),
+  answer: z.string(),
+});
 
 /** The pre-send reader's verdict, taken loosely: anything but a reasoned `redraft` sends. */
 const checkSchema = z.object({ verdict: z.unknown(), reason: z.unknown() });

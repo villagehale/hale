@@ -25,7 +25,7 @@ describe('plan towns', () => {
 
     vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true\n');
     expect(planModeFor('anc.ca.apm.activecommunities.com')).toBe('parent');
-    vi.unstubAllEnvs();
+    vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, '');
     expect(planModeFor('anc.ca.apm.activecommunities.com')).toBe('parent');
   });
 
