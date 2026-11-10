@@ -420,6 +420,7 @@ describe('duty burden and metrics', () => {
         },
         confidence: 1,
         inferredBy: 'coparent_duty_test',
+        heard: 'unrecorded',
         validFrom: new Date(iso),
       });
     }
@@ -483,6 +484,7 @@ describe('duty burden and metrics', () => {
       factValue: { eventKey: factKey },
       confidence: 1,
       inferredBy: 'coparent_duty_test',
+      heard: 'unrecorded',
       validFrom: new Date(DAY.getTime() - 30 * 60 * 1000),
     });
     await recordDutyAnswered(db.database, {

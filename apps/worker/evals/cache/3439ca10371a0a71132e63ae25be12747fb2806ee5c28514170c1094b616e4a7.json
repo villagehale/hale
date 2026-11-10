@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the second no warmly and stops asking for any code, ZIP, town or place. It promises nothing nearby and moves on to a single question about the kids' names, which is what watchFor wants. The line 'sans secteur je ne peux pas te trouver d'activités près de chez toi' is honest rather than a promise. Still, it adds a slight guilt or pressure undertone and makes the reply longer than it needs to be, so it is not quite the short, plain ideal.",
+    "score": 4
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgsTA2S8V6pNuX8PD5akq",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "This sounds like a sleep terror, and the usual approach is to stay calm nearby with low lights and soothing words instead of waking him. If the screaming comes with fever or pain, call 811, or 911 for an emergency, and mention it to his pediatrician if it keeps happening.\n\n",
+        "signature": "CAQSyAkKEQgTGAI4AUIJbmFycmF0aW9uEgxW0YqgnYkEaq9IjEgaDOqia2p99hrnSP5uPiIwmEEIPTztYXmyadWGNZ7ByTh0ijoX84YpIcF2tGjLsNb/TpM4cxbIVZ89sdVf6qJ0KuQIztKpUcQwzjRqwrkSMJsGNLcOoBskpQjd0tz2YDcQtPuHbpeaxBfPv+9alhjvAQcpHyjbculcnwfPITJgl/0wHE2jKK89s99sQdJFm+onyFbeTXDGpEGu2gWELNAoFxvr1eG5IGJdxTiVirDJUAmeMnmfIBUU5xdhhRvMlwnIGwgNanSPt5VwbajYVlDGRS0OaIgaVo43GK0lsyuB1j6U/f9i+NqjabVFrFGzgvNMIAMptx53lEJuQkjtiTzJjIIg314MAvagItMZ1sPPvjSEWBxWANJJAsa3HykOyUGaHe93FO3T5bXaiILTYDjEzOKz6I53Ueq3pTIajlSXWCsi+ij0KUFRS0tyVdPQZKFPx3VDPCL1RgjBpyJaGWVqddUlzLpHYvnN9uThc10VTYbLPsl0n/qaHXFj2z4gtXbq99r8+w5+40yggqeV1qzjxt7T3a/qSKM6JY6I7WzljISgpMppZX/rtYohdgweCwg+Kys1kScc+YDWn61g2geQhTaNPFveSQvMAbx5LDgPnHBXW41B8Ww6cCGUeGeaOIkL68UDER+WUkhaikOxheZyc26IBSt8plPeirMA3rC94h3HCbL/k120oJDOzXKMTsWjFcyX8mUh7FW3xsOZjhtfP74Zwbk8YuzmLnG00ewTH8qZTkDF30q6JCKRXDAh9mweezt3A5Fub5Y+h5NLrai2JS+RCJio9Mn7CdJpZX/jm7oAS+Ns77LMbPgHjzhxKkOPU3L7uxtCowuJfY2Io4meFd6jpHwDgD+/UiB34pLVKkkmfTVQPIaMYwOurmM5F+DnfbGGOG2IJdWYUuvDijPbKCXiWmdka8WOAsth5UYz5jZCTLep7rtKKo+4exom4oIfPY4y3xpPFiKk+Ovpf1U8JlpNs5LWik4hUQd3JKBeALsmCRt/4HIzQEdNXGajQPGVGTYAK/wDHLdSvOOhj4+TsD32lFxpI8+ZeFuckhyIF05Vrr7n4JBjGygwqvaw3NBxv0OVPyB6di+FWZiE876AZ6Y8cqUxHzY63SVkFaudW4UcCm0RyEhNiT5KljyTeiP1PwtT9jJxS4OhKaCdhH1V/e4Zbc1zdj7ZrCsGKPi6V71pFyRx1VxVu4M08FFs28DtRgQOu2ZKrC9cNMPMTOUVocWJn48xOTF8UU6kidAMX/S4creMAxg5Grp89uv7moVTJtAMtbxAI6qf5yWGLWmHy+4Bjc2sZ9C46ekjosmEB8R42pHRwSzjRQyZXxqu7WBNJHhhiECa4IUkVAQn9+2g7sqms+uUzIGCLp5VOn9TH+M/Y4VRBfpFifSO91v8oIqXZt8fudMnncSYDbVF0ioqEJ8xkhBZzwmKSldWL9vl/SlkwiqyPAHRF5SuTppKjeMGWdegMqtfQnUMID9IPfeMUQKFDFhIdPL/M+u0OTlM1A2JzSJ7Hbqam7qaK7dwtEUpJQOHpbUhHPX1O4eEko1FvwP1AwsgBTafqkK/jFb2duLBJ4X0c+gYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0127hYGGfUXQKyj1oUN9tbDj",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "child-toddler",
+          "offer": "Want me to send the full night-by-night sleep plan?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 863,
+      "cache_read_input_tokens": 20508,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 863,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 329,
+      "output_tokens_details": {
+        "thinking_tokens": 211
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

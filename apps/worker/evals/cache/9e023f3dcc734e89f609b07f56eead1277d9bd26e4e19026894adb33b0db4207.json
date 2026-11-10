@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Saturdays, the times, Sept 12 to Nov 28, and ages 3-5. Each is cited to the operator's page. Price is correctly null because the page prints no fee and defers to the Recreation Guide. Both slots carry the Aug 11 7 a.m. registration date. The message is in Arabic, as watchFor requires, and leads with PRESCHOOL A by name. It attributes the facts ('according to their site'), carries the registration date, and puts the price gap in first person ('I couldn't determine the price'), which is correct under page_has_schedule. Since watch=true, the first-person keep-watching line is legitimate. There is no question and no link.",
+    "score": 5
+  }
+}

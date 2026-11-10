@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It acknowledges that the new page replaces the earlier one and rightly says the course name, day and time could not be read, since all are null. It gives the correct opening date and time, names the residents date as the clock, warns to leave time for the prerequisite, and has no link and no question. Two small flaws keep it from a 5: 'going by what's on the portal' is a muddled, slightly unsupported framing when haleHad is null, and 'on the residents date' reads awkwardly.",
+    "score": 4
+  }
+}

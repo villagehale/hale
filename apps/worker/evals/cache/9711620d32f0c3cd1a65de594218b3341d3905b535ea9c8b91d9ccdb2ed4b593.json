@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in French, accepts the parent's no, and asks only for the first three characters of the postal code, explaining it locates by neighbourhood, not address. It offers a way to skip and makes no promise about finding things nearby. It is a bit wordy, though: the request appears twice (once in the offer, again as the closing question), so it reads slightly more insistent than ideal.",
+    "score": 4
+  }
+}

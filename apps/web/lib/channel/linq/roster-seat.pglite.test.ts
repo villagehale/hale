@@ -347,6 +347,18 @@ describe('seatConfirmedMember', () => {
     });
     expect(refused).toEqual({ outcome: 'seat_refused', reason: 'other_family' });
     expect((await memberFor(OTHER_PARENT)).status).toBe('refused');
+    // This family's audit row never says the number belongs to another household.
+    expect(
+      await db.database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.actionTaken, 'linq_group_member_refused'),
+          ),
+        ),
+    ).toEqual([{ after: { reason: 'number_unavailable', via: 'own_reply' } }]);
     expect(
       await db.database
         .select()

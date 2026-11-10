@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This does what a readiness_answer yes should. It attributes the setup to the parent (\"You told me\", \"I'll take your word for it\") and never claims to have verified it. It names only the handed portal, account and child, Max. The four items restate what the parent confirmed rather than inventing a claim. It asks no question, invents no reminder or later message, and reads like a friendly English text. Using \"his\" for Max assumes a gender the facts don't give, but that is minor.",
+    "score": 5
+  }
+}

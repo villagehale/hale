@@ -10,6 +10,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqGroupMembersEnabled } from './config';
+import { recordSeatRefusal } from './family-audit';
 import { type GroupOnboardingComposer, sendGroupOnboardingLine } from './group-onboarding-voice';
 import { LinqSendError } from './transport';
 
@@ -298,26 +299,24 @@ export async function seatParticipantAdded(
     actorIsHale: actorPhone ? haleLine(actorPhone) : false,
   });
   if (!decision.seat) {
-    await database.insert(schema.auditLog).values({
+    await recordSeatRefusal(database, {
       familyId,
       actor: 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_members',
       targetId: familyId,
-      after: { reason: 'actor' },
+      reason: 'actor',
     });
     return notSeated({ outcome: 'group_member_refused', reason: 'actor' });
   }
 
   const existing = await resolveVerifiedChannelByPhone(database, phone);
   if (existing && existing.familyId !== familyId) {
-    await database.insert(schema.auditLog).values({
+    await recordSeatRefusal(database, {
       familyId,
       actor: actor.userId ?? 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_members',
       targetId: familyId,
-      after: { reason: 'other_family' },
+      reason: 'other_family',
     });
     return notSeated({ outcome: 'group_member_refused', reason: 'other_family' });
   }
@@ -326,30 +325,28 @@ export async function seatParticipantAdded(
   const seats = await liveSeats(database);
   const live = seats.find((row) => row.phoneE164Hash === hash && row.removedAt == null);
   if (live && (live.familyId !== familyId || live.chatId !== input.chatId)) {
-    await database.insert(schema.auditLog).values({
+    const reason = live.familyId !== familyId ? 'other_family' : 'other_chat';
+    // Targets this family, not the seat row it collided with, which may be another
+    // household's.
+    await recordSeatRefusal(database, {
       familyId,
       actor: actor.userId ?? 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_members',
-      targetId: live.id,
-      after: { reason: live.familyId !== familyId ? 'other_family' : 'other_chat' },
+      targetId: familyId,
+      reason,
     });
-    return notSeated({
-      outcome: 'group_member_refused',
-      reason: live.familyId !== familyId ? 'other_family' : 'other_chat',
-    });
+    return notSeated({ outcome: 'group_member_refused', reason });
   }
   if (live) return notSeated({ outcome: 'group_member_already' });
 
   const familyRole = existing ? await familyRoleOf(database, familyId, existing.userId) : null;
   if (!existing || !familyRole) {
-    await database.insert(schema.auditLog).values({
+    await recordSeatRefusal(database, {
       familyId,
       actor: actor.userId ?? 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_members',
       targetId: familyId,
-      after: { reason: 'seat_needs_parent_grant' },
+      reason: 'seat_needs_parent_grant',
     });
     return notSeated({ outcome: 'seat_needs_parent_grant' });
   }

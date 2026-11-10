@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It says the new page replaces the old one and that the course name, day and time could not be read, which is correct since they are null. It keeps Tuesday, September 15 at 7:00 a.m. on Springfield's portal correct and warns to leave time for the prerequisite. It has no link and no question. Small gaps: it never says who the course is for ('your teen'), 'check you meet it' should refer to the teen rather than the parent, and 'don't have those yet' faintly hints at a later update.",
+    "score": 4
+  }
+}

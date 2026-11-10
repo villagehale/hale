@@ -234,7 +234,7 @@ export async function handleSequenceReply(
         timeZone: sequence.state.timeZone,
         now: input.now,
         reply: waitlisted
-          ? { outcome: 'waitlisted', position: intent.position, deadlineAt }
+          ? { outcome: 'waitlisted', position: intent.position, startedAt: input.now }
           : { outcome: intent.outcome },
       }),
     ),
@@ -317,6 +317,7 @@ export async function recordRegistrationOutcome(
       },
       confidence: 1,
       inferredBy: REGISTRATION_FACT_WRITER,
+      heard: { in: 'one_to_one', userId: input.parentUserId },
       validFrom: input.now,
     });
   });

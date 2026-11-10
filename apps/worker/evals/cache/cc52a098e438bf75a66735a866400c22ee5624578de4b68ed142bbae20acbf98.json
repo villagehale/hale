@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and gets the date, time, link and child right. It lists all three texts with correct timing and says plainly that Hale never registers. It correctly leaves out the course-link tip since courseLinkTip is false. However, an approval_card must ask nothing, and it ends with a question: \"Approuvez-vous ce plan ?\" Telling the parent to approve would have been fine; asking is not. \"Pour tout le monde\" is consistent with residentsFirstDays being null, and the age-band caveat restates that the band is unpublished, so neither is an issue.",
+    "score": 2
+  }
+}

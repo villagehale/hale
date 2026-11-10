@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgsFg16xXXxioNVQvjpvi",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSiAYKEAgTGAI4AUIIdGhpbmtpbmcSDMopfm+ETwMrWsyQAxoMLj/MgXaOvU6dtikuIjBvBN8KydoTp3dLPGMGH6GCSqphBt2Vge3S4OiFkTnKe0aUtGybCo1DcgGAqrIU4FMqpQUx9mdNDDp3+PK4gJDQLfEoFTh1OdeL86B5kKW8bh/kPMZq4lq4YgsA49b6dFR6rNuc+hwwYl4vq8QYXarmXfyhiXDR8RdsafsMi14BOo5QNpCuPlSHAl5wKfOaQRfNPxfgygDaXfNxDqXwT8Yv9nGsEXqC34iN7GlGJkPBLiWLZ13TVeDkTPy9OpYQYrxwNi76ieUxxWI+rkCdk2mfFcfqEQdCTyh83OGA7JhTOdtorzLk38c6r/rRqgAEF641Oh+s1xo+UUk2h4WStOnslCLpx/K/1xPtjmLqMIYSKFbUiGFyM5dO+HcI0RS3yu+vuojvxj7tJxaqv++Q5S+hceeGS4Oe9ffC62QEhqbV2mCBCPRfzVb+lH/9BeCnclhS2gvX7EIOnodilIv2TspkHRqB6Xu5phJ2bE7CrE+26Y70F/DV3sT4EBqft9kCeg5noMoZBGJ8RjA3K9U0g/qDo5aSnXwGEFw+K5QTcE7hiYotjkE/5FkZi1PqM6hmk7k5cDQ2N0QPMjE4ChX/i8I4AbtZEeV52HgEeFTVk971pIp7QCo90iqTSBbqxzCdpGkLOCxdoTGGyNbPiBHwoIdH3becZ9CZpLQz/FOKfYFFQijxW82DunGKN8T+CqwzaAo8WDG69ThWayY7JxEyzK4NSqRiERfE49zr69AQZ2J24C0dvQn4Pt5cul6rtLiNpQKDOZd3/hpMSSKcIla2ViM+LCHCai3Tz0vDvR8x/hwPfN57NAwympjDyu0U3Ue9Hvs4p4WJC1hFXu1ywNRPN4wIYt0R2gh03xB4syxjWA9/p7UYeRLSm2SgiJfOUte3COo3cPBJkaac7bbuViGf9ojwtYtO+7zVM83paJglbymi+zs25+sYFCCrP+WrCayHUCkMD8emOcKdYxgB"
+      },
+      {
+        "type": "text",
+        "text": "Today is Thanksgiving, so places may be closed or on holiday hours. Worth checking before you go. Riverbend Community Centre's page lists Little Movers drop-in, Mondays 9:30 to 11:30 a.m., free, for ages 1 to 4. [link-c6988f] Willow Branch Library's events page lists Toddler story time, Mondays 10:30 a.m., free, for 18 months to 3 years, which fits your 26-month-old. [link-ce743d] Those are what their own sites say. I haven't confirmed either."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 298,
+      "cache_read_input_tokens": 20659,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 298,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 230,
+      "output_tokens_details": {
+        "thinking_tokens": 46
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

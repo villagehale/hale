@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The approval_card meets its kind. It has the correct date (Saturday, September 12) and time (9 h 00) and includes the handed link. It names all three texts with their timing (7 days before, the evening before, 15 minutes before) and says Hale never registers. The unpublished age band is a handed fact, there is no course-link tip since courseLinkTip is false, and no question is asked. It is in French and names only Léa. Minor issues: \"Je ne m'inscris jamais à votre place\" is awkward (\"je n'inscris jamais Léa\" would read more naturally), the plural programs became a singular \"programme\", and the tone is a bit formal for a friend's text.",
+    "score": 4
+  }
+}

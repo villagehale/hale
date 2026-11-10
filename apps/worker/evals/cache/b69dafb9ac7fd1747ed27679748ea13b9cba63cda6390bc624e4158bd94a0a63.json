@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It notes the new link replaces the old one, says plainly that the course details could not be read (they are null), and gives the correct date and time: Tuesday, September 15 at 7:00 a.m. is right against Tuesday, September 1. It ties the opening to the residents date as handed and warns to leave time because a prerequisite is listed. It has no link, no question, no invented claims and no unhanded child name, and it reads naturally in English. \"On the residents date\" is slightly awkward but accurate.",
+    "score": 5
+  }
+}

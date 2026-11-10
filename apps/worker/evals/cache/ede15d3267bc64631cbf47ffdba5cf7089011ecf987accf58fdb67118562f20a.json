@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It notes that the new link replaces the earlier one and says the course name, day and time could not be read, which is right since they are null. It gives the correct opening of Tuesday, September 15 at 7:00 a.m. for 'your teen', with the handed clock name. Because prerequisite is true, it warns to leave extra time. It carries no link, asks no question, invents no claims, names no child and is in English. Phrasing is slightly stiff ('on the residents date') but accurate.",
+    "score": 5
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Family Play, Shane Homes YMCA at Rocky Ridge (Art Studio B)",
+        "age_fit": "families with children under 6 years of age",
+        "when": "Monday to Friday, 9:00 am to 11:30 am",
+        "source_name": "YMCA Calgary"
+      },
+      {
+        "name": "Connect + Play Drop-In (Horizon, Midnapore and Triwood)",
+        "age_fit": "children 0–6, with a caregiver",
+        "source_name": "Families Matter"
+      },
+      {
+        "name": "Early Learning Centres, Calgary Public Library",
+        "age_fit": "children ages zero to five",
+        "price": "free",
+        "source_name": "Calgary Public Library"
+      }
+    ]
+  },
+  "latencyMs": 4390
+}

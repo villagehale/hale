@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type FamilyEventNotes, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
@@ -47,6 +47,7 @@ import { changeFromColumns } from './change';
 import { composeReminderTexts, reminderFacts } from './compose';
 import {
   COMPOSE_HELD,
+  type DropReason,
   type EventSnapshot,
   REMINDER_HORIZON_MS,
   REMINDER_OFFSETS,
@@ -56,6 +57,7 @@ import {
   batchReminders,
   classifyReminder,
   isLateFire,
+  nextComposeHold,
   offsetUrgency,
   reminderFireAt,
 } from './schedule';
@@ -170,6 +172,8 @@ export interface DueReminder {
    * ride email, and their SMS state is the dispatch's to judge.
    */
   smsChannelActive: boolean;
+  /** VIL-625 · how many times the writer has already failed this row (nextComposeHold). */
+  composeAttempts: number;
 }
 
 /** The channel.send job the A2 drain consumes (contract-validated by
@@ -223,11 +227,20 @@ export interface ReminderRunDeps {
     db: Database,
     args: { parentUserId: string; eventRef: string; offset: ReminderOffset; now: Date },
   ) => Promise<boolean>;
+  /** Never writes the COMPOSE_HELD mark: only `holdForCompose` does, so no hold can be
+   * written without the try count and the next-try time that bound it (VIL-625). */
   markStatus: (
     db: Database,
     reminderId: string,
     status: ReminderStatus,
-    reason: SuppressReason | null,
+    reason: DropReason | null,
+  ) => Promise<void>;
+  /** VIL-625 · leaves the row 'scheduled' under the COMPOSE_HELD mark, not to be asked
+   * again before `nextTryAt`. */
+  holdForCompose: (
+    db: Database,
+    reminderId: string,
+    hold: { attempts: number; nextTryAt: Date },
   ) => Promise<void>;
   /** The audit row for a due reminder the fire path dropped (rule #6). */
   auditSuppressed: (
@@ -281,6 +294,7 @@ async function selectDueReminders(
       timezone: schema.users.timezone,
       role: schema.familyMembers.role,
       channelId: schema.parentChannels.id,
+      composeAttempts: schema.eventReminders.composeAttempts,
     })
     .from(schema.eventReminders)
     .innerJoin(schema.users, eq(schema.eventReminders.parentUserId, schema.users.id))
@@ -309,6 +323,10 @@ async function selectDueReminders(
       and(
         eq(schema.eventReminders.status, 'scheduled'),
         lte(schema.eventReminders.fireAt, now),
+        or(
+          isNull(schema.eventReminders.composeNextTryAt),
+          lte(schema.eventReminders.composeNextTryAt, now),
+        ),
         held ? eq(schema.eventReminders.suppressReason, held) : undefined,
       ),
     );
@@ -476,6 +494,18 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
         .set({ status, suppressReason: reason, updatedAt: new Date() })
         .where(eq(schema.eventReminders.id, reminderId));
     },
+    holdForCompose: async (db, reminderId, hold) => {
+      await db
+        .update(schema.eventReminders)
+        .set({
+          status: 'scheduled',
+          suppressReason: COMPOSE_HELD,
+          composeAttempts: hold.attempts,
+          composeNextTryAt: hold.nextTryAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.eventReminders.id, reminderId));
+    },
     auditSuppressed: async (db, row) => {
       await db.insert(schema.auditLog).values({
         familyId: row.familyId,
@@ -554,7 +584,8 @@ export interface ReminderRunResult {
   /** VIL-563 · due reminders left 'scheduled' because the writer could not be reached (a
    * provider fault that can clear, or a skill that did not load), marked COMPOSE_HELD.
    * Checked again at the next slot, and a T-1h by the drain before that (VIL-586). A refused draft is dropped ('unwritten'), and so is a
-   * request the provider rejected or our own bug ('compose_rejected'). */
+   * request the provider rejected or our own bug ('compose_rejected'). Each hold backs off
+   * (nextComposeHold); the last try drops it as 'compose_retries_exhausted' (VIL-625). */
   heldComposeUnavailable: number;
   sendEnabled: boolean;
 }
@@ -576,6 +607,7 @@ interface FiringRow {
   location: string | null;
   change: SourceChange | null;
   notes: FamilyEventNotes | null;
+  composeAttempts: number;
   /** Proven non-null by the fire gate: a row whose recipient holds no seat never gets
    * here. Non-parent roles other than the three caregiver ones are suppressed too, so
    * this is either a parent role or a caregiver one. */
@@ -776,7 +808,7 @@ async function fireDueReminders(
 
   const drop = async (
     row: Pick<DueReminder, 'id' | 'familyId' | 'offset'>,
-    reason: SuppressReason,
+    reason: DropReason,
   ): Promise<void> => {
     await deps.markStatus(db, row.id, 'suppressed', reason);
     const dropped = { familyId: row.familyId, reminderId: row.id, offset: row.offset, reason };
@@ -847,6 +879,7 @@ async function fireDueReminders(
             location: event.location,
             change: event.change ?? null,
             notes: event.notes ?? null,
+            composeAttempts: row.composeAttempts,
             // Non-null past the gate above: role null never survives it.
             role: row.role as FamilyRole,
           });
@@ -1004,9 +1037,18 @@ async function fireDueReminders(
           // The mark is what lets the drain ask again before a T-1h's event starts.
           for (const ref of batch.eventRefs) {
             const r = rowByRef.get(ref);
-            if (r) await deps.markStatus(db, r.reminderId, 'scheduled', COMPOSE_HELD);
+            if (!r) continue;
+            const step = nextComposeHold(r.composeAttempts, now);
+            if (step.action === 'exhausted') {
+              await drop(
+                { id: r.reminderId, familyId: r.familyId, offset: r.offset },
+                'compose_retries_exhausted',
+              );
+              continue;
+            }
+            await deps.holdForCompose(db, r.reminderId, step);
+            heldComposeUnavailable += 1;
           }
-          heldComposeUnavailable += batch.eventRefs.length;
           continue;
         }
         if (composed?.status === 'rejected') {
