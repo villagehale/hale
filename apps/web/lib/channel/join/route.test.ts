@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coParentSeatTakenLate } from '~/lib/channel/coparent/copy';
 import {
   type FakeDb,
@@ -188,9 +188,12 @@ function insideOneTransaction(h: Harness, indices: number[]): boolean {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
+  vi.unstubAllEnvs();
 });
 
 describe('minting the link · "add my partner", no number', () => {

@@ -1,6 +1,8 @@
 import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -70,7 +72,10 @@ export function smallerLane(lane: LaneConfig): LaneConfig {
   return { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' };
 }
 
-export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWriter {
+export function createSpokenLineWriter(
+  client: () => AgentClient,
+  pager: OpsPager = sharedOpsPager,
+): SpokenLineWriter {
   return {
     async write(request) {
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
@@ -81,10 +86,10 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
           { purpose: request.purpose, err: err instanceof Error ? err.name : 'unknown' },
           'spoken line: skill load failed',
         );
-        console.error(
-          { urgent: true, purpose: request.purpose },
-          'URGENT: spoken line unreachable - page #ops now',
-        );
+        await pager.page({
+          site: 'spoken_line_unwritten',
+          facts: { purpose: request.purpose, stage: 'skill_load' },
+        });
         return null;
       }
       const lanes = spokenLineLanes();
@@ -116,10 +121,10 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
           );
         }
       }
-      console.error(
-        { urgent: true, purpose: request.purpose },
-        'URGENT: spoken line unreachable after a smaller model - page #ops now',
-      );
+      await pager.page({
+        site: 'spoken_line_unwritten',
+        facts: { purpose: request.purpose, stage: 'after_retry' },
+      });
       return null;
     },
   };
@@ -128,7 +133,7 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
 let shared: SpokenLineWriter | null = null;
 
 export function sharedSpokenLineWriter(): SpokenLineWriter {
-  shared ??= createSpokenLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createSpokenLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), sharedOpsPager);
   return shared;
 }
 

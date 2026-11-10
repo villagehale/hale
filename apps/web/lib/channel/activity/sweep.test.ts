@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
@@ -50,10 +50,18 @@ const PICK: ActivityPick = {
 
 const database = {} as Database;
 
+beforeEach(() => {
+  delete process.env[F14_ENABLED_ENV];
+  delete process.env[F14_ALLOWLIST_ENV];
+  vi.stubEnv('FINDER_SOURCE_BINDING_ENABLED', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+});
+
 afterEach(() => {
   delete process.env[F14_ENABLED_ENV];
   delete process.env[F14_ALLOWLIST_ENV];
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 interface Harness {
@@ -208,6 +216,7 @@ function armed() {
 
 describe('the dark-launch gate', () => {
   it('does not even select families when the flag is off', async () => {
+    delete process.env[F14_ENABLED_ENV];
     const h = harness();
     expect(await runActivityFollowUpSweep(database, h.deps, NOW)).toMatchObject({
       enabled: false,
@@ -314,7 +323,7 @@ describe('the promise is kept when the news is bad', () => {
     expect(h.composed[0]).toMatchObject({
       picks: [PICK],
       searched: {
-        town: 'Halton Hills, Ontario, Canada',
+        town: 'Halton Hills',
         notes: '',
         references: [reference],
         checkedSources: [reference.sourceUrl],

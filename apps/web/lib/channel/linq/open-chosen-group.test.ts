@@ -143,6 +143,8 @@ describe('openChosenHouseholdGroup', () => {
 
   it('leaves an unconfirmed number to the co-parent invite when that invite is dark', async () => {
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('F14_ENABLED', '');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
     const fake = makeFakeDb();
     seedParent(fake);
     const fetchMock = vi.fn();

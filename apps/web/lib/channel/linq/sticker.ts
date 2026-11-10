@@ -130,6 +130,11 @@ export function sharedLinqStickerDecider(): LinqStickerDecider {
   return shared;
 }
 
+/** Tests install a scripted decider here; null restores the production reader. */
+export function setSharedLinqStickerDecider(decider: LinqStickerDecider | null): void {
+  shared = decider;
+}
+
 export type LinqStickerOutcome =
   | { status: 'peeled'; sticker: string; sendReply: boolean }
   | { status: 'declined' }

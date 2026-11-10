@@ -141,6 +141,10 @@ beforeEach(async () => {
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+  vi.stubEnv('TEAM_SCHEDULE_CHANGES_ENABLED', '');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
   vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});

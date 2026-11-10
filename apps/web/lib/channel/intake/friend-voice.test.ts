@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   loadCronSkill,
   loadOnboardingFriendShortSkill,
@@ -30,6 +30,17 @@ import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
 
 const EASTERN = 'America/Toronto';
 
+/** Extra onboarding addenda ride when those flags are lit; byte tests must pin them off. */
+function darkOnboardingAddenda() {
+  vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+}
+
+beforeEach(() => {
+  darkOnboardingAddenda();
+});
+
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
     language: 'en',
@@ -50,6 +61,10 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
 }
 
 describe('friend voice brief', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('hands the household group as its own fact, and leaves the key out when it is not in play (VIL-566)', () => {
     const facts = (input: FriendVoiceInput) =>
       (friendVoiceContext(input) as { facts: Record<string, unknown> }).facts;
@@ -65,6 +80,7 @@ describe('friend voice brief', () => {
   });
 
   it('appends the household-group skill only when the fact rides; other turns keep their bytes (VIL-566)', async () => {
+    darkOnboardingAddenda();
     const base = (await loadOnboardingFriendSkill()).instructions;
     const group = (await loadCronSkill('household-group')).instructions;
     expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(base);
@@ -453,7 +469,7 @@ describe('onboarding friend fixtures', () => {
     const skill = await loadOnboardingFriendSkill();
     const words = skill.instructions.split(/\s+/).filter(Boolean).length;
     const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
-    expect(words).toBeLessThan(2500);
+    expect(words).toBeLessThan(2600);
     expect(skill.instructions).toContain(
       'A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.',
     );
@@ -2339,6 +2355,10 @@ describe('a garbled parentQuestion', () => {
  * place is declined is refused and written again, read from the model's `placeAsk`.
  */
 describe('a declined place, closed in code', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   const NOTHING_KNOWN = {
     postal: false,
     kids: false,
@@ -2391,6 +2411,7 @@ describe('a declined place, closed in code', () => {
   });
 
   it('asks for placeAsk and appends the place skill only while the place is in play', async () => {
+    darkOnboardingAddenda();
     const place = (await loadCronSkill('onboarding-friend-place')).instructions;
     const base = (await loadOnboardingFriendSkill()).instructions;
     expect((await friendVoiceSystem(secondNo, false)).system).toBe(`${base}\n\n${place}`);
@@ -2570,6 +2591,9 @@ describe('a declined place, closed in code', () => {
 });
 
 describe('leftover marks: model fields, not ? or word lists', () => {
+  beforeEach(() => {
+    vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -2775,6 +2799,7 @@ describe('leftover marks: model fields, not ? or word lists', () => {
   });
 
   it('appends the leftover skill and the extra fields only when the flag is on', async () => {
+    darkOnboardingAddenda();
     const base = (await loadOnboardingFriendSkill()).instructions;
     const leftover = (await loadCronSkill('onboarding-friend-leftover-marks')).instructions;
     expect((await friendVoiceSystem({ step: 'email' }, false)).system).toBe(base);

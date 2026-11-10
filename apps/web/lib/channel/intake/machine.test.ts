@@ -147,6 +147,8 @@ function inserts(fake: FakeDb, table: unknown) {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
 });
 afterEach(() => {
   vi.unstubAllEnvs();

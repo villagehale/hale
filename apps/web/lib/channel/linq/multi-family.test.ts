@@ -23,8 +23,6 @@ describe('LINQ_MULTI_FAMILY_GROUPS_ENABLED', () => {
     expect(linqMultiFamilyGroupsEnabled()).toBe(false);
     vi.stubEnv('LINQ_MULTI_FAMILY_GROUPS_ENABLED', '');
     expect(linqMultiFamilyGroupsEnabled()).toBe(false);
-    vi.unstubAllEnvs();
-    expect(linqMultiFamilyGroupsEnabled()).toBe(false);
   });
 });
 

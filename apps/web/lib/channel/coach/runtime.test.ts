@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type RegisteredTool, type Skill, invokeTool } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
   type ChannelTurn,
@@ -119,6 +119,13 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
   };
   return Object.assign(base, { recorded, contextInputs });
 }
+
+beforeEach(() => {
+  vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+  vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', '');
+  vi.stubEnv('INBOUND_PHOTO_FACTS_ENABLED', '');
+  vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', '');
+});
 
 describe('channelCoachRuntime', () => {
   it('answers a turn with the post-processed reply', async () => {
@@ -423,7 +430,7 @@ describe('channelCoachRuntime', () => {
 
     expect(seen[0]?.arrivedContacts).toEqual([{ name: 'Ada', phones: [] }]);
     expect(seen[0]?.arrivedContactsTruncated).toBe(true);
-    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]).not.toHaveProperty('photoFacts');
   });
 
   it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {

@@ -4,7 +4,7 @@ import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { assertProactiveSendAllowed } from '~/lib/channel/outbound-gate';
 import { answerParentDutyAsk, defaultDutySendPorts, emailDutyInGroup, sweepDutyAsks } from './asks';
-import { COPARENT_DUTY_SENDS_ENABLED_ENV } from './flag';
+import { COPARENT_DUTY_SENDS_ENABLED_ENV, COPARENT_SPLIT_DUTY_ENABLED_ENV } from './flag';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -13,6 +13,7 @@ afterEach(() => {
 describe('duty ask flag off', () => {
   it('does not read or send when the flag is off', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, '');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, '');
     const database = new Proxy(
       {},
       {
@@ -43,6 +44,7 @@ describe('duty ask flag off', () => {
         throw new Error('read');
       },
     } as unknown as Database;
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, '');
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'TRUE');
     await expect(sweepDutyAsks(database)).resolves.toMatchObject({ enabled: false });
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true\n');

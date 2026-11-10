@@ -186,6 +186,9 @@ beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = ENC_KEY;
   vi.stubEnv('LINQ_API_KEY', API_KEY);
   vi.stubEnv('LINQ_WEBHOOK_SECRET', SECRET);
+  vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', '');
+  vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
+  vi.stubEnv('COPARENT_DUTY_ASKS_ENABLED', '');
 });
 
 afterEach(() => {
@@ -1156,6 +1159,7 @@ describe('location sharing', () => {
   }
 
   it('ignores a share while the ladder is off and does not read a location', async () => {
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
     const h = harness();
     let reads = 0;
     h.deps = {

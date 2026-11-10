@@ -21,8 +21,6 @@ describe('LINQ_GROUP_PLAN_RSVP_ENABLED', () => {
     expect(linqGroupPlanRsvpEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', '');
     expect(linqGroupPlanRsvpEnabled()).toBe(false);
-    vi.unstubAllEnvs();
-    expect(linqGroupPlanRsvpEnabled()).toBe(false);
   });
 });
 
@@ -50,7 +48,8 @@ describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
     vi.stubEnv('VERCEL_ENV', '');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.unstubAllEnvs();
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
+    vi.stubEnv('VERCEL_ENV', '');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
   });
 });
@@ -70,7 +69,7 @@ describe('LINQ_GROUP_POLLS_ENABLED', () => {
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
     vi.stubEnv('LINQ_GROUP_POLLS_ENABLED', 'false');
     expect(linqGroupPollsEnabled()).toBe(false);
-    vi.unstubAllEnvs();
+    vi.stubEnv('LINQ_GROUP_POLLS_ENABLED', '');
     expect(linqGroupPollsEnabled()).toBe(false);
   });
 });

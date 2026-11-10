@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coParentInviteExpired } from '~/lib/channel/coparent/copy';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -187,9 +187,16 @@ async function upToInvite(fake: FakeDb, transport: FakeTransport, deps: IntakeDe
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
+  vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('F14_ENABLED', '');
+  vi.stubEnv('CLAIM_READER_MODE', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
+  vi.unstubAllEnvs();
 });
 
 describe('caregiver invite · the double opt-in', () => {
@@ -352,6 +359,8 @@ describe('caregiver invite · the ways it does not happen', () => {
    * FLAG, and an operator counting `unsupported_role` must not be shown a dark launch.
    */
   it('answers a co-parent add with the forwardable link while the flag is off', async () => {
+    vi.stubEnv('F14_ENABLED', '');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 

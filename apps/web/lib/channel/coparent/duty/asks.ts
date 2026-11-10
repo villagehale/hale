@@ -1167,6 +1167,12 @@ export async function deliverDutyGroupLine(
     sendsActive: boolean;
     /** A model-written text. The template gate does not read it. */
     composed?: boolean;
+    /**
+     * Parent-initiated answers are not optional asks (# cold-start VIL-392).
+     * "Stop asking" holds the proactive cadence; it must not hold a reply to
+     * "who's got pickup?".
+     */
+    optionalAsk?: boolean;
     fetch?: typeof fetch;
   },
   ports: DutySendPorts = defaultDutySendPorts(),
@@ -1195,7 +1201,7 @@ export async function deliverDutyGroupLine(
   if (!input.composed && body.includes('TODO-Design')) {
     return { status: 'skipped', reason: 'placeholder' };
   }
-  if (coldStartLadderEnabled()) {
+  if (input.optionalAsk !== false && coldStartLadderEnabled()) {
     const budget = await gateOptionalAsk(database, {
       familyId: input.familyId,
       now: input.now,
@@ -1392,6 +1398,8 @@ async function applyPlan(
     ports?: DutySendPorts;
     replyClient?: AgentClient | null;
     composeNight?: typeof composeDutyNight;
+    /** False when the parent asked. Sweeps leave this unset (optional). */
+    optionalAsk?: boolean;
   },
 ): Promise<DutyDelivery> {
   if (input.lines.some((row) => row.mode === 'night_before')) {
@@ -1438,6 +1446,7 @@ async function applyPlan(
             dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
             templateKey: input.templateKey,
             sendsActive: true,
+            optionalAsk: input.optionalAsk,
           },
           ports,
         );
@@ -1645,6 +1654,7 @@ export async function answerParentDutyAsk(
     templateKey: 'linq:group_duty_parent',
     ports: input.ports,
     replyClient: input.replyClient,
+    optionalAsk: false,
   });
   return { delivery };
 }

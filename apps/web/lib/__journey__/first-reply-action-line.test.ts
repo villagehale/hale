@@ -39,6 +39,11 @@ describe('the first reply says what to do about the find', () => {
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
+    vi.stubEnv('FINDER_SOURCE_BINDING_ENABLED', '');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', '');
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+    vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
   });
 
   afterEach(async () => {

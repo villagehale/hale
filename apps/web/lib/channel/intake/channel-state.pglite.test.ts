@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { smsConsentCopyForScope } from '~/lib/channels/sms-consent-copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -53,9 +53,12 @@ afterAll(async () => {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 

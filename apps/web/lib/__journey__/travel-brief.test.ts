@@ -139,6 +139,11 @@ beforeEach(async () => {
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
   vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', '');
+  vi.stubEnv('HOLDING_LINE_ENABLED', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  vi.stubEnv('TEAM_SCHEDULE_CHANGES_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   await seed();

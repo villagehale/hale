@@ -77,6 +77,7 @@ afterEach(() => {
 
 describe('VIL-472 Linq stickers', () => {
   it('is off unless the flag is exactly true', () => {
+    vi.stubEnv('LINQ_STICKERS_ENABLED', '');
     expect(linqStickersEnabled()).toBe(false);
     vi.stubEnv('LINQ_STICKERS_ENABLED', 'on');
     expect(linqStickersEnabled()).toBe(false);
@@ -170,6 +171,7 @@ describe('VIL-472 Linq stickers', () => {
   });
 
   it('is never consulted while the flag is off', async () => {
+    vi.stubEnv('LINQ_STICKERS_ENABLED', '');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fake = makeFakeDb();
     const d = decider({ sticker: '🙌', sendReply: false });

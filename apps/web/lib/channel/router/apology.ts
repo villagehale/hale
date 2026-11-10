@@ -113,7 +113,7 @@ function shapeRefusals(body: string): ApologyRefusal[] {
   return found;
 }
 
-function meaningRefusalsRegex(body: string): ApologyRefusal[] {
+export function meaningRefusalsRegex(body: string): ApologyRefusal[] {
   const found: ApologyRefusal[] = [];
   if (PROMISED_RETRY.test(body)) found.push('promised_a_retry');
   if (PROMISED_TIME.test(body)) found.push('promised_a_time');

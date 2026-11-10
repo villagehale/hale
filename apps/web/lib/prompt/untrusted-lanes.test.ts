@@ -46,6 +46,7 @@ describe('VIL-560 · exported user messages are identity while the flag is off',
   });
 
   it('event notes, registration page and class page keep today’s JSON', () => {
+    vi.stubEnv(UNTRUSTED_FIELD_MARKING_ENABLED_ENV, '');
     expect(eventNotesUserMessage('Swim', 'Use the back lot')).toBe(
       JSON.stringify({ title: 'Swim', description: 'Use the back lot' }),
     );
@@ -121,6 +122,7 @@ describe('emailAlertNoticeUserMessage', () => {
   } satisfies EmailAlertNoticeFacts;
 
   it('off leaves the facts JSON unchanged', () => {
+    vi.stubEnv(UNTRUSTED_FIELD_MARKING_ENABLED_ENV, '');
     expect(emailAlertNoticeUserMessage(facts)).toBe(JSON.stringify(facts));
   });
 

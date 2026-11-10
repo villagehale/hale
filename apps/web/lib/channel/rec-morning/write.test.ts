@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EFUN_GONE,
   REC_MORNING_MODEL_TOPIC_ENABLED_ENV,
@@ -21,6 +21,13 @@ const AT_TORONTO_FSA = resolveRecMorningWhere({
 });
 
 describe('VIL-508 · rec-morning text is the model, or nothing', () => {
+  beforeEach(() => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('hands the reviewed facts to the model and keeps the portal verbatim', async () => {
     const write = vi.fn(async () => 'model words');
     const text = await writeRecMorningReply(
@@ -103,6 +110,13 @@ describe('VIL-545 · the lane speaks only when the model reads that its facts an
   const PICKUP = "Hale, can you loop in Sam about Saturday's swim pickup? I can't make it.";
   const reading = (value: 'answers' | 'other' | null) => vi.fn(async () => value);
 
+  beforeEach(() => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('the pickup text passes the word test, so only the read can keep it out', () => {
     expect(recMorningReply(PICKUP, new Date(), AT_TORONTO_FSA)).not.toBeNull();
   });
@@ -173,6 +187,7 @@ describe('VIL-545 · flag on, the model picks the topic and the word test is not
   });
 
   it('flag off, dinner still never reaches a model', async () => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, '');
     const write = vi.fn(async () => 'x');
     const pick = picking('none');
     expect(

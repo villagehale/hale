@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqGroupMentionsEnabled } from './config';
 import {
   createGroupMentionReader,
@@ -8,7 +9,6 @@ import {
   resolveGroupMention,
 } from './group-mention-reader';
 
-vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson: vi.fn() }));
 vi.mock('~/lib/cron/skill', () => ({
   loadCronSkill: async () => ({
     meta: { name: 'group-mention-read', whenToUse: 'x', task: 'screen', tools: [] },
@@ -16,7 +16,6 @@ vi.mock('~/lib/cron/skill', () => ({
   }),
 }));
 
-const { forceToolJson } = await import('~/lib/pipeline/structured');
 const CLIENT = {} as AgentClient;
 const DANA = {
   id: 'm1',
@@ -64,6 +63,7 @@ function keysUnset() {
 describe('LINQ_GROUP_MENTIONS_ENABLED', () => {
   it('is on when the flag is exactly true, including Production', () => {
     keysUnset();
+    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', '');
     expect(linqGroupMentionsEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
     expect(linqGroupMentionsEnabled()).toBe(true);
@@ -210,6 +210,7 @@ describe('resolveGroupMention', () => {
 
   it('sends no mention while the flag is off', async () => {
     keysUnset();
+    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', '');
     const reader = { read: vi.fn(async () => 'm1') };
     expect(
       await resolveGroupMention({

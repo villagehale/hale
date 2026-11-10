@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseLinqWebhook } from './payload';
 
 /** The 2026-02-03 message.received shape from Linq's public event guide.
@@ -30,6 +30,10 @@ function received(overrides: Record<string, unknown> = {}) {
 }
 
 const FALLBACK = new Date('2026-09-23T12:00:00.000Z');
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('parseLinqWebhook', () => {
   it('reads the 2026-02-03 sender, chat, and text', () => {
@@ -225,6 +229,7 @@ describe('parseLinqWebhook', () => {
       },
     };
     // Dark (LINQ_MESSAGE_EDIT_ENABLED unset): an edit is the ignored event it was before VIL-479.
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', '');
     expect(parseLinqWebhook(edited, FALLBACK)).toEqual({
       kind: 'ignored',
       reason: 'not_message_received',

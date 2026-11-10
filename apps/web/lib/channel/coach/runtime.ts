@@ -717,7 +717,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               (undo) => {
                 undos.push(undo);
               },
-              familyCountryOf(familyContext.location.country),
+              familyCountryOf(familyContext.location?.country ?? null),
             );
             // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
             // are busy-only, on every group turn. VIL-615: once read_email returns text,

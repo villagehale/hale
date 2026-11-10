@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import { dutyNightFacts } from './asks';
 import type { CadenceLine, DutyOccasion } from './cadence';
 import {
@@ -9,8 +10,6 @@ import {
   dutyNightRefusals,
 } from './night-compose';
 
-const forceToolJson = vi.hoisted(() => vi.fn());
-vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson }));
 vi.mock('~/lib/cron/skill', () => ({
   loadCronSkill: vi.fn(async (name: string) => ({
     meta: { task: name === 'duty-night-check' ? 'review' : 'speak' },
@@ -35,7 +34,7 @@ const NIGHT: DutyNightFacts = {
   quiet: null,
 };
 
-beforeEach(() => forceToolJson.mockReset());
+beforeEach(() => vi.mocked(forceToolJson).mockReset());
 
 describe('duty night refusals', () => {
   it('refuses an empty draft and any link', () => {

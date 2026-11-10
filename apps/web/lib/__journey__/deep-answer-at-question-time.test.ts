@@ -2,7 +2,14 @@ import { join } from 'node:path';
 vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async () =>
-    `Cartwheels Gym Centre, Halton Hills, Ontario, Canada. ${VENUE_TEXT}`,
+    `Cartwheels Gym Centre, ${FIXTURE_FIND_TOWN}. ${VENUE_TEXT}`,
+}));
+vi.mock('~/lib/channel/activity/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/activity/page')>()),
+  createActivityPageFetch: () => async (url: string) => ({
+    url,
+    text: `Cartwheels Gym Centre, ${FIXTURE_FIND_TOWN}. ${VENUE_TEXT}`,
+  }),
 }));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool, pickLane } from '@hale/agent';
@@ -37,7 +44,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { FIXTURE_COUNTRY, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
+import { FIXTURE_COUNTRY, FIXTURE_FIND_TOWN, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
 import { isStage } from '~/lib/testing/structured-reply';
@@ -155,6 +162,10 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     database = db.database;
     vi.stubEnv('F14_ENABLED', 'true');
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
+    vi.stubEnv('FINDER_SOURCE_BINDING_ENABLED', '');
+    vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+    vi.stubEnv('HOLDING_LINE_ENABLED', '');
+    vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
 
     const [family] = await database
       .insert(schema.families)

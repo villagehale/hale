@@ -106,6 +106,13 @@ import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 // (dark) unless a test lights it, so each starts dark.
 beforeEach(() => {
   vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+  vi.stubEnv(HOLDING_LINE_ENABLED_ENV, '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('F14_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  vi.stubEnv('CLAIM_READER_MODE', '');
 });
 
 /**
@@ -2026,6 +2033,9 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as AgentClient,
+      // Production always wires a find-turn read. This suite is about the
+      // withheld-draft gate (#1167 / VIL-524), so the inbound is a find.
+      readFindTurn: async () => ({ findTurn: true }),
       judgeFindReply: async () => input.gate,
       runAgent: async () => ({
         answer: WITHHELD_DRAFT,
@@ -2946,8 +2956,11 @@ describe('the shipped chain, end to end', () => {
         approvalHandler(spine as never),
         healthReplyHandler(health as never),
         // The pre-open branch reads nothing while F14 is dark for this family, which
-        // every case in this file is (VIL-338).
-        sequenceReplyHandler(sequence as never, {} as never),
+        // every case in this file is (VIL-338). A no-op prepare keeps that true when
+        // the ambient launch flags light F14 (#952).
+        sequenceReplyHandler(sequence as never, {
+          loadPreparingSequence: async () => null,
+        } as never),
       ],
     };
   }
@@ -2974,8 +2987,12 @@ describe('the shipped chain, end to end', () => {
 
     const result = await routeChannelMessage(h.deps, job());
 
-    expect(result.handler).toBe('health');
-    expect(coach.calls).toBe(0);
+    // Hale sends no health checkpoint (Barton, 2026-10-12): the handler stays
+    // in the chain so wiring order does not shift, and claims nothing. "done"
+    // must not be filed as a registration re-ask; it reaches the coach.
+    expect(result.handler).not.toBe('registration');
+    expect(result.handler).not.toBe('health');
+    expect(coach.calls).toBe(1);
     expect(chain.recorded).toEqual([]);
   });
 
@@ -3036,9 +3053,13 @@ describe('the shipped chain, end to end', () => {
 
     const result = await routeChannelMessage(h.deps, job());
 
-    expect(result.handler).toBe('health');
+    // Same no-op health handler: with nothing drafted, approval declines and
+    // health does not claim. The checkmark reaches the coach, not registration.
+    expect(result.handler).not.toBe('registration');
+    expect(result.handler).not.toBe('approval');
+    expect(result.handler).not.toBe('health');
     expect(chain.approved).toEqual([]);
-    expect(coach.calls).toBe(0);
+    expect(coach.calls).toBe(1);
   });
 
   /**
@@ -6137,6 +6158,19 @@ describe('the reply row, written to a real database', () => {
       await db.close();
     });
 
+    beforeEach(() => {
+      // Nested afterEach unstubs the file-level flags. Restate the ones this
+      // describe needs so ambient launch flags cannot leak in.
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+      vi.stubEnv(HOLDING_LINE_ENABLED_ENV, '');
+      vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+      vi.stubEnv('F14_ENABLED', '');
+      vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+      vi.stubEnv('CLAIM_READER_MODE', '');
+    });
+
     afterEach(() => {
       vi.unstubAllEnvs();
       vi.restoreAllMocks();
@@ -6178,7 +6212,13 @@ describe('the reply row, written to a real database', () => {
               const payload = JSON.parse(request.messages[0]?.content ?? '{}');
               if (system.includes('Which lane does this text belong in')) {
                 await takesAWhile('screen');
-                return structured({ lane: 'off_domain_general', category: 'weather', reason: 'x' });
+                return structured({
+                  lane: 'off_domain_general',
+                  category: 'weather',
+                  reason: 'x',
+                  language: 'en',
+                  language_request: null,
+                });
               }
               if (system.includes('Take the family out, keep the question')) {
                 seen.sanitize.push(payload);
@@ -6275,12 +6315,24 @@ describe('the reply row, written to a real database', () => {
           body,
         })
         .returning({ id: schema.channelMessages.id });
+      const inboundId = inbound?.id as string;
+      // #986 unique provider_message_id: this describe shares one pglite and
+      // reuses FakeReplyTransport's fake-out-1 / job()'s SM1 unless each turn
+      // carries its own ids.
+      const inner = h.deps.transport;
+      h.deps.transport = {
+        send: async (input) => {
+          const sent = await inner.send(input);
+          return { ...sent, providerMessageId: `${sent.providerMessageId}-${inboundId}` };
+        },
+      };
       await routeChannelMessage(
         h.deps,
         job({
           family_id: parent.familyId,
           parent_user_id: parent.parentUserId,
-          channel_message_id: inbound?.id as string,
+          channel_message_id: inboundId,
+          provider_message_id: inboundId,
         }),
       );
       return { said: h.transport.bodies(), seen: turn.seen, logs: h.logs };

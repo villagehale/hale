@@ -89,6 +89,8 @@ describe("the founder's welcome note", () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
     vi.stubEnv('FOUNDER_ALERT_EMAIL', FOUNDER_EMAIL);
     vi.stubEnv('WELCOME_BCC', '');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', '');
 
     // The founder is a Hale user like any other: an account, a household, and a verified
     // SMS channel. His NUMBER is nowhere in the source — the lane resolves it from this

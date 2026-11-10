@@ -81,11 +81,14 @@ describe('age-fit-correction skill', () => {
 
 describe('friendVoiceSystem age-fit addendum', () => {
   it('keeps onboarding-friend bytes when the flag is off', async () => {
+    vi.stubEnv(AGE_FIT_CORRECTION_ENABLED_ENV, '');
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
     const base = (await loadOnboardingFriendSkill()).instructions;
     expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(base);
   });
 
   it('appends the addendum when the flag is on, including the retry prompt', async () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
     vi.stubEnv(AGE_FIT_CORRECTION_ENABLED_ENV, 'true');
     const addendum = (await loadCronSkill('age-fit-correction')).instructions;
     const full = (await loadOnboardingFriendSkill()).instructions;

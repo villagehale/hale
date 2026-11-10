@@ -24,6 +24,7 @@ describe('linqGroupCarpoolEnabled', () => {
   });
 
   it('stays dark unless the flag is exactly true', () => {
+    vi.stubEnv('LINQ_GROUP_CARPOOL_ENABLED', '');
     expect(linqGroupCarpoolEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_CARPOOL_ENABLED', 'on');
     expect(linqGroupCarpoolEnabled()).toBe(false);

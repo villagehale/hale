@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cityRecLine } from '~/lib/channel/rec-morning';
 import { adultLearnDoor } from './adult-learn';
 import {
@@ -149,8 +149,12 @@ describe('intake answer · reading the pair', () => {
 });
 
 describe('intake answer · the emergency tripwire', () => {
+  beforeEach(() => {
+    vi.stubEnv('REC_MORNING_MODEL_TOPIC_ENABLED', '');
+  });
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
