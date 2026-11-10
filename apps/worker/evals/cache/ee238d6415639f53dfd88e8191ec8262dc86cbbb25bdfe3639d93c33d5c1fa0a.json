@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cguz1C1ThE69ykw1KgApg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/gYKEAgTGAI4AUIIdGhpbmtpbmcSDPXrnVQywUaXAkyVdBoMxKQTFFy6ASpChvI2IjCSfouPrplktSEQZs/eAXo0LOGcPuAk76bxw/zDJXvladOrB0HUiz6pDWjzANjfGuEqmwZgRph6l0l+Nigx/UO38ZfYV4tTFULfTQ4v3R5O74974pynbot0M0HzKRvgldyqfSpwX4L00qzqLBp6F2ubcIL/6VcxIaaDjGJ5+Xs/vuqAAGpZRCACuaO30F44oxGp4R6ByUqwGTlw9ak7dCEdC95Y1Q9IoINHnBaO3eahsWC4i8qChbs2qs3kXtohZkiXGzPJbu5w6LVFGFaxRpNR3hjIByfiovbuc++9mkJMxVbbeEmTgNEPjVsWIsNPHShGB0cXvX39Sta5wxt5lPa0SVgN8ItJuLL14RB+UaHpJS/wobNGrgPPdjG9CDVVvxGTtJP52K0ahTHcQt4JYyNwO92o9w4QNAgX6e0WhI+OFngicbOJ0/A20vQZbuis5purulEEsX0arvp5bkLpMhKqrdHldDydMil6hDRh5Z2ZHJ57xUCEjFeGjfJi8arNvaHOblo3gIAWVdKvT1oCFfyebgTyTa3ojfsUcf9aBjoztIO9Ss0Un7oRKjiiRh9eQByyrc9bMYZ36cc3GDj5Yk9mb6fEJfYGG7AZlokX7IFHudiQolMX2Bso3GSJh11cZ+JRcZZ/xLTaDJDzW8z/ifUPwHi9G+LqxZkQmqm9oVjhcP06uYKq4SsrpJ0khUj1sNKoeAfoDD/IG8FkvN5BZY6aBxrFXaYlc6rWCB2kxKjh4y+vR/hFZmjBC+ZPKHRzbarxqXoJqnqGNu1/F+vDMgpyt8RMbfEoPhW7gJ+pNWMbCfEqqz7lMt80SwNuPmr+BRDWwGvo9Hq+ogAQYOFqC5HbY0qCARKAS8wrscw5fLWyPrexw9dTOvOM8LeP2Z654nPCvy/xYtWHI+bJ/PcASFlxg5Zx/uUQW/kIW0tORqPuKfd7g8hZZilqUiD6FTb0j2aFaSdOD1w52WdEY1yecUiMZ81xgsZQ7RS6lbQT7Y40PpSLw3+rTWVu6Yt1/UE9EktrkCOsyJ9SuJhtBoyP2F6l2xOwVi7DVd6VJ38i6AeFfKvPOlkfTTlz6+/uWH1BabeJ0mvmcMYgDY1nYyaf5uzDljFBcj52kfaij+nKdWoYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Jordan, Dana can't make pickup for Maya's swim on Saturday. It's at 11:00am at Y on Main. Can you take it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 756,
+      "cache_read_input_tokens": 19527,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 756,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 153,
+      "output_tokens_details": {
+        "thinking_tokens": 103
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

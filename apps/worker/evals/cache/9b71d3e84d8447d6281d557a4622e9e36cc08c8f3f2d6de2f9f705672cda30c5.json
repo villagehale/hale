@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "I have no tool access in this exchange, so I could not run the required verification tools myself. Only the time-window and idempotency results supplied with the draft are available, and both passed. check_calendar_conflict was never run, so the claim that 10:15 on 2026-06-23 is clear is unverified. I would not expect a clash to block this, because it is information for the parent rather than a failure. But the result needs to be seen. check_vaccine_schedule was never run, so I cannot confirm the 18-month visit matches Mira's schedule. check_pii_leak and check_user_override were never run, and the payload names a child, a physician and a pediatric office. The title also names a medical provider, and this involves medical context, so I will not approve without explicit parent confirmation. The action is internal_only and reversible, and nothing returned red, so rejection is not warranted.",
+    "remediation": "Run check_calendar_conflict, check_vaccine_schedule, check_pii_leak and check_user_override on this draft. If all return ok (a calendar overlap is not a failure, but surface it to the parent), present the event to the parent for confirmation before committing."
+  },
+  "latencyMs": 9082
+}

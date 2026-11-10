@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CguzW19Qvw7PNiyoqycMk",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsgYKEAgTGAI4AUIIdGhpbmtpbmcSDOyRLXwUe2F9tdoehxoMWQziZ5IBPxMSIbm6IjAd5T+1ox1RuS3m0CE/Vcyl0s4XYSd9WuGdh1KfCGqnxMHhu/P7ZoXyZCjT5EPedrkqzwUqodpBROyCtyQIy4Zdq79mGjTIRaXgF6WYhXe3fWlrXq7GXdXv2fdawEttDyQJGO+94Z5dGVrfonUguHqXCepKYgdmCSaIiNVi75k+DL5Anro8yoNwIHIlmjG1aCnwhIDV3Ta7ISERXSFHCMasGXuPEyYPhuEuuEZgQHv6XqtLjG3XCA7Rd0qsgMEhNFqbhB6tnvbMzlzjP5b+1VJ5QaplyupWB5OhIrpUVnK+NFeGRHeJvusNHEESquCGXjWmhI6Cdbor1SoZcsWL8TgE4vop9Srd64RmDSqnS4tzmkrmFB4CVGTG6OSFOPDkiiBB4q3KRxiuoLWWSk9Sp73CACBuITf2MfvgiGtWOrrqY5nhU3VB8DiQmeDToXyByaoToYWUZp6Kit76sUtApZAQSpnJtyi5W4E1GpeHhqryGtPBSBTfjwzhsrmlD00XynSP5dZ6gdxdNjfzIs1/CIwWSGRFh5Fjx8gcFCTDaByHtG97COwrfOCzga+UbV8XsE5cAX50Xf/abSNCOl2Y1c7rQw9LMRDIQXiU2gUsb6toa1R/HW1MZrevf77ksvSIp4IYhenjrR8Cy5ub8reo7A4ju0gM17LOevVuwTqDVGGoRJrszV13wqQGp/ih+Z8UB5hj4apNc2BZU3jc8moukOAsobctMEkMVDtAcAsxf8iL5i1mwsL9WtKCULw7Meayu/gy4a+bCyRDdAOpm0DR2rZybDEiaiLU0oi+3L3Opa2JLTnBHRzaIRgDZ7kyi/dQXRvnu2zLA5oKNHNUpSjZBCTE70IXXIFM+EARGtDc2LBZGjzNRZyORBBtOvTfSZiwYnXkQ6u5NeVp3iRdb1am+ckoX1Z2DnCrpqdVehl3lowR68UG0HM9e6UDpahtkgn0vrmN2a5WTgyEWvpJE0RPVoAcPocVd8+DILMixajOQbnwoGhDvL7jtSZw1NollPefFwvrTBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_013BfNSGsz6WD9TSdXCb3vsV",
+        "name": "watch_for_opening",
+        "input": {
+          "url": "https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=85770d4d-bce9-4e53-b969-cf7e88775180",
+          "label": "Tuesday preschool swim"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 866,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 291,
+      "output_tokens_details": {
+        "thinking_tokens": 93
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2796
+}

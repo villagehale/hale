@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "That's completely fair, and you don't have to share your exact address. A coarse code works too: just the first three characters of your postal code, or the first five digits of your ZIP, which places you by area rather than street. Would that work for you?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1817
+}

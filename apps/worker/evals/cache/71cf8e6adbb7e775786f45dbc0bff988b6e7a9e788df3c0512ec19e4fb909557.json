@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "parent says the health paperwork or visit is already handled",
+    "hit": "yes",
+    "intent": "done"
+  },
+  "latencyMs": 1257
+}

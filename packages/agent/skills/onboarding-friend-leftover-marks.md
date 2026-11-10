@@ -9,9 +9,9 @@ tools: []
 
 These fields are on this reply, in any language. Code reads them instead of matching the reply's words or a question mark.
 
-- `asksCount` - how many questions the reply asks the parent. Zero when none. A question is a request for an answer, with or without a mark, in any script.
+- `asksCount` - how many questions the reply asks the parent. Zero when none. A question is a request for an answer, with or without a mark, in any script. A town and a code in one reply is two. After they turned the coarse code down, this reply asks zero place questions.
 - `asksName` - true when the reply asks what to call them.
 - `speaksAsParent` - true when the reply calls itself by the parent's name, or talks about the parent by name instead of to them.
 - `joinInProse` - true when the reply writes the join number or the phrase that code places under it.
-- `parentPlainYes` - true when their message is a yes to the open item (`answering`), in any language, with or without a mark. A question is not a yes.
+- `parentPlainYes` - true only when their message is agreeing to the open item (`answering`). A question is never a yes: set `parentQuestion` and leave `connectGmail` / `connectCalendar` unset. Checking what Hale sees, reads, or keeps from their mail is a question, not a yes — including whether Hale will read all their emails, in any language.
 - `parentLoneName` - their own name when this message is only that name, answering the name ask; otherwise null. A take-back is not a name.

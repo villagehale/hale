@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't push on that. What should I call you, or would you rather I just not use a name? Either works.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameDeclined": true
+  },
+  "latencyMs": 1827
+}

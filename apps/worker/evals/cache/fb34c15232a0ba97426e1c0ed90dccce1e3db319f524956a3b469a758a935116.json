@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message does what course_link_refused with page_unreadable asks. It is in French and says plainly that Hale could not read the course page, which is the reason. It carries no link and saves nothing (\"rien n'a changé de mon côté\"). It asks exactly once for the same link again. \"Je réessaierai dès que vous me l'aurez envoyé\" follows directly from asking for a resend, so it is not an invented promise. There are no invented dates, names or children, and the tone is natural.",
+    "score": 5
+  }
+}

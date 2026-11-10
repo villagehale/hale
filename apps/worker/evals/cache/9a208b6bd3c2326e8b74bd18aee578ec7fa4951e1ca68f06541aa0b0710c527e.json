@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011Cguyt44nEeTWK39HBzY1K",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzgYKEAgTGAI4AUIIdGhpbmtpbmcSDNa4p76UXIMkoRRovxoMLNsDZdC5Ym4dtLFTIjAnsDctrIyFrUJ2lvFQgTiM6c+TyHuChwRbJ2ozpZiHrcM6uqOUVB7zK2ttvhGwzTcq6wUZsqP6uUfTy9SDiwLD6VBxJNw7HqXpI+K+W7TroxNqUTa9rsPFQQbSB/EFJ0/XK2Kx2TnNaK8bgTOsjT92S+Nsxm7X7ofa1aw+E97GDQmb7gldxiIpQcOzofnw0ltr7Ezg9jRbfQ9QKiW2r/IPQzAXIU8Uql1OD9MKL7d8knf5Piy6SlVar+fZWxueOfbpsKq/Da8OoNG/ShaxtbuVC7MwKUdwNxetEnwTwbDQzsYgQ145/Cd7f/5Ks3h8dq80F6zPmcx4XDddNMzczqCq662dpqiJwkAWwl76w/G3vPiPIk/idQFl0MpIOMkUYs8Hj+lkzQfZznT9at6XcBRJic7kk+G70K49k4RmFpCFbvtkE2DpfNpEoz7Ex/4RBt7LwNMVRq5MNzDfMmLjqnqRjA4tv5Ze4qplG59tr122/XASfSZnQ3xDCiGfgPqG8IuSwtLpRhAqDJMKYamUVZ4MfhbNQ6RGZhpi0W7iI2eByrd/Z3NTP42BQM3tWRmP8fuEo5+03tgQz6EkXwmtyELi2r30r74YeaQ2Kny1vRf1X8+35zGgqbZzOepYSxDjlEve1zk0bNUNQ0IT+d5z6YXbO70P1NXeC1nusNQ01P1h1PcbOTjTh+RzofOIDqLpzs8ObgZ4givKX/V9nrtccnLZz242CAoO7ZSInyyQQxsL0fSoXwiLWaUSQNA7hg2qDdVREPNrOKRLg8rWEYHTgtPRuC+drjNd3I8oHLMMzNARhTYPCFGfujafn2s0WkwIPAUcZSHNjl/1Ayv/oHnvKta/B343HSV+252XyL8gCsAm1tVifTldgrdw6uY53lwvXCqvLUf8IL+9g0XVPYsfXl7QUNG1Nu64ACwWTyLkg1eSKllDO+RkkYj2PCZesuC113ncLKER4cLlI9EGt+eLz8fMYrOn2mVDthp2gD7XxXgWXK69Bm5hRbF3QjGMy9TandIxPlYGgJjmA4qurqRXJu34YN2t0cRVVMwCt/y/zG0YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01V5uk29q3RDJmAAaQV5beoF",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RpyWvZPzM2qrjZGzfRKsJe",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want me to send the full plan for moving Milo to his own bed?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 741,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 311,
+      "output_tokens_details": {
+        "thinking_tokens": 113
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2541
+}

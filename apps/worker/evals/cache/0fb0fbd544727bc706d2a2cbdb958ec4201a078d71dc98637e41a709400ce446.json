@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CguzrVBSx6ZFheBEhCKFQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxQYKEAgTGAI4AUIIdGhpbmtpbmcSDDsBcpDPi8LNPtk8TxoMBB3TeckRVxEd07kjIjClg9X9JswmD+SDxZvNgeQ074AkDiek8N3WUsviicjh097NU+EzPK6gAj7/ukKVehgq4gX0FUGm8ofEve6yFbssEDOxmtL4mKkM2Bfm7ixn3gJ/R0JckWcwxbzEObMG2YP0ttIQmVWIR54CoyEAJflMxF05Lj1Oh/cj7bCegd3mSo86GqbfhlzYxpXhfxubBBrl8cJB5W+kf6KgtDaJUvkxgtfHKVcwu48ROXKKOlxqEZD0t1r68Y4Uz4zf0YabhtHrmaQKPLsxrnSA1rL2970Go+o/bcyrym36vC0SQTdpPYuHPZ8Eq+TJs4zg/q7ueqtulow6Sxxu1AnhtORoVuyhb54GI6FuYzVC6RFAKZ6MTEsgWvvs90Oqk0XbjL/oE9PookV9qO3LcKJ5PNnszKlWlxI7uHaZIA1YRxQhrJN02CKe6bFzZY8A+NfNvraIu0IOyAUCzQOvQaE6/3Jllhg+GAaJqHYdnfyUgviuHdUj2hH7SxTRG3FOBBt0exZKVV1hBs0RO7okeXa/QRuSZe0MuXQ1m4U8p4CzA1I3BG5cqnmFK86EVHALXlFN8ytVFGOMpfOSg0A26SJkQ6gYKSnpGtvQl6N/fOGQ4TKUazwgIT0tQFOmkL9jNEwG0T4oyXesTj2J5/6DJFGVRiL+s0iEGq+7FUMGuPNAx0oBB+QjviGDo72KApU6KLr0oWkEh8eEh4EAnbvMrRb33D1j93n1caekFvqfMSLp7OhOOs0qroBoZlQZd1H5BUCVnY/MLPMxSf4ukvfwi907CAuCym7IrLNQ44hBUDjfPn/7GOsboktAdvsI7PtOt4tM1REhvboXx/OTBQQpUn2P9Vbfejb96VxpXBB7cU6M6NLLn/LY2/FgJK+AOzvCBV6vfJN4AmzqhiH1aV1K7vjXg5djt6X6/zQt6Y6jXroFV1jgv0T71d7sfRTTCpYsigCPoxdXo498eIljP+rHS9xqBG+jkCwqeAyAG1bmhbSY25jwe6b3k8wnuhoKEXJ3tqpAQMO195dZ0KUOJ+DGlfkk8tX98U2VVkdbBZUYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "That one's on me, I sent that email. I can send the swim school a short correction with the right day. Which lesson was it about, Monday 4:30 at West pool or Thursday 5:15 at East pool?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1396,
+      "cache_read_input_tokens": 24336,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1396,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 133,
+      "output_tokens_details": {
+        "thinking_tokens": 67
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1749
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "No problem, let's leave the name for now. Can I ask about Gmail next, so I can keep an eye out for the kids' things in your inbox?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1769
+}

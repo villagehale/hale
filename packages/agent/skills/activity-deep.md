@@ -171,5 +171,7 @@ child in this band is not a slot for this family, however complete its row: a
 drop-off class for 3 to 5 year olds is padding in a toddler's answer, so leave it out.
 
 **An empty `slots` list is correct when nothing real is running**, and only then.
-It is never the right answer to a page you could not open — that is `pages_read`
+A page that states a minimum age above this stage (youngest program starts at 8,
+no toddler classes) is empty slots, and that stated floor is the reason. It is
+never the right answer to a page you could not open — that is `pages_read`
 being empty, with the slots you could see from snippets still listed.

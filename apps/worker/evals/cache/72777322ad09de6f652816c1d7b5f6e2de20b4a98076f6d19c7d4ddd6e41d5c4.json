@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "not_find",
+    "reason": "calendar move of their own swim event, not a search"
+  },
+  "latencyMs": 1280
+}

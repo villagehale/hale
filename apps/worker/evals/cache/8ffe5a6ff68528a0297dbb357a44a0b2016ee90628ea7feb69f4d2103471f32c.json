@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011Cguz9dJhmx8Gej5zkWrJG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzwcKEAgTGAI4AUIIdGhpbmtpbmcSDM+xD3xBwPsGx1+J2hoMgw5IEC7cuoxiI6n9IjD9IFxMKdrggBafuFYJWOY59M1Zl27srYZFTviHuSo7IvIVYgAXroef88ROcHRhPYMq7AbBjwSdu28SUpYpI6ncmJuvwCSoGm8bAWJOyz2mues3+5VQqLoRzlfK/BbXUspqel/S8qeK+tBG/7/8FPkkx+BBPPfx3K4x5FE4IM+NjKiJ3fHsCszwmnviwrv6BxHJ8H62svIHftdK6vSqI98/12Rix5FW3l2potbPRM2jP6Jxq03KVS52SNc1ih6s3sCu0q9jY16tJyk0P23otdBngKxzOsyIeU7mqigFDE4jrJlkABOctPjOyG67ORLjKv4kIf3rrkAjIBWIB1XaxdYU0jBD3BpxLJb2odH8azSuktebbbE3tn3VxAXPW67cciKPtnS8qdnlP+tiz9d6Zdu34CAA4Jeq+k5r3cxKAwtwhwsDyLzGR3e74DP9iFw5hpe9F/ug9GDeZuky5TrWGlGWZUZFwJ46kISedJAVGuw1TBWK3vNKoIpT/caLKobVhvU7Junam7xP6kTnrHzuNEhk1W9Gw6/sJezyq9FgD/c5OIhvtdwpsxmsJc/yvKuW5fCOkXRKOCdk8wE/42julFQXUQ8kApeSikEBNewcdRJLO4R6ktT1BRLZ3nIEhC0lV1K5Ul8cpSQJbFUFWk9z1El/Vqz7UWSPTfu/bndUoFSO1/ZB+X2v8r0KZz9w9CEaVYjv3oQmH+0FetCG7/tGeVmu2d/1WSf0eR3cShxwlDYbDBM9mGtSk8ceC9MDQV1zYSDpFCsCnXbAKbXAhDHxNM+0kO4MOXiPvRGJo+s8rdjLF9KbCXo15A79SJuR7xc6n4nwoRwZ06dR54I17dQ//HXcrpynRkOwBuESUKPZu2TxHvbXH5g/a7Ba6y2H7oNWup+TKMSr1Q/N4a9lFnILR1ak2mnFVtzyi/+6JMK/j8Gyfi/42VVniCq00ehmTz1uIbckFZOIkfmK3v9/iXwL/ymRxg955ZrP0w4crtZDcZ/duskjWZrRv6o0f8Qg8QJBPVhR5ejGOFx92tMfrmlOsLVP2Tr7H+2yPqoGAQwPIVcH9p/PmYxyzWhVKXpW06pfRS8gGbxG8WfFqP5thsafchxZkB3vCrVwkMiUscrluZI8SgOe/eIAEGDnNwv0RnmGeZN2kk+zo83Vy35RjTlksz6qNCXkuGvh8aoo3u49SvLSQmCKZOygiP6PWgThJerWVCeH2AVJ0nEBwKmjqrTHF38YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Dr7oK2AfQSPgQZuScucmzN",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Tiny Gym at Cartwheels",
+          "date": "2026-09-13",
+          "weekday": "Sunday",
+          "time": "09:30"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1676,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 330,
+      "output_tokens_details": {
+        "thinking_tokens": 189
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2903
+}

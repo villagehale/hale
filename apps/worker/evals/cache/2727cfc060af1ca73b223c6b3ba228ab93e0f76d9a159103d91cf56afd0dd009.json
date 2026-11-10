@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with a question (\"Approuvez-vous ces messages ?\"), and an approval_card must ask nothing. That alone puts it at 2 or lower. It also states that there is no residents-first priority and the date is the same for everyone. residentsFirstDays is null, which may only mean this family's postal code gives no residents-first date, so this is a small inference beyond the facts. Everything else is correct: the date, the time, the link, Léa, the texts and their timing (week ahead, evening before, 15 minutes before), the statement that Hale never registers, the note that no age band is published, no course-link tip, and the message is in French.",
+    "score": 2
+  }
+}

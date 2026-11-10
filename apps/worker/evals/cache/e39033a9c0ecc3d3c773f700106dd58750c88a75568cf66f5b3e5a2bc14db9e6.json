@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv3rCTDiEXViRT1Xugdb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8woKEAgTGAI4AUIIdGhpbmtpbmcSDAGBGre68AbJS1oBTBoMmJ3pzRO4dsWkRtHaIjC5RJWhoQ9orau1mWGnVpcJsQZXTbJOnrDQiZdFB/Y2W7mJSRleBSDizp29gOkMbfkqkArCwcFvD9ZCigxMCGRzcGpU3Gzj2nk/bPBlRSL/jATNpEnbJ0myRFffZm/zK26NZ4/ID6WNAH8HRvzaewhBXw0w7fiY0e3TjGUFSrKZE/IIyv2W8lacN0ti9Xsbgwog1RFB9V+qfSQf3flCOwTngUWcvWASb2L5e4LEqjwleG1lUZvhp6Msoaki9mEacs/c/gbJyWKOvQMEY8MaMafnjzCU5cn/aWiruH+IVqDxNxenBfejUE/o2LK50dJSrkiF9+Xthmaz4EdcA1PgjuhJR4+IoIi/htpYy2lBgDhKgapWnjLG4An5aplAbNS/Z8kQXcTGUj0L8+9Uz9BBNX9UE+yv8YaxHt9M+8uU3OrVyk4nfOAB4G78SCb0ylmRTjfwEOoc8hflYir5/ISAGin14zpBLJOgRPvfmrnmuO8YcoDoDk324kD5DdS1DJdeDXQ16TdOJtwhYwIElEhLET/npl0KDwPK6fxGcBDW1ARe5j0WGtzf0AmfyliRpdrLT4VC/+6gLWd0hUIuyY4oP1eQKTcdkpwmthV/lFKZ7gtKlUcgVyHqpvmXcvmkKm+6klr38qCutSD46iU6aMuq3ZqdEeL3s6hngppnG0BwNY1h1Wf3AZaHT/EBXmPdjL8rtEogMg5YJnMAiMmd3tVgnBYw2063Dvm9hr921QfX7cC3xibpxdN029WXGXxK0jVgoC1uE27qmBbBgTfBMdWDqnX4TBpGxt9lloFax0t4jupdcWoaUy3lxquZ8A2TuT3rQoDjgLY/riWbSwdSDI2Y3eVfaqZixHbrnGwXEh8hjG6ix+xkBj2FNzu7qbYioXhkmU8vmB+h6PHGWAZv24jaxKWhojnusFHAy5Gthh4W6ELYQCHTfR7jW3dbet5QxcoiSb5ne3xYYucGDUGQtEV64qxz8mbqlKSkXtTE98U3CZhEUu2rynrit5UxsrwUNb4yGNTA85uGNEAggY/79GNH3puhGQMc72IhBefY5go3ujD055pYVIWm9p//hd6JEVnBpBDTJQQW2zsnedAjS/WI93Dgql7s1EWAuRcWp0/UpsUN48DaxvjnmaZK8aHobZTnqgaQIihlOTu6engsXBrqdBVebtyV1upd+dVON2RTeyJ4lhp1rE0x7gkaSGdvJGcYgdimBbNmzC9u0hWLmiqzM+2tuQ+SE6ztxiuZrmhLlwEo5T+lkEX2gj6R1m+Z9YWi/NhDtQVdSQJ5vzdFg8R5n22Hv41/arOf2EDQkUyx6wZUIashc9Ax9JRLPjwj5xk42URgcLA8sNQtSMPdGI05rZUacRlcV7ba/932B+wuSSYiR4Aii/vG1Fx6TwgypLdA1hJgoIc8oYp4qyZz25sXWrEnrykEnfq2bN9ZnRkuK0EUVvvShxcx/sIIDPNIe50iqKzcsYjNC8D9ELJNBf24wJCIJN4ds2M5Opz+X7YmEnHqixfdGP5nx/tdE7+6iabAfP9gdt1m7VfD1eFdfEIAzbZjQG7q27f3jTdm8AibyDBZuU+Hsi8MpOXf/VR556yDDLKo/kVts0q76e9VKcu/d/Te3pk8NtHlgvnHHHVB2hj7hBQNyqjGrELmH4LhCLwtwF9KkewkbfI7HZEeK8nbNkhaJr0fRdDU71m0337lrBTLMRsvVqLV4GGrO3FhXSHemti+Wimc8alor4+neqy/PQtiXLjjKv7fjB1MSzH9f9z8Bj9CATwRDkNb0GQWMc80zr8UKnkYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Thursday 2:00 to 3:00pm has a busy block on it, so I can't call that stretch free. Jordan can text me directly about the rest of the afternoon."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 580,
+      "cache_read_input_tokens": 19664,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 580,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 355,
+      "output_tokens_details": {
+        "thinking_tokens": 298
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

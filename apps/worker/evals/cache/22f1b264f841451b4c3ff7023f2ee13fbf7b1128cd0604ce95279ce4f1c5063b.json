@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "parent asserts the health visit is already arranged",
+    "hit": "yes"
+  },
+  "latencyMs": 3968
+}

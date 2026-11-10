@@ -1,0 +1,18 @@
+{
+  "value": {
+    "kind": "booking_confirmation",
+    "event": {
+      "title": "Saturday Tumble Tots",
+      "child_ref": "child-leo",
+      "original_time": null,
+      "new_time": "2026-08-08T10:00:00-04:00",
+      "end_time": null,
+      "location": "Northgate Community Centre, Gym B",
+      "address": "450 Example Road, Brookfield"
+    },
+    "source_confidence": 0.96,
+    "quote_evidence": "Leo is enrolled in Saturday Tumble Tots. The first class is Saturday, August 8 at 10:00 AM, and classes run eight weeks.",
+    "teen_content": false
+  },
+  "latencyMs": 1545
+}

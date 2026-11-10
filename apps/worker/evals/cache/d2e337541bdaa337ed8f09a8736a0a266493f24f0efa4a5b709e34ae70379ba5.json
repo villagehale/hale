@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message restates the page correctly: course, Wednesday 10:30 AM, both prices, code, ages 3 to 5 and fit, residents Sep 8, and the public date Tuesday, September 15 at 10:30 a.m. Because haleHad is set, it rightly says Hale had Monday the 14th before and is going by the page. With regForm true, it warns to leave time for the form. It carries no link, asks nothing and names only Maya. 'Nothing is booked yet' is accurate, not a false claim. The tone is natural. The only small liberty is calling Maya 'she', since the facts give no pronoun.",
+    "score": 5
+  }
+}

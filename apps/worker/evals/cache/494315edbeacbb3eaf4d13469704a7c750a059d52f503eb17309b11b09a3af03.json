@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "draft says work mail is never seen, which is a privacy claim",
+    "hit": "no",
+    "violations": [
+      "privacy"
+    ]
+  },
+  "latencyMs": 2354
+}

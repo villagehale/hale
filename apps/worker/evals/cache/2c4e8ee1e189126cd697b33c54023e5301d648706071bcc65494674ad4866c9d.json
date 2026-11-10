@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Pas de souci, on n'est pas obligés. Tu peux me donner juste les trois premiers caractères de ton code postal, ça suffit pour te situer par quartier.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "language": "fr"
+  },
+  "latencyMs": 1721
+}

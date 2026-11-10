@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits the course_link_refused kind for the not_https reason. It says plainly why Hale did not take the link: it isn't a secure one. It carries no link and asks once for the course page from Springfield's portal. Saying nothing was saved restates a handed fact, not an invented claim. It is in English, names no child, invents nothing and reads like a friend texting.",
+    "score": 5
+  }
+}

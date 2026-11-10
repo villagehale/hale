@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "email from a daycare naming the 3-year-old, new event with clear title, date, time and place; add offer available",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Maple Daycare t'a écrit mardi : il y a la journée photo pour Robin le vendredi 2 octobre à 9h, à la garderie. Tu veux que je l'ajoute à votre semaine ?",
+    "asks_to_add": true
+  },
+  "stopReason": "tool_use"
+}

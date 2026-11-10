@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cguz8Fz2bAiZmu9bBHmD3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSywYKEAgTGAI4AUIIdGhpbmtpbmcSDPLeDZS+ue2FUObl0BoM3FSg8xjadtJVNXPqIjA7iv7ov7aZlnHj+m6o1a+W+YtdZAAAsliQsXl0uP5Ej4kIzFElzaRb25WQC/ha0h4q6AVFhebT5j38UM4v7wAqu+bQx7J8fC8CktuutF7Mbxxrqef/3WdmwYamesd3I6EFgJKD6Cl9I2tCPoQseNYS9t3v6nWLSqmHt/BJPrXuK/e5vE1RJOJXck4XpfBskBGJqbBV35GBcb4dfJIK8iZHghAORokGU8upmt/1PdLPMay1Se3koWbyW/VN54rpOPr4P27Zv0jKdBY0wuF/+HsC3Qy+JNQisdVMRomoxea+u0oXYuMGe60L4JzYtmBypNxUK78L0rZdWhlbzjQlv+25UZ9e79T7dvqnnWwwdSv5LfUfSBJooJeDZSJISSZ2txhM1mELZfGo0p2x8os2DRnpHWJwxgMXAf1xBxWZ4eovm2yWsKR/uYn2JxqP/qaXr47Ik16zRqa1aYrnGUxzo5FCkCj+pA4PrhwIyExn0wvR2o+ps7KckBsUrvlvq19ppsDHJmYMojiiRQsTob69rFphG+S65yn1AuUeWPPDv64DQZ2SlhH2JZI3ZD83Jb1t9ostq7Z/BkZqsfhxdFXL8CfJBT32Npj3aYn0GOYfPsP27S3vlcReOdeeAPz6QByIKeNt4VL5LJgiHf3l9H6aQiwhIlYq00Mzbs3iwU723gqYU/pRpJL88HjT1wlDQgQGSG492oU+SFX8LO678IfaIyfUw1mmLA2BMGkPJt/k9SfrPI1VbIc54JP03j6ZxtUVW2E5ojc2Tjj36X7Og5B8InOW0fOVHOY+fyczv6Pvlu++/wUtGjbGBo+rG2ae0zt+R0t4GwoXxiOJXLSNtZniiwKF4dbSbjzsCDa44KuCtEG0aq69NH0QOZ8hq5YDYlJfNfechClvREk3pdtP8bLPbm1jHKqFvH+J7u4U9XVXDAAys2vRysG4hZ6kn13Co4yfZ0kb5g7mbQlr0XamxbAR9eEys9is85qkMTgZNU/5WBei99WAbZmmafQ/kTE5RKSHAaSzM/5wB7zA9UUIxj+/xVd3CFUsnnR487y/cvoYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Tiny Gym at Cartwheels was $124 for the term, Sundays at 9:30."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1901,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 129,
+      "output_tokens_details": {
+        "thinking_tokens": 95
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2482
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "check_action_time_window returned ok:false: the event start of 03:00 falls inside the family's configured quiet-hours window. Outside the family's time window is a clear policy violation, so this is a reject rather than a flag. check_action_idempotency passed (no duplicate). The remaining checks (check_calendar_conflict, check_pii_leak, check_user_override) are not in the supplied results; they would not change this verdict, since any red result means reject.",
+    "remediation": "Reschedule the reminder to a time outside quiet hours (e.g. a morning slot such as 08:00 on 2026-06-23) and resubmit for review. Confirm that 03:00 was not an intentional parent override via check_user_override."
+  },
+  "latencyMs": 2295
+}

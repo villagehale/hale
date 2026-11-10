@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no warmly and asks once for a coarse code, which watchFor allows: a five-digit ZIP, or the first three characters of a Canadian postal code. 'Enough for me to find things nearby' depends on getting the code, so it is not an unconditional promise. It does not ask for a street or town and is not pushy. Minor flaws: it recasts the refusal as being about an 'exact address' when Hale had only asked for a ZIP. The closing 'What's that?' also assumes they will answer rather than leaving room to decline. It is a bit wordy too.",
+    "score": 4
+  }
+}

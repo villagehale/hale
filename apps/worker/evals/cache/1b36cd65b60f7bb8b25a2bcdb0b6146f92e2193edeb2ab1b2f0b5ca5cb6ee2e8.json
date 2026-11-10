@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CguySV7T2JhnxRVJkFWm9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3wYKEAgTGAI4AUIIdGhpbmtpbmcSDN4eIeqMB4ac4rFiMxoM77c6T4YQoS1VLXlCIjCyaY7B97EOw3esBF3uqtg7V+oVZS9uWFVAck6de/0E3SIou5G0QpyPszQPu8gGJ00q/AXmYejLGUHEZN6RV+PWekaovnHUPD0peri1qj8CQfpKOyl9+XEB917tw9ozre7PfsfDJ8uhg1qo8JB+zCidYh4mV8uF2AtmIDO3O9WU/c0JIWLmVNFhRxHL3mzp7JJAEGr9AhZTaZzw12a49lV0eXYmG5BEzg8NO9okG8EdQgHIQAjZZtWjRu19wvoF7kxgONGqm+aMU8l94pDsehS9dV6RyP+dJSX7j5MHoh32QgYeXQ5oFWzBNtqctaVrzI/xzhfNxV4XAopYtx6bQmgzaz7A0FGXOGnD4M6h++gQLhVcXsejmDYQNolPj0fsdL8V088yeXZ1aSRyYmc2TLBJU+kyE89UMMne3JFpnFOFdm/nMtdnby2/+6l2vlqIsxBQ+ASZjo6933Bw/ddv+2wAyCDQnEv4en/6f/rZT0kwXP7Nsf31GPKfbMH+QUh9VWOovnTviGFOerVU93zA0DExX6vFbwx8XQeStPWNeyClnOKw/saT4QpAp5nVK0LL9B7MkNl9V9szHLuvJI0aS/fpHt6y0fcbK7OfwM0oe1trMGfa6bveUvDe7z50eG0l/f3ADA55qO+cUJqdytVbdb+JHINW0SjHk/tXldHksep9aS9fUNMtwk0sBH0Dn3+iQ0sW1oi/hUZ/yKkwEyDrV8vMEK77RkZ1O/CZVX5ocAhyiPAmzhQ9xDy5Tw2/WT5v777hXyS7PBlFaX30wQ1cTH2Rx/LI/pSWtPTUBEdAVYPsahkk/+ArQv3W4Zou/X6YU3RJWu3jm4hylYf16j7eSQtJiBLw5Md/ZROo1nHPDythqgy407BGPPgs4ScbTsUzomrCKgfkfotM46hNzzdUqLyN6lXiKG9ARyLey91ek2HkgoUl7nsSFHhIVzXUEtiVlfCLRr/ZdyVeWqMnr/ZWJ5R7IKLBHzrptjx2gD4pFVP7F+H2HPCcEf0EYyiMFnkp/hKd0Y/OwannMlZNe7fErVNDSXmvXGBouBPyP6rilcEArJHG4XyNfRwRx38FBKRUvxgB"
+      },
+      {
+        "type": "text",
+        "text": "Got it, Thursday swim stays as it is."
+      }
+    ],
+    "usage": {
+      "input_tokens": 737,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 125,
+      "output_tokens_details": {
+        "thinking_tokens": 107
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1486
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a single warm question that ends on the question, and it doesn't re-teach or name the method, add a tip, or assume success. The word \"honestly\" signals that a bad outcome is fine to report, which is what the check_in needs. It has no greeting, sign-off, markdown, or emoji, and it is in first person. Small weaknesses: \"since the weekend\" is a slightly loose anchor, and \"honestly\" at the end could read faintly like a prompt for confession. It is also a touch terse and could feel a little template-like. Overall it is close to ideal.",
+    "score": 4
+  }
+}

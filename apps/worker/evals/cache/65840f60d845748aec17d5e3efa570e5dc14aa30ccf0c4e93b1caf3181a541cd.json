@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. The date, time and residents clock are correct, it says the null course details could not be read, notes the replacement, warns about the prerequisite, and carries no link or question. Minor gaps: it never says who the class is for ('your teen'), and 'going by what you've sent' is slightly vague with haleHad null.",
+    "score": 4
+  }
+}

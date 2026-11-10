@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly states the cancelled event, day, time (5:00-6:00 pm), language, and that it covers 3 sessions starting Sep 22. It does not invent a kid name, reason, or reschedule. Minor issue: 'covers 3 sessions in all, starting with that one' is slightly awkward but accurate.",
+    "score": 5
+  }
+}

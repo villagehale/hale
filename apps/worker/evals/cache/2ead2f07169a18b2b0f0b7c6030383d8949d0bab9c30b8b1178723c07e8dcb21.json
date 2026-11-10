@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "draft promises Hale cannot see work mail, which is a privacy claim about the connected inbox",
+    "hit": "no",
+    "violations": [
+      "privacy"
+    ]
+  },
+  "latencyMs": 90844
+}

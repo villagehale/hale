@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent has now refused twice, once for the full postal code and once for just the first three characters. The reply says it accepts the no, then asks again for the first three characters, which watchFor explicitly forbids and which amounts to pressing. It also never moves on to ask about the kids. It only offers a vague 'on passe à la suite' as an alternative.",
+    "score": 1
+  }
+}

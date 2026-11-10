@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't push. I'll leave the place out and can still help with your kids' things. What are your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "en"
+  },
+  "latencyMs": 1869
+}

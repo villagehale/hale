@@ -1,7 +1,7 @@
 {
   "activity-deep.md": {
     "file": "activity-deep.md",
-    "sha256": "96f7e289daac854476c384093fc07ffea749e7391cf691273f6e5dde981f79d4"
+    "sha256": "35653c33f0847a3bfc3555974086d758070ae7fe18e2421190d58fb474023b1d"
   },
   "activity-finder-day.md": {
     "file": "activity-finder-day.md",
@@ -13,7 +13,7 @@
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "bf6b892424d4b051eeb5afb4b69807b456822af6ca210f8c9b84aa03a35d5220"
+    "sha256": "4561e31cdd94c6d26e97ad1e18ef119e356a9f9ee0ecb874cdc42518e16343ca"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
@@ -105,7 +105,7 @@
   },
   "classify-event.md": {
     "file": "classify-event.md",
-    "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
+    "sha256": "e03cf5e6eccd66020a8d3e1b168eac8ad664a8e84ac8dc069a1098bd89c0947b"
   },
   "coach-capability-correction.md": {
     "file": "coach-capability-correction.md",
@@ -113,7 +113,7 @@
   },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
-    "sha256": "d528ba51c5b241dfa9c6efcd8bb01334a49ea7709120ae387a9a611ff55ec796"
+    "sha256": "a8ae2e1144b89222884054cad344c3e56e0880820778da60450e72bb4a223cd1"
   },
   "coach-channel-shorten.md": {
     "file": "coach-channel-shorten.md",
@@ -121,7 +121,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "bbc41fea3c20a2db51a3fd403be6da63c22952917f9db18eb10dcf2e30bd3aa5"
+    "sha256": "6b43cab6376d3c302a24d9a51a84aeb1164e4a9f0a184c989db5cc55499de8bd"
   },
   "coach-fact-source.md": {
     "file": "coach-fact-source.md",
@@ -165,7 +165,7 @@
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
-    "sha256": "6a2d08cba7a9806e816e433cf7e07efa70754375ef6b241c12d0f365b15a8b8c"
+    "sha256": "477149c85271aa48bbf18cdcb55f03ffbba9079ac8210fe2610f13e3f3254842"
   },
   "coach-plan.md": {
     "file": "coach-plan.md",
@@ -441,7 +441,7 @@
   },
   "meaning-screen.md": {
     "file": "meaning-screen.md",
-    "sha256": "094fb65d060c1744c45119aa04137fb70d8326c8b4e5d9bd34abb976babb5e9e"
+    "sha256": "dd442c591fd0f09857f8017d5b1f0b84d6625b7c2b1f30f70a0f1c832a701e10"
   },
   "medical-answer.md": {
     "file": "medical-answer.md",
@@ -473,19 +473,19 @@
   },
   "onboarding-friend-leftover-marks.md": {
     "file": "onboarding-friend-leftover-marks.md",
-    "sha256": "488f0637c7865d06dc21c7924c06564c2f63af683f335720343ed4ba900c53e1"
+    "sha256": "ad75a408e295ff03b8951a37243c610e0754c9c4b1f055a3cfb7cdcb786e62f9"
   },
   "onboarding-friend-place.md": {
     "file": "onboarding-friend-place.md",
-    "sha256": "75792b8151d9da5d31d755f76d6b495089a61410af6de2956be52e29bae3850b"
+    "sha256": "0c6c8ff7577e971b6d67ec5f8cf152367e25e108e1c3c4ff6a2a4835f2df1410"
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
+    "sha256": "d6a31bf9b3d075bdc6a1603222574e86f3c7212f1b81f5eb2b4e29cf205eed6f"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "460f9751ce664e78eeafdeae0a511c2d9c962a507b0957c75658387680915f68"
+    "sha256": "3d92e04ea8945a899225e6185a2c17654f764ad6fe46d7149bf45048d1e28961"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
@@ -561,7 +561,7 @@
   },
   "registration-note.md": {
     "file": "registration-note.md",
-    "sha256": "cc8ce089def26a92d5ee115527ddfdc0ff28f3d2e7fe8a0a76f5d8f206bdff85"
+    "sha256": "6705555a4a7117a19c098f3fcd87625bbbc6f875a21d3b702ba8147835a9397a"
   },
   "registration-reminder.md": {
     "file": "registration-reminder.md",

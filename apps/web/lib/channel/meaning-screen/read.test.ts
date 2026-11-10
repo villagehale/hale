@@ -7,6 +7,7 @@ import {
   meaningScreenUserMessage,
   setSharedMeaningScreen,
   sharedMeaningScreen,
+  toMeaningReading,
 } from './read';
 import { blankMeaningReading, unreadMeaningScreen } from './scripted-reader.fixture';
 
@@ -92,5 +93,37 @@ describe('constants the eval pins', () => {
     expect(MEANING_SCREEN_SKILL).toBe('meaning-screen');
     expect(MEANING_SCREEN_TOOL).toBe('meaning_screen');
     expect(MEANING_SCREEN_MAX_TOKENS).toBe(256);
+  });
+});
+
+describe('toMeaningReading', () => {
+  const raw = { reason: 'take-back', hit: 'yes' as const, kind: 'clear' };
+
+  it('keeps duty_undo clear/reassign instead of clamping to none', () => {
+    expect(toMeaningReading(raw, 'duty_undo').kind).toBe('clear');
+    expect(toMeaningReading({ ...raw, kind: 'reassign' }, 'duty_undo').kind).toBe('reassign');
+  });
+
+  it('still maps provider_access onto eye/primary/none', () => {
+    expect(toMeaningReading({ ...raw, kind: 'eye' }, 'provider_access').kind).toBe('eye');
+    expect(toMeaningReading({ ...raw, kind: 'clear' }, 'provider_access').kind).toBe('none');
+  });
+
+  it('keeps a promised_a_time violation on copy_false_promise', () => {
+    const reading = toMeaningReading(
+      { reason: 'a moment', hit: 'no', violations: ['promised_a_time'] },
+      'copy_false_promise',
+    );
+    expect(reading.hit).toBe(false);
+    expect(reading.violations).toEqual(['promised_a_time']);
+  });
+
+  it('flags promised_a_time from the dedicated field even when violations omitted it', () => {
+    const reading = toMeaningReading(
+      { reason: 'a moment', hit: 'yes', promised_a_time: 'yes' },
+      'copy_false_promise',
+    );
+    expect(reading.hit).toBe(false);
+    expect(reading.violations).toEqual(['promised_a_time']);
   });
 });

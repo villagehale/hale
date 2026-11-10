@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "check_spending_cap returned ok:false: the $189.00 order exceeds the family's $75 monthly autonomous cap. That is a clear policy violation, so the verdict is reject. Idempotency and user-override checks passed, but they do not offset a red spending result. The supplied results also did not include check_action_time_window or check_pii_leak, but the cap violation is already decisive.",
+    "remediation": "Do not place the order autonomously. Ask the parent to explicitly approve the $189.00 purchase, or propose a smaller order (e.g. fewer packs) that fits within the $75 cap. If a smaller order is drafted, re-run all verification checks, including time window and PII leak."
+  },
+  "latencyMs": 3089
+}

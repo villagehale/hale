@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cguzt3rkEEKYmwXSj3y6Y",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Sunday's clear on your calendar. Markham Museum has a \"Sunday drop-in at the museum\" on Sunday afternoon, listed for ages 6-12, so it fits Lin. That's per their site, and I haven't confirmed it. The page didn't give a price or an exact time. [link-e88d48]\n\nThe forecast is dry and about 27, so it should be a nice day to go."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 258,
+      "cache_read_input_tokens": 25249,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 258,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 128,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1961
+}

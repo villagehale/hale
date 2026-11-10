@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Totally fair, no problem. If you'd rather, just the first three characters of your postal code, or a five-digit ZIP, is enough to place you by area. What would work for you?",
+    "asks": true,
+    "asksCount": 1,
+    "asksName": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1691
+}

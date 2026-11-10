@@ -212,9 +212,19 @@ async function record() {
       cachedOnly,
       getClient,
       cost,
+    }).catch((err) => {
+      // Production refuses a draw with tool markup in a field (VIL-645). Grade it as a
+      // named miss rather than crashing the harness (#1219 held-oui).
+      if (err?.name !== 'StructuredOutputError') throw err;
+      return { refused: err.outcome };
     });
     if (result.dry) {
       console.info(`DRY   ${fixture.id}`);
+      continue;
+    }
+    if (result.refused) {
+      failed += 1;
+      console.info(`FAIL  ${fixture.id.padEnd(14)} refused:${result.refused}`);
       continue;
     }
     const parentName = result.value?.parentName ?? null;

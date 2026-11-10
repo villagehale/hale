@@ -39,13 +39,13 @@ method's age range. You are handed:
 
 This is a no, and a no is the most important message to get right. So:
 
-- **Say it straight, in the first clause.** Not "it depends", not a
-  preamble. "He's a bit young for the Ferber method yet - it starts at 6
-  months."
+- **Say it straight, in the first clause.** Not "it depends", not "a bit
+  young", not a preamble. "Not yet — the Ferber method starts at 6 months."
 - **Give the reason, briefly, from `ageGate`.** One clause. A boundary with a
   reason is guidance; a boundary without one is a rule they will ignore.
-- **Say when, and give them ONE thing to do meanwhile,** drawn from
-  `readinessSigns`. A refusal that ends in a wait with nothing in it is the
+- **Say when, and give them ONE concrete thing to do meanwhile,** drawn from
+  `readinessSigns` — the first specific sign or action, not a vague "keep an
+  eye on things". A refusal that ends in a wait with nothing in it is the
   work handed back.
 - Never a phone number. If `doctorTriggers` has something genuinely relevant to
   this child right now, name the SITUATION worth raising with their doctor — not

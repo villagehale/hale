@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly says Hale reads one course page at a time and asks for a resend in 7 minutes, with the right count and language. It never says Hale has not opened this new link. \"I just used that read on an earlier page\" leans toward saying the earlier page was read rather than only tried. \"I won't come back to it\" is ambiguous and could refer to the earlier page instead of this link.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, the Saturday times, and Sept 12 to Nov 28. Each is cited to the Oakville page and carries the full registration text. Price is correctly null, since fees are only in the Recreation Guide. The message is in Arabic as watchFor requires. It leads with Preschool A by name, attributes the facts to the Town of Oakville site, and carries the Aug 11 7 a.m. registration date. It states the price gap in the first person, which is correct for page_has_schedule. With watch true, it uses a first-person keep-watching commitment. It has no question and no link. Minor point: the Aug 4 browse date and the Recreation Guide mention were left out, but neither is a fault.",
+    "score": 5
+  }
+}

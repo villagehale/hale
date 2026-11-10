@@ -323,6 +323,37 @@ describe('strictToolSchema — the wire subset', () => {
       strictToolSchema({ type: 'object', properties, required: Object.keys(properties).slice(1) }),
     ).not.toBeNull();
   });
+
+  it('returns null for a nested array of objects past the internal grammar-size proxy', () => {
+    const properties = Object.fromEntries(
+      Array.from({ length: 13 }, (_, i) => [`f${i}`, { type: 'string' }]),
+    );
+    expect(
+      strictToolSchema({
+        type: 'object',
+        properties: {
+          picks: { type: 'array', items: { type: 'object', properties, required: ['f0'] } },
+        },
+        required: ['picks'],
+      }),
+    ).toBeNull();
+    expect(
+      strictToolSchema({
+        type: 'object',
+        properties: {
+          picks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: { name: { type: 'string' }, url: { type: 'string' } },
+              required: ['name', 'url'],
+            },
+          },
+        },
+        required: ['picks'],
+      }),
+    ).not.toBeNull();
+  });
 });
 
 describe('forceToolJson — every failure is reported as itself', () => {

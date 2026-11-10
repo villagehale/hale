@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and send_email and reply_to_email were both switched off this turn, so the reply is true. It is one short line in the parent's language confirming exactly what was asked, with no greeting, no sign-off and no machinery. Nothing needed drafting.",
+    "score": 5
+  }
+}

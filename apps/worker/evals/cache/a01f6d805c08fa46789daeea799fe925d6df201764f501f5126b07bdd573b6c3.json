@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly skips the Tiny Tumblers web find, which is for toddlers and does not fit a 5- and 8-year-old. It names High Park accurately from the standing place, with no invented hours or URL, and its Saturday forecast details match. It makes no unbacked promise to come back, which is right because `promises` is empty. One blemish: the closing line tells the parent to check whether the splash pads are running, handing a small task back and adding length past what was needed.",
+    "score": 4
+  }
+}

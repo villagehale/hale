@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The check_in_ask is written in French, which is the handed language. It asks how registration for Riverton Fall 2026 recreation programs went and covers all three outcomes: got in, waitlisted with the waitlist number, or missed the window. It adds no facts, dates or children. The tone is a little formal (vous, \"Avez-vous réussi\"), but it still reads acceptably casual.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the cancelled Storytime this Saturday, Sept 19 at 1 PM, from Maplewood Library, and does not offer to add anything since offer is null. Its claims match the facts. Minor issue: it says the email arrived Tuesday, which matches arrivedOn. It uses a casual tone and English, as required. No invented details, no subject quoting, no privacy issues.",
+    "score": 5
+  }
+}

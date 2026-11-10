@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011Cguysa53oiaxsbrdX8f2j",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsgcKEAgTGAI4AUIIdGhpbmtpbmcSDM5gKIOH5d7xwDh22BoMMd1bisbR+l8QLLMsIjAsU2uvFJ8q8QT3llUu1JXqGFaed/GR6HUBqe65zvJPsHnBS3LX3hB8Hy5dq7nimVwqzwYu7hdLqZF5C8i8DWUa/MW6vOxNQkDYM9AazZD+q14W/1u0ijiXohcoTt4lAEZr0J+O3H4nS+es1YpyMOZopra5Aq5d2d8UTrEnUCYvOCwXRnLtGqjDvhccD+Tmkh96SpgFBIqQgVZeBD4WDmycX1vCwpvoGLOoHlkMBgAi9WRcrF9FPuaHfhDXf92bQIgvkun1eFj6m90WfVp0Syrw1V4YbgDm7y842NHv2wPPe/h8lgA04t14KDNPFLpGjrejFdFFrcUDQHIen57ZoWLtxbPjx1gczWTY+FaY1JYdQryWmlpWlkwWTEt9b/4NlqBgUyBCPpytluGBxHGMlkbSv6404JgFD7ZRhHiyPNvyo1NYMEEePiNhh1RM2trjme3swVSaZhkEZAxxd1MPJeFQbpC7keV5R0ecNiatL57OcAemQQVc3bDOM4Sgx8Oq8d4CkQtNhkfe5caxiNXuINVyI5jhdbY3/JW8WtV58rE71aT6lpu6I0Go3vZQj8HwDz2k/vvkId0F5JkWzyeViCeAF9sUv4KWLRR+vYLHFlEa2NZcB3gUaWbVlF/2rLl+WZspy98XFdOOHjOeQkoucpU+ND5h4Ff6xmwfI6HhnchHhUw7MCqrvRQLhMOVeXTvrSOfF6uODihwkR16sPQGcN2wVRgzWfrLKhcFSLODmd7XradfS+J7J070X2ZT+kXf8VJu6b2lkDw3bTflQ/DAEpB5u/l4QcgJMeWX/ocQ2EqGq+KCDZtx6cMJhLmuiUkBvtY1HkYOW9Z9DhWouT4AQERI5PYd0Uw2BDWt6sMFXfcyvrSrIibHEglRdqi8cRmjPBq/RhftI0dW1+YNFjtupsk2PlYwFKMrEvWRoX03QGO93e/Jt1It2hLh7MUjjN8Udqk9pBbQ+0Dg4ZlxVT90BxtdMYgMlmZaH3eHKrhKHnQRIrB2Kb/IJPLPPaIyt9vK6yvad7Ob9xeXGk3+bFrMM06ZOBcnLX5yTHVQ7Wv8McvvXeGoj5eJmAQ9TK/9RoGhtDigfz3DfaLZopOjhw3pObalcWrGbcvG+eeWvwtrfEhEb54guBvL1BQ/Ygtz2mDgIwz+kuEYIkzHv9LIHxcUCCw7W+ii19eFWfukaLoZWRKb6pCUGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01LBBX3rjqpNVKAovuCUhb2X",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01EFKuAZCteDbwPuTzdKezgg",
+        "name": "search_village",
+        "input": {
+          "query": "weekend activities for a toddler",
+          "window": "this weekend, Nov 14-15, 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 346,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19555,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 255,
+      "output_tokens_details": {
+        "thinking_tokens": 137
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

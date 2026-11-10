@@ -480,6 +480,15 @@ const SHAPE_KEYWORDS = ['type', 'enum', 'const', 'anyOf', 'allOf', '$ref'] as co
 /** Compiler limits across one request's strict schemas (structured-outputs docs). */
 const MAX_OPTIONAL_PARAMS = 24;
 const MAX_UNION_PARAMS = 16;
+/**
+ * Nested arrays of objects with many fields still 400 "Schema is too complex"
+ * on Anthropic's additional internal grammar-size limit, even when optional ≤ 24
+ * and unions ≤ 16 (https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+ * Those schemas go out as a plain non-strict tool, which is not compiled.
+ * 12 is the published Bedrock optional-property cap used as a proxy for that
+ * internal size (activity_picks with source binding has 18 properties per pick).
+ */
+const MAX_NESTED_ARRAY_OBJECT_PROPERTIES = 12;
 
 interface ProjectionState {
   optional: number;
@@ -563,10 +572,48 @@ function projectNode(node: JsonSchemaNode, state: ProjectionState): JsonSchemaNo
 }
 
 /**
+ * Widest object nested as an array item. Grounding (`web_search` / `web_fetch`) is a
+ * separate turn from extract, so this is schema size of one json_schema, not total
+ * tool count.
+ */
+function nestedArrayObjectPropertyCount(node: JsonSchemaNode, widest = 0): number {
+  if (!node || typeof node !== 'object') return widest;
+  const items = node.items;
+  if (items && typeof items === 'object' && !Array.isArray(items)) {
+    const child = items as JsonSchemaNode;
+    const isObject =
+      child.type === 'object' || (Array.isArray(child.type) && child.type.includes('object'));
+    if (isObject) {
+      widest = Math.max(widest, Object.keys((child.properties ?? {}) as object).length);
+    }
+    widest = nestedArrayObjectPropertyCount(child, widest);
+  }
+  if (node.properties && typeof node.properties === 'object') {
+    for (const child of Object.values(node.properties as Record<string, JsonSchemaNode>)) {
+      widest = nestedArrayObjectPropertyCount(child, widest);
+    }
+  }
+  for (const key of ['anyOf', 'allOf'] as const) {
+    if (Array.isArray(node[key])) {
+      for (const child of node[key] as JsonSchemaNode[]) {
+        widest = nestedArrayObjectPropertyCount(child, widest);
+      }
+    }
+  }
+  if (node.$defs && typeof node.$defs === 'object') {
+    for (const child of Object.values(node.$defs as Record<string, JsonSchemaNode>)) {
+      widest = nestedArrayObjectPropertyCount(child, widest);
+    }
+  }
+  return widest;
+}
+
+/**
  * The tool schema as the grammar compiler accepts it under `strict: true`, or null when
- * it cannot be expressed — an object left open to arbitrary keys, or more optional or
- * union parameters than the compiler allows — in which case the tool goes out without
- * `strict`, because the alternative is a 400.
+ * it cannot be expressed — an object left open to arbitrary keys, more optional or
+ * union parameters than the compiler allows, or a nested array of objects whose
+ * compiled grammar exceeds Anthropic's internal size limit — in which case the tool
+ * goes out without `strict`, because the alternative is a 400.
  *
  * Unsupported bounds (`maxLength`, `minimum`, …) are restated in the description, which
  * the model reads, while the caller's Zod schema keeps enforcing them on the answer —
@@ -580,7 +627,8 @@ export function strictToolSchema(schema: JsonSchemaNode): JsonSchemaNode | null 
   if (
     !state.expressible ||
     state.optional > MAX_OPTIONAL_PARAMS ||
-    state.unions > MAX_UNION_PARAMS
+    state.unions > MAX_UNION_PARAMS ||
+    nestedArrayObjectPropertyCount(schema) > MAX_NESTED_ARRAY_OBJECT_PROPERTIES
   ) {
     return null;
   }

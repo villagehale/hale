@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't push it. Without a place I can't point you to anything nearby, so I'll leave that part out. Who's the little one (or ones) you're looking for things for? Their first names are plenty.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 2011
+}

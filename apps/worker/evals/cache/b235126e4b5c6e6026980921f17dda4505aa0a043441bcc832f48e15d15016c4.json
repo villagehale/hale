@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "kids' gym names the child, tumble class moved one hour, specific old and new time, no offer",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Little Movers Gym emailed Tuesday: Robin's tumble class next Tuesday the 22nd is now at 6:30 PM instead of 5:30 PM.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "asks to connect Google Calendar now",
+    "hit": "yes",
+    "action": "connect",
+    "provider": "gcal"
+  },
+  "latencyMs": 968
+}

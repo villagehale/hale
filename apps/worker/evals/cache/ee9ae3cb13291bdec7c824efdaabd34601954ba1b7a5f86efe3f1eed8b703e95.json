@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reply": "I don't have Saturday's storytime times in front of me, so I can't say what time it starts. Before we go further, what should I call you?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1533
+}

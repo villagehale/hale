@@ -1,0 +1,40 @@
+{
+  "response": {
+    "id": "msg_011Cgv47fVLT1hMNHmAnydbQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01DYuBEgoLmEWZmPUGe226k6",
+        "name": "find_activities",
+        "input": {
+          "subject": "toddler activities drop-in",
+          "window": "today, Monday 2026-10-19"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 558,
+      "cache_read_input_tokens": 21916,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 558,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 89,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

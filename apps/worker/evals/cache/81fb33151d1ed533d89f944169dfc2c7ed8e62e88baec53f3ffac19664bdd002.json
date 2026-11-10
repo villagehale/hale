@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reply": "Mostly classes and drop-ins for kids, like swimming, music, art, and story time, sorted by age. To show you what fits Mia and Leo, how old is each of them?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1595
+}

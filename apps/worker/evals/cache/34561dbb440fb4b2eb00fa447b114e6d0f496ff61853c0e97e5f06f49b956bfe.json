@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply offers one verified find whole: its exact title, Lakeside Arena, Sun Aug 9 at 1pm, and its own page link. It fits both named kids since it is all ages, and every detail traces to `offerable`. There is no greeting, sign-off or question. 'Today' matches `knows.today`, though `localNow` gives Aug 3, so that word rests on one of two conflicting dates; the date itself is the find's own.",
+    "score": 5
+  }
+}

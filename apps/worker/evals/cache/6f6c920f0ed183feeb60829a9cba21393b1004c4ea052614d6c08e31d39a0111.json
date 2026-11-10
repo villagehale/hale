@@ -1,0 +1,121 @@
+{
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "thinking": {
+      "type": "between_tools"
+    },
+    "max_tokens": 1536,
+    "system": [
+      {
+        "type": "text",
+        "text": "# Draft an action\n\nYou are Hale's drafter. You compose the actual action a parent will review and\napprove. The parent never sees the raw event — they see what you write.\n\n## Inputs\n\n- The classified event (type + payload) from the classifier.\n- The `action_type` the pipeline routed to you (one of @hale/types ActionType).\n- A narrow memory slice: relevant facts, recent episodes, and the family's voice\n  profile (any may be empty).\n\n## Output contract\n\nReturn strict JSON for the requested `action_type` (via the forced draft tool):\n\n```\n{\n  \"payload\": object,                          // typed per action_type\n  \"confidence\": number,                       // 0–1, your confidence it is correct\n  \"rationale\": string,                        // 1 short sentence\n  \"recipient_visibility\": \"public\" | \"internal_only\"\n}\n```\n\n## Voice\n\nMatch the family's voice profile. If unset, default to:\n\n- Lowercase friendly (\"thanks for the note — saturday works\").\n- Short sentences. No corporate hedging.\n- First person from the parent (the message is from them, never \"as Hale's ai\").\n- Warm but not gushing.\n\n## What NOT to do\n\n- Never include information not present in the event or memory slice.\n- Never invent or change recipients.\n- Never make commitments outside scope.\n- Never put sensitive data (a child's full name, DOB, address) into outgoing\n  communications unless the recipient is on the allowlist — the reviewer will\n  reject leaks, so do not draft them in.",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"action_type\":\"reply_to_email\",\"event\":{\"eventId\":\"217d919e-bee6-4dba-aa86-599734c267e5\",\"eventType\":\"school_communication\",\"payload\":{\"school\":\"<untrusted source=\\\"email\\\" field=\\\"school\\\">\\n雪松山小学\\n</untrusted>\",\"event\":\"<untrusted source=\\\"email\\\" field=\\\"event\\\">\\npicture day\\n</untrusted>\",\"date\":\"<untrusted source=\\\"email\\\" field=\\\"date\\\">\\n2026-11-12\\n</untrusted>\",\"time\":\"<untrusted source=\\\"email\\\" field=\\\"time\\\">\\n09:00\\n</untrusted>\",\"location\":\"<untrusted source=\\\"email\\\" field=\\\"location\\\">\\ngym\\n</untrusted>\",\"ask\":\"<untrusted source=\\\"email\\\" field=\\\"ask\\\">\\nreply to confirm attendance and whether sibling photo is wanted\\n</untrusted>\",\"language\":\"<untrusted source=\\\"email\\\" field=\\\"language\\\">\\nzh\\n</untrusted>\"}},\"memory_slice\":null}"
+      }
+    ],
+    "output_config": {
+      "effort": "high"
+    },
+    "tools": [
+      {
+        "name": "draft_action",
+        "description": "Return the structured draft of the proposed action.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "payload": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "recipient_visibility": {
+              "type": "string",
+              "enum": [
+                "public",
+                "internal_only"
+              ]
+            }
+          },
+          "required": [
+            "payload",
+            "confidence",
+            "rationale",
+            "recipient_visibility"
+          ]
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "auto",
+      "disable_parallel_tool_use": true
+    }
+  },
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgv3uyAd3zbCEpRrxCWKY",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "The school email is in Chinese (language: zh) and asks for two things: confirmation of attendance and whether a sibling photo is wanted. The memory slice is empty, so I have no information about the family's siblings, preferences, or voice. I can't decide the sibling photo question, so I'll draft a reply that confirms attendance and leaves the sibling photo as a flagged placeholder for the parent to fill in. I'll write it in Chinese to match the school's language, in a short, warm tone, and leave out any child names or other sensitive data."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KpUTWcx1kcq27GdHpEtTaS",
+        "name": "draft_action",
+        "input": {
+          "payload": {
+            "subject": "回复:图片日 / Picture Day 11月12日",
+            "body": "您好,\n\n谢谢通知。我们会按时参加11月12日上午9点在体育馆的拍照日。\n\n关于兄弟姐妹合照:[请家长确认:需要 / 不需要]\n\n谢谢!",
+            "language": "zh",
+            "needs_parent_input": [
+              "sibling_photo_decision"
+            ]
+          },
+          "confidence": 0.55,
+          "rationale": "Confirms attendance per the email, but the sibling photo choice isn't in the event or memory, so it's left as a placeholder for the parent.",
+          "recipient_visibility": "public"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 425,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 887,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 476,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "diagnostics": null
+  }
+}

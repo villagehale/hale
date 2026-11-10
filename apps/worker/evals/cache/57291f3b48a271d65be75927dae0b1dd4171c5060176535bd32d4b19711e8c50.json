@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused with reason wrong_municipality. It plainly says the link belongs to another town's portal while Hale is set up for Springfield. It asks once for the course page from Springfield's portal, carries no link and saves nothing. The tone is a casual, friendly text in English. 'The registration morning I'm holding' only restates that Hale is tracking Springfield and claims no booking or held spot. Nothing is invented.",
+    "score": 5
+  }
+}

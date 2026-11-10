@@ -1,0 +1,9 @@
+{
+  "value": {
+    "first": "I'd use the Ferber method (graduated check-ins). It's one of the best-studied sleep methods there is, and long-term follow-up found no harm. The 3am waking is the same skill as falling asleep at bedtime, so we fix bedtime first. Pick a clear week, do the same 20-30 min wind-down (bath, feed, book, song, feed before the book), then put him in the crib drowsy but awake, say your goodnight phrase, and leave.",
+    "second": "Night 1: wait 3, then 5, then 10 min, and 10 for every check after. Checks are 1-2 min: lights off, same short phrase, brief pat, leave even mid-cry. No pickup, no feed. At 3am, restart that night's sequence from its first wait. Night 2: 5/10/12. Night 3: 10/12/15. Expect 30-60+ min of protest, and night 2 or 3 to be worse. That's the old pattern breaking. If you can't do the waiting, the chair method is gentler.",
+    "third": "Nights 4-7 keep stretching: 12/15/17, then 15/17/20, 17/20/25, 20/25/30. It's working when he falls asleep faster and the 3am protests shorten; many families see that within a week. If he snores, gasps, or pauses breathing in his sleep, that's worth a doctor visit, since no method fixes it. I'll check in Thursday.",
+    "checkInDays": 3
+  },
+  "latencyMs": 24835
+}

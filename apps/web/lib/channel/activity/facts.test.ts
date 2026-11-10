@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs';
+import { strictToolSchema } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import {
   type RawActivityFact,
   activityCalendarDate,
   activityDateRange,
+  activityPicksJsonSchema,
   bindActivityFacts,
+  decodeSessionEntry,
   pageOwningOccurrence,
   statedAgeExclusion,
 } from './facts';
@@ -421,5 +424,42 @@ describe('activity facts stay attached to their source', () => {
     expect(statedAgeExclusion([{ url: page.url, text: 'Ages 8+' }], 'toddler')?.quote).toBe(
       'Ages 8+',
     );
+  });
+});
+
+describe('activity_picks wire schema (#875 / #998)', () => {
+  it('is not compiled as json_schema: nested pick objects exceed Anthropic internal grammar size', () => {
+    const pickItems = (
+      activityPicksJsonSchema as {
+        properties: {
+          picks: { items: { properties: Record<string, { items?: { type: string } }> } };
+        };
+      }
+    ).properties.picks.items.properties;
+    expect(pickItems.sessions?.items?.type).toBe('string');
+    expect(Object.keys(pickItems).length).toBe(18);
+    expect(strictToolSchema(activityPicksJsonSchema as never)).toBeNull();
+  });
+
+  it('parses a flattened session line the extract schema asks for', () => {
+    expect(decodeSessionEntry('2026-10-16 | October 16, 2026, 10:30-11:30.')).toEqual({
+      date: '2026-10-16',
+      evidence: 'October 16, 2026, 10:30-11:30.',
+    });
+    expect(
+      decodeSessionEntry('2026-10-16 | 10:30 | 11:30 | October 16, 2026, 10:30-11:30.'),
+    ).toEqual({
+      date: '2026-10-16',
+      start_time: '10:30',
+      end_time: '11:30',
+      evidence: 'October 16, 2026, 10:30-11:30.',
+    });
+    expect(
+      decodeSessionEntry({
+        date: '2026-10-16',
+        evidence: 'October 16, 2026, 10:30-11:30.',
+        start_time: '10:30',
+      }),
+    ).toMatchObject({ date: '2026-10-16', start_time: '10:30' });
   });
 });

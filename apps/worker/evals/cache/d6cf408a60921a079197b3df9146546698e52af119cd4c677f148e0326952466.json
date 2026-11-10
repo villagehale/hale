@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CguzJ2ZQvVwtYgejrqqs2",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AgKEAgTGAI4AUIIdGhpbmtpbmcSDO91NZWrH4xL3SqnYBoMPt+/uJanSUa3pm2rIjBns7TW3JBnV459CKotNpc3MEmXhsVTCKsO2U3z9Nm07LlFUXtnKHqn4VT0yzdrhXgq8QeM2EBjdCrIXWwddDg5HzgObl3uZvZSzsexRmvsI91DQ/QHDBkAkqcyIwVmrMxMWsdoCwOOm2teapwT9AufCNB3IjS/5mw631gcs6YY7adeDEe3t1eHG9HTAI4QhjMkNM6MY709jQYIfJfEHri2eJSbSlsMNE8dwc8k5kZiyqevkKJkKBbC9KWfqEPBzqWh/Op25tYhPBgVWN2v7l7+e09sHPL/N61ZALC0ZF1+8tE+GtBAdYVH4/lDVbkwBYy9imFUawBnT82xjKIJt8ZrSQ6qcE0vTjeeZz8UjSWwtHhjAV3VzNKGdEpQ0GejNQ2wIJOkax4xwvXeWq2xeznz1bbJquO5fZCyhqHbhXpCivu8MBEYpRbgrg7YzFNLaqPGSpTx84+mXzy7trPRNzodX3H/AQy9s12C4vlbmLlgx3KdZV3PYkeOGUr+BDCb79dXmSeSgAPoY38dGi1QiQcq7lFHz3SGg1RPSU3xJInK0K8nnSt3skqcZOhXZzl1JKS7psFUtg3jgh4y8TD3ljb16B5f8Ke3l+sU2wtxsZ85XcUuVj0BsnQZUXNnErEr39a84AREGr30G88aBu+Nf/ML6Cqnzxp1eM2EQGz0PxInM5j00i+k2doxAoRMPpCN4VimdEc+POLqVuaVN3SpHMTi4I1V4kO+EYuL877LtcOsIN7/mtHaBhKyl6Uh2nEl9nLiLr5abYcMAE+tJIbW8Eblmw6SSxbJ4vayM9c+vgprM6PFORcGkXSG6GhMH4B6KWsGlEKoYq3N4B2rf/IMaa9JCv+lWdZUjkeT0l9OFxnomRztJyP4oIBI+vPw53LhbT1q3ZxYOw8jidoP594gOkgwD6eI7AVgHOuhP1qofge/7s7SvmMNEPd/JXaUkSG7P3Xu0XYHpAAUvpnFYRFc3EwjHrmJVAe9B5b+u3VLUpX5Icmdx60kDsRROZYartHStJDDIO9+JyAuEuEpxIOKPdLhWaUd/8NSegyraEiiNeLdyAXXifjsVzkKXYwzRcbk1x/qj3U0RpEeiHQ2AoeYfz/o94GPwCy+LUAMy96y9PkC67zIKkf3xujt2lIXWuvIuOK15yieIQlqub1UNOJOIhKB2AEtOTpBnaV3LbHgq8N6FCmo6BiSRS53Q6RBiq3P+SPBq+LDN2gPO69ZD5v5qnPay4QO2IncrjKtc/Xmq/tMQ1GjOCg4YPFzx3cuS8cnP1O3LmloGePiyC/TbguNwp2X0poT7XNXb5qnbq7LwaPO3E+6y5eAJc1MFJ7Va2x7HS1pTJD5ArrZ1OV3Ifm9PAT1ebm/PYiLCQfgXuQ1yPNGszWcEweZJELmrNWWtVSgXKa6hwbdGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01SfG59jRtGqtfQCe6iFShvA",
+        "name": "find_activities",
+        "input": {
+          "subject": "parks and playgrounds"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1540,
+      "cache_read_input_tokens": 23782,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1540,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 217,
+      "output_tokens_details": {
+        "thinking_tokens": 160
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2117
+}

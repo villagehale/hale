@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Written in French, it accepts the parent's no warmly and asks one question: just the first three characters of the postal code. That is what watchFor marks as right. It makes no promise about finding things nearby, doesn't ask for a town or street, and doesn't press or make the code sound required. It is short and plain. One small inaccuracy: three characters only place someone at a broad area, not at the neighbourhood level ('par quartier') the reply claims.",
+    "score": 5
+  }
+}

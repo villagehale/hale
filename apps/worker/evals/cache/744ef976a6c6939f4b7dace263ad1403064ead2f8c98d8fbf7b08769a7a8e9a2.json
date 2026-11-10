@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CguyoWGVMbfDxoDrFRi4A",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpgYKEAgTGAI4AUIIdGhpbmtpbmcSDE/sQOm8LBh/2lh4uRoM4TVpcf0pg178bLdYIjBzKoGtewE0+e856EGCQFlugaLT2quz+k01X0p4eDPg3VT5N2aWBMU/gUhqRlnaMY0qwwXQ3Fi7/1PsF66LxWwJ0sOyGrW2kKW8syvoXGRSCqJDkaKlwD1XcixdZ4vSl0tRdYbWXdEwWrbLhd+M32FpC/ErWuk/bxFVBny7YIZjzwSfcPWKBVOnZPpR5xvOgaV2TRxzXYnShGyCWlg9DmaW0Z0a7B133sFyMCLtyeKzhJhl8R5MycN7Vy4q34nCv95ZyBCmd1U9a4cUPwUyN2vgfVhe/vOb+tLEhDote2YbF6LeU8mW3Oem9Ibs62kKyuGFmSesumTGKIxTSJndqeWvwmcBWXj6DjAiIhcru+uXp4RwaU6jPzdLMQEznCJwE46FRw2JxNm+Ow5WMRLdIZ+v95/f7q84BmJaQ4V9MxR+DFvGqSKpEOIU4dYuiPrdYosJKT585ZUYOj+Wn41YMwtiftJaACnnTeNmP4GNmNVCB1jbkUy5PdJHy2fPC9Qc2YU5x3TF8oSGfi0gpe9YrKVzsE3R4Ly/DpfekqTL9d1pvKqo/tJXNpFV7ureUOR2wNOc1ENvEapbhlyv4bHcnam48pI/Fd/Oqvq1K+0I1U/lkVpjiMnZe4nx/j0o05C4JmYfb4hVrjR+/+SW+yFPWcMVI1hdm88H1ozFtktAbgGik4onhib2NzdiuPk+1odwZUV5qi7LInx+nvNGotrfbHN55SHhFJQeC+xvghOXtyrm771I3bT1xgSg/OxEBTVe1HcbRFovkQl94acSy6AiAb2vu5DIDLIKiHnE7N5gjBsQS5FcLFtGsa6uADLdpsnn56hkBxfAbP2doEQf8QrDfy3Tuj4uHXMKjX/6TH6VJ0w8n8o7cUciqDn1AOzBzmV4LAfPwWMcCa8b3k6RHRHEhk5QvWe6XpkVDbWdAtG49S+ZxJLs3EBBwV/xyaV+F/Z0qMox1Oa08CvlgpQu3bPSFGau9zcmY/NpRnGRO+MwHunLaG4RQSabdBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RkHeN5HZ53JiiWAYbARftt",
+        "name": "list_group_lists",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 360,
+      "cache_creation_input_tokens": 20614,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 20614,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 101,
+      "output_tokens_details": {
+        "thinking_tokens": 71
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

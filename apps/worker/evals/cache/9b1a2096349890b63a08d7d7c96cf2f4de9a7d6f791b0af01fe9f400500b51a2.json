@@ -1,0 +1,15 @@
+{
+  "value": {
+    "page_kind": "program_page",
+    "session_quote": "Preschool Swim 2 Thursday 5:00 PM - 5:30 PM",
+    "sessions_matching": "one",
+    "availability_quote": "Full - waitlist full",
+    "waitlist_quote": "Full - waitlist full",
+    "schedule_quote": "Thursday 5:00 PM - 5:30 PM",
+    "state": "waitlist_full",
+    "spots_left": null,
+    "waitlist_room": false,
+    "confidence": 0.96
+  },
+  "latencyMs": 2568
+}

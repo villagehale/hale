@@ -57,7 +57,7 @@ import { tsImport } from 'tsx/esm/api';
 import { textOfFetchSource } from '../../web/lib/channel/activity/pdf-text.mjs';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
-import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
+import { fetchedPages, notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import { loadFollowUpProcessJudge } from './lib/followup-process.mjs';
 import {
   JUDGE_MIN,
@@ -235,18 +235,27 @@ function readExtract(raw) {
  * `page_evidence` replaced a `pages_opened` boolean on 2026-08-24: the boolean said
  * somebody opened something, and the sentence it licensed says what the page CARRIES.
  *
- * WITH NO PICKS, NO PAGE STATE AT ALL. There is no find to have a gap in and no venue
- * whose pages could be at fault, so the composer is handed `picks_empty` and nothing about
- * pages: a model that never sees a page fact cannot blame a page for a programme that does
- * not exist ("I could not get into any pages today for toddler underwater basket weaving",
- * 2026-08-24). */
-export function followUpUserMessage(subject, slots, pageEvidence, watch, language = 'en-CA') {
+ * WITH NO PICKS, NO PAGE STATE AT ALL — except `page_age` when the opened page
+ * stated a minimum age above this child's stage (production `followup-note.ts`).
+ * A model that never sees that quote hedges; one that sees it can say the
+ * youngest program starts at 8. */
+export function followUpUserMessage(
+  subject,
+  slots,
+  pageEvidence,
+  watch,
+  language = 'en-CA',
+  pageAge = null,
+) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
     // `users.locale`, passed through. The composer never sees the parent's words.
     language,
     ...(slots.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
+    ...(slots.length === 0 && pageAge
+      ? { page_age: { quote: pageAge.quote, source_url: pageAge.sourceUrl } }
+      : {}),
     watch,
     picks: slots.map((slot) => ({
       name: slot.name,
@@ -811,6 +820,13 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const { statedAgeExclusion } = await tsImport(
+    join(REPO_ROOT, 'apps/web/lib/channel/activity/facts.ts'),
+    {
+      parentURL: import.meta.url,
+      tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+    },
+  );
   const deepSkill = await agent.loadSkill(DEEP_SKILL);
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
   const judgeProcess = await loadFollowUpProcessJudge(agent);
@@ -964,6 +980,10 @@ async function main() {
     // a schedule buys no licence to report an absence either.
     const pageEvidence = readPageVerdict(evidence);
     const watch = watchWarranted(inText);
+    const pageAge =
+      inText.length === 0 && fixture.stage
+        ? statedAgeExclusion(fetchedPages({ notes: fixture.notes }), fixture.stage)
+        : null;
     let body = '';
     let mentionsWatch = false;
     let violations = [];
@@ -984,6 +1004,7 @@ async function main() {
                   pageEvidence,
                   watch,
                   fixture.language ?? 'en-CA',
+                  pageAge,
                 ),
                 violations,
               ),

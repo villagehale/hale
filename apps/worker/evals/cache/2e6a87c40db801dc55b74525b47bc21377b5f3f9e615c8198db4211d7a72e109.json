@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are grounded and cited. Tiny Gym's age band comes off the programs page. The Term 1 and Term 2 dates and the 9:30-10:15 Tiny Gym time come off the opened PDF, and the slots honestly say the weekdays could not be matched. The July 22 8am registration comes off the home page and is carried in both the slot and the message. No borrowed figures appear: the $45 Gymnastics Ontario fee was correctly not used as a price. The message leads with Tiny Gym by name and attributes with 'their site says'. It accurately says the price is behind their login and uses the correct first-person gap ('I couldn't match the weekdays') for page_has_schedule. 'I'll keep watching' is valid because watch is true. It is ASCII, with no link and no question. Deduction: the message drops the Rock n' Roll find (0+, which fits a toddler) even though the slots carry it, a mild case of withholding.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The approval card gets the French, dates, times, link, the three texts with their timings, and the never-registers statement right. But it includes the course-link tip even though courseLinkTip is false. That promises the morning text will carry a course link, which the facts do not hand.",
+    "score": 2
+  }
+}

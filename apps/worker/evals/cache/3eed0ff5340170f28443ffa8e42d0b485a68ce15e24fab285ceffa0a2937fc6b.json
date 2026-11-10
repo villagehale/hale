@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a course_link_refused message with reason page_unreadable, and it meets every rule for that case. It states plainly why Hale did not take the link: the page could not be read. It carries no link and saves nothing (\"rien n'a changé de mon côté\"). It asks once for the same link again. \"Je réessaierai dès que vous me l'aurez envoyé\" only follows from the resend request, so it is not an invented promise. It makes no false claims, names no child and is in natural French.",
+    "score": 5
+  }
+}

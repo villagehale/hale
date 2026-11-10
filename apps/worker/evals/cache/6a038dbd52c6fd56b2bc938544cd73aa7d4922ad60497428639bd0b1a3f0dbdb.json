@@ -1,0 +1,21 @@
+{
+  "value": {
+    "reply": "Got it, Mia is 4 and Leo is 1. Here's what I found near Springfield: swim lessons at the community pool for ages 3-5 on Saturdays at 10:00, which fits Mia. Library storytime on Tuesdays at 10:30 is free and works for both of them, and so is the drop-in playgroup on weekday mornings for ages 0-6, which suits Leo well.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "groupLeads": [
+      "Swim lessons at the community pool for ages 3-5, Saturdays at 10:00. A good fit for Mia.",
+      "Library storytime, Tuesdays at 10:30, free, for all ages. The drop-in playgroup on weekday mornings is free too, for ages 0-6, so it suits Leo."
+    ]
+  },
+  "latencyMs": 2360
+}

@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CguybYZ4VLF9aV23uTubg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Nothing checked for Saturday, Aug 8 yet. The one web result was a toddler class, so it's no good for Milo and Ada. The standing option is High Park in the west end, at Bloor St W and Parkside Dr. It has the Jamie Bell Adventure Playground, a free animal display with bison, llamas and peacocks, a wading pool and splash pads, and trails. The park is open daily, and the water play is seasonal. Saturday looks hot and dry, with a high of 29 and no rain in the forecast, so the splash pads should work well."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 220,
+      "cache_read_input_tokens": 25083,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 220,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 184,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1889
+}

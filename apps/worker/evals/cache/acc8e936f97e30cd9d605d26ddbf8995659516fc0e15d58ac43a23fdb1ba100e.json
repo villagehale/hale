@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011Cguyi3z34fMoCeXUdX2UX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSiAYKEAgTGAI4AUIIdGhpbmtpbmcSDNubiZ/BXCnYDUh2GhoM16kzxGJ+FfIx822LIjDUbTf7tXOeOtDIpLrf7G0cDHNv4BWHd7E6303FyDYk8+3iYoTpmNc2q8U9ZhRjVh8qpQWW1UNL+DF7U9x8XpwkKKuhCIKYGMd4stI7pfTEydCIuBASr59+9R+dBU0OxJQPdx4pvtmsj2yz9zxlYIb4nI+G0Bx+jcd4azjDyMv5ltYdkFz8xlQDDF8iamO+QUgub432rZMBMKTzfd+t3if5EQC3sYY0pykYwOCrqbpy3xjSSspp2nFSvGq8Yn5jq2foDb0zCriC8/gGdGG1wKH3zRA/ijHhd7VFaVgDqiR+Ce0SkVrZesWlXFfOmf0aqh+jm/vWwW88VaAwVDg6CGWONN/uJgVHFZfYoQyV1w+/jNQZw9FyHxRX6SrwROKBSdof9f999l1gF0oHLIsRpSHuRd2qSbUOh1fs/2kPOcqfW82yWv6qa8o30edgB1pt66Jq2Sbrs7vJgqZ9rGdIOkRGvH6YBJ5v23JxANvn0sQCcZ/iz+7RxcpEKQXdATSqhxHRvdJ1s9UcJBCiWm3RmbLDP0Kr9HZokrYqjWphmzHofXYdiIs3bE2K7/Acx+uTsrIi4SjuZjKb7ZcErSLoah+N9bz8tLvI13qNZh0MYZn2yHKMTt+2Yk1UPmKJlMO6qn+ahDX5BRYnqFMadzDrw2cigAiI/j01HodcUWnpc1isgUnYzSA2K5I5dJNxxKEt4aZLdj87yjPh2pesE4mIjP/Tyvl1YRVL8UYPbqq+ELr9vZbI1Iuo6mZNuqc1PoSFarYUNIOrc6ydb7rmcpPALv0TS4mQnXxCRgp7VtnjRjcPVeKdTBmPAzmwH1fbjJ1V0X94WE7mNAsyQLIlcAspZQkZVXwDMeOPshL8NDkgTr1wJoT9Lq0Z/2ctMgLni7LD+fpCHJaIumMAftaA2wo2P0TaYt7XCj7NE0mH2nCed4tnfN5xtI0WVZsPvgRl7kvHc0/q2KMNlKYD/BgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01SvHiVYLLyVqTptD9N8Qw3f",
+        "name": "search_village",
+        "input": {
+          "query": "things to do with a toddler",
+          "window": "today, Monday 2026-10-12"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 444,
+      "cache_creation_input_tokens": 21857,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 21857,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 161,
+      "output_tokens_details": {
+        "thinking_tokens": 74
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011Cgv43VQ1ADBXW2QEX2TNN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9QgKEAgTGAI4AUIIdGhpbmtpbmcSDOV+VgxCDQGmP+of7hoMY/ewhz4J46BJwa5PIjAeuOl7iD0gRl6+B2G12J1Z0JLauOafm4IbBr+PfhPHb696RJSBdpCMOQPrgI2pgbcqkgi8u0Qx1Dy8FPiWDCjWQjVicsegiKgOAPLuUMzNyrUu5ilo+e/WrBcVwbi73vT14JyAdKLQ3q1NSACgMDpqnDNkSaIN5F9OU3hPf99VzHLkYd0KXZsOxEbJweEuxBPPRhfX5gPLabrpB/Mgb3DE8X+vokyNK7aDskmWil2P0I3LEGy/F6XPAF9HT3Y+d8wyr/lNR0f6kU3dq7caFV0HbtRjVTxa0yop+N9vxLRrMv1R+/cxMDCn4bLzUx8J7Qw3qxRqSXYvRXSkfxiXY9LT7fUmboqsNaPlOd6hA6d1GKoSGAq9wtZE0dj0CIl+AhUsW5h/NDZ7HTF67c/m/YXTyOAttUAK1b9UQkb8QwAbljJhbZ3XBpD8X92pcF0I6Q7RuiFigO5EtK6zCrw+xHDIcI3mQhnqFFXRWVwdEjVK5CMa2A9eIbEgZh9YOs/T3nQU66HrxT4Qm1DO0Br7Z3YUuEGMkqBbGnh977M0ZlmzobgLrvQB3VUmnu5yNkLtFnCmPXD+7UVxLqLkjcDUfTtPX3z1lN5XEUMn7kkFU7S3uiJaofE6z6ivZUebc7vpD6XmaQFC+8zjr4Bd2X5TSK/N75ZW4lr9/3S1JbJkxFhrFFftEkuKJugzBBF04EE26GbJxYmWPbPB5PpoxSWmdG4ECTO7iCEGWqni/FeGBVL2AjSKPFwcQet68FOSBLkw/aooe+Ts+l9wwoMsqT93wPQ4FOeedRocUhypF+b2Ig02DwIbGxqqIqohk5KAQO3S8SvZXWRK2zvrMJprtEeuSzDipM7j78SEWhyDOHjjKSQccIIN0IDTp0ccNPNGIYKlrcUk9KSX/MnDuseqyZMybpiqX7fH5B6N6JacDjy4HWj6jP1KcpStaUsM4iKXp/EgaMG7c4/BmTdkCT5k3hmjkRlnUtEOheqyf6v3ookWXQi9zUxAIVUmylqOjwbFnbbNDedStKwmHJEkyNfFJ/IRhuHaUmuke6U9fSM2y2t06qR6z9wQO9Dygm7Rcc9iYswv8RH32BghaLQaNAimEtZyQ9tYsqFOavl2hlLDExxeCClD7INcQdIY09GfyL1nRKC9+38yBOTdvo+1+xEHy/DfSVVd7GntSBmLhDhViAi+9jWtoJrZdDAi02HwHF9ozfcgbR4egV9Wv/1KjWyZyJPKKRzcoQQqovULqaHN1dh3Pgc7PfqwDh+hOtxlHVK2AD9hbC8wj68haYIVmgVdBlqlaGhtO7KSpm4p1/vzsasWY/hqq5IR4ackRa7qhgRl6nKWmDMI1V9O5rQI+QZ+lm1jZvT89BFSdaXEHFXf+hB00xxT6qC/A5ls7q2hxPhK0nzGJ8Ohk1b2p7lCnEueV6UFBF55gfNvqnZQiqbrlqekFrqNdqzcRaWUGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_019vwcneY2DboCQFXMsPtfCp",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Maya's picture day",
+          "date": "2026-10-30",
+          "weekday": "Friday",
+          "time": "09:00",
+          "childId": "c1"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19664,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 438,
+      "output_tokens_details": {
+        "thinking_tokens": 282
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

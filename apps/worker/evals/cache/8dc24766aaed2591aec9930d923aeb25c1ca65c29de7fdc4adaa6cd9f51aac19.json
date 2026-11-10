@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French as required, correctly states Friday Oct 2 at 9 AM at the daycare, names Robin and the sender, and asks whether to add it since offer is add_to_week. It is casual and no invented details appear. Minor concern: it says Maple Daycare wrote 'mardi' which matches arrivedOn, and it does not mention any unsupported claims. It does not reference recentNotices. Overall accurate and compliant.",
+    "score": 5
+  }
+}

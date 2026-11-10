@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind and reason are handled correctly. The message says plainly why the link was refused: it isn't secure, which is what not_https means. It carries no link, says nothing was saved, and asks once for the course page from the handed portal. No invented claims, no wrong dates, correct language, and the tone is casual.",
+    "score": 5
+  }
+}

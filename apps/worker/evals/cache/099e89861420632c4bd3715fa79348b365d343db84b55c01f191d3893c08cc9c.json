@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "email names the child, library storytime fits a toddler, clear reschedule with old and new times, already on calendar, no offer",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Maplewood Library emailed Tuesday that Robin's Storytime got bumped a day: it's now Sunday, Sept 20 at 1:00 PM instead of Saturday the 19th. It runs about 45 minutes, so should wrap up around 1:45 PM.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

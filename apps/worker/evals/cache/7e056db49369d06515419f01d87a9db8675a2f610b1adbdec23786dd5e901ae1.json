@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This correctly handles a 'no': it names all four setup items (the Springfield recreation account, each child with a birthday, the address, a saved card) and says Hale will ask again the evening before, without asking anything now. It is in English, sounds casual, names only the handed children, and invents no dates or claims.",
+    "score": 5
+  }
+}

@@ -15,6 +15,7 @@ import {
   activityDateRange,
   activityPicksJsonSchema,
   bindActivityFacts,
+  decodeSessionEntry,
 } from './facts';
 import { finderSourceBindingEnabled } from './flag';
 import { activityLocationMatches, activitySourceLocationScore } from './location';
@@ -306,19 +307,26 @@ const composeSchema = z.object({
         age_evidence: z.string().nullish(),
         when: z.string().nullish(),
         when_evidence: z.string().nullish(),
-        schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish(),
+        schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish().catch(null),
         historical_evidence: z.string().nullish(),
-        sessions: z
-          .array(
-            z.object({
-              evidence: z.string(),
-              date: z.string(),
-              start_time: z.string().nullish(),
-              end_time: z.string().nullish(),
-              timezone: z.string().nullish(),
-            }),
-          )
-          .nullish(),
+        season: z.string().nullish(),
+        matches_requested_season: z.boolean().nullish(),
+        occurrence_url: z.string().nullish(),
+        sessions: z.preprocess(
+          (value) => (Array.isArray(value) ? value.map(decodeSessionEntry) : value),
+          z
+            .array(
+              z.object({
+                evidence: z.string(),
+                date: z.string(),
+                start_time: z.string().nullish(),
+                end_time: z.string().nullish(),
+                timezone: z.string().nullish(),
+                occurrence_url: z.string().nullish(),
+              }),
+            )
+            .nullish(),
+        ),
         price_evidence: z.string().nullish(),
         price: z.string().nullish(),
         source_name: z.string().nullish(),
@@ -327,8 +335,8 @@ const composeSchema = z.object({
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .nullish(),
-        indoor_outdoor: z.enum(['indoor', 'outdoor', 'both']).nullish(),
-        access: z.enum(['drop_in', 'register_at_venue']).nullish(),
+        indoor_outdoor: z.enum(['indoor', 'outdoor', 'both']).nullish().catch(null),
+        access: z.enum(['drop_in', 'register_at_venue']).nullish().catch(null),
       }),
     ),
   ),

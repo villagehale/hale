@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CguyNMDKfcgzXp662T2av",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/AkKEAgTGAI4AUIIdGhpbmtpbmcSDKers3PvU3aBVIPRYBoMixYOCc7Nm5TNnggPIjBjjVvTN/G9xJ49sB4gF4+nWe7gA4kkqwTF7T2ZPCER50L7hJQBNFi8NBmS1Ql9ruoqmQmyB0rbLUvGvSmYOU8vafYcy6+JZJMPfe8lk+QPY0rNWclSuDoiy24JF3tsqlgfXRyrGO0Huqj8Ws7RwD8KVcs5M3Q97kcflmXIyILxCY20TQ3qx+MFiiJfpDy83Zay+8uYy6xAkel4J8NQ6i2mNWIwsW3fWCGoLUUhUyZ9j01o2B/hOe+VDaooA/zIZYmKZGINqi5LRCFjLPpcqghRAljy4XUp4gcrhzHwAY7MovGn13wbKFXRLvQpto8GrTmwLFoLc2RBWwJoqNCB1xLOilEmoz24Y2/9uZIzvEadxmQ5J/PVPlNy+lXbG/launCzAErJtnjME0QcQjk3+3NcFPlNzW660j5YRYwBsnNVjdwqp+J69+Q8Bmcx1l9u65jw/EV1/qhtkueuaRthd+Bo+2+yFyym2oGOt4Y0ydxcYGfs104QRYAaR8NJl79SutE1UxI6JwJmjvcUbL7uxacW23R93By4NVla2t0bvpHfJfGzEBvmRl/m02wNYNVERvSg/2+/ttAYU69aGxeuVACbEoFqx1LvFc1Fm7RVnUTd7D8z9oir/wNqpa3xhrhgDfteeIHocQ/Gfr57Ta4Ja8toNR1i505bCK7OFSQDTW3eSSw+Hll2iaiYf8v7R840KuF9ppes3cgi0UUw3ERw+S5OR9Dhf+W7eG0UmFpCZiT7sevFy26WDXnhSvD3DceC8gxiuEzr1RCF/siqcpXY8nEEk68nKiCUKWgfRvMssghMYXZ28/3HKCF9z28dw5dRNHGHZ5y6ouh3SGCE+z9Ga6+DF7TuKgNI70GxLN1/K10PizQlbjS3lh9ECUcusho49wONiHv4v8o8g6dk2K8T7ZlW3rryGsSDMvyvYx0UnQdW8nCbBAPeC/wDrr79waamqTO1fyF5vMJoUflfXjLWJ2SwiRAhiAUVw7QQPzIYlaRr7terjJtxlm/MhMa/iCOJISSu94IZNucPV8viZh3aXtAo2A/WJ7NgIFpoy+PRLXX6seFWqAX7axGrsOCT3N3FqlZgwTd85lQDpj4Py1V+gPRvH6PBybyYAgNi07gBbSlpdYDFLS+9vEgu3w2UMAHaofWuABAriGc4tS/vRSk9tDVWwGQ79KkZOMfTMVREWQ6ygzc1Fw2xD5QF/KdOGpWL/t7G7SyPIERXnUHq7AplTmxgpbJcdNQ8XMWmST+suhPMul92UfmhBFow69/241vnAuEpTWJ/QH9OBctXD5BoQ8j8NUIfALSgbQos9YdwZtmKPhk5LKFJDGwjlnRNT3kMSQhu8mO6cck+dsyjoOD5L7OqWBHg3Qy6ap7vLvUnk3yli1oJBr+EWFnuv9nXDcI1XJiXTIZzZw9h/aPl8XbeOHhRUD8q9Vr2ptC/2dSZwuKK03imjybL65tF9ZYl24d9KnHdefDk0yrZN6lYP0pmR4VdrALNGJUx1eFrv/6ztpNQESLOhwLA4VF2i0sui2DWFLoGyiXdPZ740n46j846GdFS3GS4tV6UDUuEKsk24/RJZWPbPud8GXGBJQBFYZLAlZjkmBhEPeG5M8aXdxY7HkjSV/LGcfXdnnWaI/lAGAE="
+      },
+      {
+        "type": "text",
+        "text": "All I've got on that one is that it was an appointment email for one of the kids. I can't pull up the full text from here, so I don't want to guess at the time or place."
+      }
+    ],
+    "usage": {
+      "input_tokens": 441,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19604,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 279,
+      "output_tokens_details": {
+        "thinking_tokens": 228
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

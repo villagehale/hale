@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Totally fair, no pressure. If you'd rather, just the first three characters of your postal code (or the first three digits of a ZIP) works too, and that only places you by area. What do you think?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1832
+}

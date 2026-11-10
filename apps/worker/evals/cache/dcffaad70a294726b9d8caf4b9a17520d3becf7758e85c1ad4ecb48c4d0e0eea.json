@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv4EVn8G2uVp4JVnXebu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSowYKEAgTGAI4AUIIdGhpbmtpbmcSDDMC7t/elCvblWc30hoMscK1qpK9jDfgDLyYIjABkO33/GMMNHd3hevX0Dn337Rlar9JoX0KqbdrvbRwEDyZq9R4oZAggGDH5wvxUc4qwAUOs8ePwTH/iAUUm1zYg1VHi3IPw4PzHMKiyiZlMqkTlcSfpVGJX+jiNbk4MBCv1jQoWYflV70RJa1WXGh6J+fXMDv6lSdGjrnjTgFZxlRSxXzqNdTVHMwWLPnm/7NVr8PZNnBhttQyXJa8yHF663DURiqG7ilofprpoZ76KSSWk//IXK9p+Bu9KwG8iGI6ZzBX3Bd4W9vbPrgoJaXjeBLNIPITEnTW19FLFQmr1wMOc7plMH3CNh9xGdlUuF4aF+6jOwCkPWSkg5rWlKpagTdNysiZJJEN4iCsLJ2CvvMWj9kHjbDjn0a/m/I75NzU16hywsFFdGIw9cv22YNx2kykKatzdniDby4wJ6Uu5vH8zQFGgazDoXFTQg47EhSHPgaRTWTe4vJKrPAnB7QKU1qh6sh198IHMHJgWah7vuhk3f9I1KPT4HJYeQxC7XRf+rw5JNkXdNW/eXtf277L991pgXa3qkMavDbkz2YrbAdlsCD5nqh2gGaFuI1RA2rJmRDqYUhJdagPUNA+Drt4TbuiU7y9vXtBMX3DzdWF1VsbybYsklBDSA6QsPlkOuci9Wct9S9XTVD1yAxCdsVVUvOsyml2OEWIRCWy6qBchMpNM9+6fvQL7Hz6foB9snJvMOFzg4g4r7vTOXJXfbC4ydvzspPbMv8yH3mrmSE/cYCXYseZLyGoes2e30AwCW8RH2Z02CREEUkGgDokVos4/oEtjkdkjk8WRU7X+7hpE+qD654j6V1bvXLSaMTIUbOIK0Nc2NwRZPv/2ESTo5RLdbaW5Nc//65xJmyKphLUvreYzoegBPJhpiDYLXjE0UNGjFlf4nKQag2iotJCFo9/Uyl1hBAiY4KLZCsj6+cQRfOR5r2qP3aU+THrL6Ph2bfneVkLKMpUJlFcO2W5CDB1EzRtDXs2uQLREjMzu2vBCf7c5hgB"
+      },
+      {
+        "type": "text",
+        "text": "Two things this weekend. Central Library story time is at the Bloor/Gladstone branch on Sat, Aug 8, a free indoor drop-in for all ages. [link-c9bfa2] Riverdale Farm is free and outdoors, open daily, and Sun, Aug 9 looks like a nice day for it. [link-b8b9f6]\n\nWant me to put either one on the calendar?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 24779,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 226,
+      "output_tokens_details": {
+        "thinking_tokens": 95
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2148
+}

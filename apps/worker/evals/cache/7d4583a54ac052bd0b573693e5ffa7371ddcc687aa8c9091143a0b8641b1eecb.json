@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The dates, time, link, child and language are right, and the three texts with their timing are named, along with the statement that Hale never registers. However, courseLinkTip is false and the message still gives the course-link tip, promising the morning text will carry the link. That promise is not in the facts.",
+    "score": 2
+  }
+}

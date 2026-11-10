@@ -1,0 +1,36 @@
+{
+  "value": {
+    "reply": "Nothing new has come in from your calendar yet, so I'll keep watching it for anything Mia's about. I'll text you when something matters for her.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "ahaMention": null,
+    "language": "en",
+    "coparentGroup": true,
+    "scheduleDone": true,
+    "nameTakenBack": false,
+    "nameDeclined": false,
+    "nameConfirmed": true,
+    "kidsNamesDeclined": false,
+    "parentName": "Dana",
+    "stopAsking": false,
+    "children": [
+      {
+        "name": "Mia",
+        "ageMonths": 48,
+        "agePrecision": "years"
+      }
+    ],
+    "connectGmail": true,
+    "connectCalendar": true
+  },
+  "latencyMs": 2917
+}

@@ -99,11 +99,23 @@ export const MEANING_SCREEN_SCHEMA: Anthropic.Tool.InputSchema = {
       description: 'One short clause for the decision. Not a sentence for the parent.',
     },
     hit: { type: 'string', enum: ['yes', 'no'] },
+    promised_a_time: {
+      type: 'string',
+      enum: ['yes', 'no'],
+      description:
+        'copy_false_promise only. yes when the line names a moment Hale will be back — shortly, in a minute, back in a minute, any second now, give me a sec, in any language. no otherwise. Other screens: no.',
+    },
     violations: {
       type: 'array',
       items: { type: 'string' },
+      description:
+        'copy_false_promise: promised_a_retry, promised_a_time, points_at_the_app. Empty when hit is yes.',
     },
-    kind: { type: 'string' },
+    kind: {
+      type: 'string',
+      description:
+        'Screen-specific. duty_undo: clear, reassign, or none. provider_access: eye, primary, or none.',
+    },
     intent: { type: 'string' },
     outcome: { type: 'string' },
     decision: { type: 'string' },
@@ -122,6 +134,7 @@ export const MEANING_SCREEN_SCHEMA: Anthropic.Tool.InputSchema = {
 const rawSchema = z.object({
   reason: z.string(),
   hit: z.enum(['yes', 'no']),
+  promised_a_time: z.enum(['yes', 'no']).optional(),
   violations: z.array(z.string()).optional(),
   kind: z.string().optional(),
   intent: z.string().optional(),
@@ -164,14 +177,15 @@ export async function meaningScreenRequest(input: MeaningScreenInput) {
 }
 
 function oneOf<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
-  return value !== undefined && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+  return value !== undefined && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
 }
 
 export function toMeaningReading(
   raw: z.infer<typeof rawSchema>,
   screen: MeaningScreenName,
 ): MeaningScreenReading {
-  const hit = raw.hit === 'yes';
   const violations = (raw.violations ?? []).filter((code) => {
     if (screen === 'copy_friend') {
       return (COPY_FRIEND_VIOLATIONS as readonly string[]).includes(code);
@@ -181,14 +195,29 @@ export function toMeaningReading(
     }
     return false;
   });
+  // Dedicated field the model fills; not a regex over the line.
+  if (
+    screen === 'copy_false_promise' &&
+    raw.promised_a_time === 'yes' &&
+    !violations.includes('promised_a_time')
+  ) {
+    violations.push('promised_a_time');
+  }
+  const hit = screen === 'copy_false_promise' && violations.length > 0 ? false : raw.hit === 'yes';
   const position =
-    typeof raw.position === 'number' && Number.isInteger(raw.position) && raw.position > 0 && raw.position <= 9999
+    typeof raw.position === 'number' &&
+    Number.isInteger(raw.position) &&
+    raw.position > 0 &&
+    raw.position <= 9999
       ? raw.position
       : null;
   return {
     hit,
     violations,
-    kind: oneOf(raw.kind, ['eye', 'primary', 'none'] as const, 'none'),
+    kind:
+      screen === 'duty_undo'
+        ? oneOf(raw.kind, ['clear', 'reassign', 'none'] as const, 'none')
+        : oneOf(raw.kind, ['eye', 'primary', 'none'] as const, 'none'),
     intent: oneOf(raw.intent, ['done', 'booking', 'none'] as const, 'none'),
     outcome: oneOf(raw.outcome, ['registered', 'waitlisted', 'missed', 'none'] as const, 'none'),
     decision: oneOf(raw.decision, ['picked', 'passed', 'none'] as const, 'none'),

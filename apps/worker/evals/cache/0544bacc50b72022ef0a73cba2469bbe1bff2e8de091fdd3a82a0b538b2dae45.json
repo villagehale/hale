@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what a check_in_ask should. It asks how registration for the Riverton Fall 2026 recreation programs went and gives the three outcomes: got in, waitlisted with their number, or missed. It is in French and names no child. It invents nothing and uses no dates, so nothing can be phrased wrongly against now. The tone is a little formal (vous, a full question structure) rather than a friend's text, but that is acceptable.",
+    "score": 5
+  }
+}

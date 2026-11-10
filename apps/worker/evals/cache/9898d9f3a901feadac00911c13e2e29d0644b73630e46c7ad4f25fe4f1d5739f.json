@@ -1,0 +1,55 @@
+{
+  "response": {
+    "id": "msg_011Cgv47gAkeNXYc2bWcvqkW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSugkKEAgTGAI4AUIIdGhpbmtpbmcSDAUgGb78Iy3q/w1VFBoMv8VY0jSTAG4YgJzQIjCP0Ydy4lbhwrDJZ+VrNkZH4W7ps4vpWRJhZPqgHEcBTvfGiHvkfGT1WPYjGfVhgfkq1wjS3TItaug94FantBIUAEaszGOqmVl76YmqFWKB3zHNm13lezkpxts9jBFvkoLYm3pEmdOvUno24zGd+S+xsDI02N+jI5QTaZKvAsvg9v7C/GzQWITw+1pVHpJAD7Af8SUITTR+uwPCCosb7o+ZzjKky2pVr4fpYLG4fWcBBIb7a3xBLGX/+njDENRzW+IZxRrjmdozyBC2a1WXsD6rzIX+yDMZ/+0PR4U2D066aI3B1UfMthGk2Hp3vzDdN4opllKK36aywRmgN80CdSPJKvQ9obvmjB1O1/sJQWRy+RssGsx+R/vkfJCstWSvmMGytBTriIC2/6KJ+3yXyoUNYhPCfDATSqafQJXSE0uRq6NiePYM1gPX0+OKZA/Iv4adN1PqUopbRq+4iP+O1u3jYgy4de4uRWJb0rb8RJ6AytdKN96w2DGjrf7OcYV2A4+HCjao3iKc8I6QOthNitBvMAUDVE+pX4C1A0vd0Nnh6A+rQ1n6Qc6PBXKCsX4/2sAD6FvT/Ua4WzRpkxgmOLwZS3eCw/kS2Oo1gn9Fdl344I74diuLsUtpJd8un/8xjCIMsFx9wh8b1CBDCUeKS+F1/hD068QPKP3biZD0rvgaqnxeThMs6YghUTX4CqjyAUVP89f6tico1R3YHqZH+obmB13owOMqxTD5/qAFaAf2bDoQoNs5vTSNF0Yk1Omk9M3KiotOsI7ZnaBycZkMHjv5HbB8W3Ynon0j+NdXau7St6o0Jju6/cQqhmcMRUa3/aWwQS7ewvrchNwl0VoJy+mzrFq/Wlm0dpYHKAiDNMhYWnYU5Y9b+yFPJC9/+9GU1s+tdw/9GsrTppSQZrr7Xvser8y555aEBR1sFBpPWEbc1tx7qf2s1I3tDVE2fubjMjPcFODoRze9CrpM2DYCCHGk5zPi3FWCUvJX5VWkWuC0CFEbgaugdfxgyXUA0stxU3gT4JkVNq5/TexsslDXXzUiP47mr/qSb5MJ4r2jon6dAfKsASvZLzzQ3xg2VN0UqJWDuEc1lt4D6pGB9+4p1j0v1Rqz3gBNT8gSa5xhvY9O6BrrCoUuLppNpwMb1HHMjrONm2vw1TO6TShE4c1osSzAGC3fSVWUVdzZLf5NmKZ40gmNYgn3z1T3IFlanjV4hDLyX8Uts98YKyJ9hhr+Ce4fRB0lvvEG63KODlTXvYnhUFYvULHCVIxNqLvWp1vmjIFmqrJAMZuwIQ9uxURA0xtNdzW2EySqZYqfJKkJYU6lSUoUXz5+892Wcxd/1amRV3W9U+vSqLHh5xRceFL6nL1IF/ogt8mC/mGWxa+nC2M4RxbiBkzNfgyM/Itt1CeZa3RBMBNcw8ksJndxGtlHQK1U7Ne7bxro38Hn9fcuxyQguLnlUA6OCzwJgq818BQxfwSk5+jK8JYYnoR29OObLKY43qjhEMSX5F2ujEh9paO2ezHF3xsRh95DzEKgaR7agGyOt/YDtBRvdySlGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Fk35y3TP6Z83Uj4EgbQHG6",
+        "name": "search_village",
+        "input": {
+          "query": "kids activities Saturday",
+          "window": "Saturday, Aug 8"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JFJwhZDjSUBVqVHAvKFCDs",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 735,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23841,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 309,
+      "output_tokens_details": {
+        "thinking_tokens": 199
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2443
+}
