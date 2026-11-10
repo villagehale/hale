@@ -124,6 +124,9 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
     onStep: async (step) => {
       steps.push(step);
     },
+    resume: null,
+    waitUntil: new Date(NOW.getTime() + 60 * 60_000),
+    onCheckpoint: async () => true,
     ...overrides,
   };
   return { input, steps, cap, stillAuthorized };
