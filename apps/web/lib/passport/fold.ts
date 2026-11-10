@@ -1,5 +1,12 @@
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
+import {
+  type ClaimEnforcer,
+  defaultClaimEnforcer,
+  refusedResolutions,
+} from '~/lib/channel/reconcile/claim-enforce';
+import { CLAIM_READ_MAX_BUDGET_MS } from '~/lib/channel/reconcile/claim-reader';
+import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { composePassportLine, interpretPassportReply } from './copy';
 import { interestPassportEnabled } from './flag';
@@ -25,6 +32,48 @@ import {
  * the original body before any read. A missing model, or a line that fails the
  * guards, leaves the body as it was (`copy_unavailable` — nothing canned).
  */
+
+/** Rows the passport door does not write; a mint on this line is dropped. */
+const PASSPORT_DOOR_VIEW: ReconcileView = {
+  openKinds: new Set(),
+  pendingKinds: new Set(),
+  registrationLaddered: false,
+  mintableWindow: null,
+  scheduledTitles: [],
+  statedBookings: [],
+};
+
+/**
+ * VIL-581 · the passport line is folded on AFTER the coach's claim read, so this
+ * door is the only read that sees it. A failed or unbacked line is dropped; the
+ * reply that was already gated still goes. Off (or a family the flag does not
+ * enforce) leaves the line.
+ */
+export async function passportDoorAllowsLine(
+  database: Database,
+  input: { familyId: string; parentUserId: string; now: Date; line: string },
+  enforcer: ClaimEnforcer = defaultClaimEnforcer(),
+): Promise<boolean> {
+  if (!enforcer.enforces(input.familyId)) return true;
+  try {
+    const read = await enforcer.read(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      now: input.now,
+      body: input.line,
+      view: PASSPORT_DOOR_VIEW,
+      signal: new AbortController().signal,
+      budgetMs: CLAIM_READ_MAX_BUDGET_MS,
+    });
+    if (read.status === 'failed') return false;
+    if (refusedResolutions(read.verdict).length > 0) return false;
+    if (read.mints.length > 0) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function foldPassportIntoOutbound(args: {
   database: Database;
   familyId: string;
@@ -33,6 +82,7 @@ export async function foldPassportIntoOutbound(args: {
   outboundBody: string;
   now: Date;
   client?: AgentClient | null;
+  claimEnforcer?: ClaimEnforcer;
 }): Promise<string> {
   if (!interestPassportEnabled()) return args.outboundBody;
   if (!args.outboundBody.trim()) return args.outboundBody;
@@ -103,6 +153,19 @@ export async function foldPassportIntoOutbound(args: {
     });
     const appended = appendPassportLine(args.outboundBody, line.ok ? line.text : null, true);
     if (!appended.included) return args.outboundBody;
+    if (line.ok) {
+      const allowed = await passportDoorAllowsLine(
+        args.database,
+        {
+          familyId: args.familyId,
+          parentUserId: args.parentUserId,
+          now: args.now,
+          line: line.text,
+        },
+        args.claimEnforcer ?? defaultClaimEnforcer(),
+      );
+      if (!allowed) return args.outboundBody;
+    }
     if (unasked && !applied.applied) {
       await markAsked(args.database, {
         familyId: args.familyId,
