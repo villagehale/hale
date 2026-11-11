@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011Cgv8X16tv1xt2jpvzj54Z",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwQgKEAgTGAI4AUIIdGhpbmtpbmcSDOJuqv+D8cSrossWCBoM/ZFrnbXYvhzpRn/VIjCR8howLttaq88gXRVIp0NUZ/RBLU43IZc6P/S0atThwi9WAimyXnjD3daepv70sSAq3geehl9FcFKJCwfgfqblOl8a5BeA2RLkaXw1YSy8ulqn5sPE+MEXlJnTMj/vE5HtAmqmW6GNxrTFh09F2BhDrra11aG5QQwmYk0qOdCf00qM0wrlFp4rW2WYze0mudT54D3+wiHeAi/kXF4LWDEpIXFHRtyCN1Ueuip0gN9vJuHN885Nd4uBP1ezgTOXNIILZbgLnfB+Sja14s4/QCpYYbuUaB8yui9G7XAwb+om8ChH/EceTb0XCchan7tYXGeaSf1FHS1nvjzbuXgGCjhUzsSWCK5RU1S8EvpF6UZ7VF28iXjN7keglNyF2nwEcIswyDDnOCgmpvI+ehzStZ+ctiTf+Gp7G2DbxtWDkgTBZSeSynfqHuV1EJnGc/9oDDFoHAPdkU5xwYMpsfggiRP9YjCSxml1F/SxMCZdl7Y/i9rSsTvbrFARAG0nELXtX1cffkogiKyYHGYOF/mQGtqRV1cgEQSUa808ZMNM2fHwXT14sRR3/zW7fhCDiXzQO/o3Qv6QEMboI/52I/IPB68Pzm0tY9i2b9aDlxjknxztDrBSdmx5JAROe1aSVapjiMd/NUsfkpAD/P3YwLUWCTtHFAzcGGNpObcAQ13uBv+097hBKvywKzOXFbHaw+Lrv3P+Qkce+dDFywZhbq1W0ergfEcY6Ls5Ew5thokIYUngCk7vIxlSVXu4ZnyV1i23D2GaSrmyVFKO7gRRYvJaYSj8TvH1N9J0DJvU6BT8I3l4O7RqWsaOvgy+GKuQGaVgCmnWMMewdPVfcPFKWBKCmvPg7Z4vIVFdaYijNiosRB+68+ECDfAI+t0LyeMZlKxrY9boH1PLgsWIGB9+NGDGUDT/2QjGzDsOhwMojtdMFRtOSXRQXdeZ8mS18hLci1R8JTWidCCT/4caFATZfoKLYJdoNd2J3yNsKrrsbk6g0huyQXT1HGkG7//SsaSABKaDZ6c7d6s57wxEgab/TNlsvOGPSSiN6Z+6XdT0Hm6+syGDmCkV6Q9sSMVZqI7zTy/S0TnuXHVeyh6gbJwP5zncEj8JLRvx5gy8LfH0Vew05HZ3y+GmCln3b9CGoUSl6JiJNL/bL0Vmq8MXrR9YSLWXy6RuDUMu3KigbGpRqHTcviB2cjLzF0NXJzyIvVvWM9XcU5PnHocSn4tsY2qVN7Rt+e+9KXVN05zui90Oha9a77P6VxvYI2ADjgPCCAK0uTZx4eONQvJAH4EnB3lEUuHYsufpF5A9l8poXYkugJHHL5jPoSlPLhhljPmX/HKN5YZ2+hgm6TEnsK2BhigLreSSJqRYUJuviCGIjSbJ8yn/YKuZunQYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Jpx9ZYBXdqY3PcKs11av4u",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1210,
+      "cache_read_input_tokens": 23911,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1210,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 277,
+      "output_tokens_details": {
+        "thinking_tokens": 165
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3011
+}

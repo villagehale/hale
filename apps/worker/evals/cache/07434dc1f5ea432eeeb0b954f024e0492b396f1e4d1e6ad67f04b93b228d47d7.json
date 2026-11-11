@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "1:1 names a picked swim slot for Maya on Tuesday at 4:00",
+    "hit": "yes",
+    "decision": "picked",
+    "activity": "swim",
+    "kid": "Maya",
+    "day": "Tuesday",
+    "time": "4:00"
+  },
+  "latencyMs": 1554
+}

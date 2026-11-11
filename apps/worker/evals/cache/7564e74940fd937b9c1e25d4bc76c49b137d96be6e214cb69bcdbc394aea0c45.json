@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct for outcome_waitlisted with no deadline. It acknowledges the waitlist at Riverton and says Riverton publishes no response window, so there is no clock to track. It asks nothing, invents no dates, numbers or children, and is in French. The email-watch line is handed. The note about not having the position is a bit stiff but accurate, since position is null.",
+    "score": 5
+  }
+}

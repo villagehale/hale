@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The empty pick list is defensible, since the notes are empty and nothing was found. The 'I'll keep watching and text you' line is correctly in first person because watch is true. There is no question, no link, and no unearned 'not posted yet' claim under no_page_read. But the rubric asks an empty result to say plainly what was looked at, and this message is vague. 'From the sources I checked' names nothing: not the Naperville Park District, a YMCA, the library or a gym. 'That doesn't mean none exist' is a hedge rather than a specific, honest account. The parent gets essentially 'I'll come back to you', the failure this lane is meant to avoid.",
+    "score": 2
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Nothing new came in from your calendar, so there's nothing to point at yet. I'll keep watching for Mia's classes and events and flag anything that matters.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "ahaMention": null
+  },
+  "latencyMs": 1594
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the parent's no warmly and asks once for just the first three characters of the postal code, which is what watchFor wants. It does not ask for a street or town or press them. 'That's enough to find things by area' is conditional on getting the code, so it is not a promise to find things near them now. It is short, plain and warm.",
+    "score": 5
+  }
+}

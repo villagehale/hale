@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is accurate: the day, times and dates match the programme page and it cites the right URL. Price is correctly null because the page prints no fee. Neither rental figure ($185, $95) was borrowed. The page prints no registration date, so a null registration is right. The message leads with the programme by name and attributes the facts with 'their site says'. Under page_has_schedule it uses the first-person 'I could not pin down the price' rather than 'not posted'. With watch=true, 'I'll keep watching and text you' is a real commitment. It is plain ASCII with no link and no question. Minor: it could have relayed the page's note to ask the front desk about fees.",
+    "score": 5
+  }
+}

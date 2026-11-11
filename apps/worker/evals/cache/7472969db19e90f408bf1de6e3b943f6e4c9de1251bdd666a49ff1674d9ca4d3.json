@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Great, I'll start a new group with Mia's other parent so you both see the same plans and reminders, with nothing private shared. I'll set it up from here.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "hale_starts",
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": "new",
+    "language": "en"
+  },
+  "latencyMs": 1802
+}

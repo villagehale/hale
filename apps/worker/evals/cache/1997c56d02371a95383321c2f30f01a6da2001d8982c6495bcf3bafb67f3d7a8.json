@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two events, so asking which one and drafting nothing is the right handling. The reply names both swims with times and pools taken from the week, asks one question, and stops.",
+    "score": 5
+  }
+}

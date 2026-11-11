@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv8VFsM4s9UJDEPsw4Qs",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSmQoKEAgTGAI4AUIIdGhpbmtpbmcSDGdcqKDpbCuoZohMbxoMbdUwIQlt2oAAbplAIjCBTXqXE6MzYPRFaeNbcqIids2LC/ZU+Z4CNdmIcMdLL5lnyWl2W9m7AqNS6gSKqZUqtgknsGhJ7R5ixjRc/Oxa5HIrs8ZEShcM+wsPBSVPD82wsxdxf72ewMAKZ+DCq3a/FhjBi8Lrqh26ywQjNrRqhr8lWQy1YaiBG7wEX6FQFgrZ5nhsrI5AI4tTBmpodypUTMdkCtM3Phrcpu1vVN7VGzPdWayFgm6KBpcq9GK/P3xFQb8C9G9vZ/fj8bD5NBsIYFmIRytECkjq56Nrwca2FAC+Q7+99xAeOHG4oSJNB1rfqGba0ChY1sAtHn+hwQBejMFkb88U4UP4N7AGtghUAGtPXv9jE2bLhWAK2TB6cWOQCtXZ1AciaEVKUYCqFQZvjjAiNQYCp9sJ5C0t9VM+gTnN2ihYgxbyruDkuC9rId+ubXH4ZWCtFC+Ag473roeTZ7pyQYoDwNVG4XNaKENOGwydwjiKU0xf23B5LYcP2pKPhR5rCO9xsN+U2lzghfE4DnI3ced9DQok04JSfasLj2dyPunneCt8ozid96SEgulQ+kKtUzIglcTL/Cd0ZoIQJ4tJM/uxH/suHygKLRqZr2bpP8t2oim1QEdECj7X9cAkIj7mVAsBvgrcxoooBtqDj0ZjG/xJajc5ZqjOddJcp9Czint12SXxTW4rOqczkAJMiH292AB6lkLD9ZBx5q/YKpq4IXFQarn2MMMWhnr8aN1wyRhJvUspLP78J+ossSrKWPWbifkwUoJikkGLD/MWsBtfeXVaLuvNVfbTEnQ2YW0MFDxD+CWxRHCZ2pFO/BMjPqMQWZmWdM8VR6FCQToLP6EDedNi5ahKka7mzJB55/lfCQ09Q8vuACqpwwpWIpR1V02AewWMwxYrKoLZdxkzauRDyZF1aBVlb9dv/CZxo+wARJ3/ZzZU1wdXzm7qgOvskUIjI2nniIyggFeS1oLG2yJOHKzeYzUN7UdRc2sGBED2ogD8vG4cmqMF7tHZz61QECmiLnqBNCPjiy/joAnMe3FNivgbtXXKnMibYmRW9vEB8EqlVXOMdJSk5vnsxguhEKl91qjPbfTQklJtRdCv0l52qbVSLVXmU+WFzxa48VIdQ/X4NsICCVDakyb24drDh2YNS600mT29eSAMSogrFVnmD5eTsxD770iD1nITy/3Hte+10NmKcFqZhcJKJZjpnSA6prGn6DpvoiLyTLPNz8rhsqNFTmNZ5tIYImgxJYb8+HnJe22/moT/ZquvrN0qFoI8moJM6FKVW4c3Qc5YK4hNjKZf3rakb/Z8ydpf6j3rZgv0GNCD2Uo+cmUtxPBiOu19LddfTQqsWi3j/q+kJE/xJ07ABtQTNEPHjxzu08gxgM9ScivDOm5ZlQCHUOQp6QdozwWfSMhiPsDM/cv0Kzgn/ebqAGiOsR11tnMxTiZ/e+CkBbFaLwkyt7pJgZ53TJ5swa5WkUeiDtf+ThpX+OpE4/Br63dadBiqTpGGAObs5+Xq97JLqjhHRCMjZLE/j26PvSRvtPywGwZVz3SQOxFDIwpEcF8iashWBLv80i5SndbTouCu2asmcEZoa0echYbw1pNa1KlQ2Yzf+ZKyrB3gCEqBd991tfyLztkqPTim8UUDkgCfxsiCCPqhXMLfeFZ8uU/kGPqpn+DsW4clwTgDwMxXkEEYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Signing her up is past me. If that Saturday class turns out to be full, send me the link from its page and I'll watch it for a spot."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 437,
+      "cache_read_input_tokens": 20990,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 437,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 267,
+      "output_tokens_details": {
+        "thinking_tokens": 223
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

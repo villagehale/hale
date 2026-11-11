@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in French, short and warm, and accepts the parent's no without pressing. It makes no nearby promise and asks for no town or street, so it avoids every low-score failure. But it misses what watchFor says is right: it never asks, as its one question, for just the first three characters of the postal code. It skips location entirely and moves on to the children, so it cannot reach a 5.",
+    "score": 3
+  }
+}

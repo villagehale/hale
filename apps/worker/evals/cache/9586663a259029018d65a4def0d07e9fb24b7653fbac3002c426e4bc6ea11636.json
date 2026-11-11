@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message restates what the page showed and notes the replacement. It correctly says the course name, day and time could not be read, since they are null. It keeps the handed date and time (Tuesday, September 15 at 7:00 a.m., residents), and the weekday is correct. It warns to leave time because a prerequisite is required, names only 'your teen', carries no link, asks nothing and sounds natural in English.",
+    "score": 5
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv9JtPrsopujKSnfdn9D",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxgcKEAgTGAI4AUIIdGhpbmtpbmcSDGazHw5Lqv+/gz09ExoMc5UR3x4WlCbkwDPUIjCN5rXpqZYA8hI5XpzHTjhJLggNAqHZ6PvujVvP5xq/7qd5ywY1MiNHERbcQAfA1o8q4waFJLyzJT8rWsTN/u8jY154o/xUGLuK8hm+1ARIjT6IzAFYtZnwPAEOJ/0e2wTTe9xXaszXuXouZlZctGfzkVFZnXgVlgJSba4Idf1lU0qRcYlazxf3tVHKiRKV7pEaoJVdC3FYnVKgKorREBz4oaYdgmleBGJ3piJy/4IEv5HH9WEdV2Xm3RUagyWopj9c1OVV6nV90Fb+CC+sYmnkqjUtOX5feq+D9/0Y7ITBELMZSDOJ17cwF8nqhxdiDnOftT8OEa7fn3QcMQuDsyv9e8iGo/sJb3v09hqwsw6JfkC8SLQnhEQay66bIKcxKAP7y71VCodPIHMaszMiyWjvzKYdE1aKPhkf8+DRNb2iUqt8hHwvcDLb6Hn3FP9NDANte3svU/aLhMQhY7LVXIiyy8qSEOX8JsAk+aeiBTzsirwmlDX7+PKmmem0gAo1XLex1ARl2xhW44D2N8CUNlEn+apMjoqSU5rh4ZBiWEhdEyYkZdtwvvD8oFVedzkOtfVEcXKMwk/mDjwBxC6Cbbpd4MFA+P1+icUMRWKlszt1lacGBd7IaHY+8Disf3TTeqExMaU4CGdGMKaivXmF9cLhFh9dJCNkbSu+mNr6ojD8pAO1vkEqXP/Yx2O/E9elomP5aXaqTtO01ivKUOfb7r19tkT4L/LfMfHQbBqguouhpgTH6mHQguT2pqakQYLrvXDcYCYm1gdQTBmOk2uoDu0hAQqfanSpK5P7LlsDXZmDh6QXtk1HMee4kXx5VHB7uN5eLJizQev/KXF02TSY78tt3iPxFNFis7RrMHZQzG3oS6v6vxepQ3Z9cghXbaaCvKtbl1Ko60Wf7AaMX2Tc1+P5o31Nc7EazGVRG/3lLsS/1wVSeR5+0rC0lyjiYW4fZfk8gLlks1IYRj7uxB7LL0s/G5DFUaeu8NYoUp4cx4qnqQbtxD1YShm2WuW7ZdWG3VZjkaxkSDgZBtrWhP9ttDQK+xzUGbgAZsJDDI71L1zBJ85RDCbSIMrZXGncxoGyBCtYfYOB9xaMwfAxOJ5yD4yLXiKRKDDKO+UYCkoZIjtGVrHQ34U11FBhTlMRLUO+UgBbY48iK7AkUiS+NjzV4FAB6GbsBWTqJrmy/PNxzLCUh8xrZ3aaHDjXQvEiGLzY0kSlwug1eKkYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week for Saturday soccer at 10am, if you want a park the kids know. I couldn't find a playground to point you to beyond that. Riverdale Farm is a different kind of outing, but it's free, outdoors and open daily, and it's listed for Sun, Aug 9. [link-b8b9f6]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 222,
+      "cache_read_input_tokens": 25791,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 222,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 226,
+      "output_tokens_details": {
+        "thinking_tokens": 113
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2304
+}

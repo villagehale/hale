@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Parfait, je peux commencer un nouveau groupe avec l'autre parent de Mia, ou tu peux m'ajouter dans le groupe iMessage que vous avez déjà. Tu préfères laquelle des deux options ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "fr"
+  },
+  "latencyMs": 1911
+}

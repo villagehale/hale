@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv7wqqsXoDLfnSVZjPyc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrggKEAgTGAI4AUIIdGhpbmtpbmcSDDURQZkShWWwJeASexoM5T/ITGvdTyq1ykSQIjBXHntJ4zhD9dmCsBfNjtHNqfKD/VMKI7PV+MKS4GiQBKexODtlGrhRc+YVOoHr0Gkqywd/iSk6IkYbRwbPaGaxoivYCkzIp/Tj2JWLjmkOS3aoYjXC38gh6zIdFcva4wco0ToYVVK5a6L6qrLWYBPLTBOp3C78ATgE9p1nEA4zLLzorHlwkD1IDlacVbsdTUgzQ1A5mIY6sWEXugjrRNOccTKNdGti7PSZSAuHb1vyWoXuRgwqbCi4H+A0LDx7BB7160VHyZ1dMCdoILxR0kLsLzmAUu1euWSYoJMaD5+aD0W5Ch/5IDpyg90/nw291g6TOgHFvUJ5HtkqyihpoB4vKJmL4omW3T/B40QBo2G5yi1h5+4uYOHngfAA5PguFeAKVCabiRbVJCP9QMNBqXNvHTq4iwura0ClKCxLRBHOU6pMqwsu1jeRAVOeaQA/DlPeDfsVEJoSksx3u6aMCHjNxQ81mtcEUO+VThmO7W3fMEDQMqUGfVaFs8GqI+EnKDgvQ5PYOVUUWJjvdsElpbDId9MhflD1gmQ2X+OyCh5TpRUdetWnq0FvdQVh3cXPpGBKFKi7lEDU5HmetWsElKdt7glWGil/qVPiT2ZHzHkil/71piDe93se0KcYMdfm+/YCLxLCJSo89Z4QC14KYnOybTpjKy53AZ4bdwJiz2rlwjxnC9Uu22Lz2WA8SQhrUPt+UwqR6wAQOamn+/RPILI4u9BNuXPrTXfsy0W+/N1WWmiUaD5NWlawRrGF4OZPJGCZmVXclo8PYxAKpMQZsFuu/VszBhSrspiIhnuikb8vI5X+GaIWJPlLEOssVsXhGhhYh1bkWX6SdFu+HcNF9Rb4YmmAlEu3bd5TdtzwDuUaX6dXgJV+7rESMNZ8uASyjlJKADnigLl+SokbQ1kmIxsd2gASA1S//WdsNqCoSEGflyg1jE5GpWx+tV22TifMxkA1coj1U3GknFL9iOZEQtN+l7C/fmDvlcxmxNDQLnNgKsm/abyNSZyvyoeCyTZHzxo7OL9uBOazrIRBIXmHWJLEAhTNfpQlPY006LOOL3rb74ChW88CZyhL2H7BeY+kl/iC+USwUaqrv2nSZJmHU72L1epWo4qwZzR/aDrnULgwp8f0WyEAILMI164aPK8s3yxS0ije74kFrzQJEYOO1axGL+e9/h6ozMumGrm+KKziXBq3fzybZC+tRKitdRiDhd8nbbQCSLL62OW+ZPaAjYux5OktAKgp5pluLXmi1jM26y7u/3SV/mzHYTbS4CLg6v4ihfEdxMKfaJ2dzktHxNgahm2EcOF7JRx1ICs5REesjh8n6Asm9SeAPf2rRTyZKAaZM5inL+rPr+RFT1RSEhgB"
+      },
+      {
+        "type": "text",
+        "text": "The only thing on Tuesday is a private item at 3:45pm. What it is isn't mine to share."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 25123,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 210,
+      "output_tokens_details": {
+        "thinking_tokens": 175
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2362
+}

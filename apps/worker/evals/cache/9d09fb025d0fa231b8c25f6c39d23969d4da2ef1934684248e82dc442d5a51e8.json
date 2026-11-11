@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page: Saturday times, Sept 12 to Nov 28 dates, and ages 3-5 with no parent in the water. Price is correctly null because the page sends readers to the Recreation Guide, and no fee is borrowed from elsewhere. Each slot carries the Aug 11, 7 a.m. resident registration date and cites the oakville.ca page. The message leads with Preschool A and B by name and attributes the facts to the Town's site. It carries the Aug 11 registration window. Since pageEvidence is page_has_schedule, it uses the first-person 'I couldn't pin down the price' rather than 'not posted'. Because watch is true, 'I'll keep watching and text you' is a real commitment, not an unbacked promise. It is plain ASCII with no link and no question. No PDF schedule link is evident to account for.",
+    "score": 5
+  }
+}

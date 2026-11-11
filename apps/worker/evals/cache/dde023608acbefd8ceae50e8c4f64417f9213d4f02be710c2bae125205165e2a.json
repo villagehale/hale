@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Cgv9U7mH6xSmJLeQbEXa9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+wYKEAgTGAI4AUIIdGhpbmtpbmcSDHx2w2TW2kCpYr9tCRoM7r1dH39cVscO3emdIjCylKKArXKIYm8YpfqoYysh7BW4KrSjX3EBJ5vMVXGUEYLzQPPE4s2agpYzZs6WhpgqmAZtozLhuHe+kd86FB3QhLiItDIurMuXd4emBewTv1Snn6XuPghxwvN9CkWdftrDTWkmkoziHpOhR/m3yHZq1fcYREOXo+b+jlolR7wLu0pGk7tKi0UBb7Kw/Um9MgPHKmGPCG+v63MWmDNCExjXd6TwPVxjuiilLxZsX8jts/grB9iKLErctoIrC6CqWVKi5T9P94r6bFhGq83+YoC9SkWvA3MR4bbkqz7DrzLOl2sloRrUW9mGcSW7JmLA23z2ptmlHvcf8D7a15ttCFmVoAt7NRycRHLQjqkMlZ/vz95ZjRDN1entunE1tu/aiE6Mpbt1yZiAjzbC0eDPt5vdfEhVtVnByFaltpgzeE7/kpZASlxa5ra7II6x+O+b0vpFXowGFODFpkOnRaMeJx0JwLlDiVbmcyioy9UzvGnfmRx77ux2DgI3knQGalYRbaNX0oVOB00VSUdDjQSNHv2cID+u7NozgLT20aWTg9Jlfdk8mxoGw7tVz4aqNik07FdzikLOhJrP9ILKjK5SgBcJkWHlPnHgzPN+fT8lf7Z07bNJiIsT2/Cw7dS3ANAet0VGSz7ysJRYU+TORPmlRQiquIPbXc7ZDeSpohDR9VZ4/39eLLlGdUez+A65jqkwzKYY/2d9G249pXFNB3LvaNxxTX4SUeYMFdc/3QTceOhwi6j85jnBkzgYB6QzzH9adivObJ0KK1mznj4Lm6syZ7SslAAygOW69COdNjJry6xYcT4LNTBWeptX6I3Odd+DVRoV0CMgyPvqhf8eM22to3w5ROVTZIQwjQE3FPP0xV1gket9wG602LGf32wkgc/IZ4GbeFKssp7mP8oOB8/sgN15ESJ711xHVLFi3wskBXQDMbzc8O15nh96QqTv+1lniBD1kn5MKKrl8nU72CZYj37nQKeoNTdwayEAL6/Aq5/kb9Tt8sNBDZ18Y0/o4DuG9svdIwY5xOFM2odSOO+Oo7aqng4DcOlWlWvo8euyJj4gE/KHARThS8lVyRQPu34mFnI7Ybe4471rOveFCgekQwDwHgaiiQlA/RKVCX4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01R6uNLGqnzPSsE2XSNZQLoX",
+        "name": "search_village",
+        "input": {
+          "query": "kids activities",
+          "window": "this weekend, Aug 8-9 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_012Xi9xHVoEuRxPpJWMv4omo",
+        "name": "lookup_week",
+        "input": {
+          "weekOffset": 0
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 737,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23911,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 252,
+      "output_tokens_details": {
+        "thinking_tokens": 116
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2635
+}

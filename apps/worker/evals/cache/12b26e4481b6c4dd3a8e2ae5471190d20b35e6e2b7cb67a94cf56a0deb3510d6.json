@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "No message was composed, so only the slots are scored. Both fetches were refused, and the notes say so plainly. There is one slot, built from a search snippet: Parent & Tot at Gellert, ages 4 months to 3 years. That age range fits a toddler. The slot names its source as a snippet, and both the name and the age field say the page could not be opened. When, price and registration are all null, which is right because no snippet printed a date, time or fee. Nothing is borrowed from another program, and nothing claims the schedule is not posted. The source cited is the operator's own Town of Halton Hills page, which is legitimate attribution of a snippet. No pages_read field is shown claiming a page was opened. This is the correct snippet-grounded result with null when and price.",
+    "score": 5
+  }
+}

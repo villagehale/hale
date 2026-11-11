@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cgv8VoNBSgd7cvDbjiW4v",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Two wakings at 19 months is really common, and it's usually habit more than hunger. Tonight, try a short pause before you go in, about a minute or two, since toddlers often settle themselves back down. If you do go in, keep it boring: low voice, a hand on the back, no lights, no picking him up, and leave while he's still a little awake. Doing the same thing every time is what makes it stick."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 25398,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 127,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1981
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv8CwNAUKuaMUqCJN5yv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxQsKEAgTGAI4AUIIdGhpbmtpbmcSDB4noWCJnslqEpEt9hoM5BgYZnQgQcPrX5fuIjBp82XtTcn3o/Hqjw3H3vWY0hkgJ2gsu9J1Kh0DahfAJ2FKlIAfqKb7x35coQWASFgq4gpEPmgVYBEzuKlS+loPnO1DJB2bxGSdIpIy8r1hPiZWfMCgZUnZaG1vcJnqC/kHyiojHCua85ttTZUYeNYNhc74cjejfJ8mCapXANXGAtSE/MEzU/hhkk+Y4vQERYDQlKcNeQbcVJlIDySHIrLOAV2MTpAY+/nvIcKQ0xVkPNU/Sw/nZ+ZxDQmPFuo4t+xcjwhgwg8Tpon4oYLOOz5VVboO+7wkbUFecOoMgUeo6luxlsQLYkam7bqZpQF4mvPhBXG73yO9OENzryBjvUoCvKK2LBTYF1SQxo3HDQCnTB/etW9g+bcNwcQbiKjU8ZFZgfZEbPhGXUtpLlB+6zn3+OlBCrh8itqxRWin8kxfuconMx7vGsM9bGL6RYB+C483FEkHGEBpVVNhDE5ISo6lOF83arJUIEMuI6QE3Pxl/V1UHOuxGa6+x3uvAILTZifz9pg9xT2c5y/XHEdSb0h4p4Xl5uybpmK+uESmHvucIYZz/yQs/ZjX1pbFNNsL7EHNsmxYh4dziE1rauVjUSDt5LzWMQZLDDVXt5VsJ3TIRXkEVgi7WE70Q3LeLyxP2QmrwI12zfETFJ6GwNIQfGYgD9QeMy1Bq53efil1HI8ex09Rqjf5wo3S1gQkLZ9fWFpwX63xGhtrIfquEULjzeQj+NH6Hge2KRvYVMEPXTL5SlQ6G8LZc+CS+qa6fZAj74obKVrQ2j1f3HyQQS8lSGunbrHyd4IyWJhwDstqGPvdRgY9uaODLUeBoCavyNpG/Cb6GOhpmtGxr3pjFFx4W+C2foOXrLFS3pzzsHuuAbwEs2y6/tOPc4coOc8gv812fQ+CCU9/Nma78QVa2JtStQ0treSIYCPdb4tFmj1JvwTSkDlAn0ok13ZaTI4ClH7MWUg5lTLWFa1Z59PRtrrfd0wYYrvQHLhTrnSpI03JFdCNJtwvGGe3955PC0WB5uvjIhuJVkYIlwhtRb/B/+HNM9S4m0KJXZ+duM/qKTzUZ9eBGQk6YMgGO9yrC1r9+Ca0hyG7u+7K878yx/k45eA6HomJxOzHmXPMIB4JDqrvJN9CZWQKmjpf8Kres6O7IvNbrJ+CWyCRCgvuleWKsXKAQiwEtKQei4X8oG62TTIyJrEt7taEe56SgZSX4SRoeJ4g5TgO3e8Gh+nBLj8m6HNeY118ovl1N2DFIVrw2mELsXWZH4kqTCetBjz6jCuIUbrUfhxrX8XbQvaxPEU0WoXzXywlru/clQI16RIUAbp/sdxHCceo6oWWi2OWYm0pB7173h3zErvNEjE3KHUXiAQtS1xDypwmuJPmYIIFpsqOpRZ9+HPfoMoXp3yeKvmgIdvzgQFBg7azxjWp33+zSPuc5YCEcIJ3dRerq4HWT6HcOjRYqEaUFHDoXWMrgmOYyYB1+2EQWFzgNt8NY/ldt9wQLtvGAvAR7KwY2GByM46+N2IGHedE4NMjiLaw2COw14JfbRHWgSi5kD5+JdPkTSVs1BDHlZqC4M9hbj5mVU+zJOH8qGOnMEe0xCJDz39y/AG3R8CgonUTiqHD37qB3Pzj/V+ZLhjPa/g/NMeAhwr2K6hjVJmQ/LZcyamo8N7k4RA+QBovWGsODOCoSvN4RHTQCuVSbrib7BiDQap81KS5covCvM1OFhm9zKQTigPBbl0MxFco7KrT8lDK0KaFqTF/Mzm4pH0tSkrq7YXYwdy9d9XR4vdI54BgPTrWlhsYJ2vskrbZ5yjIW8/BVF700cnzPhfKE0HntExBfWWJYVPAJ3109ZPQmJtqCs7tsv5Iw8wNAhae6WfhfQY8d+ao1D59Wgaaqh+gTXbiCDIBvi1ss3x+PHelQtpDGAE="
+      },
+      {
+        "type": "text",
+        "text": "Saturday has three: Swim Kids 3 at the West pool at 11:00 a.m., Central Library story time at Bloor/Gladstone, and the High Park playground. Sunday has the Riverdale Farm visit. Saturday looks dry and warm, so the playground works well that day."
+      }
+    ],
+    "usage": {
+      "input_tokens": 928,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23911,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 436,
+      "output_tokens_details": {
+        "thinking_tokens": 339
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3891
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to the pages. Tiny Gym is the right toddler fit, with the age band as printed. Term 1 (Sept 14-Nov 1, 2026) and Term 2 dates match the schedule PDF exactly. The PDF was opened, and the slot honestly says the weekday columns can't be read from it. Registration is captured exactly as printed (Wed July 22, 2026, 8:00am online) and carried into the message. The $45 Gymnastics Ontario fee is labelled as a membership fee rather than a class price, and the message does not borrow it as a price. The message leads with Tiny Gym by name and attributes its facts ('their site says'). With page_has_schedule it correctly uses first person ('I couldn't pin down the day or price') rather than 'not posted'. Because watch=true, it carries the first-person keep-watching commitment. It is plain ASCII with no link and no question. Minor deductions: the Tiny Gym ageFit is read off programs.php but cited to the PDF. The message also drops the Tiny Gym time slots the grid does show (e.g. 9:30-10:15) and says nothing about them, a small act of withholding. The phrasing is slightly clunky.",
+    "score": 4
+  }
+}

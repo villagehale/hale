@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv8RdWUwmMHqufsNHD46",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5QcKEAgTGAI4AUIIdGhpbmtpbmcSDHTkASe9vjOXvNu+0RoMPHoc5v9ZH2bJc8D0IjBCo0HFoAKGbn3jXmr3AjZNXW8TNHCIgCOiqEAZsw485UjhgXn722DgiYhB8yOwFrQqgged/VCwWtTG07d35WpEhqJrjAo7bja5Y+ZetpxC4LA/vfhrKSiH46JREBUeHx9K97DWdsRC4n4QypWKpHrEx/Vz69K/BAOKWZb7r46W4oMHQ/1o3TuuSiR/NjC6MVXmpBm17Ku34r/jlj1P/utDu+rQvDEkrypTimbZBGWLFV8HskjGpAm4NzotUMAZaWWMArBK0DzTgdBRUTjiUcRPUKryeDQHdsxHzvRhKf5vxXbkyAyEhSz5nJLi2NNXdBzlTZvgv9mxpLboiKFlVUoBSJSeOnzOQ7bASINwhynENHRkb2I/XZMh2Kl5KI3HGM/8iR6LXZSCfkKnXC/FxRLaOQi/hc+8ZRYeVutGAmgBkb9ukOqzNnFe4N9Pb0gfB2jNULqlCwZqSfqENAfViX8AaECR9Uhw8gUD8eK0AgEhnixHnC215vLr0umy5JOytLxMzSPibQqfiEk8z5KRZVbJpC+tb0p+/yPWveAs2dk90w0N9NML50lwBLsL1vExzMXq2t2bVVK5pi0IIV8hl5z7I1WbQ2aaSOn0Aaa6uCrE3tXyaeFkVKW3lZANm4m8snX9cchKe+dHOe66Wubt6gfLXnp1zh5aA+Ym8xjt0FjvZIu7HiJhAnmbeY+PQ48ryS9J9Q/95SkYEtgIaS1/0cuWMQIaBNM+zvT8Z6hLHnZcBcMpeo4+sW+rEyRzGoL2uaY834pq4Ui0TWPrlb2OPMWH5utuGhnCdAQLRwvKG/sQZmp7qmWTkPHNYDhpacsUWCT7jGdc7TZbJsazogi4seiLGIcjnzFA/PqGVzsp9lDr53F1DBuM7+IVggss1PLT5R5KWSonRnLv8TcfCzJEx/gE6zeBrn/UrgU9+APH+dDVfPBHxVMkxbYaP0mEZFiRNNXwnAVREs9tFH7UFy+QDkM6T4c50p0j0lPKlbEecXEPeN/SpDzQ0YelUC+ejEZsH3zPOM2kBZ19Q0qSM4w8CuGBWJYPTYw9TUIlYr73a/dOi4Vwk77OVvZI8upGVdj5+tCHEoQzqP99+xIsh13ZxV9P47WnMypagyZTPyTedBOqVzxO1ha18q85zR4MCqeHbo9bI6vjtEgmPUGP6NQjqQSy2Zos9H5xpPRSKsW547EHz340ltMG6irzS0f4t3ulPQ8ZOxk2no8+NqhW4r/lSfS+D6Lrfw+PQhmpq1Tu544mPiArxEPyGAE="
+      },
+      {
+        "type": "text",
+        "text": "Nothing on your calendar today, and it's a nice one out, about 22 and dry. Riverbend Community Centre's indoor open play gym runs Saturdays 9 a.m. to noon, $6 per child, so you'd still catch it. [link-187000] Cedar Park Conservancy's toddler nature walk is Saturdays at 10 a.m., free, but that's already started. [link-0b6114] Both are from their own sites, and I haven't confirmed them myself."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 324,
+      "cache_read_input_tokens": 23006,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 324,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 274,
+      "output_tokens_details": {
+        "thinking_tokens": 116
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

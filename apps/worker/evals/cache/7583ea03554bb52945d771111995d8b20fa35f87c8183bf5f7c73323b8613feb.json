@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Cgv83G7mFNZ1yWnuEhsdx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxgcKEAgTGAI4AUIIdGhpbmtpbmcSDKLveSYpGNQo7ZhHTxoMxe0vWSYiqXyY9zMYIjBM90oYs/cKCpaqTVp9//7PrnuWZEB/k96k0uBACZ7BG2NQDYjJDeEy0kzq5GWbWVoq4wa3qJ2R1oOv3sUjV+4AnycIMWJ4TgptZtWy2hvkdh7iEzAggXDb+pvqp9DuS5eFOmnTMD/BdVk8PBj/tgdzlSTo/hblTY82vxqfXDyrww2dYzcwB4HGQFwEHjCqmPIUfpNAIpXNXh5UwHFqAZupzcvPUt7qqOAK4R7MZhGHjxyViequY5OvEx/9bc2cowSbNkbtyFeFNQS367c4vQjGan6L1aw5820Cl4fhzYuOvP+BX8+YsOi7CzZhRmLr4RoY9qc5hC3x+mRqkJ+yQ39FwHSbpz8RirD6aQnjrU8zH5YdNtKT6KBsvB9EGEAoo8KCh1Ao6jMRZ+bBOFlKgVTPGqyFoxFWIdHNn76Po28EaMYK1O98pWS7BUTcPHi1pwZ1Bfl5ZIqE7hd4i4bC5A7lylxW7rmsU3j99L6srEEXFpqNYHlLaiE+touIwYNx/cJXc9Wll2OJqpvFEadREZsD0Uu37RnIyUE9wMHB5WppKbdTnmFk7Ci72bPosBtpawy3cuppjPSvlrHyTDwOBchk9cJzIa23oeUuXt+hCWsOnFJyGXvehoLhhtwQA1yjZn3jfLeKuPgFv0Sofw2o9SKudBAVMgfw/e97RikA47w0IX8KwT103NQ7cgoIOEvCdGd0m0yM/4PfAfklD68RrJEXdNihqvW4T4gppoXnp6Xhv0xTrN9/nB9KQ6DHgz9npUcanXW0a2i83C8znvDainv2xTdUg0yFyOj0LupdHvrLurDNir3/9QfPs22SPOXFVMETYal/fl3Ig05AmfhEWkrl9neF+MOEAgTRCFcECrkri5r7l8l4nvp+d0tZkGwQOJ2WgoJ4M/MdIesCvZrUWctCBtQn2DIb0qAacmV+fnGtHwBZBZitYlqxXSBLKsoY2LA8Nsf/QhBM2Hxer0t0W7wqthnh9lgz5Pmob71dLf2OriUpnFMO0XO8Y9l2OaGztrs3WXSysI+3cWtvcrE4E+d1S4nSUAJhSiucqJ36+Dl3XHn8AWiW3MWpPCOCA1kTmOsbDGmnRHFZstBnlbMz/Z+olydGnmWIbe1j/4/HZrTmDEe2VVp2Mz7P7Y8qcV8sm8NmEIcf0vqaxMn/1gFaENgtsRks0cEvJzXPqUiPtF+OkPwIZXyu4kauovshUbFg8uKlP07TDi4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016SwnNyKjPxnEPWHVYKMTm4",
+        "name": "find_activities",
+        "input": {
+          "subject": "kids activities for ages 5 and 8",
+          "window": "Saturday, Aug 8"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1090,
+      "cache_read_input_tokens": 23911,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1090,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 185,
+      "output_tokens_details": {
+        "thinking_tokens": 93
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2142
+}

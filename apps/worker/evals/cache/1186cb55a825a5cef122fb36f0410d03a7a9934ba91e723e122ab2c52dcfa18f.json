@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Got it, just you then. Thanks, Dana. I'll leave the group idea there and text you when something matters for the kids.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": true,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "coparentGroup": false
+  },
+  "latencyMs": 1638
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly reads the bare yes as agreeing to the last message: Hale watching Cartwheels for the Tiny Gym fall dates. It names that follow-up, and the promise is backed by `knows.promises`. One blemish: 'tomorrow' is a specific timing nothing in state supports, and 'Done.' is slightly off for a follow-up that is pending rather than finished.",
+    "score": 4
+  }
+}

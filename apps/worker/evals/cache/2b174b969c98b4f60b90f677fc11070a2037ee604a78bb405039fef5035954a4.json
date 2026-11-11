@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "parent reports being on a waitlist at position 15",
+    "hit": "yes",
+    "outcome": "waitlisted",
+    "position": 15
+  },
+  "latencyMs": 1235
+}

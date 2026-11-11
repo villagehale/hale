@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011Cgv9JnDHdrLCh6DhxWED3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvQYKEAgTGAI4AUIIdGhpbmtpbmcSDL/ddBIHTAJ3DeWhWRoM7W4OJg48ztlXRRgTIjDD4HyWHBb2s3VDtgr7OvDMg7NSx2llbrgpCI95iE3NstWC78Zoj1sma8ARJ0WLueYq2gVnQtebLbcXS1OHYyg8Y1RNm7Q/LWw58BnSzlre+zqWTU6Vi9R4FEoJ5MZYF0Ig1ONjeUFAcAG4JLa/4221Uomh1q6faYc6i6Sa/Ab4ohRDtbjamm2QMYi4coxGuF2IbYycnh+kwTmw1Vow24yMKorYfaVY1tyWYP9Eeax53SnCOnIy2x7UQOkrYFxWTVd0Qq7g0C/kB8rr1ZbIMGFdRothpAHXUyrsV7xAKK1CeAhaaOepjlaI0W4oyDY0jCkamBWUcsGp21v7j2QC0vPSznTkDCUW8cmNWLhpAgQTHU9vByoMrsJm6/Y51D8zTw6SCRKgce78+04VHW7gBJh03hi4IyX7ZYJOzBHZ4o5RSUFNHQpqerZ1rgOMnaCZfmwz3HKTOapYXjRCBAt+u+BxHGOHRFVfsxCWkb8fxmX6+ELm6qPzppKUwTR3WwwIjm/mPwaaqYFuiTjaRiQG/dOIlByNvd3wQhy4kwjvw5ej1g/b/AUayExSkPW60JiMxfu7oHHAoffYG/iluc60xKyQpIChNhZpIDOIX3WB2GoC4jXaMf/BF0b2P6ggKEteDc5Ln1g7M5MWCWTGiA8GcAfvmoBHS8vsGqtUQrvLDYFbXnYOHN+aH0I5qoYF2/BdID1I9RePbMBG2+WIxYmyJaaZ56DMmUSfKoH8GMBKLa9FpHRnWagCJVeXQmVnNB0PjC8nu8uQpVC5si6F4NeG4aspVZkR4qaIZYMoeTQS7mvOIhQ39Sxqge9IA98jbQ5pseEPia3HUiid+vvkjo+Il0sJ/RwrsHSe/nvNcqLq3Vl3o9vS2gNfe0JVeX0nwr39onZbtt6wwn5SMVLoVDdnEJw1Mr93jhpU/1ulEBwcww7yVHop0UEgSF410BFQ61Cd0DqZZ5UOlQOOFuPA/Z1OtEaW3xmcAskTLla1VoK/gjLVge1DFW6+FI6x2dEfxWhb5ofr8RhQZgVo4/nFCLoSGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01NRyQEpz6r8hVehdmmMUYWF",
+        "name": "find_activities",
+        "input": {
+          "subject": "outdoor park playground for kids ages 5 to 8"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 331,
+      "cache_read_input_tokens": 25460,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 331,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 120,
+      "output_tokens_details": {
+        "thinking_tokens": 53
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1427
+}

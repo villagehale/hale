@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv8WGxre5z33rDDbLANV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsAcKEAgTGAI4AUIIdGhpbmtpbmcSDOs7xwFs8qNqMFve8BoM2tCbNwxu2Ux3OlelIjCjcl6LPWyxXnXikcEj9TvgsPljVN/ZUU98jvXmXRC/EDeuyeZRa4zHoIdTr1al6n0qzQYmeOcNVW2dk8kc3mvgwoAPIKsyz2Vx+3vMFTYStGT1E5MfgYUhwPb0R82LpKDERwVRTX4aKLEwtd3h6uZym5fxfnFAYVXEcgQ7j2+D9leBz+XoJ86SKDdyaAp+jk57eVqXapLC8Hzh5fjeZwJ/Bzer6mWq82wlGnlm2A0Yhtut2XapsQFrZ11i45fwWJmbJsmcC3gnyjar09BywLEuv1KtNddTo1pSFmr9rsBERRE47+Uug+C45VwHwXrq69O7PvaYeVpyjN8NNbKdyRUJatVzdC3Db17EvkcNlKvtQGjUeu/mz9iEuRP5vWkWnIWTAHCXiRWoWF36itW5CX4euNOJb+epJqCe+FwSoUguMsdONpt5KhYHA0vTT9XGY9IbcWpyGMM0UTYFOghEslI1E0Qk/n/jTKZAcWT5jpf38YPVpbew3aIJS/9vAvW8pC1XQO5llXvXk0MFGRpcSIMlPQ1+QGQJTapNVuU9gD7L59o37S3V5KzvcvGrlZLWekNFO8uPzZ0CQIq1RsLVduBBVhnI1zr4FeIrwy7FKHw0f4wfK/PYRtMl1Fs/VbXhCFVxRsWSA+NwohjbuH6Wb8iia5PBfUdvpuvGNdsFCN1+S7dZQVu9H1bMKXf9OlsF2/F7FhBC6rBhC30D2WBq4a7d5NTQCRKOpOjxhj5MKkpmNlWxKz1t3fO0JVY2mzA7cZytOLjxjWNh89z7Qsgaqh54le49vFI/hoON18gNEuWT1TxA2t9fHhDle1wApQ5eirFSw9JTMOm8xToaYDdnvooBQhRPI3rniglDcZWRbRxWX0y1hSFCZ3fx8RKLo2vmV3t2+6If2jWXwCd+2YWbZdw9LkjdzQoQQ7auH9PNAALaGeWRPWWqNbcsTao2czCeuxxRwVl1rFyJZp8n/FXdtKw4jmHc35tsZJ773ySsUAifBKc45FHfljucSESL4XTEGkuHY40GW4fRhVlfM7lDrtI48/LPEnDnHRfSDXuMkE3L29WA8G3/a831rag+N/yYaLH5dMHnq79MALQJmEzAorr52m3PfR+Ev+edH0Ljk6MJholWchMby5czFkb1srY6Xlzhg0YeOygMcC8KVHN6/xNKbS2ebaoI0xYk06HXfvkPMxgB"
+      },
+      {
+        "type": "text",
+        "text": "They said they can set up a visit, and their director will be the one to arrange it. There's no date or time yet, so it sounds like you'll hear from them next."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20408,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 167,
+      "output_tokens_details": {
+        "thinking_tokens": 118
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

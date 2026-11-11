@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty, but the fixture expects a findable municipal staple: Town of Oakville recreation or a named swim club. Notes are empty, so there is no evidence a genuine search turned up nothing. The message is vague about what was checked ('the sources I checked'), which falls short of the standard for an honest empty result. Under no_page_read, no page was actually read. The watch promise is correctly first person and backed by watch=true. It contains no question, no link and no invented details. Still, the parent is handed nothing, which is the withholding failure this lane exists to fix.",
+    "score": 2
+  }
+}

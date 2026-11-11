@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011Cgv8Q6C3f3XBWfR45gtfp",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6QkKEAgTGAI4AUIIdGhpbmtpbmcSDKcAX2CQ5fhlIGgpqhoMbqXoJ4Yl3/nqgu37IjCSPhGMeCVn+MsJSMfwOnKVRJQSzKoM8H+MrHN0Wmp7gN3PqAQeXXeJHLg07pRnyBkqhgn533RWYoOwfPoTzBLnrom7tWbiNax4AiSgwSAoW4jUhwoEp86qFMcU3/Iq7i5kv4jauGOn93+ELScUbvZn4UtP/Y3wINOca+eaREKd5YvYNmD54vAwgd9DD6qZZH6yT+8CMJsgFstQVYd0YS9wjxoD9TutCDcjqmxsdcdMK7RS0XT1Hsg7BFFT+lJSiVVJt4X/qe29f7rYRUK3QggASxLXiQJUapc6F/OS50SAtJf1gPUkleTxCzpiOJwxEdoM6TkCEFA8xaZacjyOldS3a6++eZVEHmdaN8gXdOJ4/38xZpvr+rlYSXsAlw9NdkqWmsXcTqtV5o9eLFuT+z+Qb5SG37u51q7+JeKQ9lX1oKC4wbkdrNYWSqfq4e5zM4SnFLx7wP+xkH+RJWHHPXW1saPOXVgaMTVU4QXXE+c73PAwcnQwW+X0r5EFhIOwWriO+e/0BFtqxbBEoSi7ue9thnNf0v7Xd9C5fGYx4RdivmYpm9ILJTfPjSWV/oeSCE5AsZMNtG5fVLOWWXwGwbYG4wpyr9oVdpvfruFJVKTAWAWm1M5Tf5MSn+TLYQQgU3HsvKx3hsbGsG8sE0+BvpYA7xIgvoXatnHiuHCLG8kpwbAjJudwgaosd2LprKbBaLqT/fNcxBLWCFR45Ux6PPv7yUPOicSUnmqt4mUrrjDnkwqUkxgzWIj6oylygnwDlhBMHln4cnyasW569uqIe6V5XHegGprdnrfNB5T8QnSzOhLjkOs5O+/JUYO5Rn43/aKa/zCwnYyVeJFhEn4hXlhsUvuso23ZnG3oHmIv2dTVSXfJULuTUm04NVwVi8DGllj054m10tmI59GL2YVRiYTF7/1naasiPcX2RXeQEP3WYZP0UTte8Mo9fo7+maPtvunHE0IF1K8+o+xXym0ZybElLxQMOoKcTkp0aIY/Zj/igkNWwrz18/2H1dw0aPql/jeaU095oDPMuA2ASbnsN4yvsnlKec/MxyteMvovo30N8kF6hS3Tfe5R9PnBv+i/w80iMYfI/d+kLuNI5z0dFHREUk0cUaMBlZX3x83P/YVj5FJ8H8kVNQWk8ZDHv9pff77R3QvfUEeEgFPbkC+cG1ZObTSfPE7nAKJcC4aZ+VufR9Gjs6seYRD2CiR95zJ9QFIwXB8A+TqM+7vYr6ZIwBgB+rcwmrRgdzo4kCn1VSCmlqS5FcVldrFEAfxN+5740y5RI+BsMbH3n8ILlAwQc70c4jHGz5RoEetbA6VDJdF1uzq5kDO3b6C4BqhTdh4OCfFDxwdJdX1Fp4uj+cU5guSbBzgExl/c9aQpdvSoAshakaOLWtshHIRlxzAnsQZF7ypGojGj8SKn1yyU8g9Tvsy49Qf2L6MFMRx6bO3dR5mfdN538KcJo23ishzeGThXjqwCGAbRn7WRfqXUNh+dx5skrkzcnzwG8/2r7Ejhd90AvyhTX8/SB11Id/CUsOeAydBxwXx1I1SX+7p9RnGyZoZdogLuTm9L7pF7sjH+1zS6foqGvF7AvRgkliwVICKEmgCJqaTCaSjA+aEYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_011QxNbKaDY7wXgKgJr2Z7rJ",
+        "name": "search_village",
+        "input": {
+          "window": "Saturday 2026-11-14",
+          "query": "toddler activities today indoor"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_011WeDPcBTizxP6eFJcPRv2c",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1589,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 311,
+      "output_tokens_details": {
+        "thinking_tokens": 199
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

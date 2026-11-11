@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_link_refused asks for page_unreadable. It says plainly that Hale could not read the course page, which is the given reason. It carries no link and says nothing was changed or saved. It asks once for the same link again. It is in French, and vous is fine. It invents nothing and names no child. It reads like a friendly text.",
+    "score": 5
+  }
+}

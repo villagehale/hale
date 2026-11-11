@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The dates, time, link and child are correct, and the texts are listed with their timing. The message ends with a question (\"Approuvez-vous ce plan ?\"), and approval_card must ask nothing, so the score is capped at 2. Leaving the internal labels (week_ahead, etc.) in the message also makes it read less like a friend texting.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused with reason page_unreadable. It says plainly that Hale couldn't read the course page and that nothing changed on its side, which matches saving nothing. It asks once for the same link again and includes no link. It is in French and uses vous, which is allowed. It invents no dates or claims and names no child. The tone is friendly and natural.",
+    "score": 5
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011Cgv8RCLQhYXtXXE8zbKn8",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AkKEAgTGAI4AUIIdGhpbmtpbmcSDC2aZ/MeKTRJx6RkrhoMKKBbnnJ98yIaIrpuIjAT7wLSDyrYQh58+2Vh/XFNU7ukOAOV58/KIZRaO8NmNnlM47bNleYfWl06dJjAe2Mq8QhZK4i5la1Z2BrjfARNB3zuGEjQaxoZeYm3xNF/4y+EgM1VYFsA8Xg9mSxudB4rrjX1tIzoYas+i3vdR5N9Zw7r5Gi984kU/3lCcJY5lBA8MuzSRF2GE79PYwCmbDcqwxZwiKpS8pVs/RAKdlvuXlDgpHuPHYupBv3j33RqnujEexOP7RWhnv/Hq/a04I0f3qx+wsKRLrk4JnfFxPVK6an3OZZ3W6epcb1nAhfKyDsk/sfnKkaLpnaGNZ+OL13VypBc/a/EoheHyNQdfAlCzacF2vUAuX3WOUA1ktBj7epMmwdMffR0ccCUrPQV37eDybNxek+F2kuIxmZCnzDsXOM5whvV8kDztq+OlPMdbwlpdZfUVZvzu9hnUTuJPZh8BHwxw5OP5fiNOah6ImqJ05/SpEawCNK41DkiPEEHPXuBEHYscbr+3ooFvHJ124kezI0pVjEvUOW6GZOYD3KhBAAkVj6G89/2C3mZUcX6O3uJD8q9kslCCYOSYA9Jfq4Pe2iDeMAMNRFAufsXz120UDQeL+pQFKkf+i0XOIQMpaBfbYE4NvkwDoqZtDlb/kiXgdpdjG4d87IhFAr6by8nh2BKW0+kNl9DIq28UfKw56MlydP1sUhink3keXVaSzmHi4iorEwlyKKkpN5ESbJs0L8ywP8PrTZ/OxXcKOmWhI3DXv1hx0TTuKxIfmDDZhnKl7Gqo3F5a7fB7ypvjPLap0IJ8BvKIrsK5OwHsKR1pstcraRJMwo5nAVZaWTy1pvizVxluOy0/bqD2UgJ3kgbG7w4G5mJQeluAJUzHsNZnK1QGupY0p0qknC2Z8Ew9OkDU5dd3bL8Ey7xodxKHfKYjl5Aw9+zHxlrCtoglWrrl1ONoSkzgfjPmQxOCd3wl9njcF6eUKJi8N+yifQ797ZhN3T7RfpqgRY7QYB+kgrz6spgyubZp/GfI5gioFofUUPG99TE0tw2cOCS2b97iV0MFtn0Lbc2urjllv7JDt6v59UgmIHfMlOthUPYMKmHiSyDuhTPIpAZ11rkwfqaiQyn4lsSqt0dq8fU3HMewnWbyfKCHR1ZQT9oDX0apItKuG1eKtIV/4e3CemDbSaNkXNqi6NOKIzYmIheQ/1qMzzFO9z+bguRQW+GHC/d4zyNLRgKsbsK/pcw9dbmzQPUceAyuTJVonUixtwCv272RByPGkXTjs1L5Y+s/o1xUglP34qFnwJxJsD+kO2a7t9pWGpT1k9nSroljkNfeAfxaKK9JF9vBjPZAhS8w8CTUT32DtCSpJuJpoDzksX+PL/WAdvGjgYpa9bYjh7QM3ZSwUAfGG9g4GWaaoMUw6VIF+YtmWBgVudyjfdmC4d2CBBj4Hu3JK5UhRC6unHXVHPVEKTUNc77bQvI//n82Ra7+8gchxmHCIPdML2eMHPoqZM8Zf9TKl3H3rj0OHgIGZa40+zCzxwG0X3yMR5YZN3rHo/Tl9HlkqnObePXXoWR7sS6F+oFxHY2q1hekDGCpokPwlox4W9AYn0YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01VG69KGr7zkahdhfVMD7Xf7",
+        "name": "search_village",
+        "input": {
+          "window": "Saturday 2026-05-16",
+          "query": "things to do with a toddler today"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_012ej2Y1Pw4K1pVZ3HWcUqxV",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1589,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 311,
+      "output_tokens_details": {
+        "thinking_tokens": 199
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

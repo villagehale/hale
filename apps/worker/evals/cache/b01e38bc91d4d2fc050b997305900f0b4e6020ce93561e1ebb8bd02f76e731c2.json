@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message covers most of what this kind needs. It refers to an earlier link, says Hale won't open this one on its own (so it won't come back to it), and asks for a resend in 7 minutes, which matches retryMinutes. The tone is friendly and the English is right. However, \"used my one course-page read on an earlier link\" implies Hale actually read the earlier page, when it should only say Hale tried it. It also frames the limit as a single read allowance rather than plainly saying Hale reads one course page at a time.",
+    "score": 3
+  }
+}

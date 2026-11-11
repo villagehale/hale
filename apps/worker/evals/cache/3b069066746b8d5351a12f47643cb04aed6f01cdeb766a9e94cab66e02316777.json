@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "D'accord, pas de souci. Pour que je trouve ce qui est près de chez toi, est-ce que tu peux me donner juste les trois premiers caractères de ton code postal? Ça suffit pour te situer par quartier, pas par adresse.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "language": "fr"
+  },
+  "latencyMs": 1866
+}

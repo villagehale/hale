@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The dates, time, link and child are all correct, and the message says plainly that Hale never registers for the parent. It fails on one rule: it ends with a question, 'Approuvez-vous ce plan ?', and an approval_card should ask nothing. Telling the parent to approve would be fine; asking is not. It also leaves the internal labels (week_ahead and so on) in the text, which reads stiffly.",
+    "score": 2
+  }
+}

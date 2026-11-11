@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Got it, no name needed for now. Want me to check your inbox for kid stuff, like school emails and class schedules?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1646
+}

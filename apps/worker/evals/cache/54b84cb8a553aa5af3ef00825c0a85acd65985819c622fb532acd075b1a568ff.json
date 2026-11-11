@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reply": "I can't save the carpool during setup, so I won't add it to your calendar, and I won't confirm a day or time for it. Next: would a group chat with the other parent help? It's just for kid plans and reminders, and neither of you sees anything private.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1812
+}

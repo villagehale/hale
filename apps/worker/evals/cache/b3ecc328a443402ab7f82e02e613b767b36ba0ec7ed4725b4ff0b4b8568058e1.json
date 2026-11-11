@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to the pages. Tiny Gym's age band and the Term 1 and Term 2 dates come off the schedule PDF that was opened. The grid times listed match the PDF text. The slots honestly say the weekday column could not be tied, and that class fees sit behind the registration login. The registration date (Wed July 22, 2026, 8:00am online) is read off the home page, cited, and carried into the message. The message leads with Tiny Gym by name and attributes the facts with 'their site says'. Under page_has_schedule it correctly uses the first-person 'I couldn't pin down the day or price' rather than 'not posted'. With watch=true it gives a first-person keep-watching commitment. It has no question and no link, and is plain ASCII. Minor deductions: the $45 Gymnastics Ontario membership fee sits in a slot's price field. It is clearly labelled as a membership fee and not presented as a class price, but it is a figure from elsewhere occupying a price slot. The message also says nothing about the Rock n' Roll (0+) find, a fitting toddler option, which edges toward withholding.",
+    "score": 4
+  }
+}

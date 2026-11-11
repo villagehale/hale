@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits the course_link_refused kind with reason wrong_municipality. It states plainly why Hale did not take the link: the page is from another town's portal, not Springfield. It carries no link and saves nothing ('I left things as they were'). It asks once for the course page from Springfield's portal, which is the handed portal. The phrase 'registration morning I'm holding for you' is mild framing, not a booking claim. The tone is a natural English text.",
+    "score": 5
+  }
+}

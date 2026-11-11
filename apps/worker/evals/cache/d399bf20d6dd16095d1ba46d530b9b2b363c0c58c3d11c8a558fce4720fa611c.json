@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cgv8cTVn7NvGvhjHB7wcA",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Hale doesn't connect to Google Drive, so that one's a no. I can connect Google Calendar or Gmail. Text me \"connect my Google Calendar\" (or Gmail) and I'll send you the link."
+      }
+    ],
+    "usage": {
+      "input_tokens": 730,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23911,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 71,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1517
+}

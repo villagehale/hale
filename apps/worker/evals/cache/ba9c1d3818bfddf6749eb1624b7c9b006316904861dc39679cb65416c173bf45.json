@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names the window, the opening date and time, both children and the correct link. The residents-first date is tied to their postal code, with the public opening 7 days later as handed. It explains Max's in-band fit and Mia's near-band fit correctly. All texts carry correct dates: Tue Sep 8, Sat Sep 12, Mon Sep 14, and 6:45 a.m. on Sep 15. It says plainly that Hale never registers, gives the course-link tip because courseLinkTip is true, and asks nothing. It makes no invented claims. The tone is friendly, though slightly stiff.",
+    "score": 5
+  }
+}

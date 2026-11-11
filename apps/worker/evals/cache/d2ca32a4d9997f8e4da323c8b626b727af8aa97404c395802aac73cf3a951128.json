@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Pas de souci, on passe. Dis-moi plutôt, combien d'enfants as-tu, et quel âge ont-ils ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1643
+}

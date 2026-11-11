@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty and the notes are empty, so no find is being withheld. The watch line is correctly first person, since watch is TRUE. The message makes no unearned 'not posted' claim, so the no_page_read state is respected. But an empty result has to say plainly what was looked at, and this says only 'the sources I checked'. It never names a source, venue or search, nor that it looked for a Tuesday drop-in. That leaves the parent with essentially 'I will come back to you'. It is honest but vague, which the rubric scores low.",
+    "score": 2
+  }
+}

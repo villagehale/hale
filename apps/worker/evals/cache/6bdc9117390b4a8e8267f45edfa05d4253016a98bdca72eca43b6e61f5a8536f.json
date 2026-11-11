@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message restates the course page correctly. It notes that this page replaces the earlier one and says the course name, day and time could not be read, which is right since they are null. It keeps Tuesday, September 15 at 7:00 a.m. and ties it to residents, matching clockName. Because prerequisite is true, it warns the parent to leave time for the teen. It carries no link, asks nothing, invents nothing, uses only the handed 'your teen', and reads naturally in English.",
+    "score": 5
+  }
+}

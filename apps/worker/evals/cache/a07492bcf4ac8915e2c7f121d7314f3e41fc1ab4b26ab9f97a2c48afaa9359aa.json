@@ -1,0 +1,21 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Juste les trois premiers caractères de ton code postal, ça me suffit. Et tes enfants, ils sont combien?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 2,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "nameDeclined": false,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1841
+}

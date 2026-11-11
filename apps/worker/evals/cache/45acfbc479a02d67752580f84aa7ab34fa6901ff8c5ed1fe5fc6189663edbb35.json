@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv9HqvkEFRwhRoDY9zze",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+QgKEAgTGAI4AUIIdGhpbmtpbmcSDK+dc/lbts4T/f+zJRoMrAzRyCm9A8HB0C1JIjDSXTnOplCFULXMoIG7dzBY8Em7DvckE2EU2qLMx5tDc9pXV2s8Shyf+q91LSa4Hccqlgg2LokQeRZlC7W2yCADp6HqGaRLSFagZX0e65cmRtE3D+3/dBCTULkxY75M7kY1hOf8CL7zULEaMgaKN8r5BJxwmj20zxNyXAPDHsUsZzk6CYS9+ppQI7hvdw2ZBNrxKIhvKb9qTskC/EoBBKrNmuNJvqKBdCFemaaY7SYswXFJ8qVUjnf8c2hIyX3xhOwlEoRnlhnEjr8ga86PWSwunygk6w6E720ewSq6AwcBKEuimqiKCR6Ux9V5MS7evM0rN74isTZSNI5CKmKT8bxpYJ5HuCbfl0G1M/ZMauHtT4bFl6iSXN96lxpZ/A3utfKkzY18jq+ac4UFsfuMhpfkk67dcEyDrePJNbhFG19/Muuw/LyXfRCrXEpcxF+SrMxHjS9VxFnhspQ4VRgiDKPhcHVj/XB90z1dUWM5okNfvOizXZkqJcjWR4KJeB0CCHGSUFI5HM9hlMoWPmxXJIaYgwN5v2D7JlMWQnyfg1SRRM9HdVYwJcs6Jh4mt0DWYchN5QZsHTFWocl+42XO0KVvo7oeOOBX9QmlsEV9rgXJjDOZZJPiqDbWd7pIEDFdKvMmVJOb8fpcMx4Lcm2BO3Z2yL9Sg625pieDMZMQfXK1dimOqrpzBcm3359yUBOvheMnIkz5BSHyICSEicGHnCdBUUHzCqmjlGi7XuSAWJnmA1A/bQOUOjJyZ3jMKX3KIP3T9d9yWJD1m3Svmz19rstOWxELUHyqK6btdDhj/52HEVMEKUavHKfjK7H+I0Rr9c2rxwSVjYEn+uqbizz8zC3ckadak7AbGB1Y96+iQoyzH3SBpQYNwRVGJCuaor4TDHl2ArhnAHZMKVgot2fh+jIhfQclBxa94AgQHkBevJr4zGawrNqQFrAKGcAd06b9SU5FYbTYgBRrefQlo5au355UFRLy9wiLXEW/80t8BnqKGw2mV4Ew1uKGCySBvSaLqt4G/WoHnP45iPXayHrz4BqBFqj10Hu1c48Uop6BG3t8JXUL+AE6+A4VLitk6+j85xxRftF6EaCy0DywSftt7akZVdlqVo2q1OVzDiS7MXnjpl2lYSIVmwFxoDbZWwCVRqPwe2XVbxTqD1ZNaRw2HqJjVjq2po5wAuc+geH8OEypLMYg423/1XHxk9PNbYn7hFeOPDmzmRcFr1N/5RRKtfi4CYMbGbxElBfPrD0atf8JW12j3Rk1pCl63BjWW5Kxelk3FGZCGbjWVQepTVw5I/03VUbAxO9zv8QkJOHRoKXqYV0tAt6nkNI8Sohped9vQ5jXeSlyXzFx812/JRDNQqWBwojj5IcBQnt3OrytAkX/fQ5TqNhuCDzUsjXL9K4PcJss2G+HRdtta8c1vHwQ8DdHsHZmekGVNeWEi/1MmGnpsAt+vTLGAT0ljBgB"
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week for soccer practice Sat at 10:00am. I didn't find a playground page I could stand behind for Milo and Ada's ages. Riverdale Farm is a different kind of outing, but it's a free outdoor farm, open daily, and listed for Sun, Aug 9. [link-b8b9f6]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 219,
+      "cache_read_input_tokens": 25775,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 219,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 296,
+      "output_tokens_details": {
+        "thinking_tokens": 181
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2630
+}

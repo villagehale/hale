@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011Cgv9HZz3sdnY8zp8iWGZS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/AgKEAgTGAI4AUIIdGhpbmtpbmcSDI/i362Pp8WrXabwURoMp6InhQRdd1Lbs0p/IjBtKVtA/0HLWe22+5gxnnoxu9CNeLsAbdPMKmYIRBhJSVVRpigcH+Pjc89GJ3TRWaAqmQje3NVGtXMa2fm6u08S5W2vDFXBkI7qmeXfJfXOP5SBw8xWRrLw5chDAkfw8ar6UDaAjz1YQ4mbtP2DU8EvYEy6mQvWSdHY1rWPFpJw972olKusu239LZIHjqp40/bcKRCFYR+ASZlx3K33gD17a32PeMdhC77PzFnf+vvJcG24DxSsXPb5AXS6kjnAxNuSYZ5ZfiG1GrTMVsuhn58I7ogpDk6HBee4e06mza9wVq04ZnMHtFV1OEbUhPF8T2pbCWLmxwDVIikpr2ABfhe1zFAZVfteaCjpeWuEVdzVKzS2J8ZpUyyPAZP04/3L/T9carp6r5MU/1Ry6f340ofXss9VixTGsM0Q3bY+YPBJllgSflbRQesc0a17OyCkR4cOGurT5QHKJ1FJh8uVIVTAXOT1cY+wSzjCaFdxoGQ0nG/qMWC88SJZnOLeYlhSgscSOyvAFS6egrbY/HhByiwP8oY6P3QdFeRdItu03dJjlVbSB8DB6TnLCsPpYfDRJGz+QEXfvpl4ovudOE+6P0+KUp9MI7JEuhFC7XznRnorOvuQbT3tCGoUd5kxa0W8694y93MGDxJZDAvB2X27vxslssRUKJlvakOYChUXbdvYuPobgp6FTDU0XTk+PK+lQfpz4cMx+3nQTa1DIB4ZKialVzKRoGYCl++sI10iISb2r+svzx0ZPbwirlxN7ZN6KxsnKiAH4DveKDq4Em3rxhw6+26jnJ4Si5pqUDzLI2NG7MPDrMjWFgwazV+OvAzGe2WDwxWap/ImeBHch9xuVGEkLl1nwjXLkyNQLFLPbmP+j3XTOc9OGADqzdgJuRDmPt6UuIn9M1GSsspJlzJfHDGUhPHCyTAFkmrEdbvQzQKqbii+sDAaxIUUr60HM/xCwhVEpjqGosqnlHD/7EO6XYoQGkI3CcWkhhCLbXrCw2WBPjErf4Ztn6dIO2/x2HH4XPBALW8jAKFCaxHRusAES54daP1OwhFhhvP1XsfAxc33y3pP+rrlrS27yyqi+X4Dm5RPe0KRgdkFOwKNuJhtRe6zWbnIQY9A2ZpqPPn01oGt9SiKCpQjrULgHL1+IGjXp2wwg+5WMy9jrC3rz6Kl95OrkoPdTHS5Qpbp3xAgnsZ8hv3Cr0kzIFdUE3ABojdFB9qOFyVb4XV+5RGrXhYIoT1FfcHCkFszowLm6j5qGyyr1WBLTP3KfGvYBJ6I5zTpGS60GGWxSXncDIw7XzdKw5hxW6DgN0egklWobWV2CZPNuoQ0wnq8U9VeNJ5hv+BVk1wSnUmIlqyWj2OZrC8drehnrTm4V8RSr29QmGOC/r049QSjS5Ot8JAf6l4xrW0S7sf77OeT19OMubtD0a49fgEDUDFOBFZaD40HLdh45k9zMeSZ+eP3YNLBhdmhYRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01PA69Vfs8vpECXum1yjTofr",
+        "name": "find_activities",
+        "input": {
+          "subject": "park playground"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1551,
+      "cache_read_input_tokens": 23911,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1551,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 211,
+      "output_tokens_details": {
+        "thinking_tokens": 159
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2265
+}

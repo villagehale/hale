@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Pour trouver des activités près de chez toi, j'ai besoin d'un peu de localisation : tu peux me donner les trois premiers caractères de ton code postal, ou le code ZIP à cinq chiffres si tu es aux États-Unis ?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "language": "fr"
+  },
+  "latencyMs": 1914
+}

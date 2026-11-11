@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Strong pass. Every slot traces to a page that was actually read and is cited to it: Tiny Gym, Rock n' Roll and Tumble n' Learn ages come off the programs page, and the Term 1 and Term 2 dates come off the schedule PDF exactly. The slots honestly say the garbled PDF text does not tie times to weekdays. Class price is left null, which is correct because the site says pricing is only shown after login. The $45 Gymnastics Ontario fee is labelled as a membership fee, not passed off as a class price. The July 22, 8:00am registration date from the home page is in a slot and in the message. The message leads with Tiny Gym by name and attributes the facts. It uses the correct first-person gap wording for page_has_schedule ('I couldn't pin down the day or price') rather than 'not posted'. It carries the registration date, correctly makes the watch commitment since watch is true, and has no link and no question. Docked one point for withholding: it drops the Rock n' Roll (0+) find and the Term 2 block (Nov 2 to Dec 20). Term 2 is likely the more actionable session now that Term 1 registration has passed, and dropping it leaves the parent with less than was found.",
+    "score": 4
+  }
+}

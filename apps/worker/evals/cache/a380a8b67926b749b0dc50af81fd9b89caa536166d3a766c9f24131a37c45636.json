@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Great, I'll keep it ready for you. When you want to set it up, start a group text with Mia's other parent and send them the number and phrase right below, and they'll be in the same plans and reminders. I've got what I need for Mia for now, and I'll text you when something matters for her.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true
+  },
+  "latencyMs": 1870
+}

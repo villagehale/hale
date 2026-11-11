@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv8VSW49ftjin9Ednudr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSigcKEAgTGAI4AUIIdGhpbmtpbmcSDGhyUV6uaCRIK/aAzhoMq1pe9u3w+giNsJ+ZIjDb1kLew1Tejk0AVDyix3JqRIpo/WG5LxXGHB9GMO8Lsx3E0NEBwa05U2CBm0zQkYMqpwYeqUnntGB3f43K5jZef0qdXJFhB3C3Sy0zerdx3daKU3VlGnC7f+VUxeGClrKNg0jDLxvfgvWuqbKX84GTUYHeLkQbh282f2ShUzGtRdWypq7vkYa2e2OoNhQo6ZPhMDp/YPPPZ8Wr8Qg8vOF4Yu0D3jqmgXph5wd5tsbVnNzdQ6sANxw6ffO3Etxh1WwxAyO9117SyL6TH2/2wp2gCjWTvwB/o/om1WMXLkkB+WqWEFO/RNL8tbFnGXhpZ2klLHP1LJA34u3wpenVZixG2pcO3HGy4nADMd9HrBcTZC/KikrsoWIST4t5aDkOZ+YdqmlEmdzlx61y9czLZXy9VDyLaLMD+3ZvZ2BWpuUBK96101r6bSPIQZtaUAi1wtCW9o+/o7Cr93/PxmBqp15+N85bNgzUQxex9HSEKOvqJlEls9gz4buGqfDfChOEHWzz8pK5ObE6H5svSWrF0epbdHtekTkaRVNW3pDgm9IpnyTHEFLwzXJKzvn5jWBzsQcdGVBaScwEjss/U2fj+Q8glApmM9J7xv5srHUUUivZD5oIMFmL3CetLxbHhUcUOS3SIt+B/l7c28BehPtP+BZsIfeDAEMV4q+GOcklfq8jCRilQKxnj3Cetu9ZMlLpGMtz6R23LIle2PYGi6oQVlHQwAWpVpg152oPFg4j19ky5iUwIhyoEjv6slVYAmmiyfbqo5fJp8q7tMQSCm8Kj/QsUnTnuzz5preFlTTx5g2lq7hgngnJ99KM4CnU7egLl5NYG6NBdoxv5XFluYuqz4uEHu5LUY8nyw2jBUZaUaTTUThNgRXQHo8BjrK63uv65uKOymroR+1BmJBiHGdnbqCj9dqN6mkOSwsEJVzKOXtZkbfC4+P8SH3w7InciHiRQPEO2VmK4oqxtDwv2aOwVNZo3GAc8FVDNg2+ZpxKAdd2V7cMrNbEit2O5j6R4nZi19f/oV6OYC9x4nyLa2wvpgVdLQvciLboQGgyJdcCoByKpDUniUKLVUM0oYG+f5VjlU1Tp0zH/fqTpKO1oHppeVYMTrqqN78xqPNmXPAD6D2+arjaa2OV3dMaOuEYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "They said they can set up a visit, and the director will be the one to arrange it. No date or time yet, so you're waiting on them to propose something."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 675,
+      "cache_read_input_tokens": 19733,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 675,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 141,
+      "output_tokens_details": {
+        "thinking_tokens": 96
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

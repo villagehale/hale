@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv8YfL4tAsL7asoTqsPY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpwsKEAgTGAI4AUIIdGhpbmtpbmcSDDLT92bzRNnQgK1t3hoMtt6k6thiDwJ1Pu36IjDCOPk8KizcMD7k48VpgH+W8JPb82NqUjL/vfjR2PcbwnVo6u1sHmyHkdP+neKUJnEqxAo/9C6xbTzxUkUIJ77PxhgsH0qCCHP89lQ+rtluIM5mw2ASd7jipBjlY89mQxEfe1m/d5+GK9Zts4oZdvE8aJ/L1GYloGuXBRzNm0pGddOkW1ovOvyHsI06+y/7iurBkKeru2c83NnOGsamV0gh8BUOazSVbL+BxyihpV08GX7XMwjqMn3RDOsVJGgJKgEJe7RwffDHP1TWmFi1pVzNS+lT6pneVLkkyZoBaSEAfBKqvUVJZzegiLMaWQQ5mAnPxp/rCkcADPv2Aea7tpi/HUY5FUKfpv90VZbjvjtR9sE8WetppcLppmEZbAwxf0n8zO8TilKk8aNCdEmcadCjf5eNkAy62a435CJTi+nynHl4tW4NhShEJX5lV4QP2pjzjJ9hxrpxMB0BSYlRkK7U8zOXochFP59xlos7SRuPw8NFJ/paBsCXl33clo25gPNSr2jJ9wD6u7N1irNwTyRfSERL8C/ABqKoRD1vBnGS5CWl8GVcAKaZFLok5V+REtiApIiitREaniWKkqE2ODHIGs/fsDoM6EgoWS5ehTMEwSgm91eUW37QjKL7RAI+igzUK/ghTJXZtN9KYd0IvzRCgZsDYOzVJKsokWC6Ik2jnH+gOlSs8LjlKWm6MqLMzyQGscCtVmNXVh8TM7AC75KpLhEFEILVpSAcTNE5zH2lcVrb5jdhhyUraHLxowlorTB5FYGMchZw0PL71MCSaOx0g2gffPEAIOWsMzEYboJW9ozK4bLl3OusHzNb5hzyu3MFbLHFtsnAzYRzXV3UvnFLI2WZrgE60ew9POYDZyKRxeT9snAevvISHHQ2kvQ1XeBMgmWVOXSrwaAkkSy2f90rwCQeI95aodHyKyJC72ioL4VtQfN49G9tlhey2omXHnA1t30c4vPFj/LsYi/0PxezdqlOyH+f+RDCBOfEAGideTeQ8iLJlMjHG9wymUDrT2kkDkTGp4+wjrD7L74jcPyYaaY45DvTTKjL5iCTxbRL4g1wP7motuZoHrv+d09Nz/xqNCjEkGTPg91TvM8aJI47HuZsyQLj/iMb3Oqia68jL+JWeXJ73iBz+tv70axSnK7y4UtNoygDBO+8/w+nREOwNVoJpvfXBhIW2u1GxKLqklMTKxDXdzvn67tJBr0rRUQrra9EJyjjtTaZePFNSQ5RjpDjDP7WXxttGuZ5unquJyKnw3DUx9HWUq+g1bi0kMcCAB+Rq3O49rJqiKPFXy5HtMrFzpYOSqQpqkuUo0GQk+BcIdHGsdCFQZDHm+9JhubJwuf1aYQc6ZWUNEQ6+6h1HJgL4S/FzjtgSaDGlBQph0/rEHRvLB18S2xa4q6OEfHhLtrwBr8GRyKuPNQ2oUCgTzlOMkqIzYDZaAYTDcNfkH+Oq24/+F8dT6BVY/jRrZc5FGR5LPUeSTJk9GSzU6M9J7V21Cr/eUfqqBp5g2wFlSf3yo6dHz0m+1hDw4pOclq2f/ouKZ1vey2Mu/db3M9S6tbai1WwVh0FANDdsiN0tEtw9+6VVcg2bljMirn+DnRgAp3dVZD6r4aDx0EJKz3xf3S3H9tmWhgy6vtN3jmjSst7gKgAaFKACRQq+8zAPFr5Z7PF4YnueXJ7lBEKBTYVq8wZ/osTHDGDTvMQepWdGFR13wr3acpJLB5u4xcJDKfAoP8rbQNkCOcaARcjwPy3jzynqxXz7SGiDlkRHh3+eMYVgV0tektEXO7nl2HorZd98W0GgcgYdP7Q2IBUOgN/Se1DDmYWlqTdUFgNvEaDkUbxqfjVvU7nG9ZrcAbfw8nGMvpDnTGZGAE="
+      },
+      {
+        "type": "text",
+        "text": "I can't open that email from here. All I have is that an appointment email came in for one of the kids, so I don't know the date or time and won't guess."
+      }
+    ],
+    "usage": {
+      "input_tokens": 441,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19733,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 328,
+      "output_tokens_details": {
+        "thinking_tokens": 283
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

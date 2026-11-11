@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits outcome_waitlisted with no deadline. It acknowledges the waitlist in Riverton, correctly notes there is no position number, and says Riverton publishes no response window, so there is no clock to set. Pointing the parent to their email for an offer is a handed point. It asks nothing, invents no booking, date, child or link, and is in natural French using vous.",
+    "score": 5
+  }
+}

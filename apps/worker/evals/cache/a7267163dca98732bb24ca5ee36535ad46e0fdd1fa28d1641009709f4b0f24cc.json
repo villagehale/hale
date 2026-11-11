@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Cgv84VVScjjRGCHVj5DZX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1wgKEAgTGAI4AUIIdGhpbmtpbmcSDKDF0P3xaHFgoEyRHhoMy/dCFQnULVZtQGMYIjCExS0BX8sxVBL5pFvMsIHTO7OUWCgn61NqWk1MglLSZ6krYdmu5ut27ihUdDuRiBYq9AdvuPiL+zyj8PaokqYpC+S8nxtgNYhK+als1jcxxRFzDfPhm1Z0YI6CT16AvEHAMhtd4mhlwJh0d4jVcPYd453hpa9aOYRlab+L/NPq0JxVdwGX4xJE5Se1clJxzLv8jMTSV7+gHHVFAv8tYicd+ifb9nHsa2hArmYlD21MJuASzdAsJDxqHFUwnalCDtoBYN0FvmcZJpFcl782sN7RUuZAPncjOSCa82ImUee1zJIkKVDSPnZkw04NQrBOaRURBKi6rXo8FB239dtVtglfxo6qvk01hXO4/irjp2x9zL9StWg8Z0pPahSSUmae1Mku7/F73kWU8LYbOB4UUvwZnvZHIxhlxoVWtmWRowOgcZJzRqlgnxlWGwDIv6vJwPkAysMk9ppNrrMOLZ0Q+wMiNeA68M1eLomk3aTsZuRlyI6hEm9CRncDeQY11WW6i9OxX8gGHb1VXI4QdYDgqA24A7SfDce7GIbp+hvt17KC09npmkrHoeJWr4cOzkklHFluY1oRy2gM4IiM+Ou/+vKSinWlEFEJ6wmI/E253jfNveJwrb5IL6PF4n9uUbF7v5Lav8YUyTwnwreS/86glDw13fTn7iXjJzPCiVBeaUCLoDZxBepitLheQ7+msWWRBvl55greqgPLYHogdLbvGDV3Ptvx1rRlFtyacBYWtPgq1av4we8uNmUZXLsiYWNgNfbAHTSUX6VK5QDLatfJfkJG+yUngx6oz6PgU/rF9q5XyDTmxEuJPMz4r7eHpxFR5Njp7uOPu3jiO6sf02GadoXMvalBuFKpofZBvcM54YuJxYwVhpmeH17q++mGhAE/ocanHZu23WPw30Kqe3U3UxMf82m32vDQHFSVdCc2wWplxB9NOd0Bb2E1S+feoS5v5BJ2sdrz9Ob4/25dRwDpHJBUqEhsE+yMwz+1E4rAn9D78JzFMVUtDta538MBEy2g6sZNYP25G4liC5ATVl8bdaQTaZ5YoMQxNU/ZxjvUab4/k+KrZf4CTW+pkxU/9k7eNnhZ+M2ZiVGzZwgS/HPDb3W1FBrxmiiyAv8yVk6Qc+hBO6kxx7ZpDkuiLn9Td2KX4wScqlHx6PNkI+IYI9u2VmD89EATXGP98rJNpDeqFr6UY+q82Rjl16h+bPr7+hm121i/NH5LuE+W62iqUwOj30IqN9JDynL1yYGVbaVHgWyiV2P2e4oVQ5HdlHPQUXIxde67ImdCoPr2QRJQpI86+hIBlQqrE8ch42STATEzuV8VPmUHiEdYWOKY4BXc/pDVsaeteRBuGAt4omnrpHLzvwTSUOSq0Hr03+9rZ78wvdEK3W70DILYRUAuXFPi2jBJKqNixSTmzaG6GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014sZ8wXv7J9VhsG1eyPrjGQ",
+        "name": "find_activities",
+        "input": {
+          "subject": "kids activities for a 5 and 8 year old",
+          "window": "Saturday, Aug 8"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 24852,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 250,
+      "output_tokens_details": {
+        "thinking_tokens": 156
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2173
+}

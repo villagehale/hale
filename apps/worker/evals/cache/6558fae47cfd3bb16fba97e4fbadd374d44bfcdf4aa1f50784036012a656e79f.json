@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits outcome_missed. It responds to the parent's report that they missed the window and gives the handed promise to flag the next window early. It asks nothing, claims nothing outside the facts, is in English and names no child. The town name is correct, and the tone is friendly and plain.",
+    "score": 5
+  }
+}

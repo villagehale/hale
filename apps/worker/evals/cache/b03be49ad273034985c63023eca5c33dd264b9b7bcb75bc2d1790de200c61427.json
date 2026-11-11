@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message covers the required points: an earlier link was just tried, this link was not opened and Hale won't return to it on its own, and to resend in 7 minutes, which matches retryMinutes. It is English, casual and asks no question. Two phrasings are loose. 'Used my one course-page read on an earlier link' leans toward implying the earlier page was actually read, when it should only say Hale tried it. 'My one read' sounds like a fixed quota rather than one page at a time. Neither invents a fact.",
+    "score": 4
+  }
+}

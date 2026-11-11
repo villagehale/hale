@@ -1,0 +1,30 @@
+{
+  "value": {
+    "reply": "Your calendar came back empty for now, so there's nothing on it yet I can point to. I'll keep an eye out and text you when something for Mia comes up.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "ahaMention": null,
+    "stopAsking": false,
+    "parentName": "Dana",
+    "nameConfirmed": true,
+    "children": [
+      {
+        "name": "Mia",
+        "ageMonths": 48,
+        "agePrecision": "years"
+      }
+    ],
+    "connectGmail": null,
+    "connectCalendar": true
+  },
+  "latencyMs": 2758
+}

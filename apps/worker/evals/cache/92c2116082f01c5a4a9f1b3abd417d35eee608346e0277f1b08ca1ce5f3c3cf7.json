@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Cgv8XxyBfrXBYLSCqJnF9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS0AgKEAgTGAI4AUIIdGhpbmtpbmcSDPi1jwaiI77xSz/f3RoM981XdCP1/OPcvGQqIjDxQgQp3afpHF6ORhWZ5tXgIuAUUBqbQ8wnfyKmKjtuaLjZRdgg/JTSejoU7ICIyz8q7Qfpbz2P2Ve+niwIVa1CxXfBthm992hLDytdRiBSG4bpCb3prxzJTomJFZKGrfv9FNR9CZ3mrzNe3aovBrhl8ZBuQMdFrjwIaqT7iyTq6/2vdV7fSmlkLlA2BlzvWbqBy9Roca9hiUUZieAqf6LhUGtfF8tqvjeWApdHj4DYABNwukGUnOSOgd1vCSC9XclSmtZs8gtn7UqZNRMkTxsayNr7EDioMdVdHkU0nQ6KsTBTlGQTISGuHAVkzT8NaEa0bwBO955HHagmGeEyyCOMOHDdfQfeO6M9ZTCF3sOUeua82gIwUxDbvsUysEiU4V2dckXUOt5+XcKgN3NKx2OhBueOqbdb2Xe6kZvkfmMlHJ2qCm8PYJBhbV1+ixWaDdUmFoVI32W12wyNKpPkbBEt6SccFMSqeFTjYvpxhyt+wlAHizf8C9MVyVlrF1gSkmbOfkmBGuQRX5inxX/AU7mTnGrTnlI/olQx5JMqr1r9p3hRLFdXPOJ8czo7qP8+N8aza+HKfmydGDSA/4rADJdgPI7a2cfvWEYby1CSnTd8AJksoOhbqoXekISxmImy0jdchg+4oBYwLTNfCJZs/EtIqYYXu+x1TnkR4VaU3fv5rNBRWsRb9X5FcjdLRuTuVMX6bkymH93s3LU9z0L+DJOzhq69bC1Sw3K3QMCnhBTyskVUYDAucMUzMK4e4KmONliR9HRC+kd/Mpu+m0DWPpfo3tCQJb/3m9/0EeGaqmY1D5FH28cImRvoiUNE9jm2/f4GDqicAFpWWNCVk6+ivizPFoE8HsHek/zz1P5Po8m6hKZnExsbYn+ByQNjHHEy80sioEvuFQW7x8yJO4x/dY9En/cBxUdK7Guzhp9gKd1EJ6EgKIT38TM4D5Yw+oGlnqeqcNlSwjnSxlUfRy9koJM8tH3BmGPvcQAVyGMnJxrjk3P4DwnUW1h+zyxQjTRfiESW1z5HTRr4mKmRtYB7qgGfsWauxGRHMr20bPVMNbgoK1PRWBQZ4h5DLg2JIPHs6BGw00zRIhACe+REQPgDxvBUI4TP4gxGGjFjTPcW/l+A73fiMRXfwsQTanha+ynTbplXyTt+IXB5LpIg7YHsjN3iMB6Xa8UXQpYcrltkgUdunWQblT80ueAfO6riOCARi+Z4asgg17j2jmFinmdNNRugYUrybGEYyYFPgWwV3xM4xLeY0cXJdO91E4yCuCHg8ETc3NsDAwp0Lu42zIP1L81rwQCdgfEJj3fgbDpD9/6tt2jStkhGmhFSpHFK5f+k4f/usJ1FBab8zzJTVf86nUkVuBZDLnLqpd9XF4wC66dtS1IdUtLyVu5R+34ZBrEkCFIYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01WcLgYPP9TyZu48Vc3QcxDb",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "toddler",
+          "ageMonths": 28
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01U2NbDpW4csxVY7MTA6Xv4Y",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "offer": "Want me to send the full plan for getting nights back on track?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 782,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20951,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 361,
+      "output_tokens_details": {
+        "thinking_tokens": 190
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

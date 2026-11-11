@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This does what course_link_refused with page_unreadable asks. It says plainly why Hale did not take the link: the course page could not be read. It contains no link and saves nothing (\"rien n'a changé de mon côté\"). It asks once for the same link again. It is in French, sounds natural and friendly, names no child and makes no invented claims.",
+    "score": 5
+  }
+}

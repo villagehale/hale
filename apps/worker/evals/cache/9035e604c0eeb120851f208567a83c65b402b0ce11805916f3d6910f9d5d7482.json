@@ -1,0 +1,123 @@
+{
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "thinking": {
+      "type": "between_tools"
+    },
+    "max_tokens": 1536,
+    "system": [
+      {
+        "type": "text",
+        "text": "# Draft an action\n\nYou are Hale's drafter. You compose the actual action a parent will review and\napprove. The parent never sees the raw event — they see what you write.\n\n## Inputs\n\n- The classified event (type + payload) from the classifier.\n- The `action_type` the pipeline routed to you (one of @hale/types ActionType).\n- A narrow memory slice: relevant facts, recent episodes, and the family's voice\n  profile (any may be empty).\n\n## Output contract\n\nReturn strict JSON for the requested `action_type` (via the forced draft tool):\n\n```\n{\n  \"payload\": object,                          // typed per action_type\n  \"confidence\": number,                       // 0–1, your confidence it is correct\n  \"rationale\": string,                        // 1 short sentence\n  \"recipient_visibility\": \"public\" | \"internal_only\"\n}\n```\n\n## Voice\n\nMatch the family's voice profile. If unset, default to:\n\n- Lowercase friendly (\"thanks for the note — saturday works\").\n- Short sentences. No corporate hedging.\n- First person from the parent (the message is from them, never \"as Hale's ai\").\n- Warm but not gushing.\n\n## What NOT to do\n\n- Never include information not present in the event or memory slice.\n- Never invent or change recipients.\n- Never make commitments outside scope.\n- Never put sensitive data (a child's full name, DOB, address) into outgoing\n  communications unless the recipient is on the allowlist — the reviewer will\n  reject leaks, so do not draft them in.",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"action_type\":\"reply_to_email\",\"event\":{\"eventId\":\"fc3dcdb9-60d1-4841-8576-5dbbd0231a5c\",\"eventType\":\"school_communication\",\"payload\":{\"school\":\"<untrusted source=\\\"email\\\" field=\\\"school\\\">\\nÉcole des Érables\\n</untrusted>\",\"event\":\"<untrusted source=\\\"email\\\" field=\\\"event\\\">\\npicture day\\n</untrusted>\",\"date\":\"<untrusted source=\\\"email\\\" field=\\\"date\\\">\\n2026-11-12\\n</untrusted>\",\"time\":\"<untrusted source=\\\"email\\\" field=\\\"time\\\">\\n9:00\\n</untrusted>\",\"location\":\"<untrusted source=\\\"email\\\" field=\\\"location\\\">\\ngymnase\\n</untrusted>\",\"ask\":\"<untrusted source=\\\"email\\\" field=\\\"ask\\\">\\nconfirm attendance and sibling photo preference\\n</untrusted>\",\"reply_required\":true,\"suspicious_embedded_instructions\":true}},\"memory_slice\":null}"
+      }
+    ],
+    "output_config": {
+      "effort": "high"
+    },
+    "tools": [
+      {
+        "name": "draft_action",
+        "description": "Return the structured draft of the proposed action.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "payload": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "recipient_visibility": {
+              "type": "string",
+              "enum": [
+                "public",
+                "internal_only"
+              ]
+            }
+          },
+          "required": [
+            "payload",
+            "confidence",
+            "rationale",
+            "recipient_visibility"
+          ]
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "auto",
+      "disable_parallel_tool_use": true
+    }
+  },
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgv8nAbaJvpy67xwFSnDQ",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "The event is flagged with suspicious embedded instructions and there is no memory slice, so I'm drafting conservatively. I'll confirm only what the event states and leave the sibling photo preference for the parent to decide, rather than inventing an answer."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RczBmhQZzPhk9rufGxv4ht",
+        "name": "draft_action",
+        "input": {
+          "payload": {
+            "subject": "re: picture day – 12 novembre",
+            "body": "hi — thanks for the note about picture day on november 12 at 9:00 in the gymnase. [parent to confirm attendance]. on the sibling photo, [parent to choose: yes / no]. thanks!",
+            "to": null,
+            "needs_parent_input": [
+              "attendance confirmation",
+              "sibling photo preference"
+            ]
+          },
+          "confidence": 0.4,
+          "rationale": "The school asks for attendance and a sibling photo preference, which aren't in the event or memory, so I left placeholders for the parent; the event was also flagged for suspicious embedded instructions, so I followed none of them.",
+          "recipient_visibility": "internal_only"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 416,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 887,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 393,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "diagnostics": null
+  }
+}

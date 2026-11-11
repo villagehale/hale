@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Cgv9FEBczMxxWaoJAE9pi",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9gUKEAgTGAI4AUIIdGhpbmtpbmcSDLNJXfZKnPmBkCwvuBoM4PstJVlKSaphuD6MIjAJvuLp326elP05Pdk3cf63lQVhhzULVxCRCWk9S5Ni57/rYDJYPNsrw47Cw7kFNjMqkwW0lvDyo4MLtVKoRMDT2nAjylf0LyZxsgrgl11m7mX6vxqRIEj5gCwteMiE1wdIG9PSFg9qqYe8H20R/Vj0nPhjDHNaOT85/uD4iXJK8+ddoKmwFNR1xfcZTGfimANS+g+9Em5I+BQW4ul48+P0jbkGaQ9QvgBKcAvrRf040XnWzfUBs9vYF82sCaCD+RPlBdCLH40/p2e8hNttpBpXuf5iC+jJh2kW7oXBLaFjOCk/7qtYCgQoKPLKG3aoAhy5VXgaNoCfNhkuRasf6F2k2hD139wI5DslGHV00Ks1qEpGAXLnk3yMTnCpjtZjb73lUtigiYyiYDw3+XBE/Lo0iYzEPMV+XozgTon3rvDvYQ1s+HB1nFiNIHoNyhEmIKQy44mYm83wDLhdafPfo4iteU4QNenzMkwq7TaNC/XHaQRULpbnPgQvO+EcBE7uTTMArJSNDZtFarshq9QhdC49pYu4OCTmwNKRWQVE/OFr8c3lzqL0p2aKWPkBuwH6rgS7Rg4RNHgcw6Ti3cSs+N9164uNpJVEmGW9+fnVPU5f3JDHd0zlNGCrLDbuAkC9EXESxqf2eVP+Q91sB3ShD7hjpOyQPn+blqr08WIXmdb/uhy0WhrDFAy5VmULOe/HPZOKElvB5MUMHJWhwuOwrX/iNvzBHou8dU7QkZcKdKNsQ+yvlBvjev4GMLjglSBMui995b04O8RwuAKVZiLN9M3aHzzgZYEz5wt6hdJcIAx5M9ZPlzU7mxr5e6WGKovYln64Ni7PlHGJr97p3/yCfFvmWft0UpsKYd4kHQCpVk+U8XIwhY4cHI+3dFjBYF3fjs43sSeyUWrL9tQBRUy6vlkLA03+5BjX0ZH4ZgQTKYSJyqD+vhJXwxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01PKZccFizb3bqxJnaQk7qMj",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 745,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23911,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 149,
+      "output_tokens_details": {
+        "thinking_tokens": 70
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2096
+}

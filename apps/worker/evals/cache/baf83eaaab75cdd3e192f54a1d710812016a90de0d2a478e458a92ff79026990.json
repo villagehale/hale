@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty and the notes show nothing found, so no unsupported pick, price or time is invented. The 'I'll keep watching and text you' promise is correctly first person, since watch is true. There is no question and no link. But the rubric requires an empty result to say plainly and specifically what was looked at. 'The sources I checked' names nothing: not the Naperville Park District, a YMCA, the library or a gymnastics club. 'That doesn't mean none exist' is a hedge that hands the parent nothing concrete. This is the vague empty-result failure, not an honest, specific one.",
+    "score": 2
+  }
+}

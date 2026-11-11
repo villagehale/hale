@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Great, thanks Dana. Hale can look at your calendar too, so I can see the kids' events and flag anything that clashes. Google shares the whole calendar with Hale, but Hale only keeps and uses what's about the kids, never changes or deletes your events, and you can disconnect any time. Want me to connect it? The link is above.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "calendar"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1733
+}

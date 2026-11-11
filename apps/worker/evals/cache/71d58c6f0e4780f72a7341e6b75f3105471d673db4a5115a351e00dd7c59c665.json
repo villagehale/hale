@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cgv9FVc4pQGr8puk5rxH1",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Really common at 5, and it's very fixable. Tonight, tell him the new plan at bedtime, not at 2am. If he comes in, walk him back to his room quietly and calmly each time, with the same short line like \"this is your bed, I'll see you in the morning.\" Keep it boring and consistent, and it usually fades over a couple of weeks."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 146,
+      "cache_read_input_tokens": 25255,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 146,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 113,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1875
+}

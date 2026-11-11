@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reason": "names a moment Hale will be back",
+    "hit": "no",
+    "promised_a_time": "yes",
+    "violations": [
+      "promised_a_time"
+    ]
+  },
+  "latencyMs": 129980
+}

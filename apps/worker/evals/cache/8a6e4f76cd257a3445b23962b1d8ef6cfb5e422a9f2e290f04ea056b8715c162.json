@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv9TFT7A8XWMAqayuVJF",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AcKEAgTGAI4AUIIdGhpbmtpbmcSDFkjpJdOs8W5Xf+rghoMy+cmswnrOOM/wZFUIjDIGSFL+2hVEmlOvNkIIhIu5W5XeLCa8Da/U8c4odCAeD0uToQbKkeR9xQBt1/x+Wwq8Qa6fVCcKtPLZDBzmggFZ2RwSTojbcCysJeeOwrmaylmPMe3Z1uK1s8qLUMyPYaBIl6ZL6eXj/Wt+GD6/NBoSBuAKRhRW7kmzBHoF+ba/SJSxJnsMy4hDwloVLwHH6JR6DNXeWrWSTrdT7ovdmUz0UT+m31aMZsHS2q/zh5D5d2hAcPilI9dX0/UvgtOKTNDOVilE9H2A9E9ASYjQvmhWQK4w9Ea9d0tA8lFSlfbqYG/pd4VFqksFuSaCbcLXpsl7tqvcf0KYldhi+Icea2uUeaJLcN6rPxcwwfpXYTFa4xTZtHF9vOfA4A3IlY6JLkYhfmkyuH2YjXuHCfJoI6s3sqUErEp4Nc1BoJvWI93r5kPx8U6etKssiOLQAiNJoODab91DZMhHxkp4yXVJb4zi2/yyO0FC9mVegc9oavfuQGXjMHe/WOC1Kl/TghNtSAm7ypUdvgzzg03BCRRT8nWhzB63TQ25lsDM0O0kW6rT/oXToZhUkPJbyd2bX12IbB7rV7gCqJlEXYJJjgL2Pd8wGU7qYh6PxIFryz0T5GWOdg0qit8MYw/haYhv7oLNLg+rBrrtwEOtvmgSPeIsJ2zGarZ1kFArTYh+3mRrTedGglc4nXRvtHHdj9mRrjsoqxe6dQQAGmm5V8/+1/9j+HeOty6IroaJkm5fuBAIapO1NBygJTt0IvN4ALNSqpk4CD8uoGHc4U3PnJSe6zpS0T+DPgRCG5izpbKUI7yeOWwxlcBctm+b+VjWLmgKtWaBW/NKsO6Sv1xh8YpPogGtsCk+yTgYo2vDOLdHHvpBtIwfI8cEl5Kq9l7dUPczuPOqT/QRDiQDLJ4BYA6/HN06sve1BVufSUGhs8CfqueuWGwF/lv/zqaALl72c+4eYsuVj9OoegQGD+Di+Cp8zYaNJZEzaAk+CHNg2OeHt2ICk8yI8ckwEGRIXeYKjM7SzsXpjI5KR0KzGqqTtJf9b9/65uwPfevENK0MV1mBRVZqpXsp7RUvjUWq1eMBeWNU2vAKwGYLnqexI6XJ6rTveh9jJ0l2114sC5fUc5OmWqAcS7dqVYadYyd+Q3/7v3Gakq37MSyunKqEXIoe/kx6BqTWrvVduq8xSs04tjoIV3066nLTBnvGTx6muzqCYFfeh1r8aczCke6/H3HBOfCTVgcA7LyaBKCPBgB"
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Sat 10:00am at Cedarvale Park. Riverdale story time at Riverdale Library is also on Sat, Aug 8, a free indoor drop-in for all ages. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 25365,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 222,
+      "output_tokens_details": {
+        "thinking_tokens": 142
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2322
+}

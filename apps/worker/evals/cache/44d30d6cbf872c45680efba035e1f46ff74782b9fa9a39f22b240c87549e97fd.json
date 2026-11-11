@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and asks how registration for the Riverton Fall 2026 recreation programs went. It covers all three outcomes: got in, on the waitlist with their number, or missed the window. It names no child and adds nothing beyond the facts. It reads naturally, though slightly formal with 'vous'; French may use tu or vous. It does what check_in_ask asks.",
+    "score": 5
+  }
+}

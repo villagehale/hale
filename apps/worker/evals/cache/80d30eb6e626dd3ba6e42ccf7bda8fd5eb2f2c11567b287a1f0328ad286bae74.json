@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so 'Done' is true. The reply covers both kinds and says Hale will show emails first, which is exactly what Sam asked for. It is short and exact, with no greeting, no machinery and no app referral.",
+    "score": 5
+  }
+}

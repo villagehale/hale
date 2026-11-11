@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: the Saturday times and the Sept 12 to Nov 28 run, the 3-5 age fit, and the Aug 11 7 a.m. resident registration plus the Aug 4 browse date, each cited to the Town of Oakville URL. Price is correctly null because the page sets no fee, and no third level was invented. The message leads with Preschool A by name, covers both times, attributes the facts to the Town's site, and carries the Aug 11 registration date as a future opening. Under page_has_schedule it frames the missing price as Hale's own gap ('I couldn't pin down the price') rather than 'not posted'. With watch true, the first-person 'I'll keep watching and text you' is correct. It is plain ASCII, with no link and no question.",
+    "score": 5
+  }
+}

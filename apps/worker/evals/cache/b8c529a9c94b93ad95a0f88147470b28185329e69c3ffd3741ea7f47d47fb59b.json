@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Google shares the whole inbox with me, yes, but I only keep and use what's about the kids. I never send email, and you can disconnect any time. Want to connect Gmail? The link is right above.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "language": "zh"
+  },
+  "latencyMs": 1711
+}

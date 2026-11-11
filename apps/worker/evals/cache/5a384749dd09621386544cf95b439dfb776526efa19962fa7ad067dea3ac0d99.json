@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for send_email and reply_to_email, so 'Done' is true and not an overclaim. The reply accurately says Hale will ask before each email from now on. It is short and plain, with no greeting, no machinery and no extra questions.",
+    "score": 5
+  }
+}

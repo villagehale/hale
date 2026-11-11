@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Milk is on the Groceries list in the facts (added by Jordan), so the claim is accurate. It's short, warm, in English, and doesn't recite eggs or anything else nobody asked about. No secrets leak, and there's nothing more human in the message to react to. This matches the reference for a plain add acknowledgement, which scores 4.",
+    "score": 4
+  }
+}

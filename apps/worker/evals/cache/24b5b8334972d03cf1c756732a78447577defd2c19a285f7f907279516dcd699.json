@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv8aSxyc51DyJBW5oojc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/wUKEAgTGAI4AUIIdGhpbmtpbmcSDGPKJgn9rWhVWne3ExoMA8BdOD+RdPUgcaVVIjCD7jDb+FeZcoGP8pQ5TNOLLw5F8Y7LfpEBumHfUgm5pn0JndQtNJ4V9mAyzU54eLMqnAX20Sp8/8Rg1c1oLPwa16WmUG++/LOP/jxSHGhx+kK0kkrOZCksDb+2pwBdyYdlNGb5fUGq0BxOr7fdYEaiECxDDhpjbeecni73bW3pOA6YZAaaEXzrYAiUyNKWM3PYS3OMw7NKCYR0OcDUj0zKx2TD0UWC5xAp3Y31ZWa6dE640yfKWQA+Jk3LJzYXePFRRtadVFqHm4xRP75iskVhrCW8XgEJ7M6ur/BN5Vum3VISnKYiRt8OrCiWET53s9I0BClY3ZyfQEAnNaj/KyfUCurGtfwv0uOiFkxdSTrHJi9Y8iBl97lSHRfcipzL0/DbSGfuChMKp/M0AuirgGLbKezWCNVeiAbbfii3lJ4y58LqmWA4WovsrXUZc6uKTMTVfUOqIRF1Mp4Zue3XNJaushr7DI+KFqSvI63lIuEqlOx/+c96RdH6I+HnBTpWbe2M6Z3xQfHcq1zOc9ptj10ExRFpPjz3eyCV92Kgjro7q0QQ6PcS7vA/+zp9nJ8wwfmvC/KMBnEXgOLdfsQsXb0SHqBe5BYNEh6gbuCaSlc+b5OXn3z9KNlOmveuedAiCQY6q6A4uvIjI959fge9Lxagpjx2Exi/9wjRhWg10fIx8NaQ33beq79pDmiWFddBiAqYbggYuDwq0jZMboNF4lFaypjd5bpmhBrCHuVh7/wLXfcCq7HsXtVZKFPZKTwyvoFVml5gZqB0T2pbrKbugL2DKSqJn4G0QRGXGrSOwOU+L02nMjG8ESATCBgESdareE2cSHsgzqtZIBdcakDD2lsaFPm5RNGJomOHS/+KqthRzkZw+kb2edOzz7/smmQEXZRI/MIlmEIrqW6xzS8S6PFvaQEYoGIA6Ua0QWrGhqrYWdNyUOoxkGF7494CKRLgURgB"
+      },
+      {
+        "type": "text",
+        "text": "Saturday you've got the swim lesson at the community pool, 10 in the morning. That's the only thing on your week for the weekend. I looked around Columbus for toddler stuff too and couldn't find anything solid to hand you, so the rest of the weekend is open."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 190,
+      "cache_read_input_tokens": 20698,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 190,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 108,
+      "output_tokens_details": {
+        "thinking_tokens": 21
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

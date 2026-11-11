@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. Both fetches were refused and no page was read. The single slot is grounded in the search snippet: Parent & Tot lessons for 4 months to 3 years, which fits a toddler. It is honestly labelled as coming from a snippet with the page unopened. When, price and registration are left null rather than invented. There is no claim that the schedule is not posted. The sourceUrl points to the venue page the snippet came from, which is fair attribution; no pages_read field claims it was opened. This is a correct, well-hedged result.",
+    "score": 5
+  }
+}

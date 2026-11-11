@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Cgv84esFpqRafZWiU8EsT",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuwYKEAgTGAI4AUIIdGhpbmtpbmcSDCkqOjQcCV1GhigqHhoMSvVA35HcBWxcoqaQIjDP7y9adSW+SHNv/G4dD9W7/MpVyOppf0ZnqHM/LcUXjeA+WlXqkD6iJ7JM3+1sO5gq2AWrnYCeVHm9vrxNQ18OvqIJnNFNiB88oO8+Wt29dn6bI4xrw4SOraSAJtJjgoO/BfWayihCzM2xoAuvQhJB01AX9HjhjHdBoG3yyLt100ixjuHNp9a9kL3XaLX7papxweS7x0eikTDl9Bbl2vesMjwTxymgZAzfIUGPCvQk0sD71poWqTACIiChvxROcYODc06ASRozjZf9ap85+H9hHgW+omhtldNG8fDjn40kSinOtmbUM5Ia6bVMR9cBy/eZrFxekGHOcqPCoDKaMF0vUA3YaMaacIBS23k5bPZuqoAIZ3W0SnlMFkzFaLlkG3BxxFEJbJOsBbILY46eaSKsa8KaAbwbCQplEsFPBjUw/E20CwRf1+Y97+ynK9dIv3nDbDxRmtWAc/whhSTkEQSC5EVhibzj6EM2Air323GJlqK14ZkT3saLlabcEMc3u+ysuRsGFkpjmy3/dNa3pUidu5UnaODWQa22fsQ6YG1ic3KGRSwZH3izPw821aFbNRiBuMUHMchcP53ELHK6Tt2Z6zUfi1dLeivmrXbAXC3N7RgVxS8hhCo3dveyL9cXgYv0qMRIdUIYqc87kqFm1Wpk7dXU29Vdg6juOJ/tSqn6qHfUxoLtlyetP49E1F735LgUyrGXt103CIz4z3gTM4yMg7NU0CZ3XpS8d9h3lx+aHXSDeEIJ9j0a18HVR7U4x4dSp8/bF1J+vOr/wRggWvsSCZJIfQoZ7521Fzk/cEO3qgk9NjBELNggYSx5OjAfDpXPEmtAqWgD9p9bb6Ly9t837rmyO2gAODvLeBbzNYsm6z0vEkoOgfta1CF1+6IdP7GqUoGOooUdNiM1u85e307Wf/li5avaDe5gYSs1FO6B0uPg/2zFoAjYCEurYy+ZiGsacALGIM2dt6moXIoDVqL5V+472sqzBz3q++XwqIcpxFdYz+vgq1OdgR9kMaO2vzP/jgvMm2KwKgb70BgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GAvuoGRomcxLQBteioguf2",
+        "name": "find_activities",
+        "input": {
+          "subject": "drop-in programs or events for school-age kids ages 5 to 8",
+          "window": "Saturday, Aug 8"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 352,
+      "cache_read_input_tokens": 24852,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 352,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 148,
+      "output_tokens_details": {
+        "thinking_tokens": 47
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1699
+}

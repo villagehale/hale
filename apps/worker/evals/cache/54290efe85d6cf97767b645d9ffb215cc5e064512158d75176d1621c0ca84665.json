@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The dates, time, link, name and text timings are correct, and the message says plainly that Hale never registers. But it ends with a question (\"Approuvez-vous ce plan ?\"), and an approval_card must ask nothing. It also leaks internal identifiers (week_ahead, evening_before, just_before_open), which does not sound like a friend texting.",
+    "score": 2
+  }
+}

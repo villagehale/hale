@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Two swim events match, so asking which one is right, and owning the error fits the autonomy fact. But the reply asks two questions in one message. The second, 'what's the correct day', is one the calendar already answers once the swim is named. The opening 'That one's on me, I sent it' is also padding.",
+    "score": 3
+  }
+}

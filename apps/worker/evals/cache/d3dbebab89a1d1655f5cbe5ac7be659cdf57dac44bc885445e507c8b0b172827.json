@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty and the notes are blank, so recommending nothing could be right, and nothing about Ontario or EarlyON leaked in. With watch TRUE, the first-person promise \"I'll keep watching and text you\" is correctly backed. The message asks no question and makes no negative claim about a page's content, so it is fine under no_page_read. The empty result is reported vaguely, though. \"From the sources I checked\" names nothing that was looked at, such as the Calgary Public Library, City of Calgary recreation or community associations. A parent cannot tell what was ruled out. For an empty list the rubric asks Hale to say plainly what was looked at, and this does not.",
+    "score": 2
+  }
+}

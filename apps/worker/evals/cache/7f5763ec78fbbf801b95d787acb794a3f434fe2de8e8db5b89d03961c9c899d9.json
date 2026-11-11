@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv8BdwPknr64mgT3sMQ4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSngkKEAgTGAI4AUIIdGhpbmtpbmcSDAExUET5/nWCPWc8dxoMe6a8q3/7cyfYAQW0IjDO2JMktBqcx6d17ZWcUDgQphB5c7CApsllGEQPXyPJwGgDSm6qEUS5P1H6mZodM8UquwjlNr6JiYofedae59JDGIezuFK6sm8uKkQ32iuDipOVsIcmKgSkil4Mvc2exE9+H0B+tAOMlk5ZqrJToge+PNfsBQbeO4vShPENsfcvsxK5siU22BciDbX9muceZzfyYxzkDIuYfKs1+afQXlHus/H6opy89oifvB37Xbc3l3e+8n5QbfuZUvovh7pCjMm4fbGbkcuPvnkQDOQb1ME4szOJ7r1cgffdip4AmBELlmK/ywW9DDgNzDFKiCIXJpd8RjrN2lkf0tD3ofgAmStcKl1JOM4DqesN+gZUrJdcZ6KP4DVQTjaThdqd+wcS+XfkXFhr5V+zgRn1GjWyuG0CMfwCBdf1x0+7yfjFq3gIwch0mEdbTZ8bxAaFclq1EuzaeUiBTi2t+XsSTBiXwPUWVo6bOZaI3EDeJ7x6aWFcsR+q9kFIkKxSKJKQvlJUBFXk2KeW2tkYF/53OHBb/A4pwwbPOCFTOEjgio8sfAw1QFaJ0Dgbn70deqCaeG+NxdLiSYScotWZ542WoIhXbfLDxSOCNilONyiAcJFxncJi5PZdo2R+vT5kw3FxSHWsOVgj/07AdS3quGdYb1ybqFjDNHiQAJsbek79CEm3it8Msi4GhkFOtwzAVWf80SONq2ihII1RZ122zwJAGFJNec8bl3MCHG8A0zsa++PUWh8Xb+nhEPVa5F3toGORG5R+FMQ5E5Xlo7VULW0rNFKPaC7YK1cA3V+8V/jpjtmQgJYNcX8eG95JzqaN4udOOgQmC2sKQ+hjZQvgsDweUknBlL2AiUJLFomfD5z4RFr3KEF90AV9aeoO8PMz0lp42A0t2eIeHKf8sSb3AgZbScL4Qzixqv1iEuS4JA1qoZffvqIDqAPiqM6jJxyaymnF+9Oxx8ENJc3swHSzahpx5kCx6YFXgtki2bRaMv6XDHSJ7QYQIzNNMlRQYV7v0rbfoV67Rovp/zJfujLQSry2LN4hL38cASAIOlSTxA9Uco1WHLHBwUcFpOvE182Ncozu8ySDG6X6KohDhXAdXnEGPTC7YtBgFbx45n0EWoUT3F736L9wHfaL7LnGEMqweAUgKM2EAKOXICi1hFmKOrapV7ASp8lGC2o45A/Jw0fd9jsYwVNIcgCW6n1/fka32ahzqdgsh9KkhY1JvCodqIU6koRaF1L6PgU/VG16n2d8BZi2ikrbF3JOwxitfUJkAZmxGd7KkpG1U25k/iSBLP17HAhMfOjuhGAUAW0aBguW0ThZS67FbH+q3jt8Z2VDtiWTAVY75kREPbJxhPsHKsFyFB3P6pjY1nYsMKwK1NWcRwG3VsesABkgKFlV1Xwk3fUGfA+uFilgQukYNbDqrs4kfJ+sOkPlOdYPl+xLiiaqGOBR5jobd2DexRorhhJ+zv58sqk1y/71bFvTgTGXu+PoHDnhIYeSQ8QfYfzK97FTAucUsJkYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Jordan, Dana can't do pickup after Maya's swim on Saturday (11:00am at Y on Main). Can you take it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 812,
+      "cache_read_input_tokens": 19773,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 812,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 258,
+      "output_tokens_details": {
+        "thinking_tokens": 212
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

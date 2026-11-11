@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cgv99JMiwgJup6Dyh9fHh",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5wUKEAgTGAI4AUIIdGhpbmtpbmcSDNTXn0GUkrITWFbw6RoMCAELfeN9b54IPnz6IjBy+p9+bt5yV8z91UKPu8mJ5sCrT2jYxZw8Pg7iLo3tKIIRm71B+QaWIFJkA2KzdlwqhAXRpCb01aJg2D1p/yGukY6rVWWMjnCvZaYyvQHbSLaMTHKlnAKYezGRNFkFR3jHDOZ18nD7f2v4UvtwxTCVqjM4XnxwsIThYIw8G72M2UyhZ5sbMIQ4tNPXT9NBMlmKWUrl/bHhOqCDJDn7QcnvHx9GRl2Ad3fG1aVMeDqIPAF3MaYcJOZ7D7s9EnjudLDN9olvhnGl3ljBnogQCqIweGJrSfynAsZvw8emeF6eUA09nMC2bNjFmofmWPUNFtSe3Q5avtLkpcTGSrigBxnh6tW9Nf5WmoUbqF03NmBIPTdqnU6y+xhSQ1LXjdb3JXW85BoJPJDD+t7H9XkQQZ8emgPGxs9/Ha09Q74diLRrlpMZEsW7LAHjeBwQmJ4tL6wm5pQHq04n6/PAUvl7GDPpEE4d71zi/080pSci4xH9vTcOrZjpijY2yapj2d84xZQ/eJCHrMNcdmzRcVAzZs9TvXLYpTu80zGzm743OY377t9WwaX1Ifm+/2ETzD16+XLzFjpLdNWzC6jIF/jDY88eR6SfxbLcISoTcc1qS9jy+MwlOqMfKkpBhnHNDYzA8d2g3vnng4xJg4yeLRsCTm6fpON/VtCQ8Anl6SH4/JubNZWayQ3UGeH9WOKw1iYVxrE8QzPEgpcp5CvfmV6VmMC3YNnvxgGO65J0lw93DEkD+UJhVZSaLs8mFlab8kclkypk7tGtQ9Y/JmoSFGYJ67JpNC8y5LORBPH5Ef+xjmVkLC33FbqLpTOQsLCLjLSawLwZTzg491Z7wHpP7XmKSrtf7n1Id6PngYVtTzadcG9FqpjYGbMoOaDsPWoDB4SUx1tGK90bG6c+o1wg5ebMca0jKrc2BAJ/zhgB"
+      },
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents, and I'm on it. I'll text you before it opens.\n\nFor Remy, there's Tiny Tumblers parent & tot, Saturday mornings this fall, for walking up to 3 years. That's from the venue's own program page, so I haven't verified it. The page doesn't list a price. [link-7ad114] It doesn't fit Milo or Ada. Want me to look for something for them next?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 182,
+      "cache_read_input_tokens": 24896,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 182,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 206,
+      "output_tokens_details": {
+        "thinking_tokens": 48
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1947
+}

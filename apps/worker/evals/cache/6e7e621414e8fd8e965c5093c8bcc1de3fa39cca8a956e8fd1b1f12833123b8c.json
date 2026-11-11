@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cgv8Y1n74xtut7jEg2g8p",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Waking at 2am isn't unusual at 8, and it often comes in patches. Worries, summer light and late bedtimes are common triggers. Tonight, try a calm 10-minute chat before lights-out where she can dump whatever's on her mind. Then if she wakes, walk her back to bed with as little talk and light as you can, so 2am stays boring."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 289,
+      "cache_read_input_tokens": 25121,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 289,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 118,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2170
+}

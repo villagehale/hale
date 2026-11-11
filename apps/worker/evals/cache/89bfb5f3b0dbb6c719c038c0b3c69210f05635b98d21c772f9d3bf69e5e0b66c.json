@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly gives the wrong_municipality reason in plain words. It carries no link and saves nothing (\"left things as they were\"). It asks once for the course page from Springfield's portal, which this reason requires. \"The registration morning I'm holding for you is in Springfield\" could read as a slight extra claim, but it restates the town context naturally and does not claim a booking. The tone is a friendly text in English.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "There is one slot, Parent/Tot Tumbling. Its day, time, session dates, both fees and the registration opening dates all match the page exactly, and it cites the page it was read from. The soccer class for 3 to 5 year olds was correctly left out. The message leads with the class by name, attributes the facts to their site, carries both the Dec 7 and Dec 14 registration dates, and makes no claim to have confirmed anything. It is ASCII, has no link and no question, and makes no coming-back promise, which is correct with watch false. It makes no negative claim, so pageEvidence does not count against it.",
+    "score": 5
+  }
+}

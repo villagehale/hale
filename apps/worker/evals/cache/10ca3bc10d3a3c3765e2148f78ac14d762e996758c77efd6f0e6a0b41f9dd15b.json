@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply narrates internal machinery in the third person (\"The parent sent a link\") instead of speaking to Sam. Starting the watch is right, since the parent pasted a course link, and `watch_for_opening` is a real capability. But the reply never says Hale will text when a spot opens, and it reads as self-absorbed narration rather than a text to Sam.",
+    "score": 2
+  }
+}

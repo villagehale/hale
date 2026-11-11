@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly avoids any question and keeps the watch promise in the first person, which fits watch=true. It makes no unearned negative claim about any page. But with an empty pick list, the message must say plainly what was looked at. 'The sources I checked in Seattle' is vague: it names no pool, no YMCA, no parks search. Preschool swim in Seattle is something that genuinely runs, so the parent is handed nothing concrete, which is close to the failure this lane exists to fix.",
+    "score": 2
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "value": {
+    "reply": "Got it, no calendar for now. Would a group chat with the other parent help you two coordinate?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "scheduleAdds": [],
+    "connectCalendar": false,
+    "calendarLater": true,
+    "gmailLater": false,
+    "coparentGroup": null,
+    "children": [
+      {
+        "name": "Mia",
+        "ageMonths": 48,
+        "agePrecision": "years"
+      },
+      {
+        "name": "Leo",
+        "ageMonths": 24,
+        "agePrecision": "years"
+      }
+    ],
+    "language": "en"
+  },
+  "latencyMs": 2285
+}

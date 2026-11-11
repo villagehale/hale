@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reply": "Mostly kids' classes, swims, story times and drop-ins near you, sorted by what fits each child's age. To know which ones fit Mia and Leo, how old is each of them?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1643
+}

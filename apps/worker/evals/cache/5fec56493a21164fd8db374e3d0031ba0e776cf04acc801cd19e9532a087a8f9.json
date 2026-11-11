@@ -1,0 +1,33 @@
+{
+  "value": {
+    "reply": "Here's what I found near Springfield for Mia and Leo. Swim lessons are for ages 3-5, so that one suits Mia, and storytime and the drop-in playgroup work for both of them.",
+    "groupLeads": [
+      "Swim lessons at the community pool, ages 3-5, Saturdays at 10:00. This one fits Mia.",
+      "Library storytime for all ages, Tuesdays at 10:30, free. Drop-in playgroup for ages 0-6, weekday mornings, free. Both work for Mia and Leo."
+    ],
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "children": [
+      {
+        "name": "Mia",
+        "ageMonths": 48,
+        "agePrecision": "years"
+      },
+      {
+        "name": "Leo",
+        "ageMonths": 12,
+        "agePrecision": "years"
+      }
+    ]
+  },
+  "latencyMs": 2266
+}

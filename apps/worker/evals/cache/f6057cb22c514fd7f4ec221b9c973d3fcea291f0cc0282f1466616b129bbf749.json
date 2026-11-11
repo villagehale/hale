@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused for not_https. It plainly gives the reason (not a secure link), carries no link, says nothing was saved, and asks once for the course page from Springfield's portal. It invents no claims, dates or children. Two small issues: \"couldn't open\" slightly misstates a deliberate refusal as a failure, and the third-person \"Hale\" voice reads a little stiff for a friend's text.",
+    "score": 4
+  }
+}

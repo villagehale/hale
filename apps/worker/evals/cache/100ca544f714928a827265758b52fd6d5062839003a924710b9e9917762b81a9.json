@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message restates the replacement and correctly says the course name, day and time could not be read, since they are null. It gives the right date and time (Tuesday, September 15 at 7:00 a.m.) and matches the residents date label. It warns to leave time because prerequisite is true. It has no link, asks nothing, names no child beyond \"your teen\" and invents nothing.",
+    "score": 5
+  }
+}

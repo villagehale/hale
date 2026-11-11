@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Good, I'm glad it'd help. Whenever you want, you can start a group text with the other parent using the number and phrase right below, and kid plans and reminders will show up for both of you there, nothing private. Would a group chat with the other parent work for you?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true
+  },
+  "latencyMs": 1970
+}

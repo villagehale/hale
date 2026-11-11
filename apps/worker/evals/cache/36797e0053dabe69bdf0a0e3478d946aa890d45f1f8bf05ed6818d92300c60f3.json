@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgv88Vre8fFiQ9UBb8s61",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwAkKEAgTGAI4AUIIdGhpbmtpbmcSDJyL57y4X0XNq+V9choMnT8K2StNQhXi80hxIjAq2CvTD/y7Tn2DkNbhG2E9gQMqisotCv8MHq2HhkCXYWg/F+Kj8vSG1fGyrDz0IMEq3QiTwfwZl6+pRB7od8AKdfwMe2GAwVoD+UOF5rRoKi2m0AmyuiSTzX2lt/Tg+gAKPRszsThJ5DSWNtKvoCe6z7p34tvMCAwv0yCMjQKqJZudv/Z5ehn2xd5vDWrXIkicrmeKH+18SpYIwdJpHw01y09+XU/A6uDhQ83wnAVLj1tdyA3gdunpjRUKBW4V7H7IXuT7hrQf5iPTi4+FpuupS/yNWAZaznVI9P/+pxHQWKbUqFKaRdiIcm77tIiuoZrqUPZ+h04ApzgdLyPsMhBM5HxOknP2WSAv6F5vgCecbo8IP6XN+YOVnyT7qzFs62SRB+GjCzpw/MbG+ntlOopJ36ONMgIFvCq6Abb1QQ2UxQ7C8gUOC6Vf+cPR8NLDHoplxDFt1bnliKNNZy6wPxk2k255PCN1r1nw0kbBEkJg/jYrAtDBb5FVNRQLrvzAZ+7JxYFeb3H9KXm+Bl3WI8cdyHc5Np8uWM0b5GCqWHrMvUzZFLORg6m2KP+Q/738yQC98RwvVVMxPOUAPpWz3R7Pj95gxWXFvb8/gg5+paYUSuBaFmsXPzOmDJ3tJNhvsmqPk/Q/76SI6dk7NlYKhax4JXyPhw8SfyOLry0Ay1qxwET6DWwu2TbSoDz28b9v63oIydjVQFfxhpi27BQRFlp7ZFldrK4u3XM7MNnIoPxTo3wlp2jOuiXkeI25S2U7a8cEfo2CvC1AloTEHlsXakqTsCd/vaLaSAVSwEU3w01K7px5kJ1tnOS4lcFxdxZefctUp6aX+8LX8igViHleK/pobSM/e++CLqDhq9cnZixRhN+QmJHspZcK9NMNsb0wqoE4AWGdRUuNmF7/cHeIv8jXsyjKO1YwrgaS2hbea7gM+N9hnTSUaYgxuFp8QKLeDwck5tiub6fAuJ5Xy1bKxXOtTzxMHk9FbX8azla6xB6oIa6C3vmxnVEv5wylXaBbFlK4h72KqC0Afk49mMxACibYas4wWCTeW4STr97A0ibmN1sA98WkQUd/T3BddVgMKTI3/Qhc4HE3iFwuK9W5shqejD/Lm2/dRiJDtoP9ymcCufB0vo0qpXMYYl2ZVmlfSeNcuVEceGx5YTm3cu/ExphtAgKfm4JSrIJofqFZeRjfJ5IwG4czMbQ8Op0i7OD4mBBC7OOO2X+xFuGSYkQD09EJnoUmKT7jP62e3Sxd8oDL49p8uToiBo8HCB1zdV5PAOwzZnvNTTXUcucC2819tbrMAuzvZaKq4NJqqUbYHCM+w72/FjvMJjvWER/DsCCwseR9FHgnZkYoH68FuuZ8P/iBE+Gqe9lONPn5S4ZjDCfk1snatDjwanPd5YOSW3QLhSh709P2uJcTHd4Et/fudTfAPKwNReZeXdnPeItTLMdL8mFxnSj74W3sZMl5/DIm1HWOAsXuiRmNVBPjgVLrnULEXk8JMJbBepDECeztQLM73nY6yhCAPyOXqYXnGaCQeBbcZ752g4YR/9TZr5Vpi51iGAE="
+      },
+      {
+        "type": "text",
+        "text": "I'll take that one in a 1:1 with you."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19773,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 237,
+      "output_tokens_details": {
+        "thinking_tokens": 219
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

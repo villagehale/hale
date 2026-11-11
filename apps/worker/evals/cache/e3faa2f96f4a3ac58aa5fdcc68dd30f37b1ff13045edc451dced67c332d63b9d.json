@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "That's completely fine. If you'd rather, just the first three characters of your postal code, or the first five digits of your ZIP, is enough to find things in your area. What would work for you?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1863
+}

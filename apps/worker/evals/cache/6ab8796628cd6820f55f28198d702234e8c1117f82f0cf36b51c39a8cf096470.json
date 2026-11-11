@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Pas de souci, on laisse ça de côté. Dis-moi plutôt combien d'enfants tu as, et leurs prénoms si tu veux bien.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 1774
+}
