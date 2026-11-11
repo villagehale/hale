@@ -52,6 +52,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:91` | `true` | OFF | `false` | Sloane |
 | `COPARENT_DUTY_MEMORY_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:81` | `true` | OFF | `false` | Noah |
 | `COPARENT_DUTY_SENDS_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:50` | `true` | OFF | `false` | Noah |
+| `COPARENT_SPLIT_DUTY_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:113` | `true` | OFF | `false` | Barton |
 | `EMAIL_ALERT_ENABLED` | `apps/web/lib/channel/lanes.ts:20` (compared at :26) | `true` | OFF | unset | Barton |
 | `F14_ENABLED` | `apps/web/lib/channel/f14.ts:26` | `true` | OFF | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | `apps/web/lib/memory/kinds.ts:96` | `true` | OFF | `false` | Noah |
@@ -131,6 +132,7 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | `BOOKED_DETECTION_FAMILY_ALLOWLIST` | `BOOKED_DETECTION_ENABLED` |
 | `COPARENT_DUTY_ASKS_FAMILY_ALLOWLIST` | `COPARENT_DUTY_ASKS_ENABLED` |
 | `COPARENT_DUTY_SENDS_FAMILY_ALLOWLIST` | `COPARENT_DUTY_SENDS_ENABLED` |
+| `COPARENT_SPLIT_DUTY_FAMILY_ALLOWLIST` | `COPARENT_SPLIT_DUTY_ENABLED` |
 | `F14_FAMILY_ALLOWLIST` | `F14_ENABLED` |
 | `FOLLOWUP_ASKS_FAMILY_ALLOWLIST` | `FOLLOWUP_ASKS_ENABLED` |
 | `MEMORY_DIGEST_FAMILY_ALLOWLIST` | `MEMORY_DIGEST_APPLY` (apply also needs this list) |
@@ -224,6 +226,7 @@ Code is merged for every row.
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | A parent can be told the split looks lopsided. | More than one such note to the same family in a month. | `false` | Sloane |
 | `COPARENT_DUTY_MEMORY_ENABLED` | A recorded duty is written onto the family calendar and the ICS feed. | A duty on the calendar the parent did not confirm. | `false` | Noah |
 | `COPARENT_DUTY_SENDS_ENABLED` | Hale may send duty questions in the co-parent group. The model writes the sentence. A miss holds the send (`model_unsent`) and writes `reply_copy_fallback`. | `channel_messages.category` = `duty_ask` with status `failed`, and more than two `duty_ask` rows for one family in 24 hours. | `false` | Noah |
+| `COPARENT_SPLIT_DUTY_ENABLED` | Hale notices two different kids whose events overlap (clock time or travel between real venue addresses) and asks once who drives which kid. The model writes the ask. A miss sends nothing. Duty is recorded only when a parent answers. Driver reminders use the existing night-before and leave-now lanes, the proactive quiet floor, and the claim gate. | A split ask that names a 13+ title, a driver reminder when nobody answered, or more than one split ask for the same pair in 24 hours. | `false` | Barton |
 | `EMAIL_ALERT_ENABLED` | Hale tells the parent what a parenting email says, in their 1:1, and the booked-detection backfill may run (lane notes under [Every flag](#every-flag)). | The common checks above. | unset | Barton |
 | `F14_ENABLED` | Hale may start a conversation (nudges, evening check-in, and the other proactive sweeps that read this flag). | Any outbound with no inbound from that parent the same day. | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | Memory reads start using kind and expiry. The model writes the parent reply. A miss holds it. | A "what do you know" reply that leaves while the model did not write it. | `false` | Noah |
