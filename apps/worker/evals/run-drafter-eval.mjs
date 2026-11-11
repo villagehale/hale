@@ -175,9 +175,10 @@ function makeRealDrafter(lane, prompt, cachedOnly, cost) {
         stage: 'drafter',
       }),
       {
-      rates: priceRates,
-      tag: 'drafter',
-    });
+        rates: priceRates,
+        tag: 'drafter',
+      },
+    );
     // The production budget (apps/worker/src/agents/drafter.ts), through the same seam.
     const response = await liveStructuredCall({
       client,
@@ -266,9 +267,10 @@ function makeJudge(model, cachedOnly, cost) {
         stage: 'drafter',
       }),
       {
-      rates: priceRates,
-      tag: 'drafter-judge',
-    });
+        rates: priceRates,
+        tag: 'drafter-judge',
+      },
+    );
     const response = await liveStructuredCall({
       client,
       lane: await judgeLaneFor(model),

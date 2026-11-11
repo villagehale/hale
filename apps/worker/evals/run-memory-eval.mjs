@@ -218,9 +218,10 @@ function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
                 stage: 'memory_infer',
               }),
               {
-              rates: priceRates,
-              tag: 'memory',
-            });
+                rates: priceRates,
+                tag: 'memory',
+              },
+            );
             return client;
           },
           cost,
@@ -254,9 +255,10 @@ function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
         stage: 'memory_infer',
       }),
       {
-      rates: priceRates,
-      tag: 'memory',
-    });
+        rates: priceRates,
+        tag: 'memory',
+      },
+    );
     const startedAt = performance.now();
     const response = await client.messages.create({
       model,

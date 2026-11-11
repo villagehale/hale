@@ -19,8 +19,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { z } from 'zod';
-import { GROUP_LISTS_FIXTURES } from './group-lists-fixtures.mjs';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import { GROUP_LISTS_FIXTURES } from './group-lists-fixtures.mjs';
 import { projectAgentTurn } from './lib/agent-dry-plan.mjs';
 import {
   GENERAL_REFERENCE_TEXTS,
@@ -32,11 +32,11 @@ import {
   evalRunTag,
   evalSubjectRequest,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   noteUsage,
-  isDryRun,
   priceRates,
   summarizeJudgePlan,
   totalUsd,

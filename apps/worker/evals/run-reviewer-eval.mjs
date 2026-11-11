@@ -39,6 +39,7 @@ import {
   installEvalSpendCap,
   priceRates,
   reportEvalGeneration,
+  withoutCacheTtl,
   withoutMessageCacheMarkers,
   wrapEvalAnthropic,
 } from './lib/harness.mjs';
@@ -64,7 +65,9 @@ const REVIEWER_TOOLS = contracts.REVIEWER_TOOLS;
 
 // --- content-addressed cache (never calls live in --cached-only) ------------
 function cacheKey(tag, payload) {
-  return createHash('sha256').update(`${tag}\n${payload}`).digest('hex');
+  return createHash('sha256')
+    .update(`${tag}\n${withoutCacheTtl(payload)}`)
+    .digest('hex');
 }
 async function cacheGet(key) {
   const path = join(CACHE_DIR, `${key}.json`);
