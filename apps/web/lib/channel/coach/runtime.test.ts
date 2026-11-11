@@ -407,7 +407,7 @@ describe('channelCoachRuntime', () => {
     const seen: string[] = [];
     const p = ports({
       runAgent: async (args) => {
-        seen.push(args.skill.instructions);
+        seen.push(promptOf(args));
         return answering('ok.')(args);
       },
     });
@@ -430,7 +430,7 @@ describe('channelCoachRuntime', () => {
     const seen: string[] = [];
     const p = ports({
       runAgent: async (args) => {
-        seen.push(args.skill.instructions);
+        seen.push(promptOf(args));
         return answering('ok.')(args);
       },
     });

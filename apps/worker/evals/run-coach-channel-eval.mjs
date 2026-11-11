@@ -161,8 +161,8 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
-import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -912,9 +912,7 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs, 
           const { url, ...shown } = webPick;
           return url ? { ...shown, ref: linkRef(url) } : shown;
         }),
-        ...(searchTown
-          ? { family: { homeArea: searchTown, preferences: [], recheck: [] } }
-          : {}),
+        ...(searchTown ? { family: { homeArea: searchTown, preferences: [], recheck: [] } } : {}),
       };
       toolOutputs.push(result);
       return result;
@@ -1602,7 +1600,11 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
   if (expect.subjectMustNotName) {
     const banned = String(expect.subjectMustNotName).toLowerCase();
     for (const call of calls.filter((call) => call.tool === 'find_activities')) {
-      if (String(call.subject ?? '').toLowerCase().includes(banned)) {
+      if (
+        String(call.subject ?? '')
+          .toLowerCase()
+          .includes(banned)
+      ) {
         failures.push(`search subject names ${expect.subjectMustNotName}`);
       }
     }
@@ -2234,10 +2236,7 @@ async function main() {
               //
               // `undefined`, not `null`, on every turn without one — JSON.stringify
               // drops undefined, so every judge verdict already committed stays valid.
-              home:
-                fixture.judgeHome === undefined
-                  ? undefined
-                  : fixture.judgeHome,
+              home: fixture.judgeHome === undefined ? undefined : fixture.judgeHome,
               nearbyCountAppended:
                 fixture.nearby &&
                 nearbyCountWasAppended(

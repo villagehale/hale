@@ -32,8 +32,8 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');

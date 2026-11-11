@@ -172,11 +172,9 @@ jobs:
       - name: Install Playwright chromium
         if: ${{ matrix.web_shard != '' }}
         run: |
-          # Browser binaries come from the cache (or a download). --with-deps
-          # goes through apt; hosted-runner mirrors flake with exit 100.
-          pnpm --filter @hale/web exec playwright install chromium
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt || true
-          pnpm --filter @hale/web exec playwright install --with-deps chromium || echo 'playwright --with-deps skipped (apt flake)'
+          # The runner's Azure HTTP mirror can hang apt until the job times out.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          pnpm --filter @hale/web exec playwright install --with-deps chromium
 
       # Named 'Test' on purpose: scripts/ci/classify.mjs reruns a pglite timeout flake only from a step named Test.
       - name: Test
@@ -219,7 +217,7 @@ jobs:
       # this, eval:memory-writeback dies on apps/web/lib/testing/pglite.ts importing
       # @hale/db/dist/index.js. Same package set as eval-sweep.yml.
       - name: Build workspace packages
-        run: pnpm --filter @hale/flags --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
+        run: pnpm --filter @hale/db --filter @hale/types --filter @hale/flags --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
 
       - name: Classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:classifier

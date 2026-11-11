@@ -1,11 +1,6 @@
 import type { Database } from '@hale/db';
 import { groupFamilyCount } from './groups';
-import {
-  captureErrorEvent,
-  captureProductEvent,
-  productChannel,
-  type TaskType,
-} from './product';
+import { type TaskType, captureErrorEvent, captureProductEvent, productChannel } from './product';
 
 /**
  * Fire-and-forget launch events at DB-write seams. A throw here must never reach the
@@ -18,6 +13,14 @@ function fire(work: () => Promise<void>): void {
       err: err instanceof Error ? err.name : 'unknown',
     });
   });
+}
+
+/**
+ * Analytics labels for a line the caller already sent into a floored group chat.
+ * A label only: it decides nothing about where a line may go.
+ */
+export function groupLineLabels(chatId: string): { isGroup: true; chatId: string } {
+  return { isGroup: true, chatId };
 }
 
 export function noteMessage(args: {
@@ -99,8 +102,7 @@ export function noteGroupChatMemberAdded(args: {
 }): void {
   fire(async () => {
     const familyCount =
-      args.familyCount ??
-      (args.database ? await groupFamilyCount(args.database, args.chatId) : 1);
+      args.familyCount ?? (args.database ? await groupFamilyCount(args.database, args.chatId) : 1);
     captureProductEvent({
       event: 'group_chat_member_added',
       familyId: args.familyId,

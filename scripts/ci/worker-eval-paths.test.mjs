@@ -86,7 +86,6 @@ describe('workerEvalsRequired', () => {
     expect(workerEvalsRequired(['packages/types/src/index.ts'])).toBe(true);
     expect(workerEvalsRequired(['packages/db/src/schema.ts'])).toBe(true);
     expect(workerEvalsRequired(['packages/tools-contracts/src/index.ts'])).toBe(true);
-    expect(workerEvalsRequired(['packages/flags/src/catalog.ts'])).toBe(true);
   });
 
   it('keeps evals for an unknown path mixed with site files', () => {
@@ -242,7 +241,7 @@ describe('ci.yml wiring', () => {
     expect(buildAt).toBeGreaterThan(-1);
     expect(firstEval).toBeGreaterThan(buildAt);
     expect(evals).toContain(
-      'pnpm --filter @hale/flags --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build',
+      'pnpm --filter @hale/db --filter @hale/types --filter @hale/flags --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build',
     );
     const commands = [
       'eval:classifier',

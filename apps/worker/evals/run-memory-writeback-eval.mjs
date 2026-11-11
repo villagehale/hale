@@ -31,6 +31,7 @@ import {
   installEvalSpendCap,
   priceRates,
   reportEvalGeneration,
+  withoutCacheTtl,
   withoutMessageCacheMarkers,
   wrapEvalAnthropic,
 } from './lib/harness.mjs';
@@ -70,7 +71,9 @@ const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * child ids so those are stable rather than masked.
  */
 function cacheKey(payload) {
-  return createHash('sha256').update(payload.replace(UUID_PATTERN, '<uuid>')).digest('hex');
+  return createHash('sha256')
+    .update(withoutCacheTtl(payload).replace(UUID_PATTERN, '<uuid>'))
+    .digest('hex');
 }
 
 async function cacheGet(key) {
@@ -130,9 +133,10 @@ function cachingClient({ cachedOnly, cost }) {
             stage: 'memory_infer',
           }),
           {
-          rates: priceRates,
-          tag: 'memory-writeback',
-        });
+            rates: priceRates,
+            tag: 'memory-writeback',
+          },
+        );
         const response = await live.messages.create(request);
         cost.liveCalls += 1;
         cost.input +=
