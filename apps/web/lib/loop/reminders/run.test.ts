@@ -815,7 +815,12 @@ describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () 
         },
       });
       return runReminderCron({} as never, made.deps, new Date('2026-11-11T03:12:00Z')).then(
-        (result) => ({ result, enqueued: made.enqueued, marked: made.marked, audited: made.audited }),
+        (result) => ({
+          result,
+          enqueued: made.enqueued,
+          marked: made.marked,
+          audited: made.audited,
+        }),
       );
     };
 

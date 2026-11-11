@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
-import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { threadIfParent } from '~/lib/channel/thread';
 import {

@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled, isFlagKilled } from '@hale/flags';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import {
   type DaycareSubject,
@@ -89,7 +90,7 @@ export const FOLLOWUP_ASKS_ALLOWLIST_ENV = 'FOLLOWUP_ASKS_FAMILY_ALLOWLIST';
  * truthiness check reads that as ON.
  */
 export function followupAsksEnabled(): boolean {
-  return process.env[FOLLOWUP_ASKS_ENABLED_ENV] === 'true';
+  return isEnabled('followup-asks');
 }
 
 export function followupAsksAllowlist(): Set<string> {
@@ -869,13 +870,14 @@ export async function runFollowupSweep(
   deps: FollowupSweepDeps = defaultFollowupSweepDeps(),
   now: Date = new Date(),
 ): Promise<FollowupSweepResult> {
+  if (isFlagKilled('followup-asks')) return emptyResult(false);
   const allFamilies = followupAsksEnabled();
   const allowlist = followupAsksAllowlist();
   if (!allFamilies && allowlist.size === 0) return emptyResult(false);
 
   const result = emptyResult(true);
   const families = (await deps.selectFamilies(database, now))
-    .filter((family) => allFamilies || allowlist.has(family.familyId))
+    .filter((family) => isEnabled('followup-asks', family.familyId))
     .slice(0, MAX_FAMILIES_PER_RUN);
   if (families.length === 0) return result;
 

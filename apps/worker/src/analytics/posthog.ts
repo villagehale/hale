@@ -1,9 +1,10 @@
 import { PostHog } from 'posthog-node';
 
 /**
- * The worker's PostHog client — the ONLY `new PostHog(` in apps/worker. A copy of
- * apps/web/lib/analytics/posthog-node.ts's project client, because the worker cannot
- * import from apps/web (web depends on the worker, not the reverse).
+ * The worker's PostHog *tracing* client — the ONLY `new PostHog(` in apps/worker. A
+ * copy of apps/web/lib/analytics/posthog-node.ts's project client, because the worker
+ * cannot import from apps/web (web depends on the worker, not the reverse). Launch
+ * flags share `@hale/flags` (HMAC family ids + local eval) with web.
  *
  * Reads POSTHOG_PROJECT_API_KEY. Unset → null, and every caller is a named no-op
  * (rule #11): no client, no network. `privacyMode: true` always.

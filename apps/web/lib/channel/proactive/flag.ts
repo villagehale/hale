@@ -1,3 +1,4 @@
+import { flagValue } from '@hale/flags';
 import type { ProactiveSendKind } from '~/lib/channel/outbound-gate';
 
 /**
@@ -60,7 +61,7 @@ export function unroutedKinds(): ProactiveSendKind[] {
 
 /** What the env asks for, before the routing check. */
 export function requestedCadence(): ProactiveCadence {
-  const value = process.env[PROACTIVE_CADENCE_ENV];
+  const value = flagValue('proactive-cadence');
   if (value === 'shadow' || value === 'live') return value;
   return 'off';
 }

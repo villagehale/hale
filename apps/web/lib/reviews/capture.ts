@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { deriveStage } from '@hale/types';
 import { and, asc, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import { isNotKept } from '~/lib/channel/checkin/notes';
@@ -41,7 +42,7 @@ export const ACTIVITY_REVIEWS_ENABLED_ENV = 'ACTIVITY_REVIEWS_ENABLED';
  * truthiness check reads that as ON.
  */
 export function activityReviewsEnabled(): boolean {
-  return process.env[ACTIVITY_REVIEWS_ENABLED_ENV] === 'true';
+  return isEnabled('activity-reviews');
 }
 
 export interface ReviewCaptureResult {

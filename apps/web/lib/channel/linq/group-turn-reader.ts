@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadTranscript, resolveNoteConversation } from '~/lib/coach/conversation';
@@ -67,7 +68,7 @@ export function groupTurnUserMessage(input: GroupTurnReadInput): string {
 }
 
 export function linqGroupTurnAiEnabled(): boolean {
-  return process.env.LINQ_GROUP_TURN_AI_ENABLED?.trim() === 'true';
+  return isEnabled('linq-group-turn-ai');
 }
 
 /** Map a reading (or a failed read) to the door's route. Opt-out still wins first. */

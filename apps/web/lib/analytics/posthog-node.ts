@@ -1,8 +1,9 @@
 import { PostHog } from 'posthog-node';
 
 /**
- * The two server-side PostHog clients, and the ONLY place `new PostHog(` is written in
- * apps/web (posthog-node-singleton.test.ts pins it).
+ * The two server-side PostHog *event* clients, and the ONLY place `new PostHog(` is
+ * written in apps/web (posthog-node.test.ts pins it). Launch-flag evaluation lives in
+ * `@hale/flags` (a third client, personalApiKey, local eval) so the worker can share it.
  *
  *  - `productClient()` — product events (the SMS funnel, inbound counts, agent-error
  *    rates). Reads NEXT_PUBLIC_POSTHOG_KEY, the same key the browser provider reads,

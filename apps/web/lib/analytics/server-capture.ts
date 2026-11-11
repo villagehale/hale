@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { hashFamilyIdForEvents } from '@hale/flags';
 import { after } from 'next/server';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { captureSafeException } from './exceptions';
@@ -157,9 +157,8 @@ function classOf(error: AgentError): string {
  * need to know it is the SAME household. sha256 over a 128-bit random uuid is not
  * enumerable, so no salt would be doing work the id's own entropy is not already doing.
  */
-export function hashFamilyId(familyId: string): string {
-  return createHash('sha256').update(familyId).digest('hex').slice(0, 16);
-}
+/** Product-event hash. Flag evaluation uses HMAC `hashFamilyIdForFlags`. */
+export const hashFamilyId = hashFamilyIdForEvents;
 
 /** The payload, split out from the send so the redaction is asserted as a pure value. */
 export function buildAgentErrorPayload(error: AgentError): {
