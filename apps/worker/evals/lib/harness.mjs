@@ -12,7 +12,7 @@
 // never silently spend.
 
 import { createHash } from 'node:crypto';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -198,6 +198,17 @@ export async function cacheGet(key) {
   }
   const path = join(CACHE_DIR, `${key}.json`);
   if (!existsSync(path)) return undefined;
+  // HALE_EVAL_RERECORD_SINCE=<epoch ms>: a resumable full re-record. A recording older than
+  // that instant misses (and is overwritten); one made since then replays.
+  const since = Number(process.env.HALE_EVAL_RERECORD_SINCE);
+  if (
+    since > 0 &&
+    !process.argv.includes('--cached-only') &&
+    !isDryRun() &&
+    statSync(path).mtimeMs < since
+  ) {
+    return undefined;
+  }
   return JSON.parse(await readFile(path, 'utf8'));
 }
 
