@@ -76,8 +76,9 @@ export interface ChannelTurn {
   groupChatId?: string | null;
   /**
    * VIL-413 — facts Hale already read from this turn's photo or PDF. Set by the
-   * coach runtime, never by the router, and only while INBOUND_PHOTO_FACTS_ENABLED
-   * is lit. Absent on a text-only turn and when the extract found nothing.
+   * coach runtime, never by the router, and only on a 1:1 turn while
+   * INBOUND_PHOTO_FACTS_ENABLED is lit. Absent on a text-only turn, a group turn, and
+   * when the extract found nothing.
    */
   photoFacts?: PhotoFacts;
 }

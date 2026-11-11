@@ -55,6 +55,16 @@ describe('catalog history cutover', () => {
       '0222_parent_calendar_blocks_standing',
       '0223_authorized_signup_plan_resume',
       '0224_linq_shared_group_people_phone_nullable',
+      '0225_sms_intake_sessions_became_family',
+      '0227_audit_log_audience',
+      '0228_proactive_candidates_payload',
+      '0229_team_schedule_changes',
+      '0230_provider_login_credentials',
+      '0225_linq_group_plan_calendar_consent',
+      '0226_going_count_opt_ins',
+      '0231_linq_group_experience',
+      '0225_messages_provider_message_id',
+      '0232_drop_civic_catalog',
     ]);
   });
 });

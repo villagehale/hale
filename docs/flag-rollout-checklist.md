@@ -8,6 +8,8 @@ Parsers cited at origin/main `1017409437f8`. `apps/worker` reads one product fla
 
 Kill switch, every time: set the value on the Vercel production project for `apps/web`, then redeploy that project.
 
+Launch flags are also catalogued in `@hale/flags` and evaluated through `isEnabled` / `flagValue`. `POSTHOG_FLAGS_ENABLED` is off unless exactly `true`; while off, every reader is today's env parser. Once on, an explicit env `false`/`off` (or `VOICE_DISABLED=true`) kills the flag regardless of PostHog; otherwise the family-hashed local PostHog flag is used, and a miss falls back to the env value. `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` and `LINQ_APP_CLIP_PAY_ENABLED` stay env-only. Sync PostHog with `pnpm posthog:sync-flags -- --dry`.
+
 `true` means the value is exactly `true`, with no extra characters. `trimmed true` (written `true` (trimmed)) means trim, then exactly `true`. `on` means trim, then exactly `on`. `on` (no trim) means exactly `on`, with no trim (`SOCIAL_WATCHLIST`). `true`, `ON`, and `1` do not turn an `on` flag on.
 
 The Unset column says what the parser does when the variable is unset:
@@ -27,11 +29,14 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 
 | Flag | Parser (file:line) | On value | Unset | Kill (then redeploy) | Owner |
 | --- | --- | --- | --- | --- | --- |
+| `ACCESS_EXPORT_ROUND_2_ENABLED` | `apps/web/lib/rights/export-round-2.ts:14` | `true` | OFF | `false` | Noah |
 | `ACTIVITY_REVIEWS_ENABLED` | `apps/web/lib/reviews/capture.ts:44` | `true` | OFF | `false` | Noah |
 | `ACTIVITY_REVIEWS_SURFACE` | `apps/web/lib/reviews/aggregate.ts:27` | `true` | OFF | `false` | Sloane |
+| `AGE_FIT_CORRECTION_ENABLED` | `apps/web/lib/channel/intake/age-fit-correction.ts:17` | `true` | OFF | `false` | Sloane |
 | `ANTHROPIC_SPEND_ALERT_USD` | `apps/web/lib/monitoring/spend.ts:40` (default at :16, fallback at :42) | a number of USD (config, not a flag) | 200 USD (code default) | n/a (config) | unassigned |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | `apps/web/lib/channel/spots/flag.ts:31` | `true` | OFF | `false` | Noah |
 | `AUTHORIZED_SIGNUP_ENABLED` | `apps/web/lib/signup/flag.ts:12` | `on` | OFF | empty, or `off` | Noah |
+| `AUDIT_LOG_AUDIENCE_ENABLED` | `apps/web/lib/privacy/audit-audience.ts:14` | `true` | OFF | `false` | Noah |
 | `AUTONOMOUS_EXECUTE_ENABLED` | `apps/worker/src/orchestrator/index.ts:73`; `apps/web/lib/channel/autonomy/notice.ts:55` | `true` (exact, untrimmed) | OFF | unset | Barton |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | `apps/web/lib/integrations/booked.ts:68` | `true` | OFF | `false` | Noah |
 | `BOOKED_DETECTION_ENABLED` | `apps/web/lib/integrations/booked.ts:38` (the allowlist widens it, :51-52) | `true` | OFF | `false` | Noah |
@@ -49,7 +54,10 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:91` | `true` | OFF | `false` | Sloane |
 | `COPARENT_DUTY_MEMORY_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:81` | `true` | OFF | `false` | Noah |
 | `COPARENT_DUTY_SENDS_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:50` | `true` | OFF | `false` | Noah |
+| `COPARENT_SPLIT_DUTY_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:113` | `true` | OFF | `false` | Barton |
+| `CROSS_PARENT_CLASH_ENABLED` | `apps/web/lib/channel/linq/config.ts:127` | `true` (trimmed) | OFF | empty, or `false` | Sloane |
 | `EMAIL_ALERT_ENABLED` | `apps/web/lib/channel/lanes.ts:20` (compared at :26) | `true` | OFF | unset | Barton |
+| `EMAIL_ALERT_BODY_ENABLED` | `apps/web/lib/integrations/email-alert-body-flag.ts:11` | `true` | OFF | `false` | Barton |
 | `F14_ENABLED` | `apps/web/lib/channel/f14.ts:26` | `true` | OFF | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | `apps/web/lib/memory/kinds.ts:96` | `true` | OFF | `false` | Noah |
 | `FIRST_REPLY_ACTION_LINE` | `apps/web/lib/channel/intake/action-line.ts:106` | `true` | OFF | `false` | Sloane |
@@ -61,6 +69,13 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `GOING_COUNT_ENABLED` | `apps/web/lib/integrations/going.ts:148` | `true` | OFF | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | `apps/web/lib/integrations/google-push-flag.ts:14` | `true` | OFF | `false` | Noah |
 | `GOOGLE_WRITE_SCOPES_ENABLED` | `apps/web/lib/integrations/google-write-flag.ts:23` (the allowlist at :29 arms listed users) | `true` | OFF | unset, or anything except `true` | Noah |
+| `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | `apps/web/lib/channel/coach/no-group-relay.ts:19` | `true` | OFF | `false` | Sloane |
+| `GROUP_BRING_LIST_ENABLED` | `apps/web/lib/channel/lists/flag.ts:10` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:133` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
+| `GROUP_LINK_CARDS_ENABLED` | `apps/web/lib/channel/linq/config.ts:124` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_MAIL_NOTICE_ENABLED` | `apps/web/lib/channel/linq/config.ts:150` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:116` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_PRIVATE_QUESTION_ENABLED` | `apps/web/lib/channel/linq/config.ts:142` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `apps/web/lib/pipeline/classify.ts:166` (`parseModelMode`, `apps/web/lib/pipeline/model-mode.ts:1-5`: trim, unset means `current`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INBOUND_SCREEN_MODEL_MODE` | `apps/web/lib/channel/off-domain/screen.ts:279` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INTAKE_EXTRACT_MODEL_MODE` | `apps/web/lib/channel/intake/extract.ts:164` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
@@ -69,17 +84,17 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `HALE_TRIAGE_MODEL_MODE` | `apps/web/lib/sentinel/triage.ts:101` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE` | none on main (#844) | none | no reader on main | none (no reader) | Eugene |
 | `HOLDING_LINE_ENABLED` | `apps/web/lib/channel/router/holding-line.ts:36` | `true` (no trim) | OFF | unset | Barton |
-| `INBOUND_PHOTO_FACTS_ENABLED` | `apps/web/lib/channel/inbound-photo-facts.ts:22` | `true` (exact, untrimmed) | OFF | unset | Noah |
+| `INBOUND_PHOTO_FACTS_ENABLED` | `apps/web/lib/channel/inbound-photo-facts.ts:29` | `true` | OFF | `false` | Noah |
 | `INTEREST_PASSPORT_DEMO` | `apps/web/lib/passport/demo.ts:26` (also needs `INTEREST_PASSPORT_ENABLED` to be `true`) | `true` | OFF | unset | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `apps/web/lib/passport/flag.ts:12` | `true` | OFF | `false` | Noah |
 | `LINQ_GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:107` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
-| `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:117` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
+| `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:165` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
 | `LINQ_GROUP_COPARENT` | `apps/web/lib/channel/linq/config.ts:72` (trimmed, `!== 'off'`) | unset (anything except `off`) | ON | `off` | Noah |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `apps/web/lib/channel/linq/config.ts:80` | `true` (trimmed) | OFF | `false` | Noah |
-| `LINQ_GROUP_MENTIONS_ENABLED` | `apps/web/lib/channel/linq/config.ts:176` (also needs `VERCEL_ENV=preview`) | `true` (trimmed) | OFF (preview-only) | empty, or `false` | Noah |
+| `LINQ_GROUP_MENTIONS_ENABLED` | `apps/web/lib/channel/linq/config.ts:195` | `true` (trimmed) | OFF | empty, or `false` | Noah |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `apps/web/lib/channel/linq/config.ts:99` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
-| `LINQ_GROUP_PLAN_RSVP_ENABLED` | `apps/web/lib/channel/linq/config.ts:125` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
-| `LINQ_GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:134` | `true` (trimmed) | OFF | `false` | Noah (copy: Sloane) |
+| `LINQ_GROUP_PLAN_RSVP_ENABLED` | `apps/web/lib/channel/linq/config.ts:135` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
+| `LINQ_GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:144` | `true` (trimmed) | OFF | `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_REMINDERS_ENABLED` | `apps/web/lib/loop/reminders/group/flag.ts:14` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `LINQ_GROUP_TURN_AI_ENABLED` | `apps/web/lib/channel/linq/group-turn-reader.ts:67` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `apps/web/lib/channel/linq/config.ts:90` | `true` (trimmed) | OFF | `false` | Noah |
@@ -88,6 +103,8 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `MEMORY_DIGEST_APPLY` | `apps/web/lib/memory/digest.ts:40` | `true` | OFF | `false` | Noah |
 | `MEMORY_SYNTHESIS_APPLY` | `apps/web/lib/memory/synthesis.ts:44` | `true` | OFF | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | `apps/web/lib/channel/mid-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
+| `NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED` | `apps/web/lib/analytics/flags.ts:18`; also `apps/site/lib/analytics/flags.ts:15` | `true` (exact, no trim) | OFF | unset, or anything except exact `true` | Noah |
+| `NEXT_PUBLIC_POSTHOG_WEB_ENABLED` | `apps/web/lib/analytics/flags.ts:14`; also `apps/site/lib/analytics/flags.ts:11` | `true` (exact, no trim) | OFF | unset, or anything except exact `true` | Noah |
 | `ONBOARDING_FRIEND_VOICE_ENABLED` | none on main (#868) | none | no reader on main | none (no reader) | unassigned |
 | `ORPHAN_USER_SWEEP_ENABLED` | `apps/web/lib/rights/orphan-users.ts:124` | `true` | OFF | `false` | Noah |
 | `PARENT_CALENDAR_MIRROR_ENABLED` | `apps/web/lib/channel/lanes.ts:19` (compared at :26) | `true` | OFF | unset | Barton |
@@ -100,6 +117,9 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `SIGNUP_BROWSER_RUNTIME` | `apps/web/lib/signup/runtime/acquire.ts:80` (`local`, `vercel_sandbox` or `browserbase`, exact, at :81) | `local`, `vercel_sandbox`, or `browserbase` | no runtime chosen | unset | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `apps/web/lib/signup/runtime/flag.ts:19` | `true` | OFF | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `apps/web/lib/social/flag.ts:12` | `on` (no trim) | OFF | empty, or `off` | Noah |
+| `TEAM_SCHEDULE_CHANGES_ENABLED` | `apps/web/lib/integrations/team-schedule/flag.ts` (compared at `teamScheduleChangesEnabled`) | `true` | OFF | `false` | Barton |
+| `TEAM_SCHEDULE_CHANGES_FAMILY_ALLOWLIST` | `apps/web/lib/integrations/team-schedule/flag.ts` | comma-separated family ids | empty | empty | Barton |
+| `TEEN_NAME_SHARED_MATCHER_ENABLED` | `apps/web/lib/privacy/teen-name.ts:15` | `true` | OFF | `false` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | `apps/web/lib/channel/lanes.ts:21` via `apps/web/lib/travel/flag.ts:35` (the lane helper, as `travel_brief`); a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows it (:48-53) | `true` | OFF | unset it — off is off for every household; while on, a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows the brief to the listed households | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `apps/web/lib/village/intros/run.ts:103` (gate at :1211; an allowlist cannot arm it) | `true` | OFF | `false` | Noah |
 | `VOICE_DISABLED` | `apps/web/lib/channel/reply-copy/client.ts:12`; also `apps/web/lib/loop/voice/compose.ts:64`, `apps/web/lib/channel/linq/group-onboarding-voice.ts:116`, `apps/web/lib/channel/linq/group-plan-rsvp/voice.ts:64`, `apps/web/lib/channel/linq/shared-group-reading.ts:182`, `apps/web/lib/channel/linq/shared-group-voice.ts:125` | unset (inverted: `true` turns voice off) | voice runs | `true` | Sloane |
@@ -115,6 +135,7 @@ The four lane switches (VIL-226) hold work while they are off. They do not delet
 - With `REGISTRATION_LADDER_ENABLED` unset, the registration-sequence cron runs no ladder and answers `{ lane: 'registration_ladder', outcome: 'lane_off', groupSync: 'lane_off' }`. The sequence rows are left as they are, so a leg whose window is still open goes out once the lane is back on. The group-decision flush in the same route is held too: those syncs send group bubbles.
 - `REGISTRATION_PLAN_RUN_ENABLED` carries out a parent's day-before registration plan at the open and pays with the card saved on the parent's city account. **Do not arm it while Browser Use can solve a CAPTCHA on a plan run.** Hale never solves or gets around a CAPTCHA (2026-11-04 decision). Plan runs are Browser Use V4 agent runs. Browser Use solves CAPTCHAs on agent runs by default, and V4 run `browserSettings` has no `solveCaptchas` field (https://docs.browser-use.com/cloud/browser/captcha-handling). A run cannot attach to a browser Hale created with `solveCaptchas: false`, because `POST /runs` takes no browser id. Arm it only after one of these: Browser Use confirms in writing that solving is off for Hale's project, or V4 adds a run-level `solveCaptchas` and the plan engine sends `false`. Browser Use's EU deployment has solving off, but moving there needs a data-residency decision under hard rule #1, so it is not a quiet switch. A plan whose parent no longer stands behind it ends `cancelled` with `authorization_lapsed` and texts no one. That covers a parent who opted out, left the family, or has an unread text held as a possible stop, and a family scheduled for erasure. The check runs at the claim and again just before payment. The same switch also turns on the day-before plan conversation (the plan offer, the parent's yes or take-back) and the `/api/cron/signup-plans` minute cron; unset, the cron answers `skipped: 'flag_off'` and the conversation leaves every offer to the one-shot sign-up.
 - `EMAIL_ALERT_ENABLED` holds the parent 1:1 text and the silent booked-detection backfill. With the lane on, Hale tells the parent what a parenting email says, in their 1:1. The backfill still sends no text; its `activity_bookings` rows feed how-it-went texts. With the lane off the backfill does not start a page, logs `booked detection backfill: email lane off, page not started`, and stamps nothing, so the page is read when the lane is back. `BOOKED_DETECTION_BACKFILL_ENABLED` keeps its own meaning. This coupling stays until the VIL-226 kid check runs in the backfill path.
+- `EMAIL_ALERT_BODY_ENABLED` lets that 1:1 writer read the Gmail body for that one compose. Off (unset) is today's facts-only writer and does not re-key the notice eval. On, a second Gmail fetch is fenced as untrusted data, used for that compose, stripped of email-only links/phones/codes, and dropped: no DB, log, trace, or PostHog property holds it. Teen and private mail stay facts-only. Needs `EMAIL_ALERT_ENABLED`.
 - With `EMAIL_ALERT_ENABLED` unset, the Gmail ingest cursor (`historyId`) still advances, and a second watermark, `alertHistoryId`, stays where the lane went off. The sync logs `connector sync: gmail alert watermark` with `gmailCursor: 'held_lane_off'`. When the lane is back on, the held mail is released in that sweep and never dropped (`released`). A pass that throws leaves the watermark in place (`release_failed`) and the next sweep retries it. A history read that stops at its page limit carries the last record it reached forward as the watermark (`releasing`). Only if Gmail no longer has history that far back is the watermark dropped as `held_expired`, and that mail is not alerted.
 - There is no per-family or per-sweep count on how many messages a lane may send. The lane switch is the stop. A calendar change older than the pending limit is still aged out (`pending_expired`), because a three-day-old "it moved" is no longer the week.
 
@@ -125,9 +146,11 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | `BOOKED_DETECTION_FAMILY_ALLOWLIST` | `BOOKED_DETECTION_ENABLED` |
 | `COPARENT_DUTY_ASKS_FAMILY_ALLOWLIST` | `COPARENT_DUTY_ASKS_ENABLED` |
 | `COPARENT_DUTY_SENDS_FAMILY_ALLOWLIST` | `COPARENT_DUTY_SENDS_ENABLED` |
+| `COPARENT_SPLIT_DUTY_FAMILY_ALLOWLIST` | `COPARENT_SPLIT_DUTY_ENABLED` |
 | `F14_FAMILY_ALLOWLIST` | `F14_ENABLED` |
 | `FOLLOWUP_ASKS_FAMILY_ALLOWLIST` | `FOLLOWUP_ASKS_ENABLED` |
 | `MEMORY_DIGEST_FAMILY_ALLOWLIST` | `MEMORY_DIGEST_APPLY` (apply also needs this list) |
+| `TEAM_SCHEDULE_CHANGES_FAMILY_ALLOWLIST` | `TEAM_SCHEDULE_CHANGES_ENABLED` |
 | `TRAVEL_BRIEF_FAMILY_ALLOWLIST` | `TRAVEL_BRIEF_ENABLED` |
 | `GOOGLE_WRITE_SCOPES_ALLOWLIST` | `GOOGLE_WRITE_SCOPES_ENABLED` (Hale user ids, not family ids; a listed user is armed while the flag is unset) |
 | `VILLAGE_INTROS_FAMILY_ALLOWLIST` | `VILLAGE_INTROS_ENABLED` |
@@ -155,10 +178,10 @@ Built from every `process.env.X`, `process.env['X']`, `env.X`, `env['X']`, `_ENV
 | `CALENDAR_WRITE_NOTICE_ENABLED` | `apps/web/lib/channel/calendar-write/notice.ts:29` | `true` (trimmed) | OFF | unassigned |
 | `GROUP_PLAN_CALENDAR_REPORT_ENABLED` | `apps/web/lib/channel/group-plan/report.ts:28` | `true` (trimmed) | OFF | unassigned |
 | `HALE_LLM_NO_STREAM` | `apps/web/lib/pipeline/structured.ts:20` | `1` (exact): plain `create` instead of a stream. A transport knob, not a product flag | OFF | unassigned |
-| `LINQ_EXPERIENCES_ENABLED` | `apps/web/lib/channel/linq/config.ts:154` | `true` (trimmed) | OFF | unassigned |
-| `LINQ_GROUP_LEAVE_ENABLED` | `apps/web/lib/channel/linq/config.ts:163` | `true` (trimmed) | OFF | unassigned |
+| `LINQ_EXPERIENCES_ENABLED` | `apps/web/lib/channel/linq/config.ts:164` | `true` (trimmed) | OFF | unassigned |
+| `LINQ_GROUP_LEAVE_ENABLED` | `apps/web/lib/channel/linq/config.ts:173` | `true` (trimmed) | OFF | unassigned |
 | `LINQ_STICKERS_ENABLED` | `apps/web/lib/channel/linq/sticker.ts:22` | `true` (trimmed) | OFF | unassigned |
-| `LINQ_VOICE_MEMOS_ENABLED` | `apps/web/lib/channel/linq/config.ts:144` | `true` (trimmed) | OFF | unassigned |
+| `LINQ_VOICE_MEMOS_ENABLED` | `apps/web/lib/channel/linq/config.ts:154` | `true` (trimmed) | OFF | unassigned |
 | `MID_ACTIVITY_SIGNUP_TOOL_ENABLED` | `apps/web/lib/channel/mid-activity/said-tool.ts:23` | `true` | OFF | unassigned |
 | `PREVIEW_CAPTURE_GROUPS` | `apps/web/lib/channel/preview-linq-capture.ts:36` | `on`; also needs `VERCEL_ENV === 'preview'` (:34) and the capture transport requested (:35) | OFF (preview-only) | unassigned |
 | `PREVIEW_CAPTURE_TRANSPORT` | `apps/web/lib/channel/preview-capture-transport.ts:31` | `on`; also needs `VERCEL_ENV` exactly `preview` (docstring :8) | OFF (preview-only) | unassigned |
@@ -186,15 +209,23 @@ One extra signal is named on the row.
 Dependencies, as the code reads them:
 
 - `TRAVEL_BRIEF_ENABLED` and `CHECK_IN_ANCHOR_ENABLED` need `F14_ENABLED` for the family.
+- `TEAM_SCHEDULE_CHANGES_ENABLED` needs `EMAIL_ALERT_ENABLED` (it runs inside the Gmail alert join) and migration `0229_team_schedule_changes`.
+- `EMAIL_ALERT_BODY_ENABLED` needs `EMAIL_ALERT_ENABLED`.
 - `ANY_PAGE_SPOT_WATCH_ENABLED` needs `WATCHED_SPOTS_ENABLED`, `F14_ENABLED` for the family, and migration `0210_watched_spots_any_page` applied.
 - `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` needs `CALENDAR_ALERT_ENABLED` and `LINQ_GROUP_COPARENT` on; its who-takes poll needs `LINQ_POLLS`.
+- `CROSS_PARENT_CLASH_ENABLED` needs `LINQ_GROUP_COPARENT` on (it runs in the household calendar sweep). It does not need `LINQ_GROUP_CONFLICT_ALERTS_ENABLED`.
 - Light `LINQ_GROUP_TURN_AI_ENABLED` with `LINQ_GROUP_ONBOARDING_V2_ENABLED`: the turn reader is the only group turn path, and dark means silent in the group (`apps/web/lib/channel/linq/group-turn-reader.ts:13-17`).
 - `LINQ_GROUP_REMINDERS_ENABLED` reads only a turn the AI turn reader judged Hale's, in a v2 group: it needs `LINQ_GROUP_TURN_AI_ENABLED` and `LINQ_GROUP_ONBOARDING_V2_ENABLED`.
 - `LINQ_GROUP_POLLS_ENABLED`: the native card also needs `LINQ_POLLS`.
+- `GROUP_POLLS_ENABLED`: the native RSVP/time card also needs `LINQ_POLLS`. Off, Hale asks in model-written plain text and tallies replies. Needs migration `0231_linq_group_experience`.
+- `GROUP_CARPOOL_ENABLED` arms the same path as `LINQ_GROUP_CARPOOL_ENABLED`.
+- `GROUP_BRING_LIST_ENABLED` arms the same path as `GROUP_SHARED_LISTS_ENABLED`.
+- `GROUP_MAIL_NOTICE_ENABLED` posts into the household group after a provider time-change; it does not replace the 1:1 email alert.
 - `INTEREST_PASSPORT_DEMO` needs `INTEREST_PASSPORT_ENABLED`; a Calendar stamp needs `CALENDAR_ALERT_ENABLED`.
 - `AUTHORIZED_SIGNUP_ENABLED` is its own gate: `BROWSER_USE_SIGNUP_ENABLED` and `SIGNUP_SANDBOX_RUNTIME_ENABLED` do not turn signup on (`apps/web/lib/signup/browser-use/flag.ts:9-11`). `SIGNUP_BROWSER_RUNTIME` is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`.
 - `MEMORY_DIGEST_APPLY` also needs `MEMORY_DIGEST_FAMILY_ALLOWLIST`.
 - `PREVIEW_CAPTURE_GROUPS` needs `PREVIEW_CAPTURE_TRANSPORT` and a Vercel preview.
+- `NEXT_PUBLIC_POSTHOG_WEB_ENABLED` arms posthog-js on villagehale.com and the portal (pageviews, autocapture allowlist, heatmaps, web surveys). Light it after `NEXT_PUBLIC_POSTHOG_KEY` is set on both projects. `NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED` does nothing until the web flag is on, because the SDK never loads. Replay still needs the PostHog project recording switch and authorized domains.
 
 ### Light one at a time
 
@@ -202,8 +233,11 @@ Code is merged for every row.
 
 | Flag | What it does | Extra signal this week | Kill | Owner |
 | --- | --- | --- | --- | --- |
+| `ACCESS_EXPORT_ROUND_2_ENABLED` | The right-to-access copy leaves coach-only `activity_held` notes out of the requester thread, scopes bookings to the requesting adult, redacts a 13+ child's booking title, genericizes a sensitive household calendar row, carries the source-changed columns, runs every consent type's evidence through the teen gate, and the privacy page says removed lines are in the copy. | A held JSON note in `requesterOnly.textThread`, a co-parent's booking in the copy, a sensitive calendar title that is not generic, or consent evidence that names a teen. | `false` | Noah |
 | `ACTIVITY_REVIEWS_ENABLED` | How an activity went is reduced to a verdict. This pass sends nothing. | Verdicts filed for a family that did not answer. | `false` | Noah |
+| `AGE_FIT_CORRECTION_ENABLED` | The 1:1 coach and the onboarding friend take a parent's correction that a named program does not fit a child, and stop offering that program. Dark leaves those skills' bytes unchanged. The model writes the reply. | A reply that keeps offering a program the parent just said does not fit. | `false` | Sloane |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | A parent can ask Hale to watch a full class on any city's or provider's public program page, not only the two PerfectMind portals. A model reads the page, and code checks each fact against the page text. A bot-check page or a reading the page text does not back sends nothing. | `class availability read` log lines by `outcome` and `reason` (a high `refused`/`challenge_page` or `unknown` share means pages Hale cannot read), spot texts for a page-watch the parent did not ask about, and model spend on the watched-spots cron. | `false` | Noah |
+| `AUDIT_LOG_AUDIENCE_ENABLED` | History and the access export show a one-adult audit row only to that adult. Unlit, those surfaces keep the family-wide reads. Writers always set `audit_log.audience`. Needs migration `0227_audit_log_audience`. | Parent B's History or export carrying parent A's `email_alert_sent`. | `false` | Noah |
 | `AUTONOMOUS_EXECUTE_ENABLED` | Hale acts on its own on an action type the parent opted into and approved five times in a row (rule #4), and only after the turn-on text for that grant has been delivered. Off, each such action is held for approval as `action.gated.lane_off`; a parent's own approval still executes. On, a kind whose text has not been delivered is held as `action.gated.autonomy_notice_pending`, including overnight. The count of parents already at five approvals of a kind, run before it is ever set, is in the VIL-131 pull request: 0. | `action.executed` against `action.gated.*` per action type, and any `action.gated.lane_off` row while the value is `true`. | unset | Barton |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | One capped page of booking-shaped mail from the last 90 days is recorded, and the parent is not alerted. | Log line `gmail sweep: envelope outcome`. Backfill must not insert a `channel_messages` row. | `false` | Noah |
 | `BOOKED_DETECTION_ENABLED` | A booking confirmation is stored as a held spot. | `activity_booking_recorded` rows, and parent alerts that fire for mail the backfill should have stayed quiet on. | `false` | Noah |
@@ -214,25 +248,35 @@ Code is merged for every row.
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | A parent can be told the split looks lopsided. | More than one such note to the same family in a month. | `false` | Sloane |
 | `COPARENT_DUTY_MEMORY_ENABLED` | A recorded duty is written onto the family calendar and the ICS feed. | A duty on the calendar the parent did not confirm. | `false` | Noah |
 | `COPARENT_DUTY_SENDS_ENABLED` | Hale may send duty questions in the co-parent group. The model writes the sentence. A miss holds the send (`model_unsent`) and writes `reply_copy_fallback`. | `channel_messages.category` = `duty_ask` with status `failed`, and more than two `duty_ask` rows for one family in 24 hours. | `false` | Noah |
+| `COPARENT_SPLIT_DUTY_ENABLED` | Hale notices two different kids whose events overlap (clock time or travel between real venue addresses) and asks once who drives which kid. The model writes the ask. A miss sends nothing. Duty is recorded only when a parent answers. Driver reminders use the existing night-before and leave-now lanes, the proactive quiet floor, and the claim gate. | A split ask that names a 13+ title, a driver reminder when nobody answered, or more than one split ask for the same pair in 24 hours. | `false` | Barton |
+| `CROSS_PARENT_CLASH_ENABLED` | One child's two overlapping plans is a clash even when each is held by a different parent. Hale tells both parents privately in their own 1:1 Linq threads so they can pick one. Never the household group, never a multi-family group. The model writes every word; a miss sends nothing. Each parent is told once per clash. | A 1:1 that names a 13+ title, a post in a group chat (`template_key` = `linq:group_clash` for this pair), or a second 1:1 to the same parent for the same clash. | empty, or `false` | Sloane |
 | `EMAIL_ALERT_ENABLED` | Hale tells the parent what a parenting email says, in their 1:1, and the booked-detection backfill may run (lane notes under [Every flag](#every-flag)). | The common checks above. | unset | Barton |
+| `EMAIL_ALERT_BODY_ENABLED` | The email-alert writer may read the Gmail body for that one compose, fenced as untrusted. Off is facts-only. Needs `EMAIL_ALERT_ENABLED`. | A parent text that quotes a URL, phone, or code that only the email gave, or a stored/logged/traced body. | `false` | Barton |
 | `F14_ENABLED` | Hale may start a conversation (nudges, evening check-in, and the other proactive sweeps that read this flag). | Any outbound with no inbound from that parent the same day. | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | Memory reads start using kind and expiry. The model writes the parent reply. A miss holds it. | A "what do you know" reply that leaves while the model did not write it. | `false` | Noah |
 | `FIRST_REPLY_ACTION_LINE` | The first radar reply may include the action URL. | Replies that contain a URL the parent did not ask for. | `false` | Sloane |
 | `FIRST_TOUCH_LADDER_ENABLED` | A new parent is asked for a place, then shown a week find, before the older hello. | First-session `channel_messages` with status `failed`. | empty, or `off` | Sloane |
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |
 | `GOING_COUNT_ENABLED` | A sweep may count how many others are going. | A count that does not match the booking rows. | `false` | Noah |
+| `GROUP_BRING_LIST_ENABLED` | A group bring-list (who brings which snack) uses the existing shared-list path. | A list write while the flag is off. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_CARPOOL_ENABLED` | Who is driving, using the existing carpool path. | A carpool ask while both this flag and `LINQ_GROUP_CARPOOL_ENABLED` are off. | empty, or `false` | unassigned |
+| `GROUP_LINK_CARDS_ENABLED` | A posted https link in a group: Hale says the public facts, then registration continues in each family's 1:1. Needs migration `0231_linq_group_experience`. | A login or payment in the multi-family group. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_MAIL_NOTICE_ENABLED` | A Gmail provider time-change is posted into the household group. No login. | A time-change in a multi-family group, or a login. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_POLLS_ENABLED` | Yes/no/maybe RSVP and time polls in a Linq group. Native cards also need `LINQ_POLLS`; otherwise Hale asks in model-written plain text. Needs migration `0231_linq_group_experience`. | A poll started while the flag is off, or a fallback Yes/No/Maybe template. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_PRIVATE_QUESTION_ENABLED` | A private question (allergy, DOB, address, login, payment) leaves the group for that family's 1:1. | The allergy or another family's calendar spoken in the group. | empty, or `false` | Noah (copy: Sloane) |
 | `GOOGLE_PUSH_SYNC_ENABLED` | Gmail and Calendar can sync from push, not only the 15-minute poll. | Log lines `google push: skipped, flag_off` after the flip, and webhook failures. | `false` | Noah |
+| `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | The 1:1 coach never offers, nor agrees, to tell the group for a family. Hale has no path from a 1:1 reply into the group. Dark leaves the coach skill bytes unchanged. The model writes the reply. The private aside already never offers. | A 1:1 reply that offers to tell the group, or promises a group post after the parent asked for one. | `false` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for event classification. Unset stays on Sonnet 5. | Classify errors and fallback count in the web logs. | `current` | Eugene |
 | `HALE_INBOUND_SCREEN_MODEL_MODE` | `candidate` uses JEV for the inbound screen, with Haiku when the margin is thin. | Screen latency and Haiku retry count. | `current` | Eugene |
 | `HALE_INTAKE_EXTRACT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for intake extraction. The benchmark kept `current`. | Extracted ages or place that the parent did not say. | `current` | Eugene |
 | `HALE_MEMORY_INFER_MODEL_MODE` | `candidate` uses DeepSeek for memory inference. A failed tool loop is not retried. | Duplicate memory rows after a failed run. | `current` | Eugene |
 | `HALE_REPLY_INTENT_MODEL_MODE` | `candidate` uses JEV for reply intent. Assent still goes through Sonnet. | A yes/no stored for a reply the parent did not mean. | `current` | Eugene |
 | `HALE_TRIAGE_MODEL_MODE` | `candidate` uses JEV for sentinel triage, with Haiku when confidence is low. | Triage latency and low-confidence retries. | `current` | Eugene |
-| `INBOUND_PHOTO_FACTS_ENABLED` | After signup, Hale extracts facts from a parent photo or PDF (a flyer, a schedule screenshot, a registration page) and the coach answers from those facts. Off, images still reach the coach as today and PDFs stay unwatched. Set with `printf '%s' true`. | A reply that invents a date or URL the photo did not show, or a PDF fetched while the flag is unset. | unset | Noah |
+| `INBOUND_PHOTO_FACTS_ENABLED` | On a 1:1 turn after signup, Hale reads a parent's photo or PDF (a flyer, a schedule screenshot, a registration page) into facts and the coach answers from them. The page is untrusted: fields are bounded, a field holding a link, phone or email is dropped, and only a public https registration URL counts as seen this turn for `offer_signup` and the watch tools. A PDF is fetched through the same vetted public fetch as a `.vcf`. Group turns are unchanged. Off, images still reach the coach as today and PDFs stay unwatched. | A reply that invents a date or URL the photo did not show, a PDF fetched while the flag is off or on a group turn, or `channel coach: inbound photo facts unread` with `extract_failed` on most photo turns. | `false` | Noah |
 | `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp (a Calendar stamp also needs `CALENDAR_ALERT_ENABLED`). A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
 | `LINQ_GROUP_CARPOOL_ENABLED` | Hale reads who is driving from the group and reminds the night before (`apps/web/lib/channel/linq/config.ts:103-104`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
-| `LINQ_GROUP_MENTIONS_ENABLED` | In a group, Hale's reply can mention the one seated member it addresses, and an inbound mention of Hale counts as addressed. Preview only: the code also needs `VERCEL_ENV=preview`. | A mention in a 1:1 chat, or on a member the reply does not address. | `false` | Noah |
+| `LINQ_GROUP_MENTIONS_ENABLED` | In a group, Hale's reply can mention the one seated member it addresses, and an inbound mention of Hale counts as addressed. Trimmed `true` turns it on in any environment, including production. | A mention in a 1:1 chat, or on a member the reply does not address. | `false` | Noah |
 | `LINQ_GROUP_PLAN_RSVP_ENABLED` | RSVP tracking for any plan in a Linq group (`apps/web/lib/channel/linq/config.ts:121-122`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_POLLS_ENABLED` | A parent can start a poll in a Linq group; others vote in their own words or on a native card, and Hale reads the tally back. The card also needs `LINQ_POLLS`. Needs migration `0190_linq_group_polls`. | A poll started while the flag is off, or a tally that invents a winner. | `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_REMINDERS_ENABLED` | "Remind me" from anyone in a family group; it only reads a turn the AI turn reader judged Hale's, in a v2 group (`apps/web/lib/loop/reminders/group/flag.ts:5-11`). | The common checks above. | empty, or `false` | unassigned |
@@ -248,6 +292,8 @@ Code is merged for every row.
 | `REGISTRATION_ASSISTED_RUN_ENABLED` | ActiveNet towns (`apps/web/lib/signup/plan/towns.ts`) join the plan lane in assisted mode: the plan offer, and at the open Hale fills the registration and texts the parent the live browser to submit and pay. Hale never signs in, submits or pays there. Needs `REGISTRATION_PLAN_RUN_ENABLED`. **Arm only after the same CAPTCHA confirmation and one live run on Barton's own ActiveNet account.** | `authorized_signup_step` rows: `plan_finished` outcomes on ActiveNet hosts, and any `submit_boundary` or `payment_boundary` detail (must be zero). | unset | Barton |
 | `REGISTRATION_PLAN_RUN_ENABLED` | A parent's day-before plan runs itself at the open on the auto towns and pays with the card saved on the city account (lane notes under [Every flag](#every-flag)). **Arm only after Browser Use confirms CAPTCHA solving is off for plan runs.** | `authorized_signup_step` rows whose `plan_finished` is not `completed`, and any `plan_payment` row whose amount is not the cart total. | unset | Barton |
 | `SAME_ACTIVITY_MEET_ENABLED` | When a caller reaches this code, a meet reply is prepared only after both households opt in. `deliverSameActivityReply` returns `skipped: 'not_configured'`, so the line stays in process. Nothing in the inbound router calls this path today. | A `channel_messages` row that carries a meet line, or an audit row `same_activity_opt_in_recorded`. | `false` | Noah |
+| `TEAM_SCHEDULE_CHANGES_ENABLED` | From a connected Gmail, a matched coach/league/TeamSnap email can update a kid's calendar (ask, or autonomy after 5 same-kind approvals) and tell the driver. Needs `EMAIL_ALERT_ENABLED`. The allowlist arms listed families while this is off. | A calendar move with no parent ask and no autonomy grant, or a driver text that quotes a URL or phone from the email. | `false` | Barton |
+| `TEEN_NAME_SHARED_MATCHER_ENABLED` | Title and text gates that hide a 13+ child's words use `namesAny` (accents, format characters, every name part of two or more letters). Unlit, those gates keep the pre-VIL-634 whole-word check. Memory reads already use `namesAny`. | A title withheld that did not name a teen, or a teen-named title (accents, a name part) that still left. | `false` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | A trip can produce a short brief. The family also has to pass `F14_ENABLED`. | A brief for a family that is dark on F14 (the count should stay `dark`). | `false` | Sloane |
 | `WATCHED_SPOTS_ENABLED` | Hale polls a spot the parent asked to watch. | Spot texts with status `failed`, or a text for a spot the parent did not name. | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | Hale asks once how the household covers weekdays. | A second weekday question to the same family. | `false` | Sloane |
@@ -284,6 +330,7 @@ Each of these has a prerequisite, a condition, or an owner who lights it. The ki
 - `INTEREST_PASSPORT_DEMO`: preview only. Never set it in production. On a Vercel preview it also needs `VERCEL_ENV=preview` (Vercel sets that) and `INTEREST_PASSPORT_ENABLED=true`. Then `/demo/passport` opens the Mia and Leo fixture with no account and no database. The code refuses the combination when `VERCEL_ENV` is `production`.
 - `GOOGLE_WRITE_SCOPES_ENABLED`: light it in production only after Google verification approves those scopes. Linq delivers inbound texts to the production webhook, so a preview URL cannot receive a parent text. `GOOGLE_WRITE_SCOPES_ALLOWLIST` is comma-separated Hale user ids: only those accounts are asked for `calendar.events` and `gmail.compose`, and only their placements and Gmail drafts write to Google. Everyone else keeps today's readonly consent, and a placement still writes `family_events` and sends the iTIP invite. Preview may set the flag to `true` with an empty allowlist.
 - `HOLDING_LINE_ENABLED`: a slow 1:1 answer gets one composed line first, then the typing bubble again. Barton lights it. Set it with `printf '%s' true`, never a piped `echo`: a trailing newline keeps it dark. Probe: `channel_messages` rows with `template_key` = `holding_line`. Each one sits before the answer to the same inbound text, and none is in a group thread or on email. Rollback: unset it and redeploy `apps/web`.
+- `CROSS_PARENT_CLASH_ENABLED` (VIL-609): on, one child's two overlapping plans, each held by a different parent, is a clash: a driver on a different overlapping plan does not cover it, because the child cannot be in two places. The household calendar sweep tells both parents privately in their own 1:1 Linq threads (skill `cross-parent-clash`), never the household group and never a multi-family group. The model writes every word; if it cannot, that parent is sent nothing. Each parent is told once per clash (`template_key` = `linq:cross_parent_clash`, dedupe `…:1to1:<parentId>`). Off, two parents covering still is not a clash. Needs `LINQ_GROUP_COPARENT` on. Probe: two `channel_messages` rows with `template_key` = `linq:cross_parent_clash`, each in a 1:1 chat, none in the group. Rollback: unset it and redeploy `apps/web`.
 - `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` (VIL-444): on, the connector sweep's group narration looks for two kid plans at once, or the person taking one busy then, in the next 14 days, and posts one model-written alert into the household group naming who is free on a connected calendar (skill `group-conflict-alert`). It replaces the household conflict line. With `LINQ_POLLS` on, the who-takes poll may follow the alert: the people in the chat as stored, then a last option the model writes, its "we'll figure it out". The model leaves the poll out when a name does not answer its ask (one child double-booked), and then the alert goes alone. When the last option it wrote cannot go (a link, or a name on the poll), nothing is sent. A vote is stored as that plan's who-takes decision and settles it the way a claim does. With `LINQ_POLLS` off, the alert asks in words and no poll goes. Two parents covering, a clash already sent, and a kid item longer than three hours send nothing. A teen's or sensitive plan reaches the model only as "busy". If the model cannot write it, nothing is sent and the next sweep asks again. On, it also reads each message a parent or a caregiver seated in that chat writes in the household group, while pickups are ahead, for whether the sender just took one or gave back one they had (skill `group-pickup-claim-read`, one classify read per message). A claim is stored as that plan's who-takes decision and settles it: no alert names it, and the person who took it counts as busy then. Reading sends nothing; a failed or unsure read stores nothing; a private plan is never offered to the reader. Needs `CALENDAR_ALERT_ENABLED` and `LINQ_GROUP_COPARENT` on. Probe: `channel_messages` rows with `template_key` = `linq:group_clash`, one per clash, each in the group chat; for claims, `family_memory_facts` rows with `inferred_by` = `linq_pickup_claim`, each with a `logistics_decision_recorded` audit row; with `LINQ_POLLS` on, a `linq:poll` row right after a clash alert, its `linq_poll_options` rows with `poll_kind` = `who_takes`, and a vote's `family_memory_facts` row with `inferred_by` = `linq_logistics_poll`. Rollback: unset it and redeploy `apps/web`; off, no message is read for a claim and the sweep plans and sends what it did before, except that who-takes decisions already stored from claims stay: the household conflict line and the who-takes poll skip those plans, as they do for any stored decision.
 
 ## First five families

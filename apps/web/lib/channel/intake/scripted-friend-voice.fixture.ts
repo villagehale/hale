@@ -131,7 +131,9 @@ export function scriptedTurn(input: FriendVoiceInput): {
     capture.children.some((child) => child.name) ||
     capture.kidsNamesDeclined ||
     input.checklist?.kids === true;
-  const capturedAges = capture.children.filter((child) => child.ageMonths != null);
+  const capturedAges = capture.children.filter(
+    (child) => child.ageMonths != null || Boolean(child.dateOfBirth),
+  );
   const agesKnown =
     (capture.children.length > 0 &&
       capturedAges.length === capture.children.length &&

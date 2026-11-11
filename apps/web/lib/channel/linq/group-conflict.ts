@@ -10,11 +10,14 @@ import type { PollOptionWrite } from './poll';
  * Code reads times, never words. A kid plan rests on whoever has it: the taker the family
  * stored (a duty owner, a decided who-takes), else the one calendar it is on. A clash is
  * that person busy then, or two plans at once that the people free on the calendars Hale
- * can see cannot split between them. Two parents covering is not a clash. Nobody is called
- * free from a calendar Hale cannot see; the alert may ask them instead. A private block
- * arrives here as an owner and a time, and leaves as "busy". A plan settled in the group
- * (a claim the model read, group-pickup-claim.ts, or a vote on a who-takes poll) is never
- * in an alert, and the person it names is not free for anything else then.
+ * can see cannot split between them. Two parents covering two children is not a clash.
+ * With {@link GroupClashInput.uncoverSameKid}, one child's two overlapping plans are a
+ * clash even when each is held by a different parent: a driver on a different plan does
+ * not cover it, because the child cannot be in two places. Nobody is called free from a
+ * calendar Hale cannot see; the alert may ask them instead. A private block arrives here
+ * as an owner and a time, and leaves as "busy". A plan settled in the group (a claim the
+ * model read, group-pickup-claim.ts, or a vote on a who-takes poll) is never in an alert,
+ * and the person it names is not free for anything else then.
  *
  * The model writes the alert from {@link groupConflictLineInput}. With LINQ_POLLS on, the
  * alert may carry the who-takes poll ({@link clashPollOffer}): the names are the people in
@@ -73,6 +76,13 @@ export interface GroupClashInput {
   busy: readonly ClashBusy[];
   people: readonly ClashPerson[];
   now: Date;
+  /** The family's kids. Used when {@link uncoverSameKid} is on. */
+  kids?: readonly string[];
+  /**
+   * One child's two overlapping plans are a clash even when different people hold them.
+   * Off (the default): two parents covering still is not a clash.
+   */
+  uncoverSameKid?: boolean;
 }
 
 export interface GroupClash {
@@ -166,8 +176,12 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
     if (owner !== null && busyThen(owner, plan) === null) return [owner];
     return visible.filter((id) => freeFor(id, plan));
   };
+  const sameChild = (a: ClashPlan, b: ClashPlan): boolean =>
+    input.uncoverSameKid === true && plansSameKid(a, b, input.kids ?? []) !== null;
+  // A driver covers only the plan they hold. A driver on a different overlapping
+  // plan does not cover a same-child clash: the child cannot be in two places.
   const covered = (a: ClashPlan, b: ClashPlan): boolean =>
-    options(a).some((x) => options(b).some((y) => x !== y));
+    !sameChild(a, b) && options(a).some((x) => options(b).some((y) => x !== y));
 
   const describe = (first: ClashPlan, second: GroupClash['second']): GroupClash => {
     const pair = 'plan' in second ? [first, second.plan] : [first];
@@ -477,18 +491,50 @@ export interface ClashPollOffer {
   people: readonly { id: string; name: string }[];
 }
 
+/** The child both titles name as a whole word, or null. */
+export function plansSameKid(
+  first: Pick<ClashPlan, 'title'>,
+  second: Pick<ClashPlan, 'title'>,
+  kids: readonly string[],
+): string | null {
+  const titles = [first.title, second.title];
+  return (
+    kids
+      .map((name) => name.trim())
+      .find((name) => name.length >= 2 && titles.every((title) => hasWord(title, name))) ?? null
+  );
+}
+
 /**
  * The child both plans in a clash are for, when both titles name them, or null. A clash
  * with someone's busy time has one plan, so it is never one child's two.
  */
 export function clashSameKid(clash: GroupClash, kids: readonly string[]): string | null {
   if (!('plan' in clash.second)) return null;
-  const titles = [clash.first.title, clash.second.plan.title];
-  return (
-    kids
-      .map((name) => name.trim())
-      .find((name) => name.length >= 2 && titles.every((title) => hasWord(title, name))) ?? null
-  );
+  return plansSameKid(clash.first, clash.second.plan, kids);
+}
+
+/**
+ * Two parents each hold one of one child's overlapping plans. The child cannot be in
+ * two places, and a driver on the other plan does not cover it.
+ */
+export function clashCrossParent(
+  clash: GroupClash,
+  kids: readonly string[],
+  parentIds: readonly string[],
+): boolean {
+  if (!('plan' in clash.second)) return false;
+  if (clashSameKid(clash, kids) === null) return false;
+  const a = clash.restsOn[clash.first.key];
+  const b = clash.restsOn[clash.second.plan.key];
+  if (!a || !b || a === b) return false;
+  const parents = new Set(parentIds);
+  return parents.has(a) && parents.has(b);
+}
+
+/** One 1:1 tell per parent per clash. */
+export function crossParentClashDedupeKey(clash: GroupClash, parentId: string): string {
+  return `${clash.dedupeKey}:1to1:${parentId}`;
 }
 
 /**

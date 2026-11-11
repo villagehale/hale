@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
+import { mediaKindOf } from '~/lib/analytics/product';
+import { noteMessage } from '~/lib/analytics/product-hooks';
 import { persistableMedia } from '~/lib/channel/inbound-media';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
@@ -126,6 +128,9 @@ export type InboundRouteOutcome =
    * (or logged when no row carries that provider id). Counted on its own so a
    * receipt is not an ignored text. SMS never produces this. */
   | 'receipt'
+  /** VIL-479 · Linq `message.edited` was applied to the transcript or the inbound
+   * body, or logged when no row carries that provider id. Not an ignored text. */
+  | 'message_edited'
   /** A verified channel, but not a parent's — never handed to a household agent. */
   | 'not_a_parent'
   /** Linq year-find poll: the parent chose "None of these". Recorded, not routed,
@@ -349,6 +354,15 @@ async function handOffToConversation(
     actionTaken: 'sms_reply_received',
     targetTable: 'channel_messages',
     targetId: channelMessageId,
+  });
+  noteMessage({
+    direction: 'in',
+    familyId: owner.familyId,
+    channel: inbound.transport ?? 'sms',
+    isGroup: inbound.isGroup,
+    chatId: inbound.chatId,
+    mediaKind: mediaKindOf(inbound.media),
+    database: deps.database,
   });
 
   try {

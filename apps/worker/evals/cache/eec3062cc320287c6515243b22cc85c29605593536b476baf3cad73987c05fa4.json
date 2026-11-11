@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked a direct question (is swim at 5?), and the follow-up answers it, so the follow-up must be sent as a new message. Setting edit to null is correct, since editing the old bubble would leave the parent's question unanswered and produce no alert.",
+    "score": 5
+  }
+}

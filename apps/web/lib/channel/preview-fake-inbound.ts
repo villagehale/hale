@@ -76,7 +76,7 @@ export function fakeSender(raw: unknown): string | null {
 
 const MAX_MEDIA = 8;
 
-function readMedia(raw: unknown): InboundMediaPart[] | null | 'invalid' {
+export function readMedia(raw: unknown): InboundMediaPart[] | null | 'invalid' {
   if (raw === undefined || raw === null) return null;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_MEDIA) return 'invalid';
   const parts: InboundMediaPart[] = [];

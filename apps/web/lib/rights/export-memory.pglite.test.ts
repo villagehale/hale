@@ -97,6 +97,8 @@ const NOT_IN_EXPORT: Record<string, string> = {
     'a capability key and two message ids; each no and correction is an exported audit row',
   family_memory_aliases: 'derived search tokens of facts already exported',
   agent_runs: 'model usage accounting, no family content',
+  linq_group_plan_calendar_consents:
+    'per-plan calendar ask state; each ask, answer, write, removal and set-aside is an exported audit row, and the copy Hale wrote is an exported calendar event',
   caregiver_invites: 'unreviewed',
   channel_pending_asks: 'unreviewed',
   chat_attachments: 'unreviewed',
@@ -110,6 +112,7 @@ const NOT_IN_EXPORT: Record<string, string> = {
   family_interest_settings: 'unreviewed',
   family_invites: 'unreviewed',
   family_link_wallets: 'unreviewed',
+  family_provider_data_keys: 'wrapped DEKs; not family content',
   family_plans: 'unreviewed',
   family_upgrade_offers: 'unreviewed',
   family_watch_subscriptions: 'unreviewed',
@@ -120,6 +123,8 @@ const NOT_IN_EXPORT: Record<string, string> = {
   kid_interests: 'unreviewed',
   kid_passport_profiles: 'unreviewed',
   kid_relevance_verdicts: 'unreviewed',
+  linq_group_experience:
+    'live RSVP/time/link/mail/private-question keys for one chat; the lines themselves are on exported channel_messages',
   linq_group_carpools: 'unreviewed',
   linq_group_members: 'unreviewed',
   linq_group_onboarding: 'unreviewed',
@@ -138,10 +143,15 @@ const NOT_IN_EXPORT: Record<string, string> = {
   party_invites: 'unreviewed',
   pending_disambiguations: 'unreviewed',
   proactive_candidates: 'unreviewed',
+  provider_login_links: 'hashed login tokens; never exported',
+  provider_login_notices: 'send ledger of kind and host; body is never stored',
+  provider_signup_credentials: 'encrypted city credentials; never exported',
   provider_signup_sessions: 'unreviewed',
   sms_intake_sessions: 'unreviewed',
   social_spots: 'unreviewed',
   teen_access_grants: 'unreviewed',
+  team_schedule_changes:
+    'VIL-662 pointer from a Gmail id to the calendar move it proposed; the event and action are exported',
   village_endorsements: 'unreviewed',
   week_plans: 'unreviewed',
 };

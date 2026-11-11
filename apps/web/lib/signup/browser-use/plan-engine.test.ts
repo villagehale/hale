@@ -212,6 +212,8 @@ describe('day-before plan engine', () => {
       },
     ]);
     const [first, second] = runPosts(log);
+    expect(first?.body.keepAlive).toBe(900);
+    expect(Object.prototype.hasOwnProperty.call(first?.body ?? {}, 'keepAlive')).toBe(true);
     expect(String(first?.body.task)).toContain('# skill browser-use-plan-signup');
     expect(String(first?.body.task)).toContain('"rank": 2');
     expect(String(first?.body.task)).toContain('"max_price_cents": 10000');
@@ -303,6 +305,24 @@ describe('day-before plan engine', () => {
     const result = await runBrowserUsePlanSignup(plan().input, deps);
     expect(result).toMatchObject({ outcome: 'sold_out', liveViewUrl: null, choiceIndex: null });
   });
+
+  it.each(['session_not_found', 'captcha'] as const)(
+    'closes the browser on needs_human %s',
+    async (detail) => {
+      const { deps, log } = setup({
+        plan: {
+          ...CHECKOUT,
+          outcome: 'needs_human',
+          detail,
+          choice_index: null,
+          cart_total_cents: null,
+        },
+      });
+      const result = await runBrowserUsePlanSignup(plan().input, deps);
+      expect(result).toMatchObject({ outcome: 'needs_human', detail, liveViewUrl: null });
+      expect(log.some((r) => r.method === 'PATCH' && r.path === '/browsers/browser-1')).toBe(true);
+    },
+  );
 });
 
 const MIN = 60_000;
@@ -501,6 +521,10 @@ describe('plan facts', () => {
       last_name: undefined,
       date_of_birth: undefined,
     });
+    const derived = planFacts(plan({ identity: { ...IDENTITY, childDob: null } }).input) as {
+      child: Record<string, unknown>;
+    };
+    expect(derived.child.date_of_birth).toBeUndefined();
     // Positive control: with the slot granted, the label goes.
     const granted = planFacts(plan().input) as { choices: Record<string, unknown>[] };
     expect(granted.choices[0]?.label).toBe('Preschool Swim Sat 9:00');

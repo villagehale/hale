@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text confirms joining at the open using correct time and zone, stays within two short sentences, makes no registered/spot claims, no invented facts, no links, English matches. Minor concern: the second sentence adds a note about double-queuing, which goes slightly beyond the watchFor scope, but it is grounded in advice rather than invented facts or system talk.",
+    "score": 4
+  }
+}
