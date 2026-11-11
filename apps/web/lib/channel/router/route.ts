@@ -51,6 +51,11 @@ import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-deci
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import {
+  linqMessageEditEnabled,
+  listEditableLinqSends,
+  sharedLinqEditDecider,
+} from '~/lib/channel/linq/edit';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -1088,7 +1093,15 @@ async function routeChannelMessageInner(
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
   // thread, and the coach re-reads that thread on the attempt that finally works.
   if (!redriven) {
-    await appendMessage(conversationId, 'user', context.body, deps.database);
+    // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
+    // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
+    const inboundProviderId =
+      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
+    await appendMessage(conversationId, 'user', context.body, deps.database, {
+      childId: null,
+      topic: null,
+      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+    });
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -3345,6 +3358,35 @@ async function sendReply(
   }
   const voiced = await voiceMemoFor(deps, args);
   if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+    let edit:
+      | {
+          decider: ReturnType<typeof sharedLinqEditDecider>;
+          candidates: Awaited<ReturnType<typeof listEditableLinqSends>>;
+          audience: 'direct' | 'group';
+          conversationId: string;
+        }
+      | undefined;
+    if (linqMessageEditEnabled() && args.conversationId) {
+      try {
+        edit = {
+          decider: sharedLinqEditDecider(),
+          candidates: await listEditableLinqSends(deps.database, {
+            familyId: args.job.family_id,
+            conversationId: args.conversationId,
+            chatId: args.route.chatId,
+            now: deps.now(),
+            inboundAt: new Date(args.job.received_at),
+          }),
+          audience: args.job.in_group === false ? 'direct' : 'group',
+          conversationId: args.conversationId,
+        };
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq edit: candidates unread; the follow-up still goes out',
+        );
+      }
+    }
     try {
       const moment = await considerLinqReply(deps.database, {
         route: args.route,
@@ -3354,6 +3396,7 @@ async function sendReply(
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(edit ? { edit } : {}),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
@@ -3369,11 +3412,15 @@ async function sendReply(
         return moment.channelMessageId;
       }
     } catch (err) {
+      // VIL-479 (Devin BUG_0003): a turn that expired while the edit read ran is over.
+      // It must not edit a bubble, and it must not send the follow-up either.
+      if (isTurnTimeout(err)) throw err;
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
     }
+    assertTurnLive();
   }
   const sent = voiced ?? (await deps.transport.send({ route: args.route, body: args.body }));
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
@@ -3456,6 +3503,12 @@ async function sendReply(
       childId: null,
       topic: null,
       source: args.threadSource ?? null,
+      ...(!voiced &&
+      linqMessageEditEnabled() &&
+      args.route.channel === 'imessage' &&
+      sent.providerMessageId
+        ? { providerMessageId: sent.providerMessageId }
+        : {}),
     });
   }
 

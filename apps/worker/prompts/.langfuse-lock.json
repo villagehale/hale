@@ -259,6 +259,11 @@
     "version": null,
     "sha256": "56ea5732dc885267a97abf0af90f43e1f5683935c99138bb6b7ebf66c78962cc"
   },
+  "judges/linq-edit": {
+    "name": "judges/linq-edit",
+    "version": null,
+    "sha256": "0979ef98474ff9236d06afdea2ec2416a01007d74d046818d62cfd192b1a51bb"
+  },
   "judges/linq-sticker": {
     "name": "judges/linq-sticker",
     "version": null,

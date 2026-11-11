@@ -111,6 +111,8 @@
     "eval:signup-plan-reply": "node evals/run-signup-plan-reply-eval.mjs --cached-only",
     "eval:signup-plan-reply:broken": "node evals/run-signup-plan-reply-eval.mjs --broken --cached-only",
     "eval:linq-sticker": "node evals/linq-sticker-eval.mjs --cached-only",
+    "eval:linq-edit": "node evals/run-linq-edit-eval.mjs --cached-only",
+    "eval:linq-edit:dry": "node evals/run-linq-edit-eval.mjs --dry",
     "eval:area-read": "node evals/area-read-eval.mjs --cached-only",
     "eval:coach-plan": "node evals/run-coach-plan-eval.mjs --cached-only",
     "eval:activity-verdict": "node evals/run-activity-verdict-eval.mjs --cached-only",
