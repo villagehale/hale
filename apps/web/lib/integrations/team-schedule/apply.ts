@@ -76,6 +76,7 @@ export type TeamScheduleOutcome =
   | 'schedule_change_unwritten'
   | 'send_failed'
   | 'no_send_target'
+  | 'no_chat'
   | `gate_refused:${ProactiveHoldReason}`;
 
 export type TeamScheduleResult =
@@ -390,7 +391,16 @@ async function sendParentNotice(
     return { outcome: 'no_send_target' };
   }
 
-  const door = await resolveMessagingDoor(database, input.parentUserId);
+  const door = await resolveMessagingDoor(database, input.parentUserId, {
+    excludeChatId: await familyGroupChatId(database, input.familyId),
+  });
+  if (door.channel === 'imessage' && !door.chatId) {
+    await database
+      .update(schema.channelMessages)
+      .set({ status: 'failed', errorCode: 'no_chat' })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    return { outcome: 'no_chat' };
+  }
   try {
     let providerMessageId: string;
     let carried: 'sms' | 'imessage' = 'sms';
@@ -616,4 +626,12 @@ export function teamSchedulePortsFor(
       );
     }),
   };
+}
+
+async function familyGroupChatId(database: Database, familyId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return row?.linqGroupChatId ?? null;
 }

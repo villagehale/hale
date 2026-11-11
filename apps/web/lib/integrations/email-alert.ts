@@ -200,6 +200,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   'schedule_change_applied',
   /** VIL-662 · the model could not write the parent text. Nothing was sent. */
   'schedule_change_unwritten',
+  /** VIL-662 · a matched change, but no claimed 1:1 chat to tell the driver. */
+  'no_chat',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];

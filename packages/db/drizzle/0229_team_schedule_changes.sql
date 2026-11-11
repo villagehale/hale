@@ -50,3 +50,5 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS "team_schedule_changes_action_uniq" ON "team_schedule_changes" USING btree ("action_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "team_schedule_changes_family_idx" ON "team_schedule_changes" USING btree ("family_id");
+--> statement-breakpoint
+ALTER TABLE "team_schedule_changes" ENABLE ROW LEVEL SECURITY;

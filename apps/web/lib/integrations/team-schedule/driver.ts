@@ -285,9 +285,18 @@ export async function notifyDrivers(
       );
       continue;
     }
-    const door = await resolveMessagingDoor(database, driver.userId);
+    const door = await resolveMessagingDoor(database, driver.userId, {
+      excludeChatId: await familyGroupChatId(database, driverFamilyId),
+    });
     const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
     const chatId = door.channel === 'imessage' ? door.chatId : null;
+    if (door.channel === 'imessage' && !chatId) {
+      console.info(
+        { familyId: driverFamilyId, outcome: 'no_chat' },
+        'team schedule: driver has no 1:1 chat',
+      );
+      continue;
+    }
     const [claimed] = await database
       .insert(schema.channelMessages)
       .values({
@@ -361,4 +370,12 @@ export function productionDriverNotifyPorts(
     transport,
     threadMessage: threadProactiveMessage,
   };
+}
+
+async function familyGroupChatId(database: Database, familyId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return row?.linqGroupChatId ?? null;
 }
