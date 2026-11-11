@@ -458,7 +458,7 @@ describe('browser use run settings, browser stop and session cost', () => {
     const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
     await runBrowserUseSignup(input(), deps);
     const seed = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/browsers');
-    expect(seed?.body).toMatchObject({ solveCaptchas: false });
+    expect(seed?.body).toMatchObject({ solveCaptchas: true });
   });
 
   it('turns the proxy back on only for a provider that asks for it', async () => {
