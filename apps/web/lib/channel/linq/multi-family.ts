@@ -1,5 +1,6 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { type SQL, and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { noteGroupChatMemberAdded } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -478,6 +479,11 @@ export async function joinFamilyToSharedGroup(
     phone: input.phone,
     role: role === 'co_parent' ? 'co_parent' : 'parent',
     now: input.now,
+  });
+  noteGroupChatMemberAdded({
+    familyId: input.familyId,
+    chatId: input.chatId,
+    database,
   });
   return { outcome: 'joined', notice: 'already_sent' };
 }

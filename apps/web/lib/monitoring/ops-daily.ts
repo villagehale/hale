@@ -75,6 +75,10 @@ import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/rep
  * The inbound-queue line is the pg-boss table at post time (VIL-535): jobs still
  * active past their expiry, unfinished jobs, and the age of the oldest. Slack
  * only. It does not email, and it does not text a parent.
+ *
+ * POSTHOG_OPS_ALERTS_ENABLED (exact `true`) means PostHog insight alerts are the
+ * paging path for send/turn/registration failures (docs/posthog-ops-alerts.md).
+ * This daily post still runs until Barton retires it; the flag does not skip it.
  */
 
 export const OPS_DAILY_ROUTE = 'ops:daily';

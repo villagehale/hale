@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, isNotNull, isNull, lt, lte } from 'drizzle-orm';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
@@ -271,6 +272,7 @@ async function persistPlan(
     .values(values)
     .returning({ id: schema.linqGroupCarpools.id });
   if (!inserted) throw new Error('linq carpool: insert returned no row');
+  noteTaskCompleted({ familyId: input.familyId, type: 'carpool', source: 'group' });
   return inserted.id;
 }
 

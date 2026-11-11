@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { noteMessage } from '~/lib/analytics/product-hooks';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
@@ -1030,6 +1031,14 @@ export async function writeChannelMessage(
     actionTaken: entry.direction === 'in' ? 'sms_intake_inbound' : 'sms_intake_outbound',
     targetTable: 'channel_messages',
     targetId: id,
+  });
+  noteMessage({
+    direction: entry.direction,
+    familyId,
+    channel,
+    isGroup: entry.inGroup,
+    chatId: entry.chatId,
+    database,
   });
   return id;
 }

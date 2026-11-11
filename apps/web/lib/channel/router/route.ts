@@ -2,6 +2,7 @@ import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
+import { noteMessage, noteSendFailed, noteTurnFailed } from '~/lib/analytics/product-hooks';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
@@ -75,6 +76,7 @@ import {
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
   productionVoiceReplyDeps,
@@ -2591,6 +2593,20 @@ async function runAgentTurn(
         reason: disposition.reason,
         familyId: args.job.family_id,
       });
+      noteTurnFailed({
+        familyId: args.job.family_id,
+        reason: disposition.reason,
+        chatId: args.turn.groupChatId,
+      });
+      if (err instanceof LinqSendError) {
+        noteSendFailed({
+          familyId: args.job.family_id,
+          channel: args.turn.groupChatId ? 'imessage' : 'sms',
+          isGroup: args.job.in_group,
+          chatId: args.turn.groupChatId,
+          reason: err.code,
+        });
+      }
       if (pageThisFailure) {
         // The deferral row carries the class. Page #ops in this request; the
         // five-minute sweep posts it if this call never lands. Never throws,
@@ -2634,6 +2650,22 @@ async function runAgentTurn(
       reason: disposition.reason,
       familyId: args.job.family_id,
     });
+    if (disposition.reply === null) {
+      noteTurnFailed({
+        familyId: args.job.family_id,
+        reason: disposition.reason,
+        chatId: args.turn.groupChatId,
+      });
+    }
+    if (err instanceof LinqSendError) {
+      noteSendFailed({
+        familyId: args.job.family_id,
+        channel: args.turn.groupChatId ? 'imessage' : 'sms',
+        isGroup: args.job.in_group,
+        chatId: args.turn.groupChatId,
+        reason: err.code,
+      });
+    }
     return done(deps, args.job, {
       status: disposition.outcome,
       handler: null,
@@ -3395,6 +3427,16 @@ async function sendReply(
     targetId: channelMessageId,
     // The form only, never the words (rule #1): this reply went as a voice memo.
     ...(voiced ? { after: { form: 'voice_memo' } } : {}),
+  });
+  noteMessage({
+    direction: 'out',
+    familyId: args.job.family_id,
+    channel: carriedBy,
+    isGroup: args.job.in_group,
+    chatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
+    mediaKind: voiced ? 'audio' : 'none',
+    latencyMs: Math.max(0, deps.now().getTime() - new Date(args.job.received_at).getTime()),
+    database: deps.database,
   });
 
   if (args.conversationId) {
