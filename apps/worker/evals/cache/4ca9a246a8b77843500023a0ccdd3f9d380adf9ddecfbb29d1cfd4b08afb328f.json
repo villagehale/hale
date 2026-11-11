@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Hi Dana, I checked your calendar and nothing for Mia showed up there yet. I'll keep watching for anything that matters for her, and I'll text you when it does.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "ahaMention": null
+  },
+  "latencyMs": 1772
+}

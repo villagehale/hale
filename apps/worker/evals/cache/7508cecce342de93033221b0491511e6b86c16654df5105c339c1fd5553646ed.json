@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Written in French, it accepts the refusal warmly and asks once for just the first three characters of the postal code, which is what watchFor calls for. The promise to find things nearby holds only once they share those characters, so it is acceptable. It does not ask for a town or street, does not press, and is short and plain.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names a real, local, free program from the operator's own site: Links2Care's EarlyON in Acton and Georgetown. It attributes correctly (\"their site says\"), has no link and no question, and invents no day, time or price. With watch=true it correctly makes a first-person promise to keep watching. Under page_has_schedule it puts the gap on Hale (\"I couldn't confirm a drop-in day or time\") rather than claiming nothing is posted, which is correct. Two things fall short. The picks list is empty even though a genuine find exists and is named in the message. The message also stays at program level rather than leading with a specific turn-up-able location the page listed, such as Georgetown EarlyON Centre, 8 James St.",
+    "score": 4
+  }
+}

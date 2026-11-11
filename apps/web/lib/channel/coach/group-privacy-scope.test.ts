@@ -1,6 +1,7 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
+import { loadCronSkill } from '~/lib/cron/skill';
 import {
   groupScopedContext,
   groupScopedTools,
@@ -16,6 +17,7 @@ const INBOX_LINE = 'Re: Invoice #4411 from Little Fins Swim';
 const PRIVATE_CONTEXT = {
   question: 'hale when is swim this week?',
   transcript: [{ role: 'user' as const, content: 'hale when is swim this week?' }],
+  location: { city: null, province: null, country: 'Canada' },
   children: [{ id: 'c1', stage: 'school_age', name: 'Maya', ageMonths: 96, teenRedacted: false }],
   memoryFacts: [
     {
@@ -343,5 +345,14 @@ describe('busy-block field rubric', () => {
   it('fails when the private place is in the reply', () => {
     const shown = replyShowsPrivateField(`${reply} 诊所`, privateCalendarFields(events));
     expect(shown.map((field) => field.value)).toContain('诊所');
+  });
+});
+
+describe('coach-channel-group skill', () => {
+  it('answers whether the other parent is free with only busy or free', async () => {
+    const skill = await loadCronSkill('coach-channel-group');
+    expect(skill.instructions).toContain('answer only busy or free');
+    expect(skill.instructions).toContain('Never "busy Thursday afternoon"');
+    expect(skill.instructions).toContain('do not name when: only busy or free');
   });
 });

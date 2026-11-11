@@ -36,6 +36,8 @@ export function untrustedSourceFor(origin: string): UntrustedSource {
   switch (origin) {
     case 'gcal':
     case 'calendar':
+    case 'family_event_invite':
+    case 'calendar_conflict_detected':
       return 'calendar';
     case 'web':
     case 'page':

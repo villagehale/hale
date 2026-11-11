@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgvDoSAJXWTs3pZJhYkZD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjQsKEAgTGAI4AUIIdGhpbmtpbmcSDCke65IUQbxdGA7eLBoMIXQhCI8DIUqQtAWKIjCzRvKJT8JxUuo4eSXtNiDxeOh68jYHCbReaH9GGevg5xwPKvS0pipEX1+jOflxEWIqqgpFIY2S0q+fHrDhhbkWQUYf8w/8Zzi9dEMdUnC52tXGmBqdkS+8XOWdcy2V9++WgNMeg3R3o25itsQmRykt5ft+GV54OUGVTSMDq48L/avZCyOHj0gclzike2Jo1/05wqwpjsvLFYwCP4u6yI8+DYknYBoBmiEYj5BH1OTb6568P8rZKG7gc5wL7ttwCqNHJsnNFjotskld4pvJHhqWa3MFHH2AQJKqfc085+IGG3duL6/V8tZ3BX7Vf/9rX20FyCBXMW2HPVRhCbz6znXr9227h8GlfMgL5UiIYFNukboQ+ahlMq2yCWI7leBXQ9SJ33QSALCS2OmsBecGviU0dpm0+IIq9f0kECOoOCOqiW4e7MTptN3St/cE1khvczL2CRGRe8s8z/gaRrUIwYZu0GW9fb6ogysZQ2gnJYTFBNSMpzN42A3FW6L9ZhZKwGm3ZoomH6PVJTAwgv3uagvL+BqRiefxjdMJsKSHkwvBSM+A42nOvcMlRowYuBunBmWC1Nw/NVPxsy1n+n3TMXfID4E5s0VZEOQllDTPZUuaaba+Rf2bKSaHEo/tVDIPYNd+qsoTwNXedKLN9dZV7wWsqFdBEdD+J1q02oakPGoV4F/hFG2rIbF7ue87zVPE/5pJcxCTFPNFotToLH36w9omxg08Kgba4eiKicqlaITRXBpOWN3GpbFxRE6XAqIIXszUfzs9bEjDgCtTy4eT7UfRVSPyQStHc4xhCg2AsXj52fTC4Wx8Anlu/aIEGwQAS/JAUiSgC+G/s2VkmWFfjIM333D9lUMKQ/BRdyeGn4L/KNbnJ+Rb1WR2LnY5HmROu2HemgOEB0NVgr60miKXldwbB5LE3misGF91xmALE/HFciZMlzjEMDE2GArM/Xp83K9laX5a+0mmuQaa7elufG2QgNnjjmUN1Lhs+7WiM/mhvuHfT1Pb52CPiieM06VP0nVDL/WGuwNNKPhgw0Klm3kcavUclRkHcHHWHcQjbz09f9Eua1jV5756gnk+xivAbYXhhGKJ4JHPMYVvwMGkCB//p6/2D+kPI6R019DvqKTLiKsQKyMEqeZohx4ss4yBM+h/25+LtwTC088SuAuLHfRy+F7a1TRKB4GYIyOSndEInqgns0hOqDvKFJl6PDp0n7Dgjibd8HtysISew7c7ANBS8IICfxCzCrQzfO7AzsJcf69EYya8c169GBiyPOYXIq/Mor/zkezj5EWnz31PhLes1DL3i8/YCkRtYN8bHL+oynG8MfP9aE50J6iu2+LyusZoZSq49YkL+IW4f8xdgK9mtZ7ZxeJsaGAY7BEtrMQ8dzDu7X/d3rPndibJ/qo8HwJqmYS7NKTZDDjj98utzpmTV3byJH+aH9XkQ7NYGDuUKpDFZP1EebElvcFCpvQ864PX7Rdwcbav9tyhyjGNCj9PunNNvSgoDpfm92cq5dFfMqUZN8wxEbxx80dcBT9NGas0+Txk6clbRVpSDmDXImx0OgqGiMbN2Cik/8gYB1N9jtKGUdYYHjSVXkZSXRvK4wC4q78ZWJqdeNzwSHE1LkEzpGjxBE9k1mztb60zp5odVZfxAKgeDEd1aAVz0UVJa59EaKvz9EthA6aWfpp2cmDWE/WJGYebI9aVxSaZotFkCZAMAk0FlXZNcqucrRJcztj1J3akkAcvITYte+W/LHmqYvei/r0JC3CdVjdAxpS7va/eDSI1fAGmeY1qHsVNsfsEkV0E2Iq+EQXSn2i+y4gzDSLIfesmFkSznAi/ThgB"
+      },
+      {
+        "type": "text",
+        "text": "I'll take that one in a 1:1 with Hale."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 308,
+      "output_tokens_details": {
+        "thinking_tokens": 288
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1737,6 +1737,18 @@ export type FriendJudgeRefusal = {
   count?: number;
 };
 
+/** Leftover-marks judge fields, when that flag is on. Off: empty, so the regex path stays. */
+export function leftoverJudgeOptions(
+  marks: { asksCount?: number; asksName?: boolean; speaksAsParent?: boolean } | null | undefined,
+): Pick<JudgeOptions, 'asksCount' | 'asksName' | 'speaksAsParent'> {
+  if (!friendVoiceLeftoverMarksEnabled()) return {};
+  return {
+    asksCount: marks?.asksCount,
+    asksName: marks?.asksName === true,
+    speaksAsParent: marks?.speaksAsParent === true,
+  };
+}
+
 export function judgeFriendReply(
   body: string,
   input: FriendVoiceInput,
@@ -2428,13 +2440,7 @@ export async function speakFriend(
         ahaMention: composed.ahaMention ?? null,
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
-        ...(friendVoiceLeftoverMarksEnabled()
-          ? {
-              asksCount: composed.asksCount,
-              asksName: composed.asksName === true,
-              speaksAsParent: composed.speaksAsParent === true,
-            }
-          : {}),
+        ...leftoverJudgeOptions(composed),
       };
       // A card is for one connector. The model lists what the reply offers to connect.
       const linkInPlay = judgeOptions.linkFollows === true || Boolean(judgeOptions.link);
@@ -2711,7 +2717,7 @@ export function askInWords(
     case 'place':
       return input?.coarseCodeAsked === true
         ? 'ask `next` — they already turned the coarse code down; set `placeDeclined`, `placeAsk` none; no code, ZIP, or town'
-        : 'their postal code or ZIP, or after they declined it only the coarse code — never a town, never both, `placeDeclined` false';
+        : 'after they declined the full code, ask only for the coarse code (first three postal characters, or a five-digit ZIP) — a town is not that ask; never both; `placeDeclined` stays false';
     default:
       return 'ask the open item';
   }

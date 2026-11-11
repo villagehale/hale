@@ -1,0 +1,33 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Junior (3-4 years) swim lessons, Goldfish Swim School - Oakville",
+        "name_evidence": "Junior (3-4 years)",
+        "age_fit": "Junior: 3-4 years (Mini: 4-35 months)",
+        "age_evidence": "Mini (4-35 months) Junior (3-4 years) Glider (4-12 years)",
+        "source_name": "Goldfish Swim School - Oakville",
+        "source_url": "https://goldfishswimschool.com/oakville/",
+        "price": "Weekly swim lessons starting at $32.50 per lesson",
+        "price_evidence": "Weekly Swim Lessons Starting at $32.50 Per Lesson",
+        "when": "Weekly 30-minute lessons offered year-round; the specific fall class times are not posted on this page. Facility hours: Mon 9:30 AM-8:30 PM, Tue 11:00 AM-8:00 PM, Wed 10:30 AM-8:00 PM, Thu 9:00 AM-8:00 PM, Fri closed, Sat 8:30 AM-3:00 PM, Sun 8:30 AM-7:00 PM",
+        "schedule_kind": "recurring",
+        "when_evidence": "Weekly Swim Lessons One 30 minute lesson a week Flexible scheduling & up to 12 free make-up lessons",
+        "indoor_outdoor": "indoor",
+        "matches_requested_season": true,
+        "access": "register_at_venue"
+      },
+      {
+        "name": "Town of Oakville Aquatics Programs (Learn to swim, Swim for Life preschool levels)",
+        "name_evidence": "The Town of Oakville offers lessons according to the Lifesaving Society Swim for Life program.",
+        "age_fit": "Preschool levels (children must be the age required for the level by the program start date; 5-year-olds who completed Preschool E go to Swimmer 2)",
+        "age_evidence": "Children must be the age required for the level they are taking by the program start date. Children who are five years-old do not need to complete all preschool levels before moving to the Swimmer programs.",
+        "source_name": "Town of Oakville",
+        "source_url": "https://www.oakville.ca/parks-recreation-culture/programs-activities/swimming/aquatics-programs/",
+        "when": "Fall term dates and times are not on this page; the page points to the Aquatics schedules and Registered Programs pages for upcoming programs",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 5864
+}

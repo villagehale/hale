@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind is course_link_refused and the reason is page_unreadable. The message is in French, as handed. It says plainly why Hale did not take the link: the page could not be read. It carries no link. 'rien n'a changé de mon côté' fits the rule that nothing is saved. It asks once for the same link, which is what page_unreadable calls for. It makes no invented claims and names no child. It reads naturally, though 'tout de suite' slightly hints the page might be readable later. That is fine.",
+    "score": 5
+  }
+}

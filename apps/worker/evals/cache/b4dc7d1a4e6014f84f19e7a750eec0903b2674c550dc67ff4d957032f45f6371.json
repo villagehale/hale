@@ -1,0 +1,37 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Junior (3-4 years) swim lessons, Goldfish Swim School - Oakville",
+        "name_evidence": "Junior (3-4 years)",
+        "age_fit": "3-4 years (Junior); the school enrolls swimmers from 4 months to 12 years",
+        "age_evidence": "Junior (3-4 years)",
+        "source_name": "Goldfish Swim School",
+        "source_url": "https://goldfishswimschool.com/oakville/",
+        "price": "Weekly swim lessons starting at $32.50 per lesson",
+        "price_evidence": "Weekly Swim Lessons Starting at $32.50 Per Lesson",
+        "when": "Weekly 30-minute lessons; school hours Mon 9:30 AM-8:30 PM, Tue 11:00 AM-8:00 PM, Wed 10:30 AM-8:00 PM, Thu 9:00 AM-8:00 PM, Fri closed, Sat 8:30 AM-3:00 PM, Sun 8:30 AM-7:00 PM. Specific fall class times not posted on this page.",
+        "schedule_kind": "hours",
+        "when_evidence": "Monday: 9:30 AM - 8:30 PM Tuesday: 11:00 AM - 8:00 PM Wednesday: 10:30 AM - 8:00 PM Thursday: 9:00 AM - 8:00 PM Friday: CLOSED Saturday: 8:30 AM - 3:00 PM Sunday: 8:30 AM - 7:00 PM",
+        "indoor_outdoor": "indoor",
+        "matches_requested_season": false
+      },
+      {
+        "name": "Mini (4-35 months) swim lessons, Goldfish Swim School - Oakville",
+        "name_evidence": "Mini (4-35 months)",
+        "age_fit": "4-35 months (Mini); the school enrolls swimmers from 4 months to 12 years",
+        "age_evidence": "Mini (4-35 months)",
+        "source_name": "Goldfish Swim School",
+        "source_url": "https://goldfishswimschool.com/oakville/",
+        "price": "Weekly swim lessons starting at $32.50 per lesson",
+        "price_evidence": "Weekly Swim Lessons Starting at $32.50 Per Lesson",
+        "when": "Weekly 30-minute lessons; school hours Mon 9:30 AM-8:30 PM, Tue 11:00 AM-8:00 PM, Wed 10:30 AM-8:00 PM, Thu 9:00 AM-8:00 PM, Fri closed, Sat 8:30 AM-3:00 PM, Sun 8:30 AM-7:00 PM. Specific fall class times not posted on this page.",
+        "schedule_kind": "hours",
+        "when_evidence": "Monday: 9:30 AM - 8:30 PM Tuesday: 11:00 AM - 8:00 PM Wednesday: 10:30 AM - 8:00 PM Thursday: 9:00 AM - 8:00 PM Friday: CLOSED Saturday: 8:30 AM - 3:00 PM Sunday: 8:30 AM - 7:00 PM",
+        "indoor_outdoor": "indoor",
+        "matches_requested_season": false
+      }
+    ]
+  },
+  "latencyMs": 7465
+}

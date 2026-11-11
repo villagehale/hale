@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgvDmjbkHNLgocXiGkAhw",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuQYKEAgTGAI4AUIIdGhpbmtpbmcSDN3NiGkNHIgAD7XWmxoMb80KNIfqSf0zDJ5KIjAbC8WpEPzVOvneE8DQl6lPpujw+NaaT7+RaRG1BxsxWNdMIuyj/sJ3xZanr7AbUF8q1gXr/LzXIUWITO1Tnue2Z+S7aTu31bwnrYnLhTSPdOkcufusSMqI81lBaOhS08pPxCXuZKDOW2I6Urt+2OHXsphcd6emJrVJIYl+OECF7hbtiV4sADnRGKY7Zwyb+QdjbatT5S6FV/CChXglXJWiWHAx+aPe/49xV7Vvl/VEccl1jmwovQzz/xV9uYi6iEIogtfaupStHfmlexW3tRRP0FksQSS8BJbqRwKe4FKBkCzfc8+refZJW87Qm2IB0nTM0UXvWDOkT4M5FpSw7mrUSxo24vGLSfY3wodUggbeqc3by7BtnTUZ6jQtz8MnUCQBmxZby/6TRo0JKI5tagjvehSId69lPirkhwdL0r5rtcK7N+O8W3EbviARk+wLxIjygGfMg3WoohBwf7n/xKFiwoIOYNQlRZergjnUYG0a1V2lp9WZ3tTxE7dOQwVQ5+nw7qzutWl92d6eFmEx5L5SySx29EDtJpWycKc8ueQKpj5yhxO0wbmPjTvGU7bZM+XdyV3Ca80VJQERNhNl3MvJt4BxnInL61gM3EC2ha2fA3Pljb3LdIpocvYpbke/zNhYcJdwyf+5dgxk4pa+jkdT0IOcmneln7odVb7LoRuFYoJDO0IRvbNYGzSPb9ypBxqCc9hhFA3MKfPw2ixvffuehi4TYYkuFwQyL5vDkZElY2tQTzNPFq1gBEoF8xXivuAx8CcVv6htamq7pejq5mhTjfFNOJpwX7n8sq1hmwXNrX9BQdnm4zRsPJNWHKD4hicS9fkvLVwX2IMVtTtkSp2ZNAwWWEUx3ggjeXBBbyrBN60WTltvKpLILG76FIActdJnWci7X71WDIntR6QyjzvhMwKhAtcxhFxHiHo8odeR0URSKr4DNZwt+6BhWZRtrkIi+gnRix4lJ1K1Oq4y8zlUm2PHheqIjJFbZ6cSUZ1bFMo9F2nFXCLMcJf5dpO3vrD536rb+lDfn4EYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01TLBXm9M82mxaSpd1Mmx7it",
+        "name": "lookup_week",
+        "input": {
+          "weekOffset": 0
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 132,
+      "output_tokens_details": {
+        "thinking_tokens": 78
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

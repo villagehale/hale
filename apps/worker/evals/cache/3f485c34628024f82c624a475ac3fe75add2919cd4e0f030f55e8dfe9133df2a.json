@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This check_in_ask does what the kind requires. It is in French, names the window correctly, and asks once how it went, covering all three outcomes: got in, waitlisted with their number, or missed. It names no child and claims nothing beyond the facts. It also has no date problem, since it refers to no day. The tone is friendly, though a bit formal for a text from a friend.",
+    "score": 5
+  }
+}

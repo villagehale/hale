@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty, yet the message names Goldfish Swim School and quotes \"$32.50 a lesson\". The rubric scores low any price that appears nowhere in the picks, and here the message and the extraction are inconsistent. The figure does appear on Goldfish's own page and is attributed (\"on their site\"). The watch promise is correctly in the first person. \"I couldn't confirm\" is correctly first person under page_has_schedule. The Town of Oakville's Lifesaving Society preschool lessons, the obvious municipal staple, go unmentioned.",
+    "score": 2
+  }
+}

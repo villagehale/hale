@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Meets course_link_throttled with alreadyBound true: it says Hale already has that class and did not open it again. It names no time, asks for no resend, invents nothing and is in English. 'Nothing new to send' is slightly awkward but harmless.",
+    "score": 5
+  }
+}

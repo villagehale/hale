@@ -1,0 +1,226 @@
+{
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "thinking": {
+      "type": "adaptive"
+    },
+    "output_config": {
+      "effort": "high"
+    },
+    "max_tokens": 4096,
+    "system": [
+      {
+        "type": "text",
+        "text": "# Reviewer system prompt\n\nYou are Hale's safety reviewer. The Drafter has proposed an action.\nYour job is to **find what is wrong with it** before it is committed\non the family's behalf.\n\n## How you make decisions\n\nYou **must** invoke verification tools. Reasoning from prose alone is\nnot sufficient. For every claim the Drafter makes that could be\nverified by a tool, call the tool. Examples:\n\n- Drafter says \"thursday at 10 is clear\" → call `check_calendar_conflict`\n- Drafter says \"this is on the vaccine schedule\" → call `check_vaccine_schedule`\n- Drafter says \"amount is $42.99\" → call `check_spending_cap`\n- Drafter says \"recipient is the pediatric office\" → call `check_recipient_allowlist`\n- Any action → `check_action_time_window`, `check_action_idempotency`,\n  `check_pii_leak`, `check_user_override`\n\nDefault to **flag_for_human** under any ambiguity. Default to **reject**\nif any tool returns red.\n\nA kid schedule clash is not red. When `check_calendar_conflict` reports\n`hasConflict: true`, the check still passed: the overlap is information the\nparent sees before they confirm, and they decide. Do not reject or flag a\ncalendar draft for a clash alone.\n\n## Output contract\n\n```\n{\n  \"verdict\": \"approve\" | \"reject\" | \"flag_for_human\",\n  \"tool_results\": [ { \"tool\": string, \"ok\": boolean, \"result\": object } ],\n  \"rationale\": string,                 // short\n  \"if_rejected_remediation_suggestion\"?: string\n}\n```\n\n## Approval criteria\n\nApprove **only** when:\n\n1. All invoked tools returned `ok: true`.\n2. The action is reversible (or the parent has explicitly granted\n   autonomy for non-reversible actions in this category).\n3. No verification tool returned an unexpected state (e.g. recipient\n   not on allowlist, sender not trusted, spending over cap).\n\n## Rejection criteria\n\nReject (vs flag-for-human) only when there is a clear policy violation:\n\n- Spending cap exceeded\n- Recipient on blocklist\n- Sender not on allowlist\n- Outside the family's time window\n- Duplicate of a recent action\n\nFor ambiguity (e.g. low classifier confidence carried through,\nunfamiliar recipient that isn't blocked) — **flag_for_human**.\n\n## What NOT to do\n\n- Never approve without tool results.\n- Never approve a medical or legal communication without explicit\n  per-action user approval, regardless of allowlist state.\n- Never silently rewrite the action — your job is verdict, not editing.\n",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      }
+    ],
+    "tools": [
+      {
+        "name": "check_action_idempotency",
+        "description": "Verification check: check_action_idempotency.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "familyId": {
+              "type": "string",
+              "description": "The draft action's family_id (a uuid)."
+            },
+            "actionHash": {
+              "type": "string",
+              "description": "The draft payload's action_hash — pass it verbatim; do not invent one."
+            },
+            "lookbackHours": {
+              "type": "number",
+              "description": "Optional dedup window; defaults to 24."
+            }
+          },
+          "required": [
+            "familyId",
+            "actionHash"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "check_pii_leak",
+        "description": "Verification check: check_pii_leak.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      {
+        "name": "check_recipient_allowlist",
+        "description": "Verification check: check_recipient_allowlist.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      {
+        "name": "check_sender_allowlist",
+        "description": "Verification check: check_sender_allowlist.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      {
+        "name": "submit_verdict",
+        "description": "Submit your final verdict. Call this ONLY after invoking the verification tools required for this action.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "reject",
+                "flag_for_human"
+              ]
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "remediation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "rationale"
+          ]
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"draft_action\":{\"id\":\"d97a4b7f-8f9b-4739-a1e1-f57489a1a74a\",\"action_type\":\"reply_to_email\",\"payload\":{\"subject\":\"Re: Día de fotos - 12 de noviembre\",\"body\":\"hola, gracias por el aviso. confirmamos que asistiremos al día de fotos el 12 de noviembre a las 9:00 en el gimnasio. sobre la foto con hermanos: [padre/madre: indicar si sí o no]. gracias!\"},\"recipient_visibility\":\"internal_only\",\"family_id\":\"aaaaaaa1-0000-4000-8000-000000000560\"},\"required_checks\":[\"check_pii_leak\",\"check_recipient_allowlist\",\"check_sender_allowlist\",\"check_action_idempotency\"]}"
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "",
+            "signature": "CAQS4ggKEAgTGAI4AUIIdGhpbmtpbmcSDH2pPOJP3BWAyBY8DBoMYVnl4nDAPM1OM2yUIjCbP3DlFtWvMKUt4khNStLv5ADermkxWFPB8eCfjlk8HicA/egMdIgFmDKDmmwUEwkq/weUhxki0cXVGse0Uzfi9+5yDG5APFyoZ1OU4L1YsxSGKmejLLMdnEDFECy+3n21nmj7sWovn+lR6gquwJzPpchOBzrMUoKilZ28c4vZYLwkWCZxz6EY8TqfV4ezE/JQK30Lv+Yq9lF3hMgRQHhRtxQOFT2LjzfSmHwq/A2LihBZ1F8iLtPi63ilR4Gg6lfhgKKy56NNj3fgyNDrDP4hrRxWz3Dooioy2+7qXOIfgESUwTAonEkfN2n4z2LJl6BhbPSjHSWBBBbl1A4rAPlE2qgcYhgWbKNe7q5byjUtT41OTP/x5XlNyb391IIrMQEWd4HgW4vUXJWPBzWCz3TX4DNoUQZ56JcAsyaVBjahzYWsDIHtNjg5uihomW4z+zi78eolAE8Yb7g19MaTW9kwr/vvJem1sxCK452XrxOvI4b3/XtaGI84YUxxuw6PwKuoV+uZs1APc5mXOiIi0AwqEyx2s+Tuefb/5qfUF8u/qGFbxktt+9jMo4OxCzqdaLqdNIzTClw8ZQaX2w40oVvYnaquWJveBVeDW92ZRmqfSHsXprIbFKPUAKlKgbY0H4ki/eE5eQtMlRW1lSEI/CDarW27A0aDXhkIBG+2JWXBlryBUw+bIFY7SwGROeOKjIKCyT4W4nXo73g2I/RtzTISJ3POO7H+8cn/IPCpWhELipFUeKLRuKrNNA3xFc+LcQSV8F5qliQQUyIU/sceIayAlgKkgSy/4+/yuGr81DsfPA75CBcn0s5dWSe7bNwt4WIw0c2Gl/EWmo+QZdpAQKyWCIB5QfPkEaUPxZor3EUU1KjqKZx1G5ll6Rt2Fw/I0bieRzQeJD/5PxPEoqVvAQWF329Be/9cd67yhpxhZ89SvtY/rDSJcXupNaC5Jib4FAGohNdjzKBIUjZRtFcEiMiVvblvJ6fFtoVAi5vrARel1pf/iEDjzQOSKeHjy+GTrTNzrecRb55mlqUjb5F7qxbIwf/rLwECjS9ww9s2Aw2AYA+LL2oiP2anCIDpksUgtNAmnP6RBdkNgCBCKAnvjujcWdYU7l7Lxl2O/HZZgipt7lRudFFDFtcK5SSA4Wf2hFkoLXeOgqtSM3F/tskQWRKDiR/6fAs3Uf+3BoAV8AAS/zJDy27xkncA3URu6+96QCERsFYE3EVsQ6hSee0SA2Amurenh4AZdMxXZUshyIZ0Eu28Q+X2TJIfUl0AZ9zekSGQAinTUGrJ97hr4a/nSPV75U9Un8Gdq3V0gYv6injdIkHM3s/Q/XRbRjH21wRHP3RNj3uYCnXZlIh9lo8wRtO9IfEyY2WNEUDAGeWf0m1LNudF0PD0V5z5tsBG1AT/VBD4GOr+YkVOOoJfLMxBunUEuBgYAQ=="
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_01ToW37m7wHNY9GAQEQZY4C2",
+            "name": "check_pii_leak",
+            "input": {
+              "family_id": "aaaaaaa1-0000-4000-8000-000000000560",
+              "action_type": "reply_to_email",
+              "subject": "Re: Día de fotos - 12 de noviembre",
+              "body": "hola, gracias por el aviso. confirmamos que asistiremos al día de fotos el 12 de noviembre a las 9:00 en el gimnasio. sobre la foto con hermanos: [padre/madre: indicar si sí o no]. gracias!"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_01Rq8RX8W63rNEj7Ryodu6g8",
+            "name": "check_recipient_allowlist",
+            "input": {
+              "family_id": "aaaaaaa1-0000-4000-8000-000000000560",
+              "action_type": "reply_to_email",
+              "recipient_visibility": "internal_only"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_017X8wTP9LivQuVztS1rW7kU",
+            "name": "check_sender_allowlist",
+            "input": {
+              "family_id": "aaaaaaa1-0000-4000-8000-000000000560",
+              "action_type": "reply_to_email"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01ToW37m7wHNY9GAQEQZY4C2",
+            "content": "{\"error\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"path\\\": [\\n      \\\"familyId\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  },\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"path\\\": [\\n      \\\"content\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  },\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"array\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"path\\\": [\\n      \\\"allowedRecipients\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  }\\n]\"}"
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01Rq8RX8W63rNEj7Ryodu6g8",
+            "content": "{\"error\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"path\\\": [\\n      \\\"familyId\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  },\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"path\\\": [\\n      \\\"recipient\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  },\\n  {\\n    \\\"expected\\\": \\\"'general' | 'medical' | 'legal' | 'financial' | 'unknown'\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"path\\\": [\\n      \\\"recipientCategory\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  }\\n]\"}"
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_017X8wTP9LivQuVztS1rW7kU",
+            "content": "{\"error\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"path\\\": [\\n      \\\"familyId\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  },\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",\\n    \\\"received\\\": \\\"undefined\\\",\\n    \\\"path\\\": [\\n      \\\"sender\\\"\\n    ],\\n    \\\"message\\\": \\\"Required\\\"\\n  }\\n]\"}",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011CgvDvsPZN8yv1cJZ22sVB",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxwgKEAgTGAI4AUIIdGhpbmtpbmcSDPMw+S78EeaatFmgSRoMuC6mmj68em9w74ysIjBls4WCvkVwBYha7kkzUZd/UBxzYuc/BX7cvhula48EYBbgWNZ7ZklI9A20qJdwWnwq5Af5sBCP2mR9ELs2vIisWRKi0KnvDPZoPY2lu37NoM660955HQ7IBpxnCwUUzoxJD+Znu7FtItD+wf57Jf9pBhCkJ+eL+Y73KJDxu1F6nh4S1m/cScrS9qbODB4DOSDLfChKj4AZgYBWgUQuqAdl2GqMOKLrBV+lRoLkXobmSiOIZCadjN5FMvbUbLF0yMOOQhPjyA5oktP74k8oq+EaqfwYZVj+Fn/LZAPrKGAjBQPgytq6ih0GPtrdj9Fppbbf++IQJnxtFrmM72/Jh7qG7qki8i8x6hB0s/eMG2p/CGbin3vn0TFRuC6vrtvt5l/2yrlVZOK+cmdg6YEw/2gKBqVpuoEvu76Y7vdzGiQqJA9Np8+BZnX6zuUfuPa4If9lOxwk88D5AolkyZnABZZopVWjJLS/H5B/i/ugVHuwcYFPGLupmrjxPAljVPsKlipZaCx/AU8mREj+AnA7Ac5jQoEu2Gj2pCPtdeqEh+8YzMtVwH6e22/CrvfCx4tUF8Uj0ulPOAX4pMzbvr1/faB2aomPGlTV/huvuUAtl7iE54EilqhuDrtShD1b/b7FjuUx9V9J3MayF1iP7MyTN2tBjYoIImv//ekPCFae0W200v43n1eFwknk1jLmmy96kwdMC3mWt9m5PzHCZ1ldtYRP+oIaXat55QjDDTSjW5OtxIweAnDlJIBXgffdRB5VkpCs8Is9tCgMPXMALi6rH3ztfS2k3nTLMnDDiE3qkXgHamBo2GHjyOo9VVMyKaYnpvo6brDGvY47V9tkaTQSEkHPRIQBFOwnz3DtN57figYFBoBQz4/BFW3Nmd8+3z95bbeguFwCLBlJDQLIskdTdJuzOvsS088qMTQGoPJRm7vuhlTTkCvYZ6Z3NrOGOmqzKM9n6ACf9CqunQFyH6IUpVHL0C2YeMZGq7HsiFkqQNWpRvz7v2dMUI3narVzuukDJxe+KWLJiRSjgfW4ZXQfGPT2uWCHibyX0WyqKjm9fqWglMG50aimS7oVJC0RDJIGOx5sC635v2CuM0YPpKFyn3+EeKFJcxOKCE3Erj6tV+V22pqfzvN9eXA3SmoHqw9Yg9II6nJAMf+yerXeyHhAJfkQu90b9J0aAwBOOLLpOBxtM416eOVPvHhqmp4qnaaB6sUthrcO8xeuNv7MWWt8Y5O4CYbdfB9Duc42xaWA02q7TmFKS093rI5ws+MjuRaHsZJ+vvlX2mr44f7EOtMVCQrIQ6z16uHFJzs+10KLAZlvpVPBcZIfhysHskV7a1gVOlugUUnWKb0jJYr8yzwwegmi/bTUoBFe0EUQuiNIyx/oVUkgkx5/gvkYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01APPbr4XVnfPq5CUYvwkepg",
+        "name": "submit_verdict",
+        "input": {
+          "verdict": "flag_for_human",
+          "rationale": "I could not complete the required checks. The draft has no recipient, sender, allowed-recipient list or action_hash. check_pii_leak, check_recipient_allowlist and check_sender_allowlist all returned schema errors for those missing fields. I did not run check_action_idempotency, because it needs an action_hash and I won't invent one. Nothing is verified, so I can't approve. The body also still contains an unfilled placeholder: \"[padre/madre: indicar si sí o no]\" for the sibling photo question. Sending it as written would send template text to the school. The reply also confirms attendance on the family's behalf, which needs a parent's explicit sign-off.",
+          "remediation": "Have the Drafter resubmit with the recipient, sender, allowedRecipients, recipientCategory and action_hash included. A parent should answer the sibling photo question and replace the placeholder. Then rerun all four required checks."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1883,
+      "cache_read_input_tokens": 1649,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1883,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 535,
+      "output_tokens_details": {
+        "thinking_tokens": 146
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "diagnostics": null
+  }
+}

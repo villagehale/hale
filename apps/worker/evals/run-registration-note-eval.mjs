@@ -48,11 +48,11 @@ const NOTE_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/note-compos
 register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-/** outputJsonSchema in note-compose.ts. */
+/** outputJsonSchema in note-compose.ts. Kept as a fallback if the export is missing. */
 const TEXT_SCHEMA = {
   type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+  properties: { text: { type: 'string' }, asks: { type: 'boolean' } },
+  required: ['text', 'asks'],
 };
 
 const JUDGE_SYSTEM = judgePrompt('registration-note');
@@ -415,9 +415,16 @@ function brokenOffline(note) {
   ];
   const kept = [
     note.noteRefusals("Comment ça s'est passé ce matin?", checkIn),
-    note.noteRefusals(`Opens Tuesday at 7 a.m. Register here: ${LINK}`, card),
+    note.noteRefusals(`Opens Tuesday at 7 a.m. Register here: ${LINK}`, card, { asks: false }),
   ];
-  return refused.every((r) => r.length > 0) && kept.every((r) => r.length === 0);
+  const asked = note.noteRefusals(`Opens Tuesday at 7 a.m. Register here: ${LINK}`, card, {
+    asks: true,
+  });
+  return (
+    refused.every((r) => r.length > 0) &&
+    kept.every((r) => r.length === 0) &&
+    asked.includes('asks')
+  );
 }
 
 // ── dry pricing ─────────────────────────────────────────────────────────────
@@ -515,14 +522,14 @@ async function main() {
         userMessage: JSON.stringify(f.facts),
         toolName: note.NOTE_TOOL.name,
         toolDescription: note.NOTE_TOOL.description,
-        toolSchema: TEXT_SCHEMA,
+        toolSchema: note.NOTE_OUTPUT_JSON_SCHEMA ?? TEXT_SCHEMA,
         maxTokens: note.NOTE_MAX_TOKENS,
         cachedOnly,
         getClient,
         cost,
       });
       const draft = String(value?.text ?? '').trim();
-      const refusals = note.noteRefusals(draft, f.facts);
+      const refusals = note.noteRefusals(draft, f.facts, { asks: value?.asks });
       if (refusals.length === 0) text = draft;
       else console.info(`     refused ${f.id}#${attempt}: ${refusals.join(',')}`);
     }

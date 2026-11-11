@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The note does what waitlist_final asks. It says 2 hours left, which matches hoursLeft. It starts the clock at the parent's own message on Tuesday at 11:00 a.m., matching clockFrom. It gives the correct deadline of tonight at 11:00 p.m., since 36 hours from Tuesday 11 a.m. is Wednesday 11 p.m. and 'tonight' fits now (Wednesday 9 p.m.). It tells the parent to check email and the portal, and it asks no question. Calling it the offer window and noting a spot holds only while the window is open plainly restate what a response window means. The English is natural and texting-style, and no child is named.",
+    "score": 5
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "to": "admissions@sunnydaycare.ca",
+      "subject": "Re: Your application",
+      "body": "hi,\n\nthanks for letting us know about the toddler room spot for mira starting in september. we're glad to hear it opened up."
+    },
+    "confidence": 0.6,
+    "rationale": "No parent yes to the offered spot is in the input, so the reply thanks them and acknowledges the offer without accepting.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  },
+  "latencyMs": 3676
+}

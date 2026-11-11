@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011CgvDuMipd7CoLp77u4H28",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSkAcKEAgTGAI4AUIIdGhpbmtpbmcSDDzPqUrwHDSSe7XOPxoM65i1tJGcn34XJmKXIjBMC4wxAP1+yuLuMB0plEiVEIVb4f5V5LT/SlJHHwVOeJcMeXx105tDb/B4Coo4RSUqrQYc0Lnjvlxgt7xMsuwMKo+U8jjiWK4GsG3oqMmkU5+jnikITwORIsM+pT5jlPM7Cd0aGM7PHaqYmwghj0GyeXRUUMCCTKlWyXHFMnEq5ARjB2dGxRYYtM/rMLqAFoSukt5lAYdUId35wB2jFCWCoQFh/+i/JHUTZqvX4ij6Fnmaio4SW5WGQcMdbe+GA2IE3K87F3ZQHYPVMBgLm8kc/Oeo23VauAnn19hu4cps+v8DygbtgDZCocay85u8e7wkOg6TT1hcS7dhvDMrfqKYjpIgnNoVzCp2vtnc5PI3/Bo5fS8HajT4VeqQhOm3jQYmCJkrRy8OSuZRFHRTfh165lfBKMOBiiCpEZK/Q3W8Z1yN28a6Ev7QK1TcH3XOORGZE7f6LSMdPRrhRXwytL0r2MC+iQnEOb7w6HxvXkqIQHsD7AciYGpawhCsDn2qidRKak4Trct1Ypkox56yTo9yTC2dzjaZfTTeEcFygzU9Ll3IfBhzl2KTaDgEce7R51clNKzsi5WQ8+OWfl8tAVSuQPYdoQMAfuoraPThF5TdFkcNEo8pr+PnflQf4NiSSeI62jNAt2Y5xZ/lzIJ3dY8jhKHnJc9z2CdJjb6LKi73TRAwTOmZL+V6WoOxzsiqwQ5GVn2AzppUcx78Os4/K1zVcMCOjzdR8IyhUljuPNu5v4IUJUrxLzvHiptFb1Eix1T5LyB1FoOapnNSRsChs30OfmBitp9WlqsCtjr01DtB9lpOIPDaUH1UdGqSxtwKNN84Oce18QRmPPGj7memtxpWVVkCXJdLLe23mGhL6MhvnMuMI60MtlIfR8hpqR+cNHmqXaQIia+8m8sUtn9RK6YDjaXZVwxS6SHPB1jlP34Z71Hx3E7ymeBGu6ayTJoe3X1Rwn805bSJkD9Ze58v0DOzuRdsACZPOE6ggI0iUutfvsacqt+kMDJvnQiXDeXfg927b7ta4UTXSAl9hm5Pe7mbX9olad8/UuPfpe80hmksL6nEOoRP6vHQkpMQNN+jpcd2oTc8LY/55oPu1PGNMkt6N+MnaS8yFR81m15BJ52VT+GGBqj8RukGsGDZGV7fl5IYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01USyE1AfGFRoWantwjJPeuJ",
+        "name": "add_to_group_list",
+        "input": {
+          "listName": "Groceries",
+          "items": [
+            "bread",
+            "bananas"
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 633,
+      "cache_read_input_tokens": 20920,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 633,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 176,
+      "output_tokens_details": {
+        "thinking_tokens": 91
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

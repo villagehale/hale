@@ -1,0 +1,10 @@
+{
+  "refusal": {
+    "stage": "reply",
+    "outcome": "tool_markup",
+    "stopReason": "tool_use",
+    "category": null,
+    "message": "reply: tool-call markup inside the string at parentQuestion"
+  },
+  "latencyMs": 2232
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Nothing new came in from you, so I'll leave it there. Mia's calendar is empty for now, so I haven't spotted anything to flag yet. I'll text you when something matters for her.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "ahaMention": null,
+    "language": "en"
+  },
+  "latencyMs": 1794
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly says Hale reads one course page at a time and asks for a resend in 7 minutes, in English. However, \"I just used that read on an earlier page\" suggests Hale actually read the earlier page, when it should only say Hale tried it. It also never clearly says Hale has not opened this new link. In \"won't come back to it on my own,\" the \"it\" could refer to the earlier page rather than this link.",
+    "score": 3
+  }
+}

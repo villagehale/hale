@@ -12,7 +12,7 @@
 // never silently spend.
 
 import { createHash } from 'node:crypto';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -187,8 +187,28 @@ export function agentCacheMaterial(request, prompt) {
 }
 
 export async function cacheGet(key) {
+  // HALE_EVAL_RERECORD=1: a deliberate full re-record. Every lookup misses so the call is
+  // made again and its recording overwritten. Never in --cached-only (CI) or --dry.
+  if (
+    process.env.HALE_EVAL_RERECORD === '1' &&
+    !process.argv.includes('--cached-only') &&
+    !isDryRun()
+  ) {
+    return undefined;
+  }
   const path = join(CACHE_DIR, `${key}.json`);
   if (!existsSync(path)) return undefined;
+  // HALE_EVAL_RERECORD_SINCE=<epoch ms>: a resumable full re-record. A recording older than
+  // that instant misses (and is overwritten); one made since then replays.
+  const since = Number(process.env.HALE_EVAL_RERECORD_SINCE);
+  if (
+    since > 0 &&
+    !process.argv.includes('--cached-only') &&
+    !isDryRun() &&
+    statSync(path).mtimeMs < since
+  ) {
+    return undefined;
+  }
   return JSON.parse(await readFile(path, 'utf8'));
 }
 
@@ -600,6 +620,10 @@ export async function cachedToolCall(opts) {
     }
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
+    // A recorded refusal replays as the same named StructuredOutputError the live seam
+    // threw, so the runner's refusal path (e.g. speakFriend's one rewrite) runs on replay
+    // too and cached-only CI does not miss on a draw production refuses.
+    if (cached.refusal) throw await refusalFromRecord(cached.refusal);
     if (opts.lane) await replayThroughGuard({ ...opts, maxTokens }, cached.value);
     return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
   }
@@ -628,19 +652,36 @@ export async function cachedToolCall(opts) {
     // TRUNCATION, REFUSAL AND A MISSING CALL ARE NOT ANSWERS, and must never be CACHED as
     // one: the seam throws a named StructuredOutputError for each, so nothing is written.
     const agent = await loadAgent();
-    const result = await agent.forceToolJson({
-      client: getClient(),
-      lane: opts.lane,
-      system,
-      ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
-      ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
-      userMessage,
-      toolName,
-      toolDescription: opts.toolDescription ?? 'Return the result.',
-      inputJsonSchema: toolSchema,
-      schema: ANY_INPUT,
-      maxTokens,
-    });
+    const result = await agent
+      .forceToolJson({
+        client: getClient(),
+        lane: opts.lane,
+        system,
+        ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
+        ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
+        userMessage,
+        toolName,
+        toolDescription: opts.toolDescription ?? 'Return the result.',
+        inputJsonSchema: toolSchema,
+        schema: ANY_INPUT,
+        maxTokens,
+      })
+      .catch(async (err) => {
+        // Recorded as a REFUSAL, never as an answer: replay rethrows it by name.
+        if (err?.name === 'StructuredOutputError') {
+          await cachePut(key, {
+            refusal: {
+              stage: err.stage,
+              outcome: err.outcome,
+              stopReason: err.stopReason ?? null,
+              category: err.category ?? null,
+              message: err.message,
+            },
+            latencyMs: Date.now() - startedAt,
+          });
+        }
+        throw err;
+      });
     value = result.value;
     usage = result.usage;
   } else {
@@ -677,6 +718,12 @@ export async function cachedToolCall(opts) {
   noteLatency(model, latencyMs);
   if (Array.isArray(cost.latencies)) cost.latencies.push(latencyMs);
   return { value, latencyMs, cached: false };
+}
+
+/** The named error a recorded refusal stood for (see cachedToolCall). */
+async function refusalFromRecord(r) {
+  const agent = await loadAgent();
+  return new agent.StructuredOutputError(r.stage, r.outcome, r.stopReason, r.category, r.message);
 }
 
 /** A stand-in reply of the most bytes `maxTokens` of output could be (offline estimate). */

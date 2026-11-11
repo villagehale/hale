@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the parent's no warmly and asks one question: just the first three characters of their postal code, which is exactly what watchFor calls right for Canada. The line about finding things nearby depends on them giving those characters, so it is not a promise made while no place is known. It does not ask for a street or a town, and it does not make the code sound required. It is short, plain and warm.",
+    "score": 5
+  }
+}

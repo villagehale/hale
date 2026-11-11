@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "EarlyON Child and Family Centres (Links2Care) - Halton Hills (Acton and Georgetown locations)",
+        "name_evidence": "EarlyON Child and Family Centres Available in: Halton Hills",
+        "age_fit": "Children from birth to their 6th birthday, with their parents or caregivers",
+        "age_evidence": "FREE programs, activities, and resources for children (from birth to their 6th birthday) and their parents or caregivers, offered in Halton Hills",
+        "price": "FREE",
+        "price_evidence": "FREE programs, activities, and resources for children (from birth to their 6th birthday) and their parents or caregivers, offered in Halton Hills",
+        "source_name": "Links2Care",
+        "source_url": "https://links2care.ca/program/earlyon-child-family-centres/",
+        "access": "drop_in",
+        "indoor_outdoor": "indoor"
+      }
+    ]
+  },
+  "latencyMs": 4804
+}

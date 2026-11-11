@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Est-ce que les trois premiers caractères de ton code postal iraient?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1778
+}

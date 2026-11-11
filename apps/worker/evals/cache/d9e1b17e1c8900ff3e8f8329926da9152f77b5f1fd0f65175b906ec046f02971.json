@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The clock correctly starts from the parent's own message (Tuesday at 11:00 a.m.). The deadline of tonight at 11:00 p.m. is right (36 hours later), and two hours left is right against now. It tells the parent to check email and the portal and asks nothing. It is in English and names no child. The line about a spot only holding while the window is open is a fair plain restatement of what a response window means.",
+    "score": 5
+  }
+}

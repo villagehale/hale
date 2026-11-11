@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The position, town, 36-hour window and deadline (Wednesday, September 16, 11:00 p.m.) are correct, the reminder is a handed promise, and nothing is asked. But the note never says when the clock started: it should run from the parent's own message on Tuesday at 11:00 a.m. Without that start, the deadline has no anchor, and 'a 36-hour window to respond to any offer' reads as if the clock begins when an offer arrives.",
+    "score": 2
+  }
+}

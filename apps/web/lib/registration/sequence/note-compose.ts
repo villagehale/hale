@@ -129,20 +129,27 @@ export type RegistrationNoteKind = RegistrationNoteFacts['kind'];
 
 export type RegistrationNoteInput = RegistrationNoteFacts & { language: ReplyLanguage };
 
-/** Structural refusals only: empty, or a link that was not handed. */
-export function noteRefusals(body: string, facts: RegistrationNoteFacts): string[] {
+/** Structural refusals only: empty, a link that was not handed, or the card asking. */
+export function noteRefusals(
+  body: string,
+  facts: RegistrationNoteFacts,
+  marks: { asks?: boolean } = {},
+): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
   const handed = facts.kind === 'approval_card' ? [facts.link] : [];
-  return hasLinkBeyond(text, handed) ? ['other_link'] : [];
+  if (hasLinkBeyond(text, handed)) return ['other_link'];
+  if (facts.kind === 'approval_card' && marks.asks === true) return ['asks'];
+  return [];
 }
 
-const outputSchema = z.object({ text: z.string() });
-const outputJsonSchema = {
+const outputSchema = z.object({ text: z.string(), asks: z.boolean() });
+export const NOTE_OUTPUT_JSON_SCHEMA = {
   type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+  properties: { text: { type: 'string' }, asks: { type: 'boolean' } },
+  required: ['text', 'asks'],
 } as const;
+const outputJsonSchema = NOTE_OUTPUT_JSON_SCHEMA;
 
 export const NOTE_MAX_ATTEMPTS = 2;
 export const NOTE_MAX_TOKENS = 1024;
@@ -181,7 +188,7 @@ export async function composeRegistrationNote(
         maxTokens: NOTE_MAX_TOKENS,
       });
       const text = value.text.trim();
-      const refusals = noteRefusals(text, facts);
+      const refusals = noteRefusals(text, facts, { asks: value.asks });
       if (refusals.length === 0) return text;
       console.warn(
         { familyId, kind: facts.kind, attempt, refusals },

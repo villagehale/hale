@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the parent's no warmly and asks one question: just the coarse code, either a five-digit ZIP or the first three characters of a Canadian postal code. It does not ask for a street or town. The 'find what's nearby' line depends on them giving the code, so it is not an unconditional promise. It is slightly wordy, and it leads with the Canadian postal-code option for a US parent, which makes it less plain than ideal.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It restates the page accurately: course name, Wednesday 10:30 AM, ages 3 to 5, both prices, course code, residents date Sep 8, and the public date Tuesday, September 15 at 10:30 a.m. Since haleHad is set, it says Hale had September 14 before and is now going by the page. It warns the parent to leave time for the registration form because regForm is true. There is no link, no question, no invented claim and no unhanded child. Days are correct and the tone is natural English.",
+    "score": 5
+  }
+}

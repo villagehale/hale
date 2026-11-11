@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgvDwkHgoNe3HoS7fiJny",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+wUKEAgTGAI4AUIIdGhpbmtpbmcSDIBzJ/uOB9dYaWy5+RoMj0DYkaa+rURU/oFPIjDjiGpe21fVqydiZLJTxWaIV/O8n11hz1HkBgjBJyPJ3mxhXtNX7GfCYxtyWpgFg9MqmAXkktgAWk8yU/JWD3ahBxFjWoMN3vii91X1iu8L6Sn4hThaGfbgJZvxBH72RZF7Ii+7cJB102UgpxHv1svMdxIsEUSpwbO6mwHgJR7uULFCiGfDn9W3JqHT0rnJ3bvKUldVMNqwJJT0oJhR+WNYV0rMqT+rkWL0gJwf9wySQOU9/XgkECWk7aDocpBI3X3otLwXMOmlSgxfJf84B923tPze2PIKxd7f7nalbHLWM0lC9BD5CkiheIP5KwTXxI7xQ1w5EHeCrkF7jl06Xuu+Y5gFlArIElxnS5sooNAyw9wi2OQiR/XrNnT3ajhgDxsYCRHLUx6t0h1v7a91F2SWwhUfyXtL7chRr7ekf2b/xx1xRwTwUYqrJx8KmC6Xz9ytcsU1HmKnmhuiVdzQdYuhNJDmnNs6+s5BBZi4hveEjsZ/xiCPSP/oRT5s525WYES+0bW1PDCp2oknQZG8jI4huUv3TO9+SjBJf76ZVYyhkeqQV/sQW5YrchZiSGE81csOPPj6X8QTOaPMeV73b6EsCBnyQ2GVvM3hRZzzLN7VTEuBSoAhR5jBu1rGYR6vFrEgYt9rFaxfxAtpJv0vPpiza3P7dNLpDXl2vr/llzs1ToHIsFIS/hYpQrNOkW1ZRWmvnba1H3MaOWY4HG323nlQi1PdFcnoIg/cAlBBOOHovQdSo5rILrHG7bCRh3lC4GkfGXIOEd1s7KR777VAe3HI5YvvOpaOKLyv5GE5K9+5MqmrYKpT/meVz+FUgTSzUZnk7kkXYHOJasZb379OK8jGjEHg0Xb2RyiA1VWPnH4ZF+h8gGXGLmSo5/wn/rlWJBuCRW08kGsAIg716kQK8yROEj9LGMsPhBfJtGSsBOfaSbE4r1cxAGE1CUjrGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01FbAf6kHgxCSiAA4nD4hsrP",
+        "name": "list_group_lists",
+        "input": {
+          "listName": "soccer snacks"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 392,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20920,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 108,
+      "output_tokens_details": {
+        "thinking_tokens": 51
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

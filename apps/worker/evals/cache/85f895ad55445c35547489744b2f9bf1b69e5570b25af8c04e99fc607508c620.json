@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_throttled with alreadyBound true. It says Hale already has that class, that it reads one course page at a time, and that it did not open the link again. It names no time, asks for no resend and invents no facts. Two small phrasing issues keep it from a 5. \"Nothing new to send\" is ambiguous about who would be sending. The causal \"so I didn't reopen it\" is slightly off, since Hale skipped it because it already had the class. The tone is friendly and natural.",
+    "score": 4
+  }
+}

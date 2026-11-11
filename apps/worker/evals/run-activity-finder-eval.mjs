@@ -74,6 +74,7 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { ACTIVITY_FIXTURES } from './activity-finder-fixtures.mjs';
+import { armEvalDohLookup } from './lib/doh-lookup.mjs';
 import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import {
   JUDGE_MIN,
@@ -99,6 +100,9 @@ import {
   statesAFigure,
   statesNoCost,
 } from './lib/quote-match.mjs';
+
+// Eval-only: HALE_EVAL_DOH=1 resolves page hosts over DNS-over-HTTPS (see lib/doh-lookup.mjs).
+armEvalDohLookup();
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -1326,13 +1330,17 @@ async function cachedGround(opts) {
     );
     process.exit(1);
   }
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: 4096,
-    system,
-    tools,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  // STREAMED, as production's ground turn is (lane.ts): a non-streamed web_search turn sits
+  // silent for minutes and the box's egress drops it (read ETIMEDOUT). Same request body.
+  const response = await getClient()
+    .messages.stream({
+      model,
+      max_tokens: 4096,
+      system,
+      tools,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+    .finalMessage();
   noteUsage(cost, model, response.usage);
   const evidence = readEvidence(response.content);
   const value = {
