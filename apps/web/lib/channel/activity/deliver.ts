@@ -199,9 +199,10 @@ export interface FollowUpRecipient {
   conversationId: string | null;
   /** The parent's one proactive language (`parentLanguage`). The follow-up is written in it. */
   language: string;
-  /** The 1:1 iMessage chat the promise was made in, and the outbound that carried it (itself
-   * the reply to the ask), so the answer lands in the ask's thread. Null on SMS, in a group,
-   * or wherever the chat is not known to be 1:1. */
+  /** The 1:1 iMessage chat the promise was made in, and the parent's ask in it (the inbound
+   * the promise answered), so the answer threads under the ask as every reply does. Null on
+   * SMS, in a group, or wherever the ask is not known to be 1:1. The transport replies in
+   * that chat only while it is still this parent's 1:1 on this line. */
   thread: { chatId: string; messageId: string } | null;
 }
 
