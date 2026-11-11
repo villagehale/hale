@@ -144,6 +144,7 @@ describe('the committed pnpm-lock.yaml', () => {
       'apps/worker',
       'packages/agent',
       'packages/db',
+      'packages/flags',
       'packages/tools-contracts',
       'packages/types',
     ]);
@@ -240,7 +241,7 @@ describe('ci.yml wiring', () => {
     expect(buildAt).toBeGreaterThan(-1);
     expect(firstEval).toBeGreaterThan(buildAt);
     expect(evals).toContain(
-      'pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build',
+      'pnpm --filter @hale/db --filter @hale/types --filter @hale/flags --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build',
     );
     const commands = [
       'eval:classifier',

@@ -431,7 +431,10 @@ export function isCrisisReading(
 let shared: OptOutReader | null = null;
 
 export function sharedOptOutReader(): OptOutReader {
-  shared ??= createOptOutReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), sharedOpsPager);
+  shared ??= createOptOutReader(
+    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'inbound_screen' }),
+    sharedOpsPager,
+  );
   return shared;
 }
 

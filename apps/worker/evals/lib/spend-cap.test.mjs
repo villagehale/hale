@@ -415,11 +415,12 @@ describe('cache-aware reservation', () => {
     expect(projections()[1]).toBeCloseTo(FULL, 10);
   });
 
-  it('discount OFF for a different prefix, and when no cache_control is sent', async () => {
+  it('discount OFF for a different prefix; a matching string wraps to the warm prefix', async () => {
     const client = capSdkClient(
       seqClient([
         { input_tokens: 200, cache_creation_input_tokens: 800, output_tokens: 100 },
         { input_tokens: 200, cache_creation_input_tokens: 800, output_tokens: 100 },
+        { input_tokens: 200, cache_read_input_tokens: 800, output_tokens: 100 },
         { input_tokens: 1000, output_tokens: 100 },
       ]),
       { rates },
@@ -431,7 +432,11 @@ describe('cache-aware reservation', () => {
     });
     await client.messages.create({ ...cachedRequest, system: 'judge rubric' });
     expect(projections()[1]).toBeCloseTo(FULL, 10);
-    expect(projections()[2]).toBeCloseTo((1000 * 2 + 1000 * 10) / 1e6, 10);
+    // capSdkClient wraps a string system with the same 5m breakpoint, so this
+    // prefix matches the first call and reads warm.
+    expect(projections()[2]).toBeCloseTo(WARM_800, 10);
+    await client.messages.create({ ...cachedRequest, system: undefined });
+    expect(projections()[3]).toBeCloseTo((1000 * 2 + 1000 * 10) / 1e6, 10);
   });
 
   it('discount OFF while another call is in flight', async () => {

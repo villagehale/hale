@@ -274,8 +274,9 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
           label: collapsed,
           instant: input.instant ?? false,
           lastState: read.state as 'full' | 'waitlist_full',
-          // No session start this reader can stand behind: the sixty-day bound holds.
-          sessionStartsAt: null,
+          // The listing's own first-class date when the reader could stand behind it;
+          // null keeps the sixty-day bound for a page that never printed one.
+          sessionStartsAt: read.sessionStartsAt,
           sessionAnchor: read.session,
         });
         return { watching: true as const };

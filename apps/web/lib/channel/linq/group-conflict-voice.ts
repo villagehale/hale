@@ -89,7 +89,7 @@ let shared: GroupConflictWriter | null = null;
 
 export function sharedGroupConflictWriter(): GroupConflictWriter {
   shared ??= createGroupConflictWriter(
-    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
     failurePageOpsPager(db),
   );
   return shared;

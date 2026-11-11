@@ -153,6 +153,8 @@ let shared: GroupReminderVoice | null = null;
 /** The production voice, or null when no model key is configured: a named absence. */
 export function sharedGroupReminderVoice(): GroupReminderVoice | null {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  shared ??= createGroupReminderVoice(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupReminderVoice(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'reminder' }),
+  );
   return shared;
 }

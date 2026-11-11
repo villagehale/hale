@@ -15,6 +15,8 @@ import {
   SIGNUP_RUN_MAX_COST_USD,
   ensureProfile,
   failure,
+  parentTakesOverLiveView,
+  secretBindingsFor,
   settleBrowser,
   signupFacts,
   stopAndReadCost,
@@ -96,6 +98,10 @@ export interface BrowserUsePlanInput
     | 'providerSession'
     | 'onProfileCreated'
     | 'proxyCountryCode'
+    | 'credentials'
+    | 'accountCreate'
+    | 'joinWaitlist'
+    | 'askedStart'
   > {
   /**
    * `auto`: Hale pays with the saved card at the open. `assisted`: Hale only fills, and the
@@ -260,6 +266,7 @@ async function drivePlan(
         keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
         agentmail: false,
         maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+        ...(secretBindingsFor(input) ? { secretBindings: secretBindingsFor(input) } : {}),
       });
       runId = run.id;
       tracker.runId = run.id;
@@ -305,16 +312,20 @@ async function drivePlan(
     const live = waited.liveViewUrl;
 
     if (output.outcome !== 'reached_checkout') {
-      const handsOn = output.outcome === 'needs_human' || output.outcome === 'needs_login';
       return {
         ...stop(output.outcome, output.detail),
-        liveViewUrl: handsOn ? live : null,
+        liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
         cartTotalCents: output.cart_total_cents,
+        passwordRejectionMessage: output.password_rejection_message,
+        passwordRule: output.password_rule,
+        siteChoices: output.site_choices,
+        seatsOpen: output.seats_open,
+        fees: output.fees,
       };
     }
     const choiceIndex = output.choice_index;
     if (choiceIndex === null || choiceIndex >= input.choices.length) {
-      return { ...stop('needs_human', 'choice_unreadable'), liveViewUrl: live };
+      return { ...stop('needs_human', 'choice_unreadable'), liveViewUrl: null };
     }
     const total = output.cart_total_cents;
     await input.onStep({ step: 'checkout', choiceIndex, cartTotalCents: total });

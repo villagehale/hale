@@ -38,8 +38,8 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
-import { READ_EMAIL_FIXTURES } from './read-email-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { READ_EMAIL_FIXTURES } from './read-email-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');

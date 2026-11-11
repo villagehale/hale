@@ -23,12 +23,12 @@ describe('proactive cadence flag', () => {
     expect(requestedCadence()).toBe('live');
   });
 
-  it('runs a requested live as shadow while any class still sends on its own', () => {
-    expect(unroutedKinds()).toContain('followup');
+  it('arms live once every class is routed', () => {
+    expect(unroutedKinds()).toEqual([]);
     expect(unroutedKinds()).not.toContain('nudge');
     expect(unroutedKinds()).not.toContain('evening_check_in');
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    expect(proactiveCadence()).toBe('shadow');
+    expect(proactiveCadence()).toBe('live');
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     expect(proactiveCadence()).toBe('shadow');
     vi.stubEnv('PROACTIVE_CADENCE', undefined);
@@ -42,10 +42,16 @@ describe('proactive cadence flag', () => {
     expect(PROACTIVE_ROUTING.evening_check_in).toBe('decider');
   });
 
-  it('routes the departure notice and the travel brief through the decider', () => {
+  it('routes every remaining class through the decider', () => {
+    expect(PROACTIVE_ROUTING.village_intro).toBe('decider');
+    expect(PROACTIVE_ROUTING.followup).toBe('decider');
+    expect(PROACTIVE_ROUTING.plan_check_in).toBe('decider');
+    expect(PROACTIVE_ROUTING.activity_followup).toBe('decider');
+    expect(PROACTIVE_ROUTING.spot_open).toBe('decider');
+    expect(PROACTIVE_ROUTING.email_alert).toBe('decider');
+    expect(PROACTIVE_ROUTING.calendar_alert).toBe('decider');
+    expect(PROACTIVE_ROUTING.duty_ask).toBe('decider');
     expect(PROACTIVE_ROUTING.co_parent_departed).toBe('decider');
     expect(PROACTIVE_ROUTING.travel_brief).toBe('decider');
-    expect(unroutedKinds()).not.toContain('co_parent_departed');
-    expect(unroutedKinds()).not.toContain('travel_brief');
   });
 });

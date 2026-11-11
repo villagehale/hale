@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
@@ -80,6 +81,8 @@ export interface SignupRunDeps {
   /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
   planReader?: PlanTurnDeps['planReader'];
   planWriter?: PlanTurnDeps['planWriter'];
+  mismatchReader?: PlanTurnDeps['mismatchReader'];
+  sendProviderEmail?: PlanTurnDeps['sendProviderEmail'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
@@ -111,6 +114,8 @@ export interface SignupRunResult {
   claimed: boolean;
   outcome: string;
   reply: string | null;
+  /** Separate Linq sends, one bubble each. When set, the handler sends these instead of `reply`. */
+  replies?: string[];
   deliverOnThread: boolean;
   /**
    * Set on the Browser Use path. Hale's AI writes the parent message from it;
@@ -174,7 +179,17 @@ export async function runAuthorizedSignup(
   const planTurn = await runPlanTurn(database, input, {
     planReader: deps.planReader,
     planWriter: deps.planWriter,
+    mismatchReader: deps.mismatchReader,
     declineSeat: deps.declineSeat,
+    sendProviderEmail:
+      deps.sendProviderEmail ??
+      (async (payload) => {
+        const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
+        await createGmailEmailSender(database)(
+          { to: payload.to, subject: payload.subject, body: payload.body },
+          { familyId: payload.familyId, actorUserId: payload.actorUserId },
+        );
+      }),
   });
   if (planTurn) return planTurn;
 
@@ -648,6 +663,14 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
+    if (handoff.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: input.familyId,
+        providerDomain: ctx.host ?? ctx.providerHost,
+        stage: handoff.detail ?? 'error',
+        source: 'signup',
+      });
+    }
     // No Browser Use session ever started (setup failed or the engine threw
     // before a run): release the held allowance. A started session keeps its
     // hold until its real cost replaces it.
@@ -907,6 +930,9 @@ async function finish(
     status,
     now: input.now,
   });
+  if (status === 'completed') {
+    noteTaskCompleted({ familyId: input.familyId, type: 'registration', source: 'browser_use' });
+  }
 }
 
 function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {

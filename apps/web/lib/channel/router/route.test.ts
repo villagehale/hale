@@ -5663,6 +5663,8 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
       // VIL-479 · drizzle names every messages column, including this one (0201).
       await db.exec('ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider_message_id text');
+      // And the audit row's audience (0227, VIL-635), which every audit write now carries.
+      await db.exec('ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS audience uuid');
     });
 
     afterAll(async () => {

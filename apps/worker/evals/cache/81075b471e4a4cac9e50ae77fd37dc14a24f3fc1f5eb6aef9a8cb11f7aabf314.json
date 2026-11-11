@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cgri1LEgnBUAPg6FTteMe",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Nothing's on your calendar for Sunday afternoon. I found the Sunday drop-in at the museum, for ages 6-12, which fits Lin. Markham Museum's site says it runs Sunday afternoon and doesn't list a price. I haven't confirmed it myself. [link-e88d48]\n\nIs Markham still the right area, or are you closer to Georgetown these days?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 251,
+      "cache_read_input_tokens": 23298,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 251,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 127,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2216
+}

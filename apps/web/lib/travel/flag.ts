@@ -21,6 +21,7 @@
  * works would mean reading other households' mailboxes to do it.
  */
 
+import { isEnabled } from '@hale/flags';
 import { LANE_ENV, laneEnabled } from '../channel/lanes';
 
 export const TRAVEL_BRIEF_ENABLED_ENV = LANE_ENV.travel_brief;
@@ -46,9 +47,5 @@ export function travelBriefAllowlist(): Set<string> {
 }
 
 export function travelBriefEnabledFor(familyId: string): boolean {
-  // The lane is the kill: off is off for every household. While it is on, a non-empty
-  // allowlist narrows the brief to the listed households (one household to prove).
-  if (!travelBriefEnabled()) return false;
-  const allowlist = travelBriefAllowlist();
-  return allowlist.size === 0 || allowlist.has(familyId);
+  return isEnabled('travel-brief', familyId);
 }
