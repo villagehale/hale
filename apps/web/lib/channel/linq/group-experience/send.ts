@@ -31,11 +31,13 @@ export async function sendGroupExperienceLine(
   if (!parentUserId) throw new Error('group experience: covering family has no primary parent');
   const listChatHandles: ListChatHandles =
     input.listChatHandles ?? ((i) => listLinqParticipantHandles({ ...i, fetch: input.fetch }));
-  if (
-    !(await groupAudienceAllows(database, input.chatId, 'event_logistics', listChatHandles)).allowed
-  ) {
-    throw new GroupExperienceHeld('participants_unreadable');
-  }
+  const audience = await groupAudienceAllows(
+    database,
+    input.chatId,
+    'event_logistics',
+    listChatHandles,
+  );
+  if (!audience.allowed) throw new GroupExperienceHeld(audience.reason);
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({

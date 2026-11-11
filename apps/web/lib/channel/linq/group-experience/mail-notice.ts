@@ -1,6 +1,7 @@
-import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
 import type { SourceChange } from '~/lib/loop/reminders/change';
+import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { groupMailNoticeEnabled } from '../config';
 import { deliverLinqGroupNotice } from '../group';
 import { primaryParentId } from '../roster-ask';
@@ -41,11 +42,18 @@ export async function postMailNoticeToHouseholdGroup(
     .select({
       title: schema.familyEvents.title,
       startsAt: schema.familyEvents.startsAt,
+      childId: schema.familyEvents.childId,
+      sensitive: schema.familyEvents.sensitive,
     })
     .from(schema.familyEvents)
-    .where(eq(schema.familyEvents.id, input.eventId))
+    .where(and(eq(schema.familyEvents.id, input.eventId), householdFamilyEvent()))
     .limit(1);
   if (!event) return 'skipped';
+  const kids = await database
+    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, input.familyId));
+  if (isPrivateEvent(event, kids, input.now)) return 'skipped';
 
   const spoken = await composeGroupExperienceLine(
     {
