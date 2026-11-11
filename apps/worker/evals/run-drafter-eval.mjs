@@ -35,6 +35,8 @@ import {
   judgeLaneFor,
   liveStructuredCall,
   priceRates,
+  reportEvalGeneration,
+  wrapEvalAnthropic,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 
@@ -150,7 +152,15 @@ function makeRealDrafter(lane, prompt, cachedOnly, cost) {
     const key = cacheKey(model, prompt, userMessage, 'draft');
 
     const cached = await cacheGet(key);
-    if (cached) return cached.parsed;
+    if (cached) {
+      reportEvalGeneration({
+        suite: 'drafter',
+        caseName: fixture.id,
+        model,
+        cached: true,
+      });
+      return cached.parsed;
+    }
 
     if (cachedOnly) {
       console.error(
@@ -159,7 +169,12 @@ function makeRealDrafter(lane, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+    client ??= capSdkClient(
+      wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        suite: 'drafter',
+        stage: 'drafter',
+      }),
+      {
       rates: priceRates,
       tag: 'drafter',
     });
@@ -228,7 +243,15 @@ function makeJudge(model, cachedOnly, cost) {
     const key = cacheKey(model, JUDGE_SYSTEM, userMessage, 'judge');
 
     const cached = await cacheGet(key);
-    if (cached) return cached.parsed;
+    if (cached) {
+      reportEvalGeneration({
+        suite: 'drafter',
+        caseName: `${fixture.id}:judge`,
+        model,
+        cached: true,
+      });
+      return cached.parsed;
+    }
 
     if (cachedOnly) {
       console.error(
@@ -237,7 +260,12 @@ function makeJudge(model, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+    client ??= capSdkClient(
+      wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        suite: 'drafter',
+        stage: 'drafter',
+      }),
+      {
       rates: priceRates,
       tag: 'drafter-judge',
     });

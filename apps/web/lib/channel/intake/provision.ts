@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { noteFamilySignedUp, noteMessage } from '~/lib/analytics/product-hooks';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { HALE_CONTACT_FIRST_NAME, haleContactCardDay } from '~/lib/channel/linq/contact-card';
@@ -225,7 +226,7 @@ export async function provisionFromIntake(
   const lifetimeFamilyComp =
     input.sourceCode !== null && LIFETIME_FAMILY_SOURCE_CODES.has(input.sourceCode);
 
-  return database.transaction(async (rawTx) => {
+  const result = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     const userId = await ensureIntakeUser(tx, externalAuthId, location?.timezone ?? null);
 
@@ -365,6 +366,13 @@ export async function provisionFromIntake(
         // onboarding text is a parent answered twice, out of context.
         handedOffAt: entry.direction === 'in' ? now : null,
       });
+      noteMessage({
+        direction: entry.direction,
+        familyId,
+        channel: entry.channel === 'imessage' ? 'imessage' : CHANNEL_KIND,
+        isGroup: entry.inGroup,
+        chatId: entry.chatId,
+      });
     }
 
     await tx.insert(schema.auditLog).values([
@@ -453,4 +461,6 @@ export async function provisionFromIntake(
 
     return { familyId, userId, channelId };
   });
+  noteFamilySignedUp({ familyId: result.familyId });
+  return result;
 }

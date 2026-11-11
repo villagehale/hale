@@ -2,7 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
-import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { noteMessage } from '~/lib/analytics/product-hooks';
+import { captureServerEvent, captureWebEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
@@ -1033,6 +1034,14 @@ export async function writeChannelMessage(
     actionTaken: entry.direction === 'in' ? 'sms_intake_inbound' : 'sms_intake_outbound',
     targetTable: 'channel_messages',
     targetId: id,
+  });
+  noteMessage({
+    direction: entry.direction,
+    familyId,
+    channel,
+    isGroup: entry.inGroup,
+    chatId: entry.chatId,
+    database,
   });
   return id;
 }
@@ -3375,6 +3384,18 @@ async function provision(
     source_code: session.sourceCode,
     ...intakeShape(gathered.transcript, now),
   });
+  // The web funnel's other end of signup_started (the "Text Hale to start" click).
+  // Distinct id is the hashed family — the same person IdentifyUser will use —
+  // never the phone, never the intake session. Dark until WEB_ENABLED. Not
+  // through deps.capture: tests stub that seam for intake_started/completed.
+  void captureWebEvent('signup_completed', hashFamilyId(familyId), { surface: 'sms' }).then(
+    () => undefined,
+    (err: unknown) => {
+      console.warn('analytics: signup_completed not recorded', {
+        err: err instanceof Error ? err.name : 'unknown',
+      });
+    },
+  );
   return { status: 'provisioned', familyId, ...(mapOwed ? { mapOwed } : {}) };
 }
 

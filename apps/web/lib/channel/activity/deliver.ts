@@ -1,7 +1,8 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -284,7 +285,8 @@ export type FollowUpDeliveryOutcome =
     }
   | { status: 'deferred'; reason: FollowUpFallback }
   | { status: 'refused_at_send'; reasons: readonly string[] }
-  | { status: 'skipped'; reason: string };
+  | { status: 'skipped'; reason: string }
+  | { status: 'queued' };
 
 /**
  * Compose the message, gate it, send it, and close the promise against the row that
@@ -304,6 +306,9 @@ export async function deliverFollowUp(
   // composed, because the composer's gates read it. `watch` is what the message is
   // allowed to say and what the ledger is about to be told, and they are one value so
   // they cannot disagree (#521, and the 2026-08-22 repeat of it through this door).
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { status: 'queued' };
+  }
   const watch = watchWarranted(input.picks);
   const composed = await deps.composer.compose({
     subject: input.subject,
@@ -374,6 +379,41 @@ export async function deliverFollowUp(
       'activity follow-up: the wire body claims a row that does not exist - refused at the send boundary, promise left open',
     );
     return { status: 'refused_at_send', reasons: unbacked };
+  }
+
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { status: 'queued' };
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.recipient.parentUserId,
+        kind: 'activity_followup',
+        category: 'activity_followup',
+        templateKey: 'activity_followup:kept',
+        what: message,
+        why: 'activity_followup',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+        payload: { auditVerb: 'activity_followup_sent', fulfillKind: 'activity_followup' },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'agent_commitments',
+      targetId: input.commitmentId,
+      after: { kind: 'activity_followup' },
+    });
+    return { status: 'queued' };
   }
 
   const delivered = await deliverFamilyOutbound(database, {

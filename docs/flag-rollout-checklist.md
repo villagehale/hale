@@ -27,11 +27,14 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 
 | Flag | Parser (file:line) | On value | Unset | Kill (then redeploy) | Owner |
 | --- | --- | --- | --- | --- | --- |
+| `ACCESS_EXPORT_ROUND_2_ENABLED` | `apps/web/lib/rights/export-round-2.ts:14` | `true` | OFF | `false` | Noah |
 | `ACTIVITY_REVIEWS_ENABLED` | `apps/web/lib/reviews/capture.ts:44` | `true` | OFF | `false` | Noah |
 | `ACTIVITY_REVIEWS_SURFACE` | `apps/web/lib/reviews/aggregate.ts:27` | `true` | OFF | `false` | Sloane |
+| `AGE_FIT_CORRECTION_ENABLED` | `apps/web/lib/channel/intake/age-fit-correction.ts:17` | `true` | OFF | `false` | Sloane |
 | `ANTHROPIC_SPEND_ALERT_USD` | `apps/web/lib/monitoring/spend.ts:40` (default at :16, fallback at :42) | a number of USD (config, not a flag) | 200 USD (code default) | n/a (config) | unassigned |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | `apps/web/lib/channel/spots/flag.ts:31` | `true` | OFF | `false` | Noah |
 | `AUTHORIZED_SIGNUP_ENABLED` | `apps/web/lib/signup/flag.ts:12` | `on` | OFF | empty, or `off` | Noah |
+| `AUDIT_LOG_AUDIENCE_ENABLED` | `apps/web/lib/privacy/audit-audience.ts:14` | `true` | OFF | `false` | Noah |
 | `AUTONOMOUS_EXECUTE_ENABLED` | `apps/worker/src/orchestrator/index.ts:73`; `apps/web/lib/channel/autonomy/notice.ts:55` | `true` (exact, untrimmed) | OFF | unset | Barton |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | `apps/web/lib/integrations/booked.ts:68` | `true` | OFF | `false` | Noah |
 | `BOOKED_DETECTION_ENABLED` | `apps/web/lib/integrations/booked.ts:38` (the allowlist widens it, :51-52) | `true` | OFF | `false` | Noah |
@@ -61,6 +64,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `GOING_COUNT_ENABLED` | `apps/web/lib/integrations/going.ts:148` | `true` | OFF | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | `apps/web/lib/integrations/google-push-flag.ts:14` | `true` | OFF | `false` | Noah |
 | `GOOGLE_WRITE_SCOPES_ENABLED` | `apps/web/lib/integrations/google-write-flag.ts:23` (the allowlist at :29 arms listed users) | `true` | OFF | unset, or anything except `true` | Noah |
+| `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | `apps/web/lib/channel/coach/no-group-relay.ts:19` | `true` | OFF | `false` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `apps/web/lib/pipeline/classify.ts:166` (`parseModelMode`, `apps/web/lib/pipeline/model-mode.ts:1-5`: trim, unset means `current`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INBOUND_SCREEN_MODEL_MODE` | `apps/web/lib/channel/off-domain/screen.ts:279` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INTAKE_EXTRACT_MODEL_MODE` | `apps/web/lib/channel/intake/extract.ts:164` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
@@ -75,7 +79,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:117` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
 | `LINQ_GROUP_COPARENT` | `apps/web/lib/channel/linq/config.ts:72` (trimmed, `!== 'off'`) | unset (anything except `off`) | ON | `off` | Noah |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `apps/web/lib/channel/linq/config.ts:80` | `true` (trimmed) | OFF | `false` | Noah |
-| `LINQ_GROUP_MENTIONS_ENABLED` | `apps/web/lib/channel/linq/config.ts:176` (also needs `VERCEL_ENV=preview`) | `true` (trimmed) | OFF (preview-only) | empty, or `false` | Noah |
+| `LINQ_GROUP_MENTIONS_ENABLED` | `apps/web/lib/channel/linq/config.ts:176` | `true` (trimmed) | OFF | empty, or `false` | Noah |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `apps/web/lib/channel/linq/config.ts:99` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_PLAN_RSVP_ENABLED` | `apps/web/lib/channel/linq/config.ts:125` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `LINQ_GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:134` | `true` (trimmed) | OFF | `false` | Noah (copy: Sloane) |
@@ -87,6 +91,8 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `MEMORY_DIGEST_APPLY` | `apps/web/lib/memory/digest.ts:40` | `true` | OFF | `false` | Noah |
 | `MEMORY_SYNTHESIS_APPLY` | `apps/web/lib/memory/synthesis.ts:44` | `true` | OFF | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | `apps/web/lib/channel/mid-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
+| `NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED` | `apps/web/lib/analytics/flags.ts:18`; also `apps/site/lib/analytics/flags.ts:15` | `true` (exact, no trim) | OFF | unset, or anything except exact `true` | Noah |
+| `NEXT_PUBLIC_POSTHOG_WEB_ENABLED` | `apps/web/lib/analytics/flags.ts:14`; also `apps/site/lib/analytics/flags.ts:11` | `true` (exact, no trim) | OFF | unset, or anything except exact `true` | Noah |
 | `ONBOARDING_FRIEND_VOICE_ENABLED` | none on main (#868) | none | no reader on main | none (no reader) | unassigned |
 | `ORPHAN_USER_SWEEP_ENABLED` | `apps/web/lib/rights/orphan-users.ts:124` | `true` | OFF | `false` | Noah |
 | `PARENT_CALENDAR_MIRROR_ENABLED` | `apps/web/lib/channel/lanes.ts:19` (compared at :26) | `true` | OFF | unset | Barton |
@@ -99,6 +105,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `SIGNUP_BROWSER_RUNTIME` | `apps/web/lib/signup/runtime/acquire.ts:80` (`local`, `vercel_sandbox` or `browserbase`, exact, at :81) | `local`, `vercel_sandbox`, or `browserbase` | no runtime chosen | unset | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `apps/web/lib/signup/runtime/flag.ts:19` | `true` | OFF | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `apps/web/lib/social/flag.ts:12` | `on` (no trim) | OFF | empty, or `off` | Noah |
+| `TEEN_NAME_SHARED_MATCHER_ENABLED` | `apps/web/lib/privacy/teen-name.ts:15` | `true` | OFF | `false` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | `apps/web/lib/channel/lanes.ts:21` via `apps/web/lib/travel/flag.ts:35` (the lane helper, as `travel_brief`); a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows it (:48-53) | `true` | OFF | unset it — off is off for every household; while on, a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows the brief to the listed households | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `apps/web/lib/village/intros/run.ts:103` (gate at :1211; an allowlist cannot arm it) | `true` | OFF | `false` | Noah |
 | `VOICE_DISABLED` | `apps/web/lib/channel/reply-copy/client.ts:12`; also `apps/web/lib/loop/voice/compose.ts:64`, `apps/web/lib/channel/linq/group-onboarding-voice.ts:116`, `apps/web/lib/channel/linq/group-plan-rsvp/voice.ts:64`, `apps/web/lib/channel/linq/shared-group-reading.ts:182`, `apps/web/lib/channel/linq/shared-group-voice.ts:125` | unset (inverted: `true` turns voice off) | voice runs | `true` | Sloane |
@@ -194,6 +201,7 @@ Dependencies, as the code reads them:
 - `AUTHORIZED_SIGNUP_ENABLED` is its own gate: `BROWSER_USE_SIGNUP_ENABLED` and `SIGNUP_SANDBOX_RUNTIME_ENABLED` do not turn signup on (`apps/web/lib/signup/browser-use/flag.ts:9-11`). `SIGNUP_BROWSER_RUNTIME` is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`.
 - `MEMORY_DIGEST_APPLY` also needs `MEMORY_DIGEST_FAMILY_ALLOWLIST`.
 - `PREVIEW_CAPTURE_GROUPS` needs `PREVIEW_CAPTURE_TRANSPORT` and a Vercel preview.
+- `NEXT_PUBLIC_POSTHOG_WEB_ENABLED` arms posthog-js on villagehale.com and the portal (pageviews, autocapture allowlist, heatmaps, web surveys). Light it after `NEXT_PUBLIC_POSTHOG_KEY` is set on both projects. `NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED` does nothing until the web flag is on, because the SDK never loads. Replay still needs the PostHog project recording switch and authorized domains.
 
 ### Light one at a time
 
@@ -201,8 +209,11 @@ Code is merged for every row.
 
 | Flag | What it does | Extra signal this week | Kill | Owner |
 | --- | --- | --- | --- | --- |
+| `ACCESS_EXPORT_ROUND_2_ENABLED` | The right-to-access copy leaves coach-only `activity_held` notes out of the requester thread, scopes bookings to the requesting adult, redacts a 13+ child's booking title, genericizes a sensitive household calendar row, carries the source-changed columns, runs every consent type's evidence through the teen gate, and the privacy page says removed lines are in the copy. | A held JSON note in `requesterOnly.textThread`, a co-parent's booking in the copy, a sensitive calendar title that is not generic, or consent evidence that names a teen. | `false` | Noah |
 | `ACTIVITY_REVIEWS_ENABLED` | How an activity went is reduced to a verdict. This pass sends nothing. | Verdicts filed for a family that did not answer. | `false` | Noah |
+| `AGE_FIT_CORRECTION_ENABLED` | The 1:1 coach and the onboarding friend take a parent's correction that a named program does not fit a child, and stop offering that program. Dark leaves those skills' bytes unchanged. The model writes the reply. | A reply that keeps offering a program the parent just said does not fit. | `false` | Sloane |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | A parent can ask Hale to watch a full class on any city's or provider's public program page, not only the two PerfectMind portals. A model reads the page, and code checks each fact against the page text. A bot-check page or a reading the page text does not back sends nothing. | `class availability read` log lines by `outcome` and `reason` (a high `refused`/`challenge_page` or `unknown` share means pages Hale cannot read), spot texts for a page-watch the parent did not ask about, and model spend on the watched-spots cron. | `false` | Noah |
+| `AUDIT_LOG_AUDIENCE_ENABLED` | History and the access export show a one-adult audit row only to that adult. Unlit, those surfaces keep the family-wide reads. Writers always set `audit_log.audience`. Needs migration `0227_audit_log_audience`. | Parent B's History or export carrying parent A's `email_alert_sent`. | `false` | Noah |
 | `AUTONOMOUS_EXECUTE_ENABLED` | Hale acts on its own on an action type the parent opted into and approved five times in a row (rule #4), and only after the turn-on text for that grant has been delivered. Off, each such action is held for approval as `action.gated.lane_off`; a parent's own approval still executes. On, a kind whose text has not been delivered is held as `action.gated.autonomy_notice_pending`, including overnight. The count of parents already at five approvals of a kind, run before it is ever set, is in the VIL-131 pull request: 0. | `action.executed` against `action.gated.*` per action type, and any `action.gated.lane_off` row while the value is `true`. | unset | Barton |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | One capped page of booking-shaped mail from the last 90 days is recorded, and the parent is not alerted. | Log line `gmail sweep: envelope outcome`. Backfill must not insert a `channel_messages` row. | `false` | Noah |
 | `BOOKED_DETECTION_ENABLED` | A booking confirmation is stored as a held spot. | `activity_booking_recorded` rows, and parent alerts that fire for mail the backfill should have stayed quiet on. | `false` | Noah |
@@ -221,6 +232,7 @@ Code is merged for every row.
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |
 | `GOING_COUNT_ENABLED` | A sweep may count how many others are going. | A count that does not match the booking rows. | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | Gmail and Calendar can sync from push, not only the 15-minute poll. | Log lines `google push: skipped, flag_off` after the flip, and webhook failures. | `false` | Noah |
+| `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | The 1:1 coach never offers, nor agrees, to tell the group for a family. Hale has no path from a 1:1 reply into the group. Dark leaves the coach skill bytes unchanged. The model writes the reply. The private aside already never offers. | A 1:1 reply that offers to tell the group, or promises a group post after the parent asked for one. | `false` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for event classification. Unset stays on Sonnet 5. | Classify errors and fallback count in the web logs. | `current` | Eugene |
 | `HALE_INBOUND_SCREEN_MODEL_MODE` | `candidate` uses JEV for the inbound screen, with Haiku when the margin is thin. | Screen latency and Haiku retry count. | `current` | Eugene |
 | `HALE_INTAKE_EXTRACT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for intake extraction. The benchmark kept `current`. | Extracted ages or place that the parent did not say. | `current` | Eugene |
@@ -230,7 +242,7 @@ Code is merged for every row.
 | `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp (a Calendar stamp also needs `CALENDAR_ALERT_ENABLED`). A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
 | `LINQ_GROUP_CARPOOL_ENABLED` | Hale reads who is driving from the group and reminds the night before (`apps/web/lib/channel/linq/config.ts:103-104`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
-| `LINQ_GROUP_MENTIONS_ENABLED` | In a group, Hale's reply can mention the one seated member it addresses, and an inbound mention of Hale counts as addressed. Preview only: the code also needs `VERCEL_ENV=preview`. | A mention in a 1:1 chat, or on a member the reply does not address. | `false` | Noah |
+| `LINQ_GROUP_MENTIONS_ENABLED` | In a group, Hale's reply can mention the one seated member it addresses, and an inbound mention of Hale counts as addressed. Trimmed `true` turns it on in any environment, including production. | A mention in a 1:1 chat, or on a member the reply does not address. | `false` | Noah |
 | `LINQ_GROUP_PLAN_RSVP_ENABLED` | RSVP tracking for any plan in a Linq group (`apps/web/lib/channel/linq/config.ts:121-122`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_POLLS_ENABLED` | A parent can start a poll in a Linq group; others vote in their own words or on a native card, and Hale reads the tally back. The card also needs `LINQ_POLLS`. Needs migration `0190_linq_group_polls`. | A poll started while the flag is off, or a tally that invents a winner. | `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_REMINDERS_ENABLED` | "Remind me" from anyone in a family group; it only reads a turn the AI turn reader judged Hale's, in a v2 group (`apps/web/lib/loop/reminders/group/flag.ts:5-11`). | The common checks above. | empty, or `false` | unassigned |
@@ -246,6 +258,7 @@ Code is merged for every row.
 | `REGISTRATION_ASSISTED_RUN_ENABLED` | ActiveNet towns (`apps/web/lib/signup/plan/towns.ts`) join the plan lane in assisted mode: the plan offer, and at the open Hale fills the registration and texts the parent the live browser to submit and pay. Hale never signs in, submits or pays there. Needs `REGISTRATION_PLAN_RUN_ENABLED`. **Arm only after the same CAPTCHA confirmation and one live run on Barton's own ActiveNet account.** | `authorized_signup_step` rows: `plan_finished` outcomes on ActiveNet hosts, and any `submit_boundary` or `payment_boundary` detail (must be zero). | unset | Barton |
 | `REGISTRATION_PLAN_RUN_ENABLED` | A parent's day-before plan runs itself at the open on the auto towns and pays with the card saved on the city account (lane notes under [Every flag](#every-flag)). **Arm only after Browser Use confirms CAPTCHA solving is off for plan runs.** | `authorized_signup_step` rows whose `plan_finished` is not `completed`, and any `plan_payment` row whose amount is not the cart total. | unset | Barton |
 | `SAME_ACTIVITY_MEET_ENABLED` | When a caller reaches this code, a meet reply is prepared only after both households opt in. `deliverSameActivityReply` returns `skipped: 'not_configured'`, so the line stays in process. Nothing in the inbound router calls this path today. | A `channel_messages` row that carries a meet line, or an audit row `same_activity_opt_in_recorded`. | `false` | Noah |
+| `TEEN_NAME_SHARED_MATCHER_ENABLED` | Title and text gates that hide a 13+ child's words use `namesAny` (accents, format characters, every name part of two or more letters). Unlit, those gates keep the pre-VIL-634 whole-word check. Memory reads already use `namesAny`. | A title withheld that did not name a teen, or a teen-named title (accents, a name part) that still left. | `false` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | A trip can produce a short brief. The family also has to pass `F14_ENABLED`. | A brief for a family that is dark on F14 (the count should stay `dark`). | `false` | Sloane |
 | `WATCHED_SPOTS_ENABLED` | Hale polls a spot the parent asked to watch. | Spot texts with status `failed`, or a text for a spot the parent did not name. | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | Hale asks once how the household covers weekdays. | A second weekday question to the same family. | `false` | Sloane |

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type RegisteredTool, type Skill, invokeTool } from '@hale/agent';
+import { type RegisteredTool, type RunAgentArgs, type Skill, invokeTool } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
@@ -14,6 +14,7 @@ import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
 import {
+  CHANNEL_COACH_MAX_TOKENS,
   type ChannelCoachPorts,
   channelCoachRuntime,
   productionChannelCoachPorts,
@@ -30,6 +31,10 @@ import {
  * here and could not be: that is rule #8's territory, measured against real cached
  * Claude in `apps/worker/evals/run-coach-channel-eval.mjs`.
  */
+
+function promptOf(args: RunAgentArgs): string {
+  return [args.skill.instructions, ...(args.systemExtras ?? [])].join('\n\n');
+}
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
@@ -122,6 +127,23 @@ describe('channelCoachRuntime', () => {
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
   });
 
+  /** VIL-536: thinking and tool calls share this ceiling with the reply. 400 was spent
+   * before the model spoke on a broad grouped-map ask; 2000 is the room the reply keeps. */
+  it('hands the loop a completion budget thinking and tools cannot spend alone', async () => {
+    let seen: number | undefined;
+    const p = ports({
+      runAgent: async (args) => {
+        seen = args.maxTokens;
+        return answering('Move swim to Tue 4:30? YES to confirm.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(seen).toBe(CHANNEL_COACH_MAX_TOKENS);
+    expect(CHANNEL_COACH_MAX_TOKENS).toBe(2000);
+  });
+
   /**
    * The turn is grounded on the thread rather than on the job: C1 has already appended
    * the parent's message, so the runtime reads the conversation and never re-states the
@@ -146,7 +168,7 @@ describe('channelCoachRuntime', () => {
   it('carries the household group and its skill only when the context has one (VIL-566)', async () => {
     const group = (await loadCronSkill('household-group')).instructions;
     const run = async (householdGroup?: 'pending' | 'claimed') => {
-      const seen: { context: unknown; instructions: string }[] = [];
+      const seen: { context: unknown; instructions: string; prefix?: string }[] = [];
       const p = ports({
         loadContext: async (input) =>
           ({
@@ -157,7 +179,11 @@ describe('channelCoachRuntime', () => {
             ...(householdGroup ? { householdGroup } : {}),
           }) as never,
         runAgent: async (args) => {
-          seen.push({ context: args.context, instructions: args.skill.instructions });
+          seen.push({
+            context: args.context,
+            instructions: promptOf(args),
+            prefix: args.skill.instructions,
+          });
           return answering('ok.')(args);
         },
       });
@@ -167,6 +193,7 @@ describe('channelCoachRuntime', () => {
     const pending = await run('pending');
     expect(pending?.context).toMatchObject({ householdGroup: 'pending' });
     expect(pending?.instructions.endsWith(`\n\n${group}`)).toBe(true);
+    expect(pending?.prefix).not.toContain(group);
     const none = await run();
     expect(none?.context).not.toHaveProperty('householdGroup');
     expect(none?.instructions).not.toContain(group);
@@ -187,7 +214,7 @@ describe('channelCoachRuntime', () => {
             location: { city: null, province: null, country: 'Canada' },
           }) as never,
         runAgent: async (args) => {
-          calls.push(args.skill.instructions);
+          calls.push(promptOf(args));
           return answering('ok.')(args);
         },
       });
@@ -241,7 +268,7 @@ describe('channelCoachRuntime', () => {
     const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
       seen.push({
         context: args.context as Record<string, unknown>,
-        instructions: args.skill.instructions,
+        instructions: promptOf(args),
       });
       return answering('ok.')(args);
     };
@@ -274,7 +301,7 @@ describe('channelCoachRuntime', () => {
     const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
       seen.push({
         context: args.context as Record<string, unknown>,
-        instructions: args.skill.instructions,
+        instructions: promptOf(args),
       });
       return answering('ok.')(args);
     };
@@ -346,7 +373,7 @@ describe('channelCoachRuntime', () => {
       runAgent: async (args) => {
         seen.push({
           tools: [...args.skill.meta.tools],
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         return answering('ok.')(args);
       },
@@ -373,6 +400,52 @@ describe('channelCoachRuntime', () => {
     expect(seen[0]?.instructions).not.toContain(tone.instructions);
     expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
     expect(seen[2]?.instructions).not.toContain(tone.instructions);
+  });
+
+  it('appends the age-fit correction skill only on a 1:1 turn with AGE_FIT_CORRECTION_ENABLED on (VIL-568)', async () => {
+    const addendum = (await loadCronSkill('age-fit-correction')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
+  });
+
+  it('appends the no-group-relay skill only on a 1:1 turn with GROUP_1TO1_NO_GROUP_RELAY_ENABLED on (VIL-577)', async () => {
+    const addendum = (await loadCronSkill('coach-no-group-relay')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
   });
 
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
@@ -988,7 +1061,7 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
         seen.push({
           tools: args.tools.map((t) => t.name),
           skillTools: [...args.skill.meta.tools],
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         if (call) {
           const verb = args.tools.find((t) => t.name === 'reply_as_voice_memo');
@@ -1234,7 +1307,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
       seen.push({
         tools: args.tools.map((t) => t.name),
         skillTools: [...args.skill.meta.tools],
-        instructions: args.skill.instructions,
+        instructions: promptOf(args),
       });
       return answering('ok.')(args);
     };
@@ -1246,7 +1319,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
       emailReader: e.reader,
       runAgent: async (args) => {
         expect(args.skill.meta.tools).toContain('read_email');
-        expect(args.skill.instructions).toContain('read_email');
+        expect(promptOf(args)).toContain('read_email');
         const tool = args.tools.find((t) => t.name === 'read_email');
         if (!tool) throw new Error('no read_email verb');
         await tool.handler({ gmailMessageId: 'gm-1' } as never, {} as never);
@@ -1369,7 +1442,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
         return { verdict: 'withhold' };
       },
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('You and Sam share one page for the swim signup.')(args);
       },
     });
@@ -1385,7 +1458,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const p = ports({
       judgeFindReply: send,
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering(draft)(args);
       },
     });
@@ -1544,7 +1617,7 @@ describe('deferred capabilities', () => {
           tools: args.tools.map((tool) => tool.name),
           listed: args.skill.meta.tools,
           context: args.context,
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         for (const call of options.call ?? []) {
           const tool = args.tools.find((t) => t.name === call.tool);

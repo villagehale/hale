@@ -27,6 +27,10 @@
     "file": "activity-watch-calendar-read.md",
     "sha256": "dd5fde530caca83910ef056b36ad6df9a23f3822689b9f1fb4a4f1504e7eceee"
   },
+  "age-fit-correction.md": {
+    "file": "age-fit-correction.md",
+    "sha256": "35c45345b8d8022cf6da70c34b3b8a3f726a8ba9f632fe1fdd6063e9d2f08ea5"
+  },
   "area-read.md": {
     "file": "area-read.md",
     "sha256": "c2ede60463df19cbe14bc9a8743a83c04a63f6b9695f27242f0ce29cd09ff014"
@@ -131,6 +135,10 @@
     "file": "coach-group-lists.md",
     "sha256": "6356a5810c5a49937f948fa3dc2c8b7b147babbca9b843b41beb8f6489cf2cdb"
   },
+  "coach-home-place.md": {
+    "file": "coach-home-place.md",
+    "sha256": "c31c5cd5e664c961ffdb9071aca18605ff48c450916742aa4cd97d6e74fb9ad1"
+  },
   "coach-local-day.md": {
     "file": "coach-local-day.md",
     "sha256": "2623acdeda6865fb09415b2074c259774232016b10be4b8c014af31e48b9e9f4"
@@ -138,6 +146,10 @@
   "coach-nearby-find.md": {
     "file": "coach-nearby-find.md",
     "sha256": "dc699d224aca4924699a2c2497ab07774e68984f71e199f9f139470c8dd8c246"
+  },
+  "coach-no-group-relay.md": {
+    "file": "coach-no-group-relay.md",
+    "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -433,7 +445,7 @@
   },
   "proactive-decider.md": {
     "file": "proactive-decider.md",
-    "sha256": "247cbfd418d52a2d85c45eb223dd7f4ed8b8c484d47febc92984c5b3d5d7221e"
+    "sha256": "556989aff3ee83dfa0b6d020303009ebd3c82bc1244701f387d86fdb197bdb91"
   },
   "proactive-writer.md": {
     "file": "proactive-writer.md",
