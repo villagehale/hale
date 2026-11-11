@@ -373,7 +373,7 @@ describe('channelCoachRuntime', () => {
         seen.push({
           context: args.context as Record<string, unknown>,
           attachments: args.attachments as unknown[],
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         return answering('ok.')(args);
       },
