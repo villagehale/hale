@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "That's completely fine, we can leave it there. Want me to connect your Gmail next so I can keep an eye out for the kids' school and activity emails?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameDeclined": true
+  },
+  "latencyMs": 1824
+}

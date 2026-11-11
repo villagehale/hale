@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Tu peux me donner juste les trois premiers caractères de ton code postal, ça me suffit pour trouver ce qui est près de chez toi.",
+    "asks": true,
+    "asksCount": 1,
+    "asksName": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1896
+}

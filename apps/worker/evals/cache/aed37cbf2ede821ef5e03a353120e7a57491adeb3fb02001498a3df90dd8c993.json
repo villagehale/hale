@@ -1,0 +1,30 @@
+{
+  "value": {
+    "reply": "Super, je lance un groupe avec l'autre parent de Mia pour que vous ayez les mêmes plans et rappels. Il reste à le créer, je te dirai quand il sera prêt.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": "new",
+    "children": [
+      {
+        "name": "Mia",
+        "ageMonths": 48,
+        "agePrecision": "years",
+        "dateOfBirth": null
+      }
+    ],
+    "parentName": "Dana",
+    "parentRole": null,
+    "nameConfirmed": true
+  },
+  "latencyMs": 2346
+}

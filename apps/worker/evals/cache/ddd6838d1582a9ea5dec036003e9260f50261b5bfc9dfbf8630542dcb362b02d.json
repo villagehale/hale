@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It notes the replacement and says the course name, day and time could not be read, which is right when they are null. It gives the residents' date and time correctly, Tuesday, September 15 at 7:00 a.m., which is two weeks out, on Springfield's portal. It warns to leave time for the prerequisite and carries no link and no question. haleHad is null, so no 'going by the page' line is needed. 'Nothing is booked' is accurate. The one flaw is 'prerequisite level': the facts only say a prerequisite exists, so 'level' adds a slight specificity the facts don't give. The tone is friendly and in English.",
+    "score": 4
+  }
+}

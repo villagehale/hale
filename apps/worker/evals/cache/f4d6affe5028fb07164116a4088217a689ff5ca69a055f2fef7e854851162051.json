@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Great, I'll keep it ready for when you want it. To start the group, begin a group text with Mia's other parent, and when you're in it, send the number and phrase below so I can join.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": true,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true
+  },
+  "latencyMs": 1823
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Totally fair, you don't need to share the full code. Could you give me just the first three characters of your postal code, or the first five digits of a ZIP?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1750
+}

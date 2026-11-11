@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a correct check_in_ask in French. It names the Riverton Fall 2026 recreation window and asks how it went with all three outcomes: got in, waitlisted with their number, or missed. It invents no claims, names no child, and gets no date wrong. The tone is friendly, though a bit formal for a text, and slightly marred by the mixed question syntax ('Vous avez réussi' alongside 'êtes-vous').",
+    "score": 5
+  }
+}

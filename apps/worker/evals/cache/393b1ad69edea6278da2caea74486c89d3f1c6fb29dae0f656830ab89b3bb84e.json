@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has all the required parts and no invented claims, but the link is placed awkwardly. Dates are right: opens Tuesday, September 15 at 7:00 a.m. for residents, and the general public 7 days later, both handed facts. Max is correctly in the band, and Mia is correctly described as just outside it. All four texts are named with their timing, and it says plainly that Hale never registers. The course-link tip is included, which is allowed because courseLinkTip is true. It asks no question. The flaw is that the handed portal link comes right after 'the morning text will carry the link:', so it reads as if the course-page link is already this URL. That blurs the tip and how the link is presented.",
+    "score": 4
+  }
+}

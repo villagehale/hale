@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgvDpFxfhfJu9E8PhDLif",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2wYKEAgTGAI4AUIIdGhpbmtpbmcSDHj/e6DdtdA+OJVzXRoMRN6s7Bv0O8xzoNHHIjA2j5LdJ5S7CoOZYRNDrS4EnJIydgNUZUW03/ETH03moDC+6qzcO9BssEneHsigWBsq+AXR5bMLuI1SLxNJn68huIW1lFYyUkaAIMvr+mjihXL65H+uHv9po7UprmzTBb1ruguphx3j4+TipmmH6vME1IqaaaoJ62ueDafXT46zX7VHSNxJ/JdL7JE+0MF+DUWa7ZE5gLIxdi6mx3oHEx8+th+LELtDtxZPUfVQ45cFwQfvDq+lBAZeSWWUE5yvv1akXejusGlaznz6AZCXhJFZAGeFSEajby4R6stU8ysNMVst/FbllCksGKS90LfeZGeQogg6xX09hzNk4CZoxzF8cxZhFR65cE3PkaeNf6NfSw4P5Ec6stxPm55I+EhLxgpO1C682HhA258P4xNyxO0gCNIy6kbqUrH58bua71WvzC3TAWVCVuGZsKp+MT7YKnJmxiG4rDRHi2d7XQHkDC6nFyhT8atU4LiO8TjSanQ57jbK+EgOrTEFkMtP5UrqhxK+WQtjPKao9BHWz6/MF/UBkHgJ7gA/CcIwDxRNFHKpZhAKkJzR8ucJPTcVEvzzW93zeu6vIcOfYVYXYhv+Cp+/DCIGzt2bm59tdAikW7KS+jZm9sVpMAqRZBONkV+YEeA6OVZmNr3gBBG7dP3AKB5ZIaEuKwdO7GsZzGCMkpAJ3t6tcgQgOwqc/EsGBoSjga9IMFw1LIbYixCtfFLCeaimyqbBQY6DoDEB3iy/uvXRGy09nQcZpbtSCtG0bbDNk89vsPoJnTbfUV1Tww+UoMr6NvjrZpkYZet8hEdKW8++sIkriYB9rxNVb9xnczzijMQKAS21ouK2ZY5mW+xMu2tKCyHfwBgzA2xG52VbZp3cZo15/IYlI0uBZ9IfGGLTFuPEdOF6l7/Er/YP69WHe3zGMJ0FGn/znJqwP66MdyJtR4bjHQPe7ZTtklYcioq2TrPwsDFMqM70Q7U3oXuFuE6C7H1VQ8txSXpdIgz4lYl4fDcJ31eW2CJO+lJ75S+8naEvEhSrKYKKbuNWoYO5ZJ6xTHXVy8HPai8gvKIvEqra5Go6iotF/6xmtKAXGAE="
+      },
+      {
+        "type": "text",
+        "text": "周六上午 10:00 Leo 有足球课，在社区中心。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 652,
+      "cache_read_input_tokens": 19833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 652,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 101,
+      "output_tokens_details": {
+        "thinking_tokens": 75
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -110,7 +110,12 @@ function cachingClient({ cachedOnly, cost }) {
           process.exit(1);
         }
 
-        live ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        live ??= capSdkClient(new Anthropic({
+          apiKey: process.env.ANTHROPIC_API_KEY,
+          // Native fetch, as lazyAnthropic: the SDK's node-fetch shim dies mid-gzip
+          // ("Premature close") on this box's egress proxy.
+          fetch: globalThis.fetch,
+        }), {
           rates: priceRates,
           tag: 'memory-writeback',
         });

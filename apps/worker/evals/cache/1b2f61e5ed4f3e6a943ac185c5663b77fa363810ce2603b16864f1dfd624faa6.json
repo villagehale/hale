@@ -1,0 +1,22 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent and Tot 18 months - 3.11 yrs, Halton Hills Gymnastics Centre",
+        "name_evidence": "Parent and Tot 18 months - 3.11 yrs This class involves parent participation and is led by a coach through a structured warm-up, games, music, and circuits on all gymnastic events.",
+        "age_fit": "18 months - 3.11 yrs",
+        "age_evidence": "Parent and Tot 18 months - 3.11 yrs",
+        "source_name": "Halton Hills Gymnastics Centre",
+        "source_url": "https://haltonhillsgymnastics.com/index.php/preschool-kinderfun/parent-tot-18-months-3-years",
+        "when": "Fall 2026 Session 14 (13) weeks: September 12 - December 18; 30 min. class. Winter 2027 session: January 2 - April 1, registration begins October 26th. Specific class days/times not posted on this page.",
+        "schedule_kind": "term",
+        "when_evidence": "Fall 2026 Session 14 (13) weeks: September 12 - December 18",
+        "season": "Fall 2026",
+        "matches_requested_season": true,
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 92737
+}

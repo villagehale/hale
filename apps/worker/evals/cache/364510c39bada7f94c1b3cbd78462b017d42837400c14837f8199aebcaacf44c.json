@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "I can't save the carpool just yet, so it isn't on your calendar. Would a group chat with Mia's other parent help, where you both see the same kid plans and reminders and nothing private?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "connectCalendar": false,
+    "calendarLater": false
+  },
+  "latencyMs": 1724
+}

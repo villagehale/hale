@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reply": "Totally fair not to share your exact address. A coarse code works just as well: just the first three characters of your postal code, or the first five digits of a ZIP, is enough to find what's nearby. What's your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 2,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse"
+  },
+  "latencyMs": 1924
+}

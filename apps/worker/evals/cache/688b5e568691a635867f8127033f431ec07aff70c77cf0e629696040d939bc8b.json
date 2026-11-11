@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgvDpd9PFDqTHTm9ZgFcM",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzwYKEAgTGAI4AUIIdGhpbmtpbmcSDDl5WXcRIl4nRMQ2YxoMPdPVZdsxc0sXSuYhIjDkJeWVxoawD7mmwRq5fcGThIphyDzzM0YqagQyCUtNzfF+jSlPyitlXK7kFtmzFV8q7AXrjNLhDCfe5NjKfkM9JvWt2pSYNepORrW2cwXLOXD4KVZwpb6leAB7ZSPNPat/rhxAoHDpyXBJ1SeFP/hx8Exq3HWsEQ4VK02g7ObuLhth8t6N5wHUlcftT2sT3Vvglj/BTBVn0Joe3Zt9fIWm/lZtm71NkknmZq87c2R5QmFY3cV/+dQ8iH0hN5E7a8gWAWO+rsfIZOx+PlnsUqQLdj3FpgaDAjm8j6c3I/m9+VzXKmfOkHQM9DoyDz7cAdHGNEYloyTN1Czd6zYdLz2e1UWRTOwuckfRnMOHciO6NnI4vwvugPhAkXnSYz7C7EDAj/AHKeTlkVHrq1u85WK3IYoGjFHTaFCk2xrZIEnC9xIBiqYbywE3k85Al1hpSrWMZeJRPTsLGdyruKrFyof1QiloOXTcm717W/4DbMXl4Z1pEtG1qorsEqHPD1es9wHlOXd8W5O1dAARm1dvSDyddVXyWk8vz1t/rIhT2aCXQeVE8Bj+aXjLlBKfa5iQOxK2xdFN7Yo3cDu/YqB4Go5tJ9+HdTiITJDAGHVFkzbWgMHWhOHxFUMFTG6btS7Eq68hqMPp6ykqYWKLdQabjuCHkFsdu5FDAzCme8OLsGk5IY+YZw0+sdS1nUcayMoINbQWRspy4EkZJMQ5ovHkTCFhVzRQx7Q/YC72tIqO7evOP7f3j2LhieGSG3ctCN8cLKMYEeJs3z0hxKWgwPbg+5TB1fd7eIaz9vcPo9r8FGhyOVxZ3nglNbdgdjmhhd3bKUfI5twd+WuvJP08ej24uploNr7xt/lMKhSHzqZRmH1mhI64kBvGzzcGHhI8Kt6auO4VGxt5f2M1U3GCBSq6VGWUX8FKHumoAplBFSmh8AcKO6PgSL483tXyRsgeCPV97EYbCUWXzTsuOFiJQxWFV3ZnUBgErvmjPSTIoCb/qIHiLDcLuC2C6+D0pn5qfFiO1BysfcJUgLzvaBNEcNVEEpmJrkfnBt/K5BBG56CPdFvgGAE="
+      },
+      {
+        "type": "text",
+        "text": "周六上午10点Leo有足球课，在社区中心。这天就这一项安排。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 648,
+      "cache_read_input_tokens": 19833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 648,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 102,
+      "output_tokens_details": {
+        "thinking_tokens": 71
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

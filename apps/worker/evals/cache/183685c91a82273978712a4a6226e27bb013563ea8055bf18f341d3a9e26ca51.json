@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgvDnG7XuEU8hafH8hA21",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStgoKEAgTGAI4AUIIdGhpbmtpbmcSDH1xUw4Xe1XBO+IiyRoMbYWispdY/EJeFo6WIjCtHtVvPec2tZ+WMqq5Zztr34MJ8+bbdLbLzRIW4B4gziVzndd0QNuC+tMMjre5ErUq0wmhPytDRwjH3w30siYolukYWO4dYQMHKZfhNtysrYAU+wh0bkVBm9EkOvDlW3MmGCnrAqIWPOd8ysHHdCJtJHYat2cN3l+R6ELiN3erX+xohNXnZHbFFI129f7GlRflkRp6g504eUawWmyxahjCOhgl1OkgDpTA+JBn5oeXUzFRa6e8ALyO1KelMnbRezo8unh8U1U+SUc1L60uZYn9laaWfagKUCGMbDu2iJm4KD+kYWHuXwM4NOJm6t/VS29LpbM+e6Lv4HxkAwL8HXTaEfnNx3FSlZ+FIZ/8Isap5sFB/kzXhevOj9D34L1bvhEMb0EJjKKdh1HMtmCMLGkhSJ8Q6fhDKF4hbfyPQRyjare5cVy62BaD2oINbMOR0Pf9uQRIfuybWTVez2+xz3p12wIluFmFnTE3O7PA93clgLbOE83Hh23vb8nFuSNnapbuIdgO/hIlLLQ1AaV4tzcEjLPjUPDuQ0ag51pVnNRP15bOaRd7cOIMOnZooCFvdloEk00+JVvI3jZRCkV/z2ROp2w6U7wMWsUpjGp9gfRs/Wgpovc5GsBTUZ9HbbCVvfn7sSdKoRAq4/bj1s+YQzbrklYeEzI+PeF8qtkX183MEkLB53B0Hfpr4ls9a03m0ZcOpf5rNR2npSwz982VQyncBxJPIJ1pNYGejYD2Ti5HZ8r+gh0PI40W/Wkd29Zkpr8jBN1IUB4Apohy4eqj8aebc18Ycvudnej/yfwoy8ub1lwBGgdmanzciXU8T9V+nkYHx1EbKpuSIHFENXu/gbjnH3WUN10o9qUssgMsiCpRBiNKRuhO8y7cqJO2OE4aXj8STgMO2sqQww01hFDf8kCfUxHr+gSlkVO37FSjqwKqfVUfi8M7TxYScHjiqKGx/T+n3tJJag9TlmksdQZ2Vu2Dj3MPMmFUtY88n8wg5H5wenlQMwxDg30aAZaDfXjk+Yem2Vbc5mVMg915W7PGqXChgmUXX2yL5baR5wpRGBJU9WmMAwo/o8cVBr/iOlbM48KUSBJIUqI7Y/qV8gtVsCj9YlFzUwvKDfXLROgvl42rpR//+3TCGe8eefIKc6NI3NHEt4vHAjXF5kcpIL3gMc3f0BbSwc/kjSH3pQFemMq0H2DMxEYqgv71fCNS74/Y9BlTQDU8+jd5dr/ttAAzUAh71CSVBuHokjPPcOE7gM1DumoiuYx0Zudzmv3kG7sWc1bCfY5RgmOVrkyYFX48i3a2JYxsCN6IWd3uF6MMmWUhTgRuFLKvEkcpieZHZEXoqe1a+2brD7uUGaeEe1tHiUJG2NQu5d01pQ599EURY62lxv7juwqkiMyPSQpN/qbJiGatd9q7otpxGvJSUYOWWJcSwslAeuxg9nWn8gWLZkIQOyCXvsk+CMafmI/xgRlgmMn0DY0tRW7EaDBPkzvqShtT4S0JdQludszQmaI4xX55SsLFIgYG2N0cluON9zzOWoMvWqYBU3Gm+a9fUTxWR8H3KHL1k7sWgbuUSTQYsbNMsQ5867eAINb6YfxvUzd+gcLDVos+x0EXb6Ubkm8Keu1Rv9zZY3S1QMO/vmxZYoqkeKHkklvf/hhGr3ihF/CfW6DN9EZmv9UxegdV1zBJskRVkDqZ/mjXt7S1Lyo1ehjogbYajw/k+BgB"
+      },
+      {
+        "type": "text",
+        "text": "Jordan's busy."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 630,
+      "cache_read_input_tokens": 19833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 630,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 263,
+      "output_tokens_details": {
+        "thinking_tokens": 253
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is strong. It leads with a real, local venue (Halton Hills Gymnastics Centre, Georgetown) and an age-fitting Parent and Tot class. It attributes the details to the venue's own site (\"lists\", \"their site says\"), and the Fall 2026 session dates of Sept 12 to Dec 18 match that page. Under page_has_schedule it correctly owns the gap in the first person (\"I could not pin down the day, time or price\") rather than saying \"not posted yet\". With watch true, its first-person promise to keep watching is backed by a real commitment. It has no link and no question. However, the extracted pick list is empty even though a genuine program was found. As a result, the venue and the dates the message states appear nowhere in the picks. That mismatch between extraction and message is a real defect.",
+    "score": 4
+  }
+}

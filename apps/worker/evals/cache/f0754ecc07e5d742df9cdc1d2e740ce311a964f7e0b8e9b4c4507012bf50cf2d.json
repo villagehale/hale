@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Goldfish Swim School is real and local, and the facts come from its own page, which is good. The age bands and the $32.50-per-lesson price do appear in the notes. The rest of the form is right: no question, no link, a first-person gap line ('I couldn't confirm') that fits page_has_schedule, and a first-person watch promise backed by watch=true. The problem is that the pick list is empty, so the message presents a venue and a price that appear nowhere in the picks. The rubric scores a price absent from the picks low. An empty list should also come with a plain account of what was searched and found nothing. Here the extracted picks and the message contradict each other. The message also skips the Town of Oakville's own preschool Lifesaving Society program, which the notes show and which watchFor names as the expected find.",
+    "score": 2
+  }
+}

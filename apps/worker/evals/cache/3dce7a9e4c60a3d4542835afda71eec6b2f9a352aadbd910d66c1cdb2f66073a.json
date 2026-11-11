@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message itself is well formed. It leads with a named, local venue (Goldfish Swim School - Oakville) and attributes its details (\"their site says\"). It uses the first-person gap \"I couldn't pin down days or prices\", which is the correct form under page_has_schedule. Because watch is true, \"I'll keep watching and text you\" is properly a first-person commitment. It has no link and no question. However, the pick list is empty while the message names two venues and states a specific price ($32.50 a lesson) and session details. That price appears nowhere in the picks, which the rubric lists as a low-score fault. An empty pick list should also mean nothing was found, which contradicts a message presenting finds. The figure is grounded in the opened page, but the picks and message are inconsistent, so the stated price is unsupported by the extracted picks.",
+    "score": 2
+  }
+}

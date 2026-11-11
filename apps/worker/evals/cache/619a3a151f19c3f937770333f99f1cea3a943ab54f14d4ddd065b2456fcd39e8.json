@@ -1,0 +1,19 @@
+{
+  "value": {
+    "reply": "Pas de problème, on laisse le code de côté. Je ne peux pas te trouver des activités à proximité sans un minimum de repère, mais on peut continuer sans. Quel est le prénom de ton enfant (ou de tes enfants) ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1973
+}

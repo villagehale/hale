@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "body": "thanks for holding that spot for mira's 18-month visit. i got your note about tuesday june 23 at 5:30 pm.",
+      "subject": "Re: Confirm visit"
+    },
+    "confidence": 0.55,
+    "rationale": "No parent yes to the offered slot is in the input, so the reply acknowledges the offer without accepting or booking it.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  },
+  "latencyMs": 4273
+}

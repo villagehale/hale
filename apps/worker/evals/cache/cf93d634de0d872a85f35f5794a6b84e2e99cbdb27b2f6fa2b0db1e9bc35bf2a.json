@@ -1,0 +1,16 @@
+{
+  "value": {
+    "payload": {
+      "item": "size 4 diapers",
+      "vendor": "DiaperCo",
+      "unit_price": "42.99",
+      "quantity": 1,
+      "note": "supply is down to about 1 day remaining. quantity not specified in the input, so defaulting to 1 for the parent to adjust before approving."
+    },
+    "confidence": 0.6,
+    "rationale": "Supply is down to 1 day, so I drafted a one-unit reorder from DiaperCo at $42.99 and left quantity for the parent to confirm.",
+    "recipient_visibility": "internal_only",
+    "commits_parent_to_enrollment_booking_or_payment": true
+  },
+  "latencyMs": 2924
+}

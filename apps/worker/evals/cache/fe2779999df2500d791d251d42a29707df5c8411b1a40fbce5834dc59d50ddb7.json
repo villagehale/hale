@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what an approval_card should. The date (Saturday, September 12, 2026, which matches against now), the 9 h time, Léa and the link are all correct. It lists all three texts with their timing (a week before, the evening before, 15 minutes before) and says plainly that Hale never registers. It correctly leaves out the course-link tip, restates that no age band is published, and asks no question, since telling the parent to approve is allowed. Minor nits: 'le bouton à l'écran' is a small UI detail not in the facts, and the tone is a bit formal for a friendly text.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has real strengths. It leads with a named, real Oakville venue (Goldfish Swim School, 1130 Eighth Line). The facts are attributed to the venue's own page (\"on their site\"), and the age bands and $32.50 match that page. The gap is framed in the first person, as page_has_schedule requires. Watch is true and the follow-up is a first-person commitment. There is no link and no question. However, the extracted picks list is empty while the message presents a find with a specific price, so the $32.50 appears nowhere in the picks. That is a listed low-score trigger, even though the figure is traceable to the page. It also passes over the Town of Oakville's own Lifesaving Society preschool levels (Preschool A–E) on oakville.ca, the municipal staple that watchFor expected, so the find set is incomplete.",
+    "score": 3
+  }
+}

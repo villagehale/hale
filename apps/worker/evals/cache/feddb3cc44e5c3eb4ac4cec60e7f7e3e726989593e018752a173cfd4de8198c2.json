@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The input is an order-placement payload, not a family message, so it does not fit the tone-and-appropriateness task; the draft is also a machine-style record with a defaulted quantity of 1 and an invented unit price and vendor not clearly grounded in the input, so it cannot be judged as a warm, correct family message.",
+    "score": 1
+  }
+}

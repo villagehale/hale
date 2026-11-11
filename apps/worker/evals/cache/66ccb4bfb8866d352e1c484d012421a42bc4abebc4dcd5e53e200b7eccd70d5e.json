@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reply": "Mostly kids' classes, lessons, drop-in sessions and library or community programs, sorted by age, so you only see what fits Mia and Leo. Once I know how old each of them is, I'll look for what's near you. How old are Mia and Leo?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1870
+}

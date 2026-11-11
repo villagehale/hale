@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is otherwise well built. It leads with a named, real local venue (Goldfish Swim School – Oakville, Junior for ages 3-4, which fits the stage) and attributes with \"their site says.\" Both sources are the venues' own pages, not aggregators. There is no question and no link. Under page_has_schedule, the gaps are correctly owned in the first person (\"I couldn't confirm dates\", \"I couldn't pin down days or prices\"). Because watch is true, \"I'll keep watching and text you\" is a legitimate commitment. The decisive problem is that the picks list is empty, yet the message presents two finds and a specific price ($32.50 a lesson) and session length. The rubric scores low any price or time that appears nowhere in the picks. An empty pick list should also mean nothing was found, and the message contradicts that. Although the figure does appear on the Goldfish page, the message states details the extracted picks do not carry.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is a calendar event, not a family message, so it is off-purpose for a tone evaluation; the content itself is clear and specific but contains no warm or relational language, and the location and doctor details are not verifiable from the input. Scoring low for being off-purpose and non-conversational.",
+    "score": 2
+  }
+}

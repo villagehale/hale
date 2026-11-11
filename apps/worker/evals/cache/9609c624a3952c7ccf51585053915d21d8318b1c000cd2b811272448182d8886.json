@@ -1,0 +1,20 @@
+{
+  "value": {
+    "reply": "Google shares the whole inbox with Hale, yes, all of it. Hale keeps and uses only what is about the kids, and never sends email. You can disconnect any time. Want to connect Gmail so I can catch the kids' things as they come in?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "language": "zh"
+  },
+  "latencyMs": 2509
+}

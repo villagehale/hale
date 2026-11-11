@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is an outcome_waitlisted message with no deadline. It correctly says the town publishes no response window, so there is no clock to set. It doesn't invent a position: saying the position is unknown fits position being null. It asks no question. It is in French, keeps Riverton right and names no child. Telling the parent to watch their email for a possible offer is handed. The tone is friendly and natural. One small point: 'je note' could read as recording something, but it is mild.",
+    "score": 5
+  }
+}

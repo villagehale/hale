@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and does what course_link_refused asks for page_unreadable. It says plainly why Hale did not take the link: the page could not be read. It carries no link, saves nothing ('rien n'a changé de mon côté') and asks once for the same link again. It makes no claims the facts do not give, and the tone is friendly.",
+    "score": 5
+  }
+}
