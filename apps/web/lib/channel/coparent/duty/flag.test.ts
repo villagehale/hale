@@ -7,6 +7,8 @@ import {
   COPARENT_DUTY_MEMORY_ENABLED_ENV,
   COPARENT_DUTY_SENDS_ALLOWLIST_ENV,
   COPARENT_DUTY_SENDS_ENABLED_ENV,
+  COPARENT_SPLIT_DUTY_ALLOWLIST_ENV,
+  COPARENT_SPLIT_DUTY_ENABLED_ENV,
   coparentDutyAsksActive,
   coparentDutyAsksArmed,
   coparentDutyAsksEnabled,
@@ -16,6 +18,9 @@ import {
   coparentDutySendsActive,
   coparentDutySendsArmed,
   coparentDutySendsEnabled,
+  coparentSplitDutyActive,
+  coparentSplitDutyArmed,
+  coparentSplitDutyEnabled,
 } from './flag';
 
 afterEach(() => {
@@ -86,5 +91,31 @@ describe('coparent duty memory flags', () => {
       vi.stubEnv(env, 'true');
       expect(read()).toBe(true);
     }
+  });
+});
+
+describe('coparent split-duty flag (VIL-661)', () => {
+  it('is off unless the value is exactly true', () => {
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, '');
+    expect(coparentSplitDutyEnabled()).toBe(false);
+    expect(coparentSplitDutyArmed()).toBe(false);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true\n');
+    expect(coparentSplitDutyEnabled()).toBe(false);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'TRUE');
+    expect(coparentSplitDutyEnabled()).toBe(false);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'on');
+    expect(coparentSplitDutyEnabled()).toBe(false);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    expect(coparentSplitDutyEnabled()).toBe(true);
+    expect(coparentSplitDutyActive('fam-1')).toBe(true);
+  });
+
+  it('allowlists families while the global flag is off', () => {
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, '');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ALLOWLIST_ENV, ' fam-a , fam-b ,, ');
+    expect(coparentSplitDutyEnabled()).toBe(false);
+    expect(coparentSplitDutyArmed()).toBe(true);
+    expect(coparentSplitDutyActive('fam-a')).toBe(true);
+    expect(coparentSplitDutyActive('fam-c')).toBe(false);
   });
 });

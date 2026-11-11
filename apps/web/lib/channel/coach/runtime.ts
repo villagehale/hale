@@ -41,6 +41,10 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import {
+  ageFitCorrectionEnabled,
+  appendAgeFitCorrectionSkill,
+} from '~/lib/channel/intake/age-fit-correction';
 import { loadHouseholdGroupFact } from '~/lib/channel/intake/household-group';
 import {
   linqExperiencesEnabled,
@@ -132,6 +136,7 @@ import {
   localDayContext,
 } from './local-day';
 import { familyLocalNow } from './local-now';
+import { appendNoGroupRelaySkill, group1to1NoGroupRelayEnabled } from './no-group-relay';
 import {
   type CoachEmailReader,
   READ_EMAIL_SKILL,
@@ -188,35 +193,24 @@ import { augmentCoachSkillForVoiceMemos, replyAsVoiceMemoTool } from './voice-me
  * drafts → answer, and a hard stop short of a loop that would outrun the ack. */
 const MAX_STEPS = 6;
 /**
- * The whole COMPLETION budget for one step — thinking and text share it.
+ * The whole COMPLETION budget for one step — thinking, tool calls, and text share it.
  *
- * Left at 400, and that is a decision rather than an omission. 400 was set as a reply
- * ceiling when this lane emitted text and nothing else: a two-segment reply is ~40
- * tokens, so 400 was ten times what an answer could need. Then `converse` became
- * `{ thinking: 'adaptive', effort: 'high' }` (packages/agent/src/model.ts) and it stopped
- * being a reply ceiling — it became the ceiling on thinking PLUS reply, spent in that
- * order, and a hard turn spends all of it thinking and emits no text at all. That is
- * prod's one failed `coach-channel-sms` run, 2026-08-22 17:41: 16,828 prompt tokens, 400
- * completion tokens, 399 of them thinking, zero text blocks — the founder's own "Tiny
- * gym" follow-up, whose antecedent was in the transcript at index 17 of 20 the whole
- * time. The context was never the problem on that turn. The budget was.
+ * 400 was a reply ceiling when this lane emitted text and nothing else. Then `converse`
+ * became `{ thinking: 'adaptive', effort: 'high' }` and the 400 was spent thinking:
+ * prod's failed `coach-channel-sms` run on 2026-08-22 returned 399 thinking tokens and
+ * no text. The thinking-off re-ask at that same 400 still offered tools, so a broad
+ * follow-up could spend the recovery on another call and never speak — VIL-536, Preview
+ * 2026-11-01: "show me everything you found, grouped", `truncated before speaking
+ * (1 re-ask)`, `draftedThisTurn` 0, parent got the failed-turn apology.
  *
- * THE FIX IS NOT A BIGGER NUMBER HERE, and the corpus is what settled that. Raising this
- * to 1,024 does cure the truncation, and it also makes the model reason its way past its
- * second source: across live re-records `registration-window-plus-a-find` went from 0/3
- * to 2/4 failures on "never called find_activities", and `village-one-verified-one-not`
- * from 2/3 to 4/4 on "never called search_village". 700 splits the difference and gets
- * neither — it still truncated `yes-with-nothing-open` on the full corpus run. Room given
- * to every turn is room the model finds something to do with.
- *
- * So the room goes to the turn that PROVED it needed it: `runAgent` re-asks a step that
- * hit the ceiling before saying anything, once, with thinking OFF at this same budget
- * (packages/agent/src/agent.ts `isTruncatedBeforeSpeaking`, model.ts `withoutThinking`)
- * — the one request shape on which 400 is a reply ceiling again, because no field on
- * Sonnet 5 bounds the thinking half. Ordinary turns keep the ceiling — and their
- * prompt-cache keys — untouched.
+ * 2000 is the ceiling thinking, tools, and a grouped reply can share on the first
+ * attempt (PR #998). `runAgent` still re-asks a step that hits it before saying
+ * anything, once, with thinking off and with tools dropped, so the leftover cannot be
+ * spent on another call (`isTruncatedBeforeSpeaking`, `withoutThinking`). Changing this
+ * number moves the coach prompt-cache keys.
  */
-const MAX_TOKENS = 400;
+export const CHANNEL_COACH_MAX_TOKENS = 2000;
+const MAX_TOKENS = CHANNEL_COACH_MAX_TOKENS;
 
 /** The agent_runs name for a texted turn (migration 0075). The texted coach is the
  * live surface, with its own latency and cost shape. */
@@ -451,9 +445,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // VIL-510: nearby-find voice + link rules ride as an addendum so the disk
       // coach-channel-sms bytes (and every eval recording keyed on them) stay put.
       const nearbyFind = await loadCronSkill('coach-nearby-find');
+      // Postal town is home. A separate file so the standing coach-channel recordings,
+      // keyed on sms + nearby-find, stay put until they are re-recorded.
+      const homePlace = await loadCronSkill('coach-home-place');
       const baseSkill = {
         ...groupedSkill,
-        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
+        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
       };
       // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
       // itself stays byte-identical, so coach-channel and group-privacy
@@ -529,12 +526,29 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       });
       const declined: DeferredCapability[] = [];
       const corrected: DeferredCapability[] = [];
+      // VIL-568: age-fit correction rides only on a 1:1 turn with the flag on.
+      // Dark and group turns keep the skill bytes they already had.
+      const withAgeFit = appendAgeFitCorrectionSkill(
+        skill,
+        turn.audience !== 'group' && ageFitCorrectionEnabled()
+          ? await loadCronSkill('age-fit-correction')
+          : null,
+      );
+      // VIL-577: a 1:1 yes or ask to tell the group rides only with the flag on.
+      // Dark and group turns keep the skill bytes they already had. The aside
+      // already never offers; this is the later coach turn.
+      const withNoRelay = appendNoGroupRelaySkill(
+        withAgeFit,
+        turn.audience !== 'group' && group1to1NoGroupRelayEnabled()
+          ? await loadCronSkill('coach-no-group-relay')
+          : null,
+      );
       // VIL-447: list reply tone rides last, and only on a group turn with the flag on.
       // Dark and 1:1 turns keep the skill bytes they already had.
       const coachSkill =
         turn.audience === 'group' && groupSharedListsEnabled()
-          ? await appendGroupListsReply(skill)
-          : skill;
+          ? await appendGroupListsReply(withNoRelay)
+          : withNoRelay;
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them

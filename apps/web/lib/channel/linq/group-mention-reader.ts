@@ -17,8 +17,8 @@ import type { LinqInboundMention } from './payload';
  *
  * Code owns the seats and the handle. The `group-mention-read` skill sees first
  * names and roles, never phones. Off unless `LINQ_GROUP_MENTIONS_ENABLED` is
- * exactly `true` and `VERCEL_ENV` is `preview`. A failed read sends the reply
- * without a mention and logs.
+ * exactly `true` (trimmed). A failed read sends the reply without a mention and
+ * logs.
  */
 
 export interface MentionableMember {

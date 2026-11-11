@@ -489,13 +489,21 @@ async function calendarPlacement(
   const endsAt = optionalPayloadInstant(payload.endsAt, 'endsAt', actionType);
 
   if (actionType === 'calendar_move') {
-    // Only the new time. The row keeps its own title and place — see CalendarMoveInput.
+    // Time always. Place only when the schedule-change path set updateLocation
+    // (VIL-662). Coach moves omit that flag, so a projected/redacted location
+    // on the payload cannot overwrite the row (VIL-270).
     const result = await deps.moveCalendarEvent({
       familyId: input.familyId,
       actionId: input.approved.id,
       reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
       startsAt,
       endsAt,
+      ...(payload.updateLocation === true
+        ? {
+            updateLocation: true as const,
+            location: typeof payload.location === 'string' ? payload.location : null,
+          }
+        : {}),
     });
     const google = await syncGoogle(input, deps, result, 'update');
     const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'REQUEST');

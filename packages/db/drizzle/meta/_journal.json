@@ -1485,6 +1485,13 @@
       "when": 1794365222000,
       "tag": "0228_proactive_candidates_payload",
       "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1794365223000,
+      "tag": "0229_team_schedule_changes",
+      "breakpoints": true
     }
   ]
 }

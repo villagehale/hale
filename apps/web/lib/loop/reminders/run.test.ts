@@ -69,6 +69,7 @@ function liveEvent(over: Partial<LiveEvent> = {}): LiveEvent {
     location: null,
     googleEventId: null,
     createdBy: null,
+    dutyOwnerUserId: null,
     kidVerdict: null,
     ...over,
   };

@@ -73,6 +73,11 @@ import {
   readSessionGoing,
 } from './going';
 import { readRecentNotices } from './recent-notices';
+import {
+  applyTeamScheduleChange,
+  teamScheduleChangesActive,
+  teamSchedulePortsFor,
+} from './team-schedule';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -189,6 +194,14 @@ export const EMAIL_ALERT_OUTCOMES = [
   /** An earlier text for this occasion in this thread failed. Its claim stays held (the
    * ledger is at-most-once per key), so nothing is sent. */
   'occasion_send_failed',
+  /** VIL-662 · a matched team schedule change was held for the parent's yes. */
+  'schedule_change_asked',
+  /** VIL-662 · autonomy applied the matched move or cancel. */
+  'schedule_change_applied',
+  /** VIL-662 · the model could not write the parent text. Nothing was sent. */
+  'schedule_change_unwritten',
+  /** VIL-662 · a matched change, but no claimed 1:1 chat to tell the driver. */
+  'no_chat',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
@@ -690,6 +703,29 @@ export async function alertParentForEmail(
     timeZone: input.timeZone,
     now,
   });
+
+  // VIL-662 · a matched team schedule change updates the calendar (ask, or
+  // autonomy) instead of only texting about the email. Unmatched mail falls
+  // through to the notice below.
+  if (teamScheduleChangesActive(familyId)) {
+    const schedule = await applyTeamScheduleChange(
+      database,
+      {
+        familyId,
+        parentUserId,
+        integrationId,
+        messageId,
+        timeZone: input.timeZone,
+        now,
+        classification,
+        children: await ports.familyChildren(),
+      },
+      teamSchedulePortsFor(database, ports.transport, familyId, now),
+    );
+    if (schedule.handled) {
+      return { alert: schedule.outcome, booking: null, going: null };
+    }
+  }
 
   // ALREADY ON THE CALENDAR AND UNCHANGED: a reminder, a re-announcement or a second
   // receipt for an occasion the family already holds is a duplicate of what they have.

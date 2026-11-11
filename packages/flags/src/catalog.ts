@@ -143,9 +143,8 @@ export const FLAGS = [
   trimmed('linq-group-carpool', 'LINQ_GROUP_CARPOOL_ENABLED'),
   trimmed('linq-group-conflict-alerts', 'LINQ_GROUP_CONFLICT_ALERTS_ENABLED'),
   trimmed('linq-group-members', 'LINQ_GROUP_MEMBERS_ENABLED'),
-  trimmed('linq-group-mentions', 'LINQ_GROUP_MENTIONS_ENABLED', {
-    envAlso: { env: 'VERCEL_ENV', value: 'preview' },
-  }),
+  // VIL-475: Production may light it like any other env (preview-only gate lifted).
+  trimmed('linq-group-mentions', 'LINQ_GROUP_MENTIONS_ENABLED'),
   trimmed('linq-group-onboarding-v2', 'LINQ_GROUP_ONBOARDING_V2_ENABLED'),
   trimmed('linq-group-plan-rsvp', 'LINQ_GROUP_PLAN_RSVP_ENABLED'),
   trimmed('linq-group-polls', 'LINQ_GROUP_POLLS_ENABLED'),

@@ -14,6 +14,7 @@ import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
 import {
+  CHANNEL_COACH_MAX_TOKENS,
   type ChannelCoachPorts,
   channelCoachRuntime,
   productionChannelCoachPorts,
@@ -124,6 +125,23 @@ describe('channelCoachRuntime', () => {
     const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
+  });
+
+  /** VIL-536: thinking and tool calls share this ceiling with the reply. 400 was spent
+   * before the model spoke on a broad grouped-map ask; 2000 is the room the reply keeps. */
+  it('hands the loop a completion budget thinking and tools cannot spend alone', async () => {
+    let seen: number | undefined;
+    const p = ports({
+      runAgent: async (args) => {
+        seen = args.maxTokens;
+        return answering('Move swim to Tue 4:30? YES to confirm.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(seen).toBe(CHANNEL_COACH_MAX_TOKENS);
+    expect(CHANNEL_COACH_MAX_TOKENS).toBe(2000);
   });
 
   /**
@@ -382,6 +400,52 @@ describe('channelCoachRuntime', () => {
     expect(seen[0]?.instructions).not.toContain(tone.instructions);
     expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
     expect(seen[2]?.instructions).not.toContain(tone.instructions);
+  });
+
+  it('appends the age-fit correction skill only on a 1:1 turn with AGE_FIT_CORRECTION_ENABLED on (VIL-568)', async () => {
+    const addendum = (await loadCronSkill('age-fit-correction')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
+  });
+
+  it('appends the no-group-relay skill only on a 1:1 turn with GROUP_1TO1_NO_GROUP_RELAY_ENABLED on (VIL-577)', async () => {
+    const addendum = (await loadCronSkill('coach-no-group-relay')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.skill.instructions);
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
   });
 
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
