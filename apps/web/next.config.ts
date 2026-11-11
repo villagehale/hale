@@ -78,8 +78,9 @@ const config: NextConfig = {
     '@hale/worker',
   ],
   serverExternalPackages: [
-    // Launch flags: node:crypto HMAC + posthog-node local eval. Not for the browser.
-    '@hale/flags',
+    // posthog-node local eval for @hale/flags. @hale/flags itself is BUNDLED, not
+    // external: its dist is ESM, and an external is loaded with require(), which
+    // threw ERR_REQUIRE_ESM on every route in Prod (VIL-674).
     'posthog-node',
     'postgres',
     'pg-boss',
@@ -126,14 +127,13 @@ const config: NextConfig = {
       '.mjs': ['.mts', '.mjs'],
     };
     if (isServer && nextRuntime === 'nodejs') {
-      // pnpm workspace packages resolve to ../../packages/flags, which bypasses
-      // serverExternalPackages. Keep node:crypto / posthog-node out of webpack.
+      // Keep node:crypto / posthog-node out of webpack. @hale/flags is bundled (its
+      // ESM dist cannot be require()d by the server runtime; VIL-674).
       const previous = config.externals;
       config.externals = [
         ...(Array.isArray(previous) ? previous : previous ? [previous] : []),
         ({ request }: { request?: string }, callback: (err?: null, result?: string) => void) => {
           if (
-            request === '@hale/flags' ||
             request === 'posthog-node' ||
             (typeof request === 'string' && request.startsWith('node:'))
           ) {
