@@ -13,6 +13,7 @@ tools: []
 - `evidence` is the excerpt or note from that source. Write in the language of that evidence, or in the parent's language when `language` is set.
 - `registrationUrl` is the page. Include it exactly once, as given. Include no other link.
 - `sessions` are the open slots Hale saw: labels, times, whether each is full, and the price when one is stated.
+- Name at least one session by its `label`, written exactly as given, so the parent knows which class this is.
 - `approvedPriceCents` is the price the parent has already accepted, in cents, or null when they have not.
 - `childFirstName` is set only for a child under 13. Use it when it helps. Do not invent a name.
 

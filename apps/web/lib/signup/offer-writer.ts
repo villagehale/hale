@@ -35,7 +35,6 @@ export interface SignupOfferWriter {
   write(facts: SignupOfferFacts): Promise<string | null>;
 }
 
-const MAX_CHARS = 480;
 export const SIGNUP_OFFER_MAX_TOKENS = 300;
 export const SIGNUP_OFFER_TOOL = 'signup_offer';
 export const signupOfferSchema = z.object({ text: z.string() });
@@ -50,7 +49,6 @@ export function signupOfferViolations(text: string, facts: SignupOfferFacts): st
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
-  if (tidy.length > MAX_CHARS) out.push('too long');
   if (!tidy.includes(facts.registrationUrl)) out.push('missing the registration link');
   if (hasLinkBeyond(tidy, [facts.registrationUrl])) out.push('contains another link');
   const grounded = facts.sessions.some((session) => tidy.includes(session.label));
