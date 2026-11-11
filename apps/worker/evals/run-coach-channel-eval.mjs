@@ -745,7 +745,7 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) {
+function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs, searchTown = null) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -885,7 +885,7 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
   const findActivities = agent.defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code. The child's age band and the family's home town are attached from their record. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of home. Omit `area` to search around home. Age and that place are the only location and age that leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. A found result carries `family`: the children (age and stage; a teen is a stage only), the home area (where they live; the search used `area` when you passed one), and the family's durable preferences (indoor/outdoor, not scary, stroller, language and the like). Rank by it and let it shape who you say a pick is for, in your own words — never recite it back as a profile, and treat an empty field as unknown, not as something to guess. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the home town are attached from their record; a different place is the `area` you pass.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code. The child's age band and the family's home town are attached from their record. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of home. Omit `area` to search around home. Age and that place are the only location and age that leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. A found result carries `family`: the children (age and stage; a teen is a stage only), the home area (where they live; the search used `area` when you passed one), and the family's durable preferences (indoor/outdoor, not scary, stroller, language and the like). Rank by it and let it shape who you say a pick is for, in your own words — never recite it back as a profile, and treat an empty field as unknown, not as something to guess. `family` is the record and it is current: where the children's ages or the home area in it differ from an earlier message in this thread (an older town, a younger age), the record wins — rank, choose the town, and say who a pick suits from `family`, not from the old mention, unless the parent asks in THIS message about somewhere else. Never tell the parent about a record, profile, memory or mismatch, and never say what you hold on file: just use the right place and age, as a friend who knows them would. Each preference says where it came from (`source`: the parent said it, a calendar or receipt, or `inferred` — your own guess) and when (`seenOn`); lean on what the parent said over what was inferred. `family.preferences` are the only remembered interests in this result. A stale guess is not included, so it must not choose the subject you search, the town, or the pick you hand over, and you must not state an interest or a town you were not given. `recheck` is empty. There is no set sentence. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the home town are attached from their record; a different place is the `area` you pass.",
     inputSchema: z.object({
       subject: z.string().min(1),
       window: z.string().optional(),
@@ -897,8 +897,12 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
       { subject: 'indoor swim lessons' },
       { subject: 'trick or treat', window: 'this weekend', area: 'Kingston' },
     ],
-    handler: async () => {
-      record('find_activities');
+    handler: async (input) => {
+      // Standing fixtures record the call alone, so their tool-result bytes stay the
+      // ones the cache was recorded against. A postal-town fixture also records the
+      // town the record attached, which is the town the search actually uses.
+      if (searchTown) record('find_activities', { subject: input.subject, town: searchTown });
+      else record('find_activities');
       // What the model sees: each page's ref, never its URL (activity/tools.ts).
       // One pick for the standing corpus — the same object the single-pick path built.
       const result = {
@@ -908,6 +912,9 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
           const { url, ...shown } = webPick;
           return url ? { ...shown, ref: linkRef(url) } : shown;
         }),
+        ...(searchTown
+          ? { family: { homeArea: searchTown, preferences: [], recheck: [] } }
+          : {}),
       };
       toolOutputs.push(result);
       return result;
@@ -1163,6 +1170,9 @@ function channelContext(fixture, compact, severed = false) {
     // VIL-429: a fixture that holds a fact Hale read in email or the calendar carries it
     // here, `seenIn` and all; every other fixture keeps the empty list it recorded with.
     memoryFacts: fixture.memoryFacts ?? [],
+    // Absent on the standing corpus. A present brief is part of this turn's context
+    // only, so other recordings keep the key set they were hashed with.
+    ...(fixture.memoryBrief ? { memoryBrief: fixture.memoryBrief } : {}),
     recentEpisodes: [],
     // The thread so far, THROUGH THE REAL COMPACTOR — verbatim tail plus the digest of
     // what it dropped, exactly the two fields loadAgentContext puts on the context. This
@@ -1244,13 +1254,17 @@ function makeCachedAgentClient(
         };
         const cached = await cacheGet(key);
         if (isDryRun()) {
-          // --dry (VIL-467): price this leg as the guard would, cached or not, and never
-          // call. An uncached leg ends the turn with a max-length stand-in reply, so a
-          // tool loop past it is not priced (the worst case is per leg made, see report).
+          // --dry / --estimate: price this leg as the guard would, cached or not, and
+          // never call. An uncached leg ends the turn with a max-length stand-in reply,
+          // so a tool loop past it is not priced (the worst case is per leg made).
+          const priced = dryRequestPlanEntry(`${tag}:agent`, request);
+          priced.key = key;
           DRY_SUBJECT_PLAN.push({
-            ...dryRequestPlanEntry(`${tag}:agent`, request),
+            ...priced,
             cached: Boolean(cached),
+            key,
           });
+          console.log(`cache-key subject ${tag} ${key} ${cached ? 'hit' : 'miss'}`);
           if (!cached) {
             return note({
               id: 'dry',
@@ -1418,6 +1432,12 @@ function groundedHay(fixture, toolResults) {
   // The parent's own name and town ride on the same context object (loadAgentContext
   // parentName / location), so addressing them by name is recall, not invention.
   parts.push(CONTEXT_PARENT_NAME, cityFor(fixture));
+  for (const fact of fixture.memoryFacts ?? []) {
+    parts.push(
+      fact.factKey,
+      typeof fact.factValue === 'string' ? fact.factValue : JSON.stringify(fact.factValue),
+    );
+  }
   parts.push(...CONNECTABLE_SERVICES);
   // THE THREAD GROUNDS TOO. A venue Hale itself named two messages ago is recall — and
   // on a fixture whose whole subject is a "yes" to that message, every noun in it would
@@ -1568,6 +1588,23 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
 
   for (const tool of expect.mustCall ?? []) {
     if (!toolNames.has(tool)) failures.push(`never called ${tool}`);
+  }
+  if (expect.searchTown) {
+    const searches = calls.filter((call) => call.tool === 'find_activities');
+    if (searches.length === 0) failures.push('never searched');
+    for (const call of searches) {
+      if (call.town !== expect.searchTown) {
+        failures.push(`searched ${call.town ?? 'no town'}, not ${expect.searchTown}`);
+      }
+    }
+  }
+  if (expect.subjectMustNotName) {
+    const banned = String(expect.subjectMustNotName).toLowerCase();
+    for (const call of calls.filter((call) => call.tool === 'find_activities')) {
+      if (String(call.subject ?? '').toLowerCase().includes(banned)) {
+        failures.push(`search subject names ${expect.subjectMustNotName}`);
+      }
+    }
   }
   if (expect.cardForUrl) {
     const card = calls.find((call) => call.tool === 'share_experience_card');
@@ -1808,6 +1845,7 @@ const BROKEN_CALLS = [
 ];
 
 async function main() {
+  if (process.argv.includes('--estimate')) process.env.HALE_EVAL_DRY = '1';
   assertRunFlags([
     '--broken',
     '--show',
@@ -1819,6 +1857,7 @@ async function main() {
     '--min-samples',
     '--env-file',
     '--max-usd',
+    '--estimate',
   ]);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -1872,6 +1911,9 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
+  if (process.argv.includes('--estimate') && !process.env.HALE_SPEND_LEDGER) {
+    process.env.HALE_SPEND_LEDGER = '/tmp/hale-eval-estimate-ledger.json';
+  }
   installEvalSpendCap();
   const getJudgeClient = lazyAnthropic('coach-channel-judge');
   const getCurrentClient = lazyAnthropic('coach-channel');
@@ -1884,6 +1926,11 @@ async function main() {
   const skill = withAddendum(
     await agent.loadSkill(SKILL_PATH),
     await agent.loadSkill(join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-nearby-find.md')),
+  );
+  // Production appends this on every channel turn. The standing corpus does not, so
+  // those recordings keep their keys. The postal-home fixture does, matching production.
+  const homePlaceSkill = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-home-place.md'),
   );
   const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } = await tsImport(
     EXPERIENCE_CARD_TOOL_SRC,
@@ -2006,6 +2053,7 @@ async function main() {
           spots,
           webPicksFor(fixture),
           toolOutputs,
+          fixture.postalTown ?? null,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
         ...(fixture.autonomy
@@ -2013,6 +2061,7 @@ async function main() {
           : []),
       ];
       let turnSkill = augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true);
+      if (fixture.postalTown) turnSkill = withAddendum(turnSkill, homePlaceSkill);
       // VIL-500: only these fixtures see the card verb and the lit addendum. Every other
       // turn keeps the disk skill and the tool list the cache was recorded against.
       if (fixture.experienceCard) {
@@ -2184,6 +2233,10 @@ async function main() {
               //
               // `undefined`, not `null`, on every turn without one — JSON.stringify
               // drops undefined, so every judge verdict already committed stays valid.
+              home:
+                fixture.judgeHome === undefined
+                  ? undefined
+                  : fixture.judgeHome,
               nearbyCountAppended:
                 fixture.nearby &&
                 nearbyCountWasAppended(
@@ -2493,6 +2546,17 @@ async function main() {
 
   if (isDryRun()) {
     console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan]));
+    const seen = new Set();
+    for (const row of DRY_SUBJECT_PLAN) {
+      if (!row.key || seen.has(row.key)) continue;
+      seen.add(row.key);
+      console.log(`cache-key subject ${row.tag} ${row.key}`);
+    }
+    for (const row of [...(judge.plan ?? []), ...(clashJudge.plan ?? [])]) {
+      if (!row.key || seen.has(row.key)) continue;
+      seen.add(row.key);
+      console.log(`cache-key judge ${row.tag} ${row.key}`);
+    }
     process.exit(0);
   }
   console.log('\n--- gate ---');

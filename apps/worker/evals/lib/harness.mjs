@@ -1360,6 +1360,7 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
       const worstUsd = cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens);
       plan.push({
         tag: sampleTag,
+        key,
         cached: Boolean(hit),
         ...(hit ? { score: cached.parsed.score } : {}),
         inputTokens,

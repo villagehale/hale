@@ -135,6 +135,10 @@
     "file": "coach-group-lists.md",
     "sha256": "6356a5810c5a49937f948fa3dc2c8b7b147babbca9b843b41beb8f6489cf2cdb"
   },
+  "coach-home-place.md": {
+    "file": "coach-home-place.md",
+    "sha256": "c31c5cd5e664c961ffdb9071aca18605ff48c450916742aa4cd97d6e74fb9ad1"
+  },
   "coach-local-day.md": {
     "file": "coach-local-day.md",
     "sha256": "2623acdeda6865fb09415b2074c259774232016b10be4b8c014af31e48b9e9f4"
