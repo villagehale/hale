@@ -1,0 +1,14 @@
+{
+  "value": {
+    "intent": "plan_needs_driver",
+    "driverName": null,
+    "driverIsSender": false,
+    "eventLabel": "game",
+    "pickupDate": "2026-11-01",
+    "pickupTime": "08:00",
+    "pickupPlace": null,
+    "kids": null,
+    "confidence": "high"
+  },
+  "latencyMs": 1500
+}
