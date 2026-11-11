@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import {
   BrowserUseEngineThrew,
   PAYMENT_RUN_MAX_COST_USD,
@@ -370,6 +371,17 @@ async function runOnePlan(
     }
     if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
       return parkAndTell(database, plan, result, now, host, deps);
+    }
+    if (result.detail === 'review_placed_order') {
+      const page = await pageOps(database, {
+        site: 'registration_review_placed_order',
+        facts: {},
+        ref: plan.offerId,
+      });
+      console.warn(
+        { offerId: plan.offerId, page },
+        'signup plans: the checkout review says it placed the order',
+      );
     }
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
     return end({

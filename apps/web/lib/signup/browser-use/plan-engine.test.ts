@@ -496,6 +496,31 @@ describe('the final total, read before the saved card is charged', () => {
     expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
   });
 
+  it('no currency on either page is currency_unknown, never paid: two unknowns are not a match', async () => {
+    const { deps, log } = setup({
+      plan: { ...CHECKOUT, cart_currency: null },
+      review: { ...REVIEW, currency: null },
+      payment: PAID,
+    });
+    const { input, steps, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'currency_unknown',
+      liveViewUrl: LIVE,
+      amountChargedCents: null,
+    });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    expect(steps.at(-1)).toMatchObject({
+      step: 'final_total',
+      currency: null,
+      detail: 'currency_unknown',
+      ok: false,
+    });
+  });
+
   it('runs the spending cap again on the final total: a refusal there is never paid', async () => {
     // $90.00 in the cart passes; $99.00 with fees does not, under a $95.00 cap.
     const cap = vi.fn(async (cents: number) =>
@@ -533,7 +558,7 @@ describe('the final total, read before the saved card is charged', () => {
     expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
   });
 
-  it('a review that placed the order is a payment boundary: the browser stops, no payment run', async () => {
+  it('a review that says it placed the order may have charged the card: its own detail, the browser kept, a payment row, no payment run', async () => {
     const { deps, log } = setup({
       plan: CHECKOUT,
       review: { ...REVIEW, order_placed: true },
@@ -544,19 +569,37 @@ describe('the final total, read before the saved card is charged', () => {
 
     expect(result).toMatchObject({
       outcome: 'needs_human',
-      detail: 'payment_boundary',
-      liveViewUrl: null,
+      detail: 'review_placed_order',
+      liveViewUrl: LIVE,
+      sessionId: 'bu-session-1',
+      browserId: 'browser-1',
       confirmationNumber: null,
       amountChargedCents: null,
     });
     expect(skills(log)).toEqual(PLAN_AND_REVIEW);
     expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
-    expect(browserStops(log).map((r) => r.path)).toEqual(['/browsers/browser-1']);
-    expect(steps.at(-1)).toMatchObject({
-      step: 'final_total',
-      detail: 'payment_boundary',
-      ok: false,
-    });
+    // Whatever the provider now shows stays on the live browser to be checked.
+    expect(browserStops(log)).toEqual([]);
+    expect(steps.slice(-2)).toEqual([
+      {
+        step: 'final_total',
+        checkoutTotalCents: 9800,
+        finalTotalCents: 9800,
+        taxCents: 0,
+        feesCents: 0,
+        currency: 'cad',
+        detail: 'review_placed_order',
+        ok: false,
+      },
+      // The amount is unknown, never zero: nothing here says the card was not charged.
+      {
+        step: 'payment',
+        outcome: 'needs_human',
+        detail: 'review_placed_order',
+        amountChargedCents: null,
+        confirmed: false,
+      },
+    ]);
   });
 
   it.each([

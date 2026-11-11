@@ -91,7 +91,13 @@ export type PlanEngineDetail =
   /** No final total was read before "place order", or it read below the cart total. */
   | 'total_unread'
   /** The env-only payment kill switch is not exactly `true`: nothing is paid. */
-  | 'payment_off';
+  | 'payment_off'
+  /**
+   * The checkout review said it placed the order, which it must never do: the card may be
+   * charged, for an amount Hale never read. Never `payment_boundary`, which means nothing
+   * was paid.
+   */
+  | 'review_placed_order';
 
 export type PlanEngineStep =
   | { step: 'checkout'; choiceIndex: number; cartTotalCents: number | null }
@@ -414,12 +420,10 @@ async function drivePlan(
       ok: final.ok,
     });
     if (!final.ok) {
-      // A review that says it placed the order leaves no cart to hand over: the browser stops.
-      if (final.detail === 'payment_boundary') {
-        return {
-          ...stop('needs_human', 'payment_boundary', choiceIndex),
-          costUsd: reviewed.costUsd,
-        };
+      // A charge may exist: the browser stays on what the provider now shows, so it can be
+      // checked, and the payment row records an amount not known.
+      if (final.detail === 'review_placed_order') {
+        return reportPayment(input, { ...reviewed, detail: 'review_placed_order' });
       }
       return {
         ...reviewed,
@@ -543,14 +547,17 @@ function finalTotal(
 ): FinalTotal {
   if (review.kind === 'unread') return { ok: false, detail: review.detail };
   const read = review.output;
-  if (read.order_placed) return { ok: false, detail: 'payment_boundary' };
+  if (read.order_placed) return { ok: false, detail: 'review_placed_order' };
   if (read.outcome !== 'ready_to_place') {
     return { ok: false, detail: read.detail === 'none' ? 'total_unread' : read.detail };
   }
   if (!read.saved_card_selected) return { ok: false, detail: 'no_saved_card' };
   const total = read.total_cents;
   if (total === null || total < at.checkoutTotalCents) return { ok: false, detail: 'total_unread' };
-  if (read.currency !== at.currency) return { ok: false, detail: 'currency_unknown' };
+  // Two pages that both name no currency are not a match.
+  if (read.currency === null || read.currency !== at.currency) {
+    return { ok: false, detail: 'currency_unknown' };
+  }
   if (total > at.maxPriceCents) return { ok: false, detail: 'price_change' };
   return { ok: true, totalCents: total };
 }

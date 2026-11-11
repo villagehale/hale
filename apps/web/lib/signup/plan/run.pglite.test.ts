@@ -96,7 +96,21 @@ beforeEach(async () => {
 });
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
+
+const OPS_WEBHOOK = 'https://hooks.slack.test/ops-fixture';
+
+/** Slack #ops on the real page path: every text the webhook is posted. */
+function stubOpsSlack(): string[] {
+  const posted: string[] = [];
+  vi.stubEnv('OPS_SLACK_WEBHOOK_URL', OPS_WEBHOOK);
+  vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+    if (url === OPS_WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+    return new Response('ok', { status: 200 });
+  });
+  return posted;
+}
 
 async function plannedFamily(
   options: { url?: string; maxPriceCents?: number; opensAt?: Date; session?: boolean } = {},
@@ -453,6 +467,7 @@ describe('carrying out plans at the open', () => {
   });
 
   it('a final total it could not read hands the cart back, audited step by step, and tells the parent', async () => {
+    const posted = stubOpsSlack();
     const family = await plannedFamily();
     const live = 'https://live.browser-use.com/s/fixture-live-view-token';
     const runner = {
@@ -514,6 +529,88 @@ describe('carrying out plans at the open', () => {
     expect(JSON.stringify(audit)).not.toContain(live);
     expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
       detail: 'total_unread',
+      liveViewUrl: live,
+    });
+    // Nothing was charged here: no one is paged (the placed-order case below pages).
+    expect(posted).toEqual([]);
+  });
+
+  it('a review that says it placed the order pages #ops with the offer, audits a payment of unknown amount, and never tells the parent nothing was charged', async () => {
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const live = 'https://live.browser-use.com/s/fixture-live-view-token';
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        await input.onStep({ step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 });
+        await input.onStep({
+          step: 'final_total',
+          checkoutTotalCents: 9800,
+          finalTotalCents: 9800,
+          taxCents: 0,
+          feesCents: 0,
+          currency: 'cad',
+          detail: 'review_placed_order',
+          ok: false,
+        });
+        await input.onStep({
+          step: 'payment',
+          outcome: 'needs_human',
+          detail: 'review_placed_order',
+          amountChargedCents: null,
+          confirmed: false,
+        });
+        return {
+          ...PAID,
+          outcome: 'needs_human' as const,
+          detail: 'review_placed_order' as const,
+          liveViewUrl: live,
+          confirmationNumber: null,
+          amountChargedCents: null,
+          sessionCostUsd: null,
+        };
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      notice: 'sent',
+    });
+    expect(posted).toEqual([
+      `Hale: ops page. site registration_review_placed_order. ref ${family.offerId}.`,
+    ]);
+    const audit = await steps(family.offerId);
+    expect(audit.map((s) => s.step)).toEqual([
+      'plan_approved',
+      'plan_started',
+      'plan_checkout',
+      'plan_final_total',
+      'plan_payment',
+      'plan_finished',
+    ]);
+    expect(audit[4]).toEqual({
+      step: 'plan_payment',
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      amountChargedCents: null,
+      confirmed: false,
+      host: AUTO_HOST,
+    });
+    expect(audit.at(-1)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      amountChargedCents: null,
+    });
+    expect(JSON.stringify({ audit, posted })).not.toContain(live);
+    // The parent's facts: a charge of unknown amount, the live browser to check it on.
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      amountChargedCents: null,
       liveViewUrl: live,
     });
   });
