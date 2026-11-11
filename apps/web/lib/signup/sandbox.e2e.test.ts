@@ -446,7 +446,9 @@ describe('authorized signup sandbox', () => {
     const result = await book(seeded);
     expect(result.outcome).toBe('payment');
     expect(result.reply).toContain('outcome=payment');
-    expect(posts.join('\n')).not.toContain('showtime=sat-1100');
+    // The date and showtime pages are Continue steps; the charged Confirm is never posted.
+    expect(posts).toHaveLength(2);
+    expect(posts.join('\n')).toContain('showtime=sat-1100');
     const logged = await trail(seeded.familyId);
     expect(logged).not.toContain('Ada');
     expect(logged).not.toContain('Test Parent');
