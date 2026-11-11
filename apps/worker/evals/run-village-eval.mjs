@@ -104,7 +104,9 @@ async function main() {
   const fakeMod = await tsImport(FAKE_PROVIDER_PATH, import.meta.url);
   const fakeProvider = new fakeMod.FakeDiscoveryProvider();
 
-  console.log(`village-eval | discovery-provider=${fakeProvider.name} | fixtures: ${fixtures.length}`);
+  console.log(
+    `village-eval | discovery-provider=${fakeProvider.name} | fixtures: ${fixtures.length}`,
+  );
   console.log('');
 
   const failed = [];

@@ -56,6 +56,10 @@ const DOORS: Record<string, Door> = {
   // the model's answer only closes that parent's watch, nothing is sent (VIL-564)
   'apps/web/lib/channel/activity/calendar-check.ts': 'owner',
   'apps/web/lib/integrations/calendar-mirror.ts': 'writer',
+  // VIL-662: the match reads household events; apply and driver read the one matched event by id.
+  'apps/web/lib/integrations/team-schedule/match.ts': 'household',
+  'apps/web/lib/integrations/team-schedule/apply.ts': 'scoped',
+  'apps/web/lib/integrations/team-schedule/driver.ts': 'scoped',
   'apps/web/lib/integrations/google-calendar-placement.ts': 'writer',
   'apps/worker/src/services/internal-writes.ts': 'writer',
   // applies a provider's own move to a Hale event; refuses mirror rows (googleEventId set)

@@ -13,6 +13,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -336,7 +337,9 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
 function lazyClassAvailabilityReader(): ClassAvailabilityReader {
   let reader: ClassAvailabilityReader | undefined;
   return (target) => {
-    reader ??= createLiveClassAvailabilityReader(budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS));
+    reader ??= createLiveClassAvailabilityReader(
+      budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'registration' }),
+    );
     return reader(target);
   };
 }
@@ -359,6 +362,7 @@ type SpotFate =
   | { kind: 'refused' }
   | { kind: 'unwritten' }
   | { kind: 'sent' }
+  | { kind: 'queued' }
   | { kind: 'failed' };
 
 export interface WatchedSpotsSweepSummary {
@@ -392,6 +396,8 @@ export interface WatchedSpotsSweepSummary {
   /** The writer produced no draft that cleared its refusals. Nothing was sent and no
    * attempt was spent: the observation stays held and the next tick asks again. */
   unwritten: number;
+  /** VIL-612 · live cadence queued the composed opening for the hourly decider. */
+  queued: number;
   failed: number;
   held: Record<DeliveryHoldReason, number>;
   released: Record<WatchedSpotReleaseReason, number>;
@@ -421,6 +427,7 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
     awaitingReceipt: 0,
     refused: 0,
     unwritten: 0,
+    queued: 0,
     failed: 0,
     held: {
       not_enrolled: 0,
@@ -482,6 +489,9 @@ function tally(summary: WatchedSpotsSweepSummary, fate: SpotFate): void {
       return;
     case 'sent':
       summary.sent += 1;
+      return;
+    case 'queued':
+      summary.queued += 1;
       return;
     case 'failed':
       summary.failed += 1;
@@ -970,6 +980,48 @@ async function sendSpotOpen(
       'watched spots: the wire body claims a row that does not exist - send refused',
     );
     return { kind: 'refused' };
+  }
+
+  const sendKind = spot.instant ? 'spot_open_instant' : 'spot_open';
+  const queueKey = spotOpenKey(spot.id, spot.openTransitions, 1);
+  if (sendKind === 'spot_open') {
+    if (await isQueuedForDecider(database, spot.familyId, queueKey)) {
+      return { kind: 'queued' };
+    }
+    const handedOff = await handOffProactive(
+      database,
+      [
+        {
+          familyId: spot.familyId,
+          parentUserId: spot.parentUserId,
+          kind: 'spot_open',
+          category: 'spot_open',
+          templateKey: `spot_open:${kind}`,
+          what: body,
+          why: 'spot_open',
+          sourceUrl: source.url,
+          worthlessAfter: null,
+          parentRequested: false,
+          dedupeKey: queueKey,
+          payload: {
+            auditVerb: 'watched_spot_opened_sent',
+            spotOpen: { spotId: spot.id },
+          },
+        },
+      ],
+      'candidate',
+    );
+    if (handedOff === 'queued') {
+      await database.insert(schema.auditLog).values({
+        familyId: spot.familyId,
+        actor: 'system',
+        actionTaken: 'proactive_cadence_queued',
+        targetTable: 'watched_spots',
+        targetId: spot.id,
+        after: { kind: 'spot_open' },
+      });
+      return { kind: 'queued' };
+    }
   }
 
   const attempt = await claimSendAttempt(database, { spotId: spot.id, now });

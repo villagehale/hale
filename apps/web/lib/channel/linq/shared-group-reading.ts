@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -309,8 +310,10 @@ export function createSharedGroupReader(
 let shared: SharedGroupReader | null = null;
 
 export function sharedGroupReader(): SharedGroupReader | null {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return null;
-  shared ??= createSharedGroupReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return null;
+  shared ??= createSharedGroupReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

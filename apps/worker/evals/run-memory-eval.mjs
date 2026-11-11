@@ -34,6 +34,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import { reportEvalGeneration, wrapEvalAnthropic } from './lib/eval-llm-trace.mjs';
 import {
   CACHE_DIR as HARNESS_CACHE_DIR,
   PRICE as LIST_PRICE,
@@ -211,10 +212,16 @@ function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
           lane,
           cachedOnly,
           getClient: () => {
-            client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
-              rates: priceRates,
-              tag: 'memory',
-            });
+            client ??= capSdkClient(
+              wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+                suite: 'memory',
+                stage: 'memory_infer',
+              }),
+              {
+                rates: priceRates,
+                tag: 'memory',
+              },
+            );
             return client;
           },
           cost,
@@ -225,7 +232,15 @@ function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
     const key = cacheKey(model, prompt, userMessage, tag);
 
     const cached = await cacheGet(key);
-    if (cached) return cached.parsed;
+    if (cached) {
+      reportEvalGeneration({
+        suite: 'memory',
+        caseName: fixture.id,
+        model,
+        cached: true,
+      });
+      return cached.parsed;
+    }
 
     if (cachedOnly) {
       console.error(
@@ -234,10 +249,16 @@ function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
-      rates: priceRates,
-      tag: 'memory',
-    });
+    client ??= capSdkClient(
+      wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        suite: 'memory',
+        stage: 'memory_infer',
+      }),
+      {
+        rates: priceRates,
+        tag: 'memory',
+      },
+    );
     const startedAt = performance.now();
     const response = await client.messages.create({
       model,

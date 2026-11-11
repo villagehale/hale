@@ -58,6 +58,8 @@ export async function approveSignupPlan(
     opensAt: Date;
     waiverAccepted: boolean;
     now: Date;
+    /** Program is already open: a yes now is a register-now, not a day-before. */
+    alreadyOpen?: boolean;
   },
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
   const offer = await loadPendingOffer(database, input.familyId);
@@ -82,7 +84,9 @@ export async function approveSignupPlan(
   ) {
     return { ok: false, reason: 'max_price' };
   }
-  if (input.opensAt.getTime() <= input.now.getTime()) return { ok: false, reason: 'opens_at' };
+  if (!input.alreadyOpen && input.opensAt.getTime() <= input.now.getTime()) {
+    return { ok: false, reason: 'opens_at' };
+  }
   const allowed = registrationUrlAllowed(offer.registrationUrl);
   if (!allowed.ok) return { ok: false, reason: 'url_refused' };
   const identity = await loadSignupIdentity(database, {
@@ -112,6 +116,7 @@ export async function approveSignupPlan(
       planWaiverAccepted: input.waiverAccepted,
       planApprovedAt: input.now,
       authorizingMessageId: input.messageId,
+      planAlreadyOpen: input.alreadyOpen === true,
       updatedAt: input.now,
     })
     .where(
@@ -139,6 +144,42 @@ export async function approveSignupPlan(
   return { ok: true };
 }
 
+/**
+ * Put a running plan back to `planned` with what the site showed, so Hale waits
+ * on the parent instead of handing the offer back. Used for a rejected password
+ * and for options that do not match what they asked for.
+ */
+export async function parkSignupPlan(
+  database: Database,
+  input: {
+    offerId: string;
+    familyId: string;
+    availability: Record<string, unknown>;
+    now: Date;
+  },
+): Promise<boolean> {
+  const offers = schema.authorizedSignupOffers;
+  const rows = await database
+    .update(offers)
+    .set({
+      status: 'planned',
+      planResume: null,
+      planLeaseUntil: null,
+      planAvailability: input.availability,
+      planAvailabilityAt: input.now,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(offers.id, input.offerId),
+        eq(offers.familyId, input.familyId),
+        inArray(offers.status, ['planned', 'submitting']),
+      ),
+    )
+    .returning({ id: offers.id });
+  return rows.length > 0;
+}
+
 export interface ClaimedPlan {
   offerId: string;
   familyId: string;
@@ -156,6 +197,8 @@ export interface ClaimedPlan {
   resume: AuthorizedSignupPlanResume | null;
   /** The parent took the plan back while its run was going. */
   takenBack: boolean;
+  alreadyOpen: boolean;
+  availability: Record<string, unknown> | null;
 }
 
 type OfferRow = typeof schema.authorizedSignupOffers.$inferSelect;
@@ -184,6 +227,8 @@ function claimedPlan(row: OfferRow, resume: AuthorizedSignupPlanResume | null): 
     messageId: row.authorizingMessageId,
     resume,
     takenBack: row.planCancelRequestedAt !== null,
+    alreadyOpen: row.planAlreadyOpen === true,
+    availability: row.planAvailability,
   };
 }
 
@@ -214,6 +259,10 @@ export async function claimDuePlan(
         select o.id from authorized_signup_offers o
         where o.status = 'planned'
           and o.plan_opens_at <= ${dueBy}::timestamptz
+          and (
+            o.plan_availability is null
+            or o.plan_availability->>'kind' in ('join_waitlist', 'take_option')
+          )
           and not exists (
             select 1 from authorized_signup_offers busy
             where busy.family_id = o.family_id and busy.status = 'submitting'
@@ -417,6 +466,8 @@ export interface ConversablePlan {
   approvedPriceCents: number | null;
   opensAt: Date;
   plan: { choiceIds: string[]; maxPriceCents: number; waiverAccepted: boolean } | null;
+  alreadyOpen: boolean;
+  availability: Record<string, unknown> | null;
 }
 
 /**
@@ -436,7 +487,14 @@ export async function loadConversablePlan(
       and(
         eq(offers.familyId, input.familyId),
         or(
-          and(inArray(offers.status, ['pending', 'planned']), gt(offers.planOpensAt, input.now)),
+          and(
+            inArray(offers.status, ['pending', 'planned']),
+            or(
+              gt(offers.planOpensAt, input.now),
+              eq(offers.planAlreadyOpen, true),
+              sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected')`,
+            ),
+          ),
           and(
             eq(offers.status, 'submitting'),
             isNotNull(offers.planResume),
@@ -472,6 +530,8 @@ export async function loadConversablePlan(
     approvedPriceCents: row.approvedPriceCents,
     opensAt: row.planOpensAt,
     plan: planned,
+    alreadyOpen: row.planAlreadyOpen === true,
+    availability: row.planAvailability,
   };
 }
 

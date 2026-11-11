@@ -2,7 +2,12 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNull, notLike, or } from 'drizzle-orm';
 import { CHANNEL_SMS_NOTE_KEY_LIKE, isChannelGroupNoteKey } from '~/lib/coach/note-key';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
+import { teenNameSharedMatcherEnabled } from '~/lib/privacy/teen-name';
 import type { ExportTeenGate } from './export-memory';
+import { accessExportRound2Enabled } from './export-round-2';
+
+/** Same title the app shows for a private calendar item (`PRIVATE_EVENT_WHAT`). */
+const PRIVATE_CALENDAR_ITEM = 'A private calendar item';
 
 /**
  * VIL-622 · what the whole household shares with Hale, in the right-to-access copy: the
@@ -22,7 +27,9 @@ import type { ExportTeenGate } from './export-memory';
  *     is theirs, and this copy is a durable file that leaves the app. Null is a person
  *     Hale no longer has a row for.
  * A row about a 13+ child, or whose words name one, keeps its dates and becomes the
- * placeholder (rule #1), with `withheld: 'teen'`.
+ * placeholder (rule #1), with `withheld: 'teen'`. Lit, a sensitive (health) row is the
+ * same generic title the app shows (`A private calendar item`), and the source-changed
+ * columns leave with the event.
  */
 export type HouseholdWithheldReason = 'teen';
 
@@ -41,6 +48,10 @@ export interface HouseholdExport {
     createdAt: string;
     cancelledAt: string | null;
     withheld: HouseholdWithheldReason | null;
+    sourceChangedField?: string | null;
+    sourceChangedFromStartsAt?: string | null;
+    sourceChangedFromLocation?: string | null;
+    sourceChangedAt?: string | null;
   }[];
   sharedThreads: {
     kind: 'ask' | 'note' | 'group';
@@ -101,35 +112,57 @@ export async function loadHouseholdExport(
       notes: events.notes,
       createdAt: events.createdAt,
       deletedAt: events.deletedAt,
+      sensitive: events.sensitive,
+      sourceChangedField: events.sourceChangedField,
+      sourceChangedFromStartsAt: events.sourceChangedFromStartsAt,
+      sourceChangedFromLocation: events.sourceChangedFromLocation,
+      sourceChangedAt: events.sourceChangedAt,
     })
     .from(events)
     .where(and(eq(events.familyId, familyId), isNull(events.googleEventId)))
     .orderBy(asc(events.startsAt));
+  const round2 = accessExportRound2Enabled();
   const calendarEvents = eventRows.map((row) => {
     const withheld = teen(
       [row.childId],
-      [row.title, row.location ?? '', row.notes?.parking ?? '', row.notes?.bring ?? ''],
+      [
+        row.title,
+        row.location ?? '',
+        row.notes?.parking ?? '',
+        row.notes?.bring ?? '',
+        ...(teenNameSharedMatcherEnabled() ? [row.dutyOwnerLabel ?? ''] : []),
+      ],
     );
+    const generic = round2 && row.sensitive && !withheld;
+    const hideDetail = withheld !== null || generic;
     const hasDuty = row.dutyOwnerKind !== null || row.dutyRole !== null;
     const hasNotes = row.notes?.parking !== undefined || row.notes?.bring !== undefined;
     return {
-      title: withheld ? TEEN_REDACTED_PLACEHOLDER : row.title,
+      title: withheld ? TEEN_REDACTED_PLACEHOLDER : generic ? PRIVATE_CALENDAR_ITEM : row.title,
       startsAt: row.startsAt.toISOString(),
       endsAt: iso(row.endsAt),
-      location: withheld ? null : row.location,
+      location: hideDetail ? null : row.location,
       source: row.source,
       child: gate.childName(row.childId),
       duty:
-        withheld || !hasDuty
+        hideDetail || !hasDuty
           ? null
           : { label: row.dutyOwnerLabel, kind: row.dutyOwnerKind, role: row.dutyRole },
       notes:
-        withheld || !hasNotes
+        hideDetail || !hasNotes
           ? null
           : { parking: row.notes?.parking ?? null, bring: row.notes?.bring ?? null },
       createdAt: row.createdAt.toISOString(),
       cancelledAt: iso(row.deletedAt),
       withheld,
+      ...(round2
+        ? {
+            sourceChangedField: row.sourceChangedField,
+            sourceChangedFromStartsAt: iso(row.sourceChangedFromStartsAt),
+            sourceChangedFromLocation: hideDetail ? null : row.sourceChangedFromLocation,
+            sourceChangedAt: iso(row.sourceChangedAt),
+          }
+        : {}),
     };
   });
 
