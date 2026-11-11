@@ -2,12 +2,18 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { recordSignupOffer } from '../store';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
-import { PLAN_NOTICE_TEMPLATE, createPlanNotifier } from './notice';
+import {
+  PLAN_NOTICE_TEMPLATE,
+  PLAN_PREP_TEMPLATE,
+  createPlanNotifier,
+  createPlanPrepDeliver,
+} from './notice';
 import type { PlanOutcomeNotice } from './run';
 import { approveSignupPlan } from './store';
 import type { PlanReplyFacts, PlanReplyWriter } from './writer';
@@ -269,5 +275,133 @@ describe('the parent notice after a plan run', () => {
     await notify(notice(f));
     await notify(notice(f));
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe('the login card in a prep notice', () => {
+  const CARD = 'https://app.villagehale.com/l/AbCdef1234';
+  const PARTS = [
+    { type: 'text', body: 'Hale needs the swim login for Saturday.' },
+    { type: 'link', url: CARD },
+    { type: 'text', body: 'It takes a minute.' },
+  ] as const;
+
+  function phoneTransport(carried: { transport?: 'imessage'; chatId?: string }) {
+    const bodies: string[] = [];
+    const transport: ChannelTransport = {
+      async send(input) {
+        bodies.push(input.body);
+        return { providerMessageId: `prov-${bodies.length}`, ...carried };
+      },
+    };
+    return { transport, bodies };
+  }
+
+  function linqFetch() {
+    return vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ message: { id: 'card-1' } }, { status: 201 }),
+    );
+  }
+
+  async function ledger(familyId: string) {
+    return db.database
+      .select()
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+  }
+
+  it('sends the card as a Linq link part on iMessage, and ledgers every send', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const f = await plannedFamily();
+    const { transport, bodies } = phoneTransport({ transport: 'imessage', chatId: 'chat-1' });
+    const fetchMock = linqFetch();
+    const deliver = createPlanPrepDeliver(db.database, { transport, fetch: fetchMock });
+
+    const delivered = await deliver({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      offerId: f.offerId,
+      kind: 'login_ask',
+      parts: PARTS,
+      now: NOW,
+    });
+
+    expect(delivered).toBe(true);
+    expect(bodies).toEqual(['Hale needs the swim login for Saturday.', 'It takes a minute.']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const sentBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(sentBody.message.parts).toEqual([{ type: 'link', value: CARD }]);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('chat-1');
+    const rows = await ledger(f.familyId);
+    expect(
+      rows.map((row) => [row.templateKey, row.providerMessageId, row.channel, row.status]),
+    ).toEqual(
+      expect.arrayContaining([
+        [`${PLAN_PREP_TEMPLATE}:login_ask`, 'prov-1', 'imessage', 'sent'],
+        ['linq:link_preview', 'card-1', 'imessage', 'sent'],
+        [`${PLAN_PREP_TEMPLATE}:login_ask`, 'prov-2', 'imessage', 'sent'],
+      ]),
+    );
+    expect(rows).toHaveLength(3);
+  });
+
+  it('sends the card as its own text off iMessage, and names that fallback without the link', async () => {
+    const f = await plannedFamily();
+    const { transport, bodies } = phoneTransport({});
+    const fetchMock = linqFetch();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const deliver = createPlanPrepDeliver(db.database, { transport, fetch: fetchMock });
+
+    const delivered = await deliver({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      offerId: f.offerId,
+      kind: 'account_prep',
+      parts: PARTS,
+      now: NOW,
+    });
+
+    expect(delivered).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(bodies).toEqual(['Hale needs the swim login for Saturday.', CARD, 'It takes a minute.']);
+    const rows = await ledger(f.familyId);
+    expect(rows.map((row) => [row.templateKey, row.channel, row.status]).sort()).toEqual([
+      ['linq:link_text', 'sms', 'queued'],
+      [`${PLAN_PREP_TEMPLATE}:account_prep`, 'sms', 'queued'],
+      [`${PLAN_PREP_TEMPLATE}:account_prep`, 'sms', 'queued'],
+    ]);
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).toContain('not_imessage');
+    expect(logged).not.toContain(CARD);
+    info.mockRestore();
+  });
+
+  it('stops at a refused text, marks its row failed, and sends nothing after it', async () => {
+    const f = await plannedFamily();
+    const transport: ChannelTransport = {
+      async send() {
+        throw new LinqSendError('21610', 400, true);
+      },
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = linqFetch();
+    const deliver = createPlanPrepDeliver(db.database, { transport, fetch: fetchMock });
+
+    const delivered = await deliver({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      offerId: f.offerId,
+      kind: 'login_ask',
+      parts: PARTS,
+      now: NOW,
+    });
+
+    expect(delivered).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const rows = await ledger(f.familyId);
+    expect(rows.map((row) => [row.templateKey, row.status, row.errorCode])).toEqual([
+      [`${PLAN_PREP_TEMPLATE}:login_ask`, 'failed', '21610'],
+    ]);
+    warn.mockRestore();
   });
 });

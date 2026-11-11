@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
@@ -14,7 +15,7 @@ import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
-import type { PlanPrepDeps } from './prep';
+import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
 import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
 import { planLapse } from './store';
 import { planReplyMode } from './towns';
@@ -26,6 +27,7 @@ import {
 } from './writer';
 
 export const PLAN_NOTICE_TEMPLATE = 'signup_plan_notice';
+export const PLAN_PREP_TEMPLATE = 'signup_plan_prep';
 
 export interface PlanNotifierDeps {
   writer: PlanReplyWriter;
@@ -188,28 +190,143 @@ async function deliverDirect(
   return 'sent';
 }
 
-/** Login-ask, account-prep and 30-minute reminder on the same minute cron. */
-export function signupPlanPrepDepsFromEnv(database: Database): PlanPrepDeps {
-  const transport = createOutboundTransport();
-  return {
-    writer: createProviderNoticeWriter(() => resolveReplyClient(undefined)),
-    deliver: async (input) => {
-      const to = await resolveSendablePhone(database, input.parentUserId);
-      if (!to) return false;
-      try {
-        const delivered = await deliverFamilyOutbound(database, {
-          familyId: input.familyId,
-          body: input.body,
+/**
+ * The door for the login ask, account prep, the 30-minute reminder and the event notices.
+ * Each bubble has its own ledger row beside its send. The login link goes once through
+ * {@link sendLinkOnce}, on the chat the bubble before it used: a Linq link card on
+ * iMessage, its own text where a card cannot go. A part that does not go stops the
+ * notice, and the sweep sends it again with a fresh link.
+ */
+export function createPlanPrepDeliver(
+  database: Database,
+  deps: { transport: ChannelTransport; fetch?: typeof fetch },
+): PlanPrepDeliver {
+  return async (input) => {
+    const to = await resolveSendablePhone(database, input.parentUserId);
+    if (!to) {
+      console.info(
+        { offerId: input.offerId, kind: input.kind, code: 'withheld' },
+        'signup plan prep: not sent',
+      );
+      return false;
+    }
+    let carried: { channel: 'sms' | 'imessage'; chatId: string | null } = {
+      channel: 'sms',
+      chatId: null,
+    };
+    for (const part of input.parts) {
+      if (part.type === 'text') {
+        const sent = await sendPrepText(database, deps.transport, {
+          ...input,
           to,
-          legacy: transport,
-          target: { channel: 'legacy' },
-          shareGroupCap: false,
+          body: part.body,
         });
-        return delivered.status === 'sent';
-      } catch {
+        if (!sent) return false;
+        carried = sent;
+        continue;
+      }
+      const link = await sendLinkOnce({
+        transport: deps.transport,
+        to,
+        channel: carried.channel,
+        chatId: carried.chatId,
+        url: part.url,
+        database,
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        now: input.now,
+        fetch: deps.fetch,
+      });
+      if (link.status === 'not_sent') {
+        console.warn(
+          { offerId: input.offerId, kind: input.kind, why: link.why, code: link.code },
+          'signup plan prep: the login link did not go',
+        );
         return false;
       }
-    },
+      if (link.status === 'text') {
+        console.info(
+          { offerId: input.offerId, kind: input.kind, why: link.why },
+          'signup plan prep: the login link went as a text, not a card',
+        );
+      }
+    }
+    return true;
+  };
+}
+
+async function sendPrepText(
+  database: Database,
+  transport: ChannelTransport,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    offerId: string;
+    kind: PlanNoticeKind;
+    to: string;
+    body: string;
+    now: Date;
+  },
+): Promise<{ channel: 'sms' | 'imessage'; chatId: string | null } | null> {
+  const messages = schema.channelMessages;
+  const [row] = await database
+    .insert(messages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      templateKey: `${PLAN_PREP_TEMPLATE}:${input.kind}`,
+      status: 'queued',
+      sentAt: null,
+    })
+    .returning({ id: messages.id });
+  if (!row) throw new Error('channel_messages insert returned no row');
+  const failed = async (code: string): Promise<null> => {
+    await database
+      .update(messages)
+      .set({ status: 'failed', errorCode: code.slice(0, 80) })
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, input.familyId)));
+    console.warn(
+      { offerId: input.offerId, kind: input.kind, code },
+      'signup plan prep: a text did not go',
+    );
+    return null;
+  };
+  let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
+  try {
+    delivered = await deliverFamilyOutbound(database, {
+      familyId: input.familyId,
+      body: input.body,
+      to: input.to,
+      legacy: transport,
+      target: { channel: 'legacy' },
+      shareGroupCap: false,
+      now: input.now,
+    });
+  } catch (err) {
+    return failed(err instanceof Error ? err.constructor.name : 'send_threw');
+  }
+  if (delivered.status !== 'sent') return failed(delivered.reason);
+  await database
+    .update(messages)
+    .set({
+      channel: delivered.channel,
+      status: acceptedStatus(delivered.channel),
+      providerMessageId: delivered.providerMessageId,
+      providerChatId: delivered.chatId,
+      sentAt: input.now,
+    })
+    .where(and(eq(messages.id, row.id), eq(messages.familyId, input.familyId)));
+  return { channel: delivered.channel, chatId: delivered.chatId };
+}
+
+/** Login-ask, account-prep and 30-minute reminder on the same minute cron. */
+export function signupPlanPrepDepsFromEnv(database: Database): PlanPrepDeps {
+  return {
+    writer: createProviderNoticeWriter(() => resolveReplyClient(undefined)),
+    deliver: createPlanPrepDeliver(database, { transport: createOutboundTransport() }),
   };
 }
 

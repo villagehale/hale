@@ -19,7 +19,9 @@ import {
 } from '../credentials/flag';
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
 import { saveProviderCredentials } from '../credentials/store';
+import { lookupLoginLink } from '../login-link/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
+import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   PLAN_JOIN_LEAD_MS,
@@ -1220,8 +1222,8 @@ describe('parked password rejection and mismatched options', () => {
             return [`bubble for ${input.kind}`, 'second bubble'];
           },
         },
-        deliver: async (input: { body: string }) => {
-          bodies.push(input.body);
+        deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
+          bodies.push(...input.parts.map((part) => (part.type === 'link' ? part.url : part.body)));
           return true;
         },
       },
@@ -1351,6 +1353,10 @@ describe('parked password rejection and mismatched options', () => {
       passwordRejectionMessage: 'Password must include a number',
       passwordRule: '8 characters and a number',
     });
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, family.parentUserId));
     const notices = noticePrep();
     await runDueSignupPlans(
       db.database,
@@ -1361,8 +1367,20 @@ describe('parked password rejection and mismatched options', () => {
     expect(row?.status).toBe('planned');
     expect(row?.planAvailability).toEqual({ kind: 'password_rejected' });
     expect(notices.bodies[0]).toBe('bubble for password_rejected');
-    expect(notices.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
+    const fresh = /^https:\/\/app\.villagehale\.com\/l\/([0-9A-Za-z]{10})$/.exec(
+      notices.bodies[1] ?? '',
+    );
     expect(notices.bodies[2]).toBe('second bubble');
+    // The fresh card says what it is for: the first choice, and the open in the parent's zone.
+    expect(await lookupLoginLink(db.database, fresh?.[1] ?? '', NOW)).toMatchObject({
+      ok: true,
+      providerHost: AUTO_HOST,
+      purpose: {
+        kind: 'password_rejected',
+        sessionLabel: 'Preschool Swim Sat 9:00',
+        opensAt: { local: 'Tuesday, December 1, 2026 at 7:00 a.m.', timeZone: 'America/Toronto' },
+      },
+    });
   });
 
   it('runs with saved credentials when there is no cookie session', async () => {

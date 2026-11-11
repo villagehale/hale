@@ -32,7 +32,12 @@ import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
 import { registrationPlanRunEnabled } from './flag';
 import { signupPlanPrepDepsFromEnv } from './notice';
-import { type PlanNoticeKind, type PlanPrepDeps, sendSignupPlanNotice } from './prep';
+import {
+  type PlanNoticeKind,
+  type PlanPrepDeps,
+  firstChoiceLabel,
+  sendSignupPlanNotice,
+} from './prep';
 import {
   type ClaimedPlan,
   claimDuePlan,
@@ -529,6 +534,14 @@ async function parkAndTell(
         parentUserId: plan.parentUserId,
         offerId: plan.offerId,
         providerHost: host ?? new URL(plan.registrationUrl).hostname,
+        purpose: {
+          kind: 'password_rejected',
+          sessionLabel: firstChoiceLabel(plan.sessions, plan.choiceIds),
+          opensAt: planOpensAtLocal(
+            plan.opensAt,
+            await parentTimeZone(database, plan.parentUserId),
+          ),
+        },
         now,
       })
     : null;

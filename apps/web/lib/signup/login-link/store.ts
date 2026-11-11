@@ -1,7 +1,23 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { z } from 'zod';
 import { signupProviderHost } from '../consent';
 import { hashLoginCode, loginLinkExpiresAt, loginLinkUrl, newLoginCode } from './code';
+
+const LOGIN_LINK_KINDS = ['login_ask', 'account_prep', 'password_rejected'] as const;
+
+/**
+ * What the card and its page say the login is for: the session and the open in the
+ * parent's own zone. Never a credential and never a child's name — the link preview is
+ * fetched by whoever renders it.
+ */
+const loginLinkPurposeSchema = z.object({
+  kind: z.enum(LOGIN_LINK_KINDS),
+  sessionLabel: z.string().nullable(),
+  opensAt: z.object({ local: z.string(), timeZone: z.string() }),
+});
+
+export type LoginLinkPurpose = z.infer<typeof loginLinkPurposeSchema>;
 
 export type LoginLinkLookup =
   | {
@@ -11,20 +27,23 @@ export type LoginLinkLookup =
       parentUserId: string;
       offerId: string | null;
       providerHost: string;
-      purpose: Record<string, unknown> | null;
+      purpose: LoginLinkPurpose | null;
     }
   | { ok: false; reason: 'unknown' | 'expired' | 'used' };
 
-export async function mintLoginLink(
+type MintLoginLinkInput = {
+  familyId: string;
+  parentUserId: string;
+  offerId: string | null;
+  providerHost: string;
+  purpose: LoginLinkPurpose;
+  now: Date;
+};
+
+/** Not exported: every mint goes through {@link mintFreshLoginLink}, so a host has one live card. */
+async function mintLoginLink(
   database: Database,
-  input: {
-    familyId: string;
-    parentUserId: string;
-    offerId: string | null;
-    providerHost: string;
-    purpose?: Record<string, unknown> | null;
-    now: Date;
-  },
+  input: MintLoginLinkInput,
 ): Promise<{ url: string; expiresAt: Date; id: string }> {
   const code = newLoginCode();
   const expiresAt = loginLinkExpiresAt(input.now);
@@ -38,7 +57,7 @@ export async function mintLoginLink(
       tokenHash: hashLoginCode(code),
       expiresAt,
       createdAt: input.now,
-      purpose: input.purpose ?? null,
+      purpose: input.purpose,
     })
     .returning({ id: schema.providerLoginLinks.id });
   if (!row) throw new Error('login link not stored');
@@ -66,7 +85,7 @@ export async function lookupLoginLink(
     parentUserId: row.parentUserId,
     offerId: row.offerId,
     providerHost: row.providerHost,
-    purpose: row.purpose,
+    purpose: loginLinkPurposeSchema.safeParse(row.purpose).data ?? null,
   };
 }
 
@@ -106,7 +125,7 @@ export async function invalidateOpenLoginLinks(
 /** Invalidate any open code for this host, then mint a fresh one. */
 export async function mintFreshLoginLink(
   database: Database,
-  input: Parameters<typeof mintLoginLink>[1],
+  input: MintLoginLinkInput,
 ): Promise<{ url: string; expiresAt: Date; id: string }> {
   await invalidateOpenLoginLinks(database, {
     familyId: input.familyId,

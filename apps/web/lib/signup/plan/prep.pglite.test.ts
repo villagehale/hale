@@ -2,12 +2,17 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { storeProviderSession } from '../browser-use/vault';
+import { PROVIDER_CREDENTIALS_ENABLED_ENV } from '../credentials/flag';
+import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
+import { markCredentialsStale, saveProviderCredentials } from '../credentials/store';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
+import { lookupLoginLink } from '../login-link/store';
 import { recordSignupOffer } from '../store';
+import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   PRE_OPEN_LEAD_MS,
-  type PlanNoticeKind,
   type PlanPrepFacts,
   plannedOfferDueForPrep,
   preOpenDueAt,
@@ -19,6 +24,8 @@ import { approveSignupPlan } from './store';
 const NOW = new Date('2026-11-30T20:00:00.000Z');
 const OPENS = new Date('2026-12-01T12:00:00.000Z');
 const URL = 'https://haltonhills.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage';
+const HOST = 'haltonhills.perfectmind.com';
+const LOGIN_URL = /^https:\/\/app\.villagehale\.com\/l\/([0-9A-Za-z]{10})$/;
 const SESSIONS = [
   {
     id: 'sat-0900',
@@ -41,6 +48,7 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
   vi.stubEnv(AUTHORIZED_SIGNUP_ENABLED_ENV, 'on');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -77,29 +85,48 @@ async function planned() {
 }
 
 function fakes() {
-  const kinds: PlanNoticeKind[] = [];
-  const bodies: string[] = [];
+  const facts: PlanPrepFacts[] = [];
+  const parts: PlanNoticePart[] = [];
   return {
-    kinds,
-    bodies,
+    facts,
+    parts,
     deps: {
       writer: {
-        write: async (facts: PlanPrepFacts) => {
-          kinds.push(facts.kind);
-          return `text for ${facts.kind}`;
+        write: async (input: PlanPrepFacts) => {
+          facts.push(input);
+          return `text for ${input.kind}`;
         },
       },
-      deliver: async (input: { kind: PlanNoticeKind; body: string }) => {
-        bodies.push(input.body);
+      deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
+        parts.push(...input.parts);
         return true;
       },
     },
   };
 }
 
+function loginCode(part: PlanNoticePart | undefined): string {
+  if (part?.type !== 'link') throw new Error(`expected a link part, got ${JSON.stringify(part)}`);
+  const match = LOGIN_URL.exec(part.url);
+  if (!match?.[1]) throw new Error(`not a login link: ${part.url}`);
+  return match[1];
+}
+
+async function sentKinds(offerId: string): Promise<string[]> {
+  const rows = await db.database
+    .select({ kind: schema.providerLoginNotices.kind })
+    .from(schema.providerLoginNotices)
+    .where(eq(schema.providerLoginNotices.offerId, offerId));
+  return rows.map((row) => row.kind).sort();
+}
+
 describe('plan prep before the open', () => {
-  it('schedules the login ask, account prep with a link, then the 30-minute reminder', async () => {
+  it('asks for the login, then account prep, each with the one live card for the host, then the 30-minute reminder', async () => {
     const family = await planned();
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto', proactiveLanguage: 'zh' })
+      .where(eq(schema.users.id, family.parentUserId));
     const row = await db.database
       .select()
       .from(schema.authorizedSignupOffers)
@@ -109,19 +136,38 @@ describe('plan prep before the open', () => {
     expect(PRE_OPEN_LEAD_MS).toBe(30 * 60_000);
     expect(preOpenDueAt(OPENS).toISOString()).toBe('2026-12-01T11:30:00.000Z');
 
+    // 12:00Z on 1 December is 7:00 in Toronto (EST, UTC-5).
+    const opensAt = {
+      local: 'Tuesday, December 1, 2026 at 7:00 a.m.',
+      timeZone: 'America/Toronto',
+    };
     const first = fakes();
     const login = await runDueSignupPlanPrep(db.database, { now: NOW }, first.deps);
     expect(login.notices).toEqual([{ offerId: family.offerId, kind: 'login_ask', sent: true }]);
-    expect(first.bodies[0]).toBe('text for login_ask');
-    expect(first.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
+    expect(first.facts[0]).toMatchObject({
+      kind: 'login_ask',
+      opensAt,
+      language: 'zh',
+      host: HOST,
+      sessionLabel: 'Preschool Swim Sat 9:00',
+    });
+    expect(first.parts[0]).toEqual({ type: 'text', body: 'text for login_ask' });
+    const askCode = loginCode(first.parts[1]);
+    expect(await lookupLoginLink(db.database, askCode, NOW)).toMatchObject({
+      ok: true,
+      providerHost: HOST,
+      purpose: { kind: 'login_ask', sessionLabel: 'Preschool Swim Sat 9:00', opensAt },
+    });
 
     const second = fakes();
     const account = await runDueSignupPlanPrep(db.database, { now: NOW }, second.deps);
     expect(account.notices).toEqual([
       { offerId: family.offerId, kind: 'account_prep', sent: true },
     ]);
-    expect(second.bodies[0]).toBe('text for account_prep');
-    expect(second.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
+    expect(second.parts[0]).toEqual({ type: 'text', body: 'text for account_prep' });
+    const prepCode = loginCode(second.parts[1]);
+    expect(await lookupLoginLink(db.database, prepCode, NOW)).toMatchObject({ ok: true });
+    expect(await lookupLoginLink(db.database, askCode, NOW)).toEqual({ ok: false, reason: 'used' });
 
     const tooSoon = fakes();
     const waiting = await runDueSignupPlanPrep(db.database, { now: NOW }, tooSoon.deps);
@@ -131,14 +177,78 @@ describe('plan prep before the open', () => {
     const third = fakes();
     const reminder = await runDueSignupPlanPrep(db.database, { now: reminderAt }, third.deps);
     expect(reminder.notices).toEqual([{ offerId: family.offerId, kind: 'pre_open', sent: true }]);
-    expect(third.bodies[0]).toBe('text for pre_open');
-    expect(third.bodies[0]).not.toMatch(/https:\/\//);
+    expect(third.parts).toEqual([{ type: 'text', body: 'text for pre_open' }]);
 
-    const kinds = await db.database
-      .select({ kind: schema.providerLoginNotices.kind })
-      .from(schema.providerLoginNotices)
-      .where(eq(schema.providerLoginNotices.offerId, family.offerId));
-    expect(kinds.map((k) => k.kind).sort()).toEqual(['account_prep', 'login_ask', 'pre_open']);
+    expect(await sentKinds(family.offerId)).toEqual(['account_prep', 'login_ask', 'pre_open']);
+  });
+
+  it('does not ask for a login the run can already use, and asks again once it goes stale', async () => {
+    vi.stubEnv(PROVIDER_CREDENTIALS_ENABLED_ENV, 'true');
+    vi.stubEnv(PROVIDER_CREDENTIALS_MASTER_KEY_ENV, Buffer.alloc(32, 9).toString('base64'));
+    const family = await planned();
+    expect(
+      await saveProviderCredentials(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        providerHost: HOST,
+        username: 'parent-login',
+        password: 'fixture-pass',
+        now: NOW,
+      }),
+    ).toEqual({ ok: true });
+
+    const saved = fakes();
+    expect((await runDueSignupPlanPrep(db.database, { now: NOW }, saved.deps)).notices).toEqual([]);
+    expect(saved.parts).toEqual([]);
+    const reminder = fakes();
+    expect(
+      (await runDueSignupPlanPrep(db.database, { now: preOpenDueAt(OPENS) }, reminder.deps))
+        .notices,
+    ).toEqual([{ offerId: family.offerId, kind: 'pre_open', sent: true }]);
+
+    // Positive control: the same family, once the saved password is stale, is asked.
+    await markCredentialsStale(db.database, {
+      familyId: family.familyId,
+      providerHost: HOST,
+      now: NOW,
+    });
+    const stale = fakes();
+    expect((await runDueSignupPlanPrep(db.database, { now: NOW }, stale.deps)).notices).toEqual([
+      { offerId: family.offerId, kind: 'login_ask', sent: true },
+    ]);
+    expect(loginCode(stale.parts[1])).toMatch(/^[0-9A-Za-z]{10}$/);
+  });
+
+  it('counts a provider session only when it lasts through the open', async () => {
+    const storageState = { cookies: [{ name: 'SID', value: 'c', domain: `.${HOST}` }] };
+    const short = await planned();
+    const shortSession = await storeProviderSession(db.database, {
+      familyId: short.familyId,
+      parentUserId: short.parentUserId,
+      providerHost: HOST,
+      storageState,
+      capturedAt: new Date(OPENS.getTime() - 49 * 60 * 60_000),
+    });
+    expect(shortSession).toMatchObject({
+      ok: true,
+      expiresAt: new Date(OPENS.getTime() - 60 * 60_000),
+    });
+    const lasting = await planned();
+    const lastingSession = await storeProviderSession(db.database, {
+      familyId: lasting.familyId,
+      parentUserId: lasting.parentUserId,
+      providerHost: HOST,
+      storageState,
+      capturedAt: NOW,
+    });
+    expect(lastingSession.ok).toBe(true);
+
+    const sweep = fakes();
+    const result = await runDueSignupPlanPrep(db.database, { now: NOW }, sweep.deps);
+    const kindFor = (offerId: string) =>
+      result.notices.filter((n) => n.offerId === offerId).map((n) => n.kind);
+    expect(kindFor(short.offerId)).toEqual(['login_ask']);
+    expect(kindFor(lasting.offerId)).toEqual([]);
   });
 
   it('does not send when the model writes nothing', async () => {
@@ -151,7 +261,9 @@ describe('plan prep before the open', () => {
         deliver: async () => true,
       },
     );
-    expect(result.notices).toEqual([{ offerId: family.offerId, kind: 'login_ask', sent: false }]);
+    expect(result.notices.filter((n) => n.offerId === family.offerId)).toEqual([
+      { offerId: family.offerId, kind: 'login_ask', sent: false },
+    ]);
     const notices = await db.database
       .select()
       .from(schema.providerLoginNotices)
@@ -161,20 +273,20 @@ describe('plan prep before the open', () => {
 
   it('sends each bubble and puts a fresh login link after the first on a rejected password', async () => {
     const family = await planned();
-    const bodies: string[] = [];
+    const parts: PlanNoticePart[] = [];
     const sent = await sendSignupPlanNotice(
       db.database,
       {
         familyId: family.familyId,
         parentUserId: family.parentUserId,
         offerId: family.offerId,
-        providerHost: 'haltonhills.perfectmind.com',
+        providerHost: HOST,
         kind: 'password_rejected',
         facts: {
           kind: 'password_rejected',
           childFirstName: 'Ada',
           opensAt: { local: '7:00', timeZone: 'UTC' },
-          host: 'haltonhills.perfectmind.com',
+          host: HOST,
           language: 'en',
           passwordRejectionMessage: 'Password must include a number',
           passwordRule: '8 characters and a number',
@@ -191,16 +303,16 @@ describe('plan prep before the open', () => {
           ],
         },
         deliver: async (input) => {
-          bodies.push(input.body);
+          parts.push(...input.parts);
           return true;
         },
       },
     );
     expect(sent).toBe(true);
-    expect(bodies).toEqual([
-      'They did not take that password.',
-      'https://app.villagehale.com/l/AbCdef1234',
-      'Their rule is eight and a number.',
+    expect(parts).toEqual([
+      { type: 'text', body: 'They did not take that password.' },
+      { type: 'link', url: 'https://app.villagehale.com/l/AbCdef1234' },
+      { type: 'text', body: 'Their rule is eight and a number.' },
     ]);
   });
 });

@@ -1,12 +1,16 @@
-/** Insert the one Hale-owned link as its own bubble, after `after` (0-based). */
+/** One send in a plan notice: a model-written bubble, or the one Hale-owned link. */
+export type PlanNoticePart = { type: 'text'; body: string } | { type: 'link'; url: string };
+
+/** Insert the one Hale-owned link as its own part, after bubble `after` (0-based). */
 export function withLinkBubbles(
   bubbles: readonly string[],
   link: string | null,
   after = 0,
-): string[] {
-  if (!link) return [...bubbles];
-  const i = Math.min(Math.max(after, 0) + 1, bubbles.length);
-  return [...bubbles.slice(0, i), link, ...bubbles.slice(i)];
+): PlanNoticePart[] {
+  const texts = bubbles.map((body): PlanNoticePart => ({ type: 'text', body }));
+  if (!link) return texts;
+  const i = Math.min(Math.max(after, 0) + 1, texts.length);
+  return [...texts.slice(0, i), { type: 'link', url: link }, ...texts.slice(i)];
 }
 
 export function asBubbles(value: string | readonly string[] | null): string[] | null {

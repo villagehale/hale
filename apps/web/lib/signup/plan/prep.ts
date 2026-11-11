@@ -1,10 +1,15 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { signupProviderHost } from '../consent';
-import { mintLoginLink } from '../login-link/store';
+import { providerCredentialsEnabled } from '../credentials/flag';
+import { mintFreshLoginLink } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
-import { asBubbles, withLinkBubbles } from './bubbles';
+import type { SignupSession } from '../types';
+import { type PlanNoticePart, asBubbles, withLinkBubbles } from './bubbles';
+import { parentTimeZone } from './conversation';
 import { writePlanAudit } from './store';
+import { planOpensAtLocal } from './writer';
 
 /** Reminder fires 30 minutes before the open (6:30 for a 7:00 open). */
 export const PRE_OPEN_LEAD_MS = 30 * 60_000;
@@ -42,12 +47,14 @@ export interface PlanPrepWriter {
   write(facts: PlanPrepFacts): Promise<string | readonly string[] | null>;
 }
 
+/** One notice, in order. The login link is its own part, so the deliver can send it as a card. */
 export type PlanPrepDeliver = (input: {
   familyId: string;
   parentUserId: string;
   offerId: string;
   kind: PlanNoticeKind;
-  body: string;
+  parts: readonly PlanNoticePart[];
+  now: Date;
 }) => Promise<boolean>;
 
 export interface PlanPrepDeps {
@@ -103,9 +110,61 @@ export async function recordPlanNotice(
   }
 }
 
-function nextKind(sent: ReadonlySet<string>, opensAt: Date, now: Date): PlanPrepKind | null {
-  if (!sent.has('login_ask')) return 'login_ask';
-  if (!sent.has('account_prep')) return 'account_prep';
+/** The plan's first choice: what the login is for. */
+export function firstChoiceLabel(
+  sessions: readonly SignupSession[],
+  choiceIds: readonly string[] | null,
+): string | null {
+  const first = (choiceIds ?? [])[0];
+  return sessions.find((session) => session.id === first)?.label ?? null;
+}
+
+/**
+ * Whether the run at the open can already sign in: a saved login that is not stale, or a
+ * provider session that lasts past the open. The run reads the same two (run.ts).
+ */
+async function loginReadyForOpen(
+  database: Database,
+  input: { familyId: string; providerHost: string; opensAt: Date },
+): Promise<boolean> {
+  if (providerCredentialsEnabled()) {
+    const creds = schema.providerSignupCredentials;
+    const [saved] = await database
+      .select({ id: creds.id })
+      .from(creds)
+      .where(
+        and(
+          eq(creds.familyId, input.familyId),
+          eq(creds.providerHost, input.providerHost),
+          isNull(creds.staleAt),
+        ),
+      )
+      .limit(1);
+    if (saved) return true;
+  }
+  const sessions = schema.providerSignupSessions;
+  const [session] = await database
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.familyId, input.familyId),
+        eq(sessions.providerHost, input.providerHost),
+        gt(sessions.expiresAt, input.opensAt),
+      ),
+    )
+    .limit(1);
+  return Boolean(session);
+}
+
+function nextKind(
+  sent: ReadonlySet<string>,
+  opensAt: Date,
+  now: Date,
+  loginReady: boolean,
+): PlanPrepKind | null {
+  if (!loginReady && !sent.has('login_ask')) return 'login_ask';
+  if (!loginReady && !sent.has('account_prep')) return 'account_prep';
   if (!sent.has('pre_open') && now.getTime() >= opensAt.getTime() - PRE_OPEN_LEAD_MS) {
     return 'pre_open';
   }
@@ -117,6 +176,8 @@ function nextKind(sent: ReadonlySet<string>, opensAt: Date, now: Date): PlanPrep
  * ask (with a /l/<code> link), account prep (create the provider account and
  * add the child as a family member, with a link), and the 30-minute reminder.
  * One kind per offer per sweep. Model-written; a failed draft sends nothing.
+ * Each link replaces any open one for the host, and neither ask goes while the
+ * run can already sign in.
  */
 export async function runDueSignupPlanPrep(
   database: Database,
@@ -137,54 +198,63 @@ export async function runDueSignupPlanPrep(
       .from(schema.providerLoginNotices)
       .where(eq(schema.providerLoginNotices.offerId, offer.id));
     const sent = new Set(existing.map((row) => row.kind));
-    const kind = nextKind(sent, offer.planOpensAt, sweep.now);
+    const asksLeft = !sent.has('login_ask') || !sent.has('account_prep');
+    const loginReady =
+      asksLeft &&
+      (await loginReadyForOpen(database, {
+        familyId: offer.familyId,
+        providerHost: host,
+        opensAt: offer.planOpensAt,
+      }));
+    const kind = nextKind(sent, offer.planOpensAt, sweep.now, loginReady);
     if (!kind) continue;
     const [child] = await database
       .select({ name: schema.children.name })
       .from(schema.children)
       .where(eq(schema.children.id, offer.childId))
       .limit(1);
+    const sessionLabel = firstChoiceLabel(offer.sessions, offer.planChoiceIds);
+    const opensAt = planOpensAtLocal(
+      offer.planOpensAt,
+      await parentTimeZone(database, offer.parentUserId),
+    );
     const facts: PlanPrepFacts = {
       kind,
       childFirstName: child?.name ?? null,
-      opensAt: {
-        local: offer.planOpensAt.toISOString(),
-        timeZone: 'UTC',
-      },
+      opensAt,
       host,
-      language: null,
+      language: await readParentLanguage(database, {
+        familyId: offer.familyId,
+        parentUserId: offer.parentUserId,
+      }),
+      sessionLabel,
     };
     const written = asBubbles(await deps.writer.write(facts));
     if (!written) {
       notices.push({ offerId: offer.id, kind, sent: false });
       continue;
     }
-    let bubbles = written;
-    if (kind === 'login_ask' || kind === 'account_prep') {
-      const minted = await mintLoginLink(database, {
-        familyId: offer.familyId,
-        parentUserId: offer.parentUserId,
-        offerId: offer.id,
-        providerHost: host,
-        purpose: { host, kind, childFirstName: child?.name ?? null },
-        now: sweep.now,
-      });
-      bubbles = withLinkBubbles(written, minted.url);
-    }
-    let delivered = true;
-    for (const body of bubbles) {
-      const ok = await deps.deliver({
-        familyId: offer.familyId,
-        parentUserId: offer.parentUserId,
-        offerId: offer.id,
-        kind,
-        body,
-      });
-      if (!ok) {
-        delivered = false;
-        break;
-      }
-    }
+    const link =
+      kind === 'login_ask' || kind === 'account_prep'
+        ? (
+            await mintFreshLoginLink(database, {
+              familyId: offer.familyId,
+              parentUserId: offer.parentUserId,
+              offerId: offer.id,
+              providerHost: host,
+              purpose: { kind, sessionLabel, opensAt },
+              now: sweep.now,
+            })
+          ).url
+        : null;
+    const delivered = await deps.deliver({
+      familyId: offer.familyId,
+      parentUserId: offer.parentUserId,
+      offerId: offer.id,
+      kind,
+      parts: withLinkBubbles(written, link),
+      now: sweep.now,
+    });
     if (!delivered) {
       notices.push({ offerId: offer.id, kind, sent: false });
       continue;
@@ -207,7 +277,7 @@ export async function runDueSignupPlanPrep(
   return { notices };
 }
 
-/** One event-driven notice (rejected password, mismatched options). Each bubble is its own send. */
+/** One event-driven notice (rejected password, mismatched options). Each part is its own send. */
 export async function sendSignupPlanNotice(
   database: Database,
   input: {
@@ -225,17 +295,15 @@ export async function sendSignupPlanNotice(
 ): Promise<boolean> {
   const written = asBubbles(await deps.writer.write(input.facts));
   if (!written) return false;
-  const bubbles = withLinkBubbles(written, input.link ?? null, input.linkAfter ?? 0);
-  for (const body of bubbles) {
-    const ok = await deps.deliver({
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      offerId: input.offerId,
-      kind: input.kind,
-      body,
-    });
-    if (!ok) return false;
-  }
+  const delivered = await deps.deliver({
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    offerId: input.offerId,
+    kind: input.kind,
+    parts: withLinkBubbles(written, input.link ?? null, input.linkAfter ?? 0),
+    now: input.now,
+  });
+  if (!delivered) return false;
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
