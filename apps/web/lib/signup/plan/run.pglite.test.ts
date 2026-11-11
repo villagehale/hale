@@ -13,6 +13,12 @@ import type {
   PlanResumeToken,
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
+import {
+  PROVIDER_ACCOUNT_CREATE_ENABLED_ENV,
+  PROVIDER_CREDENTIALS_ENABLED_ENV,
+} from '../credentials/flag';
+import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
+import { saveProviderCredentials } from '../credentials/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
@@ -23,7 +29,13 @@ import {
   type PlanRunDeps,
   runDueSignupPlans,
 } from './run';
-import { approveSignupPlan, cancelSignupPlan, claimDuePlan, savePlanResume } from './store';
+import {
+  approveSignupPlan,
+  cancelSignupPlan,
+  claimDuePlan,
+  parkSignupPlan,
+  savePlanResume,
+} from './store';
 
 // Invented hosts and details only. The Browser Use engine is its own tested unit
 // (plan-engine.test.ts); here a stand-in runner reports steps the way it does.
@@ -32,7 +44,6 @@ const OPENS = new Date('2026-12-01T12:00:00.000Z');
 const AUTO_HOST = 'register.example-rec.test';
 const AUTO_URL = `https://${AUTO_HOST}/Clients/BookMe4LandingPages/CoursesLandingPage`;
 const ASSISTED_URL = 'https://anc.ca.apm.activecommunities.com/exampleville/activity/detail/1';
-const LIVE = 'https://live.browser-use.com/s/fixture-live-view-token';
 const SESSIONS = [
   {
     id: 'sat-0900',
@@ -281,6 +292,37 @@ describe('approving a day-before plan', () => {
     expect(result).toEqual({ ok: false, reason });
     expect((await offerRow(offer.id))?.status).toBe('pending');
   });
+
+  it('a register-now yes on an already-open program is stored', async () => {
+    const seeded = await seedFamily(db.database);
+    const childId = await seedChild(db.database, seeded.familyId, 'Ada', 40, undefined, NOW);
+    const offer = await recordSignupOffer(db.database, {
+      familyId: seeded.familyId,
+      childId,
+      parentUserId: seeded.parentUserId,
+      activityKey: 'swim-preschool',
+      registrationUrl: AUTO_URL,
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      now: NOW,
+    });
+    if (!offer.ok) throw new Error(offer.reason);
+    const past = new Date('2026-11-01T12:00:00.000Z');
+    const result = await approveSignupPlan(db.database, {
+      offerId: offer.id,
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      messageId: 'msg-register-now',
+      choiceIds: ['sat-0900'],
+      maxPriceCents: 10000,
+      opensAt: past,
+      waiverAccepted: true,
+      alreadyOpen: true,
+      now: NOW,
+    });
+    expect(result).toEqual({ ok: true });
+    expect((await offerRow(offer.id))?.planAlreadyOpen).toBe(true);
+  });
 });
 
 describe("the plan runs only on its own parent's consent", () => {
@@ -397,71 +439,37 @@ describe('carrying out plans at the open', () => {
     expect((await offerRow(family.offerId))?.status).toBe('planned');
   });
 
-  it('hands an ActiveNet town back to the parent without a browser while the assisted switch is off', async () => {
+  it('runs an ActiveNet host on the generic auto path even with the assisted switch off', async () => {
     const family = await plannedFamily({ url: ASSISTED_URL });
     const { runner, inputs } = engineLike(PAID);
-    const { deps: d, notices } = deps(runner);
+    const { deps: d } = deps(runner);
     await runDueSignupPlans(db.database, { now: NOW }, d);
 
-    expect(inputs.some((i) => i.correlationId === family.offerId)).toBe(false);
-    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
-    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
-      outcome: 'needs_human',
-      detail: 'parent_town',
-    });
-    expect((await steps(family.offerId)).map((s) => s.step)).toEqual([
-      'plan_approved',
-      'plan_started',
-      'plan_finished',
-    ]);
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('auto');
+    expect((await offerRow(family.offerId))?.status).toBe('completed');
   });
 
-  it('on an ActiveNet town with the assisted switch on, fills and hands the parent the live browser: no cap, no payment', async () => {
+  it('does not pick assisted from the host even with the assisted switch on', async () => {
     vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true');
     const family = await plannedFamily({ url: ASSISTED_URL });
-    const { runner, inputs, caps } = engineLike(PAID);
-    runner.run.mockImplementationOnce(async (input: BrowserUsePlanInput) => {
-      inputs.push(input);
-      await input.onStep({ step: 'ready', choiceIndex: 0, feeCents: 9800 });
-      return {
-        ...PAID,
-        outcome: 'ready_for_parent',
-        detail: 'none',
-        choiceIndex: 0,
-        liveViewUrl: LIVE,
-        holdExpiresAt: new Date(NOW.getTime() + 15 * 60_000),
-        confirmationNumber: null,
-        amountChargedCents: null,
-        sessionCostUsd: null,
-      };
-    });
-    const { deps: d, notices } = deps(runner);
-    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+    const { runner, inputs } = engineLike(PAID);
+    const { deps: d } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
 
-    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
-      offerId: family.offerId,
-      outcome: 'ready_for_parent',
-      detail: 'none',
-      notice: 'sent',
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('auto');
+    expect((await offerRow(family.offerId))?.status).toBe('completed');
+  });
+
+  it('runs Halton Hills the same as any other host', async () => {
+    const family = await plannedFamily({
+      url: 'https://haltonhills.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage',
     });
-    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('assisted');
-    expect(caps).toEqual([]);
-    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
-    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
-      outcome: 'ready_for_parent',
-      liveViewUrl: LIVE,
-      choiceIndex: 0,
-      amountChargedCents: null,
-    });
-    const audit = await steps(family.offerId);
-    expect(audit.map((s) => s.step)).toEqual([
-      'plan_approved',
-      'plan_started',
-      'plan_ready',
-      'plan_finished',
-    ]);
-    expect(audit[1]).toMatchObject({ mode: 'assisted' });
-    expect(JSON.stringify(audit)).not.toContain('fixture-live-view-token');
+    const { runner, inputs } = engineLike(PAID);
+    const { deps: d } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('auto');
+    expect((await offerRow(family.offerId))?.status).toBe('completed');
   });
 
   it('asks the parent to sign in again when no saved session is left', async () => {
@@ -1183,5 +1191,204 @@ describe('one registration per family, held by the database', () => {
     const other = await plannedFamily();
     await expect(toSubmitting(other.offerId)).resolves.toBeDefined();
     expect(isOneSubmittingViolation(new Error('connection reset'))).toBe(false);
+  });
+});
+
+describe('parked password rejection and mismatched options', () => {
+  const CHOICES = [
+    {
+      id: 'nov-21',
+      label: 'Nov 21',
+      starts_at: '2026-11-21',
+      price_cents: 12000,
+      waitlist: false,
+      billing_note: 'billed December',
+      provider_email: 'rec@example.test',
+    },
+  ];
+
+  function noticePrep() {
+    const facts: { kind: string }[] = [];
+    const bodies: string[] = [];
+    return {
+      facts,
+      bodies,
+      prep: {
+        writer: {
+          write: async (input: { kind: string }) => {
+            facts.push(input);
+            return [`bubble for ${input.kind}`, 'second bubble'];
+          },
+        },
+        deliver: async (input: { body: string }) => {
+          bodies.push(input.body);
+          return true;
+        },
+      },
+    };
+  }
+
+  function returning(result: BrowserUsePlanResult) {
+    const inputs: BrowserUsePlanInput[] = [];
+    return {
+      inputs,
+      runner: {
+        run: vi.fn(async (input: BrowserUsePlanInput) => {
+          inputs.push(input);
+          return result;
+        }),
+        release: vi.fn(async () => null),
+        settlePayment: vi.fn(async () => {
+          throw new Error('no payment under way');
+        }),
+      },
+    };
+  }
+
+  it('does not claim a parked mismatch or a rejected password', async () => {
+    const mismatch = await plannedFamily();
+    await parkSignupPlan(db.database, {
+      offerId: mismatch.offerId,
+      familyId: mismatch.familyId,
+      availability: { kind: 'options_mismatch', choices: CHOICES },
+      now: NOW,
+    });
+    const rejected = await plannedFamily();
+    await parkSignupPlan(db.database, {
+      offerId: rejected.offerId,
+      familyId: rejected.familyId,
+      availability: { kind: 'password_rejected' },
+      now: NOW,
+    });
+    for (let i = 0; i < 20; i += 1) {
+      const next = await claimDuePlan(db.database, {
+        now: NOW,
+        leadMs: PLAN_JOIN_LEAD_MS,
+        leaseMs: PLAN_LEASE_MS,
+      });
+      if (!next || next === 'contended') break;
+      expect(next.offerId).not.toBe(mismatch.offerId);
+      expect(next.offerId).not.toBe(rejected.offerId);
+    }
+
+    await parkSignupPlan(db.database, {
+      offerId: mismatch.offerId,
+      familyId: mismatch.familyId,
+      availability: { kind: 'join_waitlist', askedStart: 'January' },
+      now: NOW,
+    });
+    let claimed: Awaited<ReturnType<typeof claimDuePlan>> = null;
+    for (let i = 0; i < 20; i += 1) {
+      const next = await claimDuePlan(db.database, {
+        now: NOW,
+        leadMs: PLAN_JOIN_LEAD_MS,
+        leaseMs: PLAN_LEASE_MS,
+      });
+      if (!next || next === 'contended') break;
+      if (next.offerId === mismatch.offerId) {
+        claimed = next;
+        break;
+      }
+    }
+    expect(claimed).toMatchObject({
+      offerId: mismatch.offerId,
+      availability: { kind: 'join_waitlist' },
+    });
+  });
+
+  it('parks a mismatch, texts the parent, and never picks an option', async () => {
+    const family = await plannedFamily();
+    const { runner, inputs } = returning({
+      ...PAID,
+      outcome: 'options_mismatch',
+      detail: 'none',
+      confirmationNumber: null,
+      amountChargedCents: null,
+      siteChoices: CHOICES,
+    });
+    const notices = noticePrep();
+    const result = await runDueSignupPlans(
+      db.database,
+      { now: NOW },
+      {
+        ...deps(runner).deps,
+        prep: notices.prep,
+      },
+    );
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'options_mismatch',
+      notice: 'sent',
+    });
+    expect(inputs[0]?.joinWaitlist).toBe(false);
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('planned');
+    expect(row?.planAvailability).toMatchObject({ kind: 'options_mismatch' });
+    expect(notices.bodies[0]).toBe('bubble for options_mismatch');
+  });
+
+  it('on a rejected password, marks credentials stale, mints a fresh link, and parks', async () => {
+    vi.stubEnv(PROVIDER_CREDENTIALS_ENABLED_ENV, 'true');
+    vi.stubEnv(PROVIDER_CREDENTIALS_MASTER_KEY_ENV, Buffer.alloc(32, 9).toString('base64'));
+    const family = await plannedFamily();
+    expect(
+      (
+        await saveProviderCredentials(db.database, {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          providerHost: AUTO_HOST,
+          username: 'ada',
+          password: 'old-pass',
+          now: NOW,
+        })
+      ).ok,
+    ).toBe(true);
+    const { runner } = returning({
+      ...PAID,
+      outcome: 'needs_login',
+      detail: 'password_rejected',
+      confirmationNumber: null,
+      amountChargedCents: null,
+      passwordRejectionMessage: 'Password must include a number',
+      passwordRule: '8 characters and a number',
+    });
+    const notices = noticePrep();
+    await runDueSignupPlans(
+      db.database,
+      { now: NOW },
+      { ...deps(runner).deps, prep: notices.prep },
+    );
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('planned');
+    expect(row?.planAvailability).toEqual({ kind: 'password_rejected' });
+    expect(notices.bodies[0]).toBe('bubble for password_rejected');
+    expect(notices.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
+    expect(notices.bodies[2]).toBe('second bubble');
+  });
+
+  it('runs with saved credentials when there is no cookie session', async () => {
+    vi.stubEnv(PROVIDER_CREDENTIALS_ENABLED_ENV, 'true');
+    vi.stubEnv(PROVIDER_ACCOUNT_CREATE_ENABLED_ENV, 'true');
+    vi.stubEnv(PROVIDER_CREDENTIALS_MASTER_KEY_ENV, Buffer.alloc(32, 9).toString('base64'));
+    const family = await plannedFamily({ session: false });
+    expect(
+      (
+        await saveProviderCredentials(db.database, {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          providerHost: AUTO_HOST,
+          username: 'ada',
+          password: 'city-pass',
+          now: NOW,
+        })
+      ).ok,
+    ).toBe(true);
+    const { runner, inputs } = returning(PAID);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'completed',
+    });
+    expect(inputs[0]?.credentials).toEqual({ username: 'ada', password: 'city-pass', totp: null });
+    expect(inputs[0]?.accountCreate).toBe(true);
+    expect(inputs[0]?.providerSession.storageState).toEqual({ cookies: [], origins: [] });
   });
 });

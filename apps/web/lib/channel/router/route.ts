@@ -357,6 +357,8 @@ export type HandlerVerdict =
       claimed: true;
       outcome: string;
       reply: string | null;
+      /** Separate Linq sends. When present and non-empty, each body is sent in order. */
+      replies?: string[];
       /**
        * The ledger name for the message this reply goes out as — written onto its
        * `channel_messages` row exactly as a proactive send's is.
@@ -2125,14 +2127,23 @@ async function deliver(
     groupSync?: GroupActivityDecision,
   ) => Promise<string>,
 ): Promise<void> {
-  if (verdict.reply === null) return;
-  const channelMessageId = await answer(
-    verdict.reply,
-    null,
-    null,
-    verdict.templateKey ?? null,
-    verdict.groupSync,
-  );
+  const bodies =
+    verdict.replies && verdict.replies.length > 0
+      ? verdict.replies
+      : verdict.reply !== null
+        ? [verdict.reply]
+        : [];
+  if (bodies.length === 0) return;
+  let channelMessageId = '';
+  for (const body of bodies) {
+    channelMessageId = await answer(
+      body,
+      null,
+      null,
+      verdict.templateKey ?? null,
+      verdict.groupSync,
+    );
+  }
   await verdict.afterSend?.(channelMessageId);
 }
 

@@ -59,6 +59,7 @@ describe('catalog history cutover', () => {
       '0227_audit_log_audience',
       '0228_proactive_candidates_payload',
       '0229_team_schedule_changes',
+      '0230_provider_login_credentials',
     ]);
   });
 });

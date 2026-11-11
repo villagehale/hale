@@ -5,11 +5,12 @@ import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/
 import type { SignupConsentReader } from '../consent-reader';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
 import { runAuthorizedSignup } from '../run';
-import { recordSignupOffer } from '../store';
+import { loadSignupIdentity, recordSignupOffer } from '../store';
 import { runPlanTurn } from './conversation';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import type { MismatchReader } from './mismatch-reader';
 import type { PlanReader, PlanReading } from './reader';
-import { approveSignupPlan } from './store';
+import { approveSignupPlan, parkSignupPlan } from './store';
 import type { PlanReplyFacts, PlanReplyWriter } from './writer';
 
 // Invented hosts and details only. The read and the reply are model calls with their own
@@ -170,6 +171,33 @@ describe('the day-before plan conversation', () => {
     ]);
     expect(written[0]?.maxPriceCents).toBe(10500);
     expect(await auditSteps(f.offerId)).toEqual(['plan_approved', 'plan_reply']);
+  });
+
+  it('asks once for the real date of birth when Hale only has a derived one', async () => {
+    const f = await family();
+    await db.database
+      .update(schema.children)
+      .set({ dobPrecision: 'derived' })
+      .where(eq(schema.children.id, f.childId));
+    const identity = await loadSignupIdentity(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      now: NOW,
+    });
+    expect(identity?.childDob).toBeNull();
+
+    const { planReader, planWriter, written } = fakes(APPROVE);
+    const first = await runPlanTurn(db.database, turn(f), { planReader, planWriter });
+    expect(first?.outcome).toBe('plan_clarify');
+    expect(written[0]?.moment).toBe('clarify');
+    expect(written[0]?.question).toMatch(/date of birth/i);
+    expect((await offer(f.offerId)).status).toBe('pending');
+    expect(await auditSteps(f.offerId)).toContain('plan_ask_dob');
+
+    const second = await runPlanTurn(db.database, turn(f), { planReader, planWriter });
+    expect(second?.outcome).toBe('plan_approved');
+    expect((await offer(f.offerId)).status).toBe('planned');
   });
 
   it("a co-parent's yes cannot approve the plan Hale offered the other parent", async () => {
@@ -388,5 +416,101 @@ describe('the day-before plan conversation', () => {
       browser: null,
     });
     expect(consentReader.read).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('when the site options do not match', () => {
+  const CHOICES = [
+    {
+      id: 'nov-21',
+      label: 'Nov 21',
+      starts_at: '2026-11-21',
+      price_cents: 12000,
+      waitlist: false,
+      billing_note: 'billed December',
+      provider_email: 'rec@example.test',
+    },
+    {
+      id: 'jan-wait',
+      label: 'January waitlist',
+      starts_at: '2027-01-09',
+      price_cents: 9800,
+      waitlist: true,
+      billing_note: null,
+      provider_email: 'rec@example.test',
+    },
+  ];
+
+  async function mismatched() {
+    const f = await family();
+    await approveSignupPlan(db.database, {
+      offerId: f.offerId,
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      messageId: 'msg-mismatch',
+      choiceIds: ['sat-0900'],
+      maxPriceCents: 10500,
+      opensAt: OPENS,
+      waiverAccepted: true,
+      now: NOW,
+    });
+    await parkSignupPlan(db.database, {
+      offerId: f.offerId,
+      familyId: f.familyId,
+      availability: { kind: 'options_mismatch', askedStart: 'January', choices: CHOICES },
+      now: NOW,
+    });
+    return f;
+  }
+
+  it('parks a waitlist pick and does not invent an option', async () => {
+    const f = await mismatched();
+    const mismatchReader: MismatchReader = {
+      read: vi.fn(async () => ({ verdict: 'waitlist' as const })),
+    };
+    const { planReader, planWriter } = fakes(APPROVE);
+    const result = await runPlanTurn(db.database, turn(f, 'join the waitlist'), {
+      planReader,
+      planWriter,
+      mismatchReader,
+    });
+    expect(result?.outcome).toBe('plan_approved');
+    expect(planReader.read).not.toHaveBeenCalled();
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'join_waitlist' });
+  });
+
+  it('parks the site option the parent named, never another', async () => {
+    const f = await mismatched();
+    const mismatchReader: MismatchReader = {
+      read: vi.fn(async () => ({ verdict: 'option' as const, choiceId: 'nov-21' })),
+    };
+    const { planWriter } = fakes(APPROVE);
+    await runPlanTurn(db.database, turn(f, 'take Nov 21'), { planWriter, mismatchReader });
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({
+      kind: 'take_option',
+      choice: expect.objectContaining({ id: 'nov-21' }),
+    });
+  });
+
+  it('emails the provider from Gmail only after they say yes', async () => {
+    const f = await mismatched();
+    const sendProviderEmail = vi.fn(async () => undefined);
+    const mismatchReader: MismatchReader = {
+      read: vi.fn(async () => ({ verdict: 'email' as const })),
+    };
+    const { planWriter } = fakes(APPROVE);
+    await runPlanTurn(db.database, turn(f, 'email them'), {
+      planWriter,
+      mismatchReader,
+      sendProviderEmail,
+    });
+    expect(sendProviderEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'rec@example.test',
+        familyId: f.familyId,
+        actorUserId: f.parentUserId,
+      }),
+    );
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'emailed' });
   });
 });
