@@ -1,7 +1,8 @@
 import { schema } from '@hale/db';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
+import { TEEN_NAME_SHARED_MATCHER_ENABLED_ENV } from '~/lib/privacy/teen-name';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
 
@@ -24,6 +25,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -139,6 +141,45 @@ describe('the household calendar in a right-to-access copy', () => {
     const text = JSON.stringify(doc);
     expect(text).not.toContain('teen raw');
     expect(text).not.toContain('B private');
+  });
+
+  it("lit, withholds a duty owner label that names a teen, and keeps a younger sibling's", async () => {
+    vi.stubEnv(TEEN_NAME_SHARED_MATCHER_ENABLED_ENV, 'true');
+    const { familyId, parentA, kidId } = await seedHousehold();
+    await db.database.insert(schema.familyEvents).values([
+      {
+        familyId,
+        childId: kidId,
+        title: 'swim lesson',
+        startsAt: new Date('2026-11-14T15:00:00.000Z'),
+        source: 'placement',
+        dutyOwnerLabel: `${TEEN_NAME} picks up Pip`,
+        dutyOwnerKind: 'named',
+        dutyRole: 'pickup',
+      },
+      {
+        familyId,
+        childId: kidId,
+        title: 'library morning',
+        startsAt: new Date('2026-11-15T15:00:00.000Z'),
+        source: 'placement',
+        dutyOwnerLabel: 'Pip',
+        dutyOwnerKind: 'named',
+        dutyRole: 'pickup',
+      },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+
+    expect(doc.calendarEvents.map((e) => [e.title, e.duty, e.withheld])).toEqual([
+      [TEEN_REDACTED_PLACEHOLDER, null, 'teen'],
+      ['library morning', { label: 'Pip', kind: 'named', role: 'pickup' }, null],
+    ]);
+    expect(JSON.stringify(doc)).not.toContain(`${TEEN_NAME} picks up`);
   });
 });
 
