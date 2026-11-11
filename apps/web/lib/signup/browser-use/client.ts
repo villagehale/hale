@@ -10,14 +10,14 @@ export const BROWSER_USE_API_KEY_ENV = 'BROWSER_USE_API_KEY';
 export const BROWSER_USE_API_BASE = 'https://api.browser-use.com/api/v4';
 
 /**
- * Hale never solves or gets around a CAPTCHA (VIL-558). Browser Use's solver
- * is on by default. V4 exposes `solveCaptchas` only on `POST /browsers`
+ * Browser Use solves CAPTCHAs on Hale's runs (Barton, VIL-558, for launch):
+ * the one-shot, plan and assisted runs carry on through a CAPTCHA instead of
+ * handing it to the parent. V4 exposes `solveCaptchas` only on `POST /browsers`
  * (RunBrowserSettings has no such field and rejects extra properties), so
- * every browser Hale creates sends this as `false`. Agent runs still provision
- * their own browser; arming a plan run waits on Browser Use confirming the
- * solver is off for Hale's project.
+ * every browser Hale creates sends this as `true`; agent runs that provision
+ * their own browser get Browser Use's default, which is on.
  */
-export const BROWSER_USE_SOLVE_CAPTCHAS = false;
+export const BROWSER_USE_SOLVE_CAPTCHAS = true;
 
 export type BrowserUseRunStatus =
   | 'queued'

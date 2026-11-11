@@ -357,7 +357,7 @@ async function drivePlan(
     };
     // Go-live: a charged cart is never paid with the saved card. The parent
     // finishes on the live browser. $0 that was not submitted stops the same way.
-    if (chargedCartMustStop(total) || freeCartMaySubmit(total)) return checkout;
+    if (total === null || chargedCartMustStop(total) || freeCartMaySubmit(total)) return checkout;
     if (!output.saved_card_on_file) return { ...checkout, detail: 'no_saved_card' };
     if (output.security_code_required) return { ...checkout, detail: 'security_code' };
     const cap = await input.checkSpendingCap(total);

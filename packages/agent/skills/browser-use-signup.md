@@ -27,7 +27,8 @@ The facts for this registration are in the JSON block at the end, under "This re
 - Never type, choose, or confirm any card number, expiry date, security code, bank details, gift card, or saved payment method. Never press pay, place order, submit payment, or complete purchase. Submitting a $0 registration is not a payment.
 - Never type a password, a one-time code, or a security answer. Never create an account and never change account settings.
 - Never accept a waiver, medical form, allergy form, photo release, or terms on the parent's behalf. Stop with `needs_human` instead.
-- Never solve or try to bypass a captcha, queue, or waiting room.
+- Never try to bypass a queue or waiting room.
+- A captcha or "prove you are human" check is not a reason to stop. Browser Use's solver clears it: wait for it to finish, then carry on. Never type a value into a captcha yourself. Stop with `needs_human` and detail `captcha` only if the same check is still blocking the page after the solver has had a minute.
 - Never add more than one session or more than one child.
 - Never type a value that is not in the facts. If a required field asks for something you do not have, stop.
 - Do not leave this provider's site.
@@ -42,7 +43,7 @@ Return the structured output, and nothing else matters.
   - `waitlist` — the session is full and the site only offers a waitlist. Do not join it.
   - `sold_out` — the session is full or closed with no waitlist.
   - `needs_login` — the site will not let you continue without a password, code or security answer.
-  - `needs_human` — a captcha, verification code, waiver, medical or allergy form, an unknown required field, more than one matching session, no matching session, or a total higher than `approved_price_cents`.
+  - `needs_human` — a captcha the solver could not clear, a verification code, waiver, medical or allergy form, an unknown required field, more than one matching session, no matching session, or a total higher than `approved_price_cents`.
   - `error` — the site failed or you could not continue for another reason.
 - `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
 - `checkout_url`: the address of the page you stopped on when `outcome` is `reached_checkout`, otherwise null.

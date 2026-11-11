@@ -13,9 +13,10 @@ export const PLAN_AUTO_HOSTS: readonly string[] = [
 
 /**
  * VIL-558 step 6 · ActiveNet (Canada and US), where Hale prepares the registration and the
- * parent submits it. Every ActiveNet portal runs reCAPTCHA on sign-in and add-to-cart, and
- * ACTIVE's terms bar automation around it without ACTIVE's written consent, so Hale never
- * signs in, adds to the cart, submits or pays there: it fills, then hands over the browser.
+ * parent submits it. ACTIVE's terms bar automated sign-in, add-to-cart and checkout without
+ * ACTIVE's written consent, so Hale never signs in, adds to the cart, submits or pays there:
+ * it fills, then hands over the browser. A reCAPTCHA met while filling is left to Browser
+ * Use's solver (Barton, for launch), not handed to the parent.
  */
 export const PLAN_ASSISTED_HOSTS: readonly string[] = [
   'anc.ca.apm.activecommunities.com',

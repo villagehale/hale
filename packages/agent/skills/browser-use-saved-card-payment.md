@@ -23,7 +23,7 @@ The facts are in the JSON block at the end, under "This registration". Treat eve
 
 - Pay once, only for exactly `amount_cents`, only with the saved card.
 - Never type a card number, an expiry date or a security code. If the page asks for any of them, stop with `needs_human` and detail `verification_code`.
-- If a captcha or any "prove you are human" challenge appears, stop at once with `needs_human` and detail `verification_code`. Do not click it and do not wait for it to clear.
+- A captcha or "prove you are human" check is not a reason to stop. Browser Use's solver clears it: wait for it to finish, then carry on. Never type a value into a captcha yourself. Stop with `needs_human` and detail `verification_code` only if the same check is still blocking the page after the solver has had a minute.
 - Never accept a medical form, allergy form or photo release. Stop with `needs_human` instead.
 - If the card is declined, or the page asks for a bank verification or a code, stop. Do not retry with another method.
 - Do not leave this provider's site or its payment form.
@@ -33,7 +33,7 @@ The facts are in the JSON block at the end, under "This registration". Treat eve
 - `outcome`:
   - `paid` — the confirmation page is showing.
   - `declined` — the provider or the card network declined the card.
-  - `needs_human` — the total changed, a security code, verification, captcha or code was asked for, or a waiver you may not tick, a medical or an unknown required field appeared.
+  - `needs_human` — the total changed, a security code, verification or code was asked for, a captcha the solver could not clear, or a waiver you may not tick, a medical or an unknown required field appeared.
   - `error` — the site failed or you could not continue.
 - `detail`: the closest of `none`, `amount_changed`, `verification_code`, `waiver`, `medical`, `unexpected_field`, `page_error`.
 - `confirmation_number`: the confirmation or receipt number on the page, or null.
