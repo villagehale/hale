@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in English, uses only facts, and asks one question (session order). However it asks for ranked sessions and adds a second unrequested idea about queueing on a phone, plus it is longer than two short sentences and contains a claim about town queue rules not in the facts, which is an invented reason. Also no max or waiver asked, which is fine, but the extra queue claim is an invented limit/reason.",
+    "score": 2
+  }
+}

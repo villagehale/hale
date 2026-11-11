@@ -136,5 +136,7 @@ export function createGroupExperienceReader(
 
 export function productionGroupExperienceReader(): GroupExperienceReader | undefined {
   if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
-  return createGroupExperienceReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  return createGroupExperienceReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
 }

@@ -48,8 +48,10 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   ],
   // VIL-559. The crisis pager writes its audit row from CRISIS_UNANSWERED_AUDIT_ACTION.
   'apps/web/lib/monitoring/failure-page.ts': ['crisis_unanswered'],
-  // VIL-472 and VIL-473. One recorder writes the tapback, the sticker, and the effect.
-  'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_sticker', 'linq_effect'],
+  // VIL-472. One recorder writes the tapback and the sticker moment.
+  'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_sticker'],
+  // VIL-479. One helper writes Hale's edit and a parent's edit of their own bubble.
+  'apps/web/lib/channel/linq/edit.ts': ['linq_message_edited', 'linq_parent_message_edited'],
   // VIL-226. One audit helper writes every verb of the hourly proactive review, and a
   // decider send names the sweep's own verb for a nudge.
   'apps/web/lib/channel/proactive/review.ts': [

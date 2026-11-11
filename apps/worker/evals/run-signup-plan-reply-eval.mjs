@@ -48,6 +48,8 @@ register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const JUDGE_SYSTEM = judgePrompt('signup-plan-reply');
+const ALSO_QUEUEING_MEANS =
+  'If the parent also queues on their own phone or computer, the family holds two places in line.';
 
 function fixtureFor(id) {
   const fixture = SIGNUP_PLAN_REPLY_FIXTURES.find((item) => item.id === id);
@@ -142,8 +144,10 @@ async function main() {
     const failures = [];
     if (text === null) failures.push(`unsendable after retry: ${violation}`);
     else {
+      // The judge reads the facts the writer read, so the two-places note is not "invented".
+      const seen = JSON.parse(writer.planReplyUserMessage(fixture.facts, null)).facts;
       const verdict = await judge(fixture.id, {
-        facts: fixture.facts,
+        facts: seen.alsoQueueing ? { ...seen, alsoQueueing: ALSO_QUEUEING_MEANS } : seen,
         text,
         watchFor: fixture.watchFor,
       });

@@ -37,7 +37,11 @@ import {
 
 export { linqEffectsEnabled };
 
-/** Latest `linq:effect` send in this chat, from the outbound ledger. */
+/** The template key on an effect reply's outbound row: how the next read finds this
+ * chat's last effect. */
+export const LINQ_EFFECT_TEMPLATE_KEY = 'linq:effect';
+
+/** Latest effect reply in this chat, from the outbound ledger. */
 export async function lastLinqEffectAt(database: Database, chatId: string): Promise<Date | null> {
   const [row] = await database
     .select({
@@ -51,7 +55,7 @@ export async function lastLinqEffectAt(database: Database, chatId: string): Prom
     .where(
       and(
         eq(schema.channelMessages.providerChatId, chatId),
-        eq(schema.channelMessages.templateKey, 'linq:effect'),
+        eq(schema.channelMessages.templateKey, LINQ_EFFECT_TEMPLATE_KEY),
         eq(schema.channelMessages.direction, 'out'),
       ),
     )
@@ -63,7 +67,7 @@ export async function lastLinqEffectAt(database: Database, chatId: string): Prom
     !row ||
     row.providerChatId !== chatId ||
     row.direction !== 'out' ||
-    row.templateKey !== 'linq:effect'
+    row.templateKey !== LINQ_EFFECT_TEMPLATE_KEY
   ) {
     return null;
   }
@@ -235,7 +239,9 @@ export function createLinqEffectDecider(
 let shared: LinqEffectDecider | null = null;
 
 export function sharedLinqEffectDecider(): LinqEffectDecider {
-  shared ??= createLinqEffectDecider(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createLinqEffectDecider(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'reply_intent' }),
+  );
   return shared;
 }
 

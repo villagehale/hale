@@ -15,7 +15,7 @@ import {
   linqEffectUserMessage,
   linqEffectsEnabled,
 } from './effect';
-import { LinqMomentDeliveredError, considerLinqReply } from './moments';
+import { considerLinqReply } from './moments';
 import { isLinqMessageEffect } from './transport';
 
 vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson: vi.fn() }));
@@ -78,9 +78,6 @@ function moment(
     lastEffectAt?: Date | null;
     timeZone?: string | null;
     templateKey?: string | null;
-    medicalReplySource?: 'fixed' | 'web_grounded' | null;
-    replySource?: 'composed' | 'fixed' | null;
-    relatedConversationId?: string | null;
   } = {},
 ) {
   return considerLinqReply(fake.db, {
@@ -88,9 +85,6 @@ function moment(
     inboundBody: READ.parentText,
     outboundBody: READ.reply,
     templateKey: extra.templateKey ?? null,
-    medicalReplySource: extra.medicalReplySource ?? null,
-    replySource: extra.replySource ?? null,
-    relatedConversationId: extra.relatedConversationId ?? null,
     familyId: FAMILY,
     parentUserId: USER,
     now: extra.now ?? NOW,
@@ -102,23 +96,6 @@ function moment(
       lastEffectAt: extra.lastEffectAt ?? null,
     },
   });
-}
-
-/** The fake's transaction hands its callback a handle; make one insert on it throw. */
-function failInsertInside(fake: ReturnType<typeof makeFakeDb>, target: unknown) {
-  const transaction = fake.db.transaction.bind(fake.db);
-  type Tx = Parameters<Parameters<typeof fake.db.transaction>[0]>[0];
-  fake.db.transaction = ((cb: (tx: Tx) => Promise<unknown>) =>
-    transaction(async (tx) => {
-      const insert = tx.insert.bind(tx);
-      const failing = Object.assign(Object.create(tx), {
-        insert: (table: Parameters<typeof insert>[0]) => {
-          if (table === target) throw new Error('bad row');
-          return insert(table);
-        },
-      });
-      return cb(failing);
-    })) as unknown as typeof fake.db.transaction;
 }
 
 afterEach(() => {
@@ -349,7 +326,7 @@ describe('VIL-473 Linq message effects', () => {
         lastEffectHoursAgo: 1,
       },
     ]);
-    expect(sent).toMatchObject({ handled: true, threadBody: READ.reply });
+    expect(sent).toEqual({ handled: 'effect', providerMessageId: 'effect-1' });
     expect(posted).toHaveBeenCalledTimes(1);
   });
 
@@ -373,47 +350,23 @@ describe('VIL-473 Linq message effects', () => {
     expect(fake.rows(schema.auditLog)).toHaveLength(0);
   });
 
-  it('sends the reply with the effect the model chose, and audits it', async () => {
+  it('sends the reply with the effect the model chose, and leaves its receipts to the router', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fake = makeFakeDb();
+    const posted = linqFetch();
     const sent = await moment(
       fake,
       decider({ effect: { type: 'screen', name: 'confetti' } }),
-      linqFetch(),
+      posted,
     );
-    expect(sent).toEqual({
-      handled: true,
-      channelMessageId: expect.any(String),
-      threadBody: READ.reply,
-    });
-    expect(fake.rows(schema.auditLog).map((r) => r.actionTaken)).toEqual(['linq_effect']);
-    expect(fake.rows(schema.channelMessages)[0]).toMatchObject({
-      templateKey: 'linq:effect',
-      providerMessageId: 'effect-1',
-      direction: 'out',
-    });
-  });
-
-  it('keeps the reply sources on an unkeyed effect row', async () => {
-    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
-    vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    const conversationId = '00000000-0000-4000-8000-0000000000c1';
-    const fake = makeFakeDb();
-    await moment(fake, decider({ effect: { type: 'screen', name: 'confetti' } }), linqFetch(), {
-      medicalReplySource: 'fixed',
-      replySource: 'composed',
-      relatedConversationId: conversationId,
-    });
-    expect(fake.rows(schema.channelMessages)[0]).toMatchObject({
-      templateKey: 'linq:effect',
-      medicalReplySource: 'fixed',
-      replySource: 'composed',
-      relatedConversationId: conversationId,
-      providerMessageId: 'effect-1',
-    });
+    expect(sent).toEqual({ handled: 'effect', providerMessageId: 'effect-1' });
+    expect(posted).toHaveBeenCalledTimes(1);
+    // The effect send is the reply: sendReply writes its row, audit and thread row as
+    // for a plain send. Nothing here writes a second set.
+    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
+    expect(fake.rows(schema.auditLog)).toHaveLength(0);
   });
 
   it('does not play an effect on a reply that already has its own template key', async () => {
@@ -432,7 +385,7 @@ describe('VIL-473 Linq message effects', () => {
     expect(fake.rows(schema.auditLog)).toHaveLength(0);
   });
 
-  it('ledgers an unknown send error and does not treat it as a refusal', async () => {
+  it('names an unknown send error uncertain, not a refusal', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.mocked(sendLinqEffect).mockRejectedValueOnce(new Error('boom'));
@@ -454,52 +407,23 @@ describe('VIL-473 Linq message effects', () => {
       decider({ effect: { type: 'screen', name: 'confetti' } }),
       posted,
     );
-    expect(sent).toMatchObject({ handled: true, threadBody: READ.reply });
+    expect(sent).toEqual({ handled: 'effect', providerMessageId: null });
     expect(posted).not.toHaveBeenCalled();
-    expect(fake.rows(schema.channelMessages)[0]).toMatchObject({
-      templateKey: 'linq:effect',
-      providerMessageId: null,
-    });
   });
 
-  it('treats an uncertain delivery as already sent, and a ledger failure as not a second chance', async () => {
+  it('treats an uncertain delivery as already sent, so the words are not posted again', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    const uncertain = makeFakeDb();
     const missing = vi.fn(async () => Response.json({}, { status: 201 }));
     expect(
-      await moment(uncertain, decider({ effect: { type: 'screen', name: 'confetti' } }), missing),
-    ).toMatchObject({ handled: true, threadBody: READ.reply });
+      await moment(
+        makeFakeDb(),
+        decider({ effect: { type: 'screen', name: 'confetti' } }),
+        missing,
+      ),
+    ).toEqual({ handled: 'effect', providerMessageId: null });
     expect(missing).toHaveBeenCalledTimes(1);
-    expect(uncertain.rows(schema.channelMessages)[0]).toMatchObject({
-      templateKey: 'linq:effect',
-      providerMessageId: null,
-    });
-
-    const broken = makeFakeDb();
-    failInsertInside(broken, schema.channelMessages);
-    const posted = linqFetch();
-    await expect(
-      moment(broken, decider({ effect: { type: 'screen', name: 'confetti' } }), posted),
-    ).rejects.toBeInstanceOf(LinqMomentDeliveredError);
-    expect(posted).toHaveBeenCalledTimes(1);
-    expect(broken.rows(schema.channelMessages)).toHaveLength(0);
-  });
-
-  it('never leaves an effect row without its audit row', async () => {
-    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
-    vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    const fake = makeFakeDb();
-    failInsertInside(fake, schema.auditLog);
-    const posted = linqFetch();
-    await expect(
-      moment(fake, decider({ effect: { type: 'screen', name: 'confetti' } }), posted),
-    ).rejects.toBeInstanceOf(LinqMomentDeliveredError);
-    expect(posted).toHaveBeenCalledTimes(1);
-    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
-    expect(fake.rows(schema.auditLog)).toHaveLength(0);
   });
 
   it('lets the reply go plain when the effect POST never reached Linq', async () => {

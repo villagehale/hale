@@ -51,7 +51,12 @@ import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-deci
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
-import { sharedLinqEffectDecider } from '~/lib/channel/linq/effect';
+import {
+  linqMessageEditEnabled,
+  listEditableLinqSends,
+  sharedLinqEditDecider,
+} from '~/lib/channel/linq/edit';
+import { LINQ_EFFECT_TEMPLATE_KEY, sharedLinqEffectDecider } from '~/lib/channel/linq/effect';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -70,7 +75,7 @@ import {
   releaseGroupOnLeave,
 } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
-import { LinqMomentDeliveredError, considerLinqReply } from '~/lib/channel/linq/moments';
+import { considerLinqReply } from '~/lib/channel/linq/moments';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -1089,7 +1094,15 @@ async function routeChannelMessageInner(
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
   // thread, and the coach re-reads that thread on the attempt that finally works.
   if (!redriven) {
-    await appendMessage(conversationId, 'user', context.body, deps.database);
+    // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
+    // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
+    const inboundProviderId =
+      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
+    await appendMessage(conversationId, 'user', context.body, deps.database, {
+      childId: null,
+      topic: null,
+      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+    });
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -3351,19 +3364,51 @@ async function sendReply(
     if (left) throw new ChatLeftError();
   }
   const voiced = await voiceMemoFor(deps, args);
+  // VIL-473: the reply's own words, already sent with an iMessage effect. Like a voice
+  // memo, it is this reply's send: the receipts below are written for it exactly as for
+  // a text, and the text is never sent beside it.
+  let effected: { providerMessageId: string | null; channel: 'imessage'; chatId: string } | null =
+    null;
   if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+    let edit:
+      | {
+          decider: ReturnType<typeof sharedLinqEditDecider>;
+          candidates: Awaited<ReturnType<typeof listEditableLinqSends>>;
+          audience: 'direct' | 'group';
+          conversationId: string;
+        }
+      | undefined;
+    if (linqMessageEditEnabled() && args.conversationId) {
+      try {
+        edit = {
+          decider: sharedLinqEditDecider(),
+          candidates: await listEditableLinqSends(deps.database, {
+            familyId: args.job.family_id,
+            conversationId: args.conversationId,
+            chatId: args.route.chatId,
+            now: deps.now(),
+            inboundAt: new Date(args.job.received_at),
+          }),
+          audience: args.job.in_group === false ? 'direct' : 'group',
+          conversationId: args.conversationId,
+        };
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq edit: candidates unread; the follow-up still goes out',
+        );
+      }
+    }
     try {
       const moment = await considerLinqReply(deps.database, {
         route: args.route,
         inboundBody: args.inboundBody,
         outboundBody: args.body,
         templateKey: args.templateKey ?? null,
-        medicalReplySource: args.medicalSource ?? null,
-        replySource: args.replySource ?? null,
-        relatedConversationId: args.conversationId,
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(edit ? { edit } : {}),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
@@ -3371,7 +3416,13 @@ async function sendReply(
           ? { effect: { decider: sharedLinqEffectDecider(), ...args.effectRead } }
           : {}),
       });
-      if (moment.handled) {
+      if (moment.handled === 'effect') {
+        effected = {
+          providerMessageId: moment.providerMessageId,
+          channel: 'imessage',
+          chatId: args.route.chatId,
+        };
+      } else if (moment.handled) {
         if (args.claim) await args.claim();
         if (args.conversationId && moment.threadBody) {
           await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
@@ -3382,52 +3433,20 @@ async function sendReply(
         return moment.channelMessageId;
       }
     } catch (err) {
-      // The deadline already ended this attempt. A plain send here would be a
-      // second reply once the drain re-drives the turn.
-      if (isTurnTimeout(err) || turnSignalAborted()) throw err;
-      // Linq already has the reply (or may), and its outbound row and audit row
-      // did not land. Another POST would put a plain copy beside it. The turn is
-      // claimed and threaded, then the error goes on up: like a plain reply whose
-      // ledger insert throws, the turn is recorded as broke_after_answering and
-      // never answered twice.
-      if (err instanceof LinqMomentDeliveredError) {
-        deps.log.error(
-          { providerMessageId: err.providerMessageId },
-          'linq moment: the reply landed; the ledger did not',
-        );
-        if (args.claim) {
-          try {
-            await args.claim();
-          } catch (claimErr) {
-            deps.log.warn(
-              { code: claimErr instanceof Error ? claimErr.name : 'unknown' },
-              'linq moment: the reply landed; the answer was not claimed',
-            );
-          }
-        }
-        if (args.conversationId && err.threadBody) {
-          try {
-            await appendMessage(args.conversationId, 'assistant', err.threadBody, deps.database);
-          } catch (threadErr) {
-            deps.log.warn(
-              { code: threadErr instanceof Error ? threadErr.name : 'unknown' },
-              'linq moment: the reply landed; the thread was not updated',
-            );
-          }
-        }
-        await mirrorActivityDecision(deps, args);
-        throw err;
-      }
+      // VIL-479 (Devin BUG_0003): a turn that expired while the edit read ran is over.
+      // It must not edit a bubble, and it must not send the follow-up either.
+      if (isTurnTimeout(err)) throw err;
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
     }
+    // An effect reply already went out: the deadline cannot unsend it, and it must not
+    // throw away the claim either.
+    if (!effected) assertTurnLive();
   }
-  // A moment that declined, or never ran, still must not send after the deadline.
-  // A voice memo already posted is the reply; do not throw away its claim.
-  if (!voiced) assertTurnLive();
-  const sent = voiced ?? (await deps.transport.send({ route: args.route, body: args.body }));
+  const sent =
+    voiced ?? effected ?? (await deps.transport.send({ route: args.route, body: args.body }));
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
   // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,
   // on every turn, while max_pipeline was 0. The outbound channel_messages row
@@ -3462,7 +3481,8 @@ async function sendReply(
       channel: carriedBy,
       direction: 'out',
       category: 'reply',
-      templateKey: args.templateKey ?? null,
+      // A reply with its own key is never sent with an effect (moments.ts).
+      templateKey: effected ? LINQ_EFFECT_TEMPLATE_KEY : (args.templateKey ?? null),
       providerMessageId: sent.providerMessageId,
       // The chat the blue bubble landed in. Later async sends (a connect
       // receipt) read it back so they return to this thread rather than
@@ -3489,8 +3509,9 @@ async function sendReply(
     actionTaken: REPLY_SENT_ACTION[carriedBy],
     targetTable: 'channel_messages',
     targetId: channelMessageId,
-    // The form only, never the words (rule #1): this reply went as a voice memo.
-    ...(voiced ? { after: { form: 'voice_memo' } } : {}),
+    // The form only, never the words (rule #1): this reply went as a voice memo, or
+    // carried an iMessage effect.
+    ...(voiced ? { after: { form: 'voice_memo' } } : effected ? { after: { form: 'effect' } } : {}),
   });
   noteMessage({
     direction: 'out',
@@ -3508,6 +3529,12 @@ async function sendReply(
       childId: null,
       topic: null,
       source: args.threadSource ?? null,
+      ...(!voiced &&
+      linqMessageEditEnabled() &&
+      args.route.channel === 'imessage' &&
+      sent.providerMessageId
+        ? { providerMessageId: sent.providerMessageId }
+        : {}),
     });
   }
 

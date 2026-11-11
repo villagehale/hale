@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Super, merci Dana. Tu as déjà un groupe iMessage avec l'autre parent, ou tu préfères que je démarre un nouveau groupe avec elle ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "fr"
+  },
+  "latencyMs": 1449
+}

@@ -145,7 +145,9 @@ export function createCalendarConsentReader(
 let sharedReader: CalendarConsentReader | null = null;
 
 export function sharedCalendarConsentReader(): CalendarConsentReader {
-  sharedReader ??= createCalendarConsentReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  sharedReader ??= createCalendarConsentReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return sharedReader;
 }
 

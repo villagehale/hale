@@ -419,6 +419,10 @@
     "file": "kid-item-classifier.md",
     "sha256": "db282b366f5d1d5ba3066a425d1782eb93417af74d863b7b3f92233bb9f4211b"
   },
+  "linq-edit.md": {
+    "file": "linq-edit.md",
+    "sha256": "04b96842d607bb4835d35798807cf49d787cd3625e89bcffc93c79aec89fced5"
+  },
   "linq-effect.md": {
     "file": "linq-effect.md",
     "sha256": "2ae86641c1a1b32e9ec7f4249b15a2f63a8c0c72c6306ce86218ac815a10eae4"
@@ -593,7 +597,7 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "c85561bd79fbccd37ec765335f5f6a49f276458f30faa0fb80d6eba9158ea80c"
+    "sha256": "aefa2380258d108f0f425dfe640acf2fdeca286ab340cc6cc4ef375b8601e0fb"
   },
   "signup-provider-notice.md": {
     "file": "signup-provider-notice.md",

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the question directly. It names the one Saturday event in the week (soccer practice, 10:00am, Cedarvale Park) and offers the verified find whole: the exact title, venue and its own date, Sat Aug 8. The free, all-ages detail is accurate and fits Milo and Ada. The neighbour count and the URL were appended by the runtime and are legitimate. There are no questions, no machinery talk and no sign-off. The only hint of redundancy is repeating the date after 'Saturday', which is negligible.",
+    "score": 5
+  }
+}

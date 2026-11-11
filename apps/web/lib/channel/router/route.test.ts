@@ -5226,31 +5226,14 @@ describe('an iMessage effect does not send the reply twice', () => {
     replyToMessageId: 'in-1',
   };
 
-  /** The effect row and its audit row are one transaction; fail the row inside it. */
-  function failEffectLedger(database: ChannelRouterDeps['database']) {
-    type Tx = Parameters<Parameters<typeof database.transaction>[0]>[0];
-    const transaction = database.transaction.bind(database);
-    database.transaction = ((cb: (tx: Tx) => Promise<unknown>) =>
-      transaction(async (tx) => {
-        const insert = tx.insert.bind(tx);
-        const failing = Object.assign(Object.create(tx), {
-          insert: (table: Parameters<typeof insert>[0]) => {
-            if (table === schema.channelMessages) throw new Error('bad row');
-            return insert(table);
-          },
-        });
-        return cb(failing);
-      })) as unknown as typeof database.transaction;
-  }
-
-  function effectTurn() {
+  function effectTurn(options: Parameters<typeof harness>[0] = {}) {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
-    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'test-key');
     effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
     return harness({
       coach: fakeCoach('You are in for swim.'),
       context: { body: 'we got in for swim', reply: IMESSAGE },
+      ...options,
     });
   }
 
@@ -5279,59 +5262,105 @@ describe('an iMessage effect does not send the reply twice', () => {
     ]);
   });
 
-  it('does not post a plain copy when the ledger write fails after Linq accepts', async () => {
-    const h = effectTurn();
-    const posts: string[] = [];
-    vi.stubGlobal('fetch', async (url: string) => {
-      posts.push(new URL(url).pathname);
-      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
-    });
-    failEffectLedger(h.deps.database);
+  it('writes the same receipts as a plain reply: audit, thread source, editable bubble', async () => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    // VIL-616: a reply written after reading an email keeps its mark when it carries an effect.
+    const coach: ChannelCoachRuntime = {
+      async respond() {
+        return {
+          reply: 'You are in for swim.',
+          planOffer: null,
+          activityPromise: null,
+          spotWatch: null,
+          emailRead: true,
+        };
+      },
+    };
+    const h = effectTurn({ coach });
+    vi.stubGlobal('fetch', async () =>
+      Response.json({ message: { id: 'effect-out' } }, { status: 201 }),
+    );
 
     const result = await routeChannelMessage(h.deps, job());
 
-    // Answered once, and the missing record is a named failure, not a clean answer.
-    expect(result.status).toBe('agent_failed');
-    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    expect(result.status).toBe('agent_replied');
     expect(h.transport.sent).toEqual([]);
-    expect(h.turns.answered).toEqual([job().channel_message_id]);
-    expect(h.turns.failed).toEqual([
-      { channelMessageId: job().channel_message_id, reason: 'broke_after_answering' },
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out).toEqual([
+      expect.objectContaining({
+        templateKey: 'linq:effect',
+        providerMessageId: 'effect-out',
+        relatedConversationId: result.conversationId,
+      }),
     ]);
-    expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([]);
+    expect(auditRows(h.fake).filter((row) => row.targetId === out[0]?.id)).toEqual([
+      expect.objectContaining({ actionTaken: 'sms_reply_sent', after: { form: 'effect' } }),
+    ]);
+    const assistant = messageRows(h.fake).filter((row) => row.role === 'assistant');
+    expect(assistant.map((row) => [row.content, row.source, row.providerMessageId])).toEqual([
+      ['You are in for swim.', { kind: 'read_email' }, 'effect-out'],
+    ]);
   });
 
-  it('does not hand a follow-up the inbound id when the effect row is not saved', async () => {
+  it('is a failure after answering when the ledger write fails after Linq accepts', async () => {
     const h = effectTurn();
-    const closed: string[] = [];
-    h.deps.handlers = [
-      {
-        name: 'offer_close',
-        async handle() {
-          return {
-            claimed: true as const,
-            outcome: 'closed',
-            reply: 'You are in for swim.',
-            afterSend: async (id: string) => {
-              closed.push(id);
-            },
-          };
-        },
-      },
-    ];
     const posts: string[] = [];
     vi.stubGlobal('fetch', async (url: string) => {
       posts.push(new URL(url).pathname);
       return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
     });
-    failEffectLedger(h.deps.database);
+    const realDb = h.deps.database;
+    const realInsert = realDb.insert.bind(realDb);
+    h.deps.database = new Proxy(realDb, {
+      get(target, prop, receiver) {
+        if (prop !== 'insert') return Reflect.get(target, prop, receiver);
+        return (table: Parameters<typeof realInsert>[0]) => {
+          if (table === schema.auditLog) throw new Error('audit insert failed');
+          return realInsert(table);
+        };
+      },
+    });
 
-    // The turn fails loudly after its claim: the queue's re-drive stops at the door.
-    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow('linq moment delivered');
+    await routeChannelMessage(h.deps, job());
+
+    // Answered once, and the missing record is a named failure, not a clean answer.
     expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
     expect(h.transport.sent).toEqual([]);
     expect(h.turns.answered).toEqual([job().channel_message_id]);
-    expect(closed).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('brokeAfterAnswering');
+  });
+
+  it('keeps an effect that went out while the deadline fired, and claims it', async () => {
+    const h = effectTurn({ turnDeadlineMs: 500 });
+    const posts: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal('fetch', async (url: string) => {
+      const path = new URL(url).pathname;
+      posts.push(path);
+      // Only the effect POST is held; the typing stop the turn's exit sends is not.
+      if (path.endsWith('/messages')) await held;
+      return Response.json({ message: { id: 'effect-late' } }, { status: 201 });
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'turn_timeout',
+    });
+    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    release();
+
+    // The words are on the phone: the turn is claimed so the re-drive stops at the door,
+    // and no plain copy follows.
+    await vi.waitFor(() => expect(h.turns.answered).toEqual([job().channel_message_id]));
+    await vi.waitFor(() =>
+      expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+        expect.objectContaining({ templateKey: 'linq:effect', providerMessageId: 'effect-late' }),
+      ]),
+    );
+    expect(h.transport.sent).toEqual([]);
   });
 
   it('still sends the reply plain when Linq refuses the effect', async () => {
@@ -5342,6 +5371,9 @@ describe('an iMessage effect does not send the reply twice', () => {
 
     expect(result.status).toBe('agent_replied');
     expect(h.transport.bodies()).toEqual(['You are in for swim.']);
+    expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: null }),
+    ]);
   });
 });
 
@@ -5433,6 +5465,36 @@ describe('a reply the model chose to say as a voice memo (VIL-495)', () => {
 
     expect(calls[0]?.input).toMatchObject({ isGroup: true });
     expect(h.transport.bodies()).toEqual([SPOKEN]);
+  });
+
+  describe('with message edit on (VIL-479)', () => {
+    beforeEach(() => {
+      vi.stubEnv('VERCEL_ENV', 'preview');
+      vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('a memo is not an editable bubble: its thread turn carries no provider id', async () => {
+      const { h } = voiceHarness(true, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+      await routeChannelMessage(h.deps, job({ in_group: false }));
+
+      const assistant = messageRows(h.fake).filter((row) => row.role === 'assistant');
+      expect(assistant).toEqual([expect.objectContaining({ content: SPOKEN })]);
+      expect(assistant[0]?.providerMessageId).toBeUndefined();
+    });
+
+    it('the same reply sent as text keeps its bubble id for a later edit', async () => {
+      const { h } = voiceHarness(true, { sent: 'text', why: 'capability' });
+
+      await routeChannelMessage(h.deps, job({ in_group: false }));
+
+      expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([
+        expect.objectContaining({ content: SPOKEN, providerMessageId: 'fake-out-1' }),
+      ]);
+    });
   });
 
   it('the model did not choose voice: the voice send is never asked', async () => {
@@ -5792,6 +5854,8 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
       // Likewise the group bit (0185, VIL-463), which the ledger row now carries.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
+      // VIL-479 · drizzle names every messages column, including this one (0201).
+      await db.exec('ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider_message_id text');
       // And the audit row's audience (0227, VIL-635), which every audit write now carries.
       await db.exec('ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS audience uuid');
     });
@@ -6111,7 +6175,9 @@ describe('the reply row, written to a real database', () => {
           const answered = await text(parent, 'Maplewood', OWN_CHAT, {
             slow,
             holdingLine: fakeHoldingLine("I'm on it."),
-            holdingLineAfterMs: HOLDING_AFTER_MS,
+            // With no slow call, a deadline no real turn reaches: the control must not
+            // depend on how fast this machine runs the turn.
+            holdingLineAfterMs: slow === null ? 60_000 : HOLDING_AFTER_MS,
           });
 
           expect(answered.said).toEqual(said);

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, for Hale to stop sending email without asking first. `turnedOffThisTurn` shows send_email and reply_to_email were switched off, so the reply's confirmation is true. It answers in the parent's language and stops. The second sentence restates the first a little, a minor redundancy.",
+    "score": 4
+  }
+}

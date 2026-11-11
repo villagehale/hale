@@ -63,6 +63,8 @@ describe('catalog history cutover', () => {
       '0225_linq_group_plan_calendar_consent',
       '0226_going_count_opt_ins',
       '0231_linq_group_experience',
+      '0225_messages_provider_message_id',
+      '0232_drop_civic_catalog',
     ]);
   });
 });
