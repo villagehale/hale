@@ -31,6 +31,9 @@ vi.mock('~/lib/signup/browser-use/runner', () => ({ remoteProfileDeleterFromEnv:
 vi.mock('~/lib/signup/browser-use/vault', () => ({
   sweepExpiredProviderSessions: async () => ({ deleted: 0, remotePending: 0, remoteFailed: 0 }),
 }));
+vi.mock('~/lib/signup/credentials/store', () => ({
+  sweepStaleProviderCredentials: async () => ({ deleted: 0 }),
+}));
 
 function summaryWithGoogleRow(): DeletionSweepSummary {
   return {

@@ -72,7 +72,7 @@ One JSON object. Fill a field only when this message (or a recent turn not yet i
 
 - `reply` - prose only: no URL, no numbered list, no phone number. Two or three short lines. Exactly one question mark, except `find_show`, `connected`, `ack`, `stop_asking` (none).
 - `postalCode` (the code alone) or `city`.
-- `children` - `{ "name": "Maya", "ageMonths": 48, "agePrecision": "years" }` per child; any age they gave is a number of months ("is 1" is 12, "just turned 6" is 72).
+- `children` - `{ "name": "Maya", "ageMonths": 48, "agePrecision": "years", "dateOfBirth": "2016-05-01" }` per child; any age they gave is a number of months ("is 1" is 12, "just turned 6" is 72).
 - `parentName` - the parent's own name, only from their own answer; never a kid's name. A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.
 - `parentRole` / `parentRoleBasis` - your soft read: mother, father, or unknown; `stated` from their words, `guessed` from a clearly gendered name. Never said to them.
 - `placeDeclined` - they declined the coarse code too; the place is not asked again.

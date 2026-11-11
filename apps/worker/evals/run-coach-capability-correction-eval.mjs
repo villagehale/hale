@@ -52,9 +52,9 @@ const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-/** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
+/** Mirrors MAX_STEPS / CHANNEL_COACH_MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-capability-correction');
 
@@ -271,16 +271,21 @@ async function main() {
     const calls = [];
     const offers = [];
     const failures = [];
-    const skill = capabilityTools.augmentCoachSkillForCapabilities(base, {
+    const composed = capabilityTools.augmentCoachSkillForCapabilities(base, {
       declined: fixture.dark.length > 0,
       correction: fixture.owed.length > 0 ? correction : null,
     });
+    const extraText = composed.instructions.startsWith(`${base.instructions}\n\n`)
+      ? composed.instructions.slice(base.instructions.length + 2)
+      : '';
+    const skill = extraText ? { ...composed, instructions: base.instructions } : composed;
     let reply = fixture.broken.reply;
     if (broken) {
       calls.push(...fixture.broken.calls);
     } else {
       const run = await agent.runAgent({
         skill,
+        ...(extraText ? { systemExtras: [extraText] } : {}),
         context: contextFor(fixture),
         tools: toolsFor(real, fixture, calls, skill.meta.tools, offers),
         client: cachedAgentClient(

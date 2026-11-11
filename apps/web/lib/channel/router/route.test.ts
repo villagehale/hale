@@ -5792,6 +5792,8 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
       // Likewise the group bit (0185, VIL-463), which the ledger row now carries.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
+      // And the audit row's audience (0227, VIL-635), which every audit write now carries.
+      await db.exec('ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS audience uuid');
     });
 
     afterAll(async () => {

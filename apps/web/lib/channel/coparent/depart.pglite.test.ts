@@ -256,6 +256,15 @@ async function seedGroupAnswers(household: Household, chatId: string) {
       verbatim: 'in!',
     },
   ]);
+  // Hale asked the leaver, in private, about this household's calendar.
+  await db.database.insert(schema.linqGroupPlanCalendarConsents).values({
+    planId,
+    familyId: household.familyId,
+    memberKey: leaverKey,
+    displayName: 'Sam',
+    householdLabel: null,
+    status: 'asked',
+  });
   const [poll] = await db.database
     .insert(schema.linqGroupPolls)
     .values({
@@ -309,11 +318,16 @@ async function groupNames(planId: string, pollId: string) {
     .select({ expected: schema.linqGroupPolls.expected })
     .from(schema.linqGroupPolls)
     .where(eq(schema.linqGroupPolls.id, pollId));
+  const calendarAsks = await db.database
+    .select({ name: schema.linqGroupPlanCalendarConsents.displayName })
+    .from(schema.linqGroupPlanCalendarConsents)
+    .where(eq(schema.linqGroupPlanCalendarConsents.planId, planId));
   return {
     rsvps,
     expected: expected.map((row) => row.name),
     votes: votes.map((row) => row.name),
     pollExpected: (poll?.expected ?? []).map((row) => row.displayName),
+    calendarAsks: calendarAsks.map((row) => row.name),
   };
 }
 
@@ -338,6 +352,7 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       expected: ['Ana', 'someone'],
       votes: ['Ana', 'someone'],
       pollExpected: ['someone', 'Ana'],
+      calendarAsks: ['someone'],
     });
     // Positive control: another household's co-parent of the same name keeps theirs.
     expect(await groupNames(elsewhere.planId, elsewhere.pollId)).toEqual({
@@ -348,11 +363,12 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       expected: ['Ana', 'Sam'],
       votes: ['Ana', 'Sam'],
       pollExpected: ['Sam', 'Ana'],
+      calendarAsks: ['Sam'],
     });
     const [departed] = (await auditRows(household.familyId)).filter(
       (row) => row.actionTaken === 'co_parent_departed',
     );
-    expect(departed?.after).toMatchObject({ groupNamesCleared: 4 });
+    expect(departed?.after).toMatchObject({ groupNamesCleared: 5 });
   });
 
   it('revokes the channel, removes the seat, withdraws the consent, and keeps the thread', async () => {

@@ -107,11 +107,17 @@ export async function offerSignupFromFacts(
 
   const host = new URL(allowed.href).hostname;
   const mode = planModeFor(host, deps.autoHosts);
-  const planOpensAt =
-    input.planOpensAt &&
-    input.planOpensAt.getTime() > input.now.getTime() &&
+  const alreadyOpen =
     registrationPlanRunEnabled() &&
-    mode !== 'parent'
+    mode !== 'parent' &&
+    input.planOpensAt != null &&
+    input.planOpensAt.getTime() <= input.now.getTime();
+  const planOpensAt = alreadyOpen
+    ? input.now
+    : input.planOpensAt &&
+        input.planOpensAt.getTime() > input.now.getTime() &&
+        registrationPlanRunEnabled() &&
+        mode !== 'parent'
       ? input.planOpensAt
       : null;
   const text =
@@ -137,6 +143,7 @@ export async function offerSignupFromFacts(
     sessions: [...input.facts.sessions],
     approvedPriceCents: input.facts.approvedPriceCents,
     planOpensAt,
+    planAlreadyOpen: alreadyOpen,
     now: input.now,
   });
   if (!stored.ok) {

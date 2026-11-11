@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { count } from 'drizzle-orm';
 import {
   type FamilyDigestResult,
@@ -77,7 +78,7 @@ export async function runMemoryDigestCron(
   };
 
   for (const familyId of familyIds) {
-    const applied = mode.apply && mode.allowlist.has(familyId);
+    const applied = isEnabled('memory-digest-apply', familyId);
     try {
       const result = await runFamilyMemoryDigest(database, familyId, now, applied);
       summary.results.push({ familyId, result });

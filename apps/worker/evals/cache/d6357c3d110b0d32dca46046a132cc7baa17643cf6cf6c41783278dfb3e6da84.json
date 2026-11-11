@@ -1,0 +1,18 @@
+{
+  "value": {
+    "page_kind": "program_page",
+    "session_quote": "Parent and Tot Sunday 10:00 AM - 10:30 AM",
+    "sessions_matching": "one",
+    "availability_quote": "Registration opens October 1",
+    "waitlist_quote": null,
+    "schedule_quote": "Sunday 10:00 AM - 10:30 AM",
+    "state": "not_yet_open",
+    "spots_left": null,
+    "waitlist_room": null,
+    "confidence": 0.93,
+    "session_start_quote": null,
+    "session_start_date_text": null,
+    "session_start": null
+  },
+  "latencyMs": 1650
+}

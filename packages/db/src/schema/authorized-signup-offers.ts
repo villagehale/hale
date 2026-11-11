@@ -49,7 +49,7 @@ export type AuthorizedSignupPlanResume =
 /**
  * VIL-375 — the activity a parent may authorize Hale to register, and nothing else.
  *
- * One pending row per family. The browser runner reads child and parent details
+ * One pending row per family and provider host. The browser runner reads child and parent details
  * from the family record at fill time and does not copy them here. Audit rows
  * point at this id and carry reason codes, never those details.
  */
@@ -97,13 +97,24 @@ export const authorizedSignupOffers = pgTable(
     planLeaseUntil: timestamp('plan_lease_until', { withTimezone: true }),
     /** The parent took the plan back while its run was going: no payment starts after it. */
     planCancelRequestedAt: timestamp('plan_cancel_requested_at', { withTimezone: true }),
+    /**
+     * Provider host of `registration_url`, normalized. Login, credentials,
+     * seats, fees, register-now and waitlist all key on this, not a platform name.
+     */
+    providerHost: text('provider_host').notNull(),
+    /** True when the program is already open: skip the timed-open countdown. */
+    planAlreadyOpen: boolean('plan_already_open'),
+    /** Live seat/fee read. Never a person. */
+    planAvailability: jsonb('plan_availability').$type<Record<string, unknown>>(),
+    planAvailabilityAt: timestamp('plan_availability_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     familyIdx: index('authorized_signup_offers_family_idx').on(table.familyId, table.createdAt),
-    onePending: uniqueIndex('authorized_signup_offers_one_pending')
-      .on(table.familyId)
+    /** One pending offer per family and provider host (several plans, no collision). */
+    onePending: uniqueIndex('authorized_signup_offers_one_pending_per_host')
+      .on(table.familyId, table.providerHost)
       .where(sql`${table.status} = 'pending'`),
     /** One registration per family at a time, held under concurrent sweeps (VIL-558). */
     oneSubmitting: uniqueIndex('authorized_signup_offers_one_submitting')
