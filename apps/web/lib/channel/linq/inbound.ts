@@ -46,6 +46,8 @@ import type { CarpoolReader } from './carpool-reading';
 import type { CarpoolComposer } from './carpool-voice';
 import { type CommonTimePlanPorts, productionCommonTimePlanPorts } from './common-time-plan';
 import {
+  groupExperienceTurnEnabled,
+  groupPollsEnabled,
   linqGroupCarpoolEnabled,
   linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
@@ -84,6 +86,13 @@ import {
   steerNotedCoparentOneToOne,
 } from './group-coparent';
 import {
+  considerGroupExperience,
+  considerGroupExperiencePollVote,
+  groupExperienceTakesTheTurn,
+} from './group-experience';
+import type { GroupExperienceReader } from './group-experience/reading';
+import type { GroupExperienceComposer } from './group-experience/voice';
+import {
   holdTrueStrangerOnce,
   retryMemberWelcome,
   seatParticipantAdded,
@@ -120,6 +129,7 @@ import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
 import {
   forgetSharedGroupPresence,
   noticeSharedGroupAdded,
+  presentHouseholds,
   takeMultiFamilyReaction,
   takeMultiFamilyTurn,
   unseatMultiFamilyMember,
@@ -235,6 +245,10 @@ export async function handleLinqInboundRequest(
     privateAsideModel?: PrivateAsideModel;
     /** VIL-471 test seam. Production sends the native card through sendChoicePoll. */
     groupPollCard?: GroupPollCardPort;
+    /** VIL-399 test seam. Production uses the shared experience reader when the flag is on. */
+    groupExperienceReader?: GroupExperienceReader;
+    /** VIL-399 test seam. Production composes with the model when the flag is on. */
+    groupExperienceComposer?: GroupExperienceComposer;
     /** VIL-459 test seam. Production places a picked common time with the real invite sender. */
     commonTimePlan?: CommonTimePlanPorts;
   },
@@ -531,9 +545,9 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
 }
 
 /**
- * VIL-442 — RSVP for any plan, including people who never signed up.
- * Banter and a missed read stay quiet and leave the rest of the group door
- * (find, multi-family, inbox) the turn.
+ * VIL-399 — RSVP/time polls, a posted link, or a private question, behind the
+ * new default-off flags. Chatter and a missed read stay quiet and leave the
+ * rest of the group door the turn.
  */
 async function privateCalendarReply(
   deps: LinqDoorDeps,
@@ -571,6 +585,91 @@ async function privateCalendarReply(
   };
 }
 
+async function tryGroupExperienceTurn(
+  deps: LinqDoorDeps,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    text: string;
+  },
+): Promise<Response | null> {
+  if (!groupExperienceTurnEnabled()) return null;
+  const covering =
+    (await familyIdForClaimedChat(deps.database, input.chatId)) ??
+    (
+      await presentHouseholds(deps.database, input.chatId, {
+        includeStopped: false,
+        includeLeft: false,
+      })
+    )[0] ??
+    null;
+  if (!covering) return null;
+  const mappedSender = await mapGroupHandlesToFamily(deps.database, {
+    sender: input.senderHandle,
+    others: [],
+  });
+  const result = await considerGroupExperience(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      reader: deps.groupExperienceReader,
+      composer: deps.groupExperienceComposer,
+    },
+    {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
+      senderFamilyId: mappedSender.status === 'same_family' ? mappedSender.familyId : null,
+      coveringFamilyId: covering,
+      text: input.text,
+    },
+  );
+  if (!groupExperienceTakesTheTurn(result)) return null;
+  deps.log.info({ outcome: result.outcome }, 'linq inbound: group experience');
+  await deps.countOutcome(result.count);
+  return json({
+    outcome: result.outcome,
+    ...(result.notice ? { notice: result.notice } : {}),
+  });
+}
+
+async function tryGroupExperiencePollVote(
+  deps: LinqDoorDeps,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    optionId: string;
+    event: 'added' | 'removed';
+  },
+): Promise<Response | null> {
+  if (!groupPollsEnabled()) return null;
+  const mappedSender = await mapGroupHandlesToFamily(deps.database, {
+    sender: input.senderHandle,
+    others: [],
+  });
+  const vote = await considerGroupExperiencePollVote(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      composer: deps.groupExperienceComposer,
+    },
+    {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
+      optionId: input.optionId,
+      event: input.event,
+    },
+  );
+  if (!vote.handled) return null;
+  deps.log.info({ outcome: vote.outcome }, 'linq inbound: group experience poll vote');
+  await deps.countOutcome(vote.count);
+  return json({ outcome: vote.outcome });
+}
+
+/** VIL-442 — RSVP for any plan. Banter and a missed read leave the rest of the door the turn. */
 async function tryGroupPlanRsvpTurn(
   deps: LinqDoorDeps,
   input: {
@@ -774,6 +873,22 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
+  if (optOut !== 'stop') {
+    const experience = await tryGroupExperienceTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+    });
+    if (experience) return experience;
+    const rsvp = await tryGroupPlanRsvpTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+      tapback: null,
+    });
+    if (rsvp) return rsvp;
+  }
+
   if (!linqGroupOnboardingV2Enabled() && (await shouldHoldGroupStranger(deps.database, message))) {
     if (optOut === 'stop') {
       deps.log.info({ outcome: 'group_opt_out' }, 'linq inbound: group opt-out, no reply');
@@ -844,6 +959,21 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
     if (welcome.outcome === 'welcome_retried') {
       deps.log.info(welcome, 'linq inbound: group member welcome');
     }
+  }
+  if (!stopping) {
+    const experience = await tryGroupExperienceTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+    });
+    if (experience) return experience;
+    const rsvp = await tryGroupPlanRsvpTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+      tapback: null,
+    });
+    if (rsvp) return rsvp;
   }
   const mapped = await mapGroupHandlesToFamily(deps.database, {
     sender: message.senderHandle,
@@ -1405,6 +1535,13 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     signal.senderHandle &&
     signal.chatId
   ) {
+    const experienceVote = await tryGroupExperiencePollVote(deps, {
+      chatId: signal.chatId,
+      senderHandle: signal.senderHandle,
+      optionId: signal.optionId,
+      event: signal.event === 'poll.vote.added' ? 'added' : 'removed',
+    });
+    if (experienceVote) return experienceVote;
     const groupVote = await tryGroupPollCardVote(deps, {
       chatId: signal.chatId,
       senderHandle: signal.senderHandle,

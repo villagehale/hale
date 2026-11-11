@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseLinqWebhook } from './payload';
 
 /** The 2026-02-03 message.received shape from Linq's public event guide.
@@ -108,6 +108,30 @@ describe('parseLinqWebhook', () => {
     expect(parsed.kind).toBe('message');
     if (parsed.kind !== 'message') return;
     expect(parsed.message.mentions).toEqual([]);
+  });
+
+  it('keeps a link part as media while GROUP_LINK_CARDS_ENABLED is off', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'link', value: 'https://park.example/camp' }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('');
+    expect(parsed.message.mediaCount).toBe(1);
+  });
+
+  it('lifts a link part into text when GROUP_LINK_CARDS_ENABLED is on', () => {
+    vi.stubEnv('GROUP_LINK_CARDS_ENABLED', 'true');
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'link', value: 'https://park.example/camp' }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    vi.unstubAllEnvs();
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('https://park.example/camp');
+    expect(parsed.message.mediaCount).toBe(0);
   });
 
   it('counts a media part and keeps the text beside it', () => {

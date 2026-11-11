@@ -62,6 +62,7 @@ describe('catalog history cutover', () => {
       '0230_provider_login_credentials',
       '0225_linq_group_plan_calendar_consent',
       '0226_going_count_opt_ins',
+      '0230_linq_group_experience',
     ]);
   });
 });
