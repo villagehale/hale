@@ -7,7 +7,7 @@ import {
   gcalPastClassifySkipEnabled,
 } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
-import { withLlmContext } from '~/lib/analytics/llm-trace';
+import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ClassifyResult, classifyEvent } from './classify';
 import { draftAction } from './draft';
@@ -143,8 +143,9 @@ export async function ingestEvent(
         metadata: { familyId },
       },
       async (trace) => {
-        const result = await withLlmContext({ stage: 'classify_event' }, () =>
-          classifyEvent({ source: input.source, payload, childNames }, client),
+        const result = await withLlmContext(
+          { stage: 'classify_event', ...llmFamilyContext(familyId) },
+          () => classifyEvent({ source: input.source, payload, childNames }, client),
         );
         trace.recordGeneration('classify-event-call', { model: result.model, usage: result.usage });
         return { classified: result, classifyTraceId: trace.traceId };
@@ -208,7 +209,7 @@ export async function ingestEvent(
   const { drafted, draftTraceId } = await traceAgentRun(
     { name: 'draft-action', userId: 'system', tags: ['draft-action'], metadata: { familyId } },
     async (trace) => {
-      const result = await withLlmContext({ stage: 'drafter' }, () =>
+      const result = await withLlmContext({ stage: 'drafter', ...llmFamilyContext(familyId) }, () =>
         draftAction(
           {
             familyId,
@@ -238,8 +239,10 @@ export async function ingestEvent(
   const { reviewed, reviewTraceId } = await traceAgentRun(
     { name: 'review-action', userId: 'system', tags: ['review-action'], metadata: { familyId } },
     async (trace) => {
-      const result = await withLlmContext({ stage: 'reviewer' }, () =>
-        reviewAction({ familyId, draft: { ...drafted.draft, id: actionId } }, database, client),
+      const result = await withLlmContext(
+        { stage: 'reviewer', ...llmFamilyContext(familyId) },
+        () =>
+          reviewAction({ familyId, draft: { ...drafted.draft, id: actionId } }, database, client),
       );
       trace.recordGeneration('review-action-loop', { model: result.model, usage: result.usage });
       return { reviewed: result, reviewTraceId: trace.traceId };

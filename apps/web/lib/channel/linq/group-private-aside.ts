@@ -389,6 +389,8 @@ export function createPrivateAsideModel(
 let shared: PrivateAsideModel | null = null;
 
 export function sharedPrivateAsideModel(): PrivateAsideModel {
-  shared ??= createPrivateAsideModel(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createPrivateAsideModel(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }

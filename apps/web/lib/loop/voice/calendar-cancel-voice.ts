@@ -211,7 +211,7 @@ export function createCalendarCancelVoice(
 let cached: Anthropic | undefined;
 
 export function calendarCancelVoiceClient(): AgentClient {
-  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'voice' });
   return cached;
 }
 

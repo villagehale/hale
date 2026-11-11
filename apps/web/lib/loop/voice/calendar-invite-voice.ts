@@ -372,7 +372,7 @@ export function createCalendarInviteVoice(
 let cached: Anthropic | undefined;
 
 export function calendarInviteVoiceClient(): AgentClient {
-  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'voice' });
   return cached;
 }
 

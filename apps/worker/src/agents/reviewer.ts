@@ -14,6 +14,7 @@ import {
   firstUnsatisfiedCheck,
 } from '@hale/tools-contracts';
 import type { ActionType, DraftedAction, ReviewerVerdict, ToolResult } from '@hale/types';
+import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
 import { anthropicClient } from '../anthropic/client.js';
 import { logger } from '../logger.js';
 import { loadPrompt } from '../prompts/loader.js';
@@ -133,6 +134,15 @@ function checkTools(actionType: ActionType): Anthropic.Tool[] {
 export async function runReviewer(
   input: ReviewerRunInput,
   deps: ReviewerDeps = {},
+): Promise<ReviewerRunResult> {
+  return withLlmContext({ stage: 'reviewer', ...llmFamilyContext(input.familyId) }, () =>
+    reviewTurns(input, deps),
+  );
+}
+
+async function reviewTurns(
+  input: ReviewerRunInput,
+  deps: ReviewerDeps,
 ): Promise<ReviewerRunResult> {
   const client = deps.client ?? anthropicClient('reviewer');
   const invokeTool = deps.invokeTool ?? invokeReviewerTool;

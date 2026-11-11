@@ -17,15 +17,23 @@ import { PostHog } from 'posthog-node';
  * Serverless posture: `flushAt: 1, flushInterval: 0` so an event leaves as soon as it
  * is captured, and every caller awaits `flush()` (or the route awaits
  * `flushPosthog()` inside `after()`), so a frozen lambda does not strand a queue.
- * `privacyMode: true` is set on BOTH clients: posthog-node's LLM layer then never
- * attaches prompt or completion bodies, and our own generation builder
- * (llm-trace.ts) never sets them in the first place.
+ * `privacyMode` stays on unless POSTHOG_LLM_CONTENT_ENABLED is exactly `true`, in
+ * which case llm-trace.ts attaches redacted `$ai_input` / `$ai_output_choices`.
  */
 
 const DEFAULT_HOST = 'https://us.i.posthog.com';
 
 let product: PostHog | null | undefined;
 let project: PostHog | null | undefined;
+let shutdownHooked = false;
+
+function hookShutdown(): void {
+  if (shutdownHooked) return;
+  shutdownHooked = true;
+  process.on('beforeExit', () => {
+    void flushPosthog();
+  });
+}
 
 function host(): string {
   return process.env.POSTHOG_HOST || process.env.NEXT_PUBLIC_POSTHOG_HOST || DEFAULT_HOST;
@@ -36,7 +44,7 @@ function build(key: string): PostHog {
     host: host(),
     flushAt: 1,
     flushInterval: 0,
-    privacyMode: true,
+    privacyMode: process.env.POSTHOG_LLM_CONTENT_ENABLED !== 'true',
     disableGeoip: true,
     // A hung PostHog must not hold a webhook or a cron; one try, short bound.
     requestTimeout: 4_000,
@@ -49,6 +57,7 @@ export function productClient(): PostHog | null {
   if (product !== undefined) return product;
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   product = key ? build(key) : null;
+  if (product) hookShutdown();
   return product;
 }
 
@@ -57,6 +66,7 @@ export function projectClient(): PostHog | null {
   if (project !== undefined) return project;
   const key = process.env.POSTHOG_PROJECT_API_KEY;
   project = key ? build(key) : null;
+  if (project) hookShutdown();
   return project;
 }
 
