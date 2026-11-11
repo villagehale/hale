@@ -10,7 +10,7 @@ import { loadSignupIdentity, markOffer } from '../store';
 import type { SignupSession } from '../types';
 import { type MismatchReader, createMismatchReader } from './mismatch-reader';
 import { hasPlanNotice, recordPlanNotice } from './prep';
-import { type PlanReader, type PlanReading, createPlanReader } from './reader';
+import { type PlanNaming, type PlanReader, type PlanReading, createPlanReader } from './reader';
 import {
   type ConversablePlan,
   approveSignupPlan,
@@ -49,18 +49,29 @@ export interface PlanTurnDeps {
 }
 
 /**
- * VIL-558 · the day-before plan conversation, for one plan ask among the family's live asks
- * (`loadLiveAsks`; the walk over them is `runAuthorizedSignup`). A model reads the parent's
- * words ({@link PlanReader}); a yes calls `approveSignupPlan`, a take-back calls
- * `cancelSignupPlan` (or closes the offer when it was never approved). Every claimed turn
- * writes one audit row and a model-written reply.
+ * How a plan turn bound this ask: it was the parent's newest (`newest`), or their words
+ * named it (`tokens`, `reader`: see {@link PlanNaming}). Recorded on the reply audit row.
+ */
+type PlanBinding = 'newest' | PlanNaming;
+
+/** The newest ask binds unnamed; any other only on the parent's words that name it. */
+function binding(unnamedOk: boolean, named: PlanNaming | null): PlanBinding | null {
+  return unnamedOk ? 'newest' : named;
+}
+
+/**
+ * VIL-558 · the day-before plan conversation, for one plan ask among the live asks Hale
+ * made this parent (`loadLiveAsks`, which holds only their own; the walk over them is
+ * `runAuthorizedSignup`). A model reads the parent's words ({@link PlanReader}); a yes calls
+ * `approveSignupPlan`, a take-back calls `cancelSignupPlan` (or closes the offer when it was
+ * never approved). Every claimed turn writes one audit row and a model-written reply.
  *
  * `unrelated` hands the message to the next ask, of either lane. A bare yes binds only the
- * newest ask still waiting on one, a bare take-back only the newest ask; this plan moves
- * otherwise only on words that name it (its program or site), or the turn stops. So does a
- * reading that failed: it is never carried on to the next ask. Only the parent Hale asked
- * may take the plan back, and never from a group seat that may not authorize a sign-up. A
- * stopped turn is unclaimed, logged and named.
+ * parent's newest ask still waiting on one, a bare take-back only their newest ask; this
+ * plan moves otherwise only on words that name it (its program or site), or the turn stops.
+ * So does a reading that failed: it is never carried on to the next ask. Nothing moves from
+ * a group seat that may not authorize a sign-up. A stopped turn is unclaimed, logged and
+ * named.
  */
 export async function runPlanAsk(
   database: Database,
@@ -84,7 +95,7 @@ export async function runPlanAsk(
       sessions: plan.sessions,
       approvedPriceCents: plan.approvedPriceCents,
       plan: plan.plan,
-      asksWaiver: planReplyMode(plan.registrationUrl) === 'auto',
+      asksWaiver: await hasPlanNotice(database, plan.offerId, 'ask_waiver'),
     },
   });
   if (!reading) return stopped('plan_unread', plan);
@@ -95,10 +106,9 @@ export async function runPlanAsk(
   }
 
   if (reading.verdict === 'take_back') {
-    if (!place.newest && !reading.named) return stopped('plan_unnamed', plan);
+    const boundBy = binding(place.newest, reading.named);
+    if (!boundBy) return stopped('plan_unnamed', plan);
     if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
-    // The plan signs in and pays with the asked parent's city account: only they call it off.
-    if (plan.parentUserId !== input.parentUserId) return stopped('plan_not_offer_parent', plan);
     if (plan.status === 'pending') {
       await markOffer(database, {
         offerId: plan.offerId,
@@ -108,7 +118,7 @@ export async function runPlanAsk(
         messageId: input.inboundChannelMessageId,
         now: input.now,
       });
-      return reply(database, input, deps, plan, 'declined', {});
+      return reply(database, input, deps, plan, 'declined', { boundBy });
     }
     const cancelled = await cancelSignupPlan(database, {
       offerId: plan.offerId,
@@ -126,13 +136,14 @@ export async function runPlanAsk(
         deliverOnThread: false,
       };
     }
-    return reply(database, input, deps, plan, 'cancelled', {});
+    return reply(database, input, deps, plan, 'cancelled', { boundBy });
   }
 
-  if (!place.newestAsk && !reading.named) return stopped('plan_unnamed', plan);
+  const boundBy = binding(place.newestAsk, reading.named);
+  if (!boundBy) return stopped('plan_unnamed', plan);
   if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
   if (!input.inboundChannelMessageId) {
-    return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored' });
+    return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
   }
   if (plan.status === 'pending') {
     const identity = await loadSignupIdentity(database, {
@@ -160,6 +171,7 @@ export async function runPlanAsk(
         });
         return reply(database, input, deps, plan, 'clarify', {
           question: "What is the child's date of birth?",
+          boundBy,
         });
       }
     }
@@ -177,12 +189,13 @@ export async function runPlanAsk(
     now: input.now,
   });
   if (!approved.ok) {
-    return reply(database, input, deps, plan, 'refused', { refusal: approved.reason });
+    return reply(database, input, deps, plan, 'refused', { refusal: approved.reason, boundBy });
   }
   return reply(database, input, deps, plan, 'approved', {
     choiceIds: reading.choiceIds,
     maxPriceCents: reading.maxPriceCents,
     waiverAccepted: reading.waiverAccepted,
+    boundBy,
   });
 }
 
@@ -208,6 +221,9 @@ async function runMismatchTurn(
   if (reading.verdict === 'unclear') {
     return reply(database, input, deps, plan, 'clarify', { question: reading.question });
   }
+  // A pick parks the plan or emails the provider from the parent's Gmail: never from a
+  // group seat that may not authorize a sign-up, as for any other ask.
+  if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
   if (reading.verdict === 'waitlist') {
     await parkSignupPlan(database, {
       offerId: plan.offerId,
@@ -257,10 +273,7 @@ async function runMismatchTurn(
   return reply(database, input, deps, plan, 'approved', {});
 }
 
-function stopped(
-  outcome: 'plan_unread' | 'plan_unnamed' | 'plan_not_offer_parent',
-  plan: ConversablePlan,
-): SignupRunResult {
+function stopped(outcome: 'plan_unread' | 'plan_unnamed', plan: ConversablePlan): SignupRunResult {
   return stoppedTurn(outcome, { offerId: plan.offerId, status: plan.status });
 }
 
@@ -326,6 +339,7 @@ async function reply(
     choiceIds?: readonly string[];
     maxPriceCents?: number;
     waiverAccepted?: boolean;
+    boundBy?: PlanBinding;
   },
 ): Promise<SignupRunResult> {
   const choices = extra.choiceIds
@@ -357,7 +371,13 @@ async function reply(
     familyId: input.familyId,
     actor: input.parentUserId,
     offerId: plan.offerId,
-    after: { step: 'plan_reply', moment, refusal: extra.refusal ?? null, replied: text !== null },
+    after: {
+      step: 'plan_reply',
+      moment,
+      refusal: extra.refusal ?? null,
+      replied: text !== null,
+      boundBy: extra.boundBy ?? null,
+    },
   });
   if (text === null) {
     console.warn({ outcome }, 'signup plans: reply unwritten');

@@ -194,9 +194,15 @@ export async function runAuthorizedSignup(
         );
       }),
   };
-  // Newest ask first, plan and one-shot alike: each is read by its own lane, and a message
-  // one ask's reader finds unrelated goes on to the next. No ask left: someone else's.
-  for (const ask of await loadLiveAsks(database, { familyId: input.familyId, now: input.now })) {
+  // This parent's asks, newest first, plan and one-shot alike: each is read by its own lane,
+  // and a message one ask's reader finds unrelated goes on to the next. No ask left:
+  // someone else's.
+  const asks = await loadLiveAsks(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+  });
+  for (const ask of asks) {
     const turn =
       ask.lane === 'plan'
         ? await runPlanAsk(database, input, planDeps, ask.plan, ask.place)
@@ -207,10 +213,11 @@ export async function runAuthorizedSignup(
 }
 
 /**
- * One pending ask with no open ahead: the consent read, then the booking. `unrelated` hands
- * the message to the next ask. A yes binds this ask unnamed only when it is the newest ask
- * waiting on one, and a no only when it is the newest ask; otherwise the parent's words must
- * carry its program's name or its site, or the turn stops. A reading that failed stops too.
+ * One pending ask Hale made this parent with no open ahead: the consent read, then the
+ * booking. `unrelated` hands the message to the next ask. A yes binds this ask unnamed only
+ * when it is the parent's newest ask waiting on one, and a no only when it is their newest
+ * ask; otherwise their words must carry its program's name or its site, in whole words, or
+ * the turn stops. A reading that failed stops too.
  */
 async function runOneShotAsk(
   database: Database,
@@ -219,9 +226,6 @@ async function runOneShotAsk(
   offer: PendingSignupOffer,
   place: AskPlace,
 ): Promise<SignupRunResult | 'unrelated'> {
-  // An offer made to the other parent is theirs to answer: this parent's yes would register
-  // with their own details on a sign-up the other parent was asked about.
-  if (offer.parentUserId !== input.parentUserId) return 'unrelated';
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
   // Unreadable (no model, model failure) is not consent and does not claim the message.

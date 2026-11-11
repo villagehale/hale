@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { foldWords, isClause, namesFacts, quotesParent } from '../parent-quote';
+import { foldWords, namesFacts, quotesParent, sharesWord } from '../parent-quote';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -16,11 +16,12 @@ import { MAX_PLAN_CHOICES } from './store';
  *
  * The offer's activity name came from a web page or the coach model, so it is untrusted:
  * it reaches the model marked as such, cleaned and cut short, and nothing in it can carry
- * an approval. An approval holds only on a clause of the parent's own words, copied
- * (`said`); its maximum only on a price Hale's offer stated or an amount of money they
- * wrote; the waiver only on a plan whose offer asks about it, and only on a clause of
- * their own words other than the go-ahead (`waiverSaid`). A plan is named only by their
- * words that carry its program's name or its site. Anything else fails closed.
+ * an approval. An approval holds only on the parent's own words, copied (`said`); its
+ * maximum only on a price Hale's offer stated or an amount of money they wrote; the waiver
+ * only on a plan whose waiver question Hale sent, and only on their own words that are no
+ * part of the go-ahead (`waiverSaid`). A plan is named only by their own words: words with
+ * a whole word of its program's name or its site, or words the model read as naming it
+ * that share no word with the untrusted label. Anything else fails closed.
  *
  * A missing client, a missing skill, a model failure or an unreadable result is null, and
  * the log names which. The caller treats null as no plan: it claims nothing.
@@ -40,27 +41,31 @@ export interface PlanReadOffer {
   approvedPriceCents: number | null;
   plan: { choiceIds: readonly string[]; maxPriceCents: number; waiverAccepted: boolean } | null;
   /**
-   * Hale's plan for this offer asks whether it may tick the waiver: an `auto` plan. On an
-   * `assisted` plan the parent ticks it on the page, so no answer of theirs ticks it here.
-   * Code only: never shown to the model.
+   * Hale sent the parent a text asking whether it may tick this plan's waiver (a recorded
+   * `ask_waiver` notice). Until one did, no answer of theirs ticks it, and a waiver on the
+   * site hands the registration back to them at checkout. Code only: never shown to the
+   * model.
    */
   asksWaiver: boolean;
 }
 
 /**
- * `named`: the parent's own words name this plan's program or site, checked against their
- * message and against the plan's own name and host. A plan other than the newest is only
- * ever moved on words that name it.
+ * How the parent's own words (`named`, copied from their message) name this plan: by a
+ * whole word of its program's name or its site (`tokens`), or by the model's reading of
+ * words in another language than the label that share no word with it (`reader`). A plan
+ * other than the parent's newest is only ever moved on words that name it.
  */
+export type PlanNaming = 'tokens' | 'reader';
+
 export type PlanReading =
   | {
       verdict: 'approve';
       choiceIds: string[];
       maxPriceCents: number;
       waiverAccepted: boolean;
-      named: boolean;
+      named: PlanNaming | null;
     }
-  | { verdict: 'take_back'; named: boolean }
+  | { verdict: 'take_back'; named: PlanNaming | null }
   | { verdict: 'unclear'; question: string }
   | { verdict: 'unrelated' };
 
@@ -215,7 +220,11 @@ function maxSupported(
   return offered.includes(maxPriceCents) && bare.includes(maxPriceCents);
 }
 
-/** The waiver answer holds on its own clause of the parent's words, not on the go-ahead. */
+/**
+ * The waiver answer holds only on a plan whose waiver question Hale sent, and only on the
+ * parent's own words that are no part of the go-ahead: the go-ahead, or any span of it, is
+ * still the go-ahead.
+ */
 function waiverGranted(
   raw: z.infer<typeof signupPlanReadSchema>,
   offer: PlanReadOffer,
@@ -226,10 +235,28 @@ function waiverGranted(
     offer.asksWaiver &&
     raw.waiverAccepted &&
     waiverSaid !== null &&
-    isClause(waiverSaid) &&
     quotesParent(text, waiverSaid) &&
-    (said === null || foldWords(waiverSaid) !== foldWords(said))
+    (said === null || !foldWords(said).includes(foldWords(waiverSaid)))
   );
+}
+
+/**
+ * The parent's own words name this plan by a whole word of its program's name or its site.
+ * Or the model read them as naming it, in words that share no word with the untrusted label
+ * (游泳那个 for "Preschool Swim"), so they cannot be an echo of the label's text; the model
+ * judged this plan with the label marked untrusted. With no label kept, it had none to
+ * judge by. Words sharing only short words with the label name nothing.
+ */
+function planNaming(
+  raw: z.infer<typeof signupPlanReadSchema>,
+  offer: PlanReadOffer,
+  text: string,
+): PlanNaming | null {
+  if (raw.named === null || !quotesParent(text, raw.named)) return null;
+  const label = untrustedActivityLabel(offer.activity);
+  if (namesFacts(raw.named, { activity: label, host: offer.host })) return 'tokens';
+  if (label !== null && !sharesWord(raw.named, label)) return 'reader';
+  return null;
 }
 
 /**
@@ -244,10 +271,7 @@ export function toPlanReading(
   offer: PlanReadOffer,
   text: string,
 ): PlanReading | null {
-  const named =
-    raw.named !== null &&
-    quotesParent(text, raw.named) &&
-    namesFacts(raw.named, { activity: untrustedActivityLabel(offer.activity), host: offer.host });
+  const named = planNaming(raw, offer, text);
   if (raw.verdict === 'take_back') return { verdict: 'take_back', named };
   if (raw.verdict === 'unrelated') return { verdict: 'unrelated' };
   if (raw.verdict === 'unclear') {
@@ -266,7 +290,6 @@ export function toPlanReading(
     max !== null &&
     max > 0 &&
     maxSupported(max, chosen, offer, text) &&
-    isClause(raw.said) &&
     quotesParent(text, raw.said);
   if (valid && max !== null) {
     return {

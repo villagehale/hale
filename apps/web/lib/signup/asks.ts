@@ -4,18 +4,19 @@ import { type ConversablePlan, loadConversablePlans } from './plan/store';
 import type { SignupRunResult } from './run';
 import { type PendingSignupOffer, loadPendingOffers } from './store';
 
-/** Where an ask stands among the family's: what a message may do to it unnamed. */
+/** Where an ask stands among the parent's: what their message may do to it unnamed. */
 export interface AskPlace {
-  /** The newest ask of any lane and status: a take-back or a no need not name it. */
+  /** Their newest ask of any lane and status: a take-back or a no need not name it. */
   newest: boolean;
-  /** The newest ask of any lane still waiting on a yes: a bare yes binds it. */
+  /** Their newest ask of any lane still waiting on a yes: a bare yes binds it. */
   newestAsk: boolean;
 }
 
 /**
- * A family's live sign-up asks, plan and one-shot in one ordering, newest first. A plan ask
- * is read by the plan lane (`runPlanAsk`), a one-shot ask by the consent read; a message one
- * ask's reader finds unrelated goes on to the next ask, whichever lane it is in.
+ * The live sign-up asks Hale made one parent, plan and one-shot in one ordering, newest
+ * first. A plan ask is read by the plan lane (`runPlanAsk`), a one-shot ask by the consent
+ * read; a message one ask's reader finds unrelated goes on to the next ask, whichever lane
+ * it is in.
  */
 export type LiveAsk = { offerId: string; createdAt: Date; place: AskPlace } & (
   | { lane: 'plan'; plan: ConversablePlan }
@@ -23,14 +24,16 @@ export type LiveAsk = { offerId: string; createdAt: Date; place: AskPlace } & (
 );
 
 /**
- * Every ask of the family a message may answer, each with its place. With the plan lane on,
- * a plan is an offer whose open is still ahead (or approved, or running; see
- * `loadConversablePlans`) and every other pending offer is a one-shot ask. With it off,
- * every pending offer is one-shot.
+ * Every ask a parent's message may answer: the family's asks Hale made THIS parent, each
+ * with its place among them. An ask made the co-parent is theirs to answer: it never takes
+ * this parent's yes, a take-back of theirs never reaches it, and a newer one never makes
+ * this parent name their own ask. With the plan lane on, a plan is an offer whose open is
+ * still ahead (or approved, or running; see `loadConversablePlans`) and every other pending
+ * offer is a one-shot ask. With it off, every pending offer is one-shot.
  */
 export async function loadLiveAsks(
   database: Database,
-  input: { familyId: string; now: Date },
+  input: { familyId: string; parentUserId: string; now: Date },
 ): Promise<LiveAsk[]> {
   const plans = registrationPlanRunEnabled() ? await loadConversablePlans(database, input) : [];
   const planIds = new Set(plans.map((plan) => plan.offerId));
@@ -38,18 +41,22 @@ export async function loadLiveAsks(
     (offer) => !planIds.has(offer.id),
   );
   const ordered = [
-    ...plans.map((plan) => ({
-      lane: 'plan' as const,
-      offerId: plan.offerId,
-      createdAt: plan.createdAt,
-      plan,
-    })),
-    ...oneShots.map((offer) => ({
-      lane: 'one_shot' as const,
-      offerId: offer.id,
-      createdAt: offer.createdAt,
-      offer,
-    })),
+    ...plans
+      .filter((plan) => plan.parentUserId === input.parentUserId)
+      .map((plan) => ({
+        lane: 'plan' as const,
+        offerId: plan.offerId,
+        createdAt: plan.createdAt,
+        plan,
+      })),
+    ...oneShots
+      .filter((offer) => offer.parentUserId === input.parentUserId)
+      .map((offer) => ({
+        lane: 'one_shot' as const,
+        offerId: offer.id,
+        createdAt: offer.createdAt,
+        offer,
+      })),
   ].sort(
     (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.offerId < b.offerId ? 1 : -1),
   );
@@ -65,16 +72,10 @@ export async function loadLiveAsks(
 }
 
 /**
- * Why a turn stopped with nothing moved: a reading failed (`*_unread`); it would move an
- * ask the parent's words do not name (`*_unnamed`); or it would take back an ask Hale made
- * the other parent (`plan_not_offer_parent`).
+ * Why a turn stopped with nothing moved: a reading failed (`*_unread`), or it would move
+ * an ask other than the parent's newest that their words do not name (`*_unnamed`).
  */
-export type AskStop =
-  | 'plan_unread'
-  | 'plan_unnamed'
-  | 'plan_not_offer_parent'
-  | 'signup_unread'
-  | 'signup_unnamed';
+export type AskStop = 'plan_unread' | 'plan_unnamed' | 'signup_unread' | 'signup_unnamed';
 
 /** Unclaimed, logged and named: the coach answers, and no later ask reads the message. */
 export function stoppedTurn(

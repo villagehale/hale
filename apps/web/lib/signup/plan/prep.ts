@@ -19,7 +19,9 @@ export type PlanNoticeKind =
   | 'seats'
   | 'receipt'
   | 'waitlist'
-  | 'ask_dob';
+  | 'ask_dob'
+  /** Recorded by the text that asks the parent whether Hale may tick the plan's waiver. */
+  | 'ask_waiver';
 
 export interface PlanPrepFacts {
   kind: PlanNoticeKind;

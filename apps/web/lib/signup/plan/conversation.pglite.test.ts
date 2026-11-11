@@ -9,7 +9,8 @@ import { loadSignupIdentity, recordSignupOffer } from '../store';
 import { echoOutcomeWriter } from '../test-models';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import type { MismatchReader } from './mismatch-reader';
-import type { PlanReader, PlanReading } from './reader';
+import { recordPlanNotice } from './prep';
+import { type PlanReader, type PlanReading, toPlanReading } from './reader';
 import { approveSignupPlan, parkSignupPlan } from './store';
 import type { PlanReplyFacts, PlanReplyWriter } from './writer';
 
@@ -137,14 +138,31 @@ async function auditSteps(offerId: string) {
   return rows.map((row) => (row.after as { step: string; moment?: string }).step);
 }
 
+/** How each claimed plan turn on this offer was bound, as its reply audit row says. */
+async function replyBindings(offerId: string) {
+  const rows = await db.database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.targetId, offerId),
+        eq(schema.auditLog.actionTaken, 'authorized_signup_step'),
+      ),
+    );
+  return rows
+    .map((row) => row.after as { step: string; boundBy?: string | null })
+    .filter((after) => after.step === 'plan_reply')
+    .map((after) => after.boundBy);
+}
+
 const APPROVE: PlanReading = {
   verdict: 'approve',
   choiceIds: ['sun-1000', 'sat-0900'],
   maxPriceCents: 10500,
   waiverAccepted: true,
-  named: false,
+  named: null,
 };
-const TAKE_BACK: PlanReading = { verdict: 'take_back', named: false };
+const TAKE_BACK: PlanReading = { verdict: 'take_back', named: null };
 
 describe('the day-before plan conversation', () => {
   it("stores the parent's ranked yes as the plan and replies with the model's text", async () => {
@@ -207,7 +225,7 @@ describe('the day-before plan conversation', () => {
     expect((await offer(f.offerId)).status).toBe('planned');
   });
 
-  it("a co-parent's yes cannot approve the plan Hale offered the other parent", async () => {
+  it("a co-parent's yes never reaches the plan Hale offered the other parent", async () => {
     const f = await family();
     const coParentUserId = await seedCoParent(f.familyId);
     const { planReader, planWriter, written } = fakes(APPROVE);
@@ -220,9 +238,14 @@ describe('the day-before plan conversation', () => {
       },
     );
 
-    expect(result?.outcome).toBe('plan_refused');
-    expect(written[0]?.refusal).toBe('not_offer_parent');
-    expect(result?.reply).toBe(`reply for refused\n${URL}`);
+    expect(result).toEqual({
+      claimed: false,
+      outcome: 'not_claimed',
+      reply: null,
+      deliverOnThread: false,
+    });
+    expect(planReader.read).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
     expect((await offer(f.offerId)).status).toBe('pending');
     const consents = await db.database
       .select()
@@ -234,6 +257,50 @@ describe('the day-before plan conversation', () => {
     const own = await runAuthorizedSignup(db.database, turn(f), { planReader, planWriter });
     expect(own?.outcome).toBe('plan_approved');
     expect((await offer(f.offerId)).status).toBe('planned');
+  });
+
+  it('the waiver is ticked only when Hale asked about it: the parent saying so is not enough', async () => {
+    const text = 'yes, Sunday first, Saturday if not, up to $105, tick the waiver';
+    // The model's answer is stipulated; the bindings and what Hale asked are the real ones.
+    const planReader: PlanReader = {
+      read: vi.fn(async (read) =>
+        toPlanReading(
+          {
+            reason: 'r',
+            said: 'yes, Sunday first, Saturday if not',
+            named: null,
+            verdict: 'approve',
+            choiceIds: ['sun-1000', 'sat-0900'],
+            maxPriceCents: 10500,
+            waiverSaid: 'tick the waiver',
+            waiverAccepted: true,
+            question: null,
+          },
+          read.offer,
+          read.text,
+        ),
+      ),
+    };
+    const { planWriter } = fakes(null);
+    const unasked = await family();
+    const result = await runAuthorizedSignup(db.database, turn(unasked, text), {
+      planReader,
+      planWriter,
+    });
+    expect(result.outcome).toBe('plan_approved');
+    expect((await offer(unasked.offerId)).planWaiverAccepted).toBe(false);
+
+    // Positive control: once a text of Hale's asked about the waiver, their words tick it.
+    const asked = await family();
+    await recordPlanNotice(db.database, {
+      familyId: asked.familyId,
+      offerId: asked.offerId,
+      providerHost: 'register.example-rec.test',
+      kind: 'ask_waiver',
+      now: NOW,
+    });
+    await runAuthorizedSignup(db.database, turn(asked, text), { planReader, planWriter });
+    expect((await offer(asked.offerId)).planWaiverAccepted).toBe(true);
   });
 
   it("with the lane off, the plan lane reads nothing: the offer is the ordinary sign-up's", async () => {
@@ -388,7 +455,7 @@ describe('the day-before plan conversation', () => {
     expect((await offer(f.offerId)).status).toBe('handed_back');
   });
 
-  it('a co-parent cannot take back the plan the other parent set: refused, named, nothing moves', async () => {
+  it("a co-parent's take-back never reaches the plan the other parent set", async () => {
     const f = await family();
     expect(
       await approveSignupPlan(db.database, {
@@ -404,7 +471,7 @@ describe('the day-before plan conversation', () => {
       }),
     ).toEqual({ ok: true });
     const coParentUserId = await seedCoParent(f.familyId);
-    const { planReader, planWriter, written } = fakes({ verdict: 'take_back', named: true });
+    const { planReader, planWriter, written } = fakes({ verdict: 'take_back', named: 'tokens' });
     const result = await runAuthorizedSignup(
       db.database,
       turn({ ...f, parentUserId: coParentUserId }, 'cancel the swim one'),
@@ -413,10 +480,11 @@ describe('the day-before plan conversation', () => {
 
     expect(result).toEqual({
       claimed: false,
-      outcome: 'plan_not_offer_parent',
+      outcome: 'not_claimed',
       reply: null,
       deliverOnThread: false,
     });
+    expect(planReader.read).not.toHaveBeenCalled();
     expect(written).toEqual([]);
     expect((await offer(f.offerId)).status).toBe('planned');
     expect(await auditSteps(f.offerId)).toEqual(['plan_approved']);
@@ -430,7 +498,7 @@ describe('the day-before plan conversation', () => {
     expect((await offer(f.offerId)).status).toBe('handed_back');
   });
 
-  it("a co-parent's no does not close the ask Hale made the other parent", async () => {
+  it("a co-parent's no never reaches the ask Hale made the other parent", async () => {
     const f = await family();
     const coParentUserId = await seedCoParent(f.familyId);
     const { planReader, planWriter } = fakes(TAKE_BACK);
@@ -439,7 +507,8 @@ describe('the day-before plan conversation', () => {
       turn({ ...f, parentUserId: coParentUserId }, 'no thanks'),
       { planReader, planWriter },
     );
-    expect(result).toMatchObject({ claimed: false, outcome: 'plan_not_offer_parent' });
+    expect(result).toMatchObject({ claimed: false, outcome: 'not_claimed' });
+    expect(planReader.read).not.toHaveBeenCalled();
     expect((await offer(f.offerId)).status).toBe('pending');
   });
 
@@ -617,7 +686,7 @@ describe('which ask a message answers', () => {
     const kickersId = await kickersAsk(f);
     const planReader = readerBy({
       'Little Kickers': { verdict: 'unrelated' },
-      'Preschool Swim': { verdict: 'take_back', named: true },
+      'Preschool Swim': { verdict: 'take_back', named: 'tokens' },
     });
     const { planWriter } = fakes(null);
     const result = await runAuthorizedSignup(db.database, turn(f, 'cancel the swim one'), {
@@ -637,7 +706,7 @@ describe('which ask a message answers', () => {
     const kickersId = await kickersAsk(f);
     const planReader = readerBy({
       'Little Kickers': { verdict: 'unrelated' },
-      'Preschool Swim': { verdict: 'take_back', named: false },
+      'Preschool Swim': { verdict: 'take_back', named: null },
     });
     const { planWriter, written } = fakes(null);
     const result = await runAuthorizedSignup(db.database, turn(f, 'cancel'), {
@@ -682,7 +751,7 @@ describe('which ask a message answers', () => {
     expect((await offer(f.offerId)).planCancelRequestedAt).toBeNull();
 
     // A stop that names the running plan reaches it.
-    const named = readerBy({ 'Preschool Swim': { verdict: 'take_back', named: true } });
+    const named = readerBy({ 'Preschool Swim': { verdict: 'take_back', named: 'tokens' } });
     const stopped = await runAuthorizedSignup(
       db.database,
       { ...turn(f, 'stop the swim registration'), ...later },
@@ -697,7 +766,7 @@ describe('which ask a message answers', () => {
     const kickersId = await kickersAsk(f);
     const planReader = readerBy({
       'Little Kickers': { verdict: 'unrelated' },
-      'Preschool Swim': { ...APPROVE, named: true },
+      'Preschool Swim': { ...APPROVE, named: 'tokens' },
     });
     const { planWriter } = fakes(null);
     const result = await runAuthorizedSignup(db.database, turn(f, 'yes to the swim one'), {
@@ -782,6 +851,86 @@ describe('which ask a message answers', () => {
     expect(written).toEqual([]);
     expect((await offer(f.offerId)).status).toBe('pending');
     expect((await offer(kickersId)).status).toBe('pending');
+  });
+
+  it("a co-parent's newer plan ask never captures this parent's bare yes", async () => {
+    const f = await family(); // the swim plan, asked of this parent an hour ago
+    const coParentUserId = await seedCoParent(f.familyId);
+    const kickersId = await kickersAsk({ ...f, parentUserId: coParentUserId });
+    const { planReader, planWriter, written } = fakes(APPROVE);
+    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+      planReader,
+      planWriter,
+    });
+
+    expect(readOrder(planReader)).toEqual(['Preschool Swim']);
+    expect(result.outcome).toBe('plan_approved');
+    expect(written.map((facts) => facts.refusal)).toEqual([null]);
+    expect((await offer(f.offerId)).status).toBe('planned');
+    expect((await offer(kickersId)).status).toBe('pending');
+
+    // The co-parent's own yes reaches only the ask Hale made them.
+    const theirs = fakes({ verdict: 'unrelated' });
+    await runAuthorizedSignup(db.database, turn({ ...f, parentUserId: coParentUserId }, 'yes'), {
+      planReader: theirs.planReader,
+      planWriter: theirs.planWriter,
+    });
+    expect(readOrder(theirs.planReader)).toEqual(['Little Kickers']);
+  });
+
+  it("a co-parent's newer one-shot ask never makes this parent's bare yes need a name", async () => {
+    const f = await family();
+    const coParentUserId = await seedCoParent(f.familyId);
+    const gym = await recordSignupOffer(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: coParentUserId,
+      activityKey: 'gym-tots',
+      activityLabel: 'Gym Tots',
+      registrationUrl: 'https://gym.example-play.test/register',
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      planOpensAt: null,
+      now: new Date(NOW.getTime() - 10 * 60_000),
+    });
+    if (!gym.ok) throw new Error(gym.reason);
+    const consentReader: SignupConsentReader = {
+      read: vi.fn(async () => ({ verdict: 'consent' as const, sessionId: 'sat-0900' })),
+    };
+    const { planReader, planWriter } = fakes(APPROVE);
+    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+      planReader,
+      planWriter,
+      consentReader,
+    });
+
+    expect(consentReader.read).not.toHaveBeenCalled();
+    expect(result.outcome).toBe('plan_approved');
+    expect((await offer(f.offerId)).status).toBe('planned');
+    expect((await offer(gym.id)).status).toBe('pending');
+  });
+
+  it('the reply audit says how the plan was bound: the newest ask, or which words named it', async () => {
+    for (const named of ['tokens', 'reader'] as const) {
+      const f = await family();
+      await kickersAsk(f);
+      const planReader = readerBy({
+        'Little Kickers': { verdict: 'unrelated' },
+        'Preschool Swim': { ...APPROVE, named },
+      });
+      const { planWriter } = fakes(null);
+      const result = await runAuthorizedSignup(db.database, turn(f, 'yes to the swim one'), {
+        planReader,
+        planWriter,
+      });
+      expect(result.outcome).toBe('plan_approved');
+      expect(await replyBindings(f.offerId)).toEqual([named]);
+    }
+    const f = await family();
+    const kickersId = await kickersAsk(f);
+    const { planReader, planWriter } = fakes({ ...APPROVE, named: 'tokens' });
+    await runAuthorizedSignup(db.database, turn(f, 'yes to kickers'), { planReader, planWriter });
+    expect(await replyBindings(kickersId)).toEqual(['newest']);
   });
 
   it('a message about none of them leaves the pending ask to no one but the coach', async () => {
@@ -882,13 +1031,17 @@ describe('a plan ask and a one-shot ask, both live', () => {
       { verdict: 'consent', sessionId: 'gym-sat' },
     );
     const { planWriter } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes, sign her up for gym'), {
-      planReader,
-      planWriter,
-      consentReader,
-      outcomeWriter: echoOutcomeWriter(),
-      browser: null,
-    });
+    const result = await runAuthorizedSignup(
+      db.database,
+      turn(f, 'yes, sign her up for Gym Tots'),
+      {
+        planReader,
+        planWriter,
+        consentReader,
+        outcomeWriter: echoOutcomeWriter(),
+        browser: null,
+      },
+    );
 
     expect(reads).toEqual(['plan:Preschool Swim', 'one_shot:gym-tots']);
     expect(result).toMatchObject({ claimed: true, outcome: 'browser_unavailable' });
@@ -900,7 +1053,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     const f = await family();
     const gymId = await gymAsk(f, 10);
     const { reads, planReader, consentReader } = readers(
-      { ...APPROVE, named: true },
+      { ...APPROVE, named: 'tokens' },
       { verdict: 'unrelated' },
     );
     const { planWriter } = fakes(null);
@@ -914,6 +1067,52 @@ describe('a plan ask and a one-shot ask, both live', () => {
     expect(result.outcome).toBe('plan_approved');
     expect((await offer(f.offerId)).status).toBe('planned');
     expect((await offer(gymId)).status).toBe('pending');
+  });
+
+  it('a bare cancel never names an older ask by a fragment of its site', async () => {
+    const f = await family(); // the swim plan ask, an hour ago
+    const older = await recordSignupOffer(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      activityKey: 'toddler-gym',
+      activityLabel: 'Toddler Gym',
+      registrationUrl:
+        'https://anc.ca.apm.activecommunities.com/examplecity/activity/search/detail/1',
+      sessions: [GYM_SESSION],
+      approvedPriceCents: null,
+      planOpensAt: null,
+      now: new Date(NOW.getTime() - 90 * 60_000),
+    });
+    if (!older.ok) throw new Error(older.reason);
+    const { reads, planReader, consentReader } = readers(
+      { verdict: 'unrelated' },
+      { verdict: 'decline' },
+    );
+    const { planWriter } = fakes(null);
+    const deps = {
+      planReader,
+      planWriter,
+      consentReader,
+      outcomeWriter: echoOutcomeWriter(),
+      browser: null,
+    };
+    const result = await runAuthorizedSignup(db.database, turn(f, 'cancel'), deps);
+
+    expect(reads).toEqual(['plan:Preschool Swim', 'one_shot:toddler-gym']);
+    expect(result).toEqual({
+      claimed: false,
+      outcome: 'signup_unnamed',
+      reply: null,
+      deliverOnThread: false,
+    });
+    expect((await offer(older.id)).status).toBe('pending');
+
+    // Positive control: words that carry its name reach it.
+    const named = await runAuthorizedSignup(db.database, turn(f, 'cancel the toddler one'), deps);
+    expect(named.claimed).toBe(true);
+    expect((await offer(older.id)).status).toBe('handed_back');
+    expect((await offer(f.offerId)).status).toBe('pending');
   });
 
   it('a yes the one-shot reader put on an older ask whose name the parent never wrote stops, unclaimed', async () => {
@@ -1050,5 +1249,55 @@ describe('when the site options do not match', () => {
       }),
     );
     expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'emailed' });
+  });
+
+  it("a co-parent's pick parks nothing and sends no email from anyone's Gmail", async () => {
+    const f = await mismatched();
+    const coParentUserId = await seedCoParent(f.familyId);
+    const sendProviderEmail = vi.fn(async () => undefined);
+    const mismatchReader: MismatchReader = {
+      read: vi.fn(async () => ({ verdict: 'email' as const })),
+    };
+    const { planWriter, written } = fakes(APPROVE);
+    const result = await runAuthorizedSignup(
+      db.database,
+      turn({ ...f, parentUserId: coParentUserId }, 'email them'),
+      { planWriter, mismatchReader, sendProviderEmail },
+    );
+
+    expect(result).toMatchObject({ claimed: false, outcome: 'not_claimed' });
+    expect(mismatchReader.read).not.toHaveBeenCalled();
+    expect(sendProviderEmail).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
+  });
+
+  it('a group seat that may not authorize a sign-up parks nothing and emails no one', async () => {
+    const f = await mismatched();
+    const sendProviderEmail = vi.fn(async () => undefined);
+    const { planWriter, written } = fakes(APPROVE);
+    const picks = [
+      { verdict: 'email' as const },
+      { verdict: 'option' as const, choiceId: 'nov-21' },
+      { verdict: 'waitlist' as const },
+    ];
+    for (const pick of picks) {
+      const mismatchReader: MismatchReader = { read: vi.fn(async () => pick) };
+      const result = await runAuthorizedSignup(db.database, turn(f, 'go with that'), {
+        planWriter,
+        mismatchReader,
+        sendProviderEmail,
+        declineSeat: async () => true,
+      });
+      expect(result).toEqual({
+        claimed: true,
+        outcome: 'group_member_not_authorized',
+        reply: null,
+        deliverOnThread: false,
+      });
+    }
+    expect(sendProviderEmail).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
   });
 });
