@@ -153,6 +153,34 @@ describe('structuredRequest — the shape each 5.5 tier accepts', () => {
     expect(req.tools?.[0]).not.toHaveProperty('strict');
     expect(req.tool_choice).toEqual({ type: 'auto', disable_parallel_tool_use: true });
   });
+
+  it('without attachments, the user content stays the string (VIL-413)', () => {
+    const req = structuredRequest({ ...base, lane: pickLane('classify') });
+    expect(req.messages[0]?.content).toBe('msg');
+  });
+
+  it('an empty attachments array is the same request as absent', () => {
+    const withEmpty = structuredRequest({
+      ...base,
+      lane: pickLane('classify'),
+      attachments: [],
+    });
+    const without = structuredRequest({ ...base, lane: pickLane('classify') });
+    expect(withEmpty).toEqual(without);
+  });
+
+  it('with attachments, the user content is the text then the blocks', () => {
+    const image: Anthropic.ContentBlockParam = {
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: 'abc' },
+    };
+    const req = structuredRequest({
+      ...base,
+      lane: pickLane('classify'),
+      attachments: [image],
+    });
+    expect(req.messages[0]?.content).toEqual([{ type: 'text', text: 'msg' }, image]);
+  });
 });
 
 describe('strictToolSchema — the wire subset', () => {

@@ -2,6 +2,7 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { CapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
+import type { TurnPhotoFacts } from '~/lib/channel/inbound-photo-facts';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 
@@ -73,6 +74,13 @@ export interface ChannelTurn {
   inboundMedia?: readonly InboundMediaPart[];
   /** VIL-477 — the Linq group this turn is in; absent/null on a 1:1 or SMS turn. */
   groupChatId?: string | null;
+  /**
+   * VIL-413 — facts Hale already read from this turn's photo or PDF. Set by the
+   * coach runtime, never by the router, and only on a 1:1 turn while
+   * INBOUND_PHOTO_FACTS_ENABLED is lit. Absent on a text-only turn, a group turn, and
+   * when the extract found nothing.
+   */
+  photoFacts?: TurnPhotoFacts;
 }
 
 /**

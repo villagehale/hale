@@ -1,8 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type RegisteredTool, type RunAgentArgs, type Skill, invokeTool } from '@hale/agent';
+import Anthropic from '@anthropic-ai/sdk';
+import {
+  type RegisteredTool,
+  type RunAgentArgs,
+  type Skill,
+  defineTool,
+  invokeTool,
+} from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
   type ChannelTurn,
@@ -354,6 +362,7 @@ describe('channelCoachRuntime', () => {
 
     expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
     expect(seen[0]?.context.arrivedMedia).toEqual([{ kind: 'video' }]);
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
     expect(seen[0]?.instructions).not.toContain('arrivedContacts');
   });
 
@@ -1221,6 +1230,258 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
     expect(seen[0]?.arrivedMedia).toEqual([
       { kind: 'audio', heard: 'is swim still on this saturday' },
     ]);
+  });
+});
+
+describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
+  const FLYER = {
+    kind: 'flyer' as const,
+    title: 'Fall swim',
+    venue: 'Harbor Rec',
+    whenText: 'Tuesdays 4:30',
+    registrationUrl: 'https://harbor-rec.example/register',
+    childName: null,
+    notes: 'ages 6-8',
+    confidence: 0.9,
+  };
+
+  function photoTurn() {
+    return {
+      ...turn('can you read this'),
+      inboundMedia: [
+        { kind: 'image' as const, url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+      ],
+    };
+  }
+
+  function photoPorts(overrides: Partial<ChannelCoachPorts> = {}) {
+    return ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+        ),
+      ...overrides,
+    });
+  }
+
+  it('dark: does not extract, leaves the skill bytes, and still attaches the image', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const extract = vi.fn();
+    const seen: Array<{
+      context: Record<string, unknown>;
+      instructions: string;
+      attachments?: unknown[];
+    }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => false,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: promptOf(args),
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(extract).not.toHaveBeenCalled();
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]?.instructions).not.toContain(addendum);
+  });
+
+  it('lit: hands the facts and the addendum, and the image still reaches the model', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const toolsTurns: ChannelTurn[] = [];
+    const seen: Array<{
+      context: Record<string, unknown>;
+      instructions: string;
+      attachments?: unknown[];
+    }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: async () => FLYER,
+      buildTools: (incoming) => {
+        toolsTurns.push(incoming);
+        return [];
+      },
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: promptOf(args),
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Fall swim is Tuesdays.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(seen[0]?.context.photoFacts).toEqual({ ...FLYER, readFrom: 'image' });
+    expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(toolsTurns[0]?.photoFacts).toEqual({ ...FLYER, readFrom: 'image' });
+  });
+
+  it('lit: a group turn reads nothing new and keeps its bytes', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const extract = vi.fn(async () => FLYER);
+    const seen: Array<{ context: Record<string, unknown>; instructions: string }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: promptOf(args),
+        });
+        return answering('Got it.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond({ ...photoTurn(), audience: 'group' }, []);
+    expect(extract).not.toHaveBeenCalled();
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]?.instructions).not.toContain(addendum);
+  });
+
+  it('lit: an extract failure still attaches the image and sends no canned line', async () => {
+    const extract = vi.fn(async () => {
+      throw new Error('down');
+    });
+    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+    const { reply } = await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(extract).toHaveBeenCalled();
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(reply).toBe('Got the flyer.');
+  });
+
+  const pdf = Buffer.from('%PDF-1.7\n%%EOF\n');
+
+  function pdfTurn() {
+    return {
+      ...turn('can you read this form'),
+      inboundMedia: [
+        { kind: 'image' as const, url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+        { kind: 'file' as const, url: 'https://cdn.example/form.pdf', mime: 'application/pdf' },
+      ],
+    };
+  }
+
+  function pdfPorts(overrides: Partial<ChannelCoachPorts> = {}) {
+    return ports({
+      photoFactsEnabled: () => true,
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+          undefined,
+          undefined,
+          { documents: true, documentFetch: async () => new Response(pdf, { status: 200 }) },
+        ),
+      ...overrides,
+    });
+  }
+
+  /** What the API answers for a PDF it will not read: the whole request, refused. */
+  const pdfRefused = () =>
+    Anthropic.APIError.generate(
+      400,
+      {
+        type: 'error',
+        error: { type: 'invalid_request_error', message: 'The PDF specified was not valid.' },
+      },
+      undefined,
+      {},
+    );
+
+  function refusesPdfs(onCall: (args: RunAgentArgs) => Promise<void> = async () => {}) {
+    const calls: Array<{
+      attachments?: Array<{ type: string }>;
+      context: Record<string, unknown>;
+    }> = [];
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      calls.push({
+        attachments: args.attachments as Array<{ type: string }> | undefined,
+        context: args.context as Record<string, unknown>,
+      });
+      await onCall(args);
+      if (args.attachments?.some((block) => block.type === 'document')) throw pdfRefused();
+      return answering('The flyer says Tuesdays; the form would not open.')(args);
+    };
+    return { calls, runAgent };
+  }
+
+  it("lit: facts read beside a PDF are the document's", async () => {
+    const toolsTurns: ChannelTurn[] = [];
+    const p = pdfPorts({
+      readPhotoFacts: async () => FLYER,
+      buildTools: (incoming) => {
+        toolsTurns.push(incoming);
+        return [];
+      },
+    });
+    await channelCoachRuntime(p).respond(pdfTurn(), []);
+    expect(toolsTurns[0]?.photoFacts).toEqual({ ...FLYER, readFrom: 'document' });
+  });
+
+  it('lit: a PDF the API refuses becomes an unwatched file, and the coach still answers', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { calls, runAgent } = refusesPdfs();
+    const p = pdfPorts({
+      readPhotoFacts: async () => {
+        throw pdfRefused();
+      },
+      runAgent,
+    });
+    const { reply } = await channelCoachRuntime(p).respond(pdfTurn(), []);
+    expect(reply).toBe('The flyer says Tuesdays; the form would not open.');
+    expect(calls.map((call) => call.attachments?.map((block) => block.type))).toEqual([
+      ['image', 'document'],
+      ['image'],
+    ]);
+    expect(calls[0]?.context).not.toHaveProperty('arrivedMedia');
+    expect(calls[1]?.context.arrivedMedia).toEqual([{ kind: 'file' }]);
+    expect(info).toHaveBeenCalledWith(
+      { reason: 'provider_refused', count: 1 },
+      'channel coach: inbound document unread',
+    );
+    info.mockRestore();
+  });
+
+  it('lit: a refusal after a tool has acted is not retried', async () => {
+    const noted = defineTool({
+      name: 'note_it',
+      description: 'test tool',
+      inputSchema: z.object({}),
+      monetary: false,
+      touchesChildContent: false,
+      handler: async () => ({ noted: true }),
+    });
+    const { calls, runAgent } = refusesPdfs(async (args) => {
+      await invokeTool(noted, {}, args.toolContext, args.guardDeps);
+    });
+    const p = pdfPorts({
+      readPhotoFacts: async () => null,
+      buildTools: () => [noted],
+      runAgent,
+    });
+    await expect(channelCoachRuntime(p).respond(pdfTurn(), [])).rejects.toBeInstanceOf(
+      ChannelTurnFailed,
+    );
+    expect(calls).toHaveLength(1);
   });
 });
 
