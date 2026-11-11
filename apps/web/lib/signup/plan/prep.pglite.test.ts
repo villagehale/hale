@@ -7,7 +7,8 @@ import { recordSignupOffer } from '../store';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   PRE_OPEN_LEAD_MS,
-  type PlanPrepKind,
+  type PlanNoticeKind,
+  type PlanPrepFacts,
   plannedOfferDueForPrep,
   preOpenDueAt,
   runDueSignupPlanPrep,
@@ -76,19 +77,19 @@ async function planned() {
 }
 
 function fakes() {
-  const kinds: PlanPrepKind[] = [];
+  const kinds: PlanNoticeKind[] = [];
   const bodies: string[] = [];
   return {
     kinds,
     bodies,
     deps: {
       writer: {
-        write: async (facts: { kind: PlanPrepKind }) => {
+        write: async (facts: PlanPrepFacts) => {
           kinds.push(facts.kind);
           return `text for ${facts.kind}`;
         },
       },
-      deliver: async (input: { kind: PlanPrepKind; body: string }) => {
+      deliver: async (input: { kind: PlanNoticeKind; body: string }) => {
         bodies.push(input.body);
         return true;
       },

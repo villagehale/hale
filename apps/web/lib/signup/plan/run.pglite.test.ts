@@ -1290,10 +1290,10 @@ describe('parked password rejection and mismatched options', () => {
         break;
       }
     }
-    expect(claimed).toMatchObject({ offerId: mismatch.offerId });
-    expect(claimed && claimed !== 'contended' ? claimed.availability?.kind : null).toBe(
-      'join_waitlist',
-    );
+    expect(claimed).toMatchObject({
+      offerId: mismatch.offerId,
+      availability: { kind: 'join_waitlist' },
+    });
   });
 
   it('parks a mismatch, texts the parent, and never picks an option', async () => {

@@ -31,7 +31,7 @@ import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
 import { registrationPlanRunEnabled } from './flag';
 import { signupPlanPrepDepsFromEnv } from './notice';
-import { type PlanPrepDeps, sendSignupPlanNotice } from './prep';
+import { type PlanNoticeKind, type PlanPrepDeps, sendSignupPlanNotice } from './prep';
 import {
   type ClaimedPlan,
   claimDuePlan,
@@ -537,7 +537,7 @@ async function parkAndTell(
       now,
     });
   }
-  const kind = passwordRejected ? 'password_rejected' : 'options_mismatch';
+  const kind: PlanNoticeKind = passwordRejected ? 'password_rejected' : 'options_mismatch';
   const facts = {
     kind,
     childFirstName: await childFirstName(database, {

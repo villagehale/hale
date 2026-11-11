@@ -465,7 +465,9 @@ describe('when the site options do not match', () => {
 
   it('parks a waitlist pick and does not invent an option', async () => {
     const f = await mismatched();
-    const mismatchReader: MismatchReader = { read: vi.fn(async () => ({ verdict: 'waitlist' })) };
+    const mismatchReader: MismatchReader = {
+      read: vi.fn(async () => ({ verdict: 'waitlist' as const })),
+    };
     const { planReader, planWriter } = fakes(APPROVE);
     const result = await runPlanTurn(db.database, turn(f, 'join the waitlist'), {
       planReader,
@@ -480,7 +482,7 @@ describe('when the site options do not match', () => {
   it('parks the site option the parent named, never another', async () => {
     const f = await mismatched();
     const mismatchReader: MismatchReader = {
-      read: vi.fn(async () => ({ verdict: 'option', choiceId: 'nov-21' })),
+      read: vi.fn(async () => ({ verdict: 'option' as const, choiceId: 'nov-21' })),
     };
     const { planWriter } = fakes(APPROVE);
     await runPlanTurn(db.database, turn(f, 'take Nov 21'), { planWriter, mismatchReader });
@@ -493,7 +495,9 @@ describe('when the site options do not match', () => {
   it('emails the provider from Gmail only after they say yes', async () => {
     const f = await mismatched();
     const sendProviderEmail = vi.fn(async () => undefined);
-    const mismatchReader: MismatchReader = { read: vi.fn(async () => ({ verdict: 'email' })) };
+    const mismatchReader: MismatchReader = {
+      read: vi.fn(async () => ({ verdict: 'email' as const })),
+    };
     const { planWriter } = fakes(APPROVE);
     await runPlanTurn(db.database, turn(f, 'email them'), {
       planWriter,
