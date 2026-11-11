@@ -574,6 +574,8 @@ export const AUDIT_VERBS = [
   // ── stale denials (VIL-303) ─────────────────────────────────────────────
   'capability_denial_recorded',
   'capability_denial_corrected',
+  // ── rail refusal (VIL-635) ──────────────────────────────────────────────
+  'tool_refused',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -2092,6 +2094,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'let a parent know it can now do something it had said it could not',
     family: 'done',
   },
+  // VIL-635. Content-free: the tool name and the rail, never the refused input.
+  tool_refused: {
+    sentence: 'Hale did not run a tool that would have broken a safety rule',
+    family: 'note',
+  },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   interest_stamp_inferred: {
     sentence: 'noticed a possible stamp from something it saw',
@@ -2176,6 +2183,8 @@ export const INTERNAL_TRAIL_VERBS = [
   // VIL-303. A no Hale said to one parent, and its correction to that same parent.
   'capability_denial_recorded',
   'capability_denial_corrected',
+  // VIL-635. A rail refusal is one adult's, and names no input.
+  'tool_refused',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

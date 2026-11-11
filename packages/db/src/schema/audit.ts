@@ -1,5 +1,6 @@
-import { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { families } from './families.js';
+import { users } from './users.js';
 
 /**
  * Append-only audit trail. PIPEDA right-to-access depends on this being complete.
@@ -23,9 +24,15 @@ export const auditLog = pgTable(
     ip: text('ip'),
     userAgent: text('user_agent'),
     agentRunId: uuid('agent_run_id'),
+    /**
+     * VIL-635. The adult who may see this row. Null on family-wide rows and on
+     * every row written before the column existed (rule #6: never rewritten).
+     */
+    audience: uuid('audience').references(() => users.id, { onDelete: 'set null' }),
   },
   (table) => ({
     familyTimeIdx: index('audit_log_family_time_idx').on(table.familyId, table.occurredAt),
+    familyAudienceIdx: index('audit_log_family_audience_idx').on(table.familyId, table.audience),
   }),
 );
 
