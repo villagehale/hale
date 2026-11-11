@@ -27,6 +27,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 
 | Flag | Parser (file:line) | On value | Unset | Kill (then redeploy) | Owner |
 | --- | --- | --- | --- | --- | --- |
+| `ACCESS_EXPORT_ROUND_2_ENABLED` | `apps/web/lib/rights/export-round-2.ts:14` | `true` | OFF | `false` | Noah |
 | `ACTIVITY_REVIEWS_ENABLED` | `apps/web/lib/reviews/capture.ts:44` | `true` | OFF | `false` | Noah |
 | `ACTIVITY_REVIEWS_SURFACE` | `apps/web/lib/reviews/aggregate.ts:27` | `true` | OFF | `false` | Sloane |
 | `ANTHROPIC_SPEND_ALERT_USD` | `apps/web/lib/monitoring/spend.ts:40` (default at :16, fallback at :42) | a number of USD (config, not a flag) | 200 USD (code default) | n/a (config) | unassigned |
@@ -201,6 +202,7 @@ Code is merged for every row.
 
 | Flag | What it does | Extra signal this week | Kill | Owner |
 | --- | --- | --- | --- | --- |
+| `ACCESS_EXPORT_ROUND_2_ENABLED` | The right-to-access copy leaves coach-only `activity_held` notes out of the requester thread, scopes bookings to the requesting adult, redacts a 13+ child's booking title, genericizes a sensitive household calendar row, carries the source-changed columns, runs every consent type's evidence through the teen gate, and the privacy page says removed lines are in the copy. | A held JSON note in `requesterOnly.textThread`, a co-parent's booking in the copy, a sensitive calendar title that is not generic, or consent evidence that names a teen. | `false` | Noah |
 | `ACTIVITY_REVIEWS_ENABLED` | How an activity went is reduced to a verdict. This pass sends nothing. | Verdicts filed for a family that did not answer. | `false` | Noah |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | A parent can ask Hale to watch a full class on any city's or provider's public program page, not only the two PerfectMind portals. A model reads the page, and code checks each fact against the page text. A bot-check page or a reading the page text does not back sends nothing. | `class availability read` log lines by `outcome` and `reason` (a high `refused`/`challenge_page` or `unknown` share means pages Hale cannot read), spot texts for a page-watch the parent did not ask about, and model spend on the watched-spots cron. | `false` | Noah |
 | `AUTONOMOUS_EXECUTE_ENABLED` | Hale acts on its own on an action type the parent opted into and approved five times in a row (rule #4), and only after the turn-on text for that grant has been delivered. Off, each such action is held for approval as `action.gated.lane_off`; a parent's own approval still executes. On, a kind whose text has not been delivered is held as `action.gated.autonomy_notice_pending`, including overnight. The count of parents already at five approvals of a kind, run before it is ever set, is in the VIL-131 pull request: 0. | `action.executed` against `action.gated.*` per action type, and any `action.gated.lane_off` row while the value is `true`. | unset | Barton |
