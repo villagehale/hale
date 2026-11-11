@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { POSTHOG_INIT_CONFIG } from './posthog-provider';
+import { POSTHOG_AUTOCAPTURE_URL_ALLOWLIST, POSTHOG_INIT_CONFIG } from './posthog-provider';
 
 /**
  * THE MARKETING SITE'S POSTHOG POSTURE, and the legal page that depends on it.
@@ -26,17 +26,27 @@ describe('marketing-site PostHog posture', () => {
     expect(POSTHOG_INIT_CONFIG.persistence).toBe('memory');
   });
 
-  it('records sessions with inputs masked (the Google Ads launch, 2026-08-27)', () => {
-    // Replay is a deliberate posture change: the page is Hale's own copy and the
-    // visitor is anonymous, so a recording carries no user text — but only while
-    // inputs stay masked and persistence stays in memory (asserted above), which is
-    // what keeps the privacy policy's write-nothing sentence true.
-    expect(POSTHOG_INIT_CONFIG.disable_session_recording).toBe(false);
+  it('keeps replay off until NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED, with inputs always masked', () => {
+    // Default-off is the launch gate. Masking stays configured so turning the
+    // flag on cannot record a typed value. Persistence stays in memory (above),
+    // which is what keeps the privacy policy's write-nothing sentence true.
+    // Privacy-page copy that names when replay runs is VIL-428.
+    expect(POSTHOG_INIT_CONFIG.disable_session_recording).toBe(true);
     expect(POSTHOG_INIT_CONFIG.session_recording.maskAllInputs).toBe(true);
   });
 
-  it('infers nothing: autocapture is off, so every event is a named call site', () => {
-    expect(POSTHOG_INIT_CONFIG.autocapture).toBe(false);
+  it('autocaptures only the landing page and /privacy / /terms, never a named funnel by inference', () => {
+    expect(POSTHOG_INIT_CONFIG.autocapture).toEqual({
+      url_allowlist: POSTHOG_AUTOCAPTURE_URL_ALLOWLIST,
+    });
+    const joined = POSTHOG_AUTOCAPTURE_URL_ALLOWLIST.map((re) => re.source).join('\n');
+    expect(joined).toContain('privacy');
+    expect(joined).toContain('terms');
+  });
+
+  it('captures heatmaps and keeps surveys off (surveys live on the logged-in dashboard)', () => {
+    expect(POSTHOG_INIT_CONFIG.capture_heatmaps).toBe(true);
+    expect(POSTHOG_INIT_CONFIG.disable_surveys).toBe(true);
   });
 
   it('captures pageviews on every client-side navigation, and page leaves', () => {

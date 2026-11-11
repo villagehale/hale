@@ -10,6 +10,7 @@ import {
   structuredToolChoice,
   withoutThinking,
 } from './model.js';
+import { type PromptCacheTtl, cachedSystem } from './prompt-cache.js';
 
 /**
  * Single-shot structured output, validated against the caller's Zod schema. The one
@@ -46,6 +47,13 @@ export interface StructuredRequestArgs {
    */
   lane: LaneConfig;
   system: string;
+  /**
+   * Skill addendums after the cache breakpoint (per-family / per-turn). Concatenated
+   * model text is `system` plus these, joined by `\n\n`.
+   */
+  systemExtras?: readonly string[];
+  /** Default 5m. Sparse composers pass 1h so a later wave still reads the prefix. */
+  cacheTtl?: PromptCacheTtl;
   userMessage: string;
   toolName: string;
   toolDescription: string;
@@ -99,15 +107,6 @@ export class StructuredOutputError extends Error {
 }
 
 /**
- * The stable system prompt behind one ephemeral cache breakpoint. Wire order is
- * tools → system → messages, so the breakpoint caches the tool definitions and the
- * instructions together; the per-turn payload goes in the user message, after it.
- */
-export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }];
-}
-
-/**
  * The request body. The pinned SDK (0.41.0) types neither the current `thinking` shapes,
  * `output_config` nor `disable_parallel_tool_use` with `auto`; all are plain body fields
  * it serialises as given, so the body is widened rather than cast field by field.
@@ -130,7 +129,7 @@ export function structuredRequest(args: StructuredRequestArgs): StructuredReques
   const common = {
     ...fields,
     max_tokens: args.maxTokens,
-    system: cachedSystem(args.system),
+    system: cachedSystem(args.system, args.cacheTtl, args.systemExtras),
     messages: [{ role: 'user' as const, content: args.userMessage }],
   };
   if (grammar) {

@@ -1,6 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
 import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -8,6 +7,7 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
+import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
 import {
   type SaidSignupToolPorts,
   noteActivitySignupTool,
@@ -24,6 +24,7 @@ import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-fla
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import { teenNameIn } from '~/lib/privacy/teen-name';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
@@ -756,9 +757,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    *   + save_memory, no skill prose                      3/3                     2/3
    *   + save_memory, 6-line section at the end           2/3                     1/3
    *
-   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
-   * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
-   * parent handed nothing about the fall.
+   * That is the budget this lane already runs at (CHANNEL_COACH_MAX_TOKENS 2000,
+   * thinking, tools and text sharing it — see runtime.ts), and a turn that stops
+   * reaching for the live web is a parent handed nothing about the fall.
    *
    * The gap it would have closed is smaller than it looks: a durable fact stated over
    * text is already written by the NIGHTLY distiller, which reads every conversation this
@@ -980,7 +981,7 @@ export function calendarBlockForCoach(
   if (row.startAt === null) return null;
   let title: string | null = null;
   if (row.kidRelated && row.title !== null && row.title.trim().length > 0) {
-    title = mentionsAnyName(row.title, teenNames) ? PRIVATE_EVENT_WHAT : row.title;
+    title = teenNameIn(row.title, teenNames) ? PRIVATE_EVENT_WHAT : row.title;
   }
   return { startsAt: row.startAt, endsAt: row.endAt, allDay: row.allDay, title };
 }
@@ -1038,17 +1039,6 @@ function entryRank(kind: WeekScheduleEntry['kind']): number {
 
 function foldTitle(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-function mentionsAnyName(title: string, names: readonly string[]): boolean {
-  return names.some((name) => {
-    const token = name.trim();
-    if (token.length < 2) return false;
-    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(
-      ` ${title} `,
-    );
-  });
 }
 
 function dedupeBlocks(blocks: readonly CalendarBlockView[]): CalendarBlockView[] {
@@ -1225,7 +1215,7 @@ async function readConnectedWeek(
     mailSync: connectorSync(connections.filter((row) => row.provider === 'gmail')),
     processedCount: Number(countRow?.n ?? 0),
     since: isoOf(countRow?.since),
-    activities: activityRows.filter((row) => !mentionsAnyName(row.title, teenNames)),
+    activities: activityRows.filter((row) => !teenNameIn(row.title, teenNames)),
     trips: tripRows,
   };
 }

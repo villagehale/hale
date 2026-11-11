@@ -39,6 +39,7 @@ export function buildGuardDeps(database: Database, viewerUserId: string | null =
         actor: entry.actor,
         actionTaken: entry.actionTaken,
         after: entry.after,
+        ...(entry.audience ? { audience: entry.audience } : {}),
       });
     },
 

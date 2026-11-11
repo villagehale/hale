@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
@@ -662,6 +663,14 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
+    if (handoff.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: input.familyId,
+        providerDomain: ctx.host ?? ctx.providerHost,
+        stage: handoff.detail ?? 'error',
+        source: 'signup',
+      });
+    }
     // No Browser Use session ever started (setup failed or the engine threw
     // before a run): release the held allowance. A started session keeps its
     // hold until its real cost replaces it.
@@ -921,6 +930,9 @@ async function finish(
     status,
     now: input.now,
   });
+  if (status === 'completed') {
+    noteTaskCompleted({ familyId: input.familyId, type: 'registration', source: 'browser_use' });
+  }
 }
 
 function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {

@@ -201,6 +201,12 @@ export interface DrainHandlers {
    * morning sweep still owes the text.
    */
   autonomyNotices: (familyId: string) => Promise<void>;
+  /**
+   * VIL-662 · after a calendar_move / calendar_cancel from a team-schedule
+   * email executes, re-anchor reminders and text the driver. Optional so a
+   * drain test that does not care can omit it.
+   */
+  teamScheduleEffects?: (actionId: string, familyId: string) => Promise<void>;
 }
 
 export interface DrainDeps {
@@ -286,6 +292,17 @@ async function processApprovedJob(
     approvedBy: parsed.data.approved_by,
     policyVersion: POLICY_VERSION,
   });
+  try {
+    await deps.handlers.teamScheduleEffects?.(parsed.data.action_id, parsed.data.family_id);
+  } catch (err) {
+    deps.log.error(
+      {
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+        familyId: parsed.data.family_id,
+      },
+      'drain: team schedule effects failed; reminders and the driver text are still owed',
+    );
+  }
   try {
     await deps.handlers.autonomyNotices(parsed.data.family_id);
   } catch (err) {
@@ -951,6 +968,14 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
               { now: new Date(), familyId, slot: 'now' },
               autonomyNoticePorts(db()),
             ).then(() => undefined),
+          teamScheduleEffects: async (actionId, familyId) => {
+            const { applyTeamScheduleEffects, teamSchedulePortsFor } = await import(
+              '~/lib/integrations/team-schedule'
+            );
+            const { createOutboundTransport } = await import('~/lib/channel/outbound-transport');
+            const ports = teamSchedulePortsFor(db(), createOutboundTransport(), familyId, new Date());
+            await applyTeamScheduleEffects(db(), { actionId, familyId }, ports.driver);
+          },
         },
         log: console,
         now: () => Date.now(),

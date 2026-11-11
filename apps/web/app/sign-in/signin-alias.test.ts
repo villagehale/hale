@@ -39,9 +39,11 @@ describe('/signin forwards to /sign-in', () => {
     }
   });
 
-  it('does not turn off the built-in trailing-slash 308 that also covers /signin/', () => {
+  it('keeps the explicit /signin/ forward even though the built-in trailing-slash 308 is off', () => {
+    // skipTrailingSlashRedirect is on so PostHog /ingest/e/ is not 308'd. The
+    // /signin/ source above is what still folds the slash spelling onto /sign-in.
     expect(nextConfig.trailingSlash).toBeFalsy();
-    expect(nextConfig.skipTrailingSlashRedirect).toBeFalsy();
+    expect(nextConfig.skipTrailingSlashRedirect).toBe(true);
   });
 });
 
