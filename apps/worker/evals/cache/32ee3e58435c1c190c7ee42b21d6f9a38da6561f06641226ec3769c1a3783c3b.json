@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in Chinese and says in the first person that Hale is handling the question and the answer is on its way, matching the watchFor. It does not hint at the substance, apologise, or give a time. However, \"我正在处理你的问题\" describes what Hale is doing, which the watchFor says to avoid, so it loses a point.",
+    "score": 4
+  }
+}

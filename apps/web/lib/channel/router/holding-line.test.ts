@@ -17,8 +17,10 @@ import {
   HOLDING_LINE_ENABLED_ENV,
   type HoldingLineComposer,
   MAX_COMPOSE_ATTEMPTS,
+  type HoldingLineRead,
   armHoldingLine,
   createHoldingLine,
+  holdingLineRead,
   holdingLineUserMessage,
   refusals,
 } from './holding-line';
@@ -47,6 +49,21 @@ describe('what may not be sent as a holding line', () => {
     ['an app pointer', "I'm on it, your week is in the app.", 'points_at_the_app'],
   ])('refuses %s', (_name, body, reason) => {
     expect(refusals(body)).toContain(reason);
+  });
+
+  // Live draw, holding-line eval (zh-draw-2): "the reply comes right away". There is no
+  // word boundary in Chinese, so the English pattern never saw it.
+  it.each([
+    ['我正在处理你的问题，回复马上就来。'],
+    ['我在查，一会儿告诉你。'],
+    ['稍等，我在处理。'],
+    ['我在处理，很快就好。'],
+  ])('refuses a Chinese time stand-in: %s', (body) => {
+    expect(refusals(body)).toEqual(['promised_a_time']);
+  });
+
+  it('positive control: a Chinese line that only says the answer is on its way is sendable', () => {
+    expect(refusals('我在处理您的问题，回复已经在路上了。')).toEqual([]);
   });
 
   // Only facts are gated. How the line is worded — its sentences, a question, its length —
@@ -155,6 +172,14 @@ describe('createHoldingLine', () => {
 
 const log = () => ({ info: vi.fn(), warn: vi.fn() });
 
+const FAMILY = 'fam-lit';
+
+/** The screen read this text as an ordinary one, in `language`. */
+const writeIn = (language: string | null) => async (): Promise<HoldingLineRead> => ({
+  status: 'write',
+  language,
+});
+
 function composer(line: string | null): HoldingLineComposer & { calls: number } {
   const c = {
     calls: 0,
@@ -182,7 +207,14 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     const c = composer("I'm on it.");
     const send = vi.fn();
     const l = log();
-    const holding = armHoldingLine({ afterMs: 8_000, language: 'en', composer: c, send, log: l });
+    const holding = armHoldingLine({
+      afterMs: 8_000,
+      familyId: FAMILY,
+      read: writeIn('en'),
+      composer: c,
+      send,
+      log: l,
+    });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(await holding.settle()).toBe('lane_off');
     expect(c.calls).toBe(0);
@@ -195,7 +227,8 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     const sent: string[] = [];
     const holding = armHoldingLine({
       afterMs: 8_000,
-      language: 'en',
+      familyId: FAMILY,
+      read: writeIn('en'),
       composer: composer("I'm on it."),
       send: async (line) => {
         sent.push(line);
@@ -214,7 +247,8 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     const send = vi.fn();
     const holding = armHoldingLine({
       afterMs: 8_000,
-      language: 'en',
+      familyId: FAMILY,
+      read: writeIn('en'),
       composer: c,
       send,
       log: log(),
@@ -238,7 +272,8 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     const send = vi.fn();
     const holding = armHoldingLine({
       afterMs: 8_000,
-      language: 'en',
+      familyId: FAMILY,
+      read: writeIn('en'),
       composer: slow,
       send,
       log: log(),
@@ -256,7 +291,8 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     const l = log();
     const holding = armHoldingLine({
       afterMs: 8_000,
-      language: 'en',
+      familyId: FAMILY,
+      read: writeIn('en'),
       composer: composer(null),
       send,
       log: l,
@@ -275,7 +311,8 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     const send = vi.fn(async () => undefined);
     const holding = armHoldingLine({
       afterMs: 8_000,
-      language: 'en',
+      familyId: FAMILY,
+      read: writeIn('en'),
       composer: composer("I'm on it."),
       send,
       log: log(),
@@ -284,5 +321,160 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     await holding.settle();
     await holding.settle();
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('armHoldingLine — what it writes is read when it is due', () => {
+  beforeEach(() => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('composes in the language read when the line FIRES, not when it was armed', async () => {
+    vi.useFakeTimers();
+    let language = 'en';
+    const asked: Array<string | null> = [];
+    const holding = armHoldingLine({
+      afterMs: 8_000,
+      familyId: FAMILY,
+      read: async () => ({ status: 'write', language }),
+      composer: {
+        async compose(lang) {
+          asked.push(lang);
+          return { status: 'composed', line: '在看了，有结果告诉你' };
+        },
+      },
+      send: async () => undefined,
+      log: log(),
+    });
+    // The screen tags this text as Chinese after the turn was armed and before the wait ends.
+    await vi.advanceTimersByTimeAsync(3_000);
+    language = 'zh';
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await holding.settle()).toBe('sent');
+    expect(asked).toEqual(['zh']);
+  });
+
+  it.each([
+    ['a crisis or medical lane', 'safety_lane'],
+    ['a text the screen has not read', 'unscreened'],
+  ] as const)(
+    'withholds the line on %s: nothing composed, nothing sent, named',
+    async (_l, reason) => {
+      vi.useFakeTimers();
+      const c = composer("I'm on it.");
+      const send = vi.fn();
+      const l = log();
+      const holding = armHoldingLine({
+        afterMs: 8_000,
+        familyId: FAMILY,
+        read: async () => ({ status: 'withheld', reason }),
+        composer: c,
+        send,
+        log: l,
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(await holding.settle()).toBe(reason);
+      expect(c.calls).toBe(0);
+      expect(send).not.toHaveBeenCalled();
+      expect(l.info).toHaveBeenCalledWith({ outcome: reason }, expect.any(String));
+    },
+  );
+});
+
+describe('armHoldingLine — lit per family', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('a listed family gets its line while the global flag is unset; another family stays dark', async () => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, '');
+    vi.stubEnv('HOLDING_LINE_FAMILY_ALLOWLIST', 'fam-a');
+    vi.useFakeTimers();
+    const arm = (familyId: string) => {
+      const c = composer("I'm on it.");
+      const sent: string[] = [];
+      const holding = armHoldingLine({
+        afterMs: 8_000,
+        familyId,
+        read: writeIn('en'),
+        composer: c,
+        send: async (line) => {
+          sent.push(line);
+        },
+        log: log(),
+      });
+      return { holding, c, sent };
+    };
+    const listed = arm('fam-a');
+    const other = arm('fam-b');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await listed.holding.settle()).toBe('sent');
+    expect(listed.sent).toEqual(["I'm on it."]);
+    expect(await other.holding.settle()).toBe('lane_off');
+    expect(other.c.calls).toBe(0);
+  });
+
+  it('a piped global value (a trailing newline) stays dark for a family not on the list', async () => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true\n');
+    vi.stubEnv('HOLDING_LINE_FAMILY_ALLOWLIST', 'fam-a');
+    vi.useFakeTimers();
+    const c = composer("I'm on it.");
+    const holding = armHoldingLine({
+      afterMs: 8_000,
+      familyId: 'fam-b',
+      read: writeIn('en'),
+      composer: c,
+      send: vi.fn(),
+      log: log(),
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await holding.settle()).toBe('lane_off');
+    expect(c.calls).toBe(0);
+  });
+});
+
+describe('holdingLineRead — what the screen said about this text, when the line is due', () => {
+  const family = (language: string | null) => vi.fn(async () => language);
+
+  it("an ordinary text is written in the language the screen read off it, never the family's", async () => {
+    const stored = family('en');
+    await expect(
+      holdingLineRead({ lane: 'in_domain', fallback: null, language: 'zh' }, stored),
+    ).resolves.toEqual({ status: 'write', language: 'zh' });
+    expect(stored).not.toHaveBeenCalled();
+  });
+
+  it("a text the screen read no language off is written in the family's stored one", async () => {
+    await expect(
+      holdingLineRead({ lane: 'in_domain', fallback: null, language: null }, family('fr')),
+    ).resolves.toEqual({ status: 'write', language: 'fr' });
+  });
+
+  it('a question about the world (the search lane) still gets its line', async () => {
+    await expect(
+      holdingLineRead({ lane: 'off_domain_general', fallback: null, language: 'en' }, family('en')),
+    ).resolves.toEqual({ status: 'write', language: 'en' });
+  });
+
+  it('a crisis or a medical symptom never does', async () => {
+    await expect(
+      holdingLineRead({ lane: 'safety_critical', fallback: null, language: 'en' }, family('en')),
+    ).resolves.toEqual({ status: 'withheld', reason: 'safety_lane' });
+  });
+
+  it('nor does a text the screen did not actually read: not yet, timed out, or failed open', async () => {
+    await expect(holdingLineRead(null, family('en'))).resolves.toEqual({
+      status: 'withheld',
+      reason: 'unscreened',
+    });
+    await expect(
+      holdingLineRead(
+        { lane: 'in_domain', fallback: 'model_failed', language: null },
+        family('en'),
+      ),
+    ).resolves.toEqual({ status: 'withheld', reason: 'unscreened' });
   });
 });

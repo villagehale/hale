@@ -244,6 +244,10 @@ export interface OffDomainLane {
     /** Where the text arrived. A question Hale left open was asked in one thread, and a
      * family's home city is said only in the parent's own. */
     thread: InboundThread;
+    /** Told what the screen read, the moment it has read it and before any lane runs: the
+     * router's holding line is written in this text's language and never in front of a
+     * safety lane. Absent, nothing is told, and a holding line stays withheld. */
+    onScreened?(reading: LaneReading): void;
   }): Promise<OffDomainVerdict>;
 }
 
@@ -263,6 +267,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // screen: a reply that gives the city AND describes a symptom would be read as the
       // answer and composed as a general question, past the medical lane and both doors.
       const reading = await ports.screen.read(input.text);
+      input.onScreened?.(reading);
       const inDomain = reading.lane === 'in_domain' || reading.category === null;
 
       // A REPLY TO A QUESTION HALE LEFT OPEN is considered only for a text the screen

@@ -537,6 +537,8 @@ export const AUDIT_VERBS = [
   // ── the review pool: the ONE verb the capture pass writes, on every model read ──
   'activity_verdict_read',
   'activity_followup_sent',
+  // VIL-682 · whether a promise went on the deep queue at question time.
+  'activity_deep_dispatched',
   'activity_followup_shared',
   'village_intro_card_sent',
   'village_intro_accepted',
@@ -2006,6 +2008,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale came back to you about an activity search',
     family: 'done',
   },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS: it is about one adult's own question,
+  // and the answer it brings is the row History shows (activity_followup_sent).
+  activity_deep_dispatched: {
+    sentence: 'Hale started a closer look at an activity question',
+    family: 'note',
+  },
   // Historical. Follow-ups used to put the rest of a schedule on a public page. The
   // verb stays so those audit rows still read. 'done' because the row records something
   // Hale finished, not something it is waiting on.
@@ -2262,6 +2270,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'capability_denial_corrected',
   // VIL-635. A rail refusal is one adult's, and names no input.
   'tool_refused',
+  // VIL-682. Queue bookkeeping for one adult's question; the answer is the visible row.
+  'activity_deep_dispatched',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

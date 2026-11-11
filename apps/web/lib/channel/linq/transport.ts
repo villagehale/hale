@@ -1416,7 +1416,7 @@ export async function listLinqChatsPage(input: {
  */
 export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   return {
-    async send({ to, body, mediaUrls, decorations }) {
+    async send({ to, body, mediaUrls, decorations, replyIn }) {
       if (mediaUrls && mediaUrls.length === 0) {
         throw new LinqSendError('invalid_parts', 400, true);
       }
@@ -1425,6 +1425,24 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
       }
       const from = linqFromE164();
       if (!from) throw new LinqSendError('not_configured', 0, true);
+
+      // A later answer goes into the ask's own chat, under the message given. A thread
+      // target Linq refuses is resent plain in that same chat (sendLinqChatMessage).
+      if (replyIn) {
+        if (mediaUrls) throw new LinqSendError('invalid_parts', 400, true);
+        const sent = await sendLinqChatMessage({
+          chatId: replyIn.chatId,
+          text: body,
+          decorations,
+          replyTo: { messageId: replyIn.messageId },
+          fetch: deps.fetch,
+        });
+        return {
+          providerMessageId: sent.providerMessageId,
+          transport: 'imessage' as const,
+          chatId: replyIn.chatId,
+        };
+      }
 
       const media = mediaUrls ?? [];
       const hasUrl = URL_IN_TEXT.test(body);

@@ -2,7 +2,8 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -12,12 +13,14 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  *
  * On the 5.5 lanes a searched or carefully written answer can run well past the few
  * seconds a text usually takes. The typing bubble covers that wait on iMessage; past
- * {@link HOLDING_LINE_AFTER_MS}, one short line also goes out so the wait reads as someone
- * working on it, on SMS as much as on iMessage. The real answer follows it.
+ * {@link HOLDING_LINE_AFTER_MS}, one short line also goes out, threaded under the parent's
+ * text, so the wait reads as someone working on it. The real answer follows it. 1:1
+ * iMessage only: on SMS every line is one more separate text.
  *
  * Composed, never recited (no preset message bodies): a skill writes it from the one fact
- * there is, that the answer is still coming, in the parent's language. It sees nothing the
- * parent wrote, so it cannot leak it and cannot pretend to have understood it (rule #1).
+ * there is, that the answer is still coming, in the language of the text it covers. It
+ * sees nothing the parent wrote, so it cannot leak it and cannot pretend to have
+ * understood it (rule #1).
  * When no sendable line can be written, NOTHING is sent and the outcome says why — there
  * is no canned line underneath.
  */
@@ -31,11 +34,12 @@ export const HOLDING_LINE_AFTER_MS = 8_000;
 export const HOLDING_LINE_ENABLED_ENV = 'HOLDING_LINE_ENABLED';
 
 /**
- * The holding line is a parent-visible send, so it is dark until lit. STRICT equality on
- * the literal 'true': a piped `vercel env add` stores 'true\n', which must stay off.
+ * The holding line is a parent-visible send, so it is dark until lit, globally or for the
+ * families on `HOLDING_LINE_FAMILY_ALLOWLIST`. STRICT equality on the literal 'true': a
+ * piped `vercel env add` stores 'true\n', which must stay off.
  */
-export function holdingLineEnabled(): boolean {
-  return isEnabled('holding-line');
+export function holdingLineEnabled(familyId: string): boolean {
+  return isEnabled('holding-line', familyId);
 }
 
 /** Two attempts. The line only matters while the answer is still coming; a third try
@@ -47,6 +51,9 @@ const MAX_TOKENS = 96;
 /** A time nobody scheduled: nobody knows when the answer lands. */
 const PROMISED_TIME =
   /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
+/** The same promise in Chinese, which has no word boundary for the pattern above. The
+ * skill already forbids it; Haiku still wrote 马上 in live zh draws, so code refuses it. */
+const PROMISED_TIME_ZH = /马上|一会儿|稍等|很快/;
 const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
 
 export type HoldingLineRefusal =
@@ -66,7 +73,7 @@ export function refusals(body: string): HoldingLineRefusal[] {
   const found: HoldingLineRefusal[] = [];
   if (hasLinkShape(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
-  if (PROMISED_TIME.test(body)) found.push('promised_a_time');
+  if (PROMISED_TIME.test(body) || PROMISED_TIME_ZH.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
 }
@@ -163,20 +170,53 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
  * an email is not watched as it is written, and a group thread is shared with other
  * families, so one parent's wait is not covered in front of them. `group_unknown` is a
  * job that does not say whether its text came from a group, so it is treated as if it
- * might have.
+ * might have. `sms` is a text on a channel with no thread to put the line in.
  */
-export type HoldingLineSkip = 're_driven' | 'email' | 'group_thread' | 'group_unknown';
+export type HoldingLineSkip = 're_driven' | 'email' | 'group_thread' | 'group_unknown' | 'sms';
+
+/**
+ * Why a line that is due is not written. `safety_lane`: the screen filed the text as a
+ * crisis or a medical symptom, which is answered by its own reply and nothing in front of
+ * it. `unscreened`: the screen has not read the text (not yet, timed out, or failed open),
+ * so nobody knows it is not one.
+ */
+export type HoldingLineWithheld = 'safety_lane' | 'unscreened';
+
+/** What the line needs when it is due: the language to write in, or why it is withheld. */
+export type HoldingLineRead =
+  | { status: 'write'; language: ReplyLanguage | null }
+  | { status: 'withheld'; reason: HoldingLineWithheld };
+
+/**
+ * The screen's reading of this text, as the holding line needs it. `null` is a text the
+ * screen has not read. The language is the one the screen read off THIS text; the
+ * family's stored one only when it read none.
+ */
+export async function holdingLineRead(
+  reading: Pick<LaneReading, 'lane' | 'fallback' | 'language'> | null,
+  familyLanguage: () => Promise<ReplyLanguage | null>,
+): Promise<HoldingLineRead> {
+  if (reading === null || reading.fallback !== null) {
+    return { status: 'withheld', reason: 'unscreened' };
+  }
+  if (reading.lane === 'safety_critical') return { status: 'withheld', reason: 'safety_lane' };
+  return {
+    status: 'write',
+    language: acceptReplyLanguage(reading.language) ?? (await familyLanguage()),
+  };
+}
 
 /**
  * What became of the holding line on one turn (rule #11): sent, not needed because the
- * answer came first, not armed because the flag is dark or the turn is skipped, or not
- * sent and why.
+ * answer came first, not armed because the flag is dark or the turn is skipped, withheld
+ * when it was due, or not sent and why.
  */
 export type HoldingLineOutcome =
   | 'sent'
   | 'answered_first'
   | 'lane_off'
   | HoldingLineSkip
+  | HoldingLineWithheld
   | 'compose_failed'
   | 'send_failed';
 
@@ -201,12 +241,15 @@ export function holdingLineNotArmed(
 /** Arm the one holding line for one turn. It fires at most once. */
 export function armHoldingLine(input: {
   afterMs: number;
-  language: ReplyLanguage | null;
+  familyId: string;
+  /** Read when the line is DUE, not when it is armed: by then the screen has usually read
+   * the text, and what it read decides the language and whether to write at all. */
+  read: () => Promise<HoldingLineRead>;
   composer: HoldingLineComposer;
   send: (line: string) => Promise<void>;
   log: Pick<Console, 'info' | 'warn'>;
 }): HoldingLine {
-  if (!holdingLineEnabled()) {
+  if (!holdingLineEnabled(input.familyId)) {
     input.log.info({ outcome: 'lane_off' }, 'holding line: dark, none armed');
     return { settle: async () => 'lane_off' };
   }
@@ -216,7 +259,14 @@ export function armHoldingLine(input: {
   let sending: Promise<void> | null = null;
 
   const fire = async () => {
-    const composed = await input.composer.compose(input.language);
+    const read = await input.read();
+    if (settled) return;
+    if (read.status === 'withheld') {
+      outcome = read.reason;
+      input.log.info({ outcome }, 'holding line: withheld, the answer is still coming');
+      return;
+    }
+    const composed = await input.composer.compose(read.language);
     if (settled) return;
     if (composed.status !== 'composed') {
       outcome = 'compose_failed';

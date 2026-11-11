@@ -208,6 +208,38 @@ describe('deliverFamilyOutbound', () => {
     expect(http.linqUrls()).toEqual([]);
     expect(http.twilioUrls()).toEqual([]);
   });
+
+  it('a later answer to a 1:1 ask stays in that chat, threaded, though the household has a group', async () => {
+    const seeded = await seedHousehold(GROUP);
+    const target = await familyOutboundTarget(db.database, seeded.familyId, {
+      contentClass: 'schedule',
+      listChatHandles: present(PARENT, DAD),
+    });
+    // Positive control: this household's sends go to the group.
+    expect(target).toMatchObject({ channel: 'group', chatId: GROUP });
+
+    const legacy = new FakeTransport();
+    const http = wire();
+    const delivered = await deliverFamilyOutbound(db.database, {
+      familyId: seeded.familyId,
+      body: 'Tiny Gym runs Sundays 9:30.',
+      to: '+14165550100',
+      legacy,
+      fetch: http.fetch,
+      target,
+      replyIn: { chatId: PERSONAL, messageId: 'msg-carried-promise' },
+      now: NOW,
+    });
+
+    expect(delivered.status).toBe('sent');
+    expect(legacy.sent).toEqual([
+      expect.objectContaining({
+        body: 'Tiny Gym runs Sundays 9:30.',
+        replyIn: { chatId: PERSONAL, messageId: 'msg-carried-promise' },
+      }),
+    ]);
+    expect(http.linqUrls()).toEqual([]);
+  });
 });
 
 describe('a 1:1 decision syncs the group', () => {

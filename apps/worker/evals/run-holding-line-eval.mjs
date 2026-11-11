@@ -66,6 +66,14 @@ const FIXTURES = [
     countsTowardVariance: false,
     watchFor: `${WATCH} It must be written in FRENCH.`,
   })),
+  // The line is written in the language of the text it covers, any tag the screen reads.
+  ...Array.from({ length: 2 }, (_, i) => ({
+    id: `zh-draw-${i + 1}`,
+    language: 'zh',
+    rejected: [],
+    countsTowardVariance: false,
+    watchFor: `${WATCH} It must be written in CHINESE, with no word standing in for a time (马上, 一会儿, 稍等, 很快).`,
+  })),
   {
     id: 'recompose-promised-time',
     language: 'en',
@@ -77,6 +85,14 @@ const FIXTURES = [
     ],
     countsTowardVariance: false,
     watchFor: `${WATCH} The refused body promised a time; the fix drops it and keeps the meaning.`,
+  },
+  {
+    // The time gate reads English only, so a Chinese "right away" is the judge's to catch.
+    id: 'zh-recompose-promised-time',
+    language: 'zh',
+    rejected: [{ line: '我马上回来告诉你', problems: ['promised_a_time'] }],
+    countsTowardVariance: false,
+    watchFor: `${WATCH} It must be written in CHINESE. The refused body promised a time (马上); the fix drops it and keeps the meaning.`,
   },
 ];
 
@@ -94,6 +110,9 @@ function holdingLineUserMessage(language, rejected = []) {
 }
 
 const MAX_TOKENS = 96;
+
+/** Mirrors `MAX_COMPOSE_ATTEMPTS` in holding-line.ts: a refused line goes back once. */
+const MAX_COMPOSE_ATTEMPTS = 2;
 
 /** Mirrors `plainText` in apps/web/lib/channel/coach/reply.ts. */
 const GSM7_SUBSTITUTIONS = [
@@ -119,6 +138,7 @@ function flatten(text) {
 const LINK_SHAPE = /https?:\/\/|www\./i;
 const PROMISED_TIME =
   /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
+const PROMISED_TIME_ZH = /马上|一会儿|稍等|很快/;
 const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
 
 function refusals(body) {
@@ -126,7 +146,7 @@ function refusals(body) {
   const found = [];
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
-  if (PROMISED_TIME.test(body)) found.push('promised_a_time');
+  if (PROMISED_TIME.test(body) || PROMISED_TIME_ZH.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
 }
@@ -161,27 +181,36 @@ async function main() {
 
   const results = [];
   for (const fixture of FIXTURES) {
-    const raw = broken
-      ? BROKEN_LINE
-      : (
-          await cachedToolCall({
-            tag: `holding-line:${fixture.id}`,
-            model,
-            lane: subjectLane,
-            system: skill.instructions,
-            userMessage: holdingLineUserMessage(fixture.language, fixture.rejected),
-            toolName: 'holding_line',
-            toolSchema: LINE_TOOL_SCHEMA,
-            toolDescription: 'Return the one line the parent sees while the answer is coming.',
-            maxTokens: MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value.line;
-
-    const body = flatten(String(raw ?? ''));
-    const failures = refusals(body);
+    // The composer's own loop (holding-line.ts createHoldingLine): a line its gate refuses
+    // goes back once with the reasons, and the line that reaches the parent is the first
+    // one the gate passes. Every refused attempt is printed below.
+    const rejected = [...fixture.rejected];
+    const refused = [];
+    let body = flatten(BROKEN_LINE);
+    let failures = refusals(body);
+    for (let attempt = 0; !broken && attempt < MAX_COMPOSE_ATTEMPTS; attempt += 1) {
+      const raw = (
+        await cachedToolCall({
+          tag: attempt === 0 ? `holding-line:${fixture.id}` : `holding-line:${fixture.id}:retry`,
+          model,
+          lane: subjectLane,
+          system: skill.instructions,
+          userMessage: holdingLineUserMessage(fixture.language, rejected),
+          toolName: 'holding_line',
+          toolSchema: LINE_TOOL_SCHEMA,
+          toolDescription: 'Return the one line the parent sees while the answer is coming.',
+          maxTokens: MAX_TOKENS,
+          cachedOnly,
+          getClient,
+          cost,
+        })
+      ).value.line;
+      body = flatten(String(raw ?? ''));
+      failures = refusals(body);
+      if (failures.length === 0) break;
+      refused.push(`refused at the gate (${failures.join('+')}): "${body}"`);
+      rejected.push({ line: body, problems: failures });
+    }
     // Skipped in broken mode: the deterministic layer alone must reject the stand-in.
     if (!broken) {
       const verdict = await judge(fixture.id, {
@@ -191,7 +220,7 @@ async function main() {
       });
       if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
     }
-    results.push({ fixture, body, failures });
+    results.push({ fixture, body, failures, refused });
   }
 
   console.log('--- lines ---');
@@ -199,6 +228,7 @@ async function main() {
     console.log(
       `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(28)} "${r.body}"`,
     );
+    for (const f of r.refused) console.log(`      ↺ ${f}`);
     for (const f of r.failures) console.log(`      · ${f}`);
   }
 

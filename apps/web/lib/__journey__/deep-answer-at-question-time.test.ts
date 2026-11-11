@@ -697,6 +697,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         recordWatch: async () => ({ status: 'recorded', commitmentId: 'watch-1' }),
       },
       cancelPromise: cancelActivityPromise,
+      clock: () => JOB_AT,
       ...overrides,
     };
   }

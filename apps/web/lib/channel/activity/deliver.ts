@@ -2,7 +2,11 @@ import { type Database, schema } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
+import {
+  type CadenceLane,
+  handOffProactive,
+  isQueuedForDecider,
+} from '~/lib/channel/proactive/queue';
 import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -29,8 +33,8 @@ import { ACTIVITY_HELD_TOPIC, heldOptionsNote, venuePage, withVenuePages } from 
  *
  * Two things now decide to answer an activity promise: the hourly sweep (sweep.ts), which
  * keeps every promise that has come due, and the question-time deep job (deep-job.ts),
- * which keeps ONE promise minutes after it is made because the parent named a place and
- * the answer is worth opening pages for. They disagree about a great deal — which
+ * which keeps each promise minutes after it is made, by opening the pages the answer is
+ * on. They disagree about a great deal — which
  * research runs, what a failure costs, whether to fall back to a snippet search — and
  * they must not disagree about ONE thing: what happens between a set of picks and a
  * parent reading them.
@@ -195,6 +199,10 @@ export interface FollowUpRecipient {
   conversationId: string | null;
   /** The parent's one proactive language (`parentLanguage`). The follow-up is written in it. */
   language: string;
+  /** The 1:1 iMessage chat the promise was made in, and the outbound that carried it (itself
+   * the reply to the ask), so the answer lands in the ask's thread. Null on SMS, in a group,
+   * or wherever the chat is not known to be 1:1. */
+  thread: { chatId: string; messageId: string } | null;
 }
 
 /** The effects a delivery performs. Every one is REQUIRED (rule #11): a sender that could
@@ -265,6 +273,9 @@ export interface FollowUpDeliveryInput {
   /** What the parent had already been told on this subject before this message — the
    * watch row's `heardFacts`, or null when no follow-up has answered this promise yet. */
   heardFacts: readonly string[] | null;
+  /** `immediate` for the question-time job: the second half of a reply in a live
+   * conversation, which never waits for the hourly decider. `candidate` for the sweep. */
+  lane: CadenceLane;
 }
 
 /** What became of one delivery. Named rather than void, and never folded: `deferred` is
@@ -402,7 +413,7 @@ export async function deliverFollowUp(
         payload: { auditVerb: 'activity_followup_sent', fulfillKind: 'activity_followup' },
       },
     ],
-    'candidate',
+    input.lane,
   );
   if (handedOff === 'queued') {
     await database.insert(schema.auditLog).values({
@@ -422,6 +433,7 @@ export async function deliverFollowUp(
     to,
     legacy: deps.transport,
     bubbleKind: 'discretionary',
+    ...(input.recipient.thread ? { replyIn: input.recipient.thread } : {}),
     now,
   });
   if (delivered.status === 'held') {
