@@ -335,8 +335,8 @@ export interface FakeDb {
  * It does NOT evaluate `where` clauses — it returns the whole table and lets the code
  * under test apply its own post-checks (which the real lookups already do as defense in
  * depth). Four tables are the exception, because their predicate is the bound:
- * sms_intake_sessions (the open session on this number), parent_channels, audit_log,
- * and children. Those SELECTs honor where, orderBy, and limit. Returning another
+ * sms_intake_sessions (the open session on this number), parent_channels, users
+ * (an intake user is keyed on its number), audit_log, and children. Those SELECTs honor where, orderBy, and limit. Returning another
  * family's rows would hide an unbounded read. A session reader has no post-check:
  * the question is which row, and the where clause is the only thing that answers it.
  */
@@ -457,6 +457,7 @@ export function makeFakeDb(): FakeDb {
   const selectsAreScoped = (table: unknown): boolean =>
     table === schema.smsIntakeSessions ||
     table === schema.parentChannels ||
+    table === schema.users ||
     table === schema.auditLog ||
     table === schema.children;
 

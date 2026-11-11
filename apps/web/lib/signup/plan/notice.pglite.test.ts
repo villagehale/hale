@@ -183,7 +183,7 @@ describe('the parent notice after a plan run', () => {
     expect(ledger?.sentAt).not.toBeNull();
   });
 
-  it('hands an ActiveNet parent the filled registration: told as assisted, the live browser after the text, never in history', async () => {
+  it('hands an ActiveNet parent a filled registration on the generic auto path, with the live browser after the text', async () => {
     vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true');
     const f = await plannedFamily({
       url: 'https://anc.ca.apm.activecommunities.com/exampleville/activity/search/detail/7',
@@ -202,7 +202,7 @@ describe('the parent notice after a plan run', () => {
     expect(sent[0]?.body).toBe(`Ada is filled in for Sunday: check it, submit and pay.\n${LIVE}`);
     expect(facts[0]).toMatchObject({
       moment: 'run_finished',
-      mode: 'assisted',
+      mode: 'auto',
       run: { outcome: 'ready_for_parent', liveBrowser: true, holdMinutes: 15, confirmed: false },
     });
     expect(JSON.stringify(facts)).not.toContain(TOKEN);

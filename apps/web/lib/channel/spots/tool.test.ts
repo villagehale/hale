@@ -404,9 +404,9 @@ describe('watch_for_opening — through the guarded invoker', () => {
     ).rejects.toThrow(/child_content/);
     expect(fetchBody).not.toHaveBeenCalled();
     expect(armed).toEqual([]);
-    // The rail refuses BEFORE the audit write, so a blocked call is not recorded as an
-    // authorized one (tool.ts invokeTool).
-    expect(audit).toEqual([]);
+    // The rail refuses BEFORE the tool:<name> audit write, so a blocked call is not
+    // recorded as an authorized one. VIL-635 leaves a content-free tool_refused row.
+    expect(audit.map((a) => a.actionTaken)).toEqual(['tool_refused']);
   });
 
   it('records the pre-gate input in the audit row and passes NONE of it on when refused', async () => {

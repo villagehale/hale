@@ -209,7 +209,7 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
     const req = create.mock.calls[0]?.[0] as Anthropic.MessageCreateParamsNonStreaming;
     const systemBlocks = req.system as Anthropic.TextBlockParam[];
     expect(systemBlocks).toHaveLength(1);
-    expect(systemBlocks[0]?.cache_control).toEqual({ type: 'ephemeral' });
+    expect(systemBlocks[0]?.cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
     // The variable per-review draft (identified by its draft id) rides in
     // messages, outside the cached prefix.
     const draftId = draft('send_email').id;

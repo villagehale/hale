@@ -19,8 +19,8 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { SHARED_GROUP_VOICE_FIXTURES } from './shared-group-voice-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { SHARED_GROUP_VOICE_FIXTURES } from './shared-group-voice-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');

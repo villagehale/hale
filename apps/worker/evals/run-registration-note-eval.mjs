@@ -554,7 +554,9 @@ async function main() {
     const verdict = await judge(h.id, { facts: h.facts, text: h.text });
     const high = verdict.score >= JUDGE_MIN;
     if (high) kept += 1;
-    console.info(`${high ? 'HANDED-PASSES (good)' : 'HANDED-FAILED (bad)'} ${h.id} | judge ${verdict.score}`);
+    console.info(
+      `${high ? 'HANDED-PASSES (good)' : 'HANDED-FAILED (bad)'} ${h.id} | judge ${verdict.score}`,
+    );
     if (!high) console.info(`     reason: ${verdict.reason}`);
   }
   const brokenOk = caught === NOTE_BROKEN.length && brokenOffline(note);

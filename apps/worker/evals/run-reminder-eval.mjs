@@ -32,9 +32,9 @@ import {
   summarizeDryPlan,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { reminderJudgeModel } from './lib/reminder-judge-model.mjs';
 import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -366,28 +366,26 @@ async function main() {
       broken && !rescore
         ? null
         : (
-              await cachedToolCall({
-                tag: `reminder:${fixture.id}`,
-                model,
-                lane,
-                system: skill.instructions,
-                userMessage,
-                toolName: 'reminder_texts',
-                toolSchema: TOOL_SCHEMA,
-                toolDescription: 'The texts Hale sends the parent, in order.',
-                maxTokens: 1024,
-                cachedOnly: cachedOnly || rescore,
-                dryPlan: dry ? composePlan : undefined,
-                getClient,
-                cost,
-              })
-            ).value;
+            await cachedToolCall({
+              tag: `reminder:${fixture.id}`,
+              model,
+              lane,
+              system: skill.instructions,
+              userMessage,
+              toolName: 'reminder_texts',
+              toolSchema: TOOL_SCHEMA,
+              toolDescription: 'The texts Hale sends the parent, in order.',
+              maxTokens: 1024,
+              cachedOnly: cachedOnly || rescore,
+              dryPlan: dry ? composePlan : undefined,
+              getClient,
+              cost,
+            })
+          ).value;
     const texts = composed === null ? [BROKEN] : readTexts(composed);
     const bold = composed === null ? null : readBold(composed);
     // Numbered, so the judge can see where the model split (P0 split / voice cases).
-    const body = [...texts.map((t, i) => `[text ${i + 1}] ${t}`), boldLine(texts, bold)].join(
-      '\n',
-    );
+    const body = [...texts.map((t, i) => `[text ${i + 1}] ${t}`), boldLine(texts, bold)].join('\n');
     const failures = compose.reminderRefusals(texts, facts).map((r) => `unsendable:${r}`);
     const verdict = await judge(fixture.id, {
       input: userMessage,
