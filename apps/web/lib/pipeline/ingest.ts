@@ -1,11 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import {
-  type ActionType,
-  deriveStage,
-  gcalItemAlreadyEnded,
-  gcalPastClassifySkipEnabled,
-} from '@hale/types';
+import { isEnabled } from '@hale/flags';
+import { type ActionType, deriveStage, gcalItemAlreadyEnded } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
@@ -112,7 +108,9 @@ export async function ingestEvent(
   // the family can still take, and a first sync is mostly those items. Future items,
   // items still in progress, and every other source still call the model.
   const skipEndedCalendar =
-    gcalPastClassifySkipEnabled() && input.source === 'gcal' && gcalItemAlreadyEnded(payload, now);
+    isEnabled('gcal-past-classify-skip', familyId) &&
+    input.source === 'gcal' &&
+    gcalItemAlreadyEnded(payload, now);
 
   // 1. Classify. Traced as 'classify-event'; the mask is the rule-#1 backstop over the
   // inbound raw content the classifier sees. WHICH MODEL RAN IS THE STAGE'S TO SAY, not

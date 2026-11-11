@@ -150,9 +150,7 @@ describe('hashFamilyId', () => {
   it('is HMAC-SHA256 with the salt when set, and never the raw id', () => {
     vi.stubEnv('POSTHOG_ID_SALT', 'launch-salt');
     const digest = hashFamilyId(family);
-    expect(digest).toBe(
-      createHmac('sha256', 'launch-salt').update(family).digest('hex').slice(0, 16),
-    );
+    expect(digest).toBe(createHmac('sha256', 'launch-salt').update(family).digest('hex'));
     expect(digest).not.toBe(createHash('sha256').update(family).digest('hex').slice(0, 16));
     expect(digest).not.toContain(family);
   });

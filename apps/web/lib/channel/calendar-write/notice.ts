@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import type {
   GoogleCalendarOp,
   GoogleCalendarSyncReport,
@@ -27,7 +28,7 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 export const CALENDAR_WRITE_NOTICE_SKILL = 'calendar-write-notice';
 
 export function calendarWriteNoticeEnabled(env: Record<string, string | undefined> = process.env) {
-  return env.CALENDAR_WRITE_NOTICE_ENABLED?.trim() === 'true';
+  return isEnabled('calendar-write-notice', undefined, env);
 }
 
 export type CalendarWriteOutcome =

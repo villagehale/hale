@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import type { FamilyStage } from '@hale/types';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
@@ -101,7 +102,7 @@ export const VILLAGE_INTROS_ALLOWLIST_ENV = 'VILLAGE_INTROS_FAMILY_ALLOWLIST';
  * truthiness check reads that as ON.
  */
 export function villageIntrosEnabled(): boolean {
-  return process.env[VILLAGE_INTROS_ENABLED_ENV] === 'true';
+  return isEnabled('village-intros');
 }
 
 export function villageIntrosAllowlist(): Set<string> {

@@ -1,6 +1,7 @@
 import { domainToASCII } from 'node:url';
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -130,7 +131,7 @@ export const GENERAL_ANSWER_SEARCH_ENABLED_ENV = 'GENERAL_ANSWER_SEARCH_ENABLED'
  * 'false' turns it off, and anything else (unset, 'true', a piped 'false\n') leaves it on.
  */
 export function generalAnswerSearchEnabled(): boolean {
-  return process.env[GENERAL_ANSWER_SEARCH_ENABLED_ENV] !== 'false';
+  return isEnabled('general-answer-search');
 }
 
 /** Bounded because the provider bills per search. The same bound intake/live-lookup.ts

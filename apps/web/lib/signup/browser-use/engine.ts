@@ -45,6 +45,7 @@ export const CHECKOUT_KEEP_ALIVE_SECONDS = 900;
 export const DEFAULT_CART_HOLD_MINUTES = 10;
 export const RUN_DEADLINE_MS = 10 * 60 * 1000;
 export const POLL_INTERVAL_MS = 2000;
+/** Per-run Browser Use spend cap. Independent of the payment env flag. */
 export const SIGNUP_RUN_MAX_COST_USD = 3;
 export const CONFIRMATION_RUN_MAX_COST_USD = 0.5;
 const SEED_BROWSER_TIMEOUT_MINUTES = 5;
@@ -463,6 +464,7 @@ async function driveSignup(
 
     const output = parseSignupOutput(summary.output);
     if (!output) return failure('error', 'unreadable_output', ids);
+    // Code limit: stop before any payment > $0, even if a payment flag were on.
     if (output.payment_details_entered) return failure('error', 'payment_boundary', ids);
 
     const live = waited.liveViewUrl;

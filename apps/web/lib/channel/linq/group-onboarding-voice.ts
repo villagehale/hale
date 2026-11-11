@@ -1,5 +1,6 @@
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -116,7 +117,7 @@ async function pageUnsent(kind: GroupOnboardingKind, fallback: GroupLineFallback
 function productionComposer(
   scope: { familyId: string; database: Database } | undefined,
 ): GroupOnboardingComposer | undefined {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return undefined;
   return {
     async compose(input, options) {
       const skill = await loadCronSkill('group-onboarding-voice');

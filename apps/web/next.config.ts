@@ -78,6 +78,9 @@ const config: NextConfig = {
     '@hale/worker',
   ],
   serverExternalPackages: [
+    // Launch flags: node:crypto HMAC + posthog-node local eval. Not for the browser.
+    '@hale/flags',
+    'posthog-node',
     'postgres',
     'pg-boss',
     // Authorized signup loads Playwright at runtime when the flag is on.
@@ -115,13 +118,37 @@ const config: NextConfig = {
       '../../node_modules/unpdf/**',
     ],
   },
-  webpack: (config) => {
+  webpack: (config, { isServer, nextRuntime }) => {
     // Workspace packages use ESM '.js' import specifiers against .ts sources;
     // webpack needs the alias tsc applies implicitly.
     config.resolve.extensionAlias = {
       '.js': ['.ts', '.tsx', '.js'],
       '.mjs': ['.mts', '.mjs'],
     };
+    if (isServer && nextRuntime === 'nodejs') {
+      // pnpm workspace packages resolve to ../../packages/flags, which bypasses
+      // serverExternalPackages. Keep node:crypto / posthog-node out of webpack.
+      const previous = config.externals;
+      config.externals = [
+        ...(Array.isArray(previous) ? previous : previous ? [previous] : []),
+        ({ request }: { request?: string }, callback: (err?: null, result?: string) => void) => {
+          if (
+            request === '@hale/flags' ||
+            request === 'posthog-node' ||
+            (typeof request === 'string' && request.startsWith('node:'))
+          ) {
+            callback(null, `commonjs ${request}`);
+            return;
+          }
+          callback();
+        },
+      ];
+    } else if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@hale/flags': join(repoRoot, 'packages/flags/dist/browser.js'),
+      };
+    }
     return config;
   },
 };
