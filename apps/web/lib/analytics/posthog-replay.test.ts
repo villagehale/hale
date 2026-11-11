@@ -20,6 +20,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 const KEY_ENV = 'NEXT_PUBLIC_POSTHOG_KEY';
 const HOST_ENV = 'NEXT_PUBLIC_POSTHOG_HOST';
+const WEB_ENV = 'NEXT_PUBLIC_POSTHOG_WEB_ENABLED';
+const REPLAY_ENV = 'NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED';
 const API_HOST = 'https://ph.test';
 
 const PORTAL_ROUTES = [
@@ -86,6 +88,8 @@ async function bootPortalRoute(path: string): Promise<Boot> {
   const server = stubPostHogServer();
   process.env[KEY_ENV] = 'phc_test_key';
   process.env[HOST_ENV] = API_HOST;
+  process.env[WEB_ENV] = 'true';
+  delete process.env[REPLAY_ENV];
   const { PostHogProvider } = await import('./posthog-provider');
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -101,6 +105,8 @@ async function bootPortalRoute(path: string): Promise<Boot> {
 describe('portal pages start no session recording (VIL-483)', () => {
   const originalKey = process.env[KEY_ENV];
   const originalHost = process.env[HOST_ENV];
+  const originalWeb = process.env[WEB_ENV];
+  const originalReplay = process.env[REPLAY_ENV];
 
   beforeAll(() => {
     vi.stubGlobal(
@@ -153,6 +159,10 @@ describe('portal pages start no session recording (VIL-483)', () => {
     else process.env[KEY_ENV] = originalKey;
     if (originalHost === undefined) delete process.env[HOST_ENV];
     else process.env[HOST_ENV] = originalHost;
+    if (originalWeb === undefined) delete process.env[WEB_ENV];
+    else process.env[WEB_ENV] = originalWeb;
+    if (originalReplay === undefined) delete process.env[REPLAY_ENV];
+    else process.env[REPLAY_ENV] = originalReplay;
   });
 
   it('positive control: the same server config DOES start a recorder when replay is allowed', async () => {

@@ -13,6 +13,7 @@ import {
   readFamilySliceForAudience,
 } from './multi-family';
 import { lastDeliveredAside, privateAsideDedupeKey } from './private-aside-ledger';
+import { primaryParentId } from './roster-ask';
 
 /**
  * VIL-457 — private info goes to that family 1:1, never into the group.
@@ -246,12 +247,14 @@ async function asideForFamily(
     }),
   });
   // Recorded whatever the delivery said, so a retry of the same message never re-sends to
-  // this family. Every adult in the family gets a copy of this row, so it says only that
-  // an aside went out: the text stays on the recipient's own 1:1 ledger row.
+  // this family. The text stays on the recipient's own 1:1 ledger row. The audit names
+  // that adult as audience (the primary parent the 1:1 door texts).
+  const audience = await primaryParentId(database, familyId);
   await database.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
     actionTaken: PRIVATE_ASIDE_AUDIT,
+    ...(audience ? { audience } : {}),
     targetTable: 'channel_messages',
     targetId: input.inboundId,
     after: { ...linqChatAuditKey(input.chatId), delivered },
@@ -386,6 +389,8 @@ export function createPrivateAsideModel(
 let shared: PrivateAsideModel | null = null;
 
 export function sharedPrivateAsideModel(): PrivateAsideModel {
-  shared ??= createPrivateAsideModel(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createPrivateAsideModel(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }

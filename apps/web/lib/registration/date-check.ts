@@ -171,5 +171,7 @@ export function createDateChecker(
  * check then names as `no_reader`. */
 export function liveDateReader(): RegistrationReader | null {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  return createLiveRegistrationReader(budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS));
+  return createLiveRegistrationReader(
+    budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'registration' }),
+  );
 }

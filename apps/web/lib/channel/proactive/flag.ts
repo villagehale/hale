@@ -9,8 +9,9 @@ import type { ProactiveSendKind } from '~/lib/channel/outbound-gate';
  * `shadow` — candidates are queued and the decider's choice is logged; the old path
  *   still sends.
  * `live` — queued kinds wait for the decider, and the decider sends. It arms only
- *   once every class in {@link PROACTIVE_ROUTING} is routed; until then a requested
- *   `live` runs as `shadow`, and the review's summary says so. No mode has a count.
+ *   once every class in {@link PROACTIVE_ROUTING} is routed; a requested `live`
+ *   while any class is `not_routed` runs as `shadow`, and the review's summary
+ *   says so. No mode has a count.
  *
  * Strict equality, no trim: a trailing newline from `vercel env add` must not arm it.
  */
@@ -31,26 +32,29 @@ export type ProactiveCadence = 'off' | 'shadow' | 'live';
  *
  * Every kind must be listed, so a new class cannot reach live unclassified.
  */
-export const PROACTIVE_ROUTING = {
+export const PROACTIVE_ROUTING: Record<
+  ProactiveSendKind,
+  'decider' | 'immediate' | 'not_routed'
+> = {
   nudge: 'decider',
   registration_sequence: 'immediate',
-  village_intro: 'not_routed',
-  followup: 'not_routed',
-  plan_check_in: 'not_routed',
-  activity_followup: 'not_routed',
-  spot_open: 'not_routed',
+  village_intro: 'decider',
+  followup: 'decider',
+  plan_check_in: 'decider',
+  activity_followup: 'decider',
+  spot_open: 'decider',
   spot_open_instant: 'immediate',
-  email_alert: 'not_routed',
-  calendar_alert: 'not_routed',
+  email_alert: 'decider',
+  calendar_alert: 'decider',
   evening_check_in: 'decider',
   mid_activity_ask: 'decider',
   co_parent_departed: 'decider',
   travel_brief: 'decider',
-  duty_ask: 'not_routed',
+  duty_ask: 'decider',
   // Event-driven, on their own clock: the grant and the execution, not the decider's batch.
   autonomy_armed: 'immediate',
   autonomy_acted: 'immediate',
-} as const satisfies Record<ProactiveSendKind, 'decider' | 'immediate' | 'not_routed'>;
+};
 
 /** The classes whose sweeps still send on their own, in table order. */
 export function unroutedKinds(): ProactiveSendKind[] {

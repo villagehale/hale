@@ -80,7 +80,7 @@ export function hashFamilyIdForFlags(_familyId: string, _salt: string): string {
   throw new Error('@hale/flags: HMAC hashing is server-only');
 }
 
-export function hashFamilyIdForEvents(_familyId: string): string {
+export function hashFamilyIdForEvents(_familyId: string, _salt?: string): string {
   throw new Error('@hale/flags: event hashing is server-only');
 }
 

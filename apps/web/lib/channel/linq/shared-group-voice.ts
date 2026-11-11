@@ -132,7 +132,8 @@ function productionComposer(
   return {
     async compose(input, options) {
       const skill = await loadCronSkill('shared-group-voice');
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client =
+        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       if (scope) {
         const composed = await composeVoice({
           skill,

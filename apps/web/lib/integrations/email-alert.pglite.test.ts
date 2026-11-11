@@ -6,10 +6,10 @@ import {
   coachEmailReader,
   productionCoachEmailReaderDeps,
 } from '~/lib/channel/coach/read-email-tool';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { departCoParent } from '~/lib/channel/coparent/depart';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
@@ -279,6 +279,7 @@ describe('alertParentForEmail', () => {
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({
       actionTaken: 'email_alert_sent',
+      audience: family.parentUserId,
       targetTable: 'channel_messages',
       targetId: rows[0]?.id,
       after: { kind: 'cancellation', teenContent: false },

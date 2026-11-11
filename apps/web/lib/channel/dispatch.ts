@@ -1,4 +1,5 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
@@ -506,7 +507,8 @@ async function writeLedgerRow(
   status: LedgerWrite['status'],
   extra: Partial<LedgerWrite> = {},
 ): Promise<string> {
-  const id = await ports.record(rowFor(msg, channel, status, extra));
+  const write = rowFor(msg, channel, status, extra);
+  const id = await ports.record(write);
   // A SEND, not a status match: an SMS row is born 'queued', and keying the event off
   // 'sent' alone would report every text Hale sends as a failure.
   const event: AnalyticsEvent = (SENT_STATUSES as readonly string[]).includes(status)
@@ -518,6 +520,21 @@ async function writeLedgerRow(
     templateKey: msg.templateKey,
     reason: status,
   });
+  if ((SENT_STATUSES as readonly string[]).includes(status)) {
+    noteMessage({
+      direction: 'out',
+      familyId: msg.familyId,
+      channel,
+      chatId: write.providerChatId,
+    });
+  } else if (status === 'failed') {
+    noteSendFailed({
+      familyId: msg.familyId,
+      channel,
+      chatId: write.providerChatId,
+      reason: extra.errorCode ?? 'failed',
+    });
+  }
   return id;
 }
 

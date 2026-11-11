@@ -1,6 +1,6 @@
 import { domainToASCII } from 'node:url';
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, pickModel } from '@hale/agent';
+import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent';
 import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
@@ -399,7 +399,7 @@ async function liveSearch(
       .stream({
         model: pickModel(skill.meta.task),
         max_tokens: SEARCH_MAX_TOKENS,
-        system: skill.instructions,
+        system: cachedSystem(skill.instructions),
         tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
         messages: [{ role: 'user', content: searchUserMessage({ question, today, place }) }],
       })

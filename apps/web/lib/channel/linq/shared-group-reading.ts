@@ -274,7 +274,9 @@ let shared: SharedGroupReader | null = null;
 
 export function sharedGroupReader(): SharedGroupReader | null {
   if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return null;
-  shared ??= createSharedGroupReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createSharedGroupReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

@@ -147,7 +147,7 @@ let verdictAnthropic: AgentClient | undefined;
  * deferral this pass already names.
  */
 export function reviewVerdictClient(): AgentClient {
-  verdictAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  verdictAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'compose' });
   return verdictAnthropic;
 }
 

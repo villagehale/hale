@@ -317,6 +317,7 @@ async function recoverRow(
       actionTaken: 'opt_out_hold_read',
       // About one adult, the parent who texted, so History and the family copy leave it
       // out. It names no outcome: a stop or a crisis is not another adult's to read.
+      audience: held.authorUserId,
       targetTable: 'users',
       targetId: held.authorUserId,
     });

@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { readGroupMembership } from '../group-membership';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import { type GroupPollStore, createPostgresGroupPollStore } from './poll-store';
@@ -320,6 +321,9 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           targetId: input.planId,
           after: { response: input.response, headcount: input.headcount, edited },
         });
+        if (!prior) {
+          noteTaskCompleted({ familyId: plan.familyId, type: 'rsvp', source: 'group' });
+        }
       });
       return { edited };
     },

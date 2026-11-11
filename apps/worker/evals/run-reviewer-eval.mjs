@@ -38,7 +38,9 @@ import {
   evalSubjectRequest,
   installEvalSpendCap,
   priceRates,
+  reportEvalGeneration,
   withoutMessageCacheMarkers,
+  wrapEvalAnthropic,
 } from './lib/harness.mjs';
 import { SMS_CALENDAR_REVIEWER_FIXTURES } from './sms-calendar-reviewer-fixtures.mjs';
 
@@ -84,7 +86,10 @@ const cost = {
 };
 let lazyClient;
 function getClient() {
-  lazyClient ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  lazyClient ??= wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+    suite: 'reviewer',
+    stage: 'reviewer',
+  });
   return capSdkClient(lazyClient, { rates: priceRates, tag: 'reviewer' });
 }
 
@@ -116,6 +121,13 @@ function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
         const cached = await cacheGet(key);
         if (cached) {
           if (Number.isFinite(cached.latencyMs)) cost.latencies.push(cached.latencyMs);
+          reportEvalGeneration({
+            suite: 'reviewer',
+            caseName: tag,
+            model: params.model,
+            latencyMs: cached.latencyMs,
+            cached: true,
+          });
           return cached.response;
         }
         if (cachedOnly) {

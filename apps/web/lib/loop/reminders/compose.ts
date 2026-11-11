@@ -1,9 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
-import { estimateCostUsd, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, estimateCostUsd, pickLane, promptCacheHitFromRead } from '@hale/agent';
 import type { FamilyEventNotes } from '@hale/db';
 import { ZodError, z } from 'zod';
 import type { RecordAgentRunInput } from '~/lib/agent-run';
+import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkBeyond } from '~/lib/format/link-shape';
@@ -412,17 +413,22 @@ export async function composeReminderTexts(
     let usage: Anthropic.Usage | null = null;
     let result: Attempt;
     try {
-      const answered = await forceToolJson({
-        client,
-        lane,
-        system: skill.instructions,
-        userMessage: reminderUserMessage(facts),
-        toolName: 'reminder_texts',
-        toolDescription: 'The texts Hale sends the parent, in order.',
-        inputJsonSchema: outputJsonSchema,
-        schema: outputSchema,
-        maxTokens: 1024,
-      });
+      const answered = await withLlmContext(
+        { stage: 'reminder', ...llmFamilyContext(familyId) },
+        () =>
+          forceToolJson({
+            client,
+            lane,
+            system: skill.instructions,
+            cacheTtl: SPARSE_CACHE_TTL,
+            userMessage: reminderUserMessage(facts),
+            toolName: 'reminder_texts',
+            toolDescription: 'The texts Hale sends the parent, in order.',
+            inputJsonSchema: outputJsonSchema,
+            schema: outputSchema,
+            maxTokens: 1024,
+          }),
+      );
       usage = answered.usage;
       const texts = answered.value.texts.map((t) => t.trim());
       const found = reminderRefusals(texts, facts);
@@ -455,6 +461,7 @@ export async function composeReminderTexts(
         : 0,
       cacheReadTokens: cacheRead,
       cacheWriteTokens: cacheCreation,
+      promptCacheHit: promptCacheHitFromRead(usage ? cacheRead : undefined),
       latencyMs: Date.now() - startedAt,
       status: result.kind === 'written' ? 'completed' : 'failed',
     });

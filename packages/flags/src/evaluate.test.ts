@@ -140,12 +140,13 @@ describe('PostHog evaluation', () => {
     );
   });
 
-  it('does not rewrite the events hash (unsalted 16-char)', () => {
-    const events = hashFamilyIdForEvents('fam-1');
+  it('events and flags share one id when the salt is set; unsalted events stay 16-char', () => {
     const flags = hashFamilyIdForFlags('fam-1', 'test-salt');
-    expect(events).toHaveLength(16);
     expect(flags).toHaveLength(64);
-    expect(events).not.toBe(flags.slice(0, 16));
+    expect(hashFamilyIdForEvents('fam-1', 'test-salt')).toBe(flags);
+    const unsalted = hashFamilyIdForEvents('fam-1', '');
+    expect(unsalted).toHaveLength(16);
+    expect(unsalted).not.toBe(flags.slice(0, 16));
   });
 });
 
