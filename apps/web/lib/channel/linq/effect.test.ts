@@ -45,6 +45,9 @@ const READ: LinqEffectInput = {
   lastEffectHoursAgo: null,
 };
 
+/** A direct chat: the resolver names nobody. */
+const NO_MENTION = async () => undefined;
+
 function decider(decision: LinqEffectDecision | null): LinqEffectDecider & {
   calls: number;
   reads: LinqEffectInput[];
@@ -195,6 +198,7 @@ describe('VIL-473 Linq message effects', () => {
       text: READ.reply,
       replyToMessageId: 'in-1',
       read: READ,
+      mentionFor: NO_MENTION,
       fetch: f,
     });
     expect(out).toEqual({
@@ -222,6 +226,7 @@ describe('VIL-473 Linq message effects', () => {
         text: READ.reply,
         replyToMessageId: 'in-1',
         read: READ,
+        mentionFor: NO_MENTION,
         fetch: quiet,
       }),
     ).toEqual({ status: 'declined' });
@@ -232,6 +237,7 @@ describe('VIL-473 Linq message effects', () => {
         text: READ.reply,
         replyToMessageId: 'in-1',
         read: READ,
+        mentionFor: NO_MENTION,
         fetch: quiet,
       }),
     ).toEqual({ status: 'not_sent', reason: 'model_failed' });
@@ -243,6 +249,7 @@ describe('VIL-473 Linq message effects', () => {
       text: READ.reply,
       replyToMessageId: 'in-1',
       read: READ,
+      mentionFor: NO_MENTION,
       fetch: linqFetch(409),
     });
     expect(refused).toMatchObject({ status: 'not_sent', reason: 'refused', httpStatus: 409 });
@@ -260,6 +267,7 @@ describe('VIL-473 Linq message effects', () => {
         text: READ.reply,
         replyToMessageId: 'in-1',
         read: READ,
+        mentionFor: NO_MENTION,
         fetch: f,
       });
       return inner;
@@ -283,6 +291,7 @@ describe('VIL-473 Linq message effects', () => {
         text: READ.reply,
         replyToMessageId: 'in-1',
         read: READ,
+        mentionFor: NO_MENTION,
         fetch: timeout,
       }),
     ).toMatchObject({ status: 'uncertain', code: 'timeout' });
@@ -296,10 +305,67 @@ describe('VIL-473 Linq message effects', () => {
         text: READ.reply,
         replyToMessageId: 'in-1',
         read: READ,
+        mentionFor: NO_MENTION,
         fetch: missingId,
       }),
     ).toMatchObject({ status: 'uncertain', code: 'missing_message_id' });
     expect(missingId).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([502, 503, 504])(
+    'names a Linq %i uncertain: the gateway may already have sent it',
+    async (httpStatus) => {
+      vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+      const upstream = vi.fn(async () =>
+        Response.json({ error: { message: 'upstream' } }, { status: httpStatus }),
+      );
+      expect(
+        await applyLinqEffect({
+          decider: decider({ effect: { type: 'screen', name: 'confetti' } }),
+          chatId: CHAT,
+          text: READ.reply,
+          replyToMessageId: 'in-1',
+          read: READ,
+          mentionFor: NO_MENTION,
+          fetch: upstream,
+        }),
+      ).toMatchObject({ status: 'uncertain', httpStatus });
+      expect(upstream).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('carries the group mention the plain send would, and reads it only for a chosen effect', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const mentionFor = vi.fn(async () => '+14165550199');
+    const f = linqFetch();
+    await applyLinqEffect({
+      decider: decider({ effect: { type: 'screen', name: 'confetti' } }),
+      chatId: CHAT,
+      text: READ.reply,
+      replyToMessageId: 'in-1',
+      read: { ...READ, audience: 'group' },
+      mentionFor,
+      fetch: f,
+    });
+    expect(JSON.parse(String(f.mock.calls[0]?.[1]?.body))).toEqual({
+      message: {
+        parts: [{ type: 'text', value: READ.reply, mention: '+14165550199' }],
+        reply_to: { message_id: 'in-1' },
+        effect: { type: 'screen', name: 'confetti' },
+      },
+    });
+
+    const declined = vi.fn(async () => '+14165550199');
+    await applyLinqEffect({
+      decider: decider({ effect: null }),
+      chatId: CHAT,
+      text: READ.reply,
+      replyToMessageId: 'in-1',
+      read: { ...READ, audience: 'group' },
+      mentionFor: declined,
+      fetch: linqFetch(),
+    });
+    expect(declined).not.toHaveBeenCalled();
   });
 
   it('holds no clock window and no per-chat quota: the model reads both facts and decides', async () => {
@@ -326,7 +392,7 @@ describe('VIL-473 Linq message effects', () => {
         lastEffectHoursAgo: 1,
       },
     ]);
-    expect(sent).toEqual({ handled: 'effect', providerMessageId: 'effect-1' });
+    expect(sent).toEqual({ handled: 'effect', delivery: 'sent', providerMessageId: 'effect-1' });
     expect(posted).toHaveBeenCalledTimes(1);
   });
 
@@ -361,7 +427,7 @@ describe('VIL-473 Linq message effects', () => {
       decider({ effect: { type: 'screen', name: 'confetti' } }),
       posted,
     );
-    expect(sent).toEqual({ handled: 'effect', providerMessageId: 'effect-1' });
+    expect(sent).toEqual({ handled: 'effect', delivery: 'sent', providerMessageId: 'effect-1' });
     expect(posted).toHaveBeenCalledTimes(1);
     // The effect send is the reply: sendReply writes its row, audit and thread row as
     // for a plain send. Nothing here writes a second set.
@@ -396,6 +462,7 @@ describe('VIL-473 Linq message effects', () => {
         text: READ.reply,
         replyToMessageId: 'in-1',
         read: READ,
+        mentionFor: NO_MENTION,
       }),
     ).toEqual({ status: 'uncertain', code: 'unknown' });
 
@@ -407,7 +474,7 @@ describe('VIL-473 Linq message effects', () => {
       decider({ effect: { type: 'screen', name: 'confetti' } }),
       posted,
     );
-    expect(sent).toEqual({ handled: 'effect', providerMessageId: null });
+    expect(sent).toEqual({ handled: 'effect', delivery: 'unknown', providerMessageId: null });
     expect(posted).not.toHaveBeenCalled();
   });
 
@@ -422,7 +489,7 @@ describe('VIL-473 Linq message effects', () => {
         decider({ effect: { type: 'screen', name: 'confetti' } }),
         missing,
       ),
-    ).toEqual({ handled: 'effect', providerMessageId: null });
+    ).toEqual({ handled: 'effect', delivery: 'unknown', providerMessageId: null });
     expect(missing).toHaveBeenCalledTimes(1);
   });
 

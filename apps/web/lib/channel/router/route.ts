@@ -56,7 +56,11 @@ import {
   listEditableLinqSends,
   sharedLinqEditDecider,
 } from '~/lib/channel/linq/edit';
-import { LINQ_EFFECT_TEMPLATE_KEY, sharedLinqEffectDecider } from '~/lib/channel/linq/effect';
+import {
+  LINQ_EFFECT_DELIVERY_UNKNOWN,
+  LINQ_EFFECT_TEMPLATE_KEY,
+  sharedLinqEffectDecider,
+} from '~/lib/channel/linq/effect';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -1249,6 +1253,7 @@ async function routeChannelMessageInner(
     onSent?: () => Promise<unknown>,
     threadSource: schema.MessageSource | null = null,
     voiceMemo = false,
+    crisisReply = false,
   ) =>
     sendReply(deps, {
       route,
@@ -1271,10 +1276,15 @@ async function routeChannelMessageInner(
         audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
         parentAttachments: (context.media ?? []).map((part) => part.kind),
       },
-      effectRead: {
-        // A chat Linq did not say is 1:1 might be a group, so it is read as one.
-        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
-      },
+      // A crisis reply or a medical answer never carries an effect, so the read is never
+      // asked: the lane's own facts about the reply decide, not its words.
+      effectRead:
+        medicalSource === null && !crisisReply
+          ? {
+              // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+              audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
+            }
+          : undefined,
     });
 
   const answerAsker = async (
@@ -1751,6 +1761,9 @@ async function routeChannelMessageInner(
         verdict.crisisReply
           ? () => noteCrisisReplySent(deps.database, job.provider_message_id, deps.now())
           : undefined,
+        null,
+        false,
+        verdict.crisisReply === true,
       );
       return done(deps, job, {
         status: 'deflected',
@@ -3367,8 +3380,12 @@ async function sendReply(
   // VIL-473: the reply's own words, already sent with an iMessage effect. Like a voice
   // memo, it is this reply's send: the receipts below are written for it exactly as for
   // a text, and the text is never sent beside it.
-  let effected: { providerMessageId: string | null; channel: 'imessage'; chatId: string } | null =
-    null;
+  let effected: {
+    providerMessageId: string | null;
+    delivery: 'sent' | 'unknown';
+    channel: 'imessage';
+    chatId: string;
+  } | null = null;
   if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     let edit:
       | {
@@ -3419,6 +3436,7 @@ async function sendReply(
       if (moment.handled === 'effect') {
         effected = {
           providerMessageId: moment.providerMessageId,
+          delivery: moment.delivery,
           channel: 'imessage',
           chatId: args.route.chatId,
         };
@@ -3489,8 +3507,11 @@ async function sendReply(
       // opening a second one, or falling through to SMS.
       providerChatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
       // Accepted by the provider, not yet on a phone — the receipt advances it
-      // (channel/ledger.ts acceptedStatus, delivery-status.ts).
-      status: acceptedStatus(carriedBy),
+      // (channel/ledger.ts acceptedStatus, delivery-status.ts). An effect POST nobody saw
+      // Linq take is not "accepted": it stays queued, named, for a reconcile to settle.
+      ...(effected?.delivery === 'unknown'
+        ? { status: 'queued' as const, errorCode: LINQ_EFFECT_DELIVERY_UNKNOWN }
+        : { status: acceptedStatus(carriedBy) }),
       body: null,
       medicalReplySource: args.medicalSource ?? null,
       replySource: args.replySource ?? null,
@@ -3511,7 +3532,16 @@ async function sendReply(
     targetId: channelMessageId,
     // The form only, never the words (rule #1): this reply went as a voice memo, or
     // carried an iMessage effect.
-    ...(voiced ? { after: { form: 'voice_memo' } } : effected ? { after: { form: 'effect' } } : {}),
+    ...(voiced
+      ? { after: { form: 'voice_memo' } }
+      : effected
+        ? {
+            after:
+              effected.delivery === 'unknown'
+                ? { form: 'effect', delivery: 'unknown' }
+                : { form: 'effect' },
+          }
+        : {}),
   });
   noteMessage({
     direction: 'out',

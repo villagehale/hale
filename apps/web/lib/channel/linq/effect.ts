@@ -4,6 +4,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { knownTimezone } from '~/lib/channel/household-timezone';
 import { sendLinqEffect } from '~/lib/channel/outbound-transport';
 import { assertTurnLive } from '~/lib/channel/router/deadline';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -41,6 +42,10 @@ export { linqEffectsEnabled };
  * chat's last effect. */
 export const LINQ_EFFECT_TEMPLATE_KEY = 'linq:effect';
 
+/** The error code on an effect reply's row when nobody saw Linq take the POST: the
+ * row a reconcile looks for. */
+export const LINQ_EFFECT_DELIVERY_UNKNOWN = 'delivery_unknown';
+
 /** Latest effect reply in this chat, from the outbound ledger. */
 export async function lastLinqEffectAt(database: Database, chatId: string): Promise<Date | null> {
   const [row] = await database
@@ -75,8 +80,9 @@ export async function lastLinqEffectAt(database: Database, chatId: string): Prom
 }
 
 /**
- * The parent's stored zone, or null. No default zone stands in: a parent whose
- * zone Hale does not know is shown no wall clock rather than another city's.
+ * The parent's stored zone, or null. No default zone stands in, and neither does the
+ * column default (UTC, never set): a parent whose zone Hale does not know is shown no
+ * wall clock rather than another city's.
  */
 export async function parentStoredTimeZone(
   database: Database,
@@ -86,7 +92,7 @@ export async function parentStoredTimeZone(
     .select({ id: schema.users.id, timezone: schema.users.timezone })
     .from(schema.users)
     .where(eq(schema.users.id, parentUserId));
-  return rows.find((row) => row.id === parentUserId)?.timezone ?? null;
+  return knownTimezone(rows.find((row) => row.id === parentUserId)?.timezone);
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -250,9 +256,9 @@ export type LinqEffectOutcome =
   | { status: 'declined' }
   | {
       /**
-       * The POST may already be on the phone: the wait expired, or Linq
-       * accepted and sent no message id. A second POST would be a second copy
-       * of the reply.
+       * The POST may already be on the phone: the wait expired, a gateway in
+       * front of Linq answered 502, 503 or 504, or Linq accepted and sent no
+       * message id. A second POST would be a second copy of the reply.
        */
       status: 'uncertain';
       code: string;
@@ -271,6 +277,9 @@ export type LinqEffectOutcome =
  * `network` (see below).
  */
 const AMBIGUOUS_EFFECT_SEND = new Set(['timeout', 'missing_message_id']);
+/** A gateway answered for Linq: the POST may have reached it before the gateway gave
+ * up. Read by status, since the body can carry any code. */
+const AMBIGUOUS_EFFECT_HTTP = new Set([502, 503, 504]);
 
 /**
  * Ask the model, then send the reply with the effect it chose.
@@ -285,6 +294,9 @@ export async function applyLinqEffect(input: {
   text: string;
   replyToMessageId: string | null;
   read: LinqEffectInput;
+  /** VIL-475 — the handle the plain send would mention, or undefined. Read only once
+   * an effect is chosen, so a decline costs no mention read. */
+  mentionFor: () => Promise<string | undefined>;
   fetch?: typeof fetch;
 }): Promise<LinqEffectOutcome> {
   const decision = await input.decider.decide(input.read);
@@ -294,12 +306,15 @@ export async function applyLinqEffect(input: {
   assertTurnLive();
   if (!decision) return { status: 'not_sent', reason: 'model_failed' };
   if (decision.effect === null) return { status: 'declined' };
+  const mention = await input.mentionFor();
+  assertTurnLive();
   try {
     const sent = await sendLinqEffect({
       chatId: input.chatId,
       text: input.text,
       effect: decision.effect,
       replyTo: input.replyToMessageId ? { messageId: input.replyToMessageId } : undefined,
+      ...(mention ? { mention } : {}),
       fetch: input.fetch,
     });
     return { status: 'sent', effect: decision.effect, providerMessageId: sent.providerMessageId };
@@ -321,8 +336,11 @@ export async function applyLinqEffect(input: {
       console.warn({ code: err.code }, 'linq effect: unreachable, the reply still goes out');
       return { status: 'not_sent', reason: 'unreachable', code: err.code };
     }
-    if (AMBIGUOUS_EFFECT_SEND.has(err.code)) {
-      console.warn({ code: err.code }, 'linq effect: delivery uncertain; not sending again');
+    if (AMBIGUOUS_EFFECT_SEND.has(err.code) || AMBIGUOUS_EFFECT_HTTP.has(err.httpStatus)) {
+      console.warn(
+        { code: err.code, httpStatus: err.httpStatus },
+        'linq effect: delivery uncertain; not sending again',
+      );
       return { status: 'uncertain', code: err.code, httpStatus: err.httpStatus };
     }
     console.warn(

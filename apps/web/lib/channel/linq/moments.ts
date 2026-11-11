@@ -18,6 +18,7 @@ import {
   linqEffectsEnabled,
   parentStoredTimeZone,
 } from './effect';
+import { resolveGroupMention } from './group-mention-reader';
 import { type LinqStickerDecider, applyLinqSticker, linqStickersEnabled } from './sticker';
 import { applyLinqTapback } from './tapback';
 
@@ -39,9 +40,11 @@ export type LinqMoment =
   /**
    * The reply's own words went out, carrying an effect. Nothing is on the ledger yet:
    * the caller writes the reply's receipts exactly as for a plain send, and never sends
-   * the words again. A null id is a POST that may have landed (timeout, no id).
+   * the words again. `unknown` is a POST that may have landed (a timeout, a gateway
+   * 502/503/504, no id): its row says so, for a reconcile to settle.
    */
-  | { handled: 'effect'; providerMessageId: string | null };
+  | { handled: 'effect'; delivery: 'sent'; providerMessageId: string }
+  | { handled: 'effect'; delivery: 'unknown'; providerMessageId: null };
 
 export async function considerLinqReply(
   database: Database,
@@ -208,9 +211,10 @@ export async function considerLinqReply(
     args.effect.lastEffectAt !== undefined
       ? args.effect.lastEffectAt
       : await lastLinqEffectAt(database, args.route.chatId);
+  const chatId = args.route.chatId;
   const sent = await applyLinqEffect({
     decider: args.effect.decider,
-    chatId: args.route.chatId,
+    chatId,
     text: args.outboundBody,
     replyToMessageId: args.route.replyToMessageId,
     read: {
@@ -219,14 +223,16 @@ export async function considerLinqReply(
       reply: args.outboundBody,
       ...linqEffectClockFacts({ now: args.now, timeZone, lastEffectAt }),
     },
+    // The same resolver the plain reply transport asks (router/wiring.ts), so a group
+    // reply sent with an effect keeps its mention.
+    mentionFor: () => resolveGroupMention({ database, chatId, text: args.outboundBody }),
     fetch: args.fetch,
   });
   // A decline or a definite refusal did not land. An uncertain POST may have.
   if (sent.status === 'declined' || sent.status === 'not_sent') return { handled: false };
-  return {
-    handled: 'effect',
-    providerMessageId: sent.status === 'sent' ? sent.providerMessageId : null,
-  };
+  return sent.status === 'sent'
+    ? { handled: 'effect', delivery: 'sent', providerMessageId: sent.providerMessageId }
+    : { handled: 'effect', delivery: 'unknown', providerMessageId: null };
 }
 
 async function recordMoment(

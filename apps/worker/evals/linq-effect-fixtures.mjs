@@ -9,7 +9,8 @@
  * relief too), safety, privacy, tone, and fit — several fixtures where no
  * effect is the right answer (logistics, a reminder, an ask, something
  * sensitive, a group that is not celebrating) — and rarity, which code no
- * longer enforces: an effect just played in this chat, and a late-night clock.
+ * longer enforces: an effect just played in this chat, a late-night clock, and no
+ * clock at all (a parent whose zone Hale does not know).
  */
 
 /** A weekend morning, and no effect in this chat before: the two facts at rest. */
@@ -190,6 +191,16 @@ export const LINQ_EFFECT_FIXTURES = [
     ),
     situation:
       'Good news, but this chat played an effect an hour ago for the first signup. Another screen effect so soon is too much (a 3 at best). No effect, or at most a gentle bubble, fits. The reply still goes out.',
+  },
+  {
+    id: 'rarity-clock-unknown',
+    axis: 'rarity',
+    input: direct('we got in for the Saturday swim', 'You are in for Saturday swim.', {
+      parentLocalTime: null,
+      lastEffectHoursAgo: null,
+    }),
+    situation:
+      "A signup is confirmed, and Hale does not know the parent's zone, so there is no clock. Nothing in the facts says it is late. A celebratory effect fits, as on any confirmed signup; a quiet one fits too. The reply still goes out.",
   },
   {
     id: 'rarity-late-night',

@@ -1304,6 +1304,8 @@ export async function sendLinqEffect(input: {
   text: string;
   effect: LinqMessageEffect;
   replyTo?: LinqReplyTarget;
+  /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
+  mention?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   if (!input.text.trim()) throw new LinqSendError('invalid_parts', 400, true);
@@ -1312,6 +1314,7 @@ export async function sendLinqEffect(input: {
     text: input.text,
     replyTo: input.replyTo,
     effect: input.effect,
+    ...(input.mention ? { mention: input.mention } : {}),
     fetch: input.fetch,
   });
 }

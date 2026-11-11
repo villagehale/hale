@@ -5257,9 +5257,126 @@ describe('an iMessage effect does not send the reply twice', () => {
     expect(posts).toHaveLength(1);
     expect(h.transport.sent).toEqual([]);
     expect(h.turns.answered).toEqual([job().channel_message_id]);
-    expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
-      expect.objectContaining({ templateKey: 'linq:effect', providerMessageId: null }),
+    // Nobody saw Linq take it: the row says so, for a reconcile to settle later.
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out).toEqual([
+      expect.objectContaining({
+        templateKey: 'linq:effect',
+        providerMessageId: null,
+        status: 'queued',
+        errorCode: 'delivery_unknown',
+      }),
     ]);
+    expect(auditRows(h.fake).filter((row) => row.targetId === out[0]?.id)).toEqual([
+      expect.objectContaining({ after: { form: 'effect', delivery: 'unknown' } }),
+    ]);
+  });
+
+  it.each([502, 503, 504])(
+    'does not post a plain copy when Linq answers %i, which may already have sent it',
+    async (httpStatus) => {
+      const h = effectTurn();
+      const posts: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path.endsWith('/messages')) posts.push(path);
+        return Response.json({ error: { message: 'upstream' } }, { status: httpStatus });
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_replied');
+      expect(posts).toHaveLength(1);
+      expect(h.transport.sent).toEqual([]);
+      expect(h.turns.answered).toEqual([job().channel_message_id]);
+      expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+        expect.objectContaining({
+          templateKey: 'linq:effect',
+          providerMessageId: null,
+          status: 'queued',
+          errorCode: 'delivery_unknown',
+        }),
+      ]);
+    },
+  );
+
+  /** The lane's own facts about the reply, never its words: a crisis it marked, or a
+   * medical answer it stamped. */
+  const DEFLECTED: OffDomainVerdict = {
+    status: 'deflected',
+    lane: 'off_domain_general',
+    category: 'weather',
+    reply: 'The forecast for Saturday is sunny.',
+    replySource: 'composed',
+    medicalSource: null,
+    signal: 'recorded',
+    pendingAsk: null,
+  };
+
+  it.each([
+    [
+      'a crisis reply',
+      {
+        ...DEFLECTED,
+        lane: 'safety_critical',
+        category: 'mental-health',
+        reply: 'a written crisis reply',
+        crisisReply: true,
+      },
+    ],
+    [
+      'a medical answer',
+      {
+        ...DEFLECTED,
+        lane: 'safety_critical',
+        category: 'medical-symptom',
+        reply: 'Fevers at this age are usually viral.',
+        replySource: 'web_grounded',
+        medicalSource: 'web_grounded',
+        signal: 'not_applicable',
+      },
+    ],
+    [
+      'the fixed health line',
+      {
+        ...DEFLECTED,
+        lane: 'safety_critical',
+        category: 'medical-symptom',
+        reply: 'MOMENT_CHILD_HEALTH',
+        replySource: 'fixed',
+        medicalSource: 'fixed',
+        signal: 'not_applicable',
+      },
+    ],
+  ] satisfies Array<[string, OffDomainVerdict]>)(
+    'never asks for an effect on %s, which goes out plain',
+    async (_name, verdict) => {
+      const h = effectTurn({ offDomain: fakeLane(verdict) });
+      const posts: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path.endsWith('/messages')) posts.push(path);
+        return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(effectDecide).not.toHaveBeenCalled();
+      expect(posts).toEqual([]);
+      expect(h.transport.bodies()).toEqual([verdict.reply]);
+    },
+  );
+
+  it('asks for an effect on an ordinary answer from the same lane (positive control)', async () => {
+    const h = effectTurn({ offDomain: fakeLane(DEFLECTED) });
+    vi.stubGlobal('fetch', async () =>
+      Response.json({ message: { id: 'effect-out' } }, { status: 201 }),
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(effectDecide).toHaveBeenCalledTimes(1);
+    expect(h.transport.sent).toEqual([]);
   });
 
   it('writes the same receipts as a plain reply: audit, thread source, editable bubble', async () => {
@@ -6369,8 +6486,9 @@ describe('the reply row, written to a real database', () => {
           audience: 'direct',
           parentText: 'we got in for swim',
           reply: 'You are in for swim.',
-          // The stored zone is the users column default.
-          parentLocalTime: 'Wednesday 4:00 PM UTC',
+          // The stored zone is the users column default, UTC, which means never set:
+          // Hale does not know this parent's clock, so the model is told none.
+          parentLocalTime: null,
           lastEffectHoursAgo: null,
         });
         expect(sent).toEqual([
@@ -6387,7 +6505,11 @@ describe('the reply row, written to a real database', () => {
         expect(await keptAsks(parent.familyId)).toEqual([]);
 
         // No per-chat quota: two and a half hours later the model reads that fact from
-        // send history, and its choice still plays.
+        // send history, and its choice still plays. The parent has a zone by now.
+        await db.database
+          .update(schema.users)
+          .set({ timezone: 'America/Toronto' })
+          .where(eq(schema.users.id, parent.parentUserId));
         vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
           if (new URL(url).pathname.endsWith('/messages'))
             sent.push(JSON.parse(String(init?.body)));
@@ -6405,7 +6527,10 @@ describe('the reply row, written to a real database', () => {
         );
         vi.unstubAllGlobals();
         expect(effectDecide).toHaveBeenLastCalledWith(
-          expect.objectContaining({ lastEffectHoursAgo: 2 }),
+          expect.objectContaining({
+            parentLocalTime: 'Wednesday 2:30 PM America/Toronto',
+            lastEffectHoursAgo: 2,
+          }),
         );
         expect(sent).toHaveLength(2);
         effectDecide.mockReset();
