@@ -105,6 +105,17 @@ describe('/l/<code> — the login card and its page', () => {
     expect(html).not.toMatch(/never sees|sealed/i);
   });
 
+  it('keeps the code out of the next page and out of a session replay', async () => {
+    const { code } = await card();
+    const { meta, html } = await open(code);
+    // The next page's referrer, and so PostHog's $referrer, never carries the code.
+    expect(meta.referrer).toBe('no-referrer');
+    // rrweb blocks a `ph-no-capture` subtree whole: no field, value or text is recorded.
+    expect(html).toMatch(/<main class="[^"]*\bph-no-capture\b[^"]*"[^>]*>.*<input /);
+    const gone = await open('ZzZzZzZz99');
+    expect(gone.meta.referrer).toBe('no-referrer');
+  });
+
   it('a card replaced by a fresh one is gone, and its preview names no provider', async () => {
     const { code: replaced, mintAgain } = await card();
     const fresh = await mintAgain();

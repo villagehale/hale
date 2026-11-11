@@ -1,6 +1,7 @@
 'use client';
 
 import { type CSSProperties, useState } from 'react';
+import { POSTHOG_MASK_INPUT_SELECTOR } from '~/lib/analytics/posthog-provider';
 import { LOGIN_PAGE_COPY } from '~/lib/signup/login-link/page-copy';
 
 interface VaultProps {
@@ -141,7 +142,7 @@ export function ProviderLoginVault({ code, host, purpose, retentionDays, smsHref
         : null;
 
   return (
-    <main style={page}>
+    <main className={POSTHOG_MASK_INPUT_SELECTOR} style={page}>
       <img src="/connect/hale-logo.jpeg" alt="" style={logo} />
       <h1 style={{ ...heading, fontSize: 28, maxWidth: 420 }}>{LOGIN_PAGE_COPY.heading(host)}</h1>
       {purpose ? <p style={{ opacity: 0.7, margin: 0, maxWidth: 420 }}>{purpose}</p> : null}

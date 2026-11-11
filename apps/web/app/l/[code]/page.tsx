@@ -24,7 +24,10 @@ const openLoginLink = cache(async (code: string) => {
   return looked.ok ? looked : null;
 });
 
-/** The card in the thread is this page's preview: the provider in the title, the purpose below. */
+/**
+ * The card in the thread is this page's preview: the provider in the title, the purpose below.
+ * The URL is a bearer code, so no page after this one is told it came from here.
+ */
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { code } = await params;
   const looked = await openLoginLink(code);
@@ -34,6 +37,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: { absolute: title },
     description,
     robots: NO_INDEX,
+    referrer: 'no-referrer',
     openGraph: { title, description: description ?? undefined, siteName: 'Hale', type: 'website' },
     twitter: { card: 'summary', title, description: description ?? undefined },
   };
