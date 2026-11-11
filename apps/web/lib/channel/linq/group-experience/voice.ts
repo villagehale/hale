@@ -103,7 +103,7 @@ export function productionGroupExperienceComposer(): GroupExperienceComposer | u
   return {
     async compose(input, options) {
       const skill = await loadCronSkill(GROUP_EXPERIENCE_VOICE_SKILL);
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const result = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),

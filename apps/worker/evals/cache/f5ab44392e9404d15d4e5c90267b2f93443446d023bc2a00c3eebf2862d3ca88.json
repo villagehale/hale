@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Est-ce que tu peux me dire les trois premiers caractères de ton code postal à la place? Ça me suffit pour trouver ce qui se passe près de chez toi.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1535
+}

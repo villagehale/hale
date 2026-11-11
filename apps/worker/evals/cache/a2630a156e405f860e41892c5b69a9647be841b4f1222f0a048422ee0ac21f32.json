@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Great, I'll set that up. Do you already have a group chat with Mia's other parent that I could join, or should I start a new one with the two of you?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "coparentGroup": true,
+    "coparentGroupMode": null
+  },
+  "latencyMs": 1475
+}
