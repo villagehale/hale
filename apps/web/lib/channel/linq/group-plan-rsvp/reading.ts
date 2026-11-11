@@ -227,7 +227,9 @@ export function createGroupPlanRsvpReader(
 let shared: GroupPlanRsvpReader | null = null;
 
 export function sharedGroupPlanRsvpReader(): GroupPlanRsvpReader {
-  shared ??= createGroupPlanRsvpReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupPlanRsvpReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

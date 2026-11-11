@@ -138,7 +138,9 @@ export function welcomeCardRedrivePorts(): WelcomeCardPorts {
     threadMessage: threadProactiveMessage,
     // VIL-505: the card's line is model-written. Lazily resolved, so a tick with no
     // held card due never warms a client.
-    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    saidLine: createSaidLineWriter(() =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    ),
   };
 }
 
@@ -279,14 +281,18 @@ export async function enqueueChannelMessageReceived(job: ChannelMessageReceivedJ
  * timeout that short would turn a working writer into a failed one.
  */
 export function optOutRecoveryPorts(database: Database, now: Date): OptOutRecoveryDeps {
-  const client = budgetedAnthropic(OPT_OUT_RECOVERY_CLIENT_OPTIONS);
+  const client = budgetedAnthropic(OPT_OUT_RECOVERY_CLIENT_OPTIONS, {
+    stage: 'inbound_screen',
+  });
   return {
     reader: createOptOutReader(
       client,
       failurePageOpsPager(() => database),
     ),
     transport: createOutboundTransport(),
-    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    saidLine: createSaidLineWriter(() =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    ),
     crisisPager: failurePageCrisisPager(database),
     threadMessage: threadIfParent,
     preflight: () => providerPreflight(database, 'opt_out_recovery', client, now),

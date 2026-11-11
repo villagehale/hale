@@ -1,3 +1,4 @@
+import { errorTrackingEnabled } from './flags';
 import { projectClient } from './posthog-node';
 
 /**
@@ -12,8 +13,9 @@ import { projectClient } from './posthog-node';
  * `error_class`, `code`, `stage`, `route`, `method`, `hale_surface` — nothing else
  * can be passed, by type.
  *
- * Inert without POSTHOG_PROJECT_API_KEY: `projectClient()` is null and this returns
- * 'not_configured' without touching the network. Never throws.
+ * Inert without POSTHOG_PROJECT_API_KEY AND POSTHOG_ERROR_TRACKING_ENABLED=true:
+ * `projectClient()` is null and/or the flag is off, and this returns 'not_configured'
+ * without touching the network. Never throws.
  */
 
 export type HaleSurface = 'api' | 'cron' | 'webhook' | 'worker' | 'agent';
@@ -130,6 +132,7 @@ export async function captureSafeException(
   distinctId: string,
   ctx: ExceptionContext,
 ): Promise<ExceptionOutcome> {
+  if (!errorTrackingEnabled()) return 'not_configured';
   const client = projectClient();
   if (!client) return 'not_configured';
   try {

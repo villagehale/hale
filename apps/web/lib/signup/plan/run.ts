@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import {
   BrowserUseEngineThrew,
   PAYMENT_RUN_MAX_COST_USD,
@@ -282,6 +283,20 @@ async function runOnePlan(
       notice,
       host,
     });
+    if (result.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: plan.familyId,
+        providerDomain: host,
+        stage: result.detail,
+        source: mode === 'assisted' ? 'assisted' : 'plan',
+      });
+    } else if (result.outcome === 'completed') {
+      noteTaskCompleted({
+        familyId: plan.familyId,
+        type: 'registration',
+        source: mode === 'assisted' ? 'assisted' : 'plan',
+      });
+    }
     return { offerId: plan.offerId, outcome: result.outcome, detail: result.detail, notice };
   };
   const handBack = (detail: PlanRunDetail, outcome: PlanRunOutcome = 'needs_human') =>

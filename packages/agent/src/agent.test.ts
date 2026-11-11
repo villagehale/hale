@@ -179,6 +179,7 @@ describe('runAgent loop mechanics', () => {
       completionTokens: 50,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cacheCreation1hTokens: 0,
     });
     // The tool went through the guarded invoker → an audit row was written (rule #6).
     expect(audits).toEqual([
@@ -848,6 +849,7 @@ describe('runAgentStreaming', () => {
       completionTokens: 12,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cacheCreation1hTokens: 0,
     });
     // The single answer turn never reset.
     expect(resets).toBe(0);
@@ -894,6 +896,7 @@ describe('runAgentStreaming', () => {
       completionTokens: 50,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cacheCreation1hTokens: 0,
     });
     // The tool went through the guarded invoker → an audit row (rule #6).
     expect(audits).toEqual([
@@ -1634,7 +1637,7 @@ describe('prompt cache prefix', () => {
       {
         type: 'text',
         text: skill.instructions,
-        cache_control: { type: 'ephemeral' },
+        cache_control: { type: 'ephemeral', ttl: '1h' },
       },
     ]);
   });
@@ -1705,10 +1708,36 @@ describe('prompt cache prefix', () => {
       {
         type: 'text',
         text: skill.instructions,
-        cache_control: { type: 'ephemeral' },
+        cache_control: { type: 'ephemeral', ttl: '1h' },
       },
     ]);
     expect(JSON.stringify(systemsFrom(client)[0])).not.toContain(FAMILY_SECRET);
+  });
+
+  it('keeps the tools+system prefix identical across two families', async () => {
+    const run = async (note: string) => {
+      const client = fakeClient([textMessage('ok.', usage(10, 5))]);
+      await runAgent({
+        skill,
+        context: { note, today: note === FAMILY_SECRET ? '2026-11-10' : '2026-03-01' },
+        tools: [profileTool],
+        client,
+        maxSteps: 2,
+        toolContext: { familyId: note === FAMILY_SECRET ? 'fam-a' : 'fam-b', actor: 'run-1' },
+        guardDeps: guardDeps().deps,
+      });
+      const createMock = client.messages.create as unknown as {
+        mock: { calls: Array<[{ tools: unknown; system: unknown; messages: unknown }]> };
+      };
+      const req = createMock.mock.calls[0]?.[0];
+      return { tools: JSON.stringify(req?.tools), system: JSON.stringify(req?.system), req };
+    };
+    const a = await run(FAMILY_SECRET);
+    const b = await run('a different household');
+    expect(a.tools).toBe(b.tools);
+    expect(a.system).toBe(b.system);
+    expect(a.system).not.toContain(FAMILY_SECRET);
+    expect(b.system).not.toContain('a different household');
   });
 });
 

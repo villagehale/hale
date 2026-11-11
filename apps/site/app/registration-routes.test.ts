@@ -85,9 +85,9 @@ describe('dated city registration guides redirect to the activities hub', () => 
     }
   });
 
-  it('does not turn off the built-in trailing-slash 308', () => {
+  it('turns off the built-in trailing-slash 308 so PostHog /ingest/e/ is not redirected', () => {
     expect(nextConfig.trailingSlash).toBeFalsy();
-    expect(nextConfig.skipTrailingSlashRedirect).toBeFalsy();
+    expect(nextConfig.skipTrailingSlashRedirect).toBe(true);
   });
 
   it('keeps the guides out of the sitemap', () => {

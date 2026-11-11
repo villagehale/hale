@@ -57,6 +57,8 @@ export function createGroupPickupClaimReader(client: () => AgentClient): GroupPi
 let shared: GroupPickupClaimReader | null = null;
 
 export function sharedGroupPickupClaimReader(): GroupPickupClaimReader {
-  shared ??= createGroupPickupClaimReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupPickupClaimReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }

@@ -8,6 +8,12 @@ import {
   pickLane,
   withoutThinking,
 } from './model.js';
+import {
+  AGENT_CACHE_TTL,
+  cacheCreation1hFromUsage,
+  cachedSystemBlocks,
+  layoutTools,
+} from './prompt-cache.js';
 import type { Skill } from './skill.js';
 import {
   type GuardDeps,
@@ -67,6 +73,12 @@ export interface RunAgentArgs {
    */
   attachments?: Anthropic.ContentBlockParam[];
   /**
+   * Per-family / per-turn skill addendums after the 1h prefix breakpoint. Concatenated
+   * model text is `skill.instructions` plus these, joined by `\n\n`. Optional addendums
+   * that used to ride inside `skill.instructions` busted the cached prefix.
+   */
+  systemExtras?: readonly string[];
+  /**
    * Ship `strict: true` with every tool whose schema compiles to a grammar. Default TRUE
    * — the saving it buys (#415) is real and every caller but one wants it.
    *
@@ -97,8 +109,10 @@ export interface AgentUsage {
    * landing (MEM-9). */
   cacheReadTokens: number;
   /** Tokens written to the prompt cache across the loop. Carried separately from
-   * `promptTokens` because they bill at a 1.25x premium (see cost.ts). */
+   * `promptTokens` because they bill at a 1.25x (5m) or 2x (1h) premium (see cost.ts). */
   cacheCreationTokens: number;
+  /** Slice of `cacheCreationTokens` written at the 1h TTL (2x). Remainder is 5m (1.25x). */
+  cacheCreation1hTokens?: number;
 }
 
 export interface RunAgentResult {
@@ -268,7 +282,7 @@ function cardFromResult(result: unknown): ToolCard | undefined {
 const DEFAULT_MAX_TOKENS = 2048;
 
 /**
- * The system prompt: the skill's instructions, behind an ephemeral cache breakpoint.
+ * The system prompt: the skill's instructions, behind a 1h ephemeral cache breakpoint.
  *
  * The wire order is tools → system → messages, so a breakpoint on the last system
  * block covers the tool definitions AND the instructions — everything that is
@@ -284,8 +298,13 @@ const DEFAULT_MAX_TOKENS = 2048;
  * (no error, `cache_creation_input_tokens: 0`), so the small Haiku-tier skills are
  * unaffected either way.
  */
-function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } }];
+function buildSystem(skill: Skill, extras?: readonly string[]): Anthropic.TextBlockParam[] {
+  return cachedSystemBlocks(
+    skill.instructions,
+    AGENT_CACHE_TTL,
+    undefined,
+    extras,
+  ) as Anthropic.TextBlockParam[];
 }
 
 /**
@@ -362,7 +381,7 @@ function toAnthropicTools(
   strictTools: boolean,
 ): Anthropic.Tool[] {
   const byName = new Map(tools.map((t) => [t.name, t]));
-  return skill.meta.tools.map((name) => {
+  const listed = skill.meta.tools.map((name) => {
     const tool = byName.get(name);
     if (!tool) {
       throw new Error(
@@ -385,6 +404,7 @@ function toAnthropicTools(
     };
     return wire;
   });
+  return layoutTools(listed);
 }
 
 /**
@@ -576,7 +596,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const laneConfig = args.lane ?? pickLane(args.skill.meta.task);
   const lane = laneRequestFields(laneConfig) as WireLaneFields;
   const reaskLane = withoutThinking(laneConfig);
-  const system = buildSystem(args.skill);
+  const system = buildSystem(args.skill, args.systemExtras);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
@@ -585,6 +605,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   let promptTokens = 0;
   let cacheReadTokens = 0;
   let cacheCreationTokens = 0;
+  let cacheCreation1hTokens = 0;
   let completionTokens = 0;
   let steps = 0;
   let truncatedRetries = 0;
@@ -595,7 +616,15 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     completionTokens += usage.output_tokens;
     cacheReadTokens += usage.cache_read_input_tokens ?? 0;
     cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+    cacheCreation1hTokens += cacheCreation1hFromUsage(usage);
   };
+  const loopUsage = (): AgentUsage => ({
+    promptTokens,
+    completionTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    cacheCreation1hTokens,
+  });
 
   while (steps < args.maxSteps) {
     steps += 1;
@@ -663,7 +692,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
             hitMaxSteps: false,
             truncatedRetries,
             truncated: false,
-            usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+            usage: loopUsage(),
           };
         }
       }
@@ -673,7 +702,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         hitMaxSteps: false,
         truncatedRetries,
         truncated: true,
-        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+        usage: loopUsage(),
       };
     }
 
@@ -688,7 +717,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         hitMaxSteps: false,
         truncatedRetries,
         truncated: false,
-        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+        usage: loopUsage(),
       };
     }
 
@@ -716,7 +745,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         hitMaxSteps: false,
         truncatedRetries,
         truncated: false,
-        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+        usage: loopUsage(),
       };
     }
   }
@@ -727,7 +756,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     hitMaxSteps: true,
     truncatedRetries,
     truncated: false,
-    usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+    usage: loopUsage(),
   };
 }
 
@@ -741,7 +770,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
  */
 export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
   const lane = wireLane(args.skill.meta.task, args.lane);
-  const system = buildSystem(args.skill);
+  const system = buildSystem(args.skill, args.systemExtras);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
@@ -750,8 +779,16 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
   let promptTokens = 0;
   let cacheReadTokens = 0;
   let cacheCreationTokens = 0;
+  let cacheCreation1hTokens = 0;
   let completionTokens = 0;
   let steps = 0;
+  const loopUsage = (): AgentUsage => ({
+    promptTokens,
+    completionTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    cacheCreation1hTokens,
+  });
 
   while (steps < args.maxSteps) {
     steps += 1;
@@ -775,6 +812,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     completionTokens += response.usage.output_tokens;
     cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
     cacheCreationTokens += response.usage.cache_creation_input_tokens ?? 0;
+    cacheCreation1hTokens += cacheCreation1hFromUsage(response.usage);
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -792,7 +830,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         // itself is a separate change.
         truncatedRetries: 0,
         truncated: response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
-        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+        usage: loopUsage(),
       };
     }
 
@@ -813,6 +851,6 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     // wire, so asking again would show the parent two answers to one question.
     truncatedRetries: 0,
     truncated: false,
-    usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+    usage: loopUsage(),
   };
 }
