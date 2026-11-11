@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import Anthropic from '@anthropic-ai/sdk';
 import {
   type AgentClient,
   type GuardDeps,
@@ -41,6 +41,15 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import {
+  type PhotoFacts,
+  type ReadPhotoFactsInput,
+  type TurnPhotoFacts,
+  augmentCoachSkillForPhotoFacts,
+  extractInboundPhotoFacts,
+  inboundPhotoFactsEnabled,
+  photoFactSignupLinks,
+} from '~/lib/channel/inbound-photo-facts';
 import {
   ageFitCorrectionEnabled,
   appendAgeFitCorrectionSkill,
@@ -364,6 +373,19 @@ export interface ChannelCoachPorts {
     parts: readonly InboundMediaPart[],
     audience: ChannelTurn['audience'],
   ): Promise<ReadInboundMedia>;
+  /**
+   * VIL-413 — whether a 1:1 turn may extract facts from an inbound photo or PDF
+   * (`INBOUND_PHOTO_FACTS_ENABLED`). Absent or false: no extract call, no
+   * photoFacts key, no addendum, and PDFs stay unwatched files. Dark turns keep
+   * today's prompt bytes.
+   */
+  photoFactsEnabled?(): boolean;
+  /**
+   * VIL-413 — read this turn's image/PDF blocks into facts. Absent while the
+   * flag is lit is a named gap: the image still reaches the coach, and no
+   * canned line is sent.
+   */
+  readPhotoFacts?(input: ReadPhotoFactsInput): Promise<PhotoFacts | null>;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
   recordRun(run: ChannelRunRecord): Promise<void>;
   now(): Date;
@@ -639,6 +661,19 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           ...(media.contactsTruncated ? { arrivedContactsTruncated: true } : {}),
         });
       }
+      // VIL-413. Facts read off this turn's photo or PDF, only while the flag is lit and
+      // the read found some. Absent otherwise, so every other turn keeps its bytes.
+      const photoFacts = await withLlmContext(
+        { stage: 'coach', ...llmFamilyContext(turn.familyId) },
+        () => photoFactsForTurn(turn, ports, media.blocks, now, timeZone),
+      );
+      const skillForTurn = photoFacts
+        ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
+        : coachSkill;
+      if (photoFacts) {
+        Object.assign(context, { photoFacts });
+      }
+      const turnForTools = photoFacts ? { ...turn, photoFacts } : turn;
       // VIL-439 (T18): every group turn sees only group-safe context and tools. No flag:
       // the router sets the group audience for any message the door marked in_group.
       const groupScoped = turn.audience === 'group';
@@ -659,7 +694,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
               // reused set would spend this text's budget on the last one's.
               const builtTools = ports.buildTools(
-                turn,
+                turnForTools,
                 (actionId) => draftedActionIds.push(actionId),
                 (offer) => {
                   planOffer = offer;
@@ -771,26 +806,60 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // Re-thrown rather than handled — the router owns what a parent is told.
               const prefix = loadedSkill.instructions;
               const extraText =
-                coachSkill.instructions === prefix
+                skillForTurn.instructions === prefix
                   ? ''
-                  : coachSkill.instructions.startsWith(`${prefix}\n\n`)
-                    ? coachSkill.instructions.slice(prefix.length + 2)
+                  : skillForTurn.instructions.startsWith(`${prefix}\n\n`)
+                    ? skillForTurn.instructions.slice(prefix.length + 2)
                     : '';
               const systemExtras = extraText.length > 0 ? [extraText] : undefined;
               const skillForAgent =
-                systemExtras !== undefined ? { ...coachSkill, instructions: prefix } : coachSkill;
-              const result = await ports
-                .runAgent({
+                systemExtras !== undefined
+                  ? { ...skillForTurn, instructions: prefix }
+                  : skillForTurn;
+              // Every tool call writes its audit row before its handler runs, so a write
+              // here means a tool has acted this turn and the loop must not run again.
+              let toolActed = false;
+              const guardDeps: GuardDeps = {
+                ...ports.guardDeps,
+                writeAudit: async (entry) => {
+                  toolActed = true;
+                  await ports.guardDeps.writeAudit(entry);
+                },
+              };
+              const runCoach = (attachments: Anthropic.ContentBlockParam[], context: object) =>
+                ports.runAgent({
                   skill: skillForAgent,
                   ...(systemExtras ? { systemExtras } : {}),
-                  context: turnContext,
+                  context,
                   tools,
                   client: ports.client(),
                   maxSteps: MAX_STEPS,
                   maxTokens: MAX_TOKENS,
                   toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
-                  guardDeps: ports.guardDeps,
-                  ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
+                  guardDeps,
+                  ...(attachments.length > 0 ? { attachments } : {}),
+                });
+              const result = await runCoach(media.blocks, turnContext)
+                .catch((err: unknown) => {
+                  // A file can open `%PDF-` and still be a PDF the API will not read
+                  // (encrypted, damaged, past its page limit). It refuses the whole request,
+                  // on the first call, since the document rides the first message. The turn
+                  // goes on without it, and the coach is told a file came that it could not
+                  // open.
+                  if (toolActed || !documentRefused(err, media.blocks)) throw err;
+                  const kept = media.blocks.filter((block) => block.type !== 'document');
+                  const refused = media.blocks.length - kept.length;
+                  console.info(
+                    { reason: 'provider_refused', count: refused },
+                    'channel coach: inbound document unread',
+                  );
+                  return runCoach(kept, {
+                    ...turnContext,
+                    arrivedMedia: [
+                      ...media.unwatched,
+                      ...Array.from({ length: refused }, () => ({ kind: 'file' as const })),
+                    ],
+                  });
                 })
                 .catch((err: unknown) => {
                   throw failed(
@@ -799,7 +868,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   );
                 });
 
-              const modelUsed = pickModel(coachSkill.meta.task);
+              const modelUsed = pickModel(skillForTurn.meta.task);
               trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
                 model: modelUsed,
                 usage: result.usage,
@@ -988,6 +1057,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
     voiceMemosEnabled: linqVoiceMemosEnabled,
+    photoFactsEnabled: inboundPhotoFactsEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     emailReader: productionCoachEmailReader(database),
@@ -1162,6 +1232,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
                 ...offered
                   .read()
                   .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+                ...photoFactSignupLinks(turn.photoFacts, turn.body),
               ],
             }
           : null,
@@ -1177,6 +1248,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
                 ...offered
                   .read()
                   .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+                ...photoFactSignupLinks(turn.photoFacts, turn.body),
               ],
             }
           : null,
@@ -1203,6 +1275,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     },
     now: () => new Date(),
     // VIL-495: a voice memo is heard only while the flag is lit, and only on a 1:1 turn.
+    // VIL-413: a PDF is read the same way, only while inbound photo facts are lit.
     readInboundMedia: (parts, audience) =>
       readInboundMedia(
         parts,
@@ -1210,8 +1283,55 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         audience === 'direct' && linqVoiceMemosEnabled()
           ? (part) => hearVoiceMemo(part, audience)
           : undefined,
+        undefined,
+        { documents: audience === 'direct' && inboundPhotoFactsEnabled() },
       ),
+    readPhotoFacts: (input) => extractInboundPhotoFacts({ ...input, client: anthropicClient() }),
   };
+}
+
+async function photoFactsForTurn(
+  turn: ChannelTurn,
+  ports: ChannelCoachPorts,
+  blocks: Anthropic.ContentBlockParam[],
+  now: Date,
+  timeZone: string | null,
+): Promise<TurnPhotoFacts | null> {
+  // A 1:1 turn only: registration is never group content (VIL-439), and a group turn
+  // keeps the image it already sees and the prompt bytes it already has.
+  const lit = turn.audience === 'direct' && (ports.photoFactsEnabled?.() ?? false);
+  if (!lit || blocks.length === 0) return null;
+  if (!ports.readPhotoFacts) {
+    console.info({ reason: 'not_configured' }, 'channel coach: inbound photo facts unread');
+    return null;
+  }
+  try {
+    const facts = await ports.readPhotoFacts({
+      blocks,
+      parentWords: turn.body,
+      now,
+      timeZone,
+    });
+    if (!facts) return null;
+    // Facts read beside a PDF may be the PDF's, so they are the document's.
+    const readFrom = blocks.some((block) => block.type === 'document') ? 'document' : 'image';
+    return { ...facts, readFrom };
+  } catch (err) {
+    console.info(
+      { reason: 'extract_failed', err: err instanceof Error ? err.name : 'unknown' },
+      'channel coach: inbound photo facts unread',
+    );
+    return null;
+  }
+}
+
+/** The API refused a request that carried a document: a 400, not an outage. */
+function documentRefused(err: unknown, blocks: readonly Anthropic.ContentBlockParam[]): boolean {
+  return (
+    blocks.some((block) => block.type === 'document') &&
+    err instanceof Anthropic.APIError &&
+    err.status === 400
+  );
 }
 
 async function mediaForTurn(
