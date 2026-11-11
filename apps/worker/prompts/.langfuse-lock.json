@@ -169,6 +169,16 @@
     "version": null,
     "sha256": "b1457d0a4fe5b63f2bcc0519a156ed6b5cfc08bc29b91ad80ccc4632fe80bfff"
   },
+  "judges/group-plan-rsvp-calendar-read": {
+    "name": "judges/group-plan-rsvp-calendar-read",
+    "version": null,
+    "sha256": "2eb03a45d0ae30711dae7ef2650f2276a40b4f6bd04a8c06a52562db11a3377f"
+  },
+  "judges/group-plan-rsvp-calendar-voice": {
+    "name": "judges/group-plan-rsvp-calendar-voice",
+    "version": null,
+    "sha256": "04cab4419f96665b5293ca43458e82a9c3e08d5958ce1fc26e2e4b6525110497"
+  },
   "judges/group-plan-rsvp-read": {
     "name": "judges/group-plan-rsvp-read",
     "version": 2,

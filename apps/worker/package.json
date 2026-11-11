@@ -66,6 +66,8 @@
     "eval:read-email": "node evals/run-read-email-eval.mjs --cached-only",
     "eval:read-email:broken": "node evals/run-read-email-eval.mjs --broken --cached-only",
     "eval:group-turn-read": "node evals/run-group-turn-read-eval.mjs --cached-only",
+    "eval:group-plan-rsvp": "node evals/group-plan-rsvp-eval.mjs --cached-only",
+    "eval:group-plan-rsvp-calendar": "node evals/run-group-plan-rsvp-calendar-eval.mjs --cached-only",
     "eval:common-time": "node evals/run-common-time-eval.mjs --cached-only",
     "eval:shared-group-reading": "node evals/run-shared-group-reading-eval.mjs --cached-only",
     "eval:shared-group-reading:estimate": "node evals/run-shared-group-reading-eval.mjs --estimate",

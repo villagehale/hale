@@ -9,9 +9,10 @@ export const DEPARTED_MEMBER_NAME = 'someone';
  *
  * Their answers still count (a yes on Saturday's picnic stays a yes), so the rows stay and
  * only what names them changes: the display name on every RSVP, expected row, vote and
- * poll waiting list in this household's chats, and the words of their RSVPs. A row is
- * theirs by user id or by member key, since a text vote from a number carries no user id.
- * Returns how many rows changed; a second call changes none.
+ * poll waiting list in this household's chats, the words of their RSVPs, and the name on
+ * a private calendar ask Hale sent them for this household. A row is theirs by user id or
+ * by member key, since a text vote from a number carries no user id; a calendar ask has
+ * only the key. Returns how many rows changed; a second call changes none.
  */
 export async function renameDepartedMember(
   tx: Database,
@@ -68,7 +69,21 @@ export async function renameDepartedMember(
     )
     .returning({ id: schema.linqGroupPollVotes.id });
   const waitingLists = keys.length === 0 ? 0 : await renameInPollExpected(tx, input.familyId, keys);
-  return rsvps.length + expected.length + votes.length + waitingLists;
+  const calendarAsks =
+    keys.length === 0
+      ? []
+      : await tx
+          .update(schema.linqGroupPlanCalendarConsents)
+          .set({ displayName: DEPARTED_MEMBER_NAME })
+          .where(
+            and(
+              eq(schema.linqGroupPlanCalendarConsents.familyId, input.familyId),
+              inArray(schema.linqGroupPlanCalendarConsents.memberKey, keys),
+              ne(schema.linqGroupPlanCalendarConsents.displayName, DEPARTED_MEMBER_NAME),
+            ),
+          )
+          .returning({ id: schema.linqGroupPlanCalendarConsents.id });
+  return rsvps.length + expected.length + votes.length + waitingLists + calendarAsks.length;
 }
 
 /** A poll's waiting list is jsonb `[{ memberKey, displayName }]`, matched by key only. */
