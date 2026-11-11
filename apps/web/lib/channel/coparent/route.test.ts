@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANNOT_TEXT_THAT_NUMBER, CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import {
@@ -179,11 +179,14 @@ beforeEach(() => {
   // F14_ENABLED=true exported turned the one assertion that nobody is texted green
   // for the wrong reason.
   process.env[F14_ENABLED_ENV] = '';
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   process.env[F14_ALLOWLIST_ENV] = '';
   process.env[F14_ENABLED_ENV] = '';
+  vi.unstubAllEnvs();
 });
 
 describe('co-parent invite · the dark gate', () => {

@@ -300,6 +300,7 @@ describe('splitInviteSms', () => {
   });
 
   it('flag off: keeps the sent words on the ledger', () => {
+    vi.stubEnv('CALENDAR_INVITE_LINK_HASH_ENABLED', '');
     const eventId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
     const url = `https://app.villagehale.com/api/ics/event/${eventId}.sig`;
     const line = `Swim class on Thu, Jul 23 at 10:30 AM. ${url}`;

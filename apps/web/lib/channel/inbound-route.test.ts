@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { leftoverMarks } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import {
   type FakeDb,
@@ -186,6 +187,9 @@ function inbound(
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
@@ -840,7 +844,12 @@ describe('a first text that got no reply', () => {
 
   function withComposer(h: Harness, compose: () => Promise<{ reply: string }>): void {
     const intake = h.deps.intake('sms');
-    intake.friendVoice = { compose };
+    intake.friendVoice = {
+      compose: async (input) => {
+        const out = await compose();
+        return { ...out, ...leftoverMarks(input, out.reply, /[?？]/.test(out.reply)) };
+      },
+    };
   }
 
   it('is counted intake_unsent, never folded into intake', async () => {

@@ -420,6 +420,7 @@ describe('telling a parent a kind turned on', () => {
   it('sends nothing while the lane is unset, then sends when it is exactly true', async () => {
     vi.unstubAllEnvs();
     vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', '');
     expect(process.env.AUTONOMOUS_EXECUTE_ENABLED).not.toBe('true');
     const parent = await seedParent();
     await grant(parent.familyId, parent.parentUserId, 'send_email');

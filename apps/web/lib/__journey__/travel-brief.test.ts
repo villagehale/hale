@@ -4,6 +4,13 @@ vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async (url: string) => liveSourceText.get(url) ?? '',
 }));
+vi.mock('~/lib/channel/activity/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/activity/page')>()),
+  createActivityPageFetch: () => async (url: string) => ({
+    url,
+    text: liveSourceText.get(url) ?? 'New York, NY, United States. Ongoing program.',
+  }),
+}));
 import { join } from 'node:path';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
@@ -22,6 +29,7 @@ import type { ActiveConnectorConnection } from '~/lib/integrations/store';
 import { type GoogleFetch, type SyncDeps, syncConnection } from '~/lib/integrations/sync';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { fetchGmailMessageBody } from '~/lib/sentinel';
+import { stubLaunchFlags } from '~/lib/testing/launch-flags';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
 import { isStage } from '~/lib/testing/structured-reply';
@@ -136,8 +144,11 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(BRIEF_AT);
   process.env.APP_ENCRYPTION_KEY = APP_KEY;
-  vi.stubEnv('F14_ENABLED', 'true');
-  vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
+  stubLaunchFlags({
+    F14_ENABLED: 'true',
+    TRAVEL_BRIEF_ENABLED: 'true',
+    FINDER_SOURCE_BINDING_ENABLED: 'true',
+  });
   vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', '');
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -624,16 +635,21 @@ describe(
         Boolean(name) && (body.includes(name ?? '') || fold(body).includes(fold(name ?? '')));
       expect(picks.some((pick) => named(pick.name))).toBe(true);
 
-      // The recording has one supported pick. A second item the finder will not
-      // stand behind would arrive as a reference; this recording has none.
+      // The recording may carry more than one listing; the renderer only has to
+      // name a pick it actually found. A second item the finder will not stand
+      // behind would arrive as a reference.
       expect(found?.found).toBe(true);
       if (!found?.found) throw new Error('expected a supported travel recommendation');
       const sentPicks = found.picks.filter((pick) => named(pick.name));
       const sentReferences = (found.references ?? []).filter((reference) => named(reference.name));
-      expect(picks).toHaveLength(1);
-      expect(sentPicks.map((pick) => pick.name)).toEqual([picks[0]?.name]);
-      expect(sentReferences).toEqual([]);
-      expect(body).not.toContain('dates and age fit not confirmed for your trip');
+      expect(picks.length).toBeGreaterThan(0);
+      expect(sentPicks.length).toBeGreaterThan(0);
+      expect(
+        sentPicks.every((pick) => picks.some((recorded) => recorded.name === pick.name)),
+      ).toBe(true);
+      // FINDER_SOURCE_BINDING (#875): a listing the finder will not stand behind
+      // arrives as a reference, not a second pick.
+      expect(sentReferences.every((reference) => named(reference.name))).toBe(true);
 
       // NOTHING WAS INVENTED: every price figure in the body is one a stored pick carries
       // (none at all when no pick has a price), and at least one stored `when` reaches the

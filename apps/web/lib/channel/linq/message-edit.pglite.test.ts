@@ -139,6 +139,7 @@ describe('linq message.edited webhook', () => {
   }
 
   it('flag off: a parent edit is the ignored event it was before, and nothing is rewritten', async () => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', '');
     await seedParentText();
     const res = await handleLinqInboundRequest(editRequest(parentEdit), deps());
     expect(res.status).toBe(200);

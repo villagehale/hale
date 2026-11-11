@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db as appDb } from '~/lib/db';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { ClaimShadow, ClaimShadowStart } from './claim-shadow';
@@ -53,6 +53,13 @@ const NO_QUERIES = new Proxy(
 ) as unknown as Database;
 
 describe('refuseUnbackedSend — the decision is unchanged', () => {
+  beforeEach(() => {
+    vi.stubEnv('CLAIM_READER_MODE', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('an unbacked body is refused the same way whatever the shadow answers', async () => {
     for (const answer of ['started', 'busy', 'off'] as const) {
       const { shadow } = fakeShadow(answer);
@@ -93,6 +100,13 @@ describe('refuseUnbackedSend — the decision is unchanged', () => {
 });
 
 describe('refuseUnbackedSend — lane and recipient', () => {
+  beforeEach(() => {
+    vi.stubEnv('CLAIM_READER_MODE', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('a named lane and recipient pass through', async () => {
     const { shadow, calls } = fakeShadow('started');
     await refuseUnbackedSend(

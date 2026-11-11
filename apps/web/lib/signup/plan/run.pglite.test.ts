@@ -80,6 +80,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
+  vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, '');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
 afterEach(() => {

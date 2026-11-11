@@ -15,6 +15,10 @@ import {
 // (dark) unless a test lights it, so each starts dark.
 beforeEach(() => {
   vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+  vi.stubEnv('HOLDING_LINE_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
 });
 
 /**
@@ -613,7 +617,7 @@ describe('a question Hale left open, through the production wiring', () => {
       { pendingAsk: 'other_thread' },
       'off-domain lane: no pending ask for this parent',
     ]);
-    vi.restoreAllMocks();
+    info.mockClear();
 
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const unsaid = scripted();
@@ -626,10 +630,8 @@ describe('a question Hale left open, through the production wiring', () => {
       { text: 'Maplewood' },
     ]);
     expect(pendingReads(unsaidQueries)).toEqual([]);
-    vi.restoreAllMocks();
 
     // Positive control: the same text in the chat the question was asked in completes it.
-    vi.spyOn(console, 'info').mockImplementation(() => {});
     const own = scripted();
     await productionOffDomainLane(db.database, own.client).consider({ ...turn, thread: OWN_CHAT });
     expect(own.seen.sanitize.map((content) => JSON.parse(content))).toEqual([

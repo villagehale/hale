@@ -16,6 +16,7 @@ const INBOX_LINE = 'Re: Invoice #4411 from Little Fins Swim';
 const PRIVATE_CONTEXT = {
   question: 'hale when is swim this week?',
   transcript: [{ role: 'user' as const, content: 'hale when is swim this week?' }],
+  location: { city: null, province: null, country: 'Canada' },
   children: [{ id: 'c1', stage: 'school_age', name: 'Maya', ageMonths: 96, teenRedacted: false }],
   memoryFacts: [
     {

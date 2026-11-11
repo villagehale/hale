@@ -135,6 +135,10 @@ describe('authorized signup runner', () => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
     vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', '');
     vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_BASE_URL', '');
+    // The injected SignupBrowser is the path under test. Ambient Browser Use
+    // would take runBrowserUseBranch and skip it (#? VIL authorized signup).
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', '');
+    vi.stubEnv('SIGNUP_SANDBOX_RUNTIME_ENABLED', '');
   });
 
   async function familyWithOffer(input: {

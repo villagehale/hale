@@ -1,0 +1,65 @@
+import { vi } from 'vitest';
+
+/**
+ * Launch-batch flags (PR #1217). Tests that pin recorded model keys or a
+ * flag-off path must stub these themselves: ambient `true`/`on`/`enforce` from
+ * a flags-on vitest run is not a default the test may inherit.
+ *
+ * Exact off values: empty string. FIRST_TOUCH_LADDER_ENABLED and
+ * AUTHORIZED_SIGNUP_ENABLED light only on `on`; CLAIM_READER_MODE lights on
+ * `shadow`/`enforce`. Empty is off for every one of these.
+ */
+export const LAUNCH_FLAGS_OFF = {
+  AGE_FIT_CORRECTION_ENABLED: '',
+  AUTHORIZED_SIGNUP_ENABLED: '',
+  AUTONOMOUS_EXECUTE_ENABLED: '',
+  BOOKING_REFERENCE_CONNECTOR_ENABLED: '',
+  BROWSER_USE_SIGNUP_ENABLED: '',
+  BROWSER_USE_WATCH_ENABLED: '',
+  CALENDAR_INVITE_LINK_HASH_ENABLED: '',
+  CLAIM_READER_MODE: '',
+  COACH_EVAL_N_OF_M_ENABLED: '',
+  COLD_START_LADDER_ENABLED: '',
+  CONNECTOR_CARD_UNSENT_RELEASE_ENABLED: '',
+  COPARENT_DUTY_ASKS_ENABLED: '',
+  COPARENT_SPLIT_DUTY_ENABLED: '',
+  EMAIL_ALERT_ENABLED: '',
+  EMAIL_ALERT_HOLD_DEBT_ENABLED: '',
+  F14_ENABLED: '',
+  FAMILY_MEMORY_KINDS_ENABLED: '',
+  FINDER_SOURCE_BINDING_ENABLED: '',
+  FIRST_TOUCH_LADDER_ENABLED: '',
+  FOLLOWUP_ASKS_ENABLED: '',
+  FRIEND_VOICE_LEFTOVER_MARKS_ENABLED: '',
+  GROUP_1TO1_NO_GROUP_RELAY_ENABLED: '',
+  HOLDING_LINE_ENABLED: '',
+  INBOUND_PHOTO_FACTS_ENABLED: '',
+  KID_CLASH_NOTICE_ENABLED: '',
+  LINQ_EFFECTS_ENABLED: '',
+  LINQ_GROUP_BACKGROUND_ENABLED: '',
+  LINQ_GROUP_COMMON_TIME_ENABLED: '',
+  LINQ_GROUP_MENTIONS_ENABLED: '',
+  LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED: '',
+  LINQ_GROUP_PLAN_RSVP_ENABLED: '',
+  LINQ_MESSAGE_EDIT_ENABLED: '',
+  LINQ_MULTI_FAMILY_GROUPS_ENABLED: '',
+  LINQ_STICKERS_ENABLED: '',
+  LINQ_VOICE_MEMOS_ENABLED: '',
+  MODEL_READ_SWEEP_ENABLED: '',
+  REC_MORNING_MODEL_TOPIC_ENABLED: '',
+  REGISTRATION_ASSISTED_RUN_ENABLED: '',
+  REGISTRATION_LADDER_ENABLED: '',
+  REGISTRATION_LIVE_WATCH_ENABLED: '',
+  REGISTRATION_PLAN_RUN_ENABLED: '',
+  SIGNUP_SANDBOX_RUNTIME_ENABLED: '',
+  SITTING_REMINDER_STALE_RELEASE_ENABLED: '',
+  TEAM_SCHEDULE_CHANGES_ENABLED: '',
+  UNTRUSTED_FIELD_MARKING_ENABLED: '',
+} as const;
+
+/** Stub every launch flag off, then apply this test's own lights. */
+export function stubLaunchFlags(overrides: Record<string, string> = {}): void {
+  for (const [key, value] of Object.entries({ ...LAUNCH_FLAGS_OFF, ...overrides })) {
+    vi.stubEnv(key, value);
+  }
+}

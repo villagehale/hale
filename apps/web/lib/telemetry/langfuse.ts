@@ -9,6 +9,18 @@ import { flushPosthog } from '~/lib/analytics/posthog-node';
 import { haleMask } from './mask';
 
 /**
+ * SDK bindings `traceAgentRun` actually calls. A named object so tests can spy
+ * without `vi.mock('@langfuse/tracing')` having to rebind this module's imports
+ * (setupFiles and the coach graph load Langfuse before a suite mock can).
+ */
+export const tracingSdk = {
+  startActiveObservation,
+  propagateAttributes,
+  getActiveTraceId,
+  startObservation,
+};
+
+/**
  * The single shared Langfuse wiring for every web-side agent path (hard rules
  * #1, #6, #8).
  *
@@ -99,17 +111,17 @@ export async function traceAgentRun<T>(
   let entered = false;
 
   try {
-    return await startActiveObservation(ctx.name, async () => {
+    return await tracingSdk.startActiveObservation(ctx.name, async () => {
       const attributes: Parameters<typeof propagateAttributes>[0] = { traceName: ctx.name };
       if (ctx.userId) attributes.userId = ctx.userId;
       if (ctx.sessionId) attributes.sessionId = ctx.sessionId;
       if (ctx.tags) attributes.tags = ctx.tags;
       if (ctx.metadata) attributes.metadata = ctx.metadata;
 
-      return await propagateAttributes(attributes, async () => {
+      return await tracingSdk.propagateAttributes(attributes, async () => {
         let traceId: string | null = null;
         try {
-          traceId = getActiveTraceId() ?? null;
+          traceId = tracingSdk.getActiveTraceId() ?? null;
         } catch (err) {
           logTelemetryError('getActiveTraceId', err);
         }
@@ -132,7 +144,7 @@ export async function traceAgentRun<T>(
 
 function recordGenerationSafe(name: string, generation: AgentGeneration): void {
   try {
-    startObservation(
+    tracingSdk.startObservation(
       name,
       {
         model: generation.model,

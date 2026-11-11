@@ -22,19 +22,6 @@ import { INTAKE_CONTENT_REDACTED } from './message-retention';
  * texts, which no ledger row names. Against the real DDL, through the sweep itself.
  */
 
-/** The decoder's own fault, switched on per test: a bug in it is not a corrupt row. */
-const decoder = vi.hoisted(() => ({ fault: null as Error | null }));
-vi.mock('~/lib/channel/intake/session', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('~/lib/channel/intake/session')>();
-  return {
-    ...actual,
-    decodeIntakeForRecovery: (blob: string) => {
-      if (decoder.fault) throw decoder.fault;
-      return actual.decodeIntakeForRecovery(blob);
-    },
-  };
-});
-
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-10-20T15:00:00.000Z');
 const MINUTE = 60_000;
@@ -59,16 +46,18 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('HOLDING_LINE_ENABLED', '');
   vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
     if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
     return new Response('ok', { status: 200 });
   });
   posted = [];
-  decoder.fault = null;
 });
 
 afterEach(async () => {
-  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   await db.exec(
@@ -291,9 +280,17 @@ describe('erasure · an intake session that will not decode', () => {
   it('a fault in the decoder is not counted as undecodable: it stops the sweep, and the cron pages', async () => {
     const erased = await seedFamily(db.database, 'First Family');
     await channel(erased, PHONE_A, ago(DAY));
-    await intake(PHONE_A, 'pm-presignup', ago(40 * DAY), { closedAt: ago(39 * DAY) });
+    const sessionId = await intake(PHONE_A, 'pm-presignup', ago(40 * DAY), {
+      closedAt: ago(39 * DAY),
+    });
     await hold(PHONE_A, 'pm-presignup', ago(40 * DAY));
-    decoder.fault = new TypeError("Cannot read properties of undefined (reading 'flatMap')");
+    // Opens (authenticated decrypt) but is not a transcript array: a bug in the
+    // decoder, not a corrupt row. SealedBlobRejected / SyntaxError are the
+    // unreadable-blob cases; this TypeError must stop the sweep.
+    await db.database
+      .update(schema.smsIntakeSessions)
+      .set({ dataEncrypted: encryptString(JSON.stringify({ transcript: 1 })) })
+      .where(eq(schema.smsIntakeSessions.id, sessionId));
 
     await expect(erase(erased.familyId)).rejects.toThrow(TypeError);
 

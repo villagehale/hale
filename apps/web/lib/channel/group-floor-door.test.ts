@@ -68,6 +68,10 @@ const DIRECT_ONLY: Record<string, string> = {
     'the receipt chat is imessageChatOutsideGroup: never a family group',
   'apps/web/lib/channel/connect/fresh-link.ts':
     'the parent 1:1 door from resolveMessagingDoor with the family group excluded',
+  'apps/web/lib/integrations/team-schedule/apply.ts':
+    'the parent 1:1 door from resolveMessagingDoor with the family group excluded',
+  'apps/web/lib/integrations/team-schedule/driver.ts':
+    'the parent 1:1 door from resolveMessagingDoor with the family group excluded',
   'apps/web/lib/channel/router/reply-transport.ts':
     'the 1:1 router reply door; group turns route through linq/inbound.ts',
 };

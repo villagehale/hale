@@ -26,6 +26,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.database.execute(sql`delete from capability_denials`);
+  vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+  vi.stubEnv('WATCHED_SPOTS_ENABLED', '');
+  vi.stubEnv('F14_ENABLED', '');
 });
 
 afterEach(() => {

@@ -176,6 +176,9 @@ describe('live onboarding replay harness (scripted model)', () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+    vi.stubEnv('HOLDING_LINE_ENABLED', '');
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_FROM_E164', LIVE_FROM);
     vi.stubGlobal(

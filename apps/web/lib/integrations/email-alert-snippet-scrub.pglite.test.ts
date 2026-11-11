@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   coachEmailReader,
   productionCoachEmailReaderDeps,
@@ -25,8 +25,13 @@ afterAll(async () => {
   await db.close();
 });
 
+beforeEach(() => {
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+});
+
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 

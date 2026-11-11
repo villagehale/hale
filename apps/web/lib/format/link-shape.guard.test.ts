@@ -37,6 +37,10 @@ const NOT_A_GATE: Readonly<Record<string, number>> = {
   'channel/linq/link-preview.ts': 2,
   'channel/outbound-transport.ts': 1,
   'channel/rec-morning/copy.ts': 1,
+  // Finds a pasted course URL so the bind/ack can name it; not a send gate.
+  'registration/sequence/compose.ts': 1,
+  'registration/sequence/link-handler.ts': 2,
+  'registration/sequence/link-reply.ts': 1,
   // Linq's own rule for a new chat, mirrored at the transport.
   'channel/linq/transport.ts': 2,
   // Holds the reply's hosts to the pages search returned, by host.

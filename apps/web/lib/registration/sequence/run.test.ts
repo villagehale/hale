@@ -391,6 +391,8 @@ afterEach(() => {
 
 describe('the D21 dark-launch flag', () => {
   it('does nothing at all when neither the flag nor the allowlist is armed', async () => {
+    vi.stubEnv('F14_ENABLED', '');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
     const h = harness({ windows: [win()] });
     const result = await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
     expect(result.enabled).toBe(false);

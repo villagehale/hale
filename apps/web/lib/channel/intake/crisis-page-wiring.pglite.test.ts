@@ -70,6 +70,8 @@ describe('a crisis with no reply pages #ops through the default pager', () => {
   beforeEach(async () => {
     db = await createTestDb();
     process.env.APP_ENCRYPTION_KEY = KEY;
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', '');
     vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
     posted = [];
     vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {

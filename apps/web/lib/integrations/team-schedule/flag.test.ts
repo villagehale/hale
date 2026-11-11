@@ -16,6 +16,7 @@ afterEach(() => {
 
 describe('teamScheduleChangesEnabled', () => {
   it('is off unless the value is exactly true', () => {
+    delete process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV];
     expect(teamScheduleChangesEnabled()).toBe(false);
     process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true\n';
     expect(teamScheduleChangesEnabled()).toBe(false);

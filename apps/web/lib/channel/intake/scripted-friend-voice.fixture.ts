@@ -28,7 +28,7 @@ function offScriptAside(words: string): string | null {
  * capture say is known: postal, kids, ages, the map (no question), the name,
  * Gmail, calendar, schedule, co-parent.
  */
-export function scriptedTurn(input: FriendVoiceInput): {
+function scriptedTurnCore(input: FriendVoiceInput): {
   reply: string;
   capture: OnboardingCapture;
   groupLeads?: string[];
@@ -221,6 +221,36 @@ export function scriptedTurn(input: FriendVoiceInput): {
   return { reply, capture, asks: true };
 }
 
+/**
+ * Fixture-only: the leftover-marks fields the onboarding judge reads when
+ * FRIEND_VOICE_LEFTOVER_MARKS_ENABLED is on (#1206). Production never matches
+ * these from words; this fake does, so mechanics tests keep their keys.
+ */
+const PLAIN_YES =
+  /^(?:ok(?:ay)?(?: fine| sure)?|fine|sure(?: thing)?|yes(?: please)?|yeah|yep|yup|go ahead|sounds good|let['’]?s do it|do it|oui|d['’]accord|ok d['’]accord)[.!]*$/i;
+const LONE_NAME = /^\p{Lu}[\p{L}'’-]+(?:\s\p{Lu}[\p{L}'’-]+)?[.!]?$/u;
+
+export function leftoverMarks(input: FriendVoiceInput, reply: string, asks: boolean | undefined) {
+  const words = input.parentWords.trim();
+  const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
+  const asked = lastHale?.asked === true;
+  const lone = LONE_NAME.test(words) ? words.replace(/[.!]+$/u, '') : '';
+  return {
+    asksCount: asks === true ? 1 : 0,
+    asksName: asks === true && /what should i call you/i.test(reply),
+    speaksAsParent: false,
+    joinInProse: false,
+    parentPlainYes: asked && PLAIN_YES.test(words.replace(/,/g, '')),
+    parentLoneName: asked && lone.length > 0 ? lone : null,
+  };
+}
+
+/** Stand-in for the onboarding model, with leftover-marks fields when that flag is on. */
+export function scriptedTurn(input: FriendVoiceInput) {
+  const out = scriptedTurnCore(input);
+  return { ...out, ...leftoverMarks(input, out.reply, out.asks) };
+}
+
 /** The scripted turn on the composer's wire shape (role as two flat strings). */
 export const scriptedFriendVoice: FriendVoiceComposer = {
   async compose(input: FriendVoiceInput) {
@@ -233,6 +263,7 @@ export const scriptedFriendVoice: FriendVoiceComposer = {
         parentRole: parentRole?.role ?? null,
         parentRoleBasis: parentRole?.basis ?? null,
       },
+      ...leftoverMarks(input, rest.reply, rest.asks),
     };
   },
 };

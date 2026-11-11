@@ -420,6 +420,7 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       expected: ['Sam'],
       votes: ['Sam'],
       pollExpected: ['Sam'],
+      calendarAsks: [],
     });
     expect((await groupNames(own.planId, own.pollId)).votes).toEqual(['Ana', 'someone']);
   });

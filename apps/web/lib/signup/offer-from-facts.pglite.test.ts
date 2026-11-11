@@ -35,6 +35,7 @@ describe('offerSignupFromFacts (production caller)', () => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
     vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
     vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', '');
+    vi.stubEnv('REGISTRATION_ASSISTED_RUN_ENABLED', '');
     vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   });
   afterEach(() => {

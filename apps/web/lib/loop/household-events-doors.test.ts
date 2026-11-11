@@ -60,6 +60,11 @@ const DOORS: Record<string, Door> = {
   'apps/worker/src/services/internal-writes.ts': 'writer',
   // applies a provider's own move to a Hale event; refuses mirror rows (googleEventId set)
   'apps/web/lib/loop/reminders/provider-change.ts': 'writer',
+  // VIL-662 · team-schedule: match.ts lists household candidates; apply.ts reads to
+  // apply/reanchor a matched row; driver.ts loads one event by id for duty-owner notify
+  'apps/web/lib/integrations/team-schedule/match.ts': 'household',
+  'apps/web/lib/integrations/team-schedule/apply.ts': 'writer',
+  'apps/web/lib/integrations/team-schedule/driver.ts': 'scoped',
   // soft-delete the copies the parent (untrack) or the judge (backfill) said are the
   // parent's own; each reads the rows only to pick and audit the ones it removes
   'apps/web/lib/integrations/kid-relevance/untrack.ts': 'writer',

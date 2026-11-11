@@ -15,8 +15,6 @@ describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
     expect(linqGroupMembersEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', '');
     expect(linqGroupMembersEnabled()).toBe(false);
-    vi.unstubAllEnvs();
-    expect(linqGroupMembersEnabled()).toBe(false);
   });
 });
 

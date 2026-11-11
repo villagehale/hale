@@ -45,7 +45,6 @@ const CANDIDATE_PRODUCERS: Record<string, string> = {
     'the key names the session day, and the ask is queued only inside its window that evening',
   'apps/web/lib/channel/nudge/run.ts':
     'keys name a week, a Saturday or a registration window. The weekday-care asks are keyed per prompt with no date: a year after a dropped ask, Hale may weigh it once more, and a sent one stays claimed in channel_messages (never deleted), which the decider reads before any send (review.ts dropAlreadySent)',
-  'apps/web/lib/travel/sweep.ts': 'the key names one trip, queued only before it starts',
   'apps/web/lib/channel/coparent/departure-notice.ts':
     'the key names one departure, queued only at the departure or by its redrive inside the staleness bound',
 };

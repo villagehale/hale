@@ -76,6 +76,7 @@ afterEach(() => {
 
 describe('VIL-479 Linq message edit', () => {
   it('is off unless the flag is exactly true', () => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', '');
     expect(linqMessageEditEnabled()).toBe(false);
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'on');
     expect(linqMessageEditEnabled()).toBe(false);

@@ -170,6 +170,9 @@ function seedSession(
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
 });
 
 afterEach(() => {

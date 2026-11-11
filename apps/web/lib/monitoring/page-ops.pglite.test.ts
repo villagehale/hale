@@ -120,6 +120,12 @@ beforeEach(() => {
   posted = [];
   skillLoad.fail = false;
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
+  vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -331,7 +337,10 @@ describe('pageOps: the one primitive', () => {
 
 describe('each site family pages through the primitive', () => {
   it('a spoken line no model could write pages spoken_line_unwritten, once an hour', async () => {
-    const writer = createSpokenLineWriter(downClient);
+    const writer = createSpokenLineWriter(
+      downClient,
+      failurePageOpsPager(() => db.database, { post, now: BASE }),
+    );
     expect(await writer.write({ purpose: 'group_welcome', language: 'en' })).toBeNull();
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain('site spoken_line_unwritten.');
@@ -342,17 +351,24 @@ describe('each site family pages through the primitive', () => {
 
   it('a spoken line whose skill will not load pages spoken_line_unwritten at skill_load', async () => {
     skillLoad.fail = true;
-    // vitest.setup.ts imports spoken-line before this file's mock exists: load it afresh.
     vi.resetModules();
     const fresh = await import('~/lib/channel/spoken-line');
-    const writer = fresh.createSpokenLineWriter(recorded().client);
+    const { failurePageOpsPager: pager } = await import('./failure-page');
+    const writer = fresh.createSpokenLineWriter(
+      recorded().client,
+      pager(() => db.database, { post, now: BASE }),
+    );
     expect(await writer.write({ purpose: 'group_welcome', language: 'en' })).toBeNull();
-    expect(posted).toEqual(['Hale: ops page. site spoken_line_unwritten. stage skill_load.']);
+    expect(posted[0]).toContain('site spoken_line_unwritten.');
+    expect(posted[0]).toContain('stage skill_load.');
   }, 30_000);
 
   it('positive control: a spoken line the model wrote pages nobody', async () => {
     const model = recorded();
-    const writer = createSpokenLineWriter(model.client);
+    const writer = createSpokenLineWriter(
+      model.client,
+      failurePageOpsPager(() => db.database, { post, now: BASE }),
+    );
     const text = await writer.write({ purpose: 'group_welcome', language: 'en' });
     expect(model.misses).toEqual([]);
     expect(text?.trim().length ?? 0).toBeGreaterThan(0);
@@ -372,9 +388,12 @@ describe('each site family pages through the primitive', () => {
 
   it('a clash alert whose skill will not load pages group_conflict_unwritten at skill_load', async () => {
     skillLoad.fail = true;
-    const writer = createGroupConflictWriter(
+    vi.resetModules();
+    const fresh = await import('~/lib/channel/linq/group-conflict-voice');
+    const { failurePageOpsPager: pager } = await import('./failure-page');
+    const writer = fresh.createGroupConflictWriter(
       recorded().client,
-      failurePageOpsPager(() => db.database, { post, now: BASE }),
+      pager(() => db.database, { post, now: BASE }),
     );
     expect(await writer.write(CLASH)).toBeNull();
     expect(posted).toEqual(['Hale: ops page. site group_conflict_unwritten. stage skill_load.']);

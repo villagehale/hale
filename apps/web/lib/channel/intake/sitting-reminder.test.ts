@@ -289,6 +289,8 @@ describe('sittingSessionEligible', () => {
 describe('runSittingReminderCron', () => {
   beforeEach(() => {
     process.env.APP_ENCRYPTION_KEY = KEY;
+    vi.stubEnv(SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV, '');
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
   });
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = '';
@@ -334,6 +336,7 @@ describe('runSittingReminderCron', () => {
   });
 
   it('flag off: a stranded claim stays claimed and is not sent again', async () => {
+    vi.stubEnv(SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV, '');
     const fake = makeFakeDb();
     const transport = new FakeTransport();
     const stale = new Date(TORONTO_8AM.getTime() - SITTING_REMINDER_STALE_CLAIM_MS - 60_000);

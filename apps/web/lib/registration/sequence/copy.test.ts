@@ -782,7 +782,7 @@ describe('VIL-543 · the course bind ack is facts for the model', () => {
       portal: OAKVILLE.portalLabel,
       course: { name: 'Preschool Sports and Games', day: 'Wednesday', time: '10:30 AM' },
       courseCode: '00028147',
-      price: '$280.60 / $290.60 non-resident',
+      price: '2026 Program Fee: $280.60; 2026 Program Fee Non-Resident: $290.60',
       opensOn: 'Tuesday, September 15, 2026',
       opensAt: '10:30 a.m.',
       clockName: 'public date',

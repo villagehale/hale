@@ -2,7 +2,14 @@ import { join } from 'node:path';
 vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async () =>
-    `Cartwheels Gym Centre, Halton Hills, Ontario, Canada. ${VENUE_TEXT}`,
+    `Cartwheels Gym Centre, ${FIXTURE_FIND_TOWN}. ${VENUE_TEXT}`,
+}));
+vi.mock('~/lib/channel/activity/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/activity/page')>()),
+  createActivityPageFetch: () => async (url: string) => ({
+    url,
+    text: `Cartwheels Gym Centre, ${FIXTURE_FIND_TOWN}. ${VENUE_TEXT}`,
+  }),
 }));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool, pickLane } from '@hale/agent';
@@ -37,7 +44,8 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { FIXTURE_COUNTRY, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
+import { FIXTURE_COUNTRY, FIXTURE_FIND_TOWN, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
+import { stubLaunchFlags } from '~/lib/testing/launch-flags';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
 import { isStage } from '~/lib/testing/structured-reply';
@@ -153,8 +161,11 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     composerReplays = [];
     db = await createTestDb();
     database = db.database;
-    vi.stubEnv('F14_ENABLED', 'true');
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
+    stubLaunchFlags({
+      F14_ENABLED: 'true',
+      FINDER_SOURCE_BINDING_ENABLED: 'true',
+    });
 
     const [family] = await database
       .insert(schema.families)
@@ -370,7 +381,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
    * at 17,956 and the Parent-and-Tot grid began at 27,153 — past the 24,000-character bound
    * the merge is prompted with. Every fact below is published; none of it is a paraphrase.
    */
-  const GELLERT_PAGE = 'https://kingston.example/play/recreation/swimming/swimming-lessons';
+  const GELLERT_PAGE = 'https://haltonhills.example/play/recreation/swimming/swimming-lessons';
 
   const GELLERT_FEES = [
     'Kingston Taxpayer Fees:',
@@ -473,7 +484,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
             status: 'synthesised',
             rows: [
               {
-                name: 'Parent and Tot 1, 2, 3, Riverside Community Centre',
+                name: 'Parent and Tot 1, 2, 3, Gellert Community Centre',
                 age_fit: 'Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years',
                 // THE QUOTES THE LIVE RUN RETURNED: a table row read left to right and
                 // written back as a sentence, and a fee composed with the heading above it.
@@ -502,7 +513,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                 registration_quote: options.silentPage
                   ? 'Registration for Fall Recreation Programs opens on Tuesday, September 1.'
                   : 'Kingston taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
-                source_name: 'Town of Kingston',
+                source_name: 'Town of Halton Hills',
                 source_url: GELLERT_PAGE,
               },
             ],
@@ -946,7 +957,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
       transport,
       enqueued,
       false,
-      'Riverside Community Centre fall swim schedule',
+      'Gellert Community Centre fall swim schedule',
     );
     const payload = enqueued[0];
     if (!payload) throw new Error('journey: nothing was enqueued');
@@ -1002,7 +1013,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
       transport,
       enqueued,
       false,
-      'Riverside Community Centre fall swim schedule',
+      'Gellert Community Centre fall swim schedule',
     );
     const payload = enqueued[0];
     if (!payload) throw new Error('journey: nothing was enqueued');
@@ -1040,7 +1051,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
       transport,
       enqueued,
       false,
-      'Riverside Community Centre fall swim schedule',
+      'Gellert Community Centre fall swim schedule',
     );
     const payload = enqueued[0];
     if (!payload) throw new Error('journey: nothing was enqueued');

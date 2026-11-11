@@ -1,7 +1,7 @@
 import { GuardrailError, defineTool, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { buildGuardDeps } from '~/lib/coach/guards';
@@ -30,6 +30,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -78,6 +79,10 @@ function reader(fetchBody: CoachEmailReaderDeps['fetchBody']) {
 }
 
 describe('read_email · production reader', () => {
+  beforeEach(() => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  });
+
   it('reads the body of an email an alert in this conversation named', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const { familyId, parentUserId } = await seedFamily(db.database);

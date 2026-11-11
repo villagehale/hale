@@ -29,6 +29,7 @@ import {
 } from './fakes';
 import type { FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
+import { leftoverMarks } from './scripted-friend-voice.fixture';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 import { FakeTransport, type InboundMessage } from './transport';
 
@@ -344,7 +345,9 @@ function conversation(options?: {
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     friendVoice: {
       async compose(input: FriendVoiceInput) {
-        return (options?.compose ?? scriptedTurn)(input);
+        const turn = (options?.compose ?? scriptedTurn)(input);
+        // #1206 leftover marks: the judge reads these fields when the flag is on.
+        return { ...turn, ...leftoverMarks(input, turn.reply, turn.asks) };
       },
     },
     now: NOW,
@@ -836,11 +839,16 @@ describe('golden onboarding conversation', () => {
         async compose(input) {
           const chosen = input.synced?.calendar[0];
           const partner = input.synced?.overlaps[0]?.later;
-          if (!chosen) return { reply: 'Your calendar is connected.', ahaMention: null };
+          if (!chosen) {
+            const reply = 'Your calendar is connected.';
+            return { reply, ahaMention: null, ...leftoverMarks(input, reply, false) };
+          }
           const clash = partner ? ` It overlaps ${partner}.` : '';
+          const reply = `${chosen.title} is on your calendar ${when}.${clash} I can remind you the evening before.`;
           return {
-            reply: `${chosen.title} is on your calendar ${when}.${clash} I can remind you the evening before.`,
+            reply,
             ahaMention: chosen.title,
+            ...leftoverMarks(input, reply, false),
           };
         },
       },
@@ -871,10 +879,15 @@ describe('golden onboarding conversation', () => {
       {
         async compose(input) {
           const subject = input.synced?.email[0]?.subject;
-          if (!subject) return { reply: 'Gmail is connected.', ahaMention: null };
+          if (!subject) {
+            const reply = 'Gmail is connected.';
+            return { reply, ahaMention: null, ...leftoverMarks(input, reply, false) };
+          }
+          const reply = `${subject} is in your email. I can remind you before it.`;
           return {
-            reply: `${subject} is in your email. I can remind you before it.`,
+            reply,
             ahaMention: subject,
+            ...leftoverMarks(input, reply, false),
           };
         },
       },
@@ -889,8 +902,9 @@ describe('golden onboarding conversation', () => {
       'en',
       'gcal',
       {
-        async compose() {
-          return { reply: 'Your calendar is connected.', ahaMention: null };
+        async compose(input) {
+          const reply = 'Your calendar is connected.';
+          return { reply, ahaMention: null, ...leftoverMarks(input, reply, false) };
         },
       },
       emptyAha('gcal'),
@@ -906,7 +920,8 @@ describe('golden onboarding conversation', () => {
         {
           async compose(input) {
             groups.push(input.householdGroup);
-            return { reply: 'Your calendar is connected.', ahaMention: null };
+            const reply = 'Your calendar is connected.';
+            return { reply, ahaMention: null, ...leftoverMarks(input, reply, false) };
           },
         },
         emptyAha('gcal'),
@@ -923,8 +938,9 @@ describe('golden onboarding conversation', () => {
       'en',
       'gcal',
       {
-        async compose() {
-          return { reply: 'Hockey is on Thursday at 4:00.', ahaMention: 'Hockey' };
+        async compose(input) {
+          const reply = 'Hockey is on Thursday at 4:00.';
+          return { reply, ahaMention: 'Hockey', ...leftoverMarks(input, reply, false) };
         },
       },
       synced,

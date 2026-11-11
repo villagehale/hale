@@ -74,6 +74,7 @@ beforeEach(async () => {
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+  vi.stubEnv('TEAM_SCHEDULE_CHANGES_ENABLED', '');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});

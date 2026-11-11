@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { registrationAcceptanceInput } from '~/lib/testing/registration-acceptance';
@@ -75,26 +74,13 @@ function fake(message: string, parsed?: unknown[] | ((purpose: string) => unknow
 }
 
 describe('AI registration reminders (mechanics, not model quality)', () => {
-  const recordings = JSON.parse(
-    readFileSync(new URL('./__recordings__/localized.json', import.meta.url), 'utf8'),
-  ) as Record<
-    string,
-    {
-      recordedAt: string;
-      request: { userMessage: string };
-      response: { content: { type: string; text?: string }[] };
-    }
-  >;
-  const captured = (language: string) => {
-    const recording = Object.values(recordings)
-      .filter((entry) => {
-        const request = JSON.parse(entry.request.userMessage);
-        return request.leg === 'waitlist_final' && request.language === language;
-      })
-      .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))[0]!;
-    return JSON.parse(recording.response.content.find((block) => block.type === 'text')!.text!)
-      .message as string;
-  };
+  // Captured writer text, inlined so this suite does not depend on a live
+  // recordings file that is not in the repo. Parser values below exercise
+  // code, not new model acceptance.
+  const captured = (language: string) =>
+    language === 'fr-CA'
+      ? "Le dĂ©but de l'inscription est le 12 août."
+      : 'Your waitlist deadline is August 12, 2026 at 7:00 AM, Toronto time.';
   it.each(['waitlist_half', 'waitlist_final'] as const)(
     'validates the captured English deadline without requiring an opening: %s',
     async (leg) => {
@@ -118,7 +104,9 @@ describe('AI registration reminders (mechanics, not model quality)', () => {
       const { client, create } = fake(message, (purpose) =>
         purpose === 'waitlist_deadline' ? [parsed] : [],
       );
-      expect(await composeRegistrationReminder(waitlist, client)).toBe(message);
+      expect(await composeRegistrationReminder(waitlist, client)).toBe(
+        `${message}\n${waitlist.reading.sourceUrl}`,
+      );
       expect(create).toHaveBeenCalledTimes(3);
       const wire = JSON.parse(create.mock.calls[2]![0].messages[0].content);
       expect(wire).toEqual({

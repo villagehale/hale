@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coParentInviteExpired } from '~/lib/channel/coparent/copy';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -187,9 +187,34 @@ async function upToInvite(fake: FakeDb, transport: FakeTransport, deps: IntakeDe
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
+  vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+  vi.stubEnv('F14_ENABLED', '');
+  vi.stubEnv('CLAIM_READER_MODE', '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  vi.stubEnv('REGISTRATION_LADDER_ENABLED', '');
+  vi.stubEnv('REGISTRATION_ASSISTED_RUN_ENABLED', '');
+  vi.stubEnv('HOLDING_LINE_ENABLED', '');
+  vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', '');
+  vi.stubEnv('INBOUND_PHOTO_FACTS_ENABLED', '');
+  vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', '');
+  vi.stubEnv('LINQ_STICKERS_ENABLED', '');
+  vi.stubEnv('LINQ_EFFECTS_ENABLED', '');
+  vi.stubEnv('FAMILY_MEMORY_KINDS_ENABLED', '');
+  vi.stubEnv('FOLLOWUP_ASKS_ENABLED', '');
+  vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', '');
+  vi.stubEnv('EMAIL_ALERT_ENABLED', '');
+  vi.stubEnv('SITTING_REMINDER_STALE_RELEASE_ENABLED', '');
+  vi.stubEnv('COPARENT_DUTY_ASKS_ENABLED', '');
+  vi.stubEnv('COPARENT_SPLIT_DUTY_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
+  vi.unstubAllEnvs();
 });
 
 describe('caregiver invite · the double opt-in', () => {
@@ -352,6 +377,8 @@ describe('caregiver invite · the ways it does not happen', () => {
    * FLAG, and an operator counting `unsupported_role` must not be shown a dark launch.
    */
   it('answers a co-parent add with the forwardable link while the flag is off', async () => {
+    vi.stubEnv('F14_ENABLED', '');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
@@ -799,6 +826,10 @@ function failingOn(db: Database, table: unknown, actionTaken: string): Database 
 }
 
 describe('a number with an invite in flight finishes its OWN intake', () => {
+  beforeEach(() => {
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+  });
+
   it('closes the invite as it provisions, so their next text is an ordinary turn', async () => {
     const { fake, transport, deps } = harness(NOW, [NOTHING_YET, MIA]);
 

@@ -4,7 +4,7 @@ import { type Database, schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
-import { TORONTO_FOLLOW, cityRecLine } from '~/lib/channel/rec-morning';
+import { REC_MORNING_MODEL_TOPIC_ENABLED_ENV, TORONTO_FOLLOW, cityRecLine } from '~/lib/channel/rec-morning';
 import { setSharedRecMorningReader } from '~/lib/channel/rec-morning/read';
 import { scriptedRecMorningReader } from '~/lib/channel/rec-morning/scripted-reader.fixture';
 import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
@@ -293,6 +293,13 @@ function sequenceDeps(
 }
 
 describe('sequenceReplyHandler', () => {
+  beforeEach(() => {
+    vi.stubEnv('F14_ENABLED', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('claims a waitlist report and files the position', async () => {
     const deps = sequenceDeps();
     const verdict = await sequenceReplyHandler(deps, NO_PREPARE).handle(DB, turn('waitlisted #3'));
@@ -349,6 +356,13 @@ describe('sequenceReplyHandler', () => {
  * the router's first-claim-wins loop actually does.
  */
 describe('handler order — registration last', () => {
+  beforeEach(() => {
+    vi.stubEnv('F14_ENABLED', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   /**
    * The collision the order exists to prevent: a parent filing OHIP paperwork during an
    * open registration window. M7 cannot read "done", so ahead of M8 it would answer with
@@ -446,6 +460,15 @@ describe('the village intro lane and the lanes behind it', () => {
 });
 
 describe('recMorningHandler', () => {
+  beforeEach(() => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    setSharedRecMorningReader(scriptedRecMorningReader);
+    setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+  });
+
   /** The families row both reads in this handler select from: language, then stored place.
    * No primary parent row, so no zone is on file. */
   function familyRow(row: { primaryLanguage: string | null; city: string | null }): Database {
@@ -555,6 +578,13 @@ describe('recMorningHandler', () => {
  */
 describe('recMorningHandler · only a family whose place is in the GTA', () => {
   let placeDb: TestDb;
+
+  beforeEach(() => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
   beforeAll(async () => {
     placeDb = await createTestDb();
@@ -777,6 +807,9 @@ describe('the shipped order', () => {
       // Exact memory phrases only, and only with the kinds flag on. Flag off
       // claims nothing, so a bare yes never lands here.
       'family_memory_kinds',
+      // Pasted registration URL. Claims only when the live-watch flag and F14
+      // are both on; dark, it returns unclaimed so the order stays safe.
+      'registration_link',
       'registration',
       'rec_morning',
       // Immediately before the bare-word capture, so "yes" to "Can I call you Bea?"
@@ -1305,6 +1338,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
   });
 
   it('is inert while F14 is dark for this household (D21)', async () => {
+    vi.stubEnv('F14_ENABLED', '');
     vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
     const prepare = prepareDeps();
 
@@ -1454,6 +1488,7 @@ describe('sequenceReplyHandler · a yes to a card the household already approved
   });
 
   it('is inert while F14 is dark for this household (D21)', async () => {
+    vi.stubEnv('F14_ENABLED', '');
     vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
 
     const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), {

@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectedReceiptBody } from './connected-notice';
 
 describe('connected receipt voice', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  beforeEach(() => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
   });
 
   it('sends the model receipt, and nothing canned when the model is missing', async () => {

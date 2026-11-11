@@ -53,6 +53,7 @@ afterEach(() => {
 
 describe('flag', () => {
   it('is dark unless exactly true', () => {
+    vi.stubEnv('LINQ_EXPERIENCES_ENABLED', '');
     expect(linqExperiencesEnabled()).toBe(false);
     for (const v of ['on', 'false', '1', 'TRUE']) {
       vi.stubEnv('LINQ_EXPERIENCES_ENABLED', v);

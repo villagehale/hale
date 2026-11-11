@@ -4,6 +4,13 @@ vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async () => liveSourceText,
 }));
+vi.mock('~/lib/channel/activity/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/activity/page')>()),
+  createActivityPageFetch: () => async (url: string) => ({
+    url,
+    text: liveSourceText || FIXTURE_FIND_TOWN,
+  }),
+}));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
@@ -40,6 +47,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { FIXTURE_COUNTRY, FIXTURE_FIND_TOWN, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
+import { stubLaunchFlags } from '~/lib/testing/launch-flags';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
 import { isStage } from '~/lib/testing/structured-reply';
@@ -136,7 +144,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
   beforeEach(async () => {
     db = await createTestDb();
     database = db.database;
-    vi.stubEnv('F14_ENABLED', 'true');
+    stubLaunchFlags({ F14_ENABLED: 'true' });
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
 
     const [family] = await database
@@ -245,7 +253,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         };
       }
       call += 1;
-      liveSourceText = `${JSON.stringify(picksByCall[call] ?? [])}\nHalton Hills, Ontario, Canada`;
+      liveSourceText = `${JSON.stringify(picksByCall[call] ?? [])}\n${FIXTURE_FIND_TOWN}`;
       searched.push(req.messages?.[0]?.content as string);
       return {
         content: [
@@ -664,12 +672,15 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         },
       ],
       (results) => {
-        const found = results[1] as {
-          found: boolean;
-          picks: Array<{ name: string; when: string }>;
-        };
-        const top = found.picks[0];
-        return `${top?.name} has parent & tot ${top?.when}, $142 - their site says. Want me to confirm before you book?`;
+        const found = results.find(
+          (row): row is { found: boolean; picks: Array<{ name: string; when: string }> } =>
+            Boolean(row) && typeof row === 'object' && 'picks' in (row as object),
+        );
+        const top = found?.picks[0];
+        if (!top) {
+          throw new Error(`journey: find_activities returned no picks: ${JSON.stringify(results)}`);
+        }
+        return `${top.name} has parent & tot ${top.when}, $142 - their site says. Want me to confirm before you book?`;
       },
       web.client,
     );
@@ -691,10 +702,6 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     // Rule #1, at the border: the query that left carried a TOWN and a BAND and no child.
     const sent = web.searched[0] ?? '';
     expect(JSON.parse(sent)).toMatchObject({ town: FIXTURE_FIND_TOWN, stage: 'toddler' });
-    expect(JSON.parse(sent)).toMatchObject({
-      town: 'Halton Hills, Ontario, Canada',
-      stage: 'toddler',
-    });
     expect(sent).not.toContain('Noah');
     expect(sent).not.toContain(AREA);
     expect(sent).not.toMatch(/\b18 months\b/);

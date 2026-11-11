@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import {
   createGroupTurnReader,
   groupTurnFromReading,
@@ -7,7 +8,6 @@ import {
   linqGroupTurnAiEnabled,
 } from './group-turn-reader';
 
-vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson: vi.fn() }));
 vi.mock('~/lib/cron/skill', () => ({
   loadCronSkill: async () => ({
     meta: { name: 'group-turn-read', whenToUse: 'x', task: 'screen', tools: [] },
@@ -15,7 +15,6 @@ vi.mock('~/lib/cron/skill', () => ({
   }),
 }));
 
-const { forceToolJson } = await import('~/lib/pipeline/structured');
 const CLIENT = {} as AgentClient;
 const INPUT = {
   text: 'haley can u remind us sat',
@@ -31,6 +30,7 @@ afterEach(() => {
 
 describe('VIL-440 group turn reader', () => {
   it('is off unless the flag is exactly true', () => {
+    vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', '');
     expect(linqGroupTurnAiEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', 'true');
     expect(linqGroupTurnAiEnabled()).toBe(true);

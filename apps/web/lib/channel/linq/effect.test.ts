@@ -151,6 +151,7 @@ describe('VIL-473 Linq message effects', () => {
   });
 
   it('flag is dark by default and on when exactly true, including Production', () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', '');
     expect(linqEffectsEnabled()).toBe(false);
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'on');
     expect(linqEffectsEnabled()).toBe(false);
@@ -363,6 +364,7 @@ describe('VIL-473 Linq message effects', () => {
   });
 
   it('is never consulted while the flag is off', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', '');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fake = makeFakeDb();
     const d = decider({ effect: { type: 'screen', name: 'confetti' } });

@@ -197,6 +197,11 @@ export function sharedLinqEditDecider(): LinqEditDecider {
   return shared;
 }
 
+/** Tests install a scripted decider here; null restores the production reader. */
+export function setSharedLinqEditDecider(decider: LinqEditDecider | null): void {
+  shared = decider;
+}
+
 function asDate(value: unknown): Date | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   if (typeof value === 'string') {

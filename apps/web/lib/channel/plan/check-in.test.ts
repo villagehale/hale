@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
@@ -32,6 +32,10 @@ const COMPOSED = 'How have the first few nights gone?';
 
 const database = {} as Database;
 
+beforeEach(() => {
+  delete process.env[F14_ENABLED_ENV];
+  delete process.env[F14_ALLOWLIST_ENV];
+});
 afterEach(() => {
   delete process.env[F14_ENABLED_ENV];
   delete process.env[F14_ALLOWLIST_ENV];

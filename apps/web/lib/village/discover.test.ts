@@ -61,7 +61,7 @@ describe('live recommendations without a catalog', () => {
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
     await findFamilyActivities(db.database, familyId, { finder: { find } });
-    expect(find.mock.calls[0]![0].town).toBe('Burlington, Ontario, Canada');
+    expect(find.mock.calls[0]![0].town).toBe('Burlington');
     expect(JSON.stringify(find.mock.calls)).not.toContain('L7M');
   });
 
@@ -179,7 +179,7 @@ describe('live recommendations without a catalog', () => {
     expect(second.status).toBe('discovered');
     expect(find).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(find.mock.calls)).not.toContain('PrivateChildName');
-    expect(find.mock.calls[0]![0].town).toBe('Toronto, Ontario, Canada');
+    expect(find.mock.calls[0]![0].town).toBe('Toronto');
     const rows = await db.database
       .select()
       .from(schema.familyActivityHistory)
@@ -308,7 +308,7 @@ describe('live recommendations without a catalog', () => {
       .where(eq(schema.families.id, familyId));
     const find = vi.fn();
     expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
-      'names_a_person',
+      'no_place',
     );
     expect(find).not.toHaveBeenCalled();
   });

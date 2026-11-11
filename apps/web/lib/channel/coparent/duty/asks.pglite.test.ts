@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type CalendarStanding, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type TestDb,
   createTestDb,
@@ -32,6 +32,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.close();
+});
+
+beforeEach(() => {
+  // Ambient launch flags light split-duty. Tests that pin the send path must
+  // set this themselves; the split-duty cases stub it on.
+  vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, '');
+  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
 });
 
 afterEach(() => {
@@ -145,6 +153,8 @@ function sendPorts(send: DutySendPorts['send']): DutySendPorts {
 
 describe('duty ask sweep', () => {
   it('is a no-op when the flag is off, including a cancelled duty', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, '');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, '');
     const family = await seedDutyFamily('Flag off');
     const sam = await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-off');

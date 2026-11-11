@@ -45,6 +45,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  vi.stubEnv('FOLLOWUP_ASKS_ENABLED', '');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });

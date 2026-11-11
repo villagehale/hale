@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { runAuthorizedSignup } from './run';
 import { recordSignupOffer } from './store';
@@ -131,6 +131,11 @@ describe('sandbox boundary — browser input is consented slots only', () => {
 
   beforeEach(() => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', '');
+    vi.stubEnv('SIGNUP_SANDBOX_RUNTIME_ENABLED', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   async function familyWithOffer() {

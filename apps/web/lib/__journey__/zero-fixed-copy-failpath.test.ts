@@ -7,6 +7,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { sendWelcomeContactCard } from '~/lib/channel/intake/welcome-card';
 import { linqGroupOpenLine, linqGroupUnreachableLine } from '~/lib/channel/linq/group';
 import {
+  REC_MORNING_MODEL_TOPIC_ENABLED_ENV,
   recMorningReply,
   resolveRecMorningWhere,
   writeRecMorningIntakeReply,
@@ -123,6 +124,7 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
 
   it('VIL-508 rec-morning: facts exist, model silent → router leaves it to the coach, intake falls through', async () => {
     quiet();
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, '');
     setSharedSpokenLineWriter(SILENT_MODEL);
     const body = 'is efun still a thing?';
     // A GTA family (stored Toronto FSA), so the facts exist and only the model is silent.

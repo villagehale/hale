@@ -153,8 +153,6 @@ describe('LINQ_GROUP_ONBOARDING_V2_ENABLED', () => {
     expect(linqGroupOnboardingV2Enabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     expect(linqGroupOnboardingV2Enabled()).toBe(false);
-    vi.unstubAllEnvs();
-    expect(linqGroupOnboardingV2Enabled()).toBe(false);
   });
 });
 

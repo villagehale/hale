@@ -98,6 +98,7 @@ function harness(overrides: Overrides = {}) {
 
 describe('the dark-launch gate', () => {
   it('selects nobody at all while F14 is unarmed', async () => {
+    delete process.env[F14_ENABLED_ENV];
     const { deps, queued } = harness();
     const result = await runEveningCheckInSweep(database, deps, EVENING);
     expect(result.enabled).toBe(false);

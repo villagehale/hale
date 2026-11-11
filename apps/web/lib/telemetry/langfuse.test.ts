@@ -9,12 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *   - a thrown Langfuse client error does NOT propagate out of the agent path
  *     (rule #8 — tracing is best-effort), while a genuine work error still does.
  *
- * The SDK is mocked at the module boundary; `@langfuse/otel` is mocked too so
- * constructing the shared LangfuseSpanProcessor needs no credentials/network.
+ * Spies land on `tracingSdk` rather than `vi.mock('@langfuse/tracing')`: setupFiles
+ * and the coach graph load this module before a suite mock can rebind its imports.
  */
-
-const startObservationMock = vi.fn();
-const getActiveTraceIdMock = vi.fn();
 
 vi.mock('@langfuse/otel', () => ({
   LangfuseSpanProcessor: class {
@@ -22,43 +19,35 @@ vi.mock('@langfuse/otel', () => ({
   },
 }));
 
-vi.mock('@langfuse/tracing', () => ({
-  // startActiveObservation runs the callback and returns its result (real shape).
-  startActiveObservation: vi.fn(async (_name: string, fn: (span: unknown) => unknown) => fn({})),
-  // propagateAttributes runs the callback (real shape: (attrs, cb) => cb()).
-  propagateAttributes: vi.fn(async (_attrs: unknown, fn: () => unknown) => fn()),
-  getActiveTraceId: () => getActiveTraceIdMock(),
-  startObservation: (name: string, attrs: unknown, opts: unknown) =>
-    startObservationMock(name, attrs, opts),
-}));
+import { traceAgentRun, tracingSdk } from './langfuse';
 
-import { traceAgentRun } from './langfuse';
+const TRACE_ID = 'abc123def456abc123def456abc12345';
 
 beforeEach(() => {
-  startObservationMock.mockReset();
-  startObservationMock.mockReturnValue({ end: vi.fn() });
-  getActiveTraceIdMock.mockReset();
-  getActiveTraceIdMock.mockReturnValue('abc123def456abc123def456abc12345');
+  vi.spyOn(tracingSdk, 'startActiveObservation').mockImplementation(async (_name, fn) =>
+    fn({} as never),
+  );
+  vi.spyOn(tracingSdk, 'propagateAttributes').mockImplementation(async (_attrs, fn) => fn());
+  vi.spyOn(tracingSdk, 'getActiveTraceId').mockReturnValue(TRACE_ID);
+  vi.spyOn(tracingSdk, 'startObservation').mockReturnValue({ end: vi.fn() } as never);
 });
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe('traceAgentRun', () => {
   it('creates a trace with the descriptive name and surfaces the trace id', async () => {
-    const { startActiveObservation } = await import('@langfuse/tracing');
-
     const result = await traceAgentRun(
       { name: 'ask-hale', sessionId: 'conv-1', userId: 'user-1', metadata: { familyId: 'fam-1' } },
       async (trace) => {
-        expect(trace.traceId).toBe('abc123def456abc123def456abc12345');
+        expect(trace.traceId).toBe(TRACE_ID);
         return 'answer';
       },
     );
 
     expect(result).toBe('answer');
-    expect(startActiveObservation).toHaveBeenCalledWith('ask-hale', expect.any(Function));
+    expect(tracingSdk.startActiveObservation).toHaveBeenCalledWith('ask-hale', expect.any(Function));
   });
 
   it('records a generation carrying the model and token usage as usageDetails', async () => {
@@ -69,7 +58,7 @@ describe('traceAgentRun', () => {
       });
     });
 
-    expect(startObservationMock).toHaveBeenCalledWith(
+    expect(tracingSdk.startObservation).toHaveBeenCalledWith(
       'discovery-llm-call',
       {
         model: 'claude-sonnet-4-6',
@@ -80,8 +69,7 @@ describe('traceAgentRun', () => {
   });
 
   it('does NOT propagate a Langfuse client error (best-effort, rule #8)', async () => {
-    const { startActiveObservation } = await import('@langfuse/tracing');
-    (startActiveObservation as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+    vi.mocked(tracingSdk.startActiveObservation).mockImplementationOnce(() => {
       throw new Error('langfuse exporter exploded');
     });
 
@@ -95,7 +83,7 @@ describe('traceAgentRun', () => {
   });
 
   it('swallows a generation-recording error without failing the run', async () => {
-    startObservationMock.mockImplementationOnce(() => {
+    vi.mocked(tracingSdk.startObservation).mockImplementationOnce(() => {
       throw new Error('startObservation failed');
     });
 

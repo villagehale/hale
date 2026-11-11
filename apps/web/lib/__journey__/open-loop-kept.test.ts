@@ -272,6 +272,8 @@ let journey: Journey;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
 
   const intake = await runIntakeRadar();
   const promised = { ...(intake.fake.rows(schema.agentCommitments)[0] ?? {}) };

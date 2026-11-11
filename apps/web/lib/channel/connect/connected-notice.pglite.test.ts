@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
+import { leftoverMarks } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -34,9 +35,14 @@ const APP_KEY = Buffer.alloc(32, 7).toString('base64');
 /** Test-only stand-in for the receipt model: a plain receipt, and an ask on the email step. */
 const receiptVoice: FriendVoiceComposer = {
   async compose(input) {
-    if (input.step === 'email') return { reply: 'Email ask (test fixture)?' };
-    if (input.step === 'calendar') return { reply: 'Calendar ask (test fixture)?' };
-    return { reply: 'Receipt (test fixture).' };
+    const reply =
+      input.step === 'email'
+        ? 'Email ask (test fixture)?'
+        : input.step === 'calendar'
+          ? 'Calendar ask (test fixture)?'
+          : 'Receipt (test fixture).';
+    const asks = input.step === 'email' || input.step === 'calendar';
+    return { reply, ...leftoverMarks(input, reply, asks) };
   },
 };
 
@@ -410,7 +416,8 @@ describe('sendConnectorConnectedText', () => {
       friendVoice: {
         async compose(input) {
           if (input.step === 'email') {
-            return { reply: 'Want me to watch school and camp email for the dates?' };
+            const reply = 'Want me to watch school and camp email for the dates?';
+            return { reply, ...leftoverMarks(input, reply, true) };
           }
           const synced = input.synced;
           seen.push({
@@ -418,11 +425,13 @@ describe('sendConnectorConnectedText', () => {
             overlaps: synced?.overlaps ?? [],
           });
           const clash = synced?.overlaps[0];
+          const reply = clash
+            ? `${clash.earlier} runs into ${clash.later} that Saturday. I can remind you the evening before.`
+            : 'Your calendar is connected.';
           return {
-            reply: clash
-              ? `${clash.earlier} runs into ${clash.later} that Saturday. I can remind you the evening before.`
-              : 'Your calendar is connected.',
+            reply,
             ahaMention: clash?.earlier ?? null,
+            ...leftoverMarks(input, reply, false),
           };
         },
       },
@@ -493,12 +502,14 @@ describe('sendConnectorConnectedText', () => {
       friendVoice: {
         async compose(input) {
           if (input.step === 'email') {
-            return { reply: 'Want me to watch school and camp email for the dates?' };
+            const reply = 'Want me to watch school and camp email for the dates?';
+            return { reply, ...leftoverMarks(input, reply, true) };
           }
           reads.push(input.synced?.read ?? 'missing');
           expect(input.synced?.calendar).toEqual([]);
           expect(input.synced?.overlaps).toEqual([]);
-          return { reply: 'Your calendar is connected.', ahaMention: null };
+          const reply = 'Your calendar is connected.';
+          return { reply, ahaMention: null, ...leftoverMarks(input, reply, false) };
         },
       },
     };
@@ -543,11 +554,13 @@ describe('sendConnectorConnectedText', () => {
       friendVoice: {
         async compose(input) {
           if (input.step === 'calendar') {
-            return { reply: 'Want me to check your calendar?' };
+            const reply = 'Want me to check your calendar?';
+            return { reply, ...leftoverMarks(input, reply, true) };
           }
           reads.push(input.synced?.read ?? 'missing');
           expect(input.synced?.email).toEqual([]);
-          return { reply: 'Gmail is connected.', ahaMention: null };
+          const reply = 'Gmail is connected.';
+          return { reply, ahaMention: null, ...leftoverMarks(input, reply, false) };
         },
       },
     };

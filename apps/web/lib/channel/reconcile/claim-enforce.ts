@@ -11,8 +11,11 @@ import {
 import { type ClaimReadVerdict, type ReadClaimResolution, verifyClaimRead } from './claim-verdict';
 import { claimReaderEnforces } from './flag';
 import { type ReconcileView, type RegistrationWatchMint, registrationWatchMint } from './reconcile';
+import { defaultClaimEnforcerSlot, setDefaultClaimEnforcer } from './claim-enforce-slot';
 import { type Segment, claimReadLocale } from './sentences';
 import { loadReconcileView } from './view';
+
+export { setDefaultClaimEnforcer };
 
 /**
  * VIL-581 PR 3 · the claim reader as part of the DECISION, for a family the flag
@@ -177,17 +180,18 @@ export interface DispatchClaimEnforce {
   }): Promise<DispatchClaimDecision>;
 }
 
-let shared: ClaimEnforcer | undefined;
-
 /** One per process. Nothing here opens a connection or reads a required env: it is a
  * default argument on every gated send, and `off` must cost nothing. */
 export function defaultClaimEnforcer(): ClaimEnforcer {
-  shared ??= createClaimEnforcer({
+  const installed = defaultClaimEnforcerSlot();
+  if (installed) return installed;
+  const created = createClaimEnforcer({
     enforces: (familyId) => claimReaderEnforces(familyId),
     reader: defaultClaimReader('adaptive'),
     loadContext: loadClaimShadowContext,
   });
-  return shared;
+  setDefaultClaimEnforcer(created);
+  return created;
 }
 
 export function bindDispatchClaimEnforce(

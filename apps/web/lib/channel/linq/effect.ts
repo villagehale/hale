@@ -239,6 +239,11 @@ export function sharedLinqEffectDecider(): LinqEffectDecider {
   return shared;
 }
 
+/** Tests install a scripted decider here; null restores the production reader. */
+export function setSharedLinqEffectDecider(decider: LinqEffectDecider | null): void {
+  shared = decider;
+}
+
 export type LinqEffectOutcome =
   | { status: 'sent'; effect: LinqMessageEffect; providerMessageId: string }
   | { status: 'declined' }
