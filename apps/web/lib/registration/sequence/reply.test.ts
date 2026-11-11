@@ -272,6 +272,7 @@ describe('handleSequenceReply', () => {
       responseHours: 36,
       clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
+      clockFromSource: 'parent_message',
     });
   });
 
@@ -313,6 +314,7 @@ describe('handleSequenceReply', () => {
       responseHours: null,
       clockFrom: null,
       deadline: null,
+      clockFromSource: null,
     });
   });
 

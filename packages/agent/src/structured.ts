@@ -238,10 +238,7 @@ export function readStructuredAnswer(
   if (request.tools) {
     const toolUse = findToolUse(response, stage);
     if (!toolUse) fail(stage, 'no_answer', response, `model returned no ${stage} tool call`);
-    const leak = markupAt(toolUse.input, fieldNames(request.tools), inputText(request));
-    if (leak !== null) {
-      fail(stage, 'tool_markup', response, `tool-call markup inside the string at ${leak}`);
-    }
+    refuseMarkup(toolUse.input, request.tools, request, stage, response);
     return toolUse.input;
   }
   const text = response.content
@@ -250,10 +247,26 @@ export function readStructuredAnswer(
     .join('')
     .trim();
   if (text === '') fail(stage, 'no_answer', response, 'model returned no JSON output');
+  let parsed: unknown;
   try {
-    return JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch {
     return fail(stage, 'unparseable', response, 'the JSON output did not parse');
+  }
+  refuseMarkup(parsed, request.output_config?.format?.schema, request, stage, response);
+  return parsed;
+}
+
+function refuseMarkup(
+  value: unknown,
+  schema: unknown,
+  request: StructuredRequest,
+  stage: string,
+  response: Anthropic.Message,
+): void {
+  const leak = markupAt(value, fieldNames(schema), inputText(request));
+  if (leak !== null) {
+    fail(stage, 'tool_markup', response, `tool-call markup inside the string at ${leak}`);
   }
 }
 

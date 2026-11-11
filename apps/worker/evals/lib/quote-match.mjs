@@ -268,6 +268,11 @@ export function pageCarriesSchedule(page) {
   return page.anchors.some((anchor) => anchor.kind === 'money' || anchor.kind === 'time');
 }
 
+/** Mirrors `factKeys` in quote-match.ts. */
+export function factKeys(field) {
+  return readAnchors(normaliseForMatch(field)).map((anchor) => `${anchor.kind}:${anchor.value}`);
+}
+
 /**
  * Does this sentence actually STATE a schedule fact, or only talk about one? — mirrors
  * `statesAFigure`.

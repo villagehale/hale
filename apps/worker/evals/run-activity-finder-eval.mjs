@@ -95,6 +95,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import {
+  factKeys,
   pageCarriesSchedule,
   preparePage,
   statesAFigure,
@@ -210,13 +211,31 @@ function composeUserMessage(q, researchNotes) {
 // Mirrors `EMPTY_SEARCH_NOTES_CAP` (activity/lane.ts).
 const EMPTY_SEARCH_NOTES_CAP = 4_000;
 
+function composerReference(reference) {
+  return {
+    name: reference.name,
+    sourceName: reference.sourceName,
+    sourceUrl: reference.sourceUrl,
+    ageFit: reference.ageFit,
+    status: reference.status,
+    ...(reference.season != null ? { season: reference.season } : {}),
+    evidence: {
+      program: reference.evidence.program,
+      age: reference.evidence.age,
+      windowConfirmed: reference.evidence.windowConfirmed,
+    },
+  };
+}
+
 function followUpUserMessage(subject, picks, pageEvidence, watch, searched, language = 'en-CA') {
+  const references = searched?.references?.map(composerReference);
   return JSON.stringify({
     mode: 'followup_text',
     subject,
     // `users.locale`, passed through. The composer never sees the parent's words.
     language,
     // Only bound references survive; raw research may contain rejected facts.
+    // Prices and schedules on those references are stripped: they are not picks.
     ...(picks.length === 0
       ? {
           picks_empty: true,
@@ -224,18 +243,18 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, searched, lang
             ? {
                 searched: {
                   town: searched.town,
-                  ...(searched.references ? { references: searched.references } : {}),
+                  ...(references ? { references } : {}),
                   ...(searched.checkedSources ? { checkedSources: searched.checkedSources } : {}),
                 },
               }
             : {}),
         }
       : { page_evidence: pageEvidence }),
-    ...(picks.length > 0 && searched?.references?.length
+    ...(picks.length > 0 && references?.length
       ? {
           searched: {
             town: searched.town,
-            references: searched.references,
+            references,
             ...(searched.checkedSources ? { checkedSources: searched.checkedSources } : {}),
           },
         }
@@ -619,6 +638,37 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
+const DISTINCTIVE_FACT = /^(money|time|date|code):/;
+
+function distinctiveFactKeys(text) {
+  return factKeys(text).filter((key) => DISTINCTIVE_FACT.test(key));
+}
+
+function boundDistinctiveKeys(picks, pageAge) {
+  const keys = new Set();
+  const add = (value) => {
+    if (!value) return;
+    for (const key of distinctiveFactKeys(value)) keys.add(key);
+  };
+  for (const pick of picks) {
+    add(pick.name);
+    add(pick.ageFit);
+    add(pick.when);
+    add(pick.price);
+    add(pick.sourceName);
+    add(pick.registration);
+    if (pick.evidence) {
+      add(pick.evidence.program);
+      add(pick.evidence.age);
+      add(pick.evidence.price);
+      add(pick.evidence.schedule);
+      for (const session of pick.evidence.sessions ?? []) add(session);
+    }
+  }
+  add(pageAge?.quote);
+  return keys;
+}
+
 function followUpViolations(body, picks, pageEvidence, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
@@ -653,6 +703,14 @@ function followUpViolations(body, picks, pageEvidence, watch, commitsToReturn) {
       tag: 'awaits_a_posted_page',
       reason:
         'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
+    });
+  }
+  const allowed = boundDistinctiveKeys(picks);
+  if (distinctiveFactKeys(body).some((key) => !allowed.has(key))) {
+    violations.push({
+      tag: 'unbound_fact',
+      reason:
+        'The message names a price, time, date or session code that is not on a bound pick or page_age. Only those facts may be said.',
     });
   }
   if (watch !== commitsToReturn) {

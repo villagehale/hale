@@ -663,6 +663,7 @@ describe('VIL-543 · the leg notes are facts for the model', () => {
       responseHours: 48,
       clockFrom,
       deadline,
+      clockFromSource: 'parent_message',
     });
     expect(legNoteFacts('waitlist_final', input)).toMatchObject({
       kind: 'waitlist_final',
@@ -670,11 +671,12 @@ describe('VIL-543 · the leg notes are facts for the model', () => {
       clockFrom,
       deadline,
       hoursLeft: 2,
+      clockFromSource: 'parent_message',
     });
     // No clock on file is a null deadline and a null start, never a Hale default.
     expect(
       legNoteFacts('waitlist_half', { ...LEG_INPUT, waitlist: { position: 3, startedAt: null } }),
-    ).toMatchObject({ clockFrom: null, deadline: null });
+    ).toMatchObject({ clockFrom: null, deadline: null, clockFromSource: null });
   });
 
   it('counts each guard’s deadline from its own start and the town’s own hours', () => {
@@ -717,6 +719,7 @@ describe('VIL-543 · the check-in answer is facts for the model', () => {
       responseHours: 36,
       clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
+      clockFromSource: 'parent_message',
     });
   });
 
@@ -738,6 +741,7 @@ describe('VIL-543 · the check-in answer is facts for the model', () => {
       responseHours: null,
       clockFrom: null,
       deadline: null,
+      clockFromSource: null,
     });
   });
 
@@ -782,7 +786,7 @@ describe('VIL-543 · the course bind ack is facts for the model', () => {
       portal: OAKVILLE.portalLabel,
       course: { name: 'Preschool Sports and Games', day: 'Wednesday', time: '10:30 AM' },
       courseCode: '00028147',
-      price: '$280.60 / $290.60 non-resident',
+      price: '2026 Program Fee: $280.60; 2026 Program Fee Non-Resident: $290.60',
       opensOn: 'Tuesday, September 15, 2026',
       opensAt: '10:30 a.m.',
       clockName: 'public date',

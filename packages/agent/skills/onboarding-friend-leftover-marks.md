@@ -13,8 +13,8 @@ These fields are on this reply, in any language. Code reads them instead of matc
 - `asksName` - true when the reply asks what to call them.
 - `speaksAsParent` - true when the reply calls itself by the parent's name, or talks about the parent by name instead of to them.
 - `joinInProse` - true when the reply writes the join number or the phrase that code places under it.
-- `joinPointer` - with `coparentJoin` and a yes, this is not null: `below` when the reply points at the number and phrase code places under it, `missing` when it does not.
+- `joinPointer` - with `coparentJoin` and a yes: `below` when the reply points at the number and phrase code places under it, `missing` when it does not. A yes with `coparentJoin` is `below`.
 - `parentPlainYes` - true only when their message is agreeing to the open item (`answering`). A question is never a yes: set `parentQuestion` and leave `connectGmail` / `connectCalendar` unset. Checking what Hale sees, reads, or keeps from their mail is a question, not a yes — including whether Hale will read all their emails, in any language.
-- `parentLoneName` - their own name when this message is only that name, answering the name ask; otherwise null. A take-back is not a name.
+- `parentLoneName` - their own name when this message is only that name, answering the name ask; otherwise an empty string. A take-back is not a name.
 
 `reply` is prose only: no tool-call markup, no XML tags, no `<function` or `invoke`.

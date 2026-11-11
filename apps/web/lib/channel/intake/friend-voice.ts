@@ -619,40 +619,48 @@ function readParentQuestion(value: {
   return value.parentQuestion !== false;
 }
 
+/**
+ * JSON for the onboarding reply. Omit a field instead of sending null: each
+ * `type: [T, 'null']` is a union, leftover compose had more than the grammar's
+ * 16, and the call went out as a forced Haiku tool. The model then wrote
+ * tool-call markup into `reply` (French household-group, calendar-wants-gmail)
+ * and nothing sent. Booleans Zod already defaults are required so leftover
+ * stays under the 24-optional cap.
+ */
 const replyJsonSchema = {
   type: 'object',
   properties: {
     reply: { type: 'string' },
-    groupLeads: { type: ['array', 'null'], items: { type: 'string' } },
-    postalCode: { type: ['string', 'null'] },
-    city: { type: ['string', 'null'] },
+    groupLeads: { type: 'array', items: { type: 'string' } },
+    postalCode: { type: 'string' },
+    city: { type: 'string' },
     children: {
       type: 'array',
       items: {
         type: 'object',
         properties: {
-          name: { type: ['string', 'null'] },
-          ageMonths: { type: ['number', 'null'] },
+          name: { type: 'string' },
+          ageMonths: { type: 'number' },
           agePrecision: {
-            type: ['string', 'null'],
-            enum: ['years', 'months', null],
+            type: 'string',
+            enum: ['years', 'months'],
           },
-          dateOfBirth: { type: ['string', 'null'] },
+          dateOfBirth: { type: 'string' },
         },
       },
     },
-    parentName: { type: ['string', 'null'] },
+    parentName: { type: 'string' },
     parentRole: {
-      type: ['string', 'null'],
-      enum: ['mother', 'father', 'unknown', null],
+      type: 'string',
+      enum: ['mother', 'father', 'unknown'],
     },
     parentRoleBasis: {
-      type: ['string', 'null'],
-      enum: ['stated', 'guessed', null],
+      type: 'string',
+      enum: ['stated', 'guessed'],
     },
-    nameConfirmed: { type: ['boolean', 'null'] },
-    connectCalendar: { type: ['boolean', 'null'] },
-    connectGmail: { type: ['boolean', 'null'] },
+    nameConfirmed: { type: 'boolean' },
+    connectCalendar: { type: 'boolean' },
+    connectGmail: { type: 'boolean' },
     scheduleAdds: {
       type: 'array',
       items: {
@@ -661,16 +669,16 @@ const replyJsonSchema = {
           line: { type: 'number' },
           cadence: { type: 'string', enum: ['once', 'weekly'] },
           date: { type: 'string' },
-          time: { type: ['string', 'null'] },
-          weeks: { type: ['number', 'null'] },
-          child: { type: ['string', 'null'] },
+          time: { type: 'string' },
+          weeks: { type: 'number' },
+          child: { type: 'string' },
         },
         required: ['line', 'cadence', 'date'],
       },
     },
     scheduleDone: { type: 'boolean' },
-    coparentGroup: { type: ['boolean', 'null'] },
-    coparentGroupMode: { type: ['string', 'null'], enum: ['existing', 'new', null] },
+    coparentGroup: { type: 'boolean' },
+    coparentGroupMode: { type: 'string', enum: ['existing', 'new'] },
     nameDeclined: { type: 'boolean' },
     nameTakenBack: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
@@ -682,15 +690,30 @@ const replyJsonSchema = {
     parentQuestion: { type: 'boolean' },
     connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
     joinPointer: {
-      type: ['string', 'null'],
-      enum: ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing', null],
+      type: 'string',
+      enum: ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'],
     },
-    ahaMention: { type: ['string', 'null'] },
-    language: { type: ['string', 'null'] },
+    ahaMention: { type: 'string' },
+    language: { type: 'string' },
     claimsSaved: { type: 'boolean' },
   },
   // Code reads these instead of the reply's words, so the model always says.
-  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
+  required: [
+    'reply',
+    'asks',
+    'parentQuestion',
+    'connectorsOffered',
+    'joinPointer',
+    'claimsSaved',
+    'nameDeclined',
+    'nameTakenBack',
+    'kidsNamesDeclined',
+    'placeDeclined',
+    'calendarLater',
+    'gmailLater',
+    'stopAsking',
+    'scheduleDone',
+  ],
 } as const;
 
 const LEFTOVER_MARK_PROPERTIES = {
@@ -699,7 +722,7 @@ const LEFTOVER_MARK_PROPERTIES = {
   speaksAsParent: { type: 'boolean' },
   joinInProse: { type: 'boolean' },
   parentPlainYes: { type: 'boolean' },
-  parentLoneName: { type: ['string', 'null'] },
+  parentLoneName: { type: 'string' },
 } as const;
 
 /**
@@ -905,6 +928,9 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
   // into French for an English parent (VIL-538).
   const theirWords = input.parentWords.trim().length > 0;
   const french = copyLanguage(input.language) === 'fr';
+  // Weekday labels follow the same rule as languageHint: a stored tag beside
+  // their words pulled an English retry into French (coparent-carpool-retry-fr-hint).
+  const labelLanguage = theirWords ? null : input.language;
   return {
     step: input.step,
     languageHint: theirWords ? null : certainLanguageHint(input.language),
@@ -945,10 +971,10 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       connector: input.connector ?? null,
       granted: input.granted ?? null,
       synced: syncedForModel(input),
-      today: today ? { date: today, label: dayLabel(today, input.language) } : null,
+      today: today ? { date: today, label: dayLabel(today, labelLanguage) } : null,
       upcomingDays:
         input.step === 'schedule' && now
-          ? upcomingDays(now, familyZone(input), input.language)
+          ? upcomingDays(now, familyZone(input), labelLanguage)
           : null,
       scheduled: input.scheduled ?? [],
       // Code puts the join data under the reply; the model only knows it is there.
@@ -2658,7 +2684,7 @@ export function retryProblem(
     case 'join':
       return linqGroupOnboardingV2Enabled()
         ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Set joinPointer to below when the reply points at it. Do not write the digits or a phrase to text. When it is new, say you will start the group and set joinPointer to hale_starts. A plain yes leaves coparentGroupMode null and joinPointer null.'
-        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Set joinPointer to below when the reply points at them, wrong_owner when that number is the other parent's, placeholder when a stand-in sits where they go, hale_starts when Hale starts the group, or missing when the reply does not point at them. Do not write the number or the phrase.";
+        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. A yes with coparentJoin: joinPointer is below, and the reply points at them. wrong_owner when that number is the other parent's, placeholder when a stand-in sits where they go, hale_starts when Hale starts the group, or missing when the reply does not point at them. Do not write the number or the phrase.";
     case 'other_connector':
       return "The draft offered to connect the connector this step is not (Gmail on the calendar step, the calendar on the Gmail step), but the link under it connects only this step's. Ask about this step's connector only; the other one comes later.";
     case 'schedule':
