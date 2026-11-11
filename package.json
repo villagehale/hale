@@ -24,7 +24,8 @@
     "db:generate": "pnpm --filter @hale/db generate",
     "db:migrate": "pnpm --filter @hale/db migrate",
     "db:check-migrations": "pnpm --filter @hale/db check-migrations",
-    "db:studio": "pnpm --filter @hale/db studio"
+    "db:studio": "pnpm --filter @hale/db studio",
+    "posthog:sync-flags": "pnpm --filter @hale/flags sync"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

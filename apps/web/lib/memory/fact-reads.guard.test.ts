@@ -42,6 +42,8 @@ const ALLOWED: Record<string, string> = {
   'apps/web/lib/channel/coparent/duty/model.ts':
     'the household duty board: logistics, shared by R7',
   'apps/web/lib/channel/coparent/duty/undo.ts': 'the household duty board: logistics, shared by R7',
+  'apps/web/lib/channel/coparent/duty/settle.ts':
+    'Hale’s open split-duty ask (VIL-661): the household duty board, shared by R7',
   'apps/web/lib/channel/coparent/duty/metrics.ts':
     'Hale’s open duty ask, read for an audit timestamp',
   'apps/web/lib/channel/intake/cold-start/ledger.ts': 'Hale’s own stop-asking record',

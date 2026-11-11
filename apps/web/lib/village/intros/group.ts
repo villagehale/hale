@@ -1,3 +1,4 @@
+import { isEnabled } from '@hale/flags';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { createLinqChat, outboundLineFrom } from '~/lib/channel/outbound-transport';
 
@@ -15,7 +16,7 @@ import { createLinqChat, outboundLineFrom } from '~/lib/channel/outbound-transpo
 export const INTRO_GROUP_TEMPLATE_KEY = 'village_intro:group';
 
 export function villageIntroGroupsEnabled(): boolean {
-  return process.env.VILLAGE_INTRO_GROUPS_ENABLED?.trim() === 'true';
+  return isEnabled('village-intro-groups');
 }
 
 /** One dedupe key per side, so each family's ledger carries its own row. */

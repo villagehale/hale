@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { SOCIAL_PROOF_MIN } from '~/lib/village/social-proof';
 
@@ -145,7 +146,7 @@ export const GOING_COUNT_ENABLED_ENV = 'GOING_COUNT_ENABLED';
  * nobody armed. Strict comparison fails closed on exactly that shape.
  */
 export function goingCountEnabled(): boolean {
-  return process.env[GOING_COUNT_ENABLED_ENV] === 'true';
+  return isEnabled('going-count');
 }
 
 /**

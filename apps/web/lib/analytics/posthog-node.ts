@@ -1,15 +1,19 @@
 import { PostHog } from 'posthog-node';
 
 /**
- * The two server-side PostHog clients, and the ONLY place `new PostHog(` is written in
- * apps/web (posthog-node-singleton.test.ts pins it).
+ * The two server-side PostHog *event* clients, and the ONLY place `new PostHog(` is
+ * written in apps/web (posthog-node.test.ts pins it). Launch-flag evaluation lives in
+ * `@hale/flags` (a third client, personalApiKey, local eval) so the worker can share it.
  *
  *  - `productClient()` — product events (the SMS funnel, inbound counts, agent-error
- *    rates). Reads NEXT_PUBLIC_POSTHOG_KEY, the same key the browser provider reads,
- *    so the funnel lands in the same project as the landing and portal events.
+ *    rates, and launch events behind POSTHOG_PRODUCT_EVENTS_ENABLED). Reads
+ *    NEXT_PUBLIC_POSTHOG_KEY, the same key the browser provider reads, so the funnel
+ *    lands in the same project as the landing and portal events.
  *  - `projectClient()` — LLM generations ($ai_generation) and exceptions ($exception).
  *    Reads POSTHOG_PROJECT_API_KEY, a SEPARATE env var on purpose: tracing and error
- *    tracking ship dark, and turn on only when that key is set (Barton's call).
+ *    tracking ship dark, and turn on only when that key is set AND
+ *    POSTHOG_ERROR_TRACKING_ENABLED=true (Barton's call). The worker copy of this
+ *    module is apps/worker/src/analytics/posthog.ts — keep them in sync (#1222).
  *
  * A MISSING KEY IS A NAMED ABSENCE (rule #11): each getter returns null and the caller
  * returns 'not_configured'. No client is constructed, no network is touched.
@@ -17,15 +21,23 @@ import { PostHog } from 'posthog-node';
  * Serverless posture: `flushAt: 1, flushInterval: 0` so an event leaves as soon as it
  * is captured, and every caller awaits `flush()` (or the route awaits
  * `flushPosthog()` inside `after()`), so a frozen lambda does not strand a queue.
- * `privacyMode: true` is set on BOTH clients: posthog-node's LLM layer then never
- * attaches prompt or completion bodies, and our own generation builder
- * (llm-trace.ts) never sets them in the first place.
+ * `privacyMode` stays on unless POSTHOG_LLM_CONTENT_ENABLED is exactly `true`, in
+ * which case llm-trace.ts attaches redacted `$ai_input` / `$ai_output_choices`.
  */
 
 const DEFAULT_HOST = 'https://us.i.posthog.com';
 
 let product: PostHog | null | undefined;
 let project: PostHog | null | undefined;
+let shutdownHooked = false;
+
+function hookShutdown(): void {
+  if (shutdownHooked) return;
+  shutdownHooked = true;
+  process.on('beforeExit', () => {
+    void flushPosthog();
+  });
+}
 
 function host(): string {
   return process.env.POSTHOG_HOST || process.env.NEXT_PUBLIC_POSTHOG_HOST || DEFAULT_HOST;
@@ -36,7 +48,7 @@ function build(key: string): PostHog {
     host: host(),
     flushAt: 1,
     flushInterval: 0,
-    privacyMode: true,
+    privacyMode: process.env.POSTHOG_LLM_CONTENT_ENABLED !== 'true',
     disableGeoip: true,
     // A hung PostHog must not hold a webhook or a cron; one try, short bound.
     requestTimeout: 4_000,
@@ -49,6 +61,7 @@ export function productClient(): PostHog | null {
   if (product !== undefined) return product;
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   product = key ? build(key) : null;
+  if (product) hookShutdown();
   return product;
 }
 
@@ -57,6 +70,7 @@ export function projectClient(): PostHog | null {
   if (project !== undefined) return project;
   const key = process.env.POSTHOG_PROJECT_API_KEY;
   project = key ? build(key) : null;
+  if (project) hookShutdown();
   return project;
 }
 

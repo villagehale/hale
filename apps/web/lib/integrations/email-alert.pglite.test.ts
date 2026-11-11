@@ -6,10 +6,10 @@ import {
   coachEmailReader,
   productionCoachEmailReaderDeps,
 } from '~/lib/channel/coach/read-email-tool';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { departCoParent } from '~/lib/channel/coparent/depart';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
@@ -46,6 +46,7 @@ import {
   emailAlertDedupeKey,
   emailAlertOfferDraft,
 } from './email-alert';
+import { EMAIL_ALERT_BODY_ENABLED_ENV } from './email-alert-body-flag';
 import type { EmailAlertNotice } from './email-alert-notice';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, recordGoingCountShare, sessionKey } from './going';
@@ -143,6 +144,7 @@ interface Harness {
     source?: schema.MessageSource | null;
   }>;
   classifyCalls: number;
+  readAlertBodyCalls: number;
   /** The writer port: what it was told, and what it answered. */
   writer: ScriptedNoticeWriter;
 }
@@ -156,6 +158,8 @@ function harness(
     sendThrows?: LinqSendError;
     notice?: EmailAlertNotice;
     children?: readonly FamilyChildRef[];
+    alertBody?: string;
+    readAlertBodyThrows?: boolean;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -168,11 +172,17 @@ function harness(
     transport,
     threaded,
     classifyCalls: 0,
+    readAlertBodyCalls: 0,
     writer,
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
       parentLanguage: writer.parentLanguage,
+      readAlertBody: async () => {
+        h.readAlertBodyCalls += 1;
+        if (over.readAlertBodyThrows) throw new Error('gmail messages.get 503');
+        return over.alertBody ?? '';
+      },
       classify: async () => {
         h.classifyCalls += 1;
         if (over.classifyThrows) throw new Error('gmail messages.get 503');
@@ -279,6 +289,7 @@ describe('alertParentForEmail', () => {
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({
       actionTaken: 'email_alert_sent',
+      audience: family.parentUserId,
       targetTable: 'channel_messages',
       targetId: rows[0]?.id,
       after: { kind: 'cancellation', teenContent: false },
@@ -307,9 +318,10 @@ describe('alertParentForEmail', () => {
   });
 
   it('hands the writer the EXTRACTION, never the snippet', async () => {
-    // Rule #1: the body text of the email never reaches the writer, so it cannot be quoted
-    // back. The positive control: the extraction's own title IS there.
-    const h = harness();
+    // Rule #1: the body text of the email never reaches the facts, so it cannot be quoted
+    // back from them. Flag off, it never reaches the writer either. The positive control:
+    // the extraction's own title IS there.
+    const h = harness({ alertBody: 'the full letter BODY_MARKER_7f3a9c2e' });
     await expect(alert(h)).resolves.toBe('sent');
 
     const facts = h.writer.seen[0];
@@ -317,6 +329,65 @@ describe('alertParentForEmail', () => {
     expect(facts?.email.sender).toBe('Riverside Pool');
     expect(JSON.stringify(facts)).not.toContain(ENVELOPE.snippet);
     expect(JSON.stringify(facts)).not.toContain('info@riverside.example');
+    expect(h.readAlertBodyCalls).toBe(0);
+    expect(h.writer.bodies[0] ?? null).toBeNull();
+  });
+
+  it('EMAIL_ALERT_BODY_ENABLED hands the writer a fetched body for that compose, then stores none of it', async () => {
+    vi.stubEnv(EMAIL_ALERT_BODY_ENABLED_ENV, 'true');
+    const marker = 'BODY_MARKER_7f3a9c2e';
+    const body = `Leo's Saturday swim is cancelled. ${marker} Call 416-555-0199.`;
+    const h = harness({ alertBody: body });
+    await expect(alert(h)).resolves.toBe('sent');
+
+    expect(h.readAlertBodyCalls).toBe(1);
+    expect(h.writer.bodies[0]).toBe(body);
+    expect(JSON.stringify(h.writer.seen[0])).not.toContain(marker);
+    expect(h.transport.sent[0]?.body).not.toContain(marker);
+    expect(h.threaded[0]?.body).not.toContain(marker);
+    const [ledger, audit, offers, occasions] = await Promise.all([
+      ledgerRows(),
+      auditRows(),
+      db.database
+        .select()
+        .from(schema.emailAlertOffers)
+        .where(eq(schema.emailAlertOffers.familyId, family.familyId)),
+      db.database.select().from(schema.emailAlertOccasions),
+    ]);
+    const stored = JSON.stringify({ ledger, audit, offers, occasions });
+    expect(stored).not.toContain(marker);
+    expect(stored).not.toContain(body);
+  });
+
+  it('does not fetch the body for a 13+ child’s mail, even with the flag on', async () => {
+    vi.stubEnv(EMAIL_ALERT_BODY_ENABLED_ENV, 'true');
+    const h = harness({
+      classification: classified({ teenContent: true }),
+      alertBody: 'SECRET_TEEN_BODY_9c2e',
+    });
+    await alert(h);
+    expect(h.readAlertBodyCalls).toBe(0);
+    expect(h.writer.bodies[0] ?? null).toBeNull();
+  });
+
+  it('does not fetch the body when the email is attributed to a teen', async () => {
+    vi.stubEnv(EMAIL_ALERT_BODY_ENABLED_ENV, 'true');
+    const h = harness({
+      classification: classified({ teenAttributed: true }),
+      alertBody: 'SECRET_TEEN_BODY_9c2e',
+    });
+    await alert(h);
+    expect(h.readAlertBodyCalls).toBe(0);
+    expect(h.writer.bodies[0] ?? null).toBeNull();
+  });
+
+  it('a body fetch that fails still writes from facts — no fallback copy, no stored body', async () => {
+    vi.stubEnv(EMAIL_ALERT_BODY_ENABLED_ENV, 'true');
+    const h = harness({ readAlertBodyThrows: true });
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(h.readAlertBodyCalls).toBe(1);
+    expect(h.writer.bodies[0] ?? null).toBeNull();
+    expect(h.transport.sent).toHaveLength(1);
   });
 
   it('texts a family that is not on the allowlist when F14_ENABLED is exactly true', async () => {

@@ -8,6 +8,7 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { formatDay, formatTime } from '~/lib/channel/linq/household-calendar';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
@@ -127,6 +128,8 @@ export interface CalendarChange {
 export const CALENDAR_ALERT_OUTCOMES = [
   'sent',
   'already_sent',
+  /** VIL-612 · live cadence queued the composed notice for the hourly decider. */
+  'queued',
   'dark',
   'seeding_run',
   'outside_window',
@@ -1007,6 +1010,39 @@ async function sendOffer(
   if (message === null) {
     console.warn({ familyId }, 'calendar alert: the writer returned no text - nothing sent');
     return 'notice_unwritten';
+  }
+
+  if (await isQueuedForDecider(database, familyId, offer.dedupeKey)) return 'queued';
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId,
+        parentUserId,
+        kind: 'calendar_alert',
+        category: 'calendar_alert',
+        templateKey: offer.templateKey,
+        what: message,
+        why: 'calendar_alert',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: offer.dedupeKey,
+        payload: { auditVerb: 'calendar_alert_sent' },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { kind: 'calendar_alert' },
+    });
+    return 'queued';
   }
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race.
