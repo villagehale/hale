@@ -5,7 +5,7 @@ import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/
 import type { SignupConsentReader } from '../consent-reader';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
 import { runAuthorizedSignup } from '../run';
-import { recordSignupOffer } from '../store';
+import { loadSignupIdentity, recordSignupOffer } from '../store';
 import { runPlanTurn } from './conversation';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import type { PlanReader, PlanReading } from './reader';
@@ -170,6 +170,33 @@ describe('the day-before plan conversation', () => {
     ]);
     expect(written[0]?.maxPriceCents).toBe(10500);
     expect(await auditSteps(f.offerId)).toEqual(['plan_approved', 'plan_reply']);
+  });
+
+  it('asks once for the real date of birth when Hale only has a derived one', async () => {
+    const f = await family();
+    await db.database
+      .update(schema.children)
+      .set({ dobPrecision: 'derived' })
+      .where(eq(schema.children.id, f.childId));
+    const identity = await loadSignupIdentity(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      now: NOW,
+    });
+    expect(identity?.childDob).toBeNull();
+
+    const { planReader, planWriter, written } = fakes(APPROVE);
+    const first = await runPlanTurn(db.database, turn(f), { planReader, planWriter });
+    expect(first?.outcome).toBe('plan_clarify');
+    expect(written[0]?.moment).toBe('clarify');
+    expect(written[0]?.question).toMatch(/date of birth/i);
+    expect((await offer(f.offerId)).status).toBe('pending');
+    expect(await auditSteps(f.offerId)).toContain('plan_ask_dob');
+
+    const second = await runPlanTurn(db.database, turn(f), { planReader, planWriter });
+    expect(second?.outcome).toBe('plan_approved');
+    expect((await offer(f.offerId)).status).toBe('planned');
   });
 
   it("a co-parent's yes cannot approve the plan Hale offered the other parent", async () => {

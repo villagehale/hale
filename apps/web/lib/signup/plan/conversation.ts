@@ -2,10 +2,12 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { signupProviderHost } from '../consent';
 import type { SignupRunInput, SignupRunResult } from '../run';
-import { markOffer } from '../store';
+import { loadSignupIdentity, markOffer } from '../store';
 import type { SignupSession } from '../types';
 import { registrationPlanRunEnabled } from './flag';
+import { hasPlanNotice, recordPlanNotice } from './prep';
 import { type PlanReader, type PlanReading, createPlanReader } from './reader';
 import {
   type ConversablePlan,
@@ -105,6 +107,36 @@ export async function runPlanTurn(
   }
   if (!input.inboundChannelMessageId) {
     return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored' });
+  }
+  if (plan.status === 'pending') {
+    const identity = await loadSignupIdentity(database, {
+      familyId: input.familyId,
+      childId: plan.childId,
+      parentUserId: input.parentUserId,
+      now: input.now,
+    });
+    if (identity && identity.childDob === null) {
+      const asked = await hasPlanNotice(database, plan.offerId, 'ask_dob');
+      if (!asked) {
+        const host = signupProviderHost(new URL(plan.registrationUrl).hostname);
+        await recordPlanNotice(database, {
+          familyId: input.familyId,
+          offerId: plan.offerId,
+          providerHost: host,
+          kind: 'ask_dob',
+          now: input.now,
+        });
+        await writePlanAudit(database, {
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          offerId: plan.offerId,
+          after: { step: 'plan_ask_dob', host },
+        });
+        return reply(database, input, deps, plan, 'clarify', {
+          question: "What is the child's date of birth?",
+        });
+      }
+    }
   }
   const approved = await approveSignupPlan(database, {
     offerId: plan.offerId,

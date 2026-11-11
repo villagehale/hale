@@ -112,7 +112,7 @@ describe('offerSignupFromFacts (production caller)', () => {
     expect(plain?.planOpensAt).toBeNull();
   });
 
-  it('an ActiveNet offer is a plan only while the assisted switch is on, and is written as assisted', async () => {
+  it('an ActiveNet host is a full auto plan, with or without the assisted switch', async () => {
     const seeded = await family();
     const href = 'https://anc.ca.apm.activecommunities.com/exampleville/activity/search/detail/7';
     const opensAt = new Date(NOW.getTime() + 20 * 60 * 60_000);
@@ -155,15 +155,17 @@ describe('offerSignupFromFacts (production caller)', () => {
     vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
     const off = await run();
     if (!off.ok) throw new Error(off.reason);
-    expect(writer.facts).toHaveLength(1);
-    expect(planFacts).toHaveLength(0);
+    expect(planFacts.map((f) => [f.moment, f.mode])).toEqual([['offer', 'auto']]);
+    expect(off.text).toBe(`Plan text from the model.\n${href}`);
     await close(off.offerId);
 
     vi.stubEnv('REGISTRATION_ASSISTED_RUN_ENABLED', 'true');
     const on = await run();
     if (!on.ok) throw new Error(on.reason);
-    expect(planFacts.map((f) => [f.moment, f.mode])).toEqual([['offer', 'assisted']]);
-    expect(on.text).toBe(`Plan text from the model.\n${href}`);
+    expect(planFacts.map((f) => [f.moment, f.mode])).toEqual([
+      ['offer', 'auto'],
+      ['offer', 'auto'],
+    ]);
     const [row] = await db.database
       .select()
       .from(schema.authorizedSignupOffers)

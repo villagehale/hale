@@ -15,6 +15,7 @@ import {
   SIGNUP_RUN_MAX_COST_USD,
   ensureProfile,
   failure,
+  parentTakesOverLiveView,
   settleBrowser,
   signupFacts,
   stopAndReadCost,
@@ -305,16 +306,15 @@ async function drivePlan(
     const live = waited.liveViewUrl;
 
     if (output.outcome !== 'reached_checkout') {
-      const handsOn = output.outcome === 'needs_human' || output.outcome === 'needs_login';
       return {
         ...stop(output.outcome, output.detail),
-        liveViewUrl: handsOn ? live : null,
+        liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
         cartTotalCents: output.cart_total_cents,
       };
     }
     const choiceIndex = output.choice_index;
     if (choiceIndex === null || choiceIndex >= input.choices.length) {
-      return { ...stop('needs_human', 'choice_unreadable'), liveViewUrl: live };
+      return { ...stop('needs_human', 'choice_unreadable'), liveViewUrl: null };
     }
     const total = output.cart_total_cents;
     await input.onStep({ step: 'checkout', choiceIndex, cartTotalCents: total });

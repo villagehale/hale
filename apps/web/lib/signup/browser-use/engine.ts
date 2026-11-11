@@ -9,6 +9,7 @@ import {
   type BrowserUseRunStatus,
   TERMINAL_RUN_STATUSES,
 } from './client';
+import { CHECKOUT_KEEP_ALIVE_SECONDS, parentTakesOverLiveView } from './keep-alive';
 import { liveViewUrl } from './live-view';
 import {
   BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA,
@@ -39,9 +40,10 @@ import type { ProviderStorageState } from './vault';
  * one-time card. AgentMail is off. The browser keeps the cart alive for
  * `CHECKOUT_KEEP_ALIVE_SECONDS` after the run stops, which is the parent's
  * window to pay; provider cart holds are usually shorter, so the hold the page
- * states wins when it is shorter.
+ * states wins when it is shorter. That 15-minute timeout is always passed on
+ * the run; omitting it would default to four hours.
  */
-export const CHECKOUT_KEEP_ALIVE_SECONDS = 900;
+export { CHECKOUT_KEEP_ALIVE_SECONDS, parentTakesOverLiveView } from './keep-alive';
 export const DEFAULT_CART_HOLD_MINUTES = 10;
 export const RUN_DEADLINE_MS = 10 * 60 * 1000;
 export const POLL_INTERVAL_MS = 2000;
@@ -497,10 +499,9 @@ async function driveSignup(
         paymentHosts: output.payment_hosts,
       });
     }
-    const handsOn = output.outcome === 'needs_human' || output.outcome === 'needs_login';
     return {
       ...failure(output.outcome, output.detail, ids),
-      liveViewUrl: handsOn ? live : null,
+      liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
       cartTotalCents: output.cart_total_cents,
     };
   } catch (error) {

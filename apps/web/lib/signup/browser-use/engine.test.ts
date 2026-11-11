@@ -8,6 +8,7 @@ import {
   CHECKOUT_KEEP_ALIVE_SECONDS,
   readBrowserUseConfirmation,
   runBrowserUseSignup,
+  signupFacts,
 } from './engine';
 import browserCreated from './fixtures/browser-created.json';
 import profileCreated from './fixtures/profile-created.json';
@@ -212,11 +213,11 @@ describe('browser use signup engine', () => {
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
     });
-    // V4 keepAlive is integer seconds (120-14400), not the V2/V3 boolean. The
-    // 4-hour `timeout_at` on browser.released is Browser Use's hard limit, not this.
+    // V4 keepAlive is integer seconds (120-14400). Omitting it defaults to 14400
+    // (four hours). Hale always sends 900 so the timeout actually reaches Browser Use.
     expect(CHECKOUT_KEEP_ALIVE_SECONDS).toBe(900);
-    expect(body.keepAlive).toBeGreaterThanOrEqual(120);
-    expect(body.keepAlive).toBeLessThanOrEqual(14400);
+    expect(body.keepAlive).toBe(900);
+    expect(Object.prototype.hasOwnProperty.call(body, 'keepAlive')).toBe(true);
     expect(body).not.toHaveProperty('secretBindings');
     expect(body).not.toHaveProperty('opVaultId');
     expect(body).not.toHaveProperty('stripeLinkConnectionId');
@@ -258,7 +259,6 @@ describe('browser use signup engine', () => {
 
   it.each([
     ['needs_login', 'login_wall'],
-    ['needs_human', 'captcha'],
     ['needs_human', 'verification_code'],
   ] as const)(
     'returns %s (%s) with the live view so the parent can step in',
@@ -274,6 +274,26 @@ describe('browser use signup engine', () => {
       });
     },
   );
+
+  it.each([
+    ['needs_human', 'captcha'],
+    ['needs_human', 'session_not_found'],
+  ] as const)('closes the browser on %s (%s)', async (outcome, detail) => {
+    const summary = summaryWith({ outcome, detail, checkout_url: null, cart_total_cents: null });
+    const { deps, requests } = setup({ ...happyRoutes(summary), ...costRoutes() });
+    const result = await runBrowserUseSignup(input(), deps);
+    expect(result).toMatchObject({ outcome, detail, liveViewUrl: null });
+    expect(
+      requests.some((r) => r.method === 'PATCH' && r.path.startsWith('/api/v4/browsers/')),
+    ).toBe(true);
+  });
+
+  it('never types a derived date of birth into the agent facts', () => {
+    const facts = signupFacts(input({ identity: { ...IDENTITY, childDob: null } })) as {
+      child: { date_of_birth?: string };
+    };
+    expect(facts.child.date_of_birth).toBeUndefined();
+  });
 
   it('turns a cart above the approved price into needs_human', async () => {
     const { deps } = setup(happyRoutes(summaryWith({ cart_total_cents: 12500 })));

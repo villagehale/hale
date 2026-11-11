@@ -397,71 +397,37 @@ describe('carrying out plans at the open', () => {
     expect((await offerRow(family.offerId))?.status).toBe('planned');
   });
 
-  it('hands an ActiveNet town back to the parent without a browser while the assisted switch is off', async () => {
+  it('runs an ActiveNet host on the generic auto path even with the assisted switch off', async () => {
     const family = await plannedFamily({ url: ASSISTED_URL });
     const { runner, inputs } = engineLike(PAID);
-    const { deps: d, notices } = deps(runner);
+    const { deps: d } = deps(runner);
     await runDueSignupPlans(db.database, { now: NOW }, d);
 
-    expect(inputs.some((i) => i.correlationId === family.offerId)).toBe(false);
-    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
-    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
-      outcome: 'needs_human',
-      detail: 'parent_town',
-    });
-    expect((await steps(family.offerId)).map((s) => s.step)).toEqual([
-      'plan_approved',
-      'plan_started',
-      'plan_finished',
-    ]);
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('auto');
+    expect((await offerRow(family.offerId))?.status).toBe('completed');
   });
 
-  it('on an ActiveNet town with the assisted switch on, fills and hands the parent the live browser: no cap, no payment', async () => {
+  it('does not pick assisted from the host even with the assisted switch on', async () => {
     vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true');
     const family = await plannedFamily({ url: ASSISTED_URL });
-    const { runner, inputs, caps } = engineLike(PAID);
-    runner.run.mockImplementationOnce(async (input: BrowserUsePlanInput) => {
-      inputs.push(input);
-      await input.onStep({ step: 'ready', choiceIndex: 0, feeCents: 9800 });
-      return {
-        ...PAID,
-        outcome: 'ready_for_parent',
-        detail: 'none',
-        choiceIndex: 0,
-        liveViewUrl: LIVE,
-        holdExpiresAt: new Date(NOW.getTime() + 15 * 60_000),
-        confirmationNumber: null,
-        amountChargedCents: null,
-        sessionCostUsd: null,
-      };
-    });
-    const { deps: d, notices } = deps(runner);
-    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+    const { runner, inputs } = engineLike(PAID);
+    const { deps: d } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
 
-    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
-      offerId: family.offerId,
-      outcome: 'ready_for_parent',
-      detail: 'none',
-      notice: 'sent',
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('auto');
+    expect((await offerRow(family.offerId))?.status).toBe('completed');
+  });
+
+  it('runs Halton Hills the same as any other host', async () => {
+    const family = await plannedFamily({
+      url: 'https://haltonhills.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage',
     });
-    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('assisted');
-    expect(caps).toEqual([]);
-    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
-    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
-      outcome: 'ready_for_parent',
-      liveViewUrl: LIVE,
-      choiceIndex: 0,
-      amountChargedCents: null,
-    });
-    const audit = await steps(family.offerId);
-    expect(audit.map((s) => s.step)).toEqual([
-      'plan_approved',
-      'plan_started',
-      'plan_ready',
-      'plan_finished',
-    ]);
-    expect(audit[1]).toMatchObject({ mode: 'assisted' });
-    expect(JSON.stringify(audit)).not.toContain('fixture-live-view-token');
+    const { runner, inputs } = engineLike(PAID);
+    const { deps: d } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('auto');
+    expect((await offerRow(family.offerId))?.status).toBe('completed');
   });
 
   it('asks the parent to sign in again when no saved session is left', async () => {

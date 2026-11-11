@@ -55,6 +55,7 @@ describe('catalog history cutover', () => {
       '0222_parent_calendar_blocks_standing',
       '0223_authorized_signup_plan_resume',
       '0224_linq_shared_group_people_phone_nullable',
+      '0225_provider_login_credentials',
     ]);
   });
 });

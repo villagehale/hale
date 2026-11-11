@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq, sql } from 'drizzle-orm';
+import { signupProviderHost } from './consent';
 import { normalizeSession } from './forms/details';
 import type { BusyInterval, SignupIdentity, SignupOffer, SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
@@ -25,8 +26,9 @@ export async function recordSignupOffer(
   },
 ): Promise<RecordOfferResult> {
   if (!KEY.test(input.activityKey)) return { ok: false, reason: 'activity_key' };
-  if (!registrationUrlAllowed(input.registrationUrl).ok)
-    return { ok: false, reason: 'url_refused' };
+  const allowed = registrationUrlAllowed(input.registrationUrl);
+  if (!allowed.ok) return { ok: false, reason: 'url_refused' };
+  const providerHost = signupProviderHost(new URL(allowed.href).hostname);
   if (input.sessions.length === 0 || input.sessions.length > 12) {
     return { ok: false, reason: 'sessions' };
   }
@@ -44,7 +46,7 @@ export async function recordSignupOffer(
     .where(and(eq(schema.children.id, input.childId), eq(schema.children.familyId, input.familyId)))
     .limit(1);
   if (!child) return { ok: false, reason: 'child_missing' };
-  const pending = await loadPendingOffer(database, input.familyId);
+  const pending = await loadPendingOffer(database, input.familyId, providerHost);
   if (pending) return { ok: false, reason: 'offer_exists' };
   const [row] = await database
     .insert(schema.authorizedSignupOffers)
@@ -53,7 +55,8 @@ export async function recordSignupOffer(
       childId: input.childId,
       parentUserId: input.parentUserId,
       activityKey: input.activityKey,
-      registrationUrl: input.registrationUrl,
+      registrationUrl: allowed.href,
+      providerHost,
       sessions: sessions.filter((session): session is SignupSession => session !== null),
       approvedPriceCents: input.approvedPriceCents,
       planOpensAt: input.planOpensAt ?? null,
@@ -69,6 +72,7 @@ export async function recordSignupOffer(
 export async function loadPendingOffer(
   database: Database,
   familyId: string,
+  providerHost?: string,
 ): Promise<SignupOffer | null> {
   const [row] = await database
     .select({
@@ -87,6 +91,7 @@ export async function loadPendingOffer(
       and(
         eq(schema.authorizedSignupOffers.familyId, familyId),
         eq(schema.authorizedSignupOffers.status, 'pending'),
+        ...(providerHost ? [eq(schema.authorizedSignupOffers.providerHost, providerHost)] : []),
       ),
     )
     .limit(1);
@@ -196,7 +201,7 @@ export async function loadSignupIdentity(
   return {
     childFirstName: child.name,
     childLastName: child.lastName,
-    childDob: child.dobPrecision === 'exact' ? child.dateOfBirth : null,
+    childDob: child.dobPrecision === 'exact' ? child.dateOfBirth : null, // derived dates are never typed
     parentFirstName: parent?.name ?? null,
     parentEmail: parent?.email ?? null,
     postalCode: family.postalCode,

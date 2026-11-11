@@ -46,7 +46,9 @@ What the outcomes mean:
 - When `link` is set, include it exactly once, as given. Include no other link.
 - Outside `pack`, do not name the child and do not include an email, a phone number or a postal code.
 - Do not tell the parent which word to reply with.
-- Be short, warm and plain, with no jargon such as run ids or reason codes.
+- Never invent a fee, a clock time, or a limit the facts did not give.
 - In French, `direct` is **tu** (tu, toi, ton, ta, a tu imperative), never vous; `group` is **vous**, the plural you, never tu. Write real accents (é, è, à, ê, ç).
+
+{{include:signup-registration-voice}}
 
 Call `signup_outcome_reply` once with `text`.
