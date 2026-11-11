@@ -443,6 +443,7 @@ async function loadRuns(database: Database, realIds: string[], window: { start: 
       agentName: r.agentName,
       promptCacheHit: r.promptCacheHit,
       cacheReadTokens: r.cacheReadTokens,
+      cacheWriteTokens: r.cacheWriteTokens,
       promptTokens: r.promptTokens,
       latencyMs: r.latencyMs,
       costUsd: r.costUsd,
@@ -469,12 +470,16 @@ function summarizeCache(rows: RunRow[]): OpsDailyReport['cache'] {
       const measured = agentRows.filter((row) => row.promptCacheHit !== null);
       const tokenRows = agentRows.filter((row) => row.cacheReadTokens !== null);
       const read = tokenRows.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0);
-      const fresh = tokenRows.reduce((sum, row) => sum + (row.promptTokens ?? 0), 0);
+      const write = tokenRows.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0);
+      const billed = tokenRows.reduce((sum, row) => sum + (row.promptTokens ?? 0), 0);
+      // promptTokens is billed full-rate (input + cache writes). Fall back to writes
+      // when billed is missing so the rate is cacheRead / (read + input + creation).
+      const inputAndWrites = billed > 0 ? billed : write;
       return {
         agentName,
         runs: measured.length,
         hitRuns: measured.filter((row) => row.promptCacheHit === true).length,
-        tokenRate: read + fresh > 0 ? read / (read + fresh) : null,
+        tokenRate: read + inputAndWrites > 0 ? read / (read + inputAndWrites) : null,
         tokenRuns: tokenRows.length,
         latencyP95Ms: percentileNearestRank(
           agentRows.flatMap((row) => (row.latencyMs === null ? [] : [row.latencyMs])),
@@ -482,7 +487,10 @@ function summarizeCache(rows: RunRow[]): OpsDailyReport['cache'] {
         ),
       };
     })
-    .sort((a, b) => b.runs - a.runs || a.agentName.localeCompare(b.agentName));
+    .sort(
+      (a, b) =>
+        b.tokenRuns - a.tokenRuns || b.runs - a.runs || a.agentName.localeCompare(b.agentName),
+    );
 }
 
 /** Recorded spend per real family. A lower bound: not every model call records a run. */

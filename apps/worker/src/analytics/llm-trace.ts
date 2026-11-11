@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
+import { cacheHitRate } from '@hale/agent';
 import type { PostHog } from 'posthog-node';
 import { projectClient } from './posthog.js';
 
@@ -28,10 +29,20 @@ export type HaleStage =
   | 'intake_extract'
   | 'inbound_screen'
   | 'classify_event'
+  | 'drafter'
   | 'reviewer'
   | 'discovery'
   | 'coach'
   | 'retention'
+  | 'claim_read'
+  | 'reminder'
+  | 'voice'
+  | 'plan'
+  | 'activity'
+  | 'notice'
+  | 'spoken_line'
+  | 'onboarding'
+  | 'compose'
   | 'unattributed';
 
 export interface LlmTraceContext {
@@ -84,6 +95,10 @@ export function buildGenerationProperties(input: {
     props.$ai_cache_read_input_tokens = usage.cache_read_input_tokens;
   if (usage?.cache_creation_input_tokens != null)
     props.$ai_cache_creation_input_tokens = usage.cache_creation_input_tokens;
+  if (usage?.cache_read_input_tokens != null || usage?.cache_creation_input_tokens != null) {
+    const rate = cacheHitRate(usage);
+    if (rate != null) props.hale_cache_hit_rate = rate;
+  }
   if (input.stopReason) props.$ai_stop_reason = input.stopReason;
   if (ctx.promptVersion) props.prompt_version = ctx.promptVersion;
   if (ctx.channel) props.channel = ctx.channel;

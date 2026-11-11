@@ -238,7 +238,10 @@ export function productionCalendarWriteNoticePorts(
       return minted.status === 'minted' ? minted.url : null;
     },
     compose: (input) =>
-      composeCalendarWriteNotice(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
+      composeCalendarWriteNotice(
+        budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'notice' }),
+        input,
+      ),
     async send(familyId, parentUserId, text, optOut) {
       const now = new Date();
       const dedupeKey = `calendar_write_notice:${familyId}:${parentUserId}:${now.toISOString()}`;

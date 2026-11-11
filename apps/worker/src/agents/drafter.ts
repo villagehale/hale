@@ -1,4 +1,4 @@
-import { forceToolJson, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, forceToolJson, pickLane } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { anthropicClient } from '../anthropic/client.js';
@@ -66,9 +66,10 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
   const lane = pickLane('draft');
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
-    client: anthropicClient(),
+    client: anthropicClient('drafter'),
     lane,
     system: instructions,
+    cacheTtl: SPARSE_CACHE_TTL,
     userMessage,
     toolName: 'draft_action',
     toolDescription: 'Return the structured draft of the proposed action.',

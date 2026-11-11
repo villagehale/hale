@@ -179,4 +179,21 @@ describe('buildGenerationProperties', () => {
     );
     expect(props.$ai_latency).toBe(1.5);
   });
+
+  it('reports cache hit rate from the three token fields', () => {
+    const props = buildGenerationProperties({
+      ctx: { stage: 'coach' },
+      model: 'm',
+      latencyMs: 100,
+      usage: {
+        input_tokens: 10,
+        cache_read_input_tokens: 80,
+        cache_creation_input_tokens: 10,
+      },
+    });
+    expect(props.$ai_cache_read_input_tokens).toBe(80);
+    expect(props.$ai_cache_creation_input_tokens).toBe(10);
+    expect(props.$ai_input_tokens).toBe(10);
+    expect(props.hale_cache_hit_rate).toBe(0.8);
+  });
 });

@@ -554,7 +554,8 @@ export function productionGroupPlanReportPorts(
         { ...buildOutboundGatePorts(database), watchConsentGranted: async () => true },
       ),
     mintLink: (familyId, familyEventId) => mintEventInviteLink(database, familyId, familyEventId),
-    compose: (input) => composeGroupPlanReport(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
+    compose: (input) =>
+      composeGroupPlanReport(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'plan' }), input),
     /**
      * Every message is claimed before anything goes, in one transaction: the revision on
      * the last message's row, each other message keyed off it. A setup that fails claims
