@@ -759,20 +759,24 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
 
 /**
  * VIL-567 · `search_village` as apps/web/lib/coach/tools.ts declares it today: its own
- * description, `query` and `window`, and its examples. The shared fake below predates the
+ * description, `query`, `window` and `area`, and its examples. The shared fake below predates the
  * `window` field, and every standing recording is keyed on it, so only a `findTurnPrompt`
  * fixture gets this one. A search with no window searches the whole year in production
  * (village/live.ts), so the fixture's `yearVillage` answers it; a window gets `village`.
  */
 const SEARCH_VILLAGE_DESCRIPTION =
-  'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.';
+  'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.';
 
 function windowedSearchVillageTool(agent, record, village, yearVillage, toolOutputs) {
   return agent.defineTool({
     name: 'search_village',
     description: SEARCH_VILLAGE_DESCRIPTION,
-    inputSchema: z.object({ query: z.string().optional(), window: z.string().optional() }),
-    inputExamples: [{ query: 'swim' }, {}],
+    inputSchema: z.object({
+      query: z.string().optional(),
+      window: z.string().optional(),
+      area: z.string().min(1).optional(),
+    }),
+    inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Kingston' }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input) => {

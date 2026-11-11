@@ -17,6 +17,8 @@
 //   rather than in a fixture of their own because the leak that matters is the casual
 //   one: a "what's on this week" answer that lists everything.
 
+import { judgePrompt } from './lib/judge-prompt.mjs';
+
 /** The family's IANA zone. Every `when` below is EDT (UTC-4) in the first week of August. */
 export const FIXTURE_TIMEZONE = 'America/Toronto';
 
@@ -485,7 +487,7 @@ export const FIXTURE_VILLAGE_YEAR = {
  * VIL-567 · the day judge. Graded by meaning: "today", "this afternoon" and the weekday's
  * name are one day. A fixture states the day the parent means in `expect.dayJudge.day`.
  */
-export const FIND_DAY_JUDGE_SYSTEM = `You grade one SMS reply from Hale, a planner for a family's kids' year, on ONE question: does it offer something for the day the parent means? You are given the parent's text, the conversation before it, today on the family's own clock, the day the parent means, the time window Hale searched (null means no window, which searches the whole year), the finds that search returned with each one's own day, and the reply. Judge by meaning, not by wording: "today", "this afternoon", a date and the weekday's name can all name the same day. Score 5 when Hale searched a window that covers that day, and every activity the reply offers runs on that day, the first one included. Score 4 when that holds and the reply also mentions a find on a different day, plainly as a different day. Score 2 or below when Hale searched without a window or for a window that misses that day, when the reply leads with a find that does not run on that day or offers one as if it did, when it offers nothing although a returned find runs that day, or when it asks the parent which day they mean. Give a short reason first; do not quote the reply.`;
+export const FIND_DAY_JUDGE_SYSTEM = judgePrompt('coach-find-day');
 
 /** The stand-in that fails the day judge: it hands over the first candidate, whatever its day. */
 const FIND_DAY_BROKEN = {
