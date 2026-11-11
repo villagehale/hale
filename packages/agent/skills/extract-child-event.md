@@ -29,13 +29,32 @@ Return strict JSON matching this shape (via the forced extraction tool):
     "child_ref": string | null,        // see "Child attribution"
     "original_time": string | null,    // ISO 8601 datetime with offset
     "new_time": string | null,         // ISO 8601 datetime with offset
-    "location": string | null
+    "end_time": string | null,         // see "End time"
+    "location": string | null,
+    "address": string | null           // see "Address"
   },
   "source_confidence": number,         // 0–1
   "quote_evidence": string,            // the ONE minimal sentence supporting this
   "teen_content": boolean              // see "Teen content"
 }
 ```
+
+## End time
+
+`end_time` is when the occasion described by `new_time` ends, as an ISO 8601
+datetime with offset, resolved the same way as the other times. Set it only when
+the email itself states an end: an end time, a time range, or a length you can
+add to the start. When the email does not say, leave it null. Never estimate a
+length from what kind of occasion it is. It is always null when `new_time` is null.
+
+## Address
+
+`address` is the street address of the occasion's place, copied exactly as the
+email writes it: the number and street, and the city or postal line when the
+email gives them with it. Set it only when the email itself states a street
+address. A place name, a room or a pool number is not an address; it belongs in
+`location`. Never complete, correct or look up an address. When the email has
+none, leave it null.
 
 ## Kind
 

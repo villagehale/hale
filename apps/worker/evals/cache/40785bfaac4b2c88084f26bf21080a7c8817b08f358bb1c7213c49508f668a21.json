@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Totally fair. Could you give me just the first three characters of your postal code or ZIP? That's enough to find things by area, not your street.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1295
+}

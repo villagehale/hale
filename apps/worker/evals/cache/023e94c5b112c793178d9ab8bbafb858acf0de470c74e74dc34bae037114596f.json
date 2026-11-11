@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The language requested is English but the text is mostly French (\"Jour de congé\"), a mixed-language reply that fails the language requirement. It also invents a clock time (3:00) for an all-day event, which the facts forbid, and claims the day is open and provides breathing room, implying nothing is scheduled, which is a low-scoring failure. The date header 'Mon, Oct 26' is a calendar-style readout, and the title 'PD Day' is replaced with 'Jour de congé', changing what the event is.",
+    "score": 1
+  }
+}

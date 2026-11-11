@@ -5,13 +5,14 @@ import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
   createOutboundTransport,
   failedSendPatch,
   plainTextWithoutLinks,
   readSendRefusal,
+  sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -60,7 +61,9 @@ export function defaultFreshLinkPorts(): FreshLinkPorts {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
-    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    saidLine: createSaidLineWriter(() =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    ),
   };
 }
 

@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadTranscript, resolveNoteConversation } from '~/lib/coach/conversation';
@@ -8,18 +9,25 @@ import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { GroupTurnDecision } from './group-turn-policy';
 
 /**
  * VIL-440 (T27) — the model reads whether a group message is Hale's turn.
  *
- * Replaces name and keyword matching (`decideGroupTurn`) when
- * `LINQ_GROUP_TURN_AI_ENABLED` is exactly `true` (default off). Code owns the routing;
+ * The only group turn path: there is no name or keyword fallback. It runs when
+ * `LINQ_GROUP_TURN_AI_ENABLED` is exactly `true` (default off; dark means silent in the
+ * group). Code owns the routing;
  * the `group-turn-read` skill reads the words in any language. No echo of the text is
  * asked for, so a long message is never dropped for not fitting the output. A failed
  * read keeps Hale silent (one unasked reply in a family chat is worse than one missed
  * turn) and logs.
  */
+
+/** Whether a group message is Hale's to answer. Opt-out (read by the model, #868) wins. */
+export type GroupTurnDecision =
+  | { route: 'keyword'; keyword: 'stop' | 'start' }
+  | { route: 'coach'; reason: 'addressed' | 'question' }
+  | { route: 'duty' }
+  | { route: 'ignore'; outcome: 'group_chatter_ignored' };
 
 export const GROUP_TURNS = ['addressed', 'question_for_hale', 'duty', 'chatter'] as const;
 export type GroupTurnReading = (typeof GROUP_TURNS)[number];
@@ -29,6 +37,8 @@ export interface GroupTurnReadInput {
   senderName: string | null;
   haleNames: readonly string[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
+  /** VIL-475 — iMessage mentions Linq already resolved. Absent when the flag is off. */
+  mentions?: { haleMentioned: boolean; mentionedMembers: { name: string | null }[] };
 }
 
 export interface GroupTurnReader {
@@ -53,11 +63,12 @@ export function groupTurnUserMessage(input: GroupTurnReadInput): string {
     senderName: input.senderName,
     haleNames: [...input.haleNames],
     recent: input.recent.slice(-GROUP_TURN_RECENT_LINES),
+    ...(input.mentions ? { mentions: input.mentions } : {}),
   });
 }
 
 export function linqGroupTurnAiEnabled(): boolean {
-  return process.env.LINQ_GROUP_TURN_AI_ENABLED?.trim() === 'true';
+  return isEnabled('linq-group-turn-ai');
 }
 
 /** Map a reading (or a failed read) to the door's route. Opt-out still wins first. */
@@ -113,7 +124,9 @@ export function createGroupTurnReader(
 let shared: GroupTurnReader | null = null;
 
 export function sharedGroupTurnReader(): GroupTurnReader {
-  shared ??= createGroupTurnReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupTurnReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 
@@ -144,9 +157,12 @@ export async function groupTurnReadContext(
   const transcript = await loadTranscript(conversationId, database);
   return {
     senderName,
-    recent: transcript.slice(-GROUP_TURN_RECENT_LINES).map((line) => ({
-      from: line.role === 'assistant' ? ('hale' as const) : ('member' as const),
-      text: line.content,
-    })),
+    recent: transcript
+      .filter((line) => line.role !== 'tool')
+      .slice(-GROUP_TURN_RECENT_LINES)
+      .map((line) => ({
+        from: line.role === 'assistant' ? ('hale' as const) : ('member' as const),
+        text: line.content,
+      })),
   };
 }

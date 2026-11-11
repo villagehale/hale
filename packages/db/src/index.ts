@@ -8,7 +8,12 @@ export type {
   WeekPlanVoice,
   NewWeekPlan,
 } from './schema/week-plans.js';
-export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
+export type {
+  CalendarStanding,
+  FamilyEvent,
+  FamilyEventNotes,
+  NewFamilyEvent,
+} from './schema/family-events.js';
 export { householdFamilyEvent } from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {
@@ -33,6 +38,7 @@ export type {
   SocialPlatform,
 } from './schema/social-watchlist.js';
 export type { CandidateAccess } from './schema/village.js';
+export type { AuthorizedSignupPlanResume } from './schema/authorized-signup-offers.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
 export type {
   FamilyWorkstream,
@@ -67,3 +73,4 @@ export {
   WATCHED_SPOT_RELEASE_REASONS,
   WATCHED_SPOT_STATES,
 } from './schema/watched-spots.js';
+export { REGISTRATION_COURSE_URL_MAX_CHARS } from './schema/registration-sequences.js';

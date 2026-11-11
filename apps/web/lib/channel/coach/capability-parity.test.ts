@@ -73,7 +73,10 @@ const COACH_PATHS: ReadonlyArray<{ row: string; paths: readonly CoachPath[] }> =
       { tool: 'promise_activity_followup' },
     ],
   },
-  { row: 'raising kids:', paths: [{ tool: 'get_framework_guidance' }, { tool: 'offer_full_plan' }] },
+  {
+    row: 'raising kids:',
+    paths: [{ tool: 'get_framework_guidance' }, { tool: 'offer_full_plan' }],
+  },
   { row: 'routine health admin', paths: [{ tool: 'lookup_week' }] },
   { row: 'telling a friend', paths: [{ tool: 'share_referral_link' }] },
   // The one capability with neither a verb nor a clause. `save_memory` is deliberately
@@ -114,6 +117,7 @@ describe('capability table ↔ the coach that has to honour it', () => {
   const registered = () =>
     buildChannelCoachTools({
       familyId: 'f',
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
@@ -121,7 +125,12 @@ describe('capability table ↔ the coach that has to honour it', () => {
       // Production wires the watch verb's three ports too (see productionChannelCoach),
       // and the frontmatter names it — a parity set built without them would report a
       // skill listing a tool nobody registers, which is a mid-turn throw in prod.
-      spots: { fetchBody: {} as never, reader: {} as never, watchConsentGranted: {} as never },
+      spots: {
+        fetchBody: {} as never,
+        reader: {} as never,
+        watchConsentGranted: {} as never,
+        readClassAvailability: {} as never,
+      },
       onOffer: () => {},
       onShare: () => {},
       onPromise: () => {},

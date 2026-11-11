@@ -23,9 +23,9 @@
 // every gate it had and still shipped six asks that said "Hale can make an introduction"
 // and two that said "let us know" — one product speaking about itself in the third person
 // while every acknowledgement in copy.ts says "I'll introduce you both". Nothing was
-// watching for it, including the judge, which scored all six a 5. `third_person_self` and
-// `first_person_plural` are now mechanical refusals in voice.ts, the skill says so
-// outright, and the judge's rubric names both plus plain grammatical errors — the other
+// watching for it, including the judge, which scored all six a 5. Those are voice, so the
+// judge holds them (VIL-450 removed the word-matching refusals for them from voice.ts):
+// the judge's rubric names both plus plain grammatical errors — the other
 // thing it waved through ("Worth a intro?", scored 5). A rubric that passes a typo is not
 // reading the copy.
 //
@@ -67,14 +67,18 @@ import {
 } from './intro-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   normalizeForCompare,
   similarity,
@@ -138,21 +142,6 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
 const KEYWORD_INSTRUCTION =
   /\b(reply|respond|text|send|type)\b[^.?!]{0,20}\b(yes|no|y\b|n\b|intro|intros)\b/i;
 
-/**
- * Mirrors THIRD_PERSON_SELF — Hale as the SUBJECT OF A VERB, never the brand name.
- *
- * This suite is where the defect came from: the first live recording wrote "Hale can make
- * an introduction" in six asks out of six, and every one of them scored a 5 from a judge
- * that had not been told to care. "Another Hale family nearby" stays legal, because it is
- * the premise of the message and there is no other way to say it.
- */
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|makes|make|made|might|may|does|knows|thinks|found|sends|texts|introduces)\b/i;
-
-/** Mirrors FIRST_PERSON_PLURAL. Same recording, same cause: "Let us know if you would
- * rather we never raise this" is a support queue, not a chief of staff. */
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
-
 /** Bound in main() once the real modules load — the segment counter and the compliance
  * line the send appends, not copies. */
 let smsSegmentsRef = () => 1;
@@ -180,8 +169,6 @@ function introAskRefusals(body, request) {
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   if (KEYWORD_INSTRUCTION.test(body)) found.push('instructs_keyword');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
 
   const lower = body.toLowerCase();
   if (!lower.includes('introduc') && !lower.includes('intro')) {
@@ -215,8 +202,6 @@ const GATE_NAMES = [
   'too_many_questions',
   'not_a_sentence',
   'instructs_keyword',
-  'third_person_self',
-  'first_person_plural',
   'introduction_word_missing',
   'counterpart_word_missing',
   'own_child_missing',
@@ -322,65 +307,13 @@ function flatten(text) {
 
 // ── the judge ────────────────────────────────────────────────────────────────
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sends a parent about introducing',
-  'them to another family nearby. Score 1-5.',
-  'There are two kinds. kind "optin" is the first and only time Hale raises introductions',
-  'unprompted, and it was composed from NOTHING - no name, no neighbourhood, no child, no',
-  'count of families. kind "proposal" means a specific match exists, and Hale was handed',
-  'exactly three facts: a band word for the other family\'s child ("toddler",',
-  '"preschooler"), the recipient\'s OWN child already written the way this parent asked for',
-  '("Maya\'s", "your kid\'s"), and sometimes one real activity title and the weekday it',
-  'falls on. It was handed nothing else and it has no tools.',
-  'You are given the request it was answering, the message, and watchFor - fixture-specific',
-  'notes on what right and wrong look like here.',
-  'A 5 sounds like a competent human chief of staff raising something small: it gives a',
-  'REASON rather than a claim, it does not oversell, it does not read as a mass text, and it',
-  'is fine with being told no. The offer is small and it is treated as small. It is written',
-  'in the first person singular, and it is written in correct English.',
-  'TWO THINGS THAT ARE LOW, and are spelled out because an earlier version of this rubric',
-  'scored both of them 5.',
-  'FIRST, THE SPEAKER. Score the DEFECT, never the cure. The defect is exactly two things:',
-  'the literal word "Hale" standing as the GRAMMATICAL SUBJECT of a verb ("Hale can make an',
-  'introduction", "Hale will introduce you", "Hale found a match"), or the words "we", "us"',
-  'or "our" ("let us know", "want us to reach out"). Nothing else counts.',
-  'If the message refers to itself in the first person singular at all, this item is',
-  'SATISFIED and you move on. You may NOT prefer one first-person construction over another.',
-  '"I can introduce you", "I can make an introduction", "I\'ll reach out to them", "happy to',
-  'introduce you" and "want me to introduce you?" are all equally correct, and marking one',
-  'down for not being another is legislating phrasing, which is not your job here.',
-  '"Another Hale family", "another Hale family nearby" and the like are CORRECT AND',
-  'EXPECTED: a noun phrase naming the OTHER household, which is the one place that word',
-  'belongs. That is not the product talking about itself, and a message opening with it has',
-  'not failed this item. Do not infer a company voice from a formal-sounding verb, and do',
-  'not mark down contractions ("there\'s", "I don\'t", "you\'re"): those are the house voice.',
-  'SECOND: any plain grammatical error, however small - a wrong article ("Worth a intro?"),',
-  'a disagreeing verb, a missing word, a mangled clause. This message is the whole of what',
-  'the parent reads and a typo in it is the product looking broken. Read the sentence as a',
-  'copy editor before you score it.',
-  'A LOW score is also any of: announcement voice - a product telling a user about a feature;',
-  'opening with "Something new", "Good news", "Introducing" or anything of that family;',
-  'exclamation marks; a greeting ("Hi there") or a sign-off; telling the parent what to type',
-  'back ("Reply YES", "text NO to decline", "just say yes or no") - which means naming a',
-  'specific word or token to send, NOT merely asking a question a parent could answer yes or',
-  'no to, which is the correct way to ask; overselling -',
-  '"a great match", "perfect fit", "you\'ll love them" - which is the product\'s claim about',
-  'itself rather than a reason; implying Hale knows more about the other family than it does',
-  '- their name, their street, how far away they are, how many there are, what they are',
-  "like, or that Hale has spoken to them; implying Hale remembers this family's history or",
-  'calendar; hype, emoji, pressure, urgency or a deadline; more than one question; padding',
-  'after the ask; anything longer than a glance.',
-  'For "optin" specifically: a parent\'s first reaction to an offer of an introduction is',
-  '"what did you tell them". A 5 answers that before they ask it - nothing is shared unless both',
-  'families say yes - and says it can be switched off. Leaving both out is LOW.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('intro-voice');
 
 // Deterministic broken stand-in, one string for every fixture: it instructs a keyword
 // ("Reply YES INTROS"), calls Hale by name ("Hale has"), uses the royal we ("us"), asks two
 // questions, invents a number ("3"), drops every pinned proposal fact (no band word, no own
 // child, no anchor), and opens in the exact announcement voice this arc deleted. So
-// `--broken` proves instructs_keyword + third_person_self + first_person_plural +
+// `--broken` proves instructs_keyword + (judge: third person, royal we) +
 // too_many_questions + invented_number + counterpart_word_missing + own_child_missing +
 // anchor_missing + the retired-copy gate + the invented-name gate all bite, rather than
 // one of them carrying the calibration alone.
@@ -396,6 +329,7 @@ const BROKEN_ASK =
   'you rather not? Reply YES INTROS or NO INTROS.';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -456,13 +390,15 @@ async function main() {
     if (fixture.noProperNames) failures.push(...inventedProperNames(body, fixture.request));
 
     const usable = failures.length === 0;
-    const verdict = usable
-      ? await judge(fixture.id, {
-          request: userMessage,
-          message: body,
-          watchFor: fixture.watchFor,
-        })
-      : null;
+    // --dry prices the judge as if the reply were usable: a worst case, never a call.
+    const verdict =
+      usable || isDryRun()
+        ? await judge(fixture.id, {
+            request: userMessage,
+            message: body,
+            watchFor: fixture.watchFor,
+          })
+        : null;
     if (verdict && verdict.score < JUDGE_MIN) {
       failures.push(`judge:${verdict.score} (${verdict.reason})`);
     }
@@ -531,6 +467,10 @@ async function main() {
   const allPass = results.every((r) => r.failures.length === 0) && variation.passed;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('intro-voice', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

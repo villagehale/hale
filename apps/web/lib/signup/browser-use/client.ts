@@ -181,6 +181,10 @@ export function browserUseApi(options: {
         timeout: input.timeoutMinutes,
         proxyCountryCode: input.proxyCountryCode,
         enableRecording: false,
+        // Barton approved CAPTCHA solving for the seed browser (supersedes VIL-558's
+        // "never solve"). V4 run browserSettings has no such field, so only a browser
+        // Hale creates itself can carry it.
+        solveCaptchas: true,
       });
       return { id: browser.id, cdpUrl: browser.cdpUrl ?? null };
     },

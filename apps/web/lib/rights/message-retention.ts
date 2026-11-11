@@ -415,7 +415,25 @@ async function redactIntakeSessions(
     )
     .orderBy(asc(schema.smsIntakeSessions.updatedAt), asc(schema.smsIntakeSessions.id))
     .limit(batch);
-  if (due.length === 0) return 0;
+  return redactIntakeSessionsById(
+    database,
+    due.map((row) => row.id),
+    now,
+  );
+}
+
+/**
+ * Takes what these intake sessions hold (the transcript, the collected details, the
+ * number) and closes any still open. The row stays: its id, number hash and times are the
+ * record that it existed. Every path that redacts a session comes through here, retention
+ * and erasure alike.
+ */
+export async function redactIntakeSessionsById(
+  database: Database,
+  ids: readonly string[],
+  now: Date,
+): Promise<number> {
+  if (ids.length === 0) return 0;
   const updated = await database
     .update(schema.smsIntakeSessions)
     .set({
@@ -423,12 +441,7 @@ async function redactIntakeSessions(
       phoneEncrypted: INTAKE_CONTENT_REDACTED,
       closedAt: sql`coalesce(${schema.smsIntakeSessions.closedAt}, ${now})`,
     })
-    .where(
-      inArray(
-        schema.smsIntakeSessions.id,
-        due.map((row) => row.id),
-      ),
-    )
+    .where(inArray(schema.smsIntakeSessions.id, [...ids]))
     .returning({ id: schema.smsIntakeSessions.id });
   return updated.length;
 }

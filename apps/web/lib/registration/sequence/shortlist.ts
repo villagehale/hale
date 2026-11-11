@@ -135,10 +135,10 @@ function joinLabels(labels: readonly string[]): string {
  * single published cycle name — the source prints one row per cycle — so it names the
  * DOMAINS that open together, deduped, and lets the date carry the season.
  */
-function cyclePhraseOf(cycleWindows: readonly { programDomain: ProgramDomain; cycleLabel: string }[]): string {
-  const domainLabels = [
-    ...new Set(cycleWindows.map((w) => PROGRAM_DOMAIN_LABEL[w.programDomain])),
-  ];
+function cyclePhraseOf(
+  cycleWindows: readonly { programDomain: ProgramDomain; cycleLabel: string }[],
+): string {
+  const domainLabels = [...new Set(cycleWindows.map((w) => PROGRAM_DOMAIN_LABEL[w.programDomain]))];
   const only = cycleWindows.length === 1 ? cycleWindows[0] : null;
   if (!only) return joinLabels(domainLabels);
   return namesAProgram(only.cycleLabel)
@@ -163,7 +163,11 @@ export function buildShortlist(
   const { window } = match;
   const fitNotes: FitNote[] = [];
   for (const child of children) {
-    const fit = fitOf(ageInMonths(child.dateOfBirth, now), window.ageMinMonths, window.ageMaxMonths);
+    const fit = fitOf(
+      ageInMonths(child.dateOfBirth, now),
+      window.ageMinMonths,
+      window.ageMaxMonths,
+    );
     if (fit === null) continue;
     const isTeen = deriveStage(child.dateOfBirth, now) === 'teenager';
     fitNotes.push({ childId: child.id, name: isTeen ? null : child.name, fit });

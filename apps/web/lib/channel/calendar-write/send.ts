@@ -8,9 +8,9 @@ import { eq } from 'drizzle-orm';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   PROACTIVE_CATEGORY,
   type ProactiveHoldReason,
@@ -22,6 +22,7 @@ import {
   createOutboundTransport,
   failedSendPatch,
   readSendRefusal,
+  sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -58,18 +59,27 @@ import {
 
 export const CALENDAR_WRITE_NOTICE_TEMPLATE_KEY = 'calendar_write_notice';
 
-export type NoticeSendOutcome = 'sent' | 'no_send_target' | 'no_chat' | 'send_failed' | 'errored';
+export type NoticeSendOutcome =
+  | 'sent'
+  | 'queued'
+  | 'no_send_target'
+  | 'no_chat'
+  | 'send_failed'
+  | 'errored';
 
 export interface CalendarWriteNoticePorts {
   enabled(): boolean;
   /** The proactive-send gate (opt-out, consent, quiet hours) for this parent, now. */
   gate(familyId: string, parentUserId: string, now: Date): Promise<ProactiveSendVerdict>;
   now?(): Date;
-  /** The event as this parent may see it, or null when it can't be read. */
-  loadEvent(request: GoogleCalendarPlacementRequest & { actorUserId: string }): Promise<{
-    event: CalendarWriteEvent;
-    language: ReplyLanguage;
-  } | null>;
+  /** The event as this parent may see it, or why it can't be stated to them. */
+  loadEvent(request: GoogleCalendarPlacementRequest & { actorUserId: string }): Promise<
+    | {
+        event: CalendarWriteEvent;
+        language: ReplyLanguage;
+      }
+    | LoadEventRefusal
+  >;
   /** A one-tap calendar connect link for this parent, or null when none could be minted. */
   connectLink(familyId: string, parentUserId: string): Promise<string | null>;
   compose(input: CalendarWriteNoticeInput): Promise<string | null>;
@@ -81,12 +91,15 @@ export interface CalendarWriteNoticePorts {
   ): Promise<NoticeSendOutcome>;
 }
 
+/** `zone_unreadable`: no zone on record for this parent, or one Intl cannot read. */
+export type LoadEventRefusal = 'event_unreadable' | 'zone_unreadable';
+
 export type CalendarWriteNoticeResult =
   | 'disabled'
   | 'no_actor'
   | 'no_news'
   | `held:${ProactiveHoldReason}`
-  | 'event_unreadable'
+  | LoadEventRefusal
   | 'no_link'
   | 'unwritten'
   | NoticeSendOutcome;
@@ -106,7 +119,7 @@ export async function noticeAfterSync(
     const verdict = await ports.gate(request.familyId, actorUserId, ports.now?.() ?? new Date());
     if (!verdict.allowed) return `held:${verdict.reason}`;
     const loaded = await ports.loadEvent({ ...request, actorUserId });
-    if (!loaded) return 'event_unreadable';
+    if (typeof loaded === 'string') return loaded;
     const needsLink =
       outcome === 'no_calendar' || outcome === 'needs_permission' || outcome === 'needs_reconnect';
     const link = needsLink ? await ports.connectLink(request.familyId, actorUserId) : null;
@@ -163,12 +176,22 @@ async function familyGroupChatId(database: Database, familyId: string): Promise<
   return row?.linqGroupChatId ?? null;
 }
 
-async function parentTimezone(database: Database, userId: string): Promise<string> {
+async function parentTimezone(database: Database, userId: string): Promise<string | null> {
   const [row] = await database
     .select({ timezone: schema.users.timezone })
     .from(schema.users)
     .where(eq(schema.users.id, userId));
-  return row?.timezone ?? 'America/Toronto';
+  return row?.timezone ?? null;
+}
+
+/** Null when Intl cannot read the zone (empty, or no IANA name). */
+function whenLabelInZone(startsAt: Date, timeZone: string): string | null {
+  try {
+    return inviteWhenLabel(startsAt, timeZone);
+  } catch (err) {
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
 }
 
 /** Production ports. The send is a 1:1 text on the parent's own door, never the group. */
@@ -195,15 +218,13 @@ export function productionCalendarWriteNoticePorts(
         },
         { database },
       );
-      if (composed.status !== 'composed') return null;
+      if (composed.status !== 'composed') return 'event_unreadable';
       const timezone = await parentTimezone(database, request.actorUserId);
+      const when = timezone === null ? null : whenLabelInZone(composed.startsAt, timezone);
+      if (when === null) return 'zone_unreadable';
       return {
         // Rendered at this parent's own privacy level; the place is left out on purpose.
-        event: {
-          title: composed.summary,
-          when: inviteWhenLabel(composed.startsAt, timezone),
-          where: null,
-        },
+        event: { title: composed.summary, when, where: null },
         language: await familyLanguage(database, request.familyId),
       };
     },
@@ -217,8 +238,45 @@ export function productionCalendarWriteNoticePorts(
       return minted.status === 'minted' ? minted.url : null;
     },
     compose: (input) =>
-      composeCalendarWriteNotice(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
+      composeCalendarWriteNotice(
+        budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'notice' }),
+        input,
+      ),
     async send(familyId, parentUserId, text, optOut) {
+      const now = new Date();
+      const dedupeKey = `calendar_write_notice:${familyId}:${parentUserId}:${now.toISOString()}`;
+      if (await isQueuedForDecider(database, familyId, dedupeKey)) return 'queued';
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId,
+            parentUserId,
+            kind: 'calendar_alert',
+            category: PROACTIVE_CATEGORY.calendar_alert,
+            templateKey: CALENDAR_WRITE_NOTICE_TEMPLATE_KEY,
+            what: text,
+            why: 'calendar_alert',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey,
+            payload: { auditVerb: 'calendar_alert_sent' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'families',
+          targetId: familyId,
+          after: { kind: 'calendar_alert' },
+        });
+        return 'queued';
+      }
       const body = withOptOut(text, optOut);
       const phone = await resolveSendablePhone(database, parentUserId);
       if (!phone) return 'no_send_target';
@@ -228,7 +286,6 @@ export function productionCalendarWriteNoticePorts(
       const chatId = door.channel === 'imessage' ? door.chatId : null;
       if (door.channel === 'imessage' && !chatId) return 'no_chat';
       const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
-      const now = new Date();
       const [claimed] = await database
         .insert(schema.channelMessages)
         .values({

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct: title kept, day is today, start 10:00 AM and end 11:00 AM stated, no invented details, English, no link or emoji. However, it reads like a calendar readout ('X is today at A, running until B') rather than how a friend would text, which caps it at 3.",
+    "score": 3
+  }
+}

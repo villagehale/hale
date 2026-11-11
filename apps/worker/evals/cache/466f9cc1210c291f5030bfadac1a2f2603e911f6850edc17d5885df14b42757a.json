@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: tomorrow (Monday, from Sunday evening), 4:45 PM start, 5:45 PM end, and it stays generic as 'an appointment' with no guessing and no invented detail. But the construction 'you have an appointment, ending around 5:45 PM' reads like a calendar readout rather than a friend's text, and 'around' softens an exact end time given in the facts. A friend would say something like 'Tomorrow afternoon, an appointment from 4:45 to 5:45.' That stiff, notification-like phrasing caps the score at 3.",
+    "score": 3
+  }
+}

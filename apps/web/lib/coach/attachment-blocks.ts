@@ -22,7 +22,11 @@ export function attachmentContentBlock(bytes: Buffer, mime: string): Anthropic.C
   if (IMAGE_BLOCK_MIMES.has(mime)) {
     return {
       type: 'image',
-      source: { type: 'base64', media_type: mime as 'image/jpeg' | 'image/png' | 'image/webp', data },
+      source: {
+        type: 'base64',
+        media_type: mime as 'image/jpeg' | 'image/png' | 'image/webp',
+        data,
+      },
     };
   }
   if (mime === 'application/pdf') {

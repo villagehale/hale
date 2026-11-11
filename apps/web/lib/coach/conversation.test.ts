@@ -1,5 +1,5 @@
+import { type Database, schema } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { schema, type Database } from '@hale/db';
 import {
   loadLatestThread,
   resolveLatestConversationForFamily,

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "That's fine. If you'd rather not share the full code, could you give me just the first three characters of your postal code, or the first five digits of your ZIP? That's enough for me to find things in your area.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse"
+  },
+  "latencyMs": 1487
+}

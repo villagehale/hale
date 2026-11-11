@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the venue address as 100 Queen St W, but the facts list 875 Morningside Ave, Toronto. That is a wrong address. It also says 'tomorrow', which correctly matches Monday, September 28 given now is Sunday, September 27, and the names, kid, times and language are right.",
+    "score": 2
+  }
+}

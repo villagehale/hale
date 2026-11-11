@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French ('Jour de congé') although the requested language is English, and it gives a clock time ('at 3:00') for an all-day event, which the facts forbid. It also says the day has breathing room, which implies the day is open, a fact failure. Multiple failures; score 1.",
+    "score": 1
+  }
+}

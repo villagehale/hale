@@ -1,8 +1,18 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { describe, expect, it } from 'vitest';
 import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
-import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
-import { AUDIT_VERBS, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
+import {
+  AUDIT_VERBS,
+  calendarWithdrawnSentences,
+  isInternalTrailVerb,
+  targetLink,
+  targetNoun,
+  trailVerb,
+  verbTone,
+} from './verbs.js';
 
 /** No trail row may ever render a raw table name, a raw snake_case/dotted action
  * token, or a bare UUID (defect: /trail leaked `families · family_created · <uuid>`).
@@ -33,7 +43,22 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
   it.each(AUDIT_VERBS)('maps %s to a curated sentence, never the raw token', (verb) => {
     const { sentence, family } = trailVerb(verb);
     assertCleanHuman(sentence, verb);
+    // VIL-527 · eng-only audit is internal with no parent copy (Design lock).
+    if (verb === 'calendar_alert_debt_retired') {
+      expect(isInternalTrailVerb(verb)).toBe(true);
+      return;
+    }
+    // VIL-478 · background audits are internal-only with no parent copy (Design lock).
+    if (verb === 'linq_group_background_set' || verb === 'linq_group_background_parent_set') {
+      expect(isInternalTrailVerb(verb)).toBe(true);
+      return;
+    }
     expect(family).not.toBe('neutral');
+  });
+
+  it('keeps a decision sync closed unsent out of the parent history, while a sent one shows', () => {
+    expect(isInternalTrailVerb('group_decision_sync_closed_unsent')).toBe(true);
+    expect(isInternalTrailVerb('group_decision_sync_sent')).toBe(false);
   });
 
   it('says one text of a plan, because that is what one row is', () => {
@@ -116,7 +141,7 @@ describe('a departure’s rows never tell the parent who stayed that they did it
 });
 
 describe('the streak sentence names the number the worker enforces', () => {
-  it('says the worker\'s own number, in the words Barton approved', () => {
+  it("says the worker's own number, in the words Barton approved", () => {
     expect(trailVerb('autonomous_action_class.granted').sentence).toBe(
       `You've approved this ${AUTONOMY_STREAK_REQUIRED} times, so Hale will handle it on its own from now on`,
     );
@@ -201,13 +226,95 @@ describe('targetLink — a UUID becomes a deep link, never a bare id', () => {
     expect(targetLink('actions', 'act-9')).toBeNull();
   });
 
-  it('links a plan target to the plan surface', () => {
-    expect(targetLink('family_plans', 'plan-3')).toBe('/plan');
+  it('does not link a plan at the retired plan page', () => {
+    expect(targetLink('family_plans', 'plan-3')).toBeNull();
   });
 
   it('returns null (no fake link) for a target with no viewable surface', () => {
     expect(targetLink('events', 'evt-1')).toBeNull();
     expect(targetLink('families', 'fam-1')).toBeNull();
     expect(targetLink(null, null)).toBeNull();
+  });
+});
+
+describe('trail sentences stay on the receipts trail', () => {
+  const ROOT = join(import.meta.dirname, '../..');
+  const CALENDAR_VERBS = [
+    'linq_group_plan_calendar_asked',
+    'linq_group_plan_calendar_declined',
+    'linq_group_plan_calendar_written',
+    'linq_group_plan_calendar_removed',
+    'linq_group_plan_calendar_withdrawn',
+  ] as const;
+
+  function filesUnder(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry === 'dist') continue;
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) filesUnder(path, out);
+      else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) out.push(path);
+    }
+    return out;
+  }
+
+  it('is rendered by the dashboard, not by a channel or calendar send', () => {
+    const importers = filesUnder(join(ROOT, 'lib'))
+      // A type-only import (the AuditVerb union) renders no sentence.
+      .filter((path) =>
+        /import\s+(?!type\b)[^;]*from ['"][^'"]*trail\/verbs['"]/.test(readFileSync(path, 'utf8')),
+      )
+      .map((path) => path.slice(ROOT.length + 1));
+    expect(importers.sort()).toEqual(['lib/dashboard/mappers.ts', 'lib/dashboard/trail-query.ts']);
+  });
+
+  it('names a withdrawn calendar ask from the reason that was recorded', () => {
+    const reasons = {
+      send_failed: 'Hale set aside the calendar question because the message did not send',
+      household_said_no: 'Hale set aside the calendar question after your household said no',
+      household_said_maybe: 'Hale set aside the calendar question after your household said maybe',
+      plan_changed: 'Hale set aside the calendar question after the plan changed',
+    } as const;
+    for (const [reason, summary] of Object.entries(reasons)) {
+      const view = toTrailView(
+        {
+          id: 'log-withdraw',
+          familyId: 'f1',
+          actor: 'system',
+          actionTaken: 'linq_group_plan_calendar_withdrawn',
+          targetTable: 'linq_group_plan_calendar_consents',
+          targetId: 'plan-1',
+          before: null,
+          after: { familyId: 'f1', reason },
+          occurredAt: new Date('2026-10-28T16:00:00Z'),
+          ip: null,
+          userAgent: null,
+          agentRunId: null,
+        } as AuditLogEntry,
+        false,
+        'America/Toronto',
+        () => 'hale',
+      );
+      expect(view.summary).toBe(summary);
+    }
+    expect(reasons.send_failed).not.toContain('plan changed');
+    expect(reasons.household_said_no).not.toContain('plan changed');
+  });
+
+  it('does not copy a calendar trail sentence into a parent message', () => {
+    const sentences = [
+      ...CALENDAR_VERBS.map((verb) => trailVerb(verb).sentence),
+      ...calendarWithdrawnSentences(),
+    ];
+    const hits: string[] = [];
+    for (const path of [
+      ...filesUnder(join(ROOT, 'lib/channel')),
+      ...filesUnder(join(ROOT, 'lib/loop')),
+    ]) {
+      const text = readFileSync(path, 'utf8');
+      for (const sentence of sentences) {
+        if (text.includes(sentence)) hits.push(`${path.slice(ROOT.length + 1)}: ${sentence}`);
+      }
+    }
+    expect(hits).toEqual([]);
   });
 });

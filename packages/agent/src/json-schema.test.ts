@@ -99,9 +99,7 @@ describe('compileToolSchema', () => {
   });
 
   it('strips minimum/maximum from the wire and states them in the description', () => {
-    const { schema } = compileToolSchema(
-      z.object({ confidence: z.number().min(0).max(1) }),
-    );
+    const { schema } = compileToolSchema(z.object({ confidence: z.number().min(0).max(1) }));
 
     const confidence = schema.properties.confidence as Record<string, unknown>;
     expect(confidence).toEqual({
@@ -202,9 +200,7 @@ describe('compileToolSchema', () => {
   });
 
   it('throws on a Zod type it cannot express rather than emitting a wrong schema', () => {
-    expect(() => compileToolSchema(z.object({ bag: z.record(z.string()) }))).toThrow(
-      /ZodRecord/,
-    );
+    expect(() => compileToolSchema(z.object({ bag: z.record(z.string()) }))).toThrow(/ZodRecord/);
   });
 
   it('throws when the tool root is not an object', () => {

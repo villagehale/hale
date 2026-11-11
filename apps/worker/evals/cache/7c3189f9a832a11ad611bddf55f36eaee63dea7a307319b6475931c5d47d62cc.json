@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give two events with venues and addresses, and story time has an end of 11:45 AM. The text omits both venue names and street addresses (Georgetown library, 9 Church St; Riverside Field, 22 Park Rd) and drops the story time end time (only 上午11:00 is given). Soccer's times are right and AM/PM is correct, and there is no invented detail or bad link, but the missing given facts are a fact failure.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gets nearly every fact wrong. The event is titled \"PD Day\" but the text calls it \"Jour de congé\" (a French title in an English reminder, not the given name). The start is given as \"3:00\" with no AM/PM, when the facts say 9:30 AM. The end (12:00 PM), the venue (Northside community centre) and the timed nature of the event are all missing. It also tells the parent \"Tomorrow's a day off\" and \"breathing room\", which implies the family has nothing to be at when a timed event exists. This is a fact failure on time, venue, end, title and framing.",
+    "score": 1
+  }
+}

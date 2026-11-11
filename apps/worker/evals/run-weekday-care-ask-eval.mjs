@@ -34,6 +34,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 import { WEEKDAY_CARE_ASK_FIXTURES } from './weekday-care-ask-fixtures.mjs';
 
@@ -43,47 +44,7 @@ const TOOLS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'nudge', 'wee
 /** A reply word the founder rules forbid Hale to teach. */
 const KEYWORD_TEACHING = ['reply yes', 'reply no', 'text yes'];
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
-  "the parent's messages, sends a parent. Hale already sent this family weekend options;",
-  'this text offers to look for something on weekdays. Nothing has been found yet.',
-  'You are given `context` - exactly what the writer was given: `prompt` (which offer),',
-  "`language` (the family's language) and, for some prompts, `name` (the one child it may",
-  'name) or `label` (a school break on the family calendar) - and the `text`. Score 1-5.',
-  'Write your argument first, quoting the text, and only then the score.',
-  'The offer, by prompt: after_school_named offers to find an after-school option for the',
-  'child called `name`; after_school_household offers an after-school option nearby and',
-  'names no child; verified_break says the break in `label` is coming and offers to find',
-  'something for it; weekend_fallback offers to look at weekdays too and names no child.',
-  'A 5 is that offer, unmistakably, in one light text written in `language` - spelled',
-  'properly, every accent in place, natural for how people text in that language - that',
-  'reads like a friend who is also a parent texting: chill, casual, easy to ignore, a',
-  "friend who noticed something about this family's week and is curious about it, so the",
-  'text is about the family.',
-  'Do not grade word choice, length or punctuation for their own sake; the writer picks',
-  'the words. Grade whether a parent would read it as a friend texting about this offer.',
-  'A 1 or 2 is any of: a text not in `language`, or with its accents stripped; the wrong',
-  "offer, or the offer's child or break missing or wrong; a child named that `context`",
-  "does not give, or a child's age, grade or stage; an activity, place, time, price or",
-  'link (nothing has been found); a claim that Hale has already looked for, or found, what',
-  'this text offers to look for (it has not: only the weekend options were sent); a word',
-  'the parent is told to reply with; more than one offer; more than one ask (a question',
-  'about their week plus the offer counts as two). A 3 is the right offer that reads like',
-  'an assistant offering a service rather than a friend texting: formal, stiff,',
-  'survey-like or salesy, or a text about its own help - what it could do, how willing it',
-  'is, whether that would be useful - rather than about the family. However casual its',
-  'words, a hedged offer of service is a 3.',
-  'Check two things in your argument before you weigh the tone. First, list everything',
-  'the text asks the parent and say how many asks that is; the offer itself, put to the',
-  'parent, is one ask. Second, quote the part of the text that makes the offer and judge',
-  'that part on its own against the 3 line: is it a hedged offer of service rather than',
-  'the offer put straight? Putting the offer to the parent as a plain question, asking',
-  'whether they want Hale to look, is the offer put straight, in any language. A hedge is',
-  'a condition added on top of the offer (whether it would help or be useful) or the offer',
-  'framed as what Hale could, is able to or is willing to do. If the offer is hedged, the',
-  'text is a 3 at most, however friendly the rest of it reads.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('weekday-care-ask');
 
 function grade(_fixture, written, verdict) {
   if ('skipped' in written) return [`refused by the runtime check: ${written.skipped}`];

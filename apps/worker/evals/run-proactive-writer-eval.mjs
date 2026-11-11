@@ -32,6 +32,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 import { PROACTIVE_WRITER_FIXTURES } from './proactive-writer-fixtures.mjs';
 
@@ -39,23 +40,7 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'proactive-writer.md');
 const TOOLS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'proactive', 'tools.ts');
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
-  "the parent's messages, sends a parent on its own initiative. You are given `context` -",
-  'exactly what the writer was given: the `items` to send, each with `what` and `why` and',
-  'maybe a `sourceUrl`, and maybe a `note` that the parent asked to hear less - and the',
-  '`text`. Score 1-5. Write your argument first, quoting the text, and only then the score.',
-  'A 5 is one text that covers every item, adds nothing the items do not say, asks the',
-  'parent for at most one thing, and reads like a friend who is also a parent texting:',
-  'chill, casual, specific. With a `note`, it is shorter, not colder.',
-  'Do not grade word choice, length or punctuation for their own sake; the writer picks',
-  'the words.',
-  'A 1 or 2 is any of: an item missing; a link, time, price or place no item gives; more',
-  'than one ask; a word the parent is told to reply with; a numbered list or a template.',
-  'A 3 covers the items but reads like a notification or an assistant offering a service',
-  'rather than a friend texting.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('proactive-writer');
 
 function grade(fixture, written, verdict) {
   if ('skipped' in written) return [`writer skipped: ${written.skipped}`];

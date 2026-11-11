@@ -76,6 +76,7 @@ export function activityFromFind(
 
 export function ageCorrectionFact(input: {
   familyId: string;
+  parentUserId: string;
   childId: string | null;
   ageMonths: number;
   now: Date;
@@ -85,9 +86,15 @@ export function ageCorrectionFact(input: {
     childId: input.childId,
     factType: 'logistic',
     factKey: 'child-age-correction',
-    factValue: { schemaVersion: 1, kind: 'age_correction', ageMonths: input.ageMonths },
+    factValue: {
+      schemaVersion: 1,
+      kind: 'age_correction',
+      ageMonths: input.ageMonths,
+      record: 'age',
+    },
     confidence: 1,
     inferredBy: 'cold_start_age_correction',
+    heard: { in: 'one_to_one', userId: input.parentUserId },
     validFrom: input.now,
     memoryKind: 'lasting',
     memorySource: 'parent_message',

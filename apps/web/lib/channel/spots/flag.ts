@@ -7,6 +7,7 @@
  * imported `./sweep` for one boolean would drag the sweep's transport, its fetch port
  * and its whole module graph into every texted turn.
  */
+import { isEnabled } from '@hale/flags';
 
 export const WATCHED_SPOTS_ENABLED_ENV = 'WATCHED_SPOTS_ENABLED';
 
@@ -16,5 +17,17 @@ export const WATCHED_SPOTS_ENABLED_ENV = 'WATCHED_SPOTS_ENABLED';
  * `'true\n'` as ON and start polling municipalities nobody armed.
  */
 export function watchedSpotsEnabled(): boolean {
-  return process.env[WATCHED_SPOTS_ENABLED_ENV] === 'true';
+  return isEnabled('watched-spots');
+}
+
+/**
+ * Watching a program page outside the PerfectMind registry, read by the model through
+ * the live page reader (registration/class-availability.ts). Its own gate, under the one
+ * above: with it off a link from any other site is refused at arming, and a live watch
+ * on one is skipped unread by the sweep. Exact 'true', for the same reason.
+ */
+export const ANY_PAGE_SPOT_WATCH_ENABLED_ENV = 'ANY_PAGE_SPOT_WATCH_ENABLED';
+
+export function anyPageSpotWatchEnabled(): boolean {
+  return isEnabled('any-page-spot-watch');
 }

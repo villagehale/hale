@@ -1,0 +1,461 @@
+import type { ReplyLanguage } from '~/lib/channel/language';
+import {
+  linqGroupPlanRsvpCalendarEnabled,
+  linqGroupPlanRsvpEnabled,
+  linqGroupPollsEnabled,
+} from '../config';
+import type { GroupHoldReason } from '../group-audience';
+import type { LinqTapback } from '../transport';
+import {
+  type CalendarConsentReader,
+  type CalendarPrivateSender,
+  type GroupPlanCalendarWriter,
+  type GroupPlanHouseholdResolver,
+  hostFamilyIdForPlan,
+} from './calendar';
+import {
+  type CalendarEffect,
+  answerPendingCalendarAsk,
+  settleCalendarAfterAnswer,
+} from './calendar-turn';
+import { groupPlanRsvpLineInput } from './facts';
+import { memberKeyFromName, senderMemberKey } from './member-key';
+import type { GroupPollTally } from './poll-tally';
+import {
+  type GroupPollCardPort,
+  type GroupPollCardSkip,
+  pollReadView,
+  takeGroupPollReading,
+} from './poll-turn';
+import {
+  type GroupPlanRsvpReader,
+  type GroupPlanRsvpReading,
+  isGroupPollIntent,
+  sharedGroupPlanRsvpReader,
+} from './reading';
+import { GroupPlanRsvpHeld } from './send';
+import type { GroupPlanRsvpStore } from './store';
+import { type PlanTally, isMeaningfulTallyChange } from './tally';
+import {
+  type GroupPlanRsvpComposer,
+  type GroupPlanRsvpVoiceSkip,
+  composeGroupPlanRsvpLine,
+  productionGroupPlanRsvpComposer,
+} from './voice';
+
+/**
+ * VIL-442 (T15) — one inbound turn against a group plan.
+ *
+ * Works for seated Hale customers and for people who never signed up (Instinct
+ * #1). Banter is recorded as chatter and Hale stays quiet. Tapbacks and free
+ * text are votes. Hale speaks only at settle points, in model-written words.
+ *
+ * VIL-471 — the same read also covers group polls (`LINQ_GROUP_POLLS_ENABLED`):
+ * a poll intent goes to `poll-turn.ts`. Either flag alone runs the turn; the
+ * other half stays dark.
+ */
+
+export type GroupPlanRsvpTurnOutcome =
+  | { handled: false }
+  | {
+      handled: true;
+      outcome:
+        | 'group_plan_chatter'
+        | 'group_plan_recorded'
+        | 'group_plan_spoken'
+        | 'group_plan_unread'
+        | 'group_plan_line_unsent'
+        | 'group_poll_spoken'
+        | 'group_poll_recorded'
+        | 'group_poll_unread'
+        | 'group_poll_line_unsent'
+        | 'group_plan_calendar_written'
+        | 'group_plan_calendar_declined'
+        | 'group_plan_calendar_asked'
+        | 'group_plan_calendar_unwritten';
+      count: 'ignored' | 'intake';
+      notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' | GroupHoldReason };
+      tally?: PlanTally;
+      calendar?: CalendarEffect;
+      card?: 'sent' | { skipped: GroupPollCardSkip };
+      pollTally?: GroupPollTally;
+    };
+
+/** Banter and a missed read stay quiet without stealing the rest of the group door. */
+export function groupPlanRsvpTakesTheTurn(
+  outcome: GroupPlanRsvpTurnOutcome,
+): outcome is Extract<GroupPlanRsvpTurnOutcome, { handled: true }> {
+  return (
+    outcome.handled &&
+    (outcome.outcome === 'group_plan_spoken' ||
+      outcome.outcome === 'group_plan_recorded' ||
+      outcome.outcome === 'group_plan_line_unsent' ||
+      outcome.outcome === 'group_poll_spoken' ||
+      outcome.outcome === 'group_poll_recorded' ||
+      outcome.outcome === 'group_poll_line_unsent' ||
+      outcome.outcome === 'group_plan_calendar_written' ||
+      outcome.outcome === 'group_plan_calendar_declined' ||
+      outcome.outcome === 'group_plan_calendar_asked' ||
+      outcome.outcome === 'group_plan_calendar_unwritten')
+  );
+}
+
+export interface GroupPlanRsvpTurnInput {
+  chatId: string;
+  senderHandle: string;
+  senderName: string | null;
+  text: string;
+  tapback: LinqTapback | null;
+  /** The message a tapback landed on. Absent for a plain text. */
+  tapbackMessageId?: string | null;
+  /** Verified Hale user for this handle, when inbound resolved one. */
+  senderUserId?: string | null;
+  /** Language for the group line. Calendar lines use {@link calendarLanguage}. */
+  language: ReplyLanguage;
+  /**
+   * Stored household language for a private calendar line, or null when none is
+   * stored. Absent means the tests' turn language. Null is not English.
+   */
+  calendarLanguage?: ReplyLanguage | null;
+  now: Date;
+}
+
+export interface GroupPlanRsvpTurnDeps {
+  store: GroupPlanRsvpStore;
+  reader?: GroupPlanRsvpReader;
+  composer?: GroupPlanRsvpComposer;
+  send: (input: {
+    chatId: string;
+    text: string;
+    kind?: 'plan' | 'poll';
+  }) => Promise<{ providerMessageId: string }>;
+  /** Plan RSVPs (LINQ_GROUP_PLAN_RSVP_ENABLED). */
+  enabled?: () => boolean;
+  /** Calendar copy after an OK (LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED). Default off. */
+  calendarEnabled?: () => boolean;
+  households?: GroupPlanHouseholdResolver;
+  calendar?: GroupPlanCalendarWriter;
+  consentReader?: CalendarConsentReader;
+  /** 1:1 calendar lines. Never the group chat. */
+  privateSend?: CalendarPrivateSender;
+  /** Group polls (LINQ_GROUP_POLLS_ENABLED). */
+  pollsEnabled?: () => boolean;
+  /** The native poll card. Absent is named on the outcome (`no_card_port`), never silent. */
+  pollCard?: GroupPollCardPort;
+}
+
+function coversKeysFor(
+  reading: GroupPlanRsvpReading,
+  expected: readonly { memberKey: string; displayName: string }[],
+): string[] {
+  const keys: string[] = [];
+  for (const name of reading.coversNames) {
+    const folded = name.trim().toLowerCase();
+    if (!folded) continue;
+    const match = expected.find((person) => person.displayName.trim().toLowerCase() === folded);
+    if (match) keys.push(match.memberKey);
+    else keys.push(memberKeyFromName(name));
+  }
+  return keys;
+}
+
+export async function takeGroupPlanRsvpTurn(
+  input: GroupPlanRsvpTurnInput,
+  deps: GroupPlanRsvpTurnDeps,
+): Promise<GroupPlanRsvpTurnOutcome> {
+  const rsvpOn = (deps.enabled ?? linqGroupPlanRsvpEnabled)();
+  const pollsOn = (deps.pollsEnabled ?? linqGroupPollsEnabled)();
+  if (!rsvpOn && !pollsOn) return { handled: false };
+
+  const live = rsvpOn ? await deps.store.loadLivePlan(input.chatId) : null;
+  const livePoll = pollsOn ? await deps.store.loadLivePoll(input.chatId) : null;
+  const reader = deps.reader ?? sharedGroupPlanRsvpReader();
+  const seated = await deps.store.seatedExpected(input.chatId);
+  const liveTally = live ? await deps.store.loadTally(live.id) : null;
+  const somethingLive = Boolean(live || livePoll);
+  const calendarOn = rsvpOn && (deps.calendarEnabled ?? linqGroupPlanRsvpCalendarEnabled)();
+  const calendarLanguage =
+    input.calendarLanguage === undefined ? input.language : input.calendarLanguage;
+  const senderKey = await senderMemberKey(
+    { handle: input.senderHandle, name: input.senderName },
+    async () => [
+      ...(liveTally ? [...liveTally.rows, ...liveTally.expected].map((row) => row.memberKey) : []),
+      ...(livePoll ? await deps.store.pollVoterKeys(livePoll.id) : []),
+    ],
+  );
+  const senderSeat = seated.find((person) => person.memberKey === senderKey);
+  const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
+  const calendarUserId = input.senderUserId ?? senderSeat?.userId ?? null;
+
+  if (calendarOn && live) {
+    const answered = await answerPendingCalendarAsk(
+      {
+        chatId: input.chatId,
+        plan: live,
+        userId: calendarUserId,
+        senderName: input.senderName,
+        text: input.text,
+        tapback: input.tapback,
+        tapbackMessageId: input.tapbackMessageId,
+        language: calendarLanguage,
+        now: input.now,
+      },
+      {
+        store: deps.store,
+        households: deps.households,
+        calendar: deps.calendar,
+        consentReader: deps.consentReader,
+        composer: deps.composer,
+        privateSend: deps.privateSend,
+      },
+    );
+    if (answered.consumed) {
+      const tally = (await deps.store.loadTally(live.id)).tally;
+      const outcome =
+        answered.kind === 'written'
+          ? 'group_plan_calendar_written'
+          : answered.kind === 'declined'
+            ? 'group_plan_calendar_declined'
+            : answered.kind === 'asked'
+              ? 'group_plan_calendar_asked'
+              : 'group_plan_calendar_unwritten';
+      return {
+        handled: true,
+        outcome,
+        count: answered.notice === 'sent' ? 'intake' : 'ignored',
+        ...(answered.notice ? { notice: answered.notice } : {}),
+        tally,
+        calendar: answered.effect,
+      };
+    }
+  }
+
+  const reading = await reader.read({
+    text: input.text,
+    tapback: input.tapback,
+    senderName: input.senderName,
+    plan: live
+      ? {
+          title: live.title,
+          deadline: live.rsvpDeadlineAt?.toISOString() ?? null,
+          yesNames: liveTally?.tally.yesNames ?? [],
+          waitingNames: liveTally?.tally.waitingNames ?? [],
+        }
+      : null,
+    recent: [],
+    ...(pollsOn ? { polls: { live: livePoll ? pollReadView(livePoll) : null } } : {}),
+  });
+
+  if (!reading || reading.confidence !== 'high') {
+    if (!somethingLive) return { handled: false };
+    return {
+      handled: true,
+      outcome: live ? 'group_plan_unread' : 'group_poll_unread',
+      count: 'ignored',
+    };
+  }
+
+  if (reading.intent === 'chatter' || reading.intent === 'unclear') {
+    if (!somethingLive) return { handled: false };
+    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+  }
+
+  if (isGroupPollIntent(reading.intent)) {
+    if (!pollsOn) {
+      if (!somethingLive) return { handled: false };
+      return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+    }
+    return takeGroupPollReading(
+      reading,
+      {
+        chatId: input.chatId,
+        language: input.language,
+        now: input.now,
+        livePoll,
+        seated,
+        voter: {
+          memberKey: senderKey,
+          displayName,
+          userId: senderSeat?.userId ?? null,
+          haleCustomer: senderSeat?.haleCustomer ?? false,
+        },
+      },
+      {
+        store: deps.store,
+        composer: deps.composer,
+        send: (line) => deps.send(line),
+        card: deps.pollCard,
+      },
+    );
+  }
+
+  if (!rsvpOn) {
+    if (!somethingLive) return { handled: false };
+    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+  }
+
+  let plan = live;
+  if (reading.intent === 'start_tracking') {
+    if (!plan) {
+      const cover = await deps.store.coveringFamily(input.chatId);
+      const familyId = await hostFamilyIdForPlan(deps.households, cover, {
+        chatId: input.chatId,
+        userId: input.senderUserId,
+      });
+      const title = reading.planTitle?.trim();
+      if (!familyId || !title) return { handled: false };
+      plan = await deps.store.createPlan({
+        chatId: input.chatId,
+        familyId,
+        title,
+        startsAt: reading.startsAt ? new Date(reading.startsAt) : null,
+        location: reading.location,
+        rsvpDeadlineAt: reading.deadline ? new Date(reading.deadline) : null,
+        createdByUserId: input.senderUserId ?? null,
+        expected: seated,
+        now: input.now,
+      });
+    }
+  }
+
+  if (!plan) return { handled: false };
+
+  const before = (await deps.store.loadTally(plan.id)).tally;
+
+  if (reading.intent === 'rsvp' || reading.intent === 'edit') {
+    if (!reading.response) {
+      return { handled: true, outcome: 'group_plan_unread', count: 'ignored' };
+    }
+    await deps.store.addExpected(plan.id, {
+      memberKey: senderKey,
+      displayName,
+      userId: senderSeat?.userId ?? null,
+      haleCustomer: senderSeat?.haleCustomer ?? false,
+    });
+    const household = Boolean(reading.householdLabel || reading.coversNames.length > 0);
+    await deps.store.upsertRsvp({
+      planId: plan.id,
+      memberKey: senderKey,
+      displayName,
+      householdLabel: reading.householdLabel,
+      userId: senderSeat?.userId ?? null,
+      haleCustomer: senderSeat?.haleCustomer ?? false,
+      response: reading.response,
+      headcount: reading.headcount,
+      source: household ? 'on_behalf' : input.tapback ? 'tapback' : 'text',
+      coversKeys: coversKeysFor(reading, [...seated, { memberKey: senderKey, displayName }]),
+      verbatim: input.text.trim() || null,
+      now: input.now,
+    });
+  }
+
+  const afterLoad = await deps.store.loadTally(plan.id);
+  const after = afterLoad.tally;
+  const householdAnswer = Boolean(reading.householdLabel || reading.coversNames.length > 0);
+  const speak = isMeaningfulTallyChange({
+    intent: reading.intent,
+    before: live ? before : null,
+    after,
+    householdAnswer,
+  });
+  const finishCalendar = async () => {
+    if (
+      !calendarOn ||
+      (reading.intent !== 'rsvp' && reading.intent !== 'edit') ||
+      !reading.response
+    ) {
+      return undefined;
+    }
+    return settleCalendarAfterAnswer(
+      {
+        chatId: input.chatId,
+        plan,
+        userId: calendarUserId,
+        memberKey: senderKey,
+        displayName,
+        householdLabel: reading.householdLabel,
+        response: reading.response,
+        language: calendarLanguage,
+        parentWords: input.text.trim() || null,
+        now: input.now,
+      },
+      {
+        store: deps.store,
+        households: deps.households,
+        calendar: deps.calendar,
+        consentReader: deps.consentReader,
+        composer: deps.composer,
+        privateSend: deps.privateSend,
+      },
+    );
+  };
+
+  if (!speak) {
+    const calendar = await finishCalendar();
+    return {
+      handled: true,
+      outcome: 'group_plan_recorded',
+      count: 'ignored',
+      tally: after,
+      ...(calendar ? { calendar } : {}),
+    };
+  }
+
+  const kind = reading.intent === 'start_tracking' ? 'tracking_started' : 'tally';
+  const spoken = await composeGroupPlanRsvpLine(
+    groupPlanRsvpLineInput({
+      kind,
+      language: input.language,
+      title: plan.title,
+      deadline: plan.rsvpDeadlineAt?.toISOString() ?? null,
+      tally: after,
+    }),
+    deps.composer ?? productionGroupPlanRsvpComposer(),
+  );
+  if (spoken.status === 'skipped') {
+    console.warn(
+      { outcome: 'group_plan_line_unsent', reason: spoken.reason },
+      'group plan rsvp: line not sent',
+    );
+    const calendar = await finishCalendar();
+    return {
+      handled: true,
+      outcome: 'group_plan_line_unsent',
+      count: 'ignored',
+      notice: { skipped: spoken.reason },
+      tally: after,
+      ...(calendar ? { calendar } : {}),
+    };
+  }
+
+  try {
+    await deps.send({ chatId: input.chatId, text: spoken.line, kind: 'plan' });
+  } catch (err) {
+    console.error(
+      {
+        err: err instanceof Error ? err.name : 'unknown',
+        reason: err instanceof GroupPlanRsvpHeld ? err.reason : undefined,
+      },
+      'group plan rsvp: send failed',
+    );
+    const calendar = await finishCalendar();
+    return {
+      handled: true,
+      outcome: 'group_plan_line_unsent',
+      count: 'ignored',
+      notice: { skipped: err instanceof GroupPlanRsvpHeld ? err.reason : 'not_sent' },
+      tally: after,
+      ...(calendar ? { calendar } : {}),
+    };
+  }
+
+  const calendar = await finishCalendar();
+  return {
+    handled: true,
+    outcome: 'group_plan_spoken',
+    count: 'intake',
+    notice: 'sent',
+    tally: after,
+    ...(calendar ? { calendar } : {}),
+  };
+}

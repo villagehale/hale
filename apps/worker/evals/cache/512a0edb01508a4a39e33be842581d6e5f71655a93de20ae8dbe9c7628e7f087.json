@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: Library story time tomorrow 11:00 AM with 上午, Soccer tomorrow 5:30-6:30 PM with 下午 covering the range, and the planLink appears exactly once. However, the Chinese is stilted in places: '有足球' for soccer is a rough rendering, '下午5:30到6:30有足球' uses a colon clock format a native texter would write as 5点半到6点半, and the two events are listed in a calendar-readout style rather than as a friend would text. Also '你的安排在这里' is a formal notification-style lead-in. Per the native speaker and friend-tone checks, this caps the score at 3.",
+    "score": 3
+  }
+}

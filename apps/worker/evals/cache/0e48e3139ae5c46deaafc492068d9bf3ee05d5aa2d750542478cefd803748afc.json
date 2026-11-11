@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "this school pickup traffic is killing me lol",
+    "language": "en",
+    "confirmation": ""
+  },
+  "latencyMs": 1656
+}

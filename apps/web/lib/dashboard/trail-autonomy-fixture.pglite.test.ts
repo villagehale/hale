@@ -14,8 +14,7 @@ import { loadTrailForFamily } from './trail-query';
 
 const NOW = new Date('2026-10-12T15:00:00.000Z');
 const ON_ITS_OWN = 'Hale did this for you on its own';
-const TURNED_ON =
-  "You've approved this 5 times, so Hale will handle it on its own from now on";
+const TURNED_ON = "You've approved this 5 times, so Hale will handle it on its own from now on";
 const PARENT_APPROVED = 'carried out the action';
 
 let db: TestDb;

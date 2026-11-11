@@ -111,8 +111,7 @@ export async function recordEvent(
   // A deterministic pre-filter (ended calendar item) never called a priced model.
   // agentRunCostUsd throws on a model with no rate, and booking Haiku for a call
   // that did not happen would lie about the bill.
-  const costUsd =
-    input.model === 'deterministic' ? 0 : agentRunCostUsd(input.model, input.usage);
+  const costUsd = input.model === 'deterministic' ? 0 : agentRunCostUsd(input.model, input.usage);
 
   await recordAgentRun(database, {
     familyId: input.familyId,
@@ -127,8 +126,7 @@ export async function recordEvent(
     // view divides by.
     promptCacheHit: input.model === 'deterministic' ? undefined : input.usage.cacheReadTokens > 0,
     cacheReadTokens: input.model === 'deterministic' ? undefined : input.usage.cacheReadTokens,
-    cacheWriteTokens:
-      input.model === 'deterministic' ? undefined : input.usage.cacheCreationTokens,
+    cacheWriteTokens: input.model === 'deterministic' ? undefined : input.usage.cacheCreationTokens,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });
@@ -235,7 +233,12 @@ export interface RecordVerdictInput {
   actionId: string;
   actionType: ActionType;
   verdict: ReviewerVerdict;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
   /** Priced by the reviewer loop itself, which is the only place that still holds
    * the per-turn tier split — `usage.promptTokens` here is the sum the row records
    * (full-rate + cache reads), so re-deriving from it would bill every cached
@@ -251,10 +254,7 @@ export interface RecordVerdictInput {
  * at drafted_for_approval regardless of verdict — even an approve means "Hale may
  * NOT act on its own; a parent must approve" in this draft pipeline (rule #4).
  */
-export async function recordVerdict(
-  database: Database,
-  input: RecordVerdictInput,
-): Promise<void> {
+export async function recordVerdict(database: Database, input: RecordVerdictInput): Promise<void> {
   await recordAgentRun(database, {
     familyId: input.familyId,
     eventId: input.eventId,
@@ -264,6 +264,10 @@ export async function recordVerdict(
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
     costUsd: input.costUsd,
+    promptCacheHit:
+      input.usage.cacheReadTokens === undefined ? undefined : input.usage.cacheReadTokens > 0,
+    cacheReadTokens: input.usage.cacheReadTokens,
+    cacheWriteTokens: input.usage.cacheWriteTokens,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });

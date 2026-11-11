@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all present and correct: tomorrow, story time 11 AM (上午11点), soccer 5:30-6:30 PM with 下午 and both times. Language is Chinese. However the text mixes in 周一 which is fine, but it omits the planLink which is not required to appear. The phrasing 有两件事 and 是足球 is somewhat stiff; a native speaker would more naturally say 明天有两件事：上午11点图书馆故事时间，下午5:30到6:30踢足球. The construction 下午5:30到6:30是足球 reads as a calendar readout rather than how a friend would text it, so it caps at 3.",
+    "score": 3
+  }
+}

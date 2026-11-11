@@ -1,0 +1,8 @@
+{
+  "value": {
+    "locality": "Federal Way",
+    "region": "Washington",
+    "granularity": "locality"
+  },
+  "latencyMs": 1230
+}

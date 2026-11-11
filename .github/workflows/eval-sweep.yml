@@ -37,13 +37,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          check-latest: true
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build leaf packages
-        run: pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
+        run: pnpm --filter @hale/db --filter @hale/types --filter @hale/flags --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
 
       - name: Run every eval suite (cached-only)
         run: |

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "request": "reminders",
+    "set": [
+      {
+        "for": "sender",
+        "name": null,
+        "what": "bring the orange slices",
+        "date": null,
+        "time": null,
+        "inMinutes": null,
+        "where": "unsaid"
+      }
+    ],
+    "cancel": [],
+    "language": "en"
+  },
+  "latencyMs": 1889
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the event as tomorrow (lundi 26 octobre), 15 h to 16 h, at the Georgetown library, and keeps the title 'Jour de congé' as the event name, so the times, date and place are correct and nothing is invented. However, 'il y a Jour de congé à la bibliothèque' is unidiomatic: a native speaker would write it with the title in quotation marks or as 'Jour de congé' set off as a named event (e.g. « Jour de congé »), since a bare capitalized title dropped mid-sentence reads awkwardly. Per the native speaker check this caps the score at 3.",
+    "score": 3
+  }
+}

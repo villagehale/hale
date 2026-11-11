@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text carries every given fact correctly: PD Day as the event name, tomorrow (Monday, true from Sunday evening), 9:30 AM start and 12:00 PM end with correct AM/PM, and the venue name Northside community centre. The facts give no street address, so none is missing. It is presented as something to be at, not a free day. Nothing is invented (no travel, departure, or extra detail), no link was added, and bold is none, which is fine.",
+    "score": 5
+  }
+}

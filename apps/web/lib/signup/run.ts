@@ -1,5 +1,9 @@
 import { type Database, schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { isUuid } from '~/lib/channel/mid-activity/claim';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
@@ -38,8 +42,13 @@ import { collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
 import { LINK_SPEND_CEILING_CENTS } from './link/client';
 import type { SignupPaymentWallet, SignupWalletSkipped, SignupWalletSource } from './link/wallet';
-import { type SignupOutcomeWriter, createSignupOutcomeWriter } from './outcome-reply';
+import {
+  type SignupOutcomeFacts,
+  type SignupOutcomeWriter,
+  createSignupOutcomeWriter,
+} from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
+import { type PlanTurnDeps, runPlanTurn } from './plan/conversation';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
@@ -69,6 +78,11 @@ export interface SignupRunDeps {
   consentReader?: SignupConsentReader;
   /** Writes the parent's reply from the structured outcome. Undefined uses the reply model. */
   outcomeWriter?: SignupOutcomeWriter;
+  /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
+  planReader?: PlanTurnDeps['planReader'];
+  planWriter?: PlanTurnDeps['planWriter'];
+  mismatchReader?: PlanTurnDeps['mismatchReader'];
+  sendProviderEmail?: PlanTurnDeps['sendProviderEmail'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
@@ -100,12 +114,21 @@ export interface SignupRunResult {
   claimed: boolean;
   outcome: string;
   reply: string | null;
+  /** Separate Linq sends, one bubble each. When set, the handler sends these instead of `reply`. */
+  replies?: string[];
   deliverOnThread: boolean;
   /**
    * Set on the Browser Use path. Hale's AI writes the parent message from it;
    * this module has no fixed copy for it. `liveViewUrl` goes to the parent only.
    */
   browserUse?: BrowserUseHandoff;
+  /** The turn was claimed and nothing was sent because no acceptable reply was written. */
+  unsent?: 'reply_unwritten';
+  /**
+   * Browser Use path: Hale could not tell whether the yes came 1:1 or in a group, so the
+   * reply carried only the public registration link (no pack, no live view).
+   */
+  withheld?: 'thread_unresolved';
 }
 
 export type BrowserUseHandoff =
@@ -153,10 +176,28 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
+  const planTurn = await runPlanTurn(database, input, {
+    planReader: deps.planReader,
+    planWriter: deps.planWriter,
+    mismatchReader: deps.mismatchReader,
+    declineSeat: deps.declineSeat,
+    sendProviderEmail:
+      deps.sendProviderEmail ??
+      (async (payload) => {
+        const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
+        await createGmailEmailSender(database)(
+          { to: payload.to, subject: payload.subject, body: payload.body },
+          { familyId: payload.familyId, actorUserId: payload.actorUserId },
+        );
+      }),
+  });
+  if (planTurn) return planTurn;
 
-  // No pending offer: nothing to consent to, and the message is someone else's.
+  // No pending offer: nothing to consent to, and the message is someone else's. An offer
+  // made to the other parent is theirs to answer: this parent's yes would register with
+  // their own details on a sign-up the other parent was asked about.
   const offer = await loadPendingOffer(database, input.familyId);
-  if (!offer) return UNCLAIMED;
+  if (!offer || offer.parentUserId !== input.parentUserId) return UNCLAIMED;
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
   // Unreadable (no model, model failure) is not consent and does not claim the message.
@@ -322,6 +363,7 @@ export async function runAuthorizedSignup(
 
   if (browserUseSignupEnabled()) {
     return runBrowserUseBranch(database, input, deps, {
+      door,
       offerId: offer.id,
       href: allowed.href,
       providerHost,
@@ -580,13 +622,15 @@ function browserUseAbsent(
  * session to checkout. With the parent's own Link wallet and the spending cap
  * passed, it pays the exact total once that parent approves in Link; otherwise,
  * or when approval times out, the parent pays on the live browser. A rush
- * page comes back as a handoff. No parent copy is written here.
+ * page comes back as a handoff. Every outcome ends through `replyFor`, so the
+ * parent hears it in the reply model's words, or the non-send is named.
  */
 async function runBrowserUseBranch(
   database: Database,
   input: SignupRunInput,
   deps: SignupRunDeps,
   ctx: {
+    door: ReportDoor;
     offerId: string;
     href: string;
     providerHost: string;
@@ -619,6 +663,14 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
+    if (handoff.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: input.familyId,
+        providerDomain: ctx.host ?? ctx.providerHost,
+        stage: handoff.detail ?? 'error',
+        source: 'signup',
+      });
+    }
     // No Browser Use session ever started (setup failed or the engine threw
     // before a run): release the held allowance. A started session keeps its
     // hold until its real cost replaces it.
@@ -635,6 +687,8 @@ async function runBrowserUseBranch(
         now: input.now,
       });
     }
+    const thread = await yesThread(database, input);
+    const withheld = thread === 'unresolved' ? { withheld: 'thread_unresolved' as const } : {};
     await writeAudit(database, input, ctx.offerId, {
       step: 'browser_use',
       outcome: handoff.outcome,
@@ -649,6 +703,7 @@ async function runBrowserUseBranch(
       costUsd: handoff.costUsd,
       sessionCostUsd: handoff.sessionCostUsd,
       host: ctx.host,
+      ...withheld,
     });
     const rush: RushHandoff | null =
       handoff.outcome === 'rush'
@@ -659,13 +714,23 @@ async function runBrowserUseBranch(
             prefill: signupInfoPack(ctx.identity),
           }
         : null;
+    if (thread === 'unresolved') {
+      console.info(
+        { outcome: 'thread_unresolved' },
+        'authorized signup: yes thread unresolved, details withheld',
+      );
+    }
+    const facts = browserUseReplyFacts(handoff, ctx, thread === 'private', rush);
+    // A live view or the pack goes back on the 1:1 thread the yes came from, never
+    // into the family's claimed group.
+    const door =
+      facts.linkIs === 'live_browser' || (facts.pack?.length ?? 0) > 0
+        ? chooseReportDoor({ groupChatId: null, existingThread: input.existingThread })
+        : ctx.door;
     return {
-      claimed: true,
-      outcome: handoff.outcome,
-      reply: null,
-      deliverOnThread: false,
+      ...(await replyFor(database, input, deps, door, facts)),
       browserUse: handoff,
-      ...(rush ? { rush } : {}),
+      ...withheld,
     };
   };
 
@@ -865,6 +930,9 @@ async function finish(
     status,
     now: input.now,
   });
+  if (status === 'completed') {
+    noteTaskCompleted({ familyId: input.familyId, type: 'registration', source: 'browser_use' });
+  }
 }
 
 function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {
@@ -874,8 +942,16 @@ function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionI
 interface ReplyFacts {
   offerId: string | null;
   outcome: string;
-  reason: SignupStopReason | null;
+  reason: SignupStopReason | BrowserUseHandoff['detail'] | null;
   link: string;
+  /** Browser Use only. Elsewhere a set link is the registration page. */
+  linkIs?: SignupOutcomeFacts['linkIs'];
+  /** Browser Use live view only. */
+  holdMinutes?: number | null;
+  /** Browser Use only: the details the parent fills the form with, after a 1:1 yes. */
+  pack?: InfoPackSlot[];
+  /** Browser Use only: the yes came from the group, or from a thread Hale cannot place. */
+  inGroup?: boolean;
   prefilled: string[];
   host: string | null;
   /** Session label for the completed line. */
@@ -890,8 +966,14 @@ interface ReplyFacts {
   question?: string;
 }
 
-/** What proves a booking: the provider's confirmation page, or its booking API saying booked. */
-export type SignupConfirmation = { kind: 'page' } | { kind: 'connector'; connector: string };
+/**
+ * What proves a booking: the provider's confirmation page, its booking API saying
+ * booked, or a confirmation number the Browser Use run captured.
+ */
+export type SignupConfirmation =
+  | { kind: 'page' }
+  | { kind: 'connector'; connector: string }
+  | { kind: 'confirmation_number' };
 
 /**
  * Never claim success without a confirmation. The only way to report
@@ -948,6 +1030,94 @@ function rushHandoff(
   };
 }
 
+type YesThread = 'private' | 'group' | 'unresolved';
+
+/**
+ * Where the yes arrived: the inbound row's group bit, or SMS, which has no group. A null
+ * bit on iMessage (a row stored before the bit existed) is `unresolved` and read as the
+ * group; the router already refuses such turns (`group_unscoped`), so this only fails
+ * closed if one ever gets through.
+ */
+async function yesThread(database: Database, input: SignupRunInput): Promise<YesThread> {
+  const id = input.inboundChannelMessageId;
+  if (!id || !isUuid(id)) return 'unresolved';
+  const [row] = await database
+    .select({ inGroup: schema.channelMessages.inGroup, channel: schema.channelMessages.channel })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.id, id),
+        eq(schema.channelMessages.familyId, input.familyId),
+        eq(schema.channelMessages.direction, 'in'),
+      ),
+    )
+    .limit(1);
+  if (!row) return 'unresolved';
+  if (row.inGroup !== null) return row.inGroup ? 'group' : 'private';
+  return row.channel === 'sms' ? 'private' : 'unresolved';
+}
+
+/** Outcomes where the parent fills the provider's form next, so the pack helps. */
+function parentFillsForm(handoff: BrowserUseHandoff): boolean {
+  if (handoff.outcome === 'needs_human') return handoff.detail !== 'unconfirmed';
+  return (
+    handoff.outcome === 'needs_login' || handoff.outcome === 'rush' || handoff.outcome === 'error'
+  );
+}
+
+/** The live view only after a 1:1 yes; nothing after a confirmed booking; else the public page. */
+function handoffLink(
+  handoff: BrowserUseHandoff,
+  registrationUrl: string,
+  privately: boolean,
+  confirmed: boolean,
+): { link: string; linkIs: SignupOutcomeFacts['linkIs'] } {
+  if (privately && handoff.liveViewUrl !== null) {
+    return { link: handoff.liveViewUrl, linkIs: 'live_browser' };
+  }
+  if (confirmed) return { link: '', linkIs: null };
+  return { link: registrationUrl, linkIs: 'registration_page' };
+}
+
+function browserUseReplyFacts(
+  handoff: BrowserUseHandoff,
+  ctx: {
+    offerId: string;
+    href: string;
+    host: string | null;
+    identity: SignupIdentity;
+    session: { label: string };
+  },
+  privately: boolean,
+  rush: RushHandoff | null,
+): ReplyFacts {
+  const confirmed = handoff.outcome === 'completed' && handoff.confirmationNumber !== null;
+  const { link, linkIs } = handoffLink(handoff, ctx.href, privately, confirmed);
+  const holdMinutes =
+    linkIs === 'live_browser' && handoff.holdExpiresAt
+      ? Math.max(0, Math.floor((handoff.holdExpiresAt.getTime() - Date.now()) / 60_000))
+      : null;
+  const pack =
+    privately && linkIs === 'registration_page' && parentFillsForm(handoff)
+      ? signupInfoPack(ctx.identity)
+      : [];
+  return {
+    offerId: ctx.offerId,
+    outcome: handoff.outcome,
+    reason: handoff.detail === 'none' ? null : handoff.detail,
+    link,
+    linkIs,
+    holdMinutes,
+    ...(pack.length > 0 ? { pack } : {}),
+    inGroup: !privately,
+    prefilled: [],
+    host: ctx.host,
+    sessionLabel: ctx.session.label,
+    rush,
+    ...(confirmed ? { confirmation: { kind: 'confirmation_number' as const } } : {}),
+  };
+}
+
 async function replyFor(
   database: Database,
   input: SignupRunInput,
@@ -965,27 +1135,46 @@ async function replyFor(
         : rawFacts.reason,
   };
   const writer = deps.outcomeWriter ?? defaultOutcomeWriter();
-  const line: string | null = await writer.write({
-    outcome: facts.outcome,
-    reason: facts.reason,
-    confirmed: checked.confirmed,
-    sessionLabel: facts.sessionLabel ? collapseSignupFact(facts.sessionLabel) : null,
-    link: facts.link,
-    prefilled: facts.prefilled,
-    rush: facts.rush
-      ? {
-          signal: facts.rush.signal,
-          opensAt: facts.rush.opensAt,
-          prefillSlots: facts.rush.prefill.map((item) => item.slot),
-        }
-      : null,
-    question: facts.question ?? null,
-    language: null,
-  });
+  // A held turn sends nothing, so the pack and the live view never go to the model.
+  const line: string | null =
+    door.kind === 'held'
+      ? null
+      : await writer.write({
+          outcome: facts.outcome,
+          reason: facts.reason,
+          confirmed: checked.confirmed,
+          sessionLabel: facts.sessionLabel ? collapseSignupFact(facts.sessionLabel) : null,
+          link: facts.link,
+          linkIs: facts.linkIs ?? (facts.link ? 'registration_page' : null),
+          holdMinutes: facts.holdMinutes ?? null,
+          audience: door.kind === 'group' || facts.inGroup === true ? 'group' : 'direct',
+          prefilled: facts.prefilled,
+          ...(facts.pack
+            ? {
+                pack: facts.pack.map((item) => ({
+                  slot: item.slot,
+                  value: collapseSignupFact(item.value),
+                })),
+              }
+            : {}),
+          rush: facts.rush
+            ? {
+                signal: facts.rush.signal,
+                opensAt: facts.rush.opensAt,
+                prefillSlots: facts.rush.prefill.map((item) => item.slot),
+              }
+            : null,
+          question: facts.question ?? null,
+          language: await readParentLanguage(database, {
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+          }),
+        });
   await writeAudit(database, input, facts.offerId, {
     step: 'report',
     outcome: facts.outcome,
     reason: facts.reason,
+    replied: line !== null,
     door: door.kind,
     host: facts.host,
     fieldsFilled: facts.prefilled,
@@ -998,7 +1187,15 @@ async function replyFor(
   }
   if (line === null) {
     // No reply model or no acceptable draft: nothing is sent, and there is no fixed fallback.
-    return { ...rush, claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
+    console.warn({ outcome: facts.outcome }, 'authorized signup: outcome reply unwritten');
+    return {
+      ...rush,
+      claimed: true,
+      outcome: facts.outcome,
+      reply: null,
+      deliverOnThread: false,
+      unsent: 'reply_unwritten',
+    };
   }
   if (door.kind === 'group') {
     const send =

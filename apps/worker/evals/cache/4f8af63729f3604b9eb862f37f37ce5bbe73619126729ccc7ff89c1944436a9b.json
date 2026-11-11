@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgYZYvFKnKvxU1G1adr8Y",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSgQkKEAgTGAI4AUIIdGhpbmtpbmcSDBIcFF659ZZ222VxYhoMxk8+uNeZYMphjrDDIjBzkORouSvzfOpkAyzVFwrc1+Q2QC+DqDdktcPG0VUE2Doa2nFCVsOOChfRMUHMvbUqngii2dlF/+LBZr4g5Okfbj/idyUGd0TeU0PYvOr/mn9oU1wuJM3Itimd1KGi8+plmEnOQDcvY38q7BV8ZwKmCOSaprGmke26/XwDSHfgISL9quyMgj+bfBPZ2byGRbAgtyRIFORt7ESxAsPMOFkwHhrWYMfzHJCKasRRXAU/DlDSaj+9nLlfhdf8Oh5aAFzCC0LNzd/AdKmO3xykyKuvbhJajGZtsIz1YmkZlZb2PQ48GiZW/9ZurekdJbfqmU7tyBNvMdl1P1DSdYrcoEcXzbfeznMFJpDY9PMs6SAnMKAudAm2zWi2vX0vcmXt9n4wWGKULBnRRbCJ5PcaOSMq0bstIgwH2+76shy2uj1Jp7ZpiZM8GuVgf5vwU4dj4ly3G6kF0KF/FMuFCyNH7zq0PV5yxnsa6PsfsXEQghIJWauPBGkw/HVCpu26wUsxlo8BLDTQLaV2gmMtBAPbYONsxUbWy6BRjljyf7nzQaxrasaPlrHWbDsUvSA5kyGegAPQQe3AqhTG5lGDFg0elP7+DpOh/UfonL/X0ePv2RREAu4D8haZk53LXLKqQtVCT7cnRqCGFrCQ4kkV/hBt/+D2BfJk0xnnUzuuyeUOckG56TlizFD+yYsnPqLUZdiYuAitArzrEhhIqrOIBaY9ROIwO2wH7AcehQj9Mhr1jo2nYPL+NqH4ImAZjMepbupSTLcOEdRXYAVGd+fT9kJARQZ+IYiZU+fcy/kilTgHQCDQBIe1UGDdyoCooeKH4m4vyrTM7YzcSCnHtrwLkjTxnsj88wMkms9JRJAlc58MxmF/33TsHtOwk7yun0v/QoBHpHCfsEe88JB0nvJtHQCYpYpL/EN4yDyporXY05OGy69t/8NrJJDw7Wzwh2ocWwvhT9cpUnBuwWk026ttsAGm6tlK0hITIxWESfg6u9b0ZQ4U1BNP3Ym8B8WEP6JiHZYnxtJPIo6y+fhgfq/4B1+U64fosBvTJLZA9dmzZ+Ij4YmcGT7oThVaM721A5tr2E38oJYut2rxPBh3QKof8bnJwTYFfz1UrYW3ciHnBgKMjmH4Gseb8qrdHWhdTeJdxBjquohvgJtEohZGVfdzbA9oqY5siBoxHRqXFvmuY56e/BKjKkX1P0v5qt+7lx4fDJ0TwZi810IjdSaFSyL7/bhDNoUGEa9kLkWIw6KBgoCgfLlKycpKYMIrzJQLlwux5cQfSLkwP56B3+nBCSPaE4KNK86LcW91Qj9oHlD/XuqxMrVOjsRHpYv9gwPD7bOLINbau2shZzlT6c9VPgbXjChzKJxWpiUVCSraOc9q04QFm6+Y+Mvq3z9pv+A0kgt7NoLqxgtP2c35MXja5a063Ck2/uvU0XQln3lAuNwfGgoKmxHqUSPkPphqMVBdqpIxrmRPXHbwGAE="
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Saturday at 10:00am at Cedarvale Park. For after that, High Park on Bloor St W at Parkside Dr is free and has the Jamie Bell Adventure Playground, an animal display with bison and llamas, splash pads, and trails. The park is open daily, and the water play is seasonal, so check that it's running before you go."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1182,
+      "cache_read_input_tokens": 21173,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1182,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 293,
+      "output_tokens_details": {
+        "thinking_tokens": 173
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3445
+}

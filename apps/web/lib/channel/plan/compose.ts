@@ -1,11 +1,13 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import { type CoachingPlaybook, type FamilyStage, goDeeperNames } from '@hale/types';
 import { z } from 'zod';
+import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { type PlanCheckInDays, type PlanTopic, isPlanCheckInDays } from './topics';
 
@@ -65,15 +67,6 @@ const MAX_TOKENS = 2048;
  * cost is a parent measuring something out on Hale's word.
  */
 const DOSING_SHAPE = /\b\d+(?:\.\d+)?\s?(?:mg|ml|mcg|milligrams?|millilitres?|milliliters?)\b/i;
-
-/**
- * A link, including the BARE-DOMAIN form.
- *
- * `https?://` alone is not enough here, and the playbooks are why: a vetted creator's
- * credential legitimately contains "youtube.com/c/EmmaHubbard", so the one thing the
- * model is most likely to copy out of its grounding is a URL with no scheme on it.
- */
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
 /** A person Hale names. Only the playbook's vetted creators may be cited, so anything
  * matching a title-cased "Dr X" or a "<Name> says" shape is checked against the list. */
@@ -255,7 +248,7 @@ export function planViolations(
         `Message ${stage} is ${units} characters, ${units - limit} over the ${limit} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`,
       );
     }
-    if (LINK_SHAPE.test(body)) {
+    if (hasLinkShape(body)) {
       violations.push(`Message ${stage} contains a link or a web address. Never send one.`);
     }
     if (DOSING_SHAPE.test(body)) {
@@ -411,18 +404,21 @@ export function createPlanComposer(client: () => AgentClient): PlanComposer {
       for (let attempt = 1; attempt <= MAX_COMPOSE_ATTEMPTS; attempt += 1) {
         let value: z.infer<typeof planSchema>;
         try {
-          const result = await forceToolJson({
-            client: resolved,
-            lane: pickLane(skill.meta.task),
-            system: skill.instructions,
-            userMessage: retryUserMessage(planUserMessage(grounding), violations),
-            toolName: 'plan',
-            toolDescription:
-              'Return the plan as two or three text messages in order, plus how many days from today to check back.',
-            inputJsonSchema: planJsonSchema,
-            schema: planSchema,
-            maxTokens: MAX_TOKENS,
-          });
+          const result = await withLlmContext({ stage: 'plan' }, () =>
+            forceToolJson({
+              client: resolved,
+              lane: pickLane(skill.meta.task),
+              system: skill.instructions,
+              cacheTtl: SPARSE_CACHE_TTL,
+              userMessage: retryUserMessage(planUserMessage(grounding), violations),
+              toolName: 'plan',
+              toolDescription:
+                'Return the plan as two or three text messages in order, plus how many days from today to check back.',
+              inputJsonSchema: planJsonSchema,
+              schema: planSchema,
+              maxTokens: MAX_TOKENS,
+            }),
+          );
           value = result.value;
         } catch (err) {
           // An outage is not a prompt problem, and retrying it here would spend the

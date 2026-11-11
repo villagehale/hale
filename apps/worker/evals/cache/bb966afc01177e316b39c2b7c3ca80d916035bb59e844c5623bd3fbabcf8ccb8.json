@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly hands over the appended referral link and tells Sam to forward it themselves, which is the required shape. The forwardable blurb fits Hale's real capabilities. It runs a little long, though: the 'since I won't be texting them first' clause and the onboarding detail are extra beyond what the answer needed.",
+    "score": 4
+  }
+}

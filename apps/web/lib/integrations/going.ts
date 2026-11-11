@@ -1,12 +1,13 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import { isEnabled } from '@hale/flags';
+import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { SOCIAL_PROOF_MIN } from '~/lib/village/social-proof';
 
 /**
  * WHO ELSE IS GOING — the one count Hale may speak, and every way it refuses to.
  *
  * ONE SURFACE, and the choice of it is forced by code rather than by taste. The first-find
- * reply's subject is a per-family `village_candidates` row whose reader selects nothing
+ * reply's subject is a per-family activity receipt whose reader selects nothing
  * cross-family, so a count there is 0 forever; the watched-spot text's `unbacked_digit`
  * makes a derived number a refusal `renderSpotOpen` throws on. The booked confirmation is
  * what is left, and its identity is PROBABLE rather than structural — which is the fact
@@ -145,7 +146,7 @@ export const GOING_COUNT_ENABLED_ENV = 'GOING_COUNT_ENABLED';
  * nobody armed. Strict comparison fails closed on exactly that shape.
  */
 export function goingCountEnabled(): boolean {
-  return process.env[GOING_COUNT_ENABLED_ENV] === 'true';
+  return isEnabled('going-count');
 }
 
 /**
@@ -188,6 +189,10 @@ export function sessionKey(input: {
  * one session (a pair written before receipt dedupe, or two sections that did not fold
  * into one class). The word in the sentence is *families*.
  *
+ * A live `going_count_opt_ins` row is the other gate. A booking without that yes is
+ * never in `others`. `alreadyHeld` still reads this family's own booking so a second
+ * receipt cannot speak a number just because they have not opted in.
+ *
  * `family_id <> $2` is the PRIMARY self-exclusion guard, not a belt — the recipient's own
  * row is absent only at the FIRST receipt, and there can be a second.
  *
@@ -209,13 +214,20 @@ export async function readSessionGoing(
   const mine = eq(schema.activityBookings.familyId, input.familyId);
   const [row] = await database
     .select({
-      others: sql<number>`count(distinct ${schema.activityBookings.familyId}) filter (where ${ne(
-        schema.activityBookings.familyId,
-        input.familyId,
+      others: sql<number>`count(distinct ${schema.activityBookings.familyId}) filter (where ${and(
+        ne(schema.activityBookings.familyId, input.familyId),
+        isNotNull(schema.goingCountOptIns.familyId),
       )})::int`,
       alreadyHeld: sql<boolean>`coalesce(bool_or(${mine}), false)`,
     })
     .from(schema.activityBookings)
+    .leftJoin(
+      schema.goingCountOptIns,
+      and(
+        eq(schema.goingCountOptIns.familyId, schema.activityBookings.familyId),
+        isNull(schema.goingCountOptIns.revokedAt),
+      ),
+    )
     .where(
       and(
         eq(schema.activityBookings.sessionKey, input.sessionKey),
@@ -223,6 +235,108 @@ export async function readSessionGoing(
       ),
     );
   return { others: Number(row?.others ?? 0), alreadyHeld: row?.alreadyHeld === true };
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const code = (current as { code?: string }).code;
+    if (code === '23505') return true;
+    if (/duplicate key|unique constraint/i.test(current.message)) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+async function liveGoingCountShare(
+  database: Database,
+  familyId: string,
+): Promise<{ id: string } | undefined> {
+  const [row] = await database
+    .select({ id: schema.goingCountOptIns.id })
+    .from(schema.goingCountOptIns)
+    .where(
+      and(
+        eq(schema.goingCountOptIns.familyId, familyId),
+        isNull(schema.goingCountOptIns.revokedAt),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+export type RecordGoingCountShareResult =
+  | { status: 'recorded'; optInId: string }
+  | { status: 'already'; optInId: string }
+  | { status: 'revoked' }
+  | { status: 'already_off' };
+
+/**
+ * This household's yes (or later no) to being counted in "who else is going".
+ *
+ * The write is independent of {@link goingCountEnabled}: a dark flag must not
+ * trap a yes, and collecting the yes while the flag is still off is how the
+ * count stays dark until households have actually opted in.
+ */
+export async function recordGoingCountShare(
+  database: Database,
+  input: { familyId: string; parentUserId: string; granted: boolean },
+): Promise<RecordGoingCountShareResult> {
+  if (!input.granted) {
+    return database.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(schema.goingCountOptIns)
+        .set({ revokedAt: new Date() })
+        .where(
+          and(
+            eq(schema.goingCountOptIns.familyId, input.familyId),
+            isNull(schema.goingCountOptIns.revokedAt),
+          ),
+        )
+        .returning({ id: schema.goingCountOptIns.id });
+      if (!updated) return { status: 'already_off' as const };
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: 'going_count_opt_in_revoked',
+        targetTable: 'going_count_opt_ins',
+        targetId: updated.id,
+        after: { revoked: true },
+      });
+      return { status: 'revoked' as const };
+    });
+  }
+
+  const existing = await liveGoingCountShare(database, input.familyId);
+  if (existing) return { status: 'already', optInId: existing.id };
+
+  try {
+    return await database.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(schema.goingCountOptIns)
+        .values({
+          familyId: input.familyId,
+          parentUserId: input.parentUserId,
+        })
+        .returning({ id: schema.goingCountOptIns.id });
+      if (!inserted) throw new Error('going_count_opt_ins insert returned no row');
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: 'going_count_opt_in_recorded',
+        targetTable: 'going_count_opt_ins',
+        targetId: inserted.id,
+      });
+      return { status: 'recorded' as const, optInId: inserted.id };
+    });
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    const raced = await liveGoingCountShare(database, input.familyId);
+    if (!raced) throw err;
+    return { status: 'already', optInId: raced.id };
+  }
 }
 
 /**

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "Sentence 0 quotes what the parent said, which is reported speech and quoted text, so it is not a claim. Sentence 1 is just an acknowledgment. No rows are on record.",
+    "claims": []
+  },
+  "latencyMs": 2444
+}

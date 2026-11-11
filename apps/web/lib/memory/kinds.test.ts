@@ -173,7 +173,7 @@ describe('parent intent', () => {
 describe('copy gate', () => {
   it('keeps every locked sentence ASCII and free of opt-out or booking claims', () => {
     const bodies = memoryKindBodies();
-    expect(bodies.length).toBe(24);
+    expect(bodies.length).toBe(30);
     for (const body of bodies) {
       expect(body.includes('TODO-Design')).toBe(false);
       expect([...body].every((char) => char.charCodeAt(0) <= 0x7f)).toBe(true);
@@ -265,10 +265,16 @@ describe('recall bubbles', () => {
     ]);
     expect(renderMemoryRecall('fr', [])).toEqual(["Je n'ai encore rien note sur la famille."]);
     const one = renderMemoryRecall('en', [
-      { key: 'district', value: 'midtown', source: 'parent_message', kind: 'lasting' },
-      { key: 'pickup', value: '3pm', source: 'calendar', kind: 'temporary' },
-      { key: 'swimming', value: 'saturday', source: 'inferred', kind: 'lasting' },
-      { key: 'receipt', value: 'paid', source: 'receipt', kind: 'lasting' },
+      {
+        key: 'district',
+        value: 'midtown',
+        source: 'parent_message',
+        kind: 'lasting',
+        seenIn: null,
+      },
+      { key: 'pickup', value: '3pm', source: 'calendar', kind: 'temporary', seenIn: null },
+      { key: 'swimming', value: 'saturday', source: 'inferred', kind: 'lasting', seenIn: null },
+      { key: 'receipt', value: 'paid', source: 'receipt', kind: 'lasting', seenIn: null },
     ]);
     expect(one).toEqual([
       [
@@ -285,6 +291,7 @@ describe('recall bubbles', () => {
       value: `v${index}`,
       source: 'legacy' as const,
       kind: 'lasting' as const,
+      seenIn: null,
     }));
     const bubbles = renderMemoryRecall('en', many);
     expect(bubbles).toHaveLength(2);
@@ -327,5 +334,42 @@ describe('VIL-388 export hook', () => {
       expiresAt: null,
       invalidatedAt: null,
     });
+  });
+});
+
+describe('VIL-429 recall lines say where a connector fact was seen', () => {
+  it('names the sender and day of an email, and the title and day of an event', () => {
+    const email = { kind: 'email', from: 'Northside Rec', on: 'Oct 3' } as const;
+    const event = { kind: 'calendar', title: 'Soccer practice', on: 'Oct 2' } as const;
+    expect(
+      renderMemoryRecall('en', [
+        {
+          key: 'soccer_day',
+          value: 'Thursdays',
+          source: 'inferred',
+          kind: 'lasting',
+          seenIn: email,
+        },
+        { key: 'pool_day', value: 'Mondays', source: 'inferred', kind: 'one_off', seenIn: event },
+        { key: 'pickup', value: '3pm', source: 'calendar', kind: 'temporary', seenIn: event },
+      ])[0]
+        ?.split('\n')
+        .slice(1, -1),
+    ).toEqual([
+      '- soccer_day: I think Thursdays (from the Northside Rec email on Oct 3)',
+      '- pool_day: I think Mondays (from Soccer practice on your calendar, Oct 2)',
+      '- pickup: 3pm (for now, from Soccer practice on your calendar, Oct 2)',
+    ]);
+    expect(
+      renderMemoryRecall('fr', [
+        {
+          key: 'soccer_day',
+          value: 'jeudi',
+          source: 'inferred',
+          kind: 'lasting',
+          seenIn: { ...email, on: '3 oct.' },
+        },
+      ])[0]?.split('\n')[1],
+    ).toBe('- soccer_day : je crois que jeudi (vu dans le courriel de Northside Rec, le 3 oct.)');
   });
 });

@@ -46,6 +46,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -54,6 +55,8 @@ import { dayKeyOf } from '~/lib/format/datetime';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
+import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
+import { applyCandidateAfterSend, payloadOf } from './after-send';
 import { type WriterResult, composeProactiveBatch } from './compose';
 import {
   type DecideResult,
@@ -72,6 +75,7 @@ import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
+import { isVerbatimKind } from './verbatim';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -191,6 +195,7 @@ interface QueuedItem extends OpenCandidate {
   category: (typeof schema.channelMessages.$inferInsert)['category'];
   templateKey: string;
   dedupeKey: string;
+  payload: Record<string, unknown> | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -446,6 +451,7 @@ async function loadOpenItems(
       category: row.category,
       templateKey: row.templateKey,
       dedupeKey: row.dedupeKey,
+      payload: row.payload ?? null,
       what: row.what,
       why: row.why,
       decision: row.decision,
@@ -753,6 +759,19 @@ function writerItem(item: QueuedItem): ToolCandidate {
   };
 }
 
+/** The queued CTAs, in the order they were queued, without rewriting any of them. */
+function joinVerbatim(items: readonly QueuedItem[]): string {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const item of items) {
+    const key = `${item.kind}\n${item.what}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(item.what);
+  }
+  return lines.join('\n\n');
+}
+
 async function reviewFamily(
   database: Database,
   deps: ProactiveReviewDeps,
@@ -988,11 +1007,55 @@ function keptCadence(
   return cadencePreference(author, heard.direction);
 }
 
+/** Each class's own sent verb, so the trail reads a decider send as its sweep's. */
+const SEND_VERB: Partial<Record<ProactiveSendKind, string>> = {
+  nudge: 'proactive_nudge_sent',
+  evening_check_in: 'evening_check_in_sent',
+  co_parent_departed: 'co_parent_departure_notice_sent',
+  travel_brief: 'travel_brief_sent',
+  village_intro: 'village_intro_card_sent',
+  followup: 'followup_activity_asked',
+  plan_check_in: 'coach_plan_check_in_sent',
+  activity_followup: 'activity_followup_sent',
+  spot_open: 'watched_spot_opened_sent',
+  email_alert: 'email_alert_sent',
+  calendar_alert: 'calendar_alert_sent',
+  duty_ask: 'proactive_cadence_sent',
+};
+
 /** The trail verb for one sent batch. A mixed batch stays the generic cadence send. */
 function sendAuditVerb(items: readonly QueuedItem[]): string {
-  if (items.every((item) => item.kind === 'nudge')) return 'proactive_nudge_sent';
-  if (items.every((item) => item.kind === 'evening_check_in')) return 'evening_check_in_sent';
-  return 'proactive_cadence_sent';
+  const kinds = new Set(items.map((item) => item.kind));
+  const [only] = kinds;
+  if (kinds.size !== 1 || only === undefined) return 'proactive_cadence_sent';
+  const fromPayload = payloadOf(items[0]?.payload)?.auditVerb;
+  return fromPayload ?? SEND_VERB[only] ?? 'proactive_cadence_sent';
+}
+
+/**
+ * What a class's own sweep does after its text leaves, done here for a decider send:
+ * a travel brief closes its trip and the trips it overlaps (travel/sweep.ts).
+ */
+async function afterClassSend(
+  database: Database,
+  items: readonly QueuedItem[],
+  channelMessageId: string,
+  now: Date,
+): Promise<void> {
+  for (const item of items) {
+    if (item.kind === 'travel_brief') {
+      const tripId = tripIdFromBriefDedupeKey(item.dedupeKey);
+      if (tripId === null) throw new Error('proactive review: a travel brief with no trip key');
+      await closeBriefedTrip(database, { tripId, channelMessageId, now });
+    }
+    await applyCandidateAfterSend(database, {
+      familyId: item.familyId,
+      parentUserId: item.parentUserId,
+      channelMessageId,
+      payload: payloadOf(item.payload),
+      now,
+    });
+  }
 }
 
 async function sendChosen(
@@ -1081,30 +1144,44 @@ async function sendChosen(
 
   // One text per distinct set of items: parents who share the same items share one
   // composition, and a parent is never texted about an item that is not theirs.
+  // VIL-612 · a class that queued its own CTA is sent as that sentence. The writer
+  // must not rewrite it.
   const writtenFor = new Map<string, WriterResult>();
   const voiced: Array<(typeof gated)[number] & { message: string }> = [];
   for (const copy of gated) {
+    const verbatim = copy.items.filter((item) => isVerbatimKind(item.kind));
+    const rest = copy.items.filter((item) => !isVerbatimKind(item.kind));
+    if (verbatim.length > 0) {
+      voiced.push({ ...copy, items: verbatim, message: joinVerbatim(verbatim) });
+    }
+    if (rest.length === 0) continue;
     const distinct = new Map<string, ToolCandidate>();
-    for (const item of copy.items) {
+    for (const item of rest) {
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
-    const setKey = [...distinct.keys()].sort().join('\n\n');
+    // VIL-572 · a parent's own copy is written in that parent's proactive language. The
+    // household's one group copy stays in the family's.
+    const language =
+      target.channel === 'group'
+        ? (input.language ?? null)
+        : await readParentLanguage(database, { familyId, parentUserId: copy.parentUserId });
+    const setKey = `${language ?? ''}\n\n${[...distinct.keys()].sort().join('\n\n')}`;
     let written = writtenFor.get(setKey);
     if (!written) {
       written = await deps.compose({
         items: [...distinct.values()],
         client: deps.client,
-        language: input.language ?? null,
+        language,
       });
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {
-      await holdByName(database, familyId, copy.items, `unvoiced:${written.skipped}`, now);
+      await holdByName(database, familyId, rest, `unvoiced:${written.skipped}`, now);
       summary.held += 1;
       continue;
     }
-    voiced.push({ ...copy, message: written.message });
+    voiced.push({ ...copy, items: rest, message: written.message });
   }
 
   const finalizer: SendFinalizerPorts = {
@@ -1137,7 +1214,7 @@ async function sendChosen(
     const covered = copy.items;
     const coveredIds = covered.map((item) => item.id);
     const labels = [...new Set(covered.map((item) => item.why))];
-    // The sweep's own verb for a nudge, so the trail reads a decider send the same way.
+    // The sweep's own verb, so the trail reads a decider send the same way.
     const messageId = await finalizeProactiveSend(database, finalizer, {
       familyId,
       recipientUserId: copy.parentUserId,
@@ -1158,6 +1235,7 @@ async function sendChosen(
       },
     });
     if (firstMessageId === null) firstMessageId = messageId;
+    await afterClassSend(database, covered, messageId, now);
     if (covered.some((item) => item.kind === 'evening_check_in')) {
       // The ask clock starts when the text leaves, not when it was queued. A review
       // that holds tonight does not count as an ask.

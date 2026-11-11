@@ -60,7 +60,11 @@ function walk(sql: SQL, out: Constraints): Constraints {
       lastCol = null;
       continue;
     }
-    if (c?.constructor?.name === 'StringChunk' && String((c as { value?: unknown }).value).includes('is null') && lastCol) {
+    if (
+      c?.constructor?.name === 'StringChunk' &&
+      String((c as { value?: unknown }).value).includes('is null') &&
+      lastCol
+    ) {
       out.isNull.add(lastCol);
       lastCol = null;
       continue;
@@ -86,7 +90,10 @@ function matches(row: Row, sql: SQL): boolean {
   return true;
 }
 
-function fakeDb(rows: Row[], capture: { updates: { patch: Record<string, unknown>; ids: string[] }[] }): Database {
+function fakeDb(
+  rows: Row[],
+  capture: { updates: { patch: Record<string, unknown>; ids: string[] }[] },
+): Database {
   const handle = {
     select: () => ({
       from: () => ({
@@ -130,14 +137,22 @@ describe('sniffAttachmentMime', () => {
 
   it('rejects a ZIP and an SVG — both outside the allowlist', () => {
     expect(sniffAttachmentMime(Buffer.from([0x50, 0x4b, 0x03, 0x04]))).toBeNull(); // PK\x03\x04
-    expect(sniffAttachmentMime(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg">', 'ascii'))).toBeNull();
+    expect(
+      sniffAttachmentMime(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg">', 'ascii')),
+    ).toBeNull();
   });
 
   it('accepts the chat allowlist by MAGIC bytes: jpeg, png, webp, pdf', () => {
     expect(sniffAttachmentMime(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe('image/jpeg');
-    expect(sniffAttachmentMime(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe('image/png');
+    expect(sniffAttachmentMime(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(
+      'image/png',
+    );
     // RIFF....WEBP — the type the Docs vault does NOT accept but chat does.
-    const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBP')]);
+    const webp = Buffer.concat([
+      Buffer.from('RIFF'),
+      Buffer.from([0, 0, 0, 0]),
+      Buffer.from('WEBP'),
+    ]);
     expect(sniffAttachmentMime(webp)).toBe('image/webp');
     expect(sniffAttachmentMime(Buffer.from('%PDF-1.7', 'ascii'))).toBe('application/pdf');
   });

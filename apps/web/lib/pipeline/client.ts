@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type HaleStage, traceAnthropic } from '~/lib/analytics/llm-trace';
+import { type NonGoogleClearance, assertClearance } from './provider-clearance';
 
 /**
  * The shared Anthropic client for the inbound pipeline (classify/draft/review).
@@ -17,6 +18,20 @@ import { type HaleStage, traceAnthropic } from '~/lib/analytics/llm-trace';
  * drain for all of it.
  */
 export const HOT_SMS_CLIENT_OPTIONS = { timeout: 30_000, maxRetries: 1 } as const;
+
+/**
+ * Options for the claim reader (VIL-581): a second model call on a turn whose parent is
+ * already waiting. One request gets 12s and no SDK retry; the reader's own one retry runs
+ * inside its read budget, and the tier spend cap is a 429 that keeps refusing.
+ */
+export const CLAIM_READ_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
+
+/**
+ * Options for the opt-out recovery pass (VIL-553): it re-reads held texts inside the
+ * drain's headroom, so one row that keeps failing costs at most the reader's two
+ * attempts × 12s, never the hot path's 30s with a retry.
+ */
+export const OPT_OUT_RECOVERY_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
 
 /**
  * Options for the activity lane's WEB-GROUNDED call — the one model request on the SMS
@@ -83,10 +98,14 @@ export function budgetedAnthropic(
   return traceAnthropic(new Anthropic({ apiKey, ...budget }), trace);
 }
 
+/** A non-Anthropic transport (VIL-556): built only for a minted clearance, checked
+ * before the key is read or the client exists. */
 export function budgetedAiGateway(
   budget: AnthropicBudget,
+  clearance: NonGoogleClearance,
   trace: { stage?: HaleStage } = {},
 ): Anthropic {
+  assertClearance(clearance);
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('AI_GATEWAY_API_KEY is not set');
   return traceAnthropic(
@@ -107,7 +126,7 @@ export function pipelineClient(): AgentClient {
 /** The client for {@link ACTIVITY_CLIENT_OPTIONS}, process-cached for the same reason
  * the others are. */
 export function activityClient(): AgentClient {
-  cachedActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS);
+  cachedActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS, { stage: 'activity' });
   return cachedActivity;
 }
 

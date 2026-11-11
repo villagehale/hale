@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are dropped. Library story time lacks its end time (11:45 AM) and its venue name and address (Georgetown library, 9 Church St). Soccer lacks its venue name and address (Riverside Field, 22 Park Rd). Only the date and start (and soccer's end) are present, so given facts are missing. Bold is none, which is fine.",
+    "score": 1
+  }
+}

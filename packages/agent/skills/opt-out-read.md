@@ -1,6 +1,6 @@
 ---
 name: opt-out-read
-whenToUse: Any text from a parent or a number Hale texts. Decide whether the sender is asking Hale to stop texting them (or, after they stopped, to start again), is in a crisis, or is asking who is texting them, in any wording and any language, and write the one reply.
+whenToUse: Any text from a parent or a number Hale texts. Decide whether the sender is asking Hale to stop texting them (or, after they stopped, to start again), is in a crisis, or is asking who is texting them, in any wording and any language, and write the stop or start reply.
 task: screen
 tools: []
 ---
@@ -9,7 +9,10 @@ tools: []
 
 You get one inbound text and, when certain, a `languageHint`. Every reply you
 write is in the language and script of the text itself; the hint never overrides
-the sender's own words.
+the sender's own words. You also get `facts`: the crisis resources Hale holds for
+this sender. You never write them: Hale writes any crisis reply itself, from
+checked facts.
+
 Decide what the sender is asking for about Hale texting them at all:
 
 - `stop`: they want Hale to stop texting them. Read the meaning, not a word list.
@@ -18,6 +21,10 @@ Decide what the sender is asking for about Hale texting them at all:
   leaning that way is still `stop`: a person who wanted to leave and kept getting
   texts is the harm to avoid. Wanting Hale to stop ONE thing (a reminder, a topic,
   asking a question) while still talking to Hale is not `stop`.
+  Asking Hale to be quiet, hush or hold off for a while — a pause with an
+  end, in a group or 1:1, in any wording or language — is not `stop` and not
+  `leave_group`; it is `none`, and Hale answers it itself in the conversation.
+  Only a wish for no more texts from Hale at all is `stop`.
 - `start`: they had stopped and now want Hale back.
 - `crisis_emergency`: someone may be hurt or in danger right now (an injury, a
   child not breathing, a fire, violence happening). Read the meaning in any
@@ -34,28 +41,51 @@ Decide what the sender is asking for about Hale texting them at all:
   place) is a normal question and is `none`, even when it uses the same words
   as "who is this" or "what is your name". If they also want Hale to stop, it is
   `stop`.
+- `leave_group`: in a group chat with other people, they want Hale to leave or
+  step out of that shared thread, not to stop texting them altogether. Any
+  wording, any language. If they also say they want no texts from Hale at all,
+  it is `stop`.
 - `none`: anything else, including other questions about Hale, complaints that are not
   a request to stop, and messages about stopping something other than texting.
 
-When the reading is `stop` or `start`, write `confirmation`: the one text Hale
+When the reading is `stop`, `start` or `leave_group`, write `confirmation`: the one text Hale
 sends back. Write it like a friend texting, chill and short, in the sender's own
 language and script. For `stop`, say plainly that Hale will not text again and how
-they can come back in their own words. For `start`, say Hale is back. Ask nothing
+they can come back in their own words; for `leave_group`, write it the same way
+as a `stop` (it is only sent when Hale cannot leave the group). For `start`, say Hale is back. Ask nothing
 else.
 
-For `crisis_emergency`, `confirmation` tells them, first thing, to call their
-local emergency number now (911 in Canada and the US; when the text shows they
-are elsewhere, that place's number or "your local emergency number"). One or two
-short sentences, calm, nothing else asked or offered.
+Sometimes you also get `readLate`: Hale could not read this text when it arrived
+(`receivedAt`) and is reading it only now (`readAt`). Then a `stop` or `start`
+confirmation also says, briefly, that Hale is only now answering the message they
+sent, and roughly how long ago it came, worked out from `receivedAt` to `readAt` (some
+hours, a day, a few days). Never give a clock time or a date: you do not know their
+time zone.
 
-For `crisis_mental`, `confirmation` says you are glad they told you and points
-them right away to a crisis line they can reach (in Canada and the US, call or
-text 988; elsewhere the local crisis line or emergency number), and to call the
-emergency number if they are in danger now. Two or three short sentences, calm
-and human, no lecture, no question, no other topic. Write it in their language
-and script.
+For `crisis_emergency` or `crisis_mental`, `confirmation` is an empty
+string: Hale writes that reply separately, from checked facts. Your job there is
+only to read it.
+
+For `crisis_emergency` or `crisis_mental`, also put in `situation` the one value
+that best names what is happening, read from the meaning in any language:
+`not_breathing`, `choking`, `poisoning_or_overdose` (swallowed something harmful,
+or too much of a medicine or drug), `injury_or_bleeding`, `unresponsive` (not
+responding, cannot be woken), `fire`, `violence_or_threat` (someone else is
+hurting or threatening them), `self_harm` (hurting themselves, or thinking of
+ending their life), or `other`. When more than one fits, pick the one most
+dangerous right now. For every other reading, `situation` is `none`.
+
+For `crisis_emergency` or `crisis_mental`, also put in `who` the one value that
+names who is in danger, read from the meaning in any language: `child` (a child
+or baby, theirs or one in their care), `adult` (another adult), `self` (the
+sender themselves), or `unknown` (the text does not say). For every other
+reading, `who` is `unknown`.
 
 When the reading is `identity` or `none`, `confirmation` is an empty string (Hale
 writes the who-we-are reply separately, from checked facts).
+
+Put the language the text is written in into `language`, as a short language
+tag (`en`, `fr`, `zh`, `ar`, `es`, `hi`), read from the words themselves. When
+the text has no language of its own (only an emoji or a number), leave it empty.
 
 Copy the text back exactly in `verbatim`.

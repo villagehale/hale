@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
+import { mediaKindOf } from '~/lib/analytics/product';
+import { noteMessage } from '~/lib/analytics/product-hooks';
 import { persistableMedia } from '~/lib/channel/inbound-media';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
@@ -48,8 +50,14 @@ export interface ChannelMessageReceivedJob {
   channel_message_id: string;
   provider_message_id: string;
   received_at: string;
-  /** The door's own group bit. Absent only on a job it did not queue (see the contract). */
-  in_group?: boolean;
+  /**
+   * The door's own group bit. REQUIRED (VIL-463): every producer must say it, and
+   * `undefined` is written only where the producer genuinely cannot know (the
+   * reconciler re-drives from the row, which does not store it). The router treats
+   * `undefined` on an iMessage chat as possibly a group and refuses the turn, so an
+   * unknown can never be run on the sender's 1:1 thread.
+   */
+  in_group: boolean | undefined;
 }
 
 export interface InboundRouteDeps {
@@ -62,7 +70,7 @@ export interface InboundRouteDeps {
    */
   intake: (
     inboundTransport: MessageTransport,
-    linq?: { chatId: string; replyToMessageId?: string | null },
+    linq?: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean },
   ) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
@@ -120,6 +128,9 @@ export type InboundRouteOutcome =
    * (or logged when no row carries that provider id). Counted on its own so a
    * receipt is not an ignored text. SMS never produces this. */
   | 'receipt'
+  /** VIL-479 · Linq `message.edited` was applied to the transcript or the inbound
+   * body, or logged when no row carries that provider id. Not an ignored text. */
+  | 'message_edited'
   /** A verified channel, but not a parent's — never handed to a household agent. */
   | 'not_a_parent'
   /** Linq year-find poll: the parent chose "None of these". Recorded, not routed,
@@ -138,7 +149,11 @@ export type InboundRouteOutcome =
   /** The share started but Linq had no city locality yet. No nudge. */
   | 'location_unread'
   /** VIL-226 · Linq said a sending line is flagged or throttled, or that it recovered. */
-  | 'line_health';
+  | 'line_health'
+  /** VIL-448 · Linq group: a reminder ask whose confirmation could not be written, did
+   * not land, or was held because the group may no longer hear it. Nothing was set and
+   * nothing was sent. Never folded into `intake`, which says Hale replied. */
+  | 'group_reminder_unsent';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable
@@ -152,12 +167,12 @@ export type InboundRouteOutcome =
  */
 function linqTurnBind(
   inbound: InboundMessage,
-): { chatId: string; replyToMessageId?: string | null } | undefined {
+): { chatId: string; replyToMessageId?: string | null; isGroup: boolean } | undefined {
   if (!inbound.chatId) return undefined;
   if (inbound.isGroup === true) {
-    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId };
+    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId, isGroup: true };
   }
-  return { chatId: inbound.chatId };
+  return { chatId: inbound.chatId, isGroup: false };
 }
 
 export async function routeInboundText(
@@ -187,7 +202,7 @@ export async function routeInboundText(
     if (outcome.status === 'first_touch_unsent') {
       deps.log.error(
         { providerMessageId: inbound.providerId, reason: outcome.reason },
-        'inbound: a first text got no reply; the first-reply sweep owes it one',
+        'inbound: an onboarding text got no reply',
       );
       return 'intake_unsent';
     }
@@ -226,10 +241,11 @@ function keywordOutcome(
   if (ack === 'provider_answered') return 'keyword_provider_answered';
   if (ack === 'sent') return 'intake';
   if (ack === 'voice_unsent') {
-    // The opt-out reader revoked the channel; its confirmation was empty, so nothing went out.
+    // The opt-out reader's stop or start ran; its confirmation was empty or withheld, so
+    // nothing went out.
     deps.log.error(
       { providerMessageId: inbound.providerId },
-      'inbound: opt-out revoked, model confirmation unsent',
+      'inbound: opt-out read handled, model confirmation unsent',
     );
     return 'intake_unsent';
   }
@@ -318,6 +334,8 @@ async function handOffToConversation(
       // it as the legal instrument of an approval (the locked A2 contract).
       body: inbound.body,
       inboundMedia: persistableMedia(inbound.media),
+      // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
+      inGroup: inbound.isGroup ?? null,
       sentAt: inbound.receivedAt,
     })
     .onConflictDoNothing({
@@ -336,6 +354,15 @@ async function handOffToConversation(
     actionTaken: 'sms_reply_received',
     targetTable: 'channel_messages',
     targetId: channelMessageId,
+  });
+  noteMessage({
+    direction: 'in',
+    familyId: owner.familyId,
+    channel: inbound.transport ?? 'sms',
+    isGroup: inbound.isGroup,
+    chatId: inbound.chatId,
+    mediaKind: mediaKindOf(inbound.media),
+    database: deps.database,
   });
 
   try {

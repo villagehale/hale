@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The switch was actually turned off this turn for both send_email and reply_to_email, so 'Done' is true and the commitment to check first is accurate. The second sentence only restates the first, which is a small redundancy.",
+    "score": 4
+  }
+}

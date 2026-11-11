@@ -45,14 +45,19 @@ import { tsImport } from 'tsx/esm/api';
 import { IDENTITY_ASK_FIXTURES } from './identity-ask-fixtures.mjs';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
+  isVerdict,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -174,49 +179,7 @@ function flatten(text) {
 
 // ── the judge ────────────────────────────────────────────────────────────────
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sends a parent asking for a',
-  'plain fact about the parent themselves - what to call them, an email address, or both.',
-  'Hale composed this nearly blind: it was shown only WHICH facts are missing and WHY it',
-  'needs them. No family, no children, no other household, no tools.',
-  'You are given the moment it was written for, what was missing, the message, and watchFor',
-  '- fixture-specific notes on what right and wrong look like here. Score 1-5.',
-  'The score tool takes your ARGUMENT first and the number second, and that order is the',
-  'point: write what is right and wrong with THIS message in your own words - a few',
-  'sentences quoting what it actually says - and only then score it. A one-word argument,',
-  'or an argument that merely names the moment, is not an argument.',
-  'There are two moments and they are scored differently.',
-  'MOMENT "getting_started": this message is the TAIL of a confirmation Hale has already',
-  'written ("Done - you\'re covered. I only text when something actually matters, and STOP',
-  'always works."). That sentence says the parent is covered and never says what covered',
-  'MEANS, and this tail is the only place it is ever said. So it has TWO jobs inside about',
-  'seventy characters: one clause saying what Hale does from here - it keeps watching this',
-  "family's dates on its own AND the parent can text it a parenting question whenever they",
-  'have one - and the ask itself.',
-  'A 5 does both in one plain sentence, tight enough to fit.',
-  'A message that names only ONE of the two halves (it watches but is never spoken to, or',
-  'it answers but never watches) is a 3.',
-  'A message that only asks for the name is a 2 however well it reads: the parent is left',
-  'with a number that collects details and no idea what it does.',
-  'Do not mark it down for terseness - there is no room, and a clipped sentence that says',
-  'both things beats an elegant one that says neither.',
-  'Re-thanking, re-confirming the coverage, mentioning STOP, greeting, or explaining why',
-  'Hale wants a name are all LOW - the sentence in front already did that work.',
-  'MOMENT "introduction": days ago this parent said yes to being introduced to another Hale',
-  'family, and Hale cannot make the introduction without what is missing. A 5 ties the ask',
-  "to that introduction in the parent's own terms and asks plainly. This parent has been a",
-  'Hale family for months, so a line about what Hale watches or what it can answer belongs',
-  'to the start of life and is LOW here - it reads as a company re-introducing itself',
-  'instead of asking the small thing it needs. A LOW score is any of:',
-  'reading like a company collecting contact details; naming, counting, locating or',
-  'describing the other household in ANY way, including "a family near you" or "they have a',
-  'toddler"; implying Hale has been talking to them; pressure, urgency or a deadline.',
-  'LOW at either moment: more than one question; hype, exclamation marks or emoji; a',
-  'greeting or a sign-off; an example address; any invented specific - a number, a date, a',
-  'place, a link, or anything about a child; pointing at an app; padding after the ask; more',
-  'than about two short sentences.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('identity-ask');
 
 // Deterministic broken stand-in: hype, two questions, an invented number, an emoji, a
 // link, an example address, and a description of the other household — trips not_gsm7 +
@@ -228,8 +191,11 @@ const BROKEN_ASK =
   'your email like sam@example.com within 2 days? See www.example.com';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd', '--only']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const onlyArg = process.argv.find((a) => a.startsWith('--only='));
+  const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null;
   installEvalSpendCap();
   const getClient = lazyAnthropic('identity-ask');
   const cost = makeCost();
@@ -240,16 +206,22 @@ async function main() {
   const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'identity-ask', cachedOnly, getClient, cost);
+  const fixtures = only
+    ? IDENTITY_ASK_FIXTURES.filter((fixture) => only.has(fixture.id))
+    : IDENTITY_ASK_FIXTURES;
+  if (only && fixtures.length === 0) {
+    throw new Error(`fixture did not match --only=${[...only].join(',')}`);
+  }
 
   console.log(
     `identity-ask eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
   console.log(
-    `corpus: ${IDENTITY_ASK_FIXTURES.length} asks | tail budget ${MAX_TAIL_ASK_CHARS} chars, standalone ${MAX_ASK_CHARS}\n`,
+    `corpus: ${fixtures.length} asks | tail budget ${MAX_TAIL_ASK_CHARS} chars, standalone ${MAX_ASK_CHARS}\n`,
   );
 
   const results = [];
-  for (const fixture of IDENTITY_ASK_FIXTURES) {
+  for (const fixture of fixtures) {
     const userMessage = identityAskUserMessage(fixture.request, fixture.rejected ?? []);
     const raw = broken
       ? BROKEN_ASK
@@ -292,10 +264,16 @@ async function main() {
       message: body,
       watchFor: fixture.watchFor,
     });
-    if ((verdict.reason ?? '').trim().length < MIN_JUDGE_REASON_CHARS) {
-      failures.push(`judge-unargued:${verdict.score} ("${verdict.reason ?? ''}")`);
-    } else if (verdict.score < JUDGE_MIN) {
-      failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    // A score outside 1-5 is wreckage (truncated quote, confused draw), not a
+    // content fail. --dry returns NaN; leave it unscored.
+    if (!verdict.dry) {
+      if (!isVerdict(verdict)) {
+        failures.push(`judge-parse:${String(verdict.score)} ("${verdict.reason ?? ''}")`);
+      } else if ((verdict.reason ?? '').trim().length < MIN_JUDGE_REASON_CHARS) {
+        failures.push(`judge-unargued:${verdict.score} ("${verdict.reason ?? ''}")`);
+      } else if (verdict.score < JUDGE_MIN) {
+        failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      }
     }
 
     results.push({ fixture, body, failures });
@@ -329,6 +307,7 @@ async function main() {
   const invented = results.filter((r) => r.failures.some((f) => f.startsWith('forbidden:')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
   const unargued = results.filter((r) => r.failures.some((f) => f.startsWith('judge-unargued:')));
+  const parseFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge-parse:')));
   const introOpeners = new Set(
     results.filter((r) => r.fixture.request.reason === 'introduction').map((r) => opener(r.body)),
   );
@@ -345,6 +324,9 @@ async function main() {
     `verdicts with no argument: ${unargued.length}  (0 required - a score written blind is not a verdict)`,
   );
   console.log(
+    `verdicts that did not parse: ${parseFails.length}  (0 required - a score outside 1-5 is wreckage, not a vote)`,
+  );
+  console.log(
     `distinct intro opens:    ${introOpeners.size}  (>= ${MIN_DISTINCT_OPENERS} required - one template is a preset body)`,
   );
 
@@ -357,6 +339,10 @@ async function main() {
     results.every((r) => r.failures.length === 0) && introOpeners.size >= MIN_DISTINCT_OPENERS;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('identity-ask', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English, but the parent wrote in Chinese, so it is the wrong language. It also names a specific family (Patel) and says they declined, which hints at another family and what they said, and none of that is in the facts. It apologizes unprompted, invents a retry date and a 'YES INTROS' instruction, and leaves out the actual facts (nothing is shared until both families say yes, they can switch it off any time, Hale will text when there is a good match).",
+    "score": 1
+  }
+}

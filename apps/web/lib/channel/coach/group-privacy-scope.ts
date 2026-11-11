@@ -6,9 +6,10 @@ import { unavailableMemoryBrief } from '~/lib/memory/brief';
  *
  * Everyone in a group reads every group line. So a group turn may use only what was
  * said in this chat plus what the household already shares there (kids' names and
- * ages, public registration dates). Nothing private reaches the prompt: memory facts
- * and episodes (built from 1:1 texts and inboxes), the memory brief, the note a 1:1
- * reply grounds on, and the family's provider watch. A thing that is not in the
+ * ages). Nothing private reaches the prompt: memory facts and episodes (built from 1:1
+ * texts and inboxes), the memory brief, the note a 1:1 reply grounds on, the family's
+ * provider watch, and its registration windows (registration is never group content;
+ * parents still get those dates 1:1). A thing that is not in the
  * prompt cannot be quoted; the skill's rule is the second line, not the only one.
  *
  * Applied to every group turn, with no flag: the router marks a turn `group` whenever
@@ -21,16 +22,32 @@ export const GROUP_WITHHELD = [
   'memoryBrief',
   'sourceNote',
   'providerWatch',
+  'registrationWindows',
 ] as const;
 
 export function groupScopedContext<T extends AgentContext>(context: T): T {
   const { providerWatch: _withheld, ...rest } = context as T & { providerWatch?: unknown };
+  // VIL-482 (Devin SEC_0002): a .vcf on a group turn gives the model the card's name
+  // only. Phones, emails, org, title, and place are one person's private details and
+  // a group line is read by everyone, so they never reach a group prompt. The card is
+  // marked `groupNameOnly` (no empty `phones`), so the model cannot read the missing
+  // fields as "the card has no number" and say so in the group (Design CHANGES #985).
+  const contacts = (rest as { arrivedContacts?: unknown }).arrivedContacts;
+  if (Array.isArray(contacts)) {
+    Object.assign(rest, {
+      arrivedContacts: contacts.map((card: { name?: string | null }) => ({
+        name: card?.name ?? null,
+      })),
+      arrivedContactsGroupNameOnly: true,
+    });
+  }
   return {
     ...(rest as T),
     memoryFacts: [],
     recentEpisodes: [],
     memoryBrief: unavailableMemoryBrief(),
     sourceNote: null,
+    registrationWindows: [],
   };
 }
 
@@ -70,6 +87,7 @@ type HandlerTool = { name: string; handler: (...args: never[]) => unknown };
  */
 export const GROUP_WITHHELD_TOOLS: ReadonlySet<string> = new Set([
   'prepare_gmail_draft',
+  'read_email',
   'read_recent_memory',
   'read_recent_conversations',
   'list_watch_targets',
@@ -82,6 +100,21 @@ export function groupScopedTools<T extends HandlerTool>(tools: T[]): T[] {
   return tools
     .filter((tool) => !GROUP_WITHHELD_TOOLS.has(tool.name))
     .map((tool) => {
+      // VIL-518: the `family` slice is built from private memory; a group find gets picks only.
+      if (tool.name === 'find_activities') {
+        const inner = tool.handler as (...args: unknown[]) => Promise<unknown>;
+        return {
+          ...tool,
+          handler: async (...args: unknown[]) => {
+            const result = await inner(...args);
+            if (result && typeof result === 'object' && 'family' in result) {
+              const { family: _family, ...rest } = result as Record<string, unknown>;
+              return rest;
+            }
+            return result;
+          },
+        } as T;
+      }
       if (tool.name !== 'lookup_week') return tool;
       const inner = tool.handler as (...args: unknown[]) => Promise<WeekResult>;
       return {

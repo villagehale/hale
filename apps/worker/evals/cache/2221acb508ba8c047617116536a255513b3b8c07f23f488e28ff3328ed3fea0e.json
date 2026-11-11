@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Drafts exactly the cap of two (Monday 4:30 and Thursday 5:15 swims, both traceable to the week). It asks in a plain sentence whether to go ahead, without a YES keyword. It says it will line up the rest, which is the correct overflow handling. It reveals nothing about the private Wednesday item and has no padding.",
+    "score": 5
+  }
+}

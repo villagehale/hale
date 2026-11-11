@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single event keeps every given fact: 'an appointment' stays generic with nothing guessed about what it is, the day is correctly tomorrow (Monday, from Sunday evening), the start 4:45 and the given end 5:45 are both present, and 'in the afternoon' correctly marks PM. There is no location or 'for' in the facts, so none is missing, and nothing was invented (no travel time, no departure advice, no extra detail). Bold is none, which is fine. English throughout, no link included.",
+    "score": 5
+  }
+}

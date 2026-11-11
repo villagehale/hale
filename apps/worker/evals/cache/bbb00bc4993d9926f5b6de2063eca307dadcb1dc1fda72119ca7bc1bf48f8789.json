@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: piano lesson tonight, 7 to 8 PM at Ms. Chen's studio, which the text renders as 陈老师的琴房 (acceptable). '今晚7点' correctly marks evening, the day is truly today from now, and no clock time is given for an all-day event. The end time 8点结束 is present. No invented logistics, no advice, no calendar talk. Native-speaker check: '钢琴课今晚7点在陈老师的琴房上，8点结束' is slightly stiff as a text (the 上 with 琴房 is a bit clumsy, and 'X点结束' reads like a readout) but is understandable and natural enough; it reads more like a notification than a warm friend text, which caps it at 3 per the tone rules.",
+    "score": 3
+  }
+}

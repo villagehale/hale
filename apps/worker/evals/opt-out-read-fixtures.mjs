@@ -76,4 +76,46 @@ export const OPT_OUT_FIXTURES = [
   },
   { id: 'zh-not-identity', text: '游泳老师叫什么名字？', language: 'zh', expect: 'none' },
   { id: 'ar-not-identity', text: 'ما هو عنوان المسبح؟', language: 'ar', expect: 'none' },
+  { id: 'es-blunt', text: 'deja de mandarme mensajes', language: 'es', expect: 'stop' },
+  {
+    id: 'es-polite',
+    text: 'Gracias, pero por favor ya no me escriban más',
+    language: 'es',
+    expect: 'stop',
+  },
+  {
+    id: 'es-indirect',
+    text: 'sáquenme de esta lista, no quiero recibir nada más',
+    language: 'es',
+    expect: 'stop',
+  },
+  {
+    id: 'es-none-one-thing',
+    text: 'ya no me mandes los recordatorios de natación, pero lo demás sí',
+    language: 'es',
+    expect: 'none',
+  },
+  // "Para" is "for" here, not "stop": an ordinary question.
+  {
+    id: 'es-none-para',
+    text: 'Para el sábado, ¿a qué hora empieza la clase de natación?',
+    language: 'es',
+    expect: 'none',
+  },
+  // VIL-553: read only after a model outage. The reply also says, in time since then,
+  // when the message came in; the judge grades that, with no required words.
+  {
+    id: 'en-late-stop',
+    text: 'please stop texting me',
+    language: 'en',
+    expect: 'stop',
+    late: { receivedAt: '2026-10-20T09:30:00.000Z', readAt: '2026-10-20T15:00:00.000Z' },
+  },
+  {
+    id: 'fr-late-stop',
+    text: "Arrêtez de m'écrire, merci",
+    language: 'fr',
+    expect: 'stop',
+    late: { receivedAt: '2026-10-18T15:00:00.000Z', readAt: '2026-10-20T15:00:00.000Z' },
+  },
 ];

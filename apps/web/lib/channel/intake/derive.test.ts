@@ -1,7 +1,9 @@
 import { ageInMonths, deriveStage } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import {
+  crisisRegionForPlace,
   deriveDateOfBirth,
+  fillAgesFromDates,
   intakeFamilyName,
   parseIntakePostal,
   summarizeChildren,
@@ -56,6 +58,13 @@ describe('parseIntakePostal', () => {
     });
   });
 
+  it('reads a region only from a Canadian or US code', () => {
+    expect(crisisRegionForPlace(['T2P 1J9', null])).toBe('CA');
+    expect(crisisRegionForPlace(['V6B'])).toBe('CA');
+    expect(crisisRegionForPlace([undefined, '10001'])).toBe('US');
+    expect(crisisRegionForPlace(['Maplewick Heights', 'SW1A 1AA', null])).toBeNull();
+  });
+
   it('returns null for a code that is neither Canadian nor US', () => {
     expect(parseIntakePostal('SW1A 1AA')).toBeNull();
     expect(parseIntakePostal('W1A')).toBeNull();
@@ -104,6 +113,19 @@ describe('deriveDateOfBirth', () => {
    * the intake→storage→derivation chain lands on preschool rather than the
    * school-age band a four-year-old used to be searched in.
    */
+  it('fills age from a named birth date without converting the civil day (VIL-531)', () => {
+    const now = new Date('2026-11-02T18:00:00.000Z');
+    const filled = fillAgesFromDates(
+      [{ name: 'Lin', ageMonths: null, agePrecision: null, dateOfBirth: '2016-05-01' }],
+      now,
+    );
+    expect(filled[0]?.dateOfBirth).toBe('2016-05-01');
+    expect(filled[0]?.ageMonths).toBe(ageInMonths('2016-05-01', now));
+    expect(filled[0]?.agePrecision).toBe('months');
+    // The Preview bug: deriving a DOB from months on a Nov 2 UTC clock stored May 2.
+    expect(deriveDateOfBirth(filled[0]?.ageMonths ?? 0, 'months', now)).not.toBe('2016-05-01');
+  });
+
   it('lands a spoken "four years old" in the preschool stage, not school-age', () => {
     const dob = deriveDateOfBirth(48, 'years', now);
     expect(ageInMonths(dob, now)).toBe(54);

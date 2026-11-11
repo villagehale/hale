@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text is in English though parent wrote in Arabic, which fails the language rule. It also names another family (the Patel family) and says they said no, a privacy violation. It tells the parent a word to type (YES INTROS), violating the safety rule. It invents a Friday Nov 3 retry date and an apology not given by facts."
+  }
+}

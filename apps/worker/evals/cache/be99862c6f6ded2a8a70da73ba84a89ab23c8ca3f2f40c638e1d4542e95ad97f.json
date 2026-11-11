@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits check_in_ask: it asks how registration went and gives the three outcomes, got in, waitlisted (asking for the number) or missed. It is in French, and vous is allowed. It names the window correctly as Riverton fall recreation programs. It invents no claims, dates or children, and it reads like a friendly text. It is a little formal, but that is fine.",
+    "score": 5
+  }
+}

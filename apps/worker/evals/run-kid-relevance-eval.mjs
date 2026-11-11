@@ -38,6 +38,14 @@ import { pathToFileURL } from 'node:url';
 import { deriveStage } from '@hale/types';
 import { register } from 'tsx/esm/api';
 import {
+  EVAL_NOW,
+  KID_RELEVANCE_FAMILIES,
+  KID_RELEVANCE_FULL_BATCH,
+  KID_RELEVANCE_INJECTION,
+  KID_RELEVANCE_ONBOARDING,
+} from './kid-relevance-fixtures.mjs';
+import { verdictRulesOf } from './kid-relevance-judge-rules.mjs';
+import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
   PRICE,
@@ -52,14 +60,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import {
-  EVAL_NOW,
-  KID_RELEVANCE_FAMILIES,
-  KID_RELEVANCE_FULL_BATCH,
-  KID_RELEVANCE_INJECTION,
-  KID_RELEVANCE_ONBOARDING,
-} from './kid-relevance-fixtures.mjs';
-import { verdictRulesOf } from './kid-relevance-judge-rules.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -75,32 +76,7 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
  * reason against a copy of a rule that has fallen behind it.
  */
 function judgeSystem(skillInstructions) {
-  return [
-    [
-      'You are a strict reviewer scoring ONE short reason a classifier wrote for one item from',
-      "a parent's calendar, mailbox or household group. The classifier decided whether the item",
-      "is about the children (`kid`), the parent's own life (`adult`), or cannot be told",
-      "(`unsure`). The verdict is graded elsewhere: do NOT re-decide it. Score the classifier's",
-      'reason 1-5, and write your OWN argument in your reason field.',
-      'You are given exactly what the classifier saw: the children (first names and ages in',
-      'months), the item text and its source (`google_calendar`, `gmail` or `group`, a household',
-      'group chat), any `activityTitles` (kid activities Hale already found for this family) and',
-      'any `notMineHints` (kinds of thing the parent already said are theirs); then the verdict',
-      'and the `classifierReason` you are scoring. Anything in that context is a supported fact.',
-    ].join(' '),
-    'The rules the classifier was given, which a reason may lean on:',
-    verdictRulesOf(skillInstructions),
-    [
-      'Saying which ages a kid activity suits is a reading of the item, not an invented fact.',
-      'A 5 is one short plain clause that says what kind of thing the item is and why that',
-      'leads to the verdict beside it.',
-      'A LOW score is any of: a reason that argues for a different verdict than the one given;',
-      'a fact the item does not support (an age, a relationship, a place); only the title',
-      'copied back with no "what it is" or "why"; an empty or generic reason ("classified");',
-      'more than one sentence.',
-      'Reply with ONLY the score tool.',
-    ].join(' '),
-  ].join('\n\n');
+  return judgePrompt('kid-relevance', { verdictRules: verdictRulesOf(skillInstructions) });
 }
 
 /** Below this a reason contradicts its verdict or invents a fact (see judgeSystem). */

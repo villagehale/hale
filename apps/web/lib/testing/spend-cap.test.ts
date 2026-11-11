@@ -2,7 +2,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cappedCall, readLedger, usageUsd, worstCaseUsd } from './spend-cap.mjs';
+import { cappedCall, readLedger, usageUsd, withCachedSystem, worstCaseUsd } from './spend-cap.mjs';
+import * as spendCap from './spend-cap.mjs';
+
+// spend-cap.mjs is untyped JS; its inferred options type misses `rates`.
+type SdkMessages = {
+  create: (request: unknown, options?: unknown) => Promise<unknown>;
+  stream: (request: unknown, options?: unknown) => { finalMessage: () => Promise<unknown> };
+};
+const { capSdkClient } = spendCap as unknown as {
+  capSdkClient: (client: unknown, opts: { rates: unknown }) => { messages: SdkMessages };
+};
 
 const rates = () => ({ input: 1, output: 5 }); // $ per MTok
 const request = {
@@ -57,6 +67,22 @@ describe('spend cap at the call site', () => {
     expect(m.create).not.toHaveBeenCalled();
   });
 
+  it('passes request options through and turns SDK retries off for create and stream', async () => {
+    vi.stubEnv('HALE_MAX_USD', '1');
+    const m = mockClient();
+    const w = capSdkClient(m.client, { rates });
+    const signal = new AbortController().signal;
+    await w.messages.create(request, { signal, maxRetries: 2 });
+    expect(m.create).toHaveBeenCalledWith(request, { signal, maxRetries: 0 });
+    await w.messages.stream(request, { signal }).finalMessage();
+    expect(m.stream).toHaveBeenCalledWith(request, { signal, maxRetries: 0 });
+    // Both went through the ledger: 1000 in + 200 out = $0.002, 1000 in + 400 out = $0.003.
+    const l = readLedger();
+    expect(l.calls).toBe(2);
+    expect(m.countTokens).toHaveBeenCalledTimes(2);
+    expect(l.spentUsd).toBeCloseTo(0.005, 9);
+  });
+
   it('books the real usage from the returned message', async () => {
     vi.stubEnv('HALE_MAX_USD', '1');
     const m = mockClient();
@@ -73,7 +99,7 @@ describe('spend cap at the call site', () => {
     expect(l.calls).toBe(1);
   });
 
-  it('refuses BEFORE the call when the projection would cross the cap', async () => {
+  it('refuses BEFORE the call when the projection would cross the cap, and that refusal ends the round', async () => {
     vi.stubEnv('HALE_MAX_USD', '0.005'); // projection is $0.006
     const m = mockClient();
     await expect(
@@ -86,6 +112,52 @@ describe('spend cap at the call site', () => {
     ).rejects.toThrow(/refusing/);
     expect(m.create).not.toHaveBeenCalled();
     expect(readLedger().refused).toBe(1);
+    expect(readLedger().log.at(-1)).toMatchObject({ refused: true });
+    expect(readLedger().log.at(-1).projected).toBeCloseTo(0.006, 9);
+    expect(readLedger().halted).toBe('budget refusal on claude-haiku-4-5');
+
+    // 1000 in + 1 out = $0.001005, under the cap on its own.
+    const small = { ...request, max_tokens: 1 };
+    const smallCall = {
+      client: m.client,
+      request: small,
+      call: () => m.client.messages.create(small),
+      rates,
+    };
+    await expect(cappedCall(smallCall)).rejects.toThrow(
+      /round halted \(budget refusal on claude-haiku-4-5\)/,
+    );
+    expect(m.create).not.toHaveBeenCalled();
+    expect(m.countTokens).toHaveBeenCalledTimes(1);
+
+    // The same small call on a fresh ledger at the same cap goes through.
+    vi.stubEnv('HALE_SPEND_LEDGER', join(dir, 'fresh.json'));
+    await cappedCall(smallCall);
+    expect(m.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed token count is not a budget refusal: the next call goes ahead and the failure stays in the audit', async () => {
+    vi.stubEnv('HALE_MAX_USD', '1');
+    const m = mockClient();
+    m.countTokens.mockRejectedValueOnce(new Error('preflight unavailable'));
+    const args = {
+      client: m.client,
+      request,
+      call: () => m.client.messages.create(request),
+      rates,
+    };
+    await expect(cappedCall(args)).rejects.toThrow(/could not count/);
+    expect(m.create).not.toHaveBeenCalled();
+    expect(readLedger().spentUsd).toBe(0);
+    expect(readLedger().halted).toBeNull();
+
+    await cappedCall(args);
+    const l = readLedger();
+    expect(l.refused).toBe(1);
+    expect(l.calls).toBe(1);
+    expect(l.spentUsd).toBeCloseTo(0.002, 9);
+    expect(l.halted).toBeNull();
+    expect(l.log[0]).toMatchObject({ refused: true, countError: 'preflight unavailable' });
   });
 
   it('counts what is already spent against the next projection', async () => {
@@ -129,6 +201,24 @@ describe('spend cap at the call site', () => {
       }),
     ).rejects.toThrow(/refusing/);
     expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('prices a 1h cache write at 2x on real usage', () => {
+    expect(
+      usageUsd(rates, 'claude-haiku-4-5', {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 1_000_000,
+        cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1_000_000 },
+      }),
+    ).toBeCloseTo(2, 9);
+    expect(
+      usageUsd(rates, 'claude-haiku-4-5', {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 1_000_000,
+      }),
+    ).toBeCloseTo(1.25, 9);
   });
 
   it('books the projection when the call fails after it was sent', async () => {
@@ -299,5 +389,18 @@ describe('spend cap when tokens cannot be counted', () => {
       }),
     ).rejects.toThrow(/max_uses/);
     expect(m.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('withCachedSystem', () => {
+  it('wraps a string system in a 5m breakpoint and leaves an array alone', () => {
+    expect(withCachedSystem({ system: 'STABLE' }).system).toEqual([
+      { type: 'text', text: 'STABLE', cache_control: { type: 'ephemeral' } },
+    ]);
+    const marked = [
+      { type: 'text', text: 'STABLE', cache_control: { type: 'ephemeral', ttl: '1h' } },
+    ];
+    expect(withCachedSystem({ system: marked }).system).toBe(marked);
+    expect(withCachedSystem({ messages: [] }).system).toBeUndefined();
   });
 });

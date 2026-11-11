@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "daycare sender names the child, new picture day with date, time and place, clear, offer to add",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Ça se prépare : Maple Daycare a écrit mardi pour annoncer la journée photo de Robin, le vendredi 2 octobre à 9h, à la garderie. Tu veux que je l'ajoute à votre semaine ?",
+    "asks_to_add": true
+  },
+  "stopReason": "tool_use"
+}

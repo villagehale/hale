@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts: all three events are present with correct day (tomorrow), start, end, venue and address, and who each is for. Tour 10 to 11 a.m. is right (AM stated), storytime 1:30 to 2 p.m., swim 5 to 5:45 p.m. (\"5\" with p.m. context is clear). Titles are kept as event names (Storytime for Toddler Storytime is fine). Nothing invented; no link used; bold is none, which is fine. Voice check: the texts vary the sentence shape (\"Tomorrow starts with...\", \"Then Storytime for Léa...\", \"Swim for Léa is at 5, done by 5:45\") rather than pouring the same frame in three times, and each event is its own short text, so it reads like a person texting, not a form.",
+    "score": 5
+  }
+}

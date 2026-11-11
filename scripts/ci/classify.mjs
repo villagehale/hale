@@ -16,6 +16,7 @@ const EVAL_NAME_RE = /pnpm --filter @hale\/worker (eval:[a-z][a-z0-9-]*)/;
 const TIMEOUT_RE = /(Test|Hook) timed out in \d+ms/;
 const PGLITE_FILE_RE = /(\.pglite\.test\.ts$|lib\/__journey__\/|lib\/testing\/pglite\.test\.ts$)/;
 const ONE_FILE_SUMMARY_RE = /Test Files\s+1 failed \| \d+ passed/;
+const FAILED_FILES_SUMMARY_RE = /Test Files\s+(\d+) failed/g;
 const FAIL_LINE_RE = /\bFAIL\b\s+(\S+)/;
 const ERROR_LINE_RE = /\bFAIL\b\s|error TS\d+|\bError\b|##\[error\]/;
 
@@ -68,8 +69,15 @@ export function classify(failedStepName, rawLog) {
 
   // Class 3 — pglite timeout flake: rerun once. The file-confinement check is
   // what keeps a genuine timeout-shaped regression in a non-pglite file out
-  // of the rerun path; an empty FAIL list (truncated log) also refuses.
-  if (step === 'Test' && TIMEOUT_RE.test(text) && ONE_FILE_SUMMARY_RE.test(text)) {
+  // of the rerun path; an empty FAIL list (truncated log) also refuses. The
+  // dump joins every failed shard, and the rerun reruns all of them, so every
+  // shard's summary must report exactly one failed file.
+  if (
+    step === 'Test' &&
+    TIMEOUT_RE.test(text) &&
+    ONE_FILE_SUMMARY_RE.test(text) &&
+    [...text.matchAll(FAILED_FILES_SUMMARY_RE)].every((m) => m[1] === '1')
+  ) {
     const failFiles = extractFailFiles(text);
     if (failFiles.length > 0 && failFiles.every((f) => PGLITE_FILE_RE.test(f))) {
       return { class: 'pglite-flake', failFiles };

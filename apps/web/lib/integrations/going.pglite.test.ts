@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { SOCIAL_PROOF_MIN } from '~/lib/village/social-proof';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { SOCIAL_PROOF_MIN } from '~/lib/village/social-proof';
 import {
   FREEMAIL_HOSTS,
   GOING_COUNT_ENABLED_ENV,
@@ -12,6 +12,7 @@ import {
   goingCount,
   goingCountEnabled,
   readSessionGoing,
+  recordGoingCountShare,
   sessionKey,
 } from './going';
 
@@ -43,6 +44,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.database.delete(schema.activityBookings);
+  await db.database.delete(schema.goingCountOptIns);
   recipient = await seedFamily(db.database);
 });
 
@@ -92,10 +94,23 @@ const KEY = sessionKey({
   firstSessionAt: FIRST_SESSION,
 }) as string;
 
-/** N other families, each holding this session once. */
+async function shareGoing(family: { familyId: string; parentUserId: string }): Promise<void> {
+  const result = await recordGoingCountShare(db.database, {
+    familyId: family.familyId,
+    parentUserId: family.parentUserId,
+    granted: true,
+  });
+  if (result.status !== 'recorded' && result.status !== 'already') {
+    throw new Error(`shareGoing: ${result.status}`);
+  }
+}
+
+/** N other families, each holding this session once and opted in to the count. */
 async function others(count: number, key: string = KEY): Promise<void> {
   for (let i = 0; i < count; i += 1) {
-    await book(await seedFamily(db.database, `Other ${i}`), key);
+    const family = await seedFamily(db.database, `Other ${i}`);
+    await book(family, key);
+    await shareGoing(family);
   }
 }
 
@@ -137,7 +152,7 @@ describe('sessionKey — the one fold, and its four refusals', () => {
     ).not.toBe(sessionKey(base));
   });
 
-  it('refuses a FALLBACK title — Hale\'s own words are not a session', () => {
+  it("refuses a FALLBACK title — Hale's own words are not a session", () => {
     // Every nameless receipt from one host at one instant would otherwise key into one
     // "session" called "a spot", and the count would over-state about strangers.
     expect(
@@ -275,8 +290,9 @@ describe('readSessionGoing — the real query against real rows', () => {
     // Three families booked: the third is told "two other". Two families booked: each sees
     // one other and nothing is said. The positive control is the first assertion.
     await others(2);
-    await expect(readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }))
-      .resolves.toEqual({ others: 2, alreadyHeld: false });
+    await expect(
+      readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }),
+    ).resolves.toEqual({ others: 2, alreadyHeld: false });
 
     const [first] = await db.database
       .select({ familyId: schema.activityBookings.familyId })
@@ -297,6 +313,7 @@ describe('readSessionGoing — the real query against real rows', () => {
     const coParented = await seedFamily(db.database, 'Two receipts');
     await book(coParented, KEY);
     await book(coParented, KEY);
+    await shareGoing(coParented);
     await others(1);
     await expect(
       readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }),
@@ -360,5 +377,74 @@ describe('readSessionGoing — the real query against real rows', () => {
     const def = (Array.isArray(indexes) ? indexes[0]?.rows?.[0]?.indexdef : undefined) ?? '';
     expect(def).toContain('session_key');
     expect(def).toContain('cancelled_at IS NULL');
+  });
+
+  it('never counts a booking whose household did not opt in', async () => {
+    const silent = await seedFamily(db.database, 'Booked, never asked');
+    await book(silent, KEY);
+    await others(2);
+    await expect(
+      readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }),
+    ).resolves.toEqual({ others: 2, alreadyHeld: false });
+
+    await recordGoingCountShare(db.database, {
+      familyId: silent.familyId,
+      parentUserId: silent.parentUserId,
+      granted: true,
+    });
+    await expect(
+      readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }),
+    ).resolves.toEqual({ others: 3, alreadyHeld: false });
+
+    await recordGoingCountShare(db.database, {
+      familyId: silent.familyId,
+      parentUserId: silent.parentUserId,
+      granted: false,
+    });
+    await expect(
+      readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }),
+    ).resolves.toEqual({ others: 2, alreadyHeld: false });
+  });
+});
+
+describe("recordGoingCountShare — this household's yes, and taking it back", () => {
+  it('writes one live row, then already, then a revoke that the count can see', async () => {
+    const first = await recordGoingCountShare(db.database, {
+      familyId: recipient.familyId,
+      parentUserId: recipient.parentUserId,
+      granted: true,
+    });
+    expect(first.status).toBe('recorded');
+    if (first.status !== 'recorded') throw new Error('expected recorded');
+    await expect(
+      recordGoingCountShare(db.database, {
+        familyId: recipient.familyId,
+        parentUserId: recipient.parentUserId,
+        granted: true,
+      }),
+    ).resolves.toEqual({ status: 'already', optInId: first.optInId });
+
+    await book(recipient, KEY);
+    await others(2);
+    await expect(
+      readSessionGoing(db.database, {
+        familyId: (await seedFamily(db.database, 'Listener')).familyId,
+        sessionKey: KEY,
+      }),
+    ).resolves.toMatchObject({ others: 3, alreadyHeld: false });
+
+    await expect(
+      recordGoingCountShare(db.database, {
+        familyId: recipient.familyId,
+        parentUserId: recipient.parentUserId,
+        granted: false,
+      }),
+    ).resolves.toEqual({ status: 'revoked' });
+    await expect(
+      readSessionGoing(db.database, {
+        familyId: (await seedFamily(db.database, 'Listener after')).familyId,
+        sessionKey: KEY,
+      }),
+    ).resolves.toMatchObject({ others: 2, alreadyHeld: false });
   });
 });

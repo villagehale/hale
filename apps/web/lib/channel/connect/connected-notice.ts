@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
@@ -11,10 +12,10 @@ import {
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
 import {
-  type OnboardingChecklist,
-  agesAreComplete,
-  kidsAreNamed,
-} from '~/lib/channel/intake/onboarding-turn';
+  type HouseholdGroupFact,
+  loadHouseholdGroupFact,
+} from '~/lib/channel/intake/household-group';
+import { linesOfFind, storedChecklist } from '~/lib/channel/intake/onboarding-turn';
 import {
   type IntakeSession,
   loadOpenSessionByFamily,
@@ -23,12 +24,13 @@ import {
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
   createOutboundTransport,
   failedSendPatch,
   readSendRefusal,
+  sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -137,7 +139,7 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const client = apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS) : null;
+  const client = apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' }) : null;
   return {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
@@ -160,6 +162,10 @@ export async function connectedReceiptBody(
     session?: IntakeSession | null;
     /** The parent's name is already on their row. */
     nameStored?: boolean;
+    /** The family's IANA zone, required when `aha` has items: their times on their clock. */
+    timeZone?: string;
+    /** VIL-566 — the household group, when they said yes to one: claimed or still pending. */
+    householdGroup?: HouseholdGroupFact | null;
   },
 ): Promise<string> {
   const spoken = await speakFriend(
@@ -175,6 +181,8 @@ export async function connectedReceiptBody(
       connector: provider,
       granted: null,
       synced: aha ?? failedAha(provider),
+      ...(options?.timeZone ? { timeZone: options.timeZone } : {}),
+      ...(options?.householdGroup ? { householdGroup: options.householdGroup } : {}),
     },
     options?.page ? { page: options.page } : {},
   );
@@ -295,8 +303,14 @@ async function sendReceipt(
   // classifier does not read as about a child or a kid activity never reach
   // the model. A mailbox or calendar with nothing kid-related yields no mention.
   const session = await openOnboarding(database, familyId);
+  const timeZone = await householdTimezone(database, familyId);
   const aha = args.aha
-    ? await kidRelatedAha(args.aha, await loadKidContext(database, familyId, now), ports.kidItems)
+    ? await kidRelatedAha(
+        args.aha,
+        await loadKidContext(database, familyId, now),
+        ports.kidItems,
+        timeZone,
+      )
     : args.aha;
   if (aha && aha.read === 'none_for_kids') {
     console.info({ familyId, provider }, 'connector connected: nothing kid-related to mention');
@@ -308,7 +322,9 @@ async function sendReceipt(
     aha,
     {
       session,
+      timeZone,
       nameStored: await parentNameStored(database, parentUserId),
+      householdGroup: await loadHouseholdGroupFact(database, familyId),
       page: pageOncePerDay(new PostgresRateLimiter(database), familyId),
     },
   );
@@ -607,6 +623,7 @@ async function askAfterCalendarReceipt(
         findLines: lines,
         findGroups: progress ? groupsFromFindBody(progress.findBody) : [],
         now: args.now,
+        timeZone: await householdTimezone(database, args.familyId),
         coparentJoin: null,
       },
       { page: pageOncePerDay(new PostgresRateLimiter(database), args.familyId) },
@@ -651,47 +668,10 @@ async function askAfterCalendarReceipt(
   }
 }
 
-function linesOfFind(message: string): string[] {
-  return message
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => /^\d+\.\s+/.test(line))
-    .map((line) => line.replace(/^\d+\.\s+/, ''));
-}
-
 /** The onboarding session still open for this family, when the cold start is on it. */
 async function openOnboarding(database: Database, familyId: string): Promise<IntakeSession | null> {
   const session = await loadOpenSessionByFamily(database, familyId);
   return session?.firstTouch?.coldStart ? session : null;
-}
-
-/**
- * What is already stored, as the in-turn asks see it (machine.ts), so a reply
- * written off a receipt knows the walk's state. The connector that just landed
- * counts as answered before `rememberConnected` writes it down.
- */
-function receiptChecklist(
-  session: IntakeSession | null,
-  connected: TextConnectProvider | null,
-  nameStored: boolean,
-): OnboardingChecklist | undefined {
-  if (!session) return undefined;
-  const given = session.firstTouch?.given ?? null;
-  const children = session.collected.children;
-  const lines = session.firstTouch?.coldStart
-    ? linesOfFind(session.firstTouch.coldStart.findBody)
-    : [];
-  return {
-    postal: session.firstTouch?.place != null,
-    kids: given?.kidsNamesDeclined === true || kidsAreNamed(children),
-    ages: agesAreComplete(children),
-    name: nameStored || Boolean(given?.parentName) || given?.nameDeclined === true,
-    gmail: connected === 'gmail' || given?.connectGmail != null || given?.gmailLater === true,
-    calendar:
-      connected === 'gcal' || given?.connectCalendar != null || given?.calendarLater === true,
-    schedule: lines.length === 0 || given?.scheduleDone === true,
-    coparent: given?.coparentGroup != null,
-  };
 }
 
 /** The parent's name is on their row: the receipt asks are not the name ask. */
@@ -708,7 +688,7 @@ function receiptVoiceBase(
 ) {
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
-  const checklist = receiptChecklist(session, connected, nameStored);
+  const checklist = session ? storedChecklist(session, connected, nameStored) : undefined;
   return {
     ...(checklist ? { checklist } : {}),
     language,

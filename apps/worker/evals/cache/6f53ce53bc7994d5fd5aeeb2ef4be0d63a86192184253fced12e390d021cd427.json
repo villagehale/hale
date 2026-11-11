@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every fact is present and correct: the event is Léa's swim, the day is tomorrow, the new start is 4:30 PM (PM stated), the end is 5:15 PM, and the venue name and address (Mold-Masters SportsPlex, 221 Guelph St) are both given. The change is stated clearly (moved to 4:30 PM, it was 5:00), with the old time as the previous value, not presented as current. Nothing is invented: no travel or leave-by claims, and no planLink was needed. The language is English throughout. The bold is on the new time \"4:30 PM\", which is exactly the changed fact the parent must act on, so it fits.",
+    "score": 5
+  }
+}

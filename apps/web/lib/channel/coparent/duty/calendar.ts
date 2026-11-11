@@ -2,7 +2,7 @@ import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { classifyKidCalendarItem, splitKidEvent } from '~/lib/channel/linq/kid-event';
 import { type DutyCopyLanguage, dutyTitleMayBeSpoken, spokenFirstName } from './copy';
-import { coparentDutyMemoryEnabled } from './flag';
+import { coparentDutyMemoryEnabled, coparentSplitDutyActive } from './flag';
 import type { DutyState } from './model';
 
 /**
@@ -77,7 +77,9 @@ export async function projectDutyOnFamilyEvent(
     now: Date;
   },
 ): Promise<DutyProjection> {
-  if (!coparentDutyMemoryEnabled()) return { status: 'skipped', reason: 'flag_off' };
+  if (!coparentDutyMemoryEnabled() && !coparentSplitDutyActive(input.familyId)) {
+    return { status: 'skipped', reason: 'flag_off' };
+  }
   if (typeof database.select !== 'function')
     return { status: 'skipped', reason: 'no_family_event' };
 
@@ -101,17 +103,45 @@ export async function projectDutyOnFamilyEvent(
       dutyOwnerKind: schema.familyEvents.dutyOwnerKind,
       dutyRole: schema.familyEvents.dutyRole,
       dutyFactKey: schema.familyEvents.dutyFactKey,
+      childId: schema.familyEvents.childId,
+      googleEventId: schema.familyEvents.googleEventId,
+      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
     })
     .from(schema.familyEvents)
     .where(and(eq(schema.familyEvents.familyId, input.familyId), householdFamilyEvent()));
 
   const live = rows.filter((row) => row.familyId === input.familyId && row.deletedAt === null);
   const byFact = live.filter((row) => row.dutyFactKey === input.factKey);
+  const [block] = await database
+    .select({
+      eventId: schema.parentCalendarBlocks.eventId,
+      startAt: schema.parentCalendarBlocks.startAt,
+      childId: schema.parentCalendarBlocks.childId,
+      familyId: schema.parentCalendarBlocks.familyId,
+    })
+    .from(schema.parentCalendarBlocks)
+    .where(
+      and(
+        eq(schema.parentCalendarBlocks.familyId, input.familyId),
+        eq(schema.parentCalendarBlocks.eventId, input.subjectKey),
+      ),
+    )
+    .limit(1);
+  const byCalendar = live.filter((row) => {
+    if (row.googleEventId === input.subjectKey || row.placedGoogleEventId === input.subjectKey) {
+      return true;
+    }
+    if (!block || block.familyId !== input.familyId || !block.startAt) return false;
+    const sameTime = Math.abs(row.startsAt.getTime() - block.startAt.getTime()) <= MATCH_MS;
+    if (!sameTime) return false;
+    if (block.childId && row.childId) return row.childId === block.childId;
+    return false;
+  });
   const start = dutyStartInstant(input.subjectKey, input.factKey);
   const byTime = start
     ? live.filter((row) => Math.abs(row.startsAt.getTime() - start.getTime()) <= MATCH_MS)
     : [];
-  const pool = byFact.length > 0 ? byFact : byTime;
+  const pool = byFact.length > 0 ? byFact : byCalendar.length > 0 ? byCalendar : byTime;
   if (pool.length === 0) return { status: 'skipped', reason: 'no_family_event' };
   if (pool.length > 1) return { status: 'skipped', reason: 'ambiguous' };
   const event = pool[0];
@@ -212,4 +242,31 @@ export function dutyFeedDescription(input: {
   // The fixed owner sentence does not ride on the feed. The thread is where
   // the model writes who has the event.
   return null;
+}
+
+/**
+ * VIL-484 · the calendar event id each household `family_events` row was placed as,
+ * so a booking can attach its venue to its OWN event. Ids only, never a title or a
+ * location, and only household rows: a teen's row lends no booking a venue.
+ */
+export async function householdEventCalendarIds(
+  database: Database,
+  familyId: string,
+): Promise<Map<string, string[]>> {
+  const rows = await database
+    .select({
+      id: schema.familyEvents.id,
+      familyId: schema.familyEvents.familyId,
+      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+    })
+    .from(schema.familyEvents)
+    .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent()));
+  const ids = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.familyId !== familyId) continue;
+    // The household row's own copy on a parent's calendar. Mirrored rows (a
+    // `google_event_id`) are outside the household scope, so they never link.
+    if (row.placedGoogleEventId) ids.set(row.id, [row.placedGoogleEventId]);
+  }
+  return ids;
 }

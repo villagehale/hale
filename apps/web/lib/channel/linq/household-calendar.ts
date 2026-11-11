@@ -1,21 +1,63 @@
-import { type Database, schema } from '@hale/db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { type CalendarStanding, type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
-import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
+import {
+  crossParentClashEnabled,
+  linqGroupConflictAlertsEnabled,
+  linqGroupCoparentEnabled,
+  linqPollsEnabled,
+} from './config';
+import { crossParentClashLineInput } from './cross-parent-clash';
+import { sharedCrossParentClashWriter } from './cross-parent-clash-voice';
 import { groupAudienceAllows } from './group-audience';
+import {
+  type ClashBusy,
+  type ClashPerson,
+  type ClashPlan,
+  type GroupClash,
+  clashCalendar,
+  clashCrossParent,
+  clashPollOffer,
+  clashPollOptions,
+  crossParentClashDedupeKey,
+  findGroupClashes,
+  groupConflictLineInput,
+  watchedPlan,
+} from './group-conflict';
+import { sharedGroupConflictWriter } from './group-conflict-voice';
+import {
+  type GroupPickupClaimReader,
+  pickupCandidates,
+  pickupClaimAction,
+  pickupDecisionKey,
+} from './group-pickup-claim';
+import { sharedGroupPickupClaimReader } from './group-pickup-claim-reader';
+import { groupTurnReadContext } from './group-turn-reader';
 import {
   classifyKidCalendarItem,
   splitKidEvent,
+  spokenBlockTitle,
   titleForStorage,
   withoutTeenTitles,
 } from './kid-event';
 
 export { classifyKidCalendarItem, splitKidEvent, titleForStorage };
+import {
+  createOutboundTransport,
+  failedSendPatch,
+  readSendRefusal,
+  sendLinqChatMessage,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import {
   groupBothFreeText,
   groupConflictText,
@@ -35,14 +77,16 @@ import {
   readSlotReply,
   readWhoTakesReply,
   rememberedWhoTakes,
+  whoTakesChangedSince,
   whoTakesFactKey,
   whoTakesPollOptions,
   whoTakesPrompt,
   withholdWhoTakes,
   writeLogisticsDecision,
 } from './logistics-poll';
-import { sendChoicePoll } from './poll';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { type PollOptionWrite, sendChoicePoll } from './poll';
+import type { ListChatHandles } from './roster';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * Both parents' calendars, read together, spoken into the claimed Linq group.
@@ -66,6 +110,16 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * taker and no conflict uses that same prompt. Flag off keeps the locked
  * conflict text and does not poll. "We'll figure it out" stores no taker
  * and does not ask again that day.
+ *
+ * VIL-444: with LINQ_GROUP_CONFLICT_ALERTS_ENABLED the model-written clash alert takes
+ * the conflict's turn. With LINQ_POLLS on it may carry the who-takes poll after it: the
+ * names as stored, the last option the model's. A vote is stored as the who-takes
+ * decision, and the clash planner reads it the way it reads a claim.
+ *
+ * VIL-609: with CROSS_PARENT_CLASH_ENABLED, one child's two overlapping plans, each
+ * held by a different parent, is a clash. Hale tells both parents privately in their
+ * own 1:1 Linq threads (never the household group, never a multi-family group). A
+ * driver on a different overlapping plan does not cover it.
  *
  * Kid-event, conflict, handoff, and post-event notices leave only through the
  * family's `linq_group_chat_id`. A Linq refusal is `not_sent`. Nothing on this
@@ -93,7 +147,15 @@ export interface BusyBlock {
   end: Date | null;
   allDay: boolean;
   kidRelated: boolean;
+  /** The title the group may hear: the parent's own or organized event only (VIL-651). */
   title: string | null;
+  /** The child a kid row is about, by name, from Hale's records: how a row with no title
+   * is still named. */
+  kid: string | null;
+  /** Where the parent stands on it. Null on a row stored before it was kept. */
+  standing: CalendarStanding | null;
+  /** About a teenager: it keeps its time and nothing else (rule #1). */
+  teen: boolean;
   status: string;
   announced: boolean;
   followupSent: boolean;
@@ -104,13 +166,14 @@ export interface WhoTakesAsk {
   startIso: string;
   titleNorm: string;
   kid: string;
-  event: string;
+  /** Null when the event's title is not one the group may hear (VIL-651). */
+  event: string | null;
   day: string;
   time: string;
 }
 
 export interface HouseholdNotice {
-  kind: 'kid_event' | 'conflict' | 'handoff' | 'followup' | 'who_takes';
+  kind: 'kid_event' | 'conflict' | 'clash' | 'handoff' | 'followup' | 'who_takes';
   dedupeKey: string;
   /**
    * `activity_followup` has no frequency counter. Quiet hours and consent
@@ -124,6 +187,16 @@ export interface HouseholdNotice {
   mark: Array<{ integrationId: string; eventId: string; field: 'announced' | 'followup' }>;
   /** Set when this bubble may be followed by a who-takes poll. */
   whoTakes?: WhoTakesAsk;
+  /** A clash alert's own who-takes poll, sent after it lands. */
+  clashPoll?: { ask: WhoTakesPollSubject; options: readonly PollOptionWrite[] };
+}
+
+/** The plan a who-takes poll asks about, as its open ask is stored. */
+interface WhoTakesPollSubject {
+  startIso: string;
+  titleNorm: string;
+  kid: string | null;
+  event: string | null;
 }
 
 /** Who-takes-it lines are pickup duty; a kid event or how-it-went is that event's logistics. */
@@ -131,6 +204,7 @@ const NOTICE_CLASS: Record<HouseholdNotice['kind'], ContentClass> = {
   kid_event: 'event_logistics',
   followup: 'event_logistics',
   conflict: 'pickup_duty',
+  clash: 'pickup_duty',
   handoff: 'pickup_duty',
   who_takes: 'pickup_duty',
 };
@@ -154,6 +228,8 @@ export interface NoticePlanInput {
   statements?: readonly HandoffStatement[];
   /** A poll vote or a clear text reply already stored. Not a guess. */
   remembered?: readonly RememberedLogistics[];
+  /** VIL-444: the clash alert owns overlaps, so no conflict line is planned here. */
+  clashAlerts?: boolean;
 }
 
 /**
@@ -165,7 +241,7 @@ export async function planHouseholdNotices(input: NoticePlanInput): Promise<Hous
   // already said, or the event is on exactly one calendar.
   const handoff = await soonestHandoff(input);
   if (handoff) return [handoff];
-  const conflict = await soonestConflict(input);
+  const conflict = input.clashAlerts ? null : await soonestConflict(input);
   if (conflict) return [conflict];
   const kids = await batchedKidEvents(input);
   if (kids) return [kids];
@@ -188,7 +264,7 @@ export async function planAmbiguousWhoTakes(
   const tomorrow = addDays(zonedParts(input.now, input.timeZone), 1);
   let best: BusyBlock | null = null;
   for (const block of input.blocks) {
-    if (!upcomingKid(block, input.now) || !block.start || !block.title) continue;
+    if (!upcomingKid(block, input.now) || !block.start) continue;
     const local = zonedParts(block.start, input.timeZone);
     if (
       local.year !== tomorrow.year ||
@@ -200,7 +276,7 @@ export async function planAmbiguousWhoTakes(
     const memory = rememberedWhoTakes(
       input.remembered ?? [],
       block.start.toISOString(),
-      normalizeTitle(block.title),
+      subjectNorm(block),
     );
     if (memory) continue;
     if (statedOwner(block, input.statements ?? [], input.blocks)) continue;
@@ -212,8 +288,8 @@ export async function planAmbiguousWhoTakes(
     if (busy) continue;
     if (!best || block.start.getTime() < (best.start?.getTime() ?? 0)) best = block;
   }
-  if (!best?.title || !best.start) return null;
-  const parts = splitKidEvent(best.title, input.childNames);
+  if (!best?.start) return null;
+  const parts = blockParts(best, input.childNames);
   const recipient = otherParent(best.userId, first, second) ?? best.userId;
   if (!parts || !best.start) return null;
   const startIso = best.start.toISOString();
@@ -239,8 +315,7 @@ function otherParent(userId: string, first: string, second: string): string | nu
 }
 
 function upcomingKid(block: BusyBlock, now: Date): boolean {
-  if (!block.kidRelated || !block.title || block.status === 'cancelled' || !block.start)
-    return false;
+  if (!speakable(block) || block.status === 'cancelled' || !block.start) return false;
   if (block.start.getTime() < now.getTime() - FOLLOWUP_MS) return false;
   return block.start.getTime() <= now.getTime() + LOOKAHEAD_MS;
 }
@@ -252,14 +327,7 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
   for (const block of input.blocks) {
     if (!upcomingKid(block, input.now) || !block.start || !block.end) continue;
     if (block.start.getTime() < input.now.getTime()) continue;
-    if (!block.title) continue;
-    if (
-      rememberedWhoTakes(
-        input.remembered ?? [],
-        block.start.toISOString(),
-        normalizeTitle(block.title),
-      )
-    ) {
+    if (rememberedWhoTakes(input.remembered ?? [], block.start.toISOString(), subjectNorm(block))) {
       continue;
     }
     const busy = input.blocks.some(
@@ -270,8 +338,8 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
     const at = block.start.getTime();
     if (!best || at < best.at) best = { block, at };
   }
-  if (!best?.block.title || !best.block.start) return null;
-  const parts = splitKidEvent(best.block.title, input.childNames);
+  if (!best?.block.start) return null;
+  const parts = blockParts(best.block, input.childNames);
   const recipient = otherParent(best.block.userId, first, second);
   if (!parts || !recipient) return null;
   const startIso = best.block.start.toISOString();
@@ -302,15 +370,11 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
 }
 
 /** The locked who-takes prompt fields. Parent names are never filled in here. */
-function whoTakesAsk(
-  block: BusyBlock,
-  parts: { kid: string; event: string },
-  input: NoticePlanInput,
-): WhoTakesAsk {
+function whoTakesAsk(block: BusyBlock, parts: KidParts, input: NoticePlanInput): WhoTakesAsk {
   const start = block.start ?? input.now;
   return {
     startIso: start.toISOString(),
-    titleNorm: normalizeTitle(block.title ?? ''),
+    titleNorm: subjectNorm(block),
     kid: parts.kid,
     event: parts.event,
     day: formatDay(start, input.timeZone, input.language),
@@ -339,7 +403,7 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
   let best: BusyBlock | null = null;
   let ownerId: string | null = null;
   for (const block of input.blocks) {
-    if (!upcomingKid(block, input.now) || !block.start || !block.title) continue;
+    if (!upcomingKid(block, input.now) || !block.start) continue;
     const local = zonedParts(block.start, input.timeZone);
     if (
       local.year !== tomorrow.year ||
@@ -349,13 +413,11 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
       continue;
     }
     const stated = statedOwner(block, input.statements ?? [], input.blocks);
-    const memory = block.title
-      ? rememberedWhoTakes(
-          input.remembered ?? [],
-          block.start.toISOString(),
-          normalizeTitle(block.title),
-        )
-      : null;
+    const memory = rememberedWhoTakes(
+      input.remembered ?? [],
+      block.start.toISOString(),
+      subjectNorm(block),
+    );
     // An open ask or a stored pass is not a taker. "We'll figure it out" stores none.
     // A stored vote names one. Otherwise the event on exactly one calendar does.
     if (memory?.status === 'declined' || memory?.status === 'open') continue;
@@ -367,9 +429,9 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
       ownerId = owner;
     }
   }
-  if (!best?.title || !best.start || !ownerId) return null;
+  if (!best?.start || !ownerId) return null;
   const name = input.parentNames[ownerId]?.trim();
-  const parts = splitKidEvent(best.title, input.childNames);
+  const parts = blockParts(best, input.childNames);
   const recipient = otherParent(ownerId, first, second) ?? ownerId;
   if (!name || !parts) return null;
   const text = await groupHandoffText(input.language, {
@@ -401,8 +463,8 @@ async function batchedKidEvents(input: NoticePlanInput): Promise<HouseholdNotice
   let recipient: string | null = null;
   for (const block of fresh) {
     if (lines.length >= KID_LINES_MAX) break;
-    if (!block.title || !block.start) continue;
-    const parts = splitKidEvent(block.title, input.childNames);
+    if (!block.start) continue;
+    const parts = blockParts(block, input.childNames);
     const name = input.parentNames[block.userId]?.trim();
     const other = otherParent(block.userId, first, second);
     if (!parts || !name || !other) continue;
@@ -469,31 +531,27 @@ function statedOwner(
   statements: readonly HandoffStatement[],
   blocks: readonly BusyBlock[],
 ): string | null {
-  if (!block.title) return null;
-  const title = normalizeTitle(block.title);
   const claimants = statements.filter((statement) => HANDOFF_CLAIM.test(statement.text));
   if (claimants.length === 0) return null;
-  const named = claimants.find((statement) => normalizeTitle(statement.text).includes(title));
+  const title = block.title === null ? null : normalizeTitle(block.title);
+  const named = title
+    ? claimants.find((statement) => normalizeTitle(statement.text).includes(title))
+    : undefined;
   if (named) return named.userId;
-  const open = blocks.filter(
-    (row) => row.kidRelated && row.title && row.status !== 'cancelled' && row.start,
-  );
+  const open = blocks.filter((row) => speakable(row) && row.status !== 'cancelled' && row.start);
   if (open.length === 1 && open[0]?.eventId === block.eventId) return claimants[0]?.userId ?? null;
   return null;
 }
 
 /** The event lives on exactly one parent's calendar. Two copies are not a handoff. */
 function soleCalendarOwner(block: BusyBlock, blocks: readonly BusyBlock[]): string | null {
-  if (!block.title) return null;
-  const title = normalizeTitle(block.title);
   const holders = new Set(
     blocks
       .filter(
         (row) =>
-          row.kidRelated &&
-          row.title &&
+          speakable(row) &&
           row.status !== 'cancelled' &&
-          normalizeTitle(row.title) === title &&
+          sameEvent(block, row) &&
           overlaps(block, row),
       )
       .map((row) => row.userId),
@@ -506,6 +564,39 @@ function normalizeTitle(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+/** The kid and the event a block is about, as the group may hear them. */
+type KidParts = { kid: string; event: string | null };
+
+/**
+ * A kid block the group may hear about (VIL-651): not an unanswered invite, and named either
+ * by a title the parent controls or by its kid from Hale's records.
+ */
+function speakable(block: BusyBlock): boolean {
+  return (
+    block.kidRelated && block.standing !== 'invited' && (block.title !== null || block.kid !== null)
+  );
+}
+
+/** The title's kid and event when the group may hear the title; else its kid alone. */
+function blockParts(block: BusyBlock, childNames: readonly string[]): KidParts | null {
+  if (block.title !== null) return splitKidEvent(block.title, childNames);
+  return block.kid === null ? null : { kid: block.kid, event: null };
+}
+
+/** What a who-takes decision about this block is keyed by: its title, or its kid with none.
+ * Never empty, since a stored decision's key must carry one to be read back. */
+function subjectNorm(block: BusyBlock): string {
+  return normalizeTitle(block.title ?? block.kid ?? '');
+}
+
+/** The same event: one Google id on two calendars, or two copies with one title. */
+function sameEvent(a: BusyBlock, b: BusyBlock): boolean {
+  if (a.eventId === b.eventId) return true;
+  return (
+    a.title !== null && b.title !== null && normalizeTitle(a.title) === normalizeTitle(b.title)
+  );
+}
+
 function overlaps(a: BusyBlock, b: BusyBlock): boolean {
   const aStart = a.start?.getTime();
   const bStart = b.start?.getTime();
@@ -513,6 +604,20 @@ function overlaps(a: BusyBlock, b: BusyBlock): boolean {
   const aEnd = (a.end ?? new Date(aStart + (a.allDay ? 24 : 1) * 60 * 60 * 1000)).getTime();
   const bEnd = (b.end ?? new Date(bStart + (b.allDay ? 24 : 1) * 60 * 60 * 1000)).getTime();
   return aStart < bEnd && bStart < aEnd;
+}
+
+/**
+ * Free/busy only (VIL-459, VIL-439): the time span of each live block, never its title,
+ * place or event id. This is all a cross-family find may read from a parent's calendar.
+ */
+export function freeBusyOnly(blocks: readonly BusyBlock[]): { start: Date; end: Date }[] {
+  return blocks
+    .filter((block) => block.status !== 'cancelled' && block.start !== null)
+    .map((block) => {
+      const start = block.start as Date;
+      const end = block.end ?? new Date(start.getTime() + (block.allDay ? 24 : 1) * 60 * 60 * 1000);
+      return { start: new Date(start.getTime()), end: new Date(end.getTime()) };
+    });
 }
 
 /** Earliest 60-minute waking slot in the next 7 days when neither parent is busy. */
@@ -727,19 +832,37 @@ export async function rememberCalendarChanges(
     familyId: string;
     userId: string;
     changes: readonly CalendarChange[];
-    childNames: readonly string[];
+    children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>;
     seeding: boolean;
     bothCalendars: boolean;
     now: Date;
   },
 ): Promise<void> {
+  const childNames = input.children.map((child) => child.name);
+  const teens = teenChildIds(input.children, input.now);
+  const teenNames = input.children
+    .filter((child) => teens.has(child.id))
+    .map((child) => child.name);
   for (const change of input.changes) {
     const stamp = changeStamp(change);
-    const kidRelated = classifyKidCalendarItem({
-      title: change.title,
-      childNames: input.childNames,
-    });
-    const title = titleForStorage(kidRelated, change.title);
+    // The teen check reads the arriving title, because someone else's title is dropped below
+    // and a reader could no longer see that it named a teenager (rule #1).
+    const [screened] = withoutTeenTitles(
+      [
+        {
+          title: change.title ?? null,
+          kidRelated: classifyKidCalendarItem({ title: change.title, childNames }),
+        },
+      ],
+      childNames,
+      teenNames,
+    );
+    const kidRelated = screened?.kidRelated === true;
+    // The arriving title is read here to find the kid and is stored only when it is the
+    // parent's own (VIL-651). An unanswered invite is kept, unannounced, so a later yes can be.
+    const title = titleForStorage(kidRelated, spokenBlockTitle(change.standing, change.title));
+    const kid = kidRelated && change.title ? splitKidEvent(change.title, childNames)?.kid : null;
+    const childId = input.children.find((child) => child.name.trim() === kid)?.id ?? null;
     const [prev] = await database
       .select({
         startAt: schema.parentCalendarBlocks.startAt,
@@ -785,6 +908,8 @@ export async function rememberCalendarChanges(
         allDay: stamp.allDay,
         kidRelated,
         title,
+        calendarStanding: change.standing,
+        childId,
         recurringEventId: change.recurringEventId ?? null,
         status: change.status,
         updatedStamp: change.updated,
@@ -800,6 +925,8 @@ export async function rememberCalendarChanges(
           allDay: stamp.allDay,
           kidRelated,
           title,
+          calendarStanding: change.standing,
+          childId,
           recurringEventId: change.recurringEventId ?? null,
           status: change.status,
           updatedStamp: change.updated,
@@ -817,6 +944,8 @@ async function loadFamilyCalendarContext(
 ): Promise<{
   parentUserIds: readonly [string, string] | null;
   bothCalendars: boolean;
+  /** Users whose Google Calendar syncs now. One in error may be stale, so it is not here. */
+  calendarUserIds: string[];
   bothMailboxes: boolean;
   timeZone: string;
   language: ReplyLanguage;
@@ -878,6 +1007,10 @@ async function loadFamilyCalendarContext(
   return {
     parentUserIds,
     bothCalendars: gcal.size >= 2,
+    calendarUserIds: connections
+      .filter((row) => row.provider === 'gcal' && row.status === 'active')
+      .map((row) => row.userId)
+      .filter((id): id is string => typeof id === 'string'),
     bothMailboxes: gmail.size >= 2,
     timeZone: zone?.timezone ?? 'America/Toronto',
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
@@ -897,45 +1030,37 @@ export async function narrateHouseholdCalendar(
 ): Promise<void> {
   if (!linqGroupCoparentEnabled()) return;
   const context = await loadFamilyCalendarContext(database, input.familyId);
-  if (!context.parentUserIds || !context.chatId) return;
-  const rows = await database
-    .select()
-    .from(schema.parentCalendarBlocks)
-    .where(eq(schema.parentCalendarBlocks.familyId, input.familyId));
-  const teens = teenChildIds(context.children, input.now);
-  const blocks: BusyBlock[] = withoutTeenTitles(
-    rows.map((row) => ({
-      integrationId: row.integrationId,
-      userId: row.userId,
-      eventId: row.eventId,
-      start: row.startAt,
-      end: row.endAt,
-      allDay: row.allDay,
-      kidRelated: row.kidRelated,
-      title: row.title,
-      status: row.status,
-      announced: row.announcedAt !== null,
-      followupSent: row.followupAt !== null,
-      recurringEventId: row.recurringEventId,
-    })),
-    context.childNames,
-    context.children.filter((child) => teens.has(child.id)).map((child) => child.name),
-  );
-  const names = await database
-    .select({ id: schema.users.id, name: schema.users.name })
-    .from(schema.users)
-    .where(inArray(schema.users.id, [...context.parentUserIds]));
-  const parentNames: Record<string, string> = {};
-  for (const row of names) {
-    if (row.name) parentNames[row.id] = row.name;
+  if (!context.parentUserIds) return;
+  const listChatHandles: ListChatHandles = (i) =>
+    listLinqParticipantHandles({ ...i, fetch: input.fetch });
+  const { blocks, teens } = await loadSweepBlocks(database, input.familyId, context, input.now);
+  const parentNames = await loadParentNames(database, context.parentUserIds);
+  const remembered = await loadRememberedLogistics(database, input.familyId);
+  if (crossParentClashEnabled()) {
+    const cross = await notifyCrossParentClashes(database, {
+      familyId: input.familyId,
+      chatId: context.chatId,
+      now: input.now,
+      timeZone: context.timeZone,
+      language: context.language,
+      parentUserIds: context.parentUserIds,
+      parentNames,
+      calendarUserIds: context.calendarUserIds,
+      blocks,
+      remembered,
+      children: context.children,
+      teens,
+      fetch: input.fetch,
+    });
+    if (cross === 'unsent' || cross === 'held' || cross === 'sent_1to1') return;
   }
+  if (!context.chatId) return;
   const statements = await loadHandoffStatements(
     database,
     input.familyId,
     context.chatId,
     input.now,
   );
-  const remembered = await loadRememberedLogistics(database, input.familyId);
   const planInput: NoticePlanInput = {
     blocks,
     parentUserIds: context.parentUserIds,
@@ -947,12 +1072,38 @@ export async function narrateHouseholdCalendar(
     statements,
     remembered,
   };
-  const notices = await planHouseholdNotices(planInput);
-  let notice = notices[0] ?? null;
-  if (linqPollsEnabled()) {
-    const ambiguous = await planAmbiguousWhoTakes(planInput);
-    if (ambiguous && (!notice || notice.kind === 'kid_event' || notice.kind === 'followup')) {
-      notice = ambiguous;
+  const clashAlerts = linqGroupConflictAlertsEnabled();
+  let notice: HouseholdNotice | null = null;
+  if (clashAlerts) {
+    const clash = await clashNotice(
+      database,
+      {
+        familyId: input.familyId,
+        chatId: context.chatId,
+        now: input.now,
+        timeZone: context.timeZone,
+        language: context.language,
+        parentUserIds: context.parentUserIds,
+        parentNames,
+        calendarUserIds: context.calendarUserIds,
+        blocks,
+        remembered,
+        children: context.children,
+        teens,
+      },
+      listChatHandles,
+    );
+    if (clash === 'unsent' || clash === 'held') return;
+    notice = clash;
+  }
+  if (!notice) {
+    const notices = await planHouseholdNotices({ ...planInput, clashAlerts });
+    notice = notices[0] ?? null;
+    if (linqPollsEnabled()) {
+      const ambiguous = await planAmbiguousWhoTakes(planInput);
+      if (ambiguous && (!notice || notice.kind === 'kid_event' || notice.kind === 'followup')) {
+        notice = ambiguous;
+      }
     }
   }
   if (!notice) return;
@@ -960,7 +1111,12 @@ export async function narrateHouseholdCalendar(
     const prompt = await whoTakesPrompt(context.language, notice.whoTakes);
     if (prompt) notice = { ...notice, text: prompt };
   }
-  const audience = await groupAudienceAllows(database, context.chatId, NOTICE_CLASS[notice.kind]);
+  const audience = await groupAudienceAllows(
+    database,
+    context.chatId,
+    NOTICE_CLASS[notice.kind],
+    listChatHandles,
+  );
   if (!audience.allowed) {
     console.warn(
       { familyId: input.familyId, kind: notice.kind, reason: audience.reason },
@@ -990,6 +1146,18 @@ export async function narrateHouseholdCalendar(
       fetch: input.fetch,
     });
   }
+  if (sent === 'sent' && notice.clashPoll) {
+    await sendWhoTakesPoll(database, {
+      familyId: input.familyId,
+      chatId: context.chatId,
+      parentUserId: notice.recipientUserId,
+      ask: notice.clashPoll.ask,
+      options: notice.clashPoll.options,
+      idempotencyKey: `poll:${notice.dedupeKey}`,
+      now: input.now,
+      fetch: input.fetch,
+    });
+  }
   if (sent !== 'sent') return;
   for (const mark of notice.mark) {
     await database
@@ -1006,6 +1174,504 @@ export async function narrateHouseholdCalendar(
         ),
       );
   }
+}
+
+/**
+ * VIL-444 (T24) — the soonest clash this group has not been sent, written by the model.
+ *
+ * Null: no clash, every clash was already sent, or this group may not hear pickup duty.
+ * `held`: the gate holds it now (quiet hours, consent), checked before the model is paid
+ * to write. `unsent`: the model could not write it, so nothing goes out on this pass and
+ * the next one asks again. People in the chat with no calendar Hale can read (a
+ * caregiver, a parent who has not connected one) may be asked; the alert never calls
+ * them free. With LINQ_POLLS on, the writer is offered the who-takes poll, and the
+ * alert carries it only when the model wrote its last option.
+ */
+async function clashNotice(
+  database: Database,
+  input: ClashPlanningInput,
+  listChatHandles: ListChatHandles,
+): Promise<HouseholdNotice | 'held' | 'unsent' | null> {
+  if (!input.chatId) return null;
+  const audience = await groupAudienceAllows(
+    database,
+    input.chatId,
+    NOTICE_CLASS.clash,
+    listChatHandles,
+  );
+  if (!audience.allowed) {
+    console.warn(
+      { familyId: input.familyId, kind: 'clash', reason: audience.reason },
+      'household calendar: not for this group',
+    );
+    return null;
+  }
+  const { parents, people, plans, busy, kids } = await planClashes(database, input);
+  const uncoverSameKid = crossParentClashEnabled();
+  const clashes = findGroupClashes({
+    plans,
+    busy,
+    people,
+    now: input.now,
+    kids,
+    uncoverSameKid,
+  });
+  for (const clash of clashes) {
+    // VIL-609: both parents hear this in 1:1, never in the group.
+    if (uncoverSameKid && clashCrossParent(clash, kids, parents)) continue;
+    if (await dedupeActive(clash.dedupeKey, database)) continue;
+    const pair = 'plan' in clash.second ? [clash.first, clash.second.plan] : [clash.first];
+    const recipient =
+      [clash.suggested?.personId, ...pair.map((plan) => clash.restsOn[plan.key])].find(
+        (id): id is string => typeof id === 'string' && parents.includes(id),
+      ) ?? parents[0];
+    if (!recipient) return null;
+    const verdict = await assertProactiveSendAllowed(
+      {
+        familyId: input.familyId,
+        parentUserId: recipient,
+        kind: 'activity_followup',
+        now: input.now,
+      },
+      buildOutboundGatePorts(database),
+    );
+    if (!verdict.allowed) {
+      console.warn(
+        { familyId: input.familyId, kind: 'clash', reason: verdict.reason },
+        'household calendar: group notice held',
+      );
+      return 'held';
+    }
+    const poll = linqPollsEnabled() ? clashPollOffer(clash, people, kids) : null;
+    const alert = await sharedGroupConflictWriter().write(
+      groupConflictLineInput(clash, {
+        people,
+        kids,
+        timeZone: input.timeZone,
+        language: input.language,
+        poll,
+      }),
+    );
+    const key = poll ? pickupDecisionKey(poll.plan) : null;
+    const options =
+      poll && key && alert?.figureItOut
+        ? clashPollOptions(poll, alert.figureItOut, whoTakesFactKey(key.startIso, key.titleNorm))
+        : null;
+    // A message written for a poll that cannot go would ask about a poll that is not there.
+    if (!alert || (alert.figureItOut && !options)) {
+      console.warn(
+        { familyId: input.familyId, outcome: 'group_clash_unsent' },
+        'household calendar: clash alert not written, nothing sent',
+      );
+      return 'unsent';
+    }
+    const parts = poll
+      ? splitKidEvent(
+          poll.plan.title,
+          input.children.map((child) => child.name),
+        )
+      : null;
+    return {
+      kind: 'clash',
+      dedupeKey: clash.dedupeKey,
+      gateKind: 'activity_followup',
+      category: 'calendar_alert',
+      text: alert.text,
+      recipientUserId: recipient,
+      mark: pair.flatMap((plan) =>
+        plan.rows.map((row) => ({ ...row, field: 'announced' as const })),
+      ),
+      ...(key && options
+        ? {
+            clashPoll: {
+              ask: { ...key, kid: parts?.kid ?? null, event: parts?.event ?? null },
+              options,
+            },
+          }
+        : {}),
+    };
+  }
+  return null;
+}
+
+interface ClashPlanningInput {
+  familyId: string;
+  chatId: string | null;
+  now: Date;
+  timeZone: string;
+  language: ReplyLanguage;
+  parentUserIds: readonly string[];
+  parentNames: Readonly<Record<string, string>>;
+  calendarUserIds: readonly string[];
+  blocks: readonly BusyBlock[];
+  remembered: readonly RememberedLogistics[];
+  children: readonly { id: string; name: string }[];
+  teens: ReadonlySet<string>;
+}
+
+/**
+ * What the clash planner reads for one household group: the parents and the caregivers
+ * seated in this chat, every calendar row, the plans Hale holds (a private one only as its
+ * taker's busy time), and the stored who-takes decisions. A claim and a vote on a
+ * who-takes poll both settle a plan in the group.
+ */
+async function planClashes(
+  database: Database,
+  input: ClashPlanningInput,
+): Promise<{
+  parents: string[];
+  people: ClashPerson[];
+  plans: ClashPlan[];
+  busy: ClashBusy[];
+  kids: string[];
+}> {
+  const parents = [...new Set(input.parentUserIds)];
+  const firstName = (name: string | null | undefined) => name?.trim().split(/\s+/)[0] ?? '';
+  const people: ClashPerson[] = parents.map((id) => ({
+    id,
+    name: firstName(input.parentNames[id]),
+    calendar: input.calendarUserIds.includes(id),
+  }));
+  const seats = input.chatId
+    ? await database
+        .select({
+          userId: schema.linqGroupMembers.userId,
+          role: schema.linqGroupMembers.role,
+          name: schema.users.name,
+        })
+        .from(schema.linqGroupMembers)
+        .innerJoin(schema.users, eq(schema.users.id, schema.linqGroupMembers.userId))
+        .where(
+          and(
+            eq(schema.linqGroupMembers.chatId, input.chatId),
+            eq(schema.linqGroupMembers.familyId, input.familyId),
+            isNull(schema.linqGroupMembers.removedAt),
+          ),
+        )
+    : [];
+  for (const seat of seats) {
+    if (seat.role !== 'caregiver' || parents.includes(seat.userId)) continue;
+    people.push({ id: seat.userId, name: firstName(seat.name), calendar: false });
+  }
+  const horizon = new Date(input.now.getTime() + LOOKAHEAD_MS);
+  const ahead = and(
+    gt(schema.familyEvents.endsAt, input.now),
+    lte(schema.familyEvents.startsAt, horizon),
+  );
+  const copies = [...new Set(input.blocks.map((block) => block.eventId))];
+  const rows = await database
+    .select({
+      id: schema.familyEvents.id,
+      title: schema.familyEvents.title,
+      startsAt: schema.familyEvents.startsAt,
+      endsAt: schema.familyEvents.endsAt,
+      childId: schema.familyEvents.childId,
+      sensitive: schema.familyEvents.sensitive,
+      dutyOwnerUserId: schema.familyEvents.dutyOwnerUserId,
+      dutyOwnerLabel: schema.familyEvents.dutyOwnerLabel,
+      dutyOwnerKind: schema.familyEvents.dutyOwnerKind,
+      dutySetAt: schema.familyEvents.dutySetAt,
+      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+      placedGoogleIntegrationId: schema.familyEvents.placedGoogleIntegrationId,
+    })
+    .from(schema.familyEvents)
+    .where(
+      and(
+        eq(schema.familyEvents.familyId, input.familyId),
+        householdFamilyEvent(),
+        copies.length > 0
+          ? or(ahead, inArray(schema.familyEvents.placedGoogleEventId, copies))
+          : ahead,
+      ),
+    );
+  const childNames = input.children.map((child) => child.name);
+  const teenNames = input.children
+    .filter((child) => input.teens.has(child.id))
+    .map((child) => child.name);
+  const aboutTeen = (title: string) =>
+    withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
+  // A private plan's calendar copy is busy time wherever either of them sits, so a copy
+  // the parent dragged to another day still never carries the plan's title.
+  const events = rows
+    .map((row) => ({
+      row,
+      private:
+        row.sensitive ||
+        (row.childId !== null && input.teens.has(row.childId)) ||
+        aboutTeen(row.title),
+    }))
+    .filter(
+      ({ row, private: hidden }) =>
+        hidden ||
+        (row.endsAt !== null &&
+          row.endsAt.getTime() > input.now.getTime() &&
+          row.startsAt.getTime() <= horizon.getTime()),
+    );
+  const calendar = clashCalendar({
+    blocks: input.blocks,
+    events: events.map(({ row, private: hidden }) => ({
+      id: row.id,
+      title: row.title,
+      start: row.startsAt,
+      end: row.endsAt,
+      private: hidden,
+      owner:
+        row.dutyOwnerKind === 'parent' && row.dutyOwnerUserId
+          ? { kind: 'parent' as const, userId: row.dutyOwnerUserId }
+          : row.dutyOwnerKind === 'named' && row.dutyOwnerLabel
+            ? { kind: 'named' as const, label: row.dutyOwnerLabel }
+            : null,
+      ownerSince: row.dutySetAt,
+      placedGoogleEventId: row.placedGoogleEventId,
+      placedGoogleIntegrationId: row.placedGoogleIntegrationId,
+    })),
+    decided: (startIso, titleNorm) => {
+      const memory = rememberedWhoTakes(input.remembered, startIso, titleNorm);
+      return memory?.status === 'decided' && memory.takerUserId
+        ? {
+            takerId: memory.takerUserId,
+            at: memory.since,
+            claim: memory.source === 'claim' || memory.source === 'poll',
+          }
+        : null;
+    },
+  });
+  for (const person of calendar.named) {
+    if (!people.some((known) => known.id === person.id)) people.push(person);
+  }
+  const kids = childNames.filter((name) => !teenNames.includes(name));
+  return { parents, people, plans: calendar.plans, busy: calendar.busy, kids };
+}
+
+/**
+ * Every stored block of one family, as the group may hear it (VIL-651). A title is kept only
+ * on the parent's own or organized event: anyone else's, and a row stored before its standing
+ * was kept, is named by its kid alone. The kid is the child the row was stored against, or,
+ * on an older row, the child its title names. A block about a teenager keeps its time and
+ * nothing else (rule #1).
+ */
+async function loadSweepBlocks(
+  database: Database,
+  familyId: string,
+  context: { children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }> },
+  now: Date,
+): Promise<{ blocks: BusyBlock[]; teens: Set<string> }> {
+  const rows = await database
+    .select()
+    .from(schema.parentCalendarBlocks)
+    .where(eq(schema.parentCalendarBlocks.familyId, familyId));
+  const teens = teenChildIds(context.children, now);
+  const childNames = context.children.map((child) => child.name);
+  const teenNames = context.children
+    .filter((child) => teens.has(child.id))
+    .map((child) => child.name);
+  const blocks = rows.map((row): BusyBlock => {
+    const teen =
+      (row.childId !== null && teens.has(row.childId)) ||
+      (row.title !== null &&
+        withoutTeenTitles([{ title: row.title, kidRelated: true }], childNames, teenNames)[0]
+          ?.title === null);
+    const kidRelated = row.kidRelated && !teen;
+    const recorded = context.children.find((child) => child.id === row.childId)?.name;
+    const named = row.title ? splitKidEvent(row.title, childNames)?.kid : undefined;
+    return {
+      integrationId: row.integrationId,
+      userId: row.userId,
+      eventId: row.eventId,
+      start: row.startAt,
+      end: row.endAt,
+      allDay: row.allDay,
+      kidRelated,
+      title: kidRelated ? spokenBlockTitle(row.calendarStanding, row.title) : null,
+      kid: kidRelated ? (recorded ?? named ?? null) : null,
+      standing: row.calendarStanding,
+      teen,
+      status: row.status,
+      announced: row.announcedAt !== null,
+      followupSent: row.followupAt !== null,
+      recurringEventId: row.recurringEventId,
+    };
+  });
+  return { blocks, teens };
+}
+
+async function loadParentNames(
+  database: Database,
+  parentUserIds: readonly string[],
+): Promise<Record<string, string>> {
+  const names = await database
+    .select({ id: schema.users.id, name: schema.users.name })
+    .from(schema.users)
+    .where(inArray(schema.users.id, [...parentUserIds]));
+  const parentNames: Record<string, string> = {};
+  for (const row of names) {
+    if (row.name) parentNames[row.id] = row.name;
+  }
+  return parentNames;
+}
+
+export type GroupPickupClaimOutcome =
+  | 'flag_off'
+  | 'no_text'
+  | 'not_household_group'
+  | 'not_for_this_group'
+  | 'not_a_member'
+  | 'no_pickups'
+  | 'unread'
+  | 'not_a_claim'
+  | 'claimed'
+  | 'already_claimed'
+  | 'dropped'
+  | 'nothing_to_drop'
+  | 'superseded';
+
+/**
+ * VIL-444 (T24) — a pickup a group member took, or gave back, read by the model by meaning.
+ *
+ * A claim stores the sender as that plan's taker (source `claim`): the clash planner never
+ * alerts about it and holds the sender busy then, and the evening poll does not ask who
+ * takes it. A drop closes the sender's own stored decision. Only a parent, or a caregiver
+ * seated in this chat, can do either, and only on plans the planner watches, so a private
+ * plan never reaches the model. Either is stored as of when it was said, and never over
+ * anything stored about that plan after it: Linq can retry a message, or deliver it late,
+ * after someone else took or gave back the pickup (`superseded`). Nothing is sent from here.
+ */
+export async function takeGroupPickupClaim(
+  database: Database,
+  input: {
+    familyId: string;
+    chatId: string;
+    senderUserId: string;
+    text: string;
+    /** When the sender sent it: the payload's own time, the same on every retry. */
+    sentAt: Date;
+    now: Date;
+  },
+  ports: { reader?: GroupPickupClaimReader; listChatHandles?: ListChatHandles } = {},
+): Promise<GroupPickupClaimOutcome> {
+  if (!linqGroupCoparentEnabled() || !linqGroupConflictAlertsEnabled()) return 'flag_off';
+  const text = input.text.trim();
+  if (!text) return 'no_text';
+  const context = await loadFamilyCalendarContext(database, input.familyId);
+  if (!context.parentUserIds || context.chatId !== input.chatId) return 'not_household_group';
+  const audience = await groupAudienceAllows(
+    database,
+    input.chatId,
+    NOTICE_CLASS.clash,
+    ports.listChatHandles ?? listLinqParticipantHandles,
+  );
+  if (!audience.allowed) return 'not_for_this_group';
+  const { blocks, teens } = await loadSweepBlocks(database, input.familyId, context, input.now);
+  const remembered = await loadRememberedLogistics(database, input.familyId);
+  const { people, plans, busy } = await planClashes(database, {
+    familyId: input.familyId,
+    chatId: input.chatId,
+    now: input.now,
+    timeZone: context.timeZone,
+    language: context.language,
+    parentUserIds: context.parentUserIds,
+    parentNames: await loadParentNames(database, context.parentUserIds),
+    calendarUserIds: context.calendarUserIds,
+    blocks,
+    remembered,
+    children: context.children,
+    teens,
+  });
+  if (!people.some((person) => person.id === input.senderUserId)) return 'not_a_member';
+  const sent: GroupClash[] = [];
+  for (const clash of findGroupClashes({ plans, busy, people, now: input.now })) {
+    if (await dedupeActive(clash.dedupeKey, database)) sent.push(clash);
+  }
+  const candidates = pickupCandidates({
+    plans,
+    sent,
+    people,
+    now: input.now,
+    timeZone: context.timeZone,
+    language: context.language,
+  });
+  if (candidates.length === 0) return 'no_pickups';
+  const reading = await (ports.reader ?? sharedGroupPickupClaimReader()).read({
+    text,
+    pickups: candidates.map((candidate) => candidate.offer),
+    ...(await groupTurnReadContext(database, {
+      familyId: input.familyId,
+      chatId: input.chatId,
+      senderUserId: input.senderUserId,
+    })),
+  });
+  if (!reading) return 'unread';
+  const action = pickupClaimAction(
+    reading,
+    candidates,
+    plans.filter((plan) => watchedPlan(plan, input.now)),
+  );
+  if (!action) return 'not_a_claim';
+  const saidAt = input.sentAt.getTime() < input.now.getTime() ? input.sentAt : input.now;
+  const changedSince = (factKey: string) =>
+    whoTakesChangedSince(database, {
+      familyId: input.familyId,
+      factKey,
+      sentAt: saidAt,
+      remembered,
+    });
+  let superseded = false;
+  if (action.kind === 'drop') {
+    let dropped = false;
+    for (const plan of action.plans) {
+      const key = pickupDecisionKey(plan);
+      const factKey = whoTakesFactKey(key.startIso, key.titleNorm);
+      const memory = rememberedWhoTakes(remembered, key.startIso, key.titleNorm);
+      if (memory?.status !== 'decided' || memory.takerUserId !== input.senderUserId) continue;
+      if (await changedSince(factKey)) {
+        superseded = true;
+        continue;
+      }
+      await withholdWhoTakes(database, {
+        familyId: input.familyId,
+        parentUserId: input.senderUserId,
+        factKey,
+        now: saidAt,
+        source: 'claim',
+      });
+      dropped = true;
+    }
+    return dropped ? 'dropped' : superseded ? 'superseded' : 'nothing_to_drop';
+  }
+  let claimed = false;
+  for (const plan of action.plans) {
+    if (plan.claimed && plan.takerId === input.senderUserId) continue;
+    const key = pickupDecisionKey(plan);
+    const factKey = whoTakesFactKey(key.startIso, key.titleNorm);
+    if (await changedSince(factKey)) {
+      superseded = true;
+      continue;
+    }
+    const parts = splitKidEvent(plan.title, context.childNames);
+    await writeLogisticsDecision(database, {
+      familyId: input.familyId,
+      parentUserId: input.senderUserId,
+      factKey,
+      childId: null,
+      now: saidAt,
+      value: {
+        kind: 'who_takes',
+        status: 'decided',
+        startIso: key.startIso,
+        titleNorm: key.titleNorm,
+        takerUserId: input.senderUserId,
+        slotLabel: null,
+        slotStart: null,
+        kid: parts?.kid ?? null,
+        event: parts?.event ?? null,
+        day: null,
+        slots: [],
+        source: 'claim',
+      },
+    });
+    claimed = true;
+  }
+  return claimed ? 'claimed' : superseded ? 'superseded' : 'already_claimed';
 }
 
 async function loadHandoffStatements(
@@ -1100,17 +1766,55 @@ async function attachWhoTakesPoll(
   const factKey = whoTakesFactKey(input.ask.startIso, input.ask.titleNorm);
   const options = await whoTakesPollOptions(input.language, input.parents, factKey);
   if (!options) return;
+  await sendWhoTakesPoll(database, {
+    familyId: input.familyId,
+    chatId: input.chatId,
+    parentUserId: input.parentUserId,
+    ask: input.ask,
+    options,
+    idempotencyKey: `poll:${factKey}:${input.familyId}`.slice(0, 180),
+    now: input.now,
+    fetch: input.fetch,
+  });
+}
+
+/**
+ * The poll alone, its bubble already landed, then the plan held open until someone
+ * answers: no evening ask or handoff names a taker meanwhile. A decision stored by the
+ * time the poll lands (a claim read while the alert was written, a reply by text) stays;
+ * the open ask never writes over it.
+ */
+async function sendWhoTakesPoll(
+  database: Database,
+  input: {
+    familyId: string;
+    chatId: string;
+    parentUserId: string;
+    ask: WhoTakesPollSubject;
+    options: readonly PollOptionWrite[];
+    idempotencyKey: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<void> {
+  const factKey = whoTakesFactKey(input.ask.startIso, input.ask.titleNorm);
   const poll = await sendChoicePoll(database, {
     chatId: input.chatId,
     prompt: null,
-    options,
+    options: input.options,
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     now: input.now,
     fetch: input.fetch,
-    idempotencyKey: `poll:${factKey}:${input.familyId}`.slice(0, 180),
+    idempotencyKey: input.idempotencyKey,
   });
   if (poll.status !== 'sent' && poll.status !== 'prompted') return;
+  const live = rememberedWhoTakes(
+    await loadRememberedLogistics(database, input.familyId),
+    input.ask.startIso,
+    input.ask.titleNorm,
+  );
+  if (live && live.status !== 'open') return;
   await writeLogisticsDecision(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -1134,6 +1838,253 @@ async function attachWhoTakesPoll(
   });
 }
 
+const CROSS_PARENT_CLASH_TEMPLATE = 'linq:cross_parent_clash';
+
+/**
+ * VIL-609 — both parents, each in their own 1:1, when one child is on two overlapping
+ * plans they each hold. Never the group. The model writes every word; a miss sends nothing
+ * to that parent. Each parent is told once per clash.
+ */
+async function notifyCrossParentClashes(
+  database: Database,
+  input: ClashPlanningInput & { fetch?: typeof fetch },
+): Promise<'sent_1to1' | 'already_sent' | 'held' | 'unsent' | null> {
+  const { parents, people, plans, busy, kids } = await planClashes(database, input);
+  const clashes = findGroupClashes({
+    plans,
+    busy,
+    people,
+    now: input.now,
+    kids,
+    uncoverSameKid: true,
+  }).filter((clash) => clashCrossParent(clash, kids, parents));
+  if (clashes.length === 0) return null;
+
+  let sent = false;
+  let held = false;
+  let unsent = false;
+  let already = true;
+  const mark: Array<{ integrationId: string; eventId: string; field: 'announced' }> = [];
+
+  for (const clash of clashes) {
+    if (!('plan' in clash.second)) continue;
+    const holders = [clash.restsOn[clash.first.key], clash.restsOn[clash.second.plan.key]].filter(
+      (id): id is string => typeof id === 'string' && parents.includes(id),
+    );
+    for (const parentId of holders) {
+      const dedupeKey = crossParentClashDedupeKey(clash, parentId);
+      if (await dedupeActive(dedupeKey, database)) continue;
+      already = false;
+      const line = crossParentClashLineInput(clash, parentId, {
+        people,
+        kids,
+        timeZone: input.timeZone,
+        language: input.language,
+      });
+      if (!line) {
+        unsent = true;
+        continue;
+      }
+      const verdict = await assertProactiveSendAllowed(
+        {
+          familyId: input.familyId,
+          parentUserId: parentId,
+          kind: 'activity_followup',
+          now: input.now,
+        },
+        buildOutboundGatePorts(database),
+      );
+      if (!verdict.allowed) {
+        console.warn(
+          { familyId: input.familyId, kind: 'cross_parent_clash', reason: verdict.reason },
+          'household calendar: cross-parent clash held',
+        );
+        held = true;
+        continue;
+      }
+      const text = await sharedCrossParentClashWriter().write(line);
+      if (!text) {
+        console.warn(
+          { familyId: input.familyId, outcome: 'cross_parent_clash_unsent' },
+          'household calendar: cross-parent clash not written, nothing sent',
+        );
+        unsent = true;
+        continue;
+      }
+      const outcome = await sendCrossParentOneToOne(database, {
+        familyId: input.familyId,
+        parentUserId: parentId,
+        groupChatId: input.chatId,
+        text,
+        optOut: verdict.optOut,
+        dedupeKey,
+        now: input.now,
+        fetch: input.fetch,
+      });
+      if (outcome === 'held') {
+        held = true;
+        continue;
+      }
+      if (outcome === 'already_sent') continue;
+      if (outcome !== 'sent') {
+        unsent = true;
+        continue;
+      }
+      sent = true;
+    }
+    if (sent) {
+      const pair = [clash.first, clash.second.plan];
+      for (const plan of pair) {
+        for (const row of plan.rows) {
+          mark.push({ ...row, field: 'announced' });
+        }
+      }
+    }
+  }
+
+  if (sent) {
+    for (const row of mark) {
+      await database
+        .update(schema.parentCalendarBlocks)
+        .set({ announcedAt: input.now, updatedAt: input.now })
+        .where(
+          and(
+            eq(schema.parentCalendarBlocks.integrationId, row.integrationId),
+            eq(schema.parentCalendarBlocks.eventId, row.eventId),
+          ),
+        );
+    }
+    return 'sent_1to1';
+  }
+  if (held) return 'held';
+  if (unsent) return 'unsent';
+  if (!already) return 'unsent';
+  return 'already_sent';
+}
+
+async function sendCrossParentOneToOne(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    groupChatId: string | null;
+    text: string;
+    optOut: Parameters<typeof withOptOut>[1];
+    dedupeKey: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<'sent' | 'already_sent' | 'held' | 'not_sent'> {
+  if (await dedupeActive(input.dedupeKey, database)) return 'already_sent';
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return 'held';
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        kind: 'activity_followup',
+        category: 'calendar_alert',
+        templateKey: CROSS_PARENT_CLASH_TEMPLATE,
+        what: input.text,
+        why: 'activity_followup',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+        payload: { auditVerb: 'calendar_alert_sent' },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: 'cross_parent_clash' },
+    });
+    return 'held';
+  }
+  const door = await resolveMessagingDoor(database, input.parentUserId, {
+    excludeChatId: input.groupChatId,
+  });
+  // Linq 1:1 only. An SMS last turn is a different app; never the group.
+  if (door.channel !== 'imessage') return 'not_sent';
+  const chatId = door.chatId;
+  const phone = chatId ? null : await resolveSendablePhone(database, input.parentUserId);
+  if (!chatId && !phone) return 'not_sent';
+  const body = withOptOut(input.text, input.optOut);
+  const [claimed] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'calendar_alert',
+      templateKey: CROSS_PARENT_CLASH_TEMPLATE,
+      dedupeKey: input.dedupeKey,
+      providerChatId: chatId,
+      status: acceptedStatus('imessage'),
+      sentAt: input.now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.channelMessages.id });
+  if (!claimed) return 'already_sent';
+  try {
+    let providerMessageId: string;
+    let sentChatId = chatId;
+    if (chatId) {
+      ({ providerMessageId } = await sendLinqChatMessage({
+        chatId,
+        text: body,
+        fetch: input.fetch,
+      }));
+    } else {
+      const sent = await sendResolvingNewChat(createOutboundTransport({ fetch: input.fetch }), {
+        to: phone as string,
+        body,
+      });
+      providerMessageId = sent.providerMessageId;
+      sentChatId = sent.chatId ?? null;
+    }
+    await database
+      .update(schema.channelMessages)
+      .set({ providerMessageId, providerChatId: sentChatId })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'calendar_alert_sent',
+      targetTable: 'channel_messages',
+      targetId: claimed.id,
+      after: { kind: 'cross_parent_clash' },
+    });
+    await threadProactiveMessage(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      body,
+    });
+    return 'sent';
+  } catch (err) {
+    const code = readSendRefusal(err)?.code ?? 'unknown';
+    await database
+      .update(schema.channelMessages)
+      .set(failedSendPatch(code))
+      .where(eq(schema.channelMessages.id, claimed.id));
+    console.warn(
+      { familyId: input.familyId, code },
+      'household calendar: cross-parent clash did not land',
+    );
+    return 'not_sent';
+  }
+}
+
 async function sendGroupNotice(
   database: Database,
   input: {
@@ -1143,7 +2094,7 @@ async function sendGroupNotice(
     now: Date;
     fetch?: typeof fetch;
   },
-): Promise<'sent' | 'already_sent' | 'held' | 'not_sent'> {
+): Promise<'sent' | 'already_sent' | 'held' | 'not_sent' | 'queued'> {
   if (await dedupeActive(input.notice.dedupeKey, database)) return 'already_sent';
   const verdict = await assertProactiveSendAllowed(
     {
@@ -1160,6 +2111,43 @@ async function sendGroupNotice(
       'household calendar: group notice held',
     );
     return 'held';
+  }
+  if (await isQueuedForDecider(database, input.familyId, input.notice.dedupeKey)) {
+    return 'queued';
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.notice.recipientUserId,
+        kind: input.notice.gateKind,
+        category: input.notice.category,
+        templateKey: `linq:group_${input.notice.kind}`,
+        what: input.notice.text,
+        why: input.notice.gateKind,
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.notice.dedupeKey,
+        payload: {
+          auditVerb:
+            input.notice.kind === 'followup' ? 'followup_activity_asked' : 'calendar_alert_sent',
+        },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: input.notice.gateKind },
+    });
+    return 'queued';
   }
   const body = withOptOut(input.notice.text, verdict.optOut);
   const [claimed] = await database
@@ -1239,26 +2227,7 @@ export async function answerBothFreeOffer(
   input: { familyId: string; now: Date; language: ReplyLanguage },
 ): Promise<{ text: string; slot1: string; slot2: string } | null> {
   const context = await loadFamilyCalendarContext(database, input.familyId);
-  const rows = await database
-    .select()
-    .from(schema.parentCalendarBlocks)
-    .where(eq(schema.parentCalendarBlocks.familyId, input.familyId));
-  const blocks: BusyBlock[] = rows
-    .filter((row) => row.familyId === input.familyId)
-    .map((row) => ({
-      integrationId: row.integrationId,
-      userId: row.userId,
-      eventId: row.eventId,
-      start: row.startAt,
-      end: row.endAt,
-      allDay: row.allDay,
-      kidRelated: row.kidRelated,
-      title: row.title,
-      status: row.status,
-      announced: row.announcedAt !== null,
-      followupSent: row.followupAt !== null,
-      recurringEventId: row.recurringEventId,
-    }));
+  const { blocks } = await loadSweepBlocks(database, input.familyId, context, input.now);
   return await sharedFreeOffer({
     requested: true,
     blocks,
@@ -1314,7 +2283,7 @@ export async function planBothFreeAsk(
   input: { familyId: string; now: Date; language: ReplyLanguage | null },
 ): Promise<BothFreeDelivery> {
   const context = await loadFamilyCalendarContext(database, input.familyId);
-  const blocks = await loadFamilyBlocks(database, input.familyId);
+  const { blocks } = await loadSweepBlocks(database, input.familyId, context, input.now);
   const day = bothFreeDay(input.now, context.timeZone);
   const remembered = await loadRememberedLogistics(database, input.familyId);
   if (remembered.some((row) => row.factKey === bothFreeFactKey(day))) return { mode: 'none' };
@@ -1379,7 +2348,8 @@ export async function rememberBothFreeAsked(
 /**
  * A clear who-takes or slot reply, in the group or in a 1:1 the parent
  * started. Stored on the family so the evening handoff can read it. Does not
- * send. An unclear sentence is left alone.
+ * send. An unclear sentence is left alone. With `sentAt`, a who-takes reply is
+ * stored as of when it was sent, and never over a decision stored after that.
  */
 export async function captureLogisticsText(
   database: Database,
@@ -1387,6 +2357,8 @@ export async function captureLogisticsText(
     familyId: string;
     parentUserId: string;
     body: string;
+    /** A group message: Linq can retry it, or deliver it late, before anything dedupes it. */
+    sentAt?: Date;
     now: Date;
   },
 ): Promise<'stored' | 'skipped' | 'withheld'> {
@@ -1402,16 +2374,29 @@ export async function captureLogisticsText(
     name: names.find((row) => row.id === userId)?.name ?? '',
   }));
   const remembered = await loadRememberedLogistics(database, input.familyId);
-  const blocks = await loadFamilyBlocks(database, input.familyId);
+  const { blocks } = await loadSweepBlocks(database, input.familyId, context, input.now);
   const who = readWhoTakesReply(input.body, parents, input.parentUserId);
+  const saidAt =
+    input.sentAt && input.sentAt.getTime() < input.now.getTime() ? input.sentAt : input.now;
+  const changedSince = async (factKey: string): Promise<boolean> =>
+    input.sentAt
+      ? whoTakesChangedSince(database, {
+          familyId: input.familyId,
+          factKey,
+          sentAt: saidAt,
+          remembered,
+        })
+      : false;
   if (who && 'declined' in who) {
     const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
     if (target) {
+      const factKey = whoTakesFactKey(target.startIso, target.titleNorm);
+      if (await changedSince(factKey)) return 'skipped';
       await withholdWhoTakes(database, {
         familyId: input.familyId,
         parentUserId: input.parentUserId,
-        factKey: whoTakesFactKey(target.startIso, target.titleNorm),
-        now: input.now,
+        factKey,
+        now: saidAt,
         source: 'text',
       });
     }
@@ -1420,12 +2405,14 @@ export async function captureLogisticsText(
   if (who) {
     const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
     if (!target) return 'skipped';
+    const factKey = whoTakesFactKey(target.startIso, target.titleNorm);
+    if (await changedSince(factKey)) return 'skipped';
     await writeLogisticsDecision(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
-      factKey: whoTakesFactKey(target.startIso, target.titleNorm),
+      factKey,
       childId: null,
-      now: input.now,
+      now: saidAt,
       value: {
         kind: 'who_takes',
         status: 'declined' in who ? 'declined' : 'decided',
@@ -1476,50 +2463,104 @@ function matchWhoTakesTarget(
   blocks: readonly BusyBlock[],
   now: Date,
   childNames: readonly string[],
-): { startIso: string; titleNorm: string; kid: string; event: string } | null {
-  const open = blocks.filter((block) => upcomingKid(block, now) && block.title && block.start);
+): { startIso: string; titleNorm: string; kid: string; event: string | null } | null {
+  const open = blocks.filter((block) => upcomingKid(block, now) && block.start);
   const normalized = body.trim().toLowerCase();
-  const named = open.filter((block) => normalized.includes(normalizeTitle(block.title as string)));
+  const named = open.filter(
+    (block) => block.title !== null && normalized.includes(normalizeTitle(block.title)),
+  );
   const pool = named.length > 0 ? named : open;
   const unique = new Map<string, BusyBlock>();
   for (const block of pool) {
-    const key = `${(block.start as Date).toISOString()}/${normalizeTitle(block.title as string)}`;
-    unique.set(key, block);
+    unique.set(`${(block.start as Date).toISOString()}/${subjectNorm(block)}`, block);
   }
   if (unique.size !== 1) return null;
   const block = [...unique.values()][0];
-  if (!block?.title || !block.start) return null;
-  const parts = splitKidEvent(block.title, childNames);
+  if (!block?.start) return null;
+  const parts = blockParts(block, childNames);
   if (!parts) return null;
   return {
     startIso: block.start.toISOString(),
-    titleNorm: normalizeTitle(block.title),
+    titleNorm: subjectNorm(block),
     kid: parts.kid,
     event: parts.event,
   };
 }
 
-async function loadFamilyBlocks(database: Database, familyId: string): Promise<BusyBlock[]> {
-  const rows = await database
-    .select()
-    .from(schema.parentCalendarBlocks)
-    .where(eq(schema.parentCalendarBlocks.familyId, familyId));
-  return rows
-    .filter((row) => row.familyId === familyId)
-    .map((row) => ({
-      integrationId: row.integrationId,
-      userId: row.userId,
-      eventId: row.eventId,
-      start: row.startAt,
-      end: row.endAt,
-      allDay: row.allDay,
-      kidRelated: row.kidRelated,
-      title: row.title,
-      status: row.status,
-      announced: row.announcedAt !== null,
-      followupSent: row.followupAt !== null,
-      recurringEventId: row.recurringEventId,
-    }));
+/**
+ * VIL-459: a family's free/busy from the calendars of `userIds` only (each parent who
+ * said Hale may use their own calendar here), or null when none of them has a Google
+ * Calendar syncing now (Hale cannot see their time and asks them instead). Spans only.
+ * A private plan's calendar copy (sensitive, or a teen's) and a block about a teen are
+ * left out, the same rows the household slice keeps private.
+ */
+export async function familyFreeBusy(
+  database: Database,
+  familyId: string,
+  userIds: readonly string[],
+  now: Date,
+): Promise<{ start: Date; end: Date }[] | null> {
+  if (userIds.length === 0) return null;
+  const live = await database
+    .select({ id: schema.integrations.id })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        eq(schema.integrations.provider, 'gcal'),
+        eq(schema.integrations.status, 'active'),
+        inArray(schema.integrations.userId, [...userIds]),
+      ),
+    );
+  if (live.length === 0) return null;
+  const syncing = new Set(live.map((row) => row.id));
+  const children = await database
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const [{ blocks, teens }, placed] = await Promise.all([
+    loadSweepBlocks(database, familyId, { children }, now),
+    database
+      .select({
+        placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+        title: schema.familyEvents.title,
+        childId: schema.familyEvents.childId,
+        sensitive: schema.familyEvents.sensitive,
+      })
+      .from(schema.familyEvents)
+      .where(
+        and(
+          eq(schema.familyEvents.familyId, familyId),
+          householdFamilyEvent(),
+          isNotNull(schema.familyEvents.placedGoogleEventId),
+        ),
+      ),
+  ]);
+  const childNames = children.map((child) => child.name);
+  const teenNames = children.filter((child) => teens.has(child.id)).map((child) => child.name);
+  const aboutTeen = (title: string) =>
+    withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
+  const privateCopies = new Set(
+    placed
+      .filter(
+        (row) =>
+          row.sensitive || (row.childId !== null && teens.has(row.childId)) || aboutTeen(row.title),
+      )
+      .map((row) => row.placedGoogleEventId),
+  );
+  return freeBusyOnly(
+    blocks.filter(
+      (block) =>
+        syncing.has(block.integrationId) &&
+        userIds.includes(block.userId) &&
+        !privateCopies.has(block.eventId) &&
+        !block.teen,
+    ),
+  );
 }
 
 export async function familyHasTwoCalendars(
@@ -1553,7 +2594,7 @@ export async function rememberHouseholdCalendar(
     familyId: input.familyId,
     userId: input.userId,
     changes: input.changes,
-    childNames: context.childNames,
+    children: context.children,
     seeding: input.seeding,
     bothCalendars: context.chatId !== null || context.bothCalendars,
     now: input.now,

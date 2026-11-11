@@ -29,6 +29,10 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
  * retired. */
 export type ChannelKind = 'sms';
 
+/** The pipe a leg actually rode, which is what its ledger row records: the SMS leg
+ * leaves on Linq as iMessage, and only a transport that names no pipe is plain SMS. */
+export type DeliveredChannel = ChannelKind | 'imessage';
+
 /** Outbound loop taxonomy (mirrors loop_prefs categories; inbound 'reply' is A3). */
 export type LoopCategory = 'reminder' | 'approval' | 'alert';
 
@@ -101,10 +105,28 @@ export type VoiceOutcome =
 export type RenderedContent = {
   kind: 'sms';
   text: string;
+  /**
+   * VIL-581 · the whole text is the model's (composed from facts), not a template's.
+   * Required, so a new renderer cannot forget it: the dispatch's claim shadow reads only
+   * model-written bodies, since a template's claims are a template bug, not a misread.
+   */
+  modelWritten: boolean;
   voice?: VoiceOutcome;
   /** Keep the sent text on the outbound channel_messages row. Set only by a template
    * whose whole text is model-written from the parent's own facts (the reminder). */
   recordBody?: boolean;
+  /**
+   * VIL-467 · Several texts, sent in order as one message. Present only on a template
+   * whose model decides how many texts to send (the reminder). `text` then holds the
+   * same texts joined by a blank line, for the dispatch's claim gate only; what goes
+   * on the wire is each entry of `texts`, one send and one ledger row per entry.
+   */
+  texts?: string[];
+  /**
+   * VIL-474 · words the writer chose to bold, copied from one of `texts` (or `text`).
+   * The iMessage leg bolds the first match; SMS and RCS send the same words plain.
+   */
+  bold?: string;
 };
 
 /** Produces channel-specific content for a message, honoring the resolved child-name
@@ -122,8 +144,9 @@ export type ChannelSendOutcome =
   | {
       status: 'sent';
       providerMessageId: string | null;
-      /** Set when a claimed Linq group carried a loop SMS leg. The ledger
-       * channel stays `sms` so the per-channel cap still sees the send. */
+      /** The pipe that carried it; the ledger row records this, not the leg. */
+      transport: DeliveredChannel;
+      /** Set when the send landed in a Linq chat (a claimed group or a 1:1). */
       providerChatId?: string | null;
     }
   | { status: 'skipped'; reason: 'not_configured' | 'no_address' | 'disabled' }

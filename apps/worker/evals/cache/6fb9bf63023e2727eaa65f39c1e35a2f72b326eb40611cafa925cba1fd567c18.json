@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct day (明天), correct AM/PM (早上11点, 下午5点半到6点半), correct titles rendered naturally (图书馆故事时间, 足球训练), no invented details, no extra links, and natural Chinese. Nothing dropped or added.",
+    "score": 5
+  }
+}

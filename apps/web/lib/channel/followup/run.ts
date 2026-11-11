@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled, isFlagKilled } from '@hale/flags';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import {
   type DaycareSubject,
@@ -29,6 +30,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -89,7 +91,7 @@ export const FOLLOWUP_ASKS_ALLOWLIST_ENV = 'FOLLOWUP_ASKS_FAMILY_ALLOWLIST';
  * truthiness check reads that as ON.
  */
 export function followupAsksEnabled(): boolean {
-  return process.env[FOLLOWUP_ASKS_ENABLED_ENV] === 'true';
+  return isEnabled('followup-asks');
 }
 
 export function followupAsksAllowlist(): Set<string> {
@@ -372,6 +374,8 @@ export interface FollowupSweepResult {
   refusedAtSend: number;
   held: Record<DeliveryHoldReason, number>;
   skipped: Record<FollowupSkipReason, number>;
+  /** VIL-612 · live cadence queued the composed ask for the hourly decider. */
+  queued: number;
   failed: number;
 }
 
@@ -399,6 +403,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
       window_passed: 0,
       care_changed: 0,
     },
+    queued: 0,
     failed: 0,
   };
 }
@@ -409,7 +414,8 @@ type SendOutcome =
   | { status: 'already_claimed' }
   | { status: 'already_discussed' }
   | { status: 'compose_deferred'; reason: ComposeDeferral }
-  | { status: 'refused_at_send'; reasons: readonly SendRefusalReason[] };
+  | { status: 'refused_at_send'; reasons: readonly SendRefusalReason[] }
+  | { status: 'queued' };
 
 /**
  * The ONE way this feature reaches a phone. Five preconditions, in this order, and the
@@ -495,6 +501,8 @@ async function sendFollowup(
     familyId: input.familyId,
     body,
     now: input.now,
+    lane: 'followup_ask',
+    parentUserId: input.parentUserId,
   });
   if (unbacked.length > 0) {
     console.error(
@@ -502,6 +510,48 @@ async function sendFollowup(
       'followup asks: the wire body claims a row that does not exist - refused at the send boundary',
     );
     return { status: 'refused_at_send', reasons: unbacked };
+  }
+
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { status: 'queued' };
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        kind: 'followup',
+        category: 'followup',
+        templateKey: input.templateKey,
+        what: spoken,
+        why: 'followup',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+        payload: {
+          auditVerb:
+            input.ask.kind === 'intro'
+              ? 'followup_intro_asked'
+              : input.ask.kind === 'daycare'
+                ? 'followup_daycare_asked'
+                : 'followup_activity_asked',
+        },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: 'followup' },
+    });
+    return { status: 'queued' };
   }
 
   const delivered = await deliverFamilyOutbound(database, {
@@ -566,6 +616,9 @@ function tally(result: FollowupSweepResult, outcome: SendOutcome): boolean {
       return false;
     case 'refused_at_send':
       result.refusedAtSend += 1;
+      return false;
+    case 'queued':
+      result.queued += 1;
       return false;
     default:
       result.skipped[outcome.status] += 1;
@@ -867,13 +920,14 @@ export async function runFollowupSweep(
   deps: FollowupSweepDeps = defaultFollowupSweepDeps(),
   now: Date = new Date(),
 ): Promise<FollowupSweepResult> {
+  if (isFlagKilled('followup-asks')) return emptyResult(false);
   const allFamilies = followupAsksEnabled();
   const allowlist = followupAsksAllowlist();
   if (!allFamilies && allowlist.size === 0) return emptyResult(false);
 
   const result = emptyResult(true);
   const families = (await deps.selectFamilies(database, now))
-    .filter((family) => allFamilies || allowlist.has(family.familyId))
+    .filter((family) => isEnabled('followup-asks', family.familyId))
     .slice(0, MAX_FAMILIES_PER_RUN);
   if (families.length === 0) return result;
 
@@ -1073,7 +1127,7 @@ let followupAnthropic: Anthropic | undefined;
  */
 function followupVoiceClient(): AgentClient {
   // Sweep composer under the nudge cron's maxDuration 300 (audit P1-7).
-  followupAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  followupAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'compose' });
   return followupAnthropic;
 }
 

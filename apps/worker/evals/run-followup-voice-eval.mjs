@@ -50,14 +50,18 @@ import { tsImport } from 'tsx/esm/api';
 import { FOLLOWUP_VOICE_FIXTURES } from './followup-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -178,27 +182,7 @@ function flatten(text) {
 
 // ── the judge ────────────────────────────────────────────────────────────────
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sends a parent to check back on',
-  'something it set up or was told days ago - an introduction to another family, an activity',
-  'it put on their calendar, or a daycare the parent said their child had started. Hale',
-  'composed this BLIND: for an activity it was shown the title and nothing else, for a',
-  'daycare the provider name the parent typed (or nothing at all), and for an introduction',
-  'nothing at all. No family, no children, no dates, no tools.',
-  'You are given the request it was answering, the message, and watchFor - fixture-specific',
-  'notes on what right and wrong look like here. Score 1-5.',
-  'A 5 is a friend who happened to remember, texting: ONE warm question about how the named',
-  'thing went, the pressure explicitly taken off ("no pressure", "no need to reply", "even a',
-  'word is fine"), and nothing else at all. Short. Plain. First person.',
-  'A LOW score is any of: assuming it happened or that it went well ("hope swim was fun!");',
-  'a second question, or a question plus a request; offering to do anything next (find',
-  'another one, book the next session, look something up); any invented specific - a time,',
-  'a date, a place, a price, or ANYTHING about a child including age, pronoun or',
-  'relationship; naming or describing the other household in the introduction case;',
-  'greeting, hype, exclamation marks, emoji, "just checking in!"; pointing at an app or a',
-  'link; padding after the question; more than about two short sentences.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('followup-voice');
 
 // Deterministic broken stand-in: hype, a second question, an invented time, an emoji, a
 // link, an offer to do something next, and no mention of the activity by name — trips
@@ -209,6 +193,7 @@ const BROKEN_ASK =
   'See www.example.com for options.';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -314,6 +299,10 @@ async function main() {
     results.every((r) => r.failures.length === 0) && activityOpeners.size >= MIN_DISTINCT_OPENERS;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('followup-voice', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

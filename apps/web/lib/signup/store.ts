@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq, sql } from 'drizzle-orm';
+import { signupProviderHost } from './consent';
 import { normalizeSession } from './forms/details';
 import type { BusyInterval, SignupIdentity, SignupOffer, SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
@@ -19,12 +20,17 @@ export async function recordSignupOffer(
     registrationUrl: string;
     sessions: SignupSession[];
     approvedPriceCents: number | null;
+    /** VIL-558 · when registration opens, for an offer Hale can carry out as a plan. */
+    planOpensAt?: Date | null;
+    /** Program is already open: Hale registers now, not at a future open. */
+    planAlreadyOpen?: boolean;
     now: Date;
   },
 ): Promise<RecordOfferResult> {
   if (!KEY.test(input.activityKey)) return { ok: false, reason: 'activity_key' };
-  if (!registrationUrlAllowed(input.registrationUrl).ok)
-    return { ok: false, reason: 'url_refused' };
+  const allowed = registrationUrlAllowed(input.registrationUrl);
+  if (!allowed.ok) return { ok: false, reason: 'url_refused' };
+  const providerHost = signupProviderHost(new URL(allowed.href).hostname);
   if (input.sessions.length === 0 || input.sessions.length > 12) {
     return { ok: false, reason: 'sessions' };
   }
@@ -42,7 +48,7 @@ export async function recordSignupOffer(
     .where(and(eq(schema.children.id, input.childId), eq(schema.children.familyId, input.familyId)))
     .limit(1);
   if (!child) return { ok: false, reason: 'child_missing' };
-  const pending = await loadPendingOffer(database, input.familyId);
+  const pending = await loadPendingOffer(database, input.familyId, providerHost);
   if (pending) return { ok: false, reason: 'offer_exists' };
   const [row] = await database
     .insert(schema.authorizedSignupOffers)
@@ -51,9 +57,12 @@ export async function recordSignupOffer(
       childId: input.childId,
       parentUserId: input.parentUserId,
       activityKey: input.activityKey,
-      registrationUrl: input.registrationUrl,
+      registrationUrl: allowed.href,
+      providerHost,
       sessions: sessions.filter((session): session is SignupSession => session !== null),
       approvedPriceCents: input.approvedPriceCents,
+      planOpensAt: input.planOpensAt ?? null,
+      planAlreadyOpen: input.planAlreadyOpen === true,
       status: 'pending',
       createdAt: input.now,
       updatedAt: input.now,
@@ -66,12 +75,14 @@ export async function recordSignupOffer(
 export async function loadPendingOffer(
   database: Database,
   familyId: string,
+  providerHost?: string,
 ): Promise<SignupOffer | null> {
   const [row] = await database
     .select({
       id: schema.authorizedSignupOffers.id,
       familyId: schema.authorizedSignupOffers.familyId,
       childId: schema.authorizedSignupOffers.childId,
+      parentUserId: schema.authorizedSignupOffers.parentUserId,
       activityKey: schema.authorizedSignupOffers.activityKey,
       registrationUrl: schema.authorizedSignupOffers.registrationUrl,
       sessions: schema.authorizedSignupOffers.sessions,
@@ -83,6 +94,7 @@ export async function loadPendingOffer(
       and(
         eq(schema.authorizedSignupOffers.familyId, familyId),
         eq(schema.authorizedSignupOffers.status, 'pending'),
+        ...(providerHost ? [eq(schema.authorizedSignupOffers.providerHost, providerHost)] : []),
       ),
     )
     .limit(1);
@@ -91,6 +103,7 @@ export async function loadPendingOffer(
     id: row.id,
     familyId: row.familyId,
     childId: row.childId,
+    parentUserId: row.parentUserId,
     activityKey: row.activityKey,
     registrationUrl: row.registrationUrl,
     sessions: row.sessions,
@@ -118,18 +131,46 @@ export async function markOffer(
   } = { status: input.status, updatedAt: input.now };
   if (input.sessionId !== undefined) patch.authorizedSessionId = input.sessionId;
   if (input.messageId !== undefined) patch.authorizingMessageId = input.messageId;
-  const rows = await database
-    .update(schema.authorizedSignupOffers)
-    .set(patch)
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, input.offerId),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-        eq(schema.authorizedSignupOffers.status, input.from),
-      ),
-    )
-    .returning({ id: schema.authorizedSignupOffers.id });
-  return rows.length > 0;
+  try {
+    const rows = await database
+      .update(schema.authorizedSignupOffers)
+      .set(patch)
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, input.offerId),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+          eq(schema.authorizedSignupOffers.status, input.from),
+        ),
+      )
+      .returning({ id: schema.authorizedSignupOffers.id });
+    return rows.length > 0;
+  } catch (err) {
+    // Another registration of this family is already running: not moved.
+    if (isOneSubmittingViolation(err)) return false;
+    throw err;
+  }
+}
+
+const ONE_SUBMITTING_INDEX = 'authorized_signup_offers_one_submitting';
+
+/** The database refused a second running registration for one family (0206's index). */
+export function isOneSubmittingViolation(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const pg = current as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
+    if (
+      pg.code === '23505' &&
+      (pg.constraint === ONE_SUBMITTING_INDEX ||
+        pg.constraint_name === ONE_SUBMITTING_INDEX ||
+        current.message.includes(ONE_SUBMITTING_INDEX))
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 export async function loadSignupIdentity(
@@ -163,7 +204,7 @@ export async function loadSignupIdentity(
   return {
     childFirstName: child.name,
     childLastName: child.lastName,
-    childDob: child.dobPrecision === 'exact' ? child.dateOfBirth : null,
+    childDob: child.dobPrecision === 'exact' ? child.dateOfBirth : null, // derived dates are never typed
     parentFirstName: parent?.name ?? null,
     parentEmail: parent?.email ?? null,
     postalCode: family.postalCode,

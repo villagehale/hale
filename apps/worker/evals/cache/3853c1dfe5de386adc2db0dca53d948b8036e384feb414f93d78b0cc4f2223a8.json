@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives tomorrow, the start (15 h), the end (jusqu'à 16 h), the venue name (Georgetown library) and keeps the title quoted as-is without reinterpreting it. However, the street address (9 Church St), which the facts gave, is missing, so a given fact is dropped. No invented details, no closure or free-day claim, correct language, no bold.",
+    "score": 2
+  }
+}

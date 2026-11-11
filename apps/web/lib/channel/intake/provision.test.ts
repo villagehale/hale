@@ -1,5 +1,7 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
+import { makeFakeDb } from './fakes';
 import { provisionFromIntake } from './provision';
 
 /**
@@ -217,5 +219,111 @@ describe('provisionFromIntake — lifetime Family comp (EarlyON Georgetown poste
 
     expect(familyValues(inserts)?.planTier).not.toBe('family');
     expect(compAuditRows(inserts)).toHaveLength(0);
+  });
+});
+
+describe('provisionFromIntake — the contact card share written once the family exists', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  function shareRows(inserts: Array<{ table: string; values: unknown }>) {
+    return inserts
+      .filter((row) => row.table === 'audit_log')
+      .flatMap((row) => row.values as Array<Record<string, unknown>>)
+      .filter((row) => row.actionTaken === 'linq_contact_card_shared');
+  }
+
+  it('names the chat by its key on the immutable row, never the raw chat id', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, {
+      ...input(),
+      linqContactCardClaim: { at: NOW.toISOString(), outcome: 'shared', chatId: 'chat-first' },
+    });
+
+    const rows = shareRows(inserts);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.after).toMatchObject({
+      outcome: 'shared',
+      chatKey: linqChatBlindIndex('chat-first'),
+    });
+    expect(rows[0]?.after).not.toHaveProperty('chatId');
+  });
+
+  it('writes no chat at all for a claim that never named one', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, {
+      ...input(),
+      linqContactCardClaim: { at: NOW.toISOString(), outcome: 'shared' },
+    });
+
+    const after = shareRows(inserts)[0]?.after;
+    expect(after).toMatchObject({ outcome: 'shared' });
+    expect(after).not.toHaveProperty('chatKey');
+    expect(after).not.toHaveProperty('chatId');
+  });
+});
+
+describe('provisionFromIntake — named birth date and a retried SMS channel (VIL-531, VIL-532)', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('stores the calendar day the parent named, exact, not a timezone-shifted derived date', async () => {
+    const fake = makeFakeDb();
+    const incidentNow = new Date('2026-11-02T18:00:00.000Z');
+
+    await provisionFromIntake(fake.db, {
+      ...input(),
+      now: incidentNow,
+      children: [
+        {
+          name: 'Lin',
+          ageMonths: 125,
+          agePrecision: 'months',
+          dateOfBirth: '2016-05-01',
+        },
+      ],
+    });
+
+    const [child] = fake.rows(schema.children);
+    expect(child?.name).toBe('Lin');
+    expect(child?.dateOfBirth).toBe('2016-05-01');
+    expect(child?.dobPrecision).toBe('exact');
+  });
+
+  it('reuses the active SMS channel on a second provision instead of inserting another (VIL-532)', async () => {
+    const fake = makeFakeDb();
+    const first = await provisionFromIntake(fake.db, input());
+    const second = await provisionFromIntake(fake.db, input());
+
+    expect(second).toEqual(first);
+    expect(fake.rows(schema.parentChannels)).toHaveLength(1);
+    expect(fake.rows(schema.families)).toHaveLength(1);
+  });
+
+  it('the fake raises parent_channels_user_kind_active_idx on a second active SMS row', async () => {
+    const fake = makeFakeDb();
+    await fake.db.insert(schema.parentChannels).values({
+      userId: 'user-1',
+      familyId: 'fam-1',
+      kind: 'sms',
+      phoneE164Encrypted: 'x',
+      phoneE164Hash: 'h1',
+    });
+
+    await expect(
+      fake.db.insert(schema.parentChannels).values({
+        userId: 'user-1',
+        familyId: 'fam-2',
+        kind: 'sms',
+        phoneE164Encrypted: 'y',
+        phoneE164Hash: 'h2',
+      }),
+    ).rejects.toThrow('parent_channels_user_kind_active_idx');
   });
 });

@@ -1,6 +1,15 @@
-import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
+import {
+  type AgentClient,
+  HAIKU_MODEL,
+  type LaneConfig,
+  SPARSE_CACHE_TTL,
+  pickLane,
+} from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { contactsOutside } from '~/lib/format/contact-shape';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -32,6 +41,12 @@ const outputJsonSchema = {
   required: ['text'],
 } as const;
 
+/**
+ * A line is sent only when it is not empty, carries every verbatim piece, and holds no
+ * link, phone number or email address beyond the ones those pieces carry (VIL-633). The
+ * facts can be a third party's words (a calendar title), so a contact in a fact is not
+ * grounds to say it: a caller that needs one said hands it as verbatim.
+ */
 export function acceptSpokenLine(
   text: string,
   verbatim: readonly string[] | undefined,
@@ -39,10 +54,11 @@ export function acceptSpokenLine(
   const body = text.trim();
   if (body.length === 0) return null;
   if (verbatim?.some((piece) => piece.length > 0 && !body.includes(piece))) return null;
+  if (contactsOutside(body, verbatim ?? []).length > 0) return null;
   return body;
 }
 
-function smallerLane(lane: LaneConfig): LaneConfig {
+export function smallerLane(lane: LaneConfig): LaneConfig {
   if (lane.model === HAIKU_MODEL) {
     return lane.thinking === 'disabled'
       ? lane
@@ -51,7 +67,10 @@ function smallerLane(lane: LaneConfig): LaneConfig {
   return { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' };
 }
 
-export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWriter {
+export function createSpokenLineWriter(
+  client: () => AgentClient,
+  pager: OpsPager,
+): SpokenLineWriter {
   return {
     async write(request) {
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
@@ -62,10 +81,10 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
           { purpose: request.purpose, err: err instanceof Error ? err.name : 'unknown' },
           'spoken line: skill load failed',
         );
-        console.error(
-          { urgent: true, purpose: request.purpose },
-          'URGENT: spoken line unreachable - page #ops now',
-        );
+        await pager.page({
+          site: 'spoken_line_unwritten',
+          facts: { stage: 'skill_load' },
+        });
         return null;
       }
       const first = pickLane(skill.meta.task);
@@ -76,6 +95,7 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
             client: client(),
             lane: lanes[attempt] ?? first,
             system: skill.instructions,
+            cacheTtl: SPARSE_CACHE_TTL,
             userMessage: JSON.stringify({
               purpose: request.purpose,
               language: request.language,
@@ -101,10 +121,12 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
           );
         }
       }
-      console.error(
-        { urgent: true, purpose: request.purpose },
-        'URGENT: spoken line unreachable after a smaller model - page #ops now',
-      );
+      // The purpose is a caller's code with no closed list, so it is logged, never paged.
+      console.error({ purpose: request.purpose }, 'spoken line: no line written');
+      await pager.page({
+        site: 'spoken_line_unwritten',
+        facts: { stage: 'after_retry' },
+      });
       return null;
     },
   };
@@ -113,7 +135,10 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
 let shared: SpokenLineWriter | null = null;
 
 export function sharedSpokenLineWriter(): SpokenLineWriter {
-  shared ??= createSpokenLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createSpokenLineWriter(
+    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    sharedOpsPager,
+  );
   return shared;
 }
 

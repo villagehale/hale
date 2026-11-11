@@ -52,7 +52,7 @@ const OPT_IN: OpenQuestion = {
 const OFFER: OpenQuestion = {
   id: 'commitment-1',
   kind: 'plan_offer',
-  description: "A plan for the 4am wake-ups, in three texts",
+  description: 'A plan for the 4am wake-ups, in three texts',
   subject: 'the plan I offered',
   answerable: { yes: true, no: false },
   askedAt: null,
@@ -229,7 +229,11 @@ describe('replyResolverUserMessage', () => {
       text: 'yeah go ahead',
       questions: [
         { id: 'action-1', kind: 'approval', question: 'Reschedule on your calendar' },
-        { id: 'proposal-1', kind: 'intro_proposal', question: 'Whether to meet one nearby Hale family' },
+        {
+          id: 'proposal-1',
+          kind: 'intro_proposal',
+          question: 'Whether to meet one nearby Hale family',
+        },
       ],
     });
   });

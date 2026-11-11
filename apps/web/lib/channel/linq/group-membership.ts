@@ -37,7 +37,7 @@ export function memberPlanTier(membership: Pick<GroupMembership, 'planTier'>): P
   return membership.planTier;
 }
 
-/** Group-seat consent scope written by group-members.ts provisionMember. */
+/** Legacy group-seat consent scope: rows the removed participant.added provisioner wrote. */
 const GROUP_SEAT_SCOPE = 'linq_group_member';
 
 export async function readGroupMembership(

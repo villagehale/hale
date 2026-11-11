@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's question with the relevant facts and sendReply is true, so no information is dropped. No sticker is the natural choice for a plain informational question, and the decision is correct on safety, privacy and tone.",
+    "score": 5
+  }
+}

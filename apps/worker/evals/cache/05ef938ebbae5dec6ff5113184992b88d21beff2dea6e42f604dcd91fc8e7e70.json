@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text drops the actual event entirely. The facts give Léa's Swim tomorrow, moved from 5:00 PM to 4:30 PM, ending 5:15 PM, at Mold-Masters SportsPlex, 221 Guelph St. The text instead mentions 'Jour de congé at 3:00', which is not in the facts (invented event and time), omits the swim, the new time 4:30 PM, the change from 5:00 PM, the end time, the venue name and address, and who it is for. It also tells the parent they have 'a bit of breathing room' on a day with a timed event, which is a wrong implication. Bold is none, which would cap the score at 3 anyway, but the fact failures are far more severe.",
+    "score": 1
+  }
+}

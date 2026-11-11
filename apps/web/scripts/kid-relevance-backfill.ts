@@ -2,9 +2,10 @@
 // One-off kid-relevance backfill (VIL-226 item 5). Judges the connector rows Hale already
 // holds and, with --apply, drops the parent's own ones. Prints counts only.
 //
-// --apply is refused (mirror_not_wired, exit 1) while CALENDAR_MIRROR_HONOURS_KID_VERDICTS
-// is false: the mirror's next sync would put every dropped calendar copy back. The dry run
-// and --revert run as before.
+// --apply runs now that CALENDAR_MIRROR_HONOURS_KID_VERDICTS is true (VIL-548): the mirror
+// judges each event before it writes it, so a dropped calendar copy stays dropped. It would
+// be refused (mirror_not_wired, exit 1) if that flag were false. The dry run and --revert
+// run as before.
 //
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts            # dry run
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts --apply    # write
@@ -82,7 +83,7 @@ try {
     { now: new Date(), deadline: NO_DEADLINE, runId },
     apply
       ? { apply: true }
-      : { apply: false, client: budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS) },
+      : { apply: false, client: budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'classify_event' }) },
   );
   console.info(JSON.stringify(counts, null, 2));
   if (!apply) {

@@ -35,7 +35,10 @@ import {
   judgeLaneFor,
   liveStructuredCall,
   priceRates,
+  reportEvalGeneration,
+  wrapEvalAnthropic,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -149,7 +152,15 @@ function makeRealDrafter(lane, prompt, cachedOnly, cost) {
     const key = cacheKey(model, prompt, userMessage, 'draft');
 
     const cached = await cacheGet(key);
-    if (cached) return cached.parsed;
+    if (cached) {
+      reportEvalGeneration({
+        suite: 'drafter',
+        caseName: fixture.id,
+        model,
+        cached: true,
+      });
+      return cached.parsed;
+    }
 
     if (cachedOnly) {
       console.error(
@@ -158,10 +169,16 @@ function makeRealDrafter(lane, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
-      rates: priceRates,
-      tag: 'drafter',
-    });
+    client ??= capSdkClient(
+      wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        suite: 'drafter',
+        stage: 'drafter',
+      }),
+      {
+        rates: priceRates,
+        tag: 'drafter',
+      },
+    );
     // The production budget (apps/worker/src/agents/drafter.ts), through the same seam.
     const response = await liveStructuredCall({
       client,
@@ -203,14 +220,7 @@ function makeBrokenDrafter() {
 
 // --- LLM-as-judge (cached, real haiku) --------------------------------------
 
-export const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring a single drafted message a parent-assistant',
-  "product would send on a parent's behalf to a clinic, daycare, family member, or",
-  'an internal daily digest. Score TONE & APPROPRIATENESS on a 1–5 integer scale:',
-  '5 = warm, natural, first-person from the parent, appropriate to the recipient;',
-  '1 = robotic, corporate, performs emotion, refers to itself as an AI, or is wrong',
-  'for the context. Reply with ONLY a JSON object via the score tool.',
-].join(' ');
+export const JUDGE_SYSTEM = judgePrompt('drafter');
 
 const JUDGE_TOOL = 'score';
 export const JUDGE_JSON_SCHEMA = {
@@ -234,7 +244,15 @@ function makeJudge(model, cachedOnly, cost) {
     const key = cacheKey(model, JUDGE_SYSTEM, userMessage, 'judge');
 
     const cached = await cacheGet(key);
-    if (cached) return cached.parsed;
+    if (cached) {
+      reportEvalGeneration({
+        suite: 'drafter',
+        caseName: `${fixture.id}:judge`,
+        model,
+        cached: true,
+      });
+      return cached.parsed;
+    }
 
     if (cachedOnly) {
       console.error(
@@ -243,10 +261,16 @@ function makeJudge(model, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
-      rates: priceRates,
-      tag: 'drafter-judge',
-    });
+    client ??= capSdkClient(
+      wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        suite: 'drafter',
+        stage: 'drafter',
+      }),
+      {
+        rates: priceRates,
+        tag: 'drafter-judge',
+      },
+    );
     const response = await liveStructuredCall({
       client,
       lane: await judgeLaneFor(model),

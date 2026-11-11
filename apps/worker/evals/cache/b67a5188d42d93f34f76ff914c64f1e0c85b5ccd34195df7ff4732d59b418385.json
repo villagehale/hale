@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Event 1 (Montessori tour, Theo) is complete: tomorrow, 10 start, 'about an hour' covers the 11 end, venue and address given. Event 2 (Storytime, Léa) drops the venue name and address: it says only 'at the library' when the facts gave 'Georgetown Branch, 9 Church St'. That is a missing given fact, and the parent would have to look it up. Also, '10' and '1:30' have no AM/PM, though morning/afternoon is natural enough from context; the main failure is the missing venue name and address for storytime. Bold is none, which is fine.",
+    "score": 2
+  }
+}

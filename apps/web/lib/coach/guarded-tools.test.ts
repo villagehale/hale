@@ -51,7 +51,13 @@ describe('tool guard rails', () => {
       ),
     ).rejects.toThrow(/exceeds per-action cap/);
 
-    expect(audits).toEqual([]);
+    // VIL-635: a refusal leaves only a content-free tool_refused row, never a tool:<name> row.
+    expect(audits).toEqual([
+      expect.objectContaining({
+        actionTaken: 'tool_refused',
+        after: { rail: 'spending_cap', tool: 'place_supply_order' },
+      }),
+    ]);
   });
 
   it('allows a monetary tool within the cap, audits it, and runs the handler (rule #6/#7)', async () => {
@@ -88,7 +94,7 @@ describe('tool guard rails', () => {
     const db = fakeDb([]);
     const ask = (input: Record<string, unknown>) =>
       invokeTool(
-        frameworkGuidanceTool(),
+        frameworkGuidanceTool('CA'),
         input,
         { familyId: FAMILY_ID, actor: 'user-1' },
         buildGuardDeps(db),

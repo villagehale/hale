@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, not the requested Chinese, so it fails the language requirement. It also invents an event at 3:00 that is not in the facts, drops the piano lesson entirely, and wrongly says the day is open with breathing room while a timed event exists. Multiple fact failures and wrong language.",
+    "score": 1
+  }
+}

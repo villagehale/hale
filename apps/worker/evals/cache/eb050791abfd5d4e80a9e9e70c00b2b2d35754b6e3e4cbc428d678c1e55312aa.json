@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgZNog4CVGsHZVLQWGoGX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsQcKEAgTGAI4AUIIdGhpbmtpbmcSDATWxwkAbW+Unf3SbBoMyV2wlLJ8jRnVKCHHIjBfQuUHBcZwlWyjB/iHcKFtxfm2ixHE+QDr7AN3fEtblOHSV24vsVP3EMMDg8bo0rQqzgYveeUW37XncY5U4iLfbBzmODaU0pdG1xLyrlXZ8q7acTGXUWLvkNTeIh49/FJpk8HGu3gfKc8wrOz0BwD6T/1BdiMmOsSTqMjwirUwMQ6FSlTGd4ioBHXb9oGiofzv1AZ1vBh5RKZLrHhe47gy0Xnayd+RWwrdXV6MGhX45m8QDdp7Xx1XP0qcQDuCmEM41c/mQfJ2Ul0ae3qvBvCEC+6M/EMrj1LGU5ZydZm6Px4VDUip2W9UiXs76BREvF2SPkY9PaAbgZiqD8PrkOf8QYRkWjPvI/QzH94jO++Q5ektIClDLiiX5QLP3y2QRBl/0VF8xxv/NerhGGWgQPvkocJJMxTEisVsCam7q5NkcWf2eT0VwOE8Witg+VGX+EBpXdumDCHyXYFGPx2OaMYfCFNV9ytG3OXb262q1C0nmISrARCREGQFz5/Fj/EyQfavv1zqNvPcHkTijoRFdwHbWFcBhTLXGTYSAzGBo70LUXROQBYxG21JSYLHNClfXnRRTVbEiwNZ9lt/8GKshPhNKTTgU5JECN7brp5LfeEgFGcQ3G6YNw1V9xQ0E86vYKzktQLb0be4YLTcxKg6RXjjZtVk6Pc3ZlATQuvKoZMNk/lshFqJCi7AqktMQVNAAGLku69EBL6HmqgzarZ++S5CD+aYmoEm1qiVEXTAtbeYfuLqQICooD4FFXWnA/0QlmrO3zCGrRSSgaCJ7XBLzn7bIzFyBNrAER2BTbReqmGvfpwT+111UlTIlv1Y/nDb6yOF3zqRNUCPQWHL7SNX6aqQL9EMN3kQ0Lb2H8z4HQNfvfGPfrA/mUGdV0cPREvcj7YHUr2kKcYF4pEAE6daeLqV+M6IVoMLiySzEVZXXhD/6aYtbSFONhEl/fK39IE5aLw9PzSE4IIGCLw35yQ3jcJYM9DX3EcR/aZ6/7XXUvekGJacSsRH+udHJs9/Ccp4d4FoVZsNtPBncQko1P0l4SlB3V96fxFG6e7nGWvHN1DEK4INyPk+lEEbdH/k9uWTOa1H7+hNlizHCZ7jn2k5kSPbsx7R8nonIudJpLXd85yV7pb4praAr+xRtkSpBqJUQqs8jDRm9TTsctp6VHQIh9DRoCW+Xr7AbH3FeTaPBlm9U8cYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Got it, Thursday swim stays as is. I haven't changed anything."
+      }
+    ],
+    "usage": {
+      "input_tokens": 382,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21795,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 164,
+      "output_tokens_details": {
+        "thinking_tokens": 138
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1958
+}

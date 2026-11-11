@@ -63,9 +63,11 @@ function filesUnder(relative: string, out: string[] = []): string[] {
 describe('the spend-ceiling replay tooling is deleted with the ceiling', () => {
   it('the worker has no script for it', () => {
     const scripts = Object.keys(
-      (JSON.parse(readFileSync(`${ROOT}apps/worker/package.json`, 'utf8')) as {
-        scripts: Record<string, string>;
-      }).scripts,
+      (
+        JSON.parse(readFileSync(`${ROOT}apps/worker/package.json`, 'utf8')) as {
+          scripts: Record<string, string>;
+        }
+      ).scripts,
     );
     expect(scripts).toContain('prompts:check');
     expect(scripts.filter((name) => name.includes('spend'))).toEqual([]);

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is warm, first-person, in English, and says Hale received the messages and is behind, and invites them to text again. However, it promises Hale will get back to them ('I'll get back to you'), which the watchFor explicitly forbids, so it scores low.",
+    "score": 2
+  }
+}

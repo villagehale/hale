@@ -119,11 +119,7 @@ export async function revokeIcsToken(db: Database, familyId: string): Promise<bo
  * title and no location — no name, no raw content. Non-teen events keep their stored,
  * first-name-only title. Family-scoped by the token resolution.
  */
-export async function loadIcsFeed(
-  db: Database,
-  token: string,
-  now: Date,
-): Promise<string | null> {
+export async function loadIcsFeed(db: Database, token: string, now: Date): Promise<string | null> {
   const familyRows = await db
     .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)

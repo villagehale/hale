@@ -3,8 +3,8 @@ import { z } from 'zod';
 import {
   type AuditEntry,
   type GuardDeps,
-  type ToolHandlerContext,
   GuardrailError,
+  type ToolHandlerContext,
   defineTool,
   invokeTool,
 } from './tool.js';
@@ -57,8 +57,16 @@ describe('invokeTool — spending-cap rail (rule #7)', () => {
       invokeTool(tool, { item: 'diapers', priceUsd: 999 }, ctx, deps),
     ).rejects.toBeInstanceOf(GuardrailError);
     expect(handler).not.toHaveBeenCalled();
-    // A blocked call writes no audit row — nothing was authorized.
-    expect(audits).toHaveLength(0);
+    // Content-free refusal: tool + rail, never the input, no audience on a non-user actor.
+    expect(audits).toEqual([
+      {
+        familyId: 'fam-1',
+        actor: 'agent-run-1',
+        actionTaken: 'tool_refused',
+        after: { tool: 'place_supply_order', rail: 'spending_cap' },
+        audience: null,
+      },
+    ]);
   });
 
   it('runs the handler when the cap hook passes, and the cost is derived from input', async () => {
@@ -149,7 +157,7 @@ describe('invokeTool — child-content rail (rule #1/#5)', () => {
       inputSchema: z.object({ messageId: z.string() }),
       handler,
     });
-    const { deps } = depsWith({
+    const { deps, audits } = depsWith({
       checkChildContentAccess: async () => ({ ok: false, reason: 'no teen assent on file' }),
     });
 
@@ -157,6 +165,15 @@ describe('invokeTool — child-content rail (rule #1/#5)', () => {
       GuardrailError,
     );
     expect(handler).not.toHaveBeenCalled();
+    expect(audits).toEqual([
+      {
+        familyId: 'fam-1',
+        actor: 'agent-run-1',
+        actionTaken: 'tool_refused',
+        after: { tool: 'read_teen_message', rail: 'child_content' },
+        audience: null,
+      },
+    ]);
   });
 
   it('fails closed: a child-content tool with no consent hook wired throws', async () => {
@@ -177,6 +194,141 @@ describe('invokeTool — child-content rail (rule #1/#5)', () => {
     // The raw teen content was never read, and no audit row implies it was.
     expect(handler).not.toHaveBeenCalled();
     expect(audits).toHaveLength(0);
+  });
+});
+
+describe('invokeTool — untrusted-content rail (VIL-616)', () => {
+  function gatedTool(gate: () => { ok: boolean; reason: string }) {
+    const handler = vi.fn(async () => ({ drafted: true }));
+    const tool = defineTool({
+      name: 'propose_calendar_add',
+      description: 'Draft a calendar entry.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ title: z.string() }),
+      untrustedContentGate: gate,
+      handler,
+    });
+    return { tool, handler };
+  }
+
+  it('a refused call writes NO audit row: the input never reaches audit_log', async () => {
+    const { tool, handler } = gatedTool(() => ({ ok: false, reason: 'email_read_this_turn' }));
+    const { deps, audits } = depsWith();
+
+    const refusal = await invokeTool(tool, { title: 'Pickup with a stranger' }, ctx, deps).catch(
+      (err: unknown) => err,
+    );
+
+    expect(refusal).toBeInstanceOf(GuardrailError);
+    expect(refusal).toMatchObject({ toolName: 'propose_calendar_add', rail: 'untrusted_content' });
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toEqual([
+      {
+        familyId: 'fam-1',
+        actor: 'agent-run-1',
+        actionTaken: 'tool_refused',
+        after: { tool: 'propose_calendar_add', rail: 'untrusted_content' },
+        audience: null,
+      },
+    ]);
+    expect(JSON.stringify(audits)).not.toContain('Pickup with a stranger');
+  });
+
+  it('a call the gate lets through is audited and runs (positive control)', async () => {
+    const { tool, handler } = gatedTool(() => ({ ok: true, reason: 'untainted' }));
+    const { deps, audits } = depsWith();
+
+    await expect(invokeTool(tool, { title: 'Swim' }, ctx, deps)).resolves.toEqual({
+      drafted: true,
+    });
+    expect(handler).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.actionTaken)).toEqual(['tool:propose_calendar_add']);
+  });
+});
+
+describe('invokeTool — input-aware child-content gate (VIL-618)', () => {
+  function gatedTool() {
+    const handler = vi.fn(async () => ({ saved: true }));
+    const tool = defineTool({
+      name: 'save_memory',
+      description: 'Save a fact.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ factValue: z.string() }),
+      childContentGate: async (input: { factValue: string }, gateCtx: ToolHandlerContext) =>
+        gateCtx.familyId === ctx.familyId && input.factValue.includes('Tamsin')
+          ? { ok: false, reason: 'names_teen' }
+          : { ok: true, reason: 'names_no_teen' },
+      handler,
+    });
+    return { tool, handler };
+  }
+
+  it('a refused input writes NO audit row and the handler never runs', async () => {
+    const { tool, handler } = gatedTool();
+    const { deps, audits } = depsWith();
+
+    const refusal = await invokeTool(tool, { factValue: 'Tamsin has a secret' }, ctx, deps).catch(
+      (err: unknown) => err,
+    );
+
+    expect(refusal).toBeInstanceOf(GuardrailError);
+    expect(refusal).toMatchObject({ toolName: 'save_memory', rail: 'child_content' });
+    expect((refusal as Error).message).toContain('names_teen');
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toEqual([
+      {
+        familyId: 'fam-1',
+        actor: 'agent-run-1',
+        actionTaken: 'tool_refused',
+        after: { tool: 'save_memory', rail: 'child_content' },
+        audience: null,
+      },
+    ]);
+    expect(JSON.stringify(audits)).not.toContain('Tamsin');
+  });
+
+  it('an input the gate lets through is audited and runs (positive control)', async () => {
+    const { tool, handler } = gatedTool();
+    const { deps, audits } = depsWith();
+
+    await expect(invokeTool(tool, { factValue: 'library on Sundays' }, ctx, deps)).resolves.toEqual(
+      { saved: true },
+    );
+    expect(handler).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.after)).toEqual([{ factValue: 'library on Sundays' }]);
+  });
+});
+
+describe('invokeTool — refusal audience (VIL-635)', () => {
+  it('names the adult as audience when the actor is a users.id', async () => {
+    const parent = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const handler = vi.fn(async () => ({ drafted: true }));
+    const tool = defineTool({
+      name: 'propose_calendar_add',
+      description: 'Draft a calendar entry.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ title: z.string() }),
+      untrustedContentGate: () => ({ ok: false, reason: 'email_read_this_turn' }),
+      handler,
+    });
+    const { deps, audits } = depsWith();
+
+    await expect(
+      invokeTool(tool, { title: 'secret' }, { familyId: 'fam-1', actor: parent }, deps),
+    ).rejects.toBeInstanceOf(GuardrailError);
+    expect(audits).toEqual([
+      {
+        familyId: 'fam-1',
+        actor: parent,
+        actionTaken: 'tool_refused',
+        after: { tool: 'propose_calendar_add', rail: 'untrusted_content' },
+        audience: parent,
+      },
+    ]);
+    expect(JSON.stringify(audits)).not.toContain('secret');
   });
 });
 

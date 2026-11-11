@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give one event, 'an appointment' tomorrow (Mon Oct 26) from 4:45 PM to 5:45 PM, with no location. The text instead says 'Jour de congé at 3:00', which is a wrong event name and a wrong time, and it omits the real 4:45 PM start and the 5:45 PM end. It also invents that tomorrow is a day off and implies 'breathing room' when a timed event exists. The only fact kept is the date.",
+    "score": 1
+  }
+}

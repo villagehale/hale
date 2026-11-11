@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, the Saturday times, and Sept 12 to Nov 28. Each is cited to the Oakville page, carries the Aug 11 7 a.m. registration date, and leaves the price null because the page prints no fee. The message is in Arabic as watchFor requires. It leads with Preschool A by name, attributes the facts ('according to their site'), and carries the registration date. It states the price gap in the first person ('I could not determine the price'), which is correct for page_has_schedule. With watch true, it makes a first-person keep-watching commitment. It asks no question and includes no link.",
+    "score": 5
+  }
+}

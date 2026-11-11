@@ -21,7 +21,7 @@
 // Calibrated BOTH directions: the real cached model clears every gate; the --broken
 // stand-in (a composer that invents a venue, a price and a time, re-asks the watch
 // question, and rambles past the segment budget) fails the fabrication gate, the
-// question gate, the length gate AND the tone judge — proving the gates have teeth.
+// length gate, the attribution judge AND the ask judge — proving the gates have teeth.
 //
 // THE ATTRIBUTION GATE (2026-08-13). A correct find with nothing saying where it came
 // from is trivia: the parent reads a date they could have googled and has no idea a
@@ -51,6 +51,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { RADAR_FIXTURES, WATCH_OFFER } from './radar-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -343,7 +344,7 @@ function indexOfFact(lower, token) {
   return hits.length === 0 ? -1 : Math.min(...hits);
 }
 
-function checkMessage(fixture, message, judgeScore, attributionScore) {
+function checkMessage(fixture, message, judgeScore, attributionScore, askScore) {
   const failures = [];
   if (!message) return ['answer failed to parse into a strict { message } object'];
 
@@ -352,9 +353,6 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
 
   if (message.includes(WATCH_OFFER)) {
     failures.push('re-asks the watch question the shell appends — the parent is asked twice');
-  }
-  if (message.includes('?')) {
-    failures.push('writes a question of its own (the shell owns the only question)');
   }
 
   const segments = smsSegments(payloadOf(fixture.decision, message));
@@ -402,88 +400,31 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
       `attribution score ${attributionScore} < ${JUDGE_MIN} — the find lands as trivia, not as the watch reporting back`,
     );
   }
+  if (askScore !== null && !(askScore >= JUDGE_MIN)) {
+    failures.push(
+      `ask score ${askScore} < ${JUDGE_MIN} — the message asks something of its own beside the shell's one question`,
+    );
+  }
   return failures;
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring the FIRST useful text message Hale sends a parent,',
-  "sixty seconds after they texted their kids' names to a number on a poster. You are",
-  'given the FACTS Hale decided on and the message written from them.',
-  'Score VOICE & FAITHFULNESS on a 1-5 integer scale. A 5 sounds like a competent',
-  'neighbour who already looked something up: quiet, plain-spoken, specific, short,',
-  'leading with the useful thing. It states only the given facts, and when a fact is',
-  'absent (no pick, no registration date) it says so plainly instead of padding.',
-  'A field the facts do not carry - a null venue, no price, no age range - is simply',
-  'absent. A message that names no venue because there is none IS complete, and you never',
-  'mark it down for that, ask it for a placeholder, or suggest wording that would invent',
-  'one: a stand-in like "location TBA" is a detail Hale was not given.',
-  'A specific is INVENTED only when you cannot find it in the facts you were given. Read',
-  'the facts object before you call anything invented: a town, a cycle name, a date, a',
-  'time, an activity title, an age range or a name that appears there is GIVEN, however',
-  'specific it looks, and naming it is the message doing its job.',
-  "`registrationAbsence` is this town's LAST cycle - its name and the morning it opened.",
-  'It is not a claim that anything is shut and it is not a request for the next cycle.',
-  'When it carries `stillOpenPage: true` that cycle is the CURRENT one, still the one to',
-  'act on: a message that says it opened on `lastOpenedAtLocal` and stops is exactly',
-  'right, and you never mark it down for leaving out `nextCycle`, for not saying',
-  'registration has closed, or for not warning that the parent has missed it. When',
-  '`stillOpenPage` is false the season has gone and the next dates are not posted, and',
-  'saying both halves plainly is what a 5 looks like.',
-  'THE COMPOSER IS WRITING TO A CONTRACT (packages/agent/skills/radar-voice.md), and',
-  'three things that contract REQUIRES are neither padding nor inventions. ONE: a few',
-  'words inside the LEAD sentence saying Hale already went and looked - "I found", "I',
-  'checked", "I looked up", "I had a look" - are mandatory and are scored by a separate',
-  'reviewer. Never mark a message down for them and never read them as corporate voice.',
-  'They add no fact of their own, so they are invented only when they carry a scope the',
-  'facts do not: a count of places checked, an area swept, a postal code, a time the',
-  'check ran. TWO: when `registration` and `registrationAbsence` are BOTH null, one short',
-  'clause saying nothing has a registration date coming up is the instructed copy and not',
-  'a speculation - and so is one short clause saying Hale is still learning the area and',
-  'will have a pick soon when `weekendPick` is null. Neither is a claim about data the',
-  'writer lacks; both are what the absence is supposed to sound like. THREE:',
-  '`firstFindBeat`, where the facts carry it, is a sentence Hale HANDED the composer to',
-  'reproduce verbatim. It is not padding and not a promise the writer made up.',
-  'A LOW score is hype or exclamation marks, brand/corporate voice ("We are excited to"),',
-  'listing facts like a database row, restating every field, sounding like an ad, burying',
-  'the useful fact under the frame, or any detail not present in the facts. Reply with',
-  'ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('radar');
 
 /**
  * The second judge, and it scores ONE property so a lovely message cannot carry a missing
  * one past it. Kept apart from voice deliberately: the pre-change corpus proves they come
  * apart — the same bodies that scored 4 and 5 for voice attributed nothing at all.
  */
-const ATTRIBUTION_JUDGE_SYSTEM = [
-  'You are scoring ONE property of the first useful text message Hale sends a parent, a',
-  "minute after they texted their kids' names to a number on a poster: does the message",
-  'present its find as the product of a look Hale ALREADY TOOK for this family? Nothing',
-  'else. Not warmth, not length, not whether the facts are the right ones.',
-  'Score 1-5.',
-  'A 5 folds a few words into the FIRST sentence that make Hale the one who went and',
-  'checked, so the fact arrives as a service reporting back on work already done. It is',
-  'half a clause, not a preamble: the useful fact is still in that first sentence.',
-  'The test is WHO DID THE LOOKING, in whatever words. A first-person verb of finding or',
-  'checking inside the lead sentence - "I found", "I checked", "I looked up", "I had a',
-  'look" - IS the attribution, and scores 5 when the fact lands in that same sentence. It',
-  'does not have to say what was searched, how much was searched, or that it was searched',
-  'for these particular children: requiring that would be requiring the invented specifics',
-  'you are told to score 1 for below. Do not invent a further test.',
-  'A 3 gestures at it late - after the fact has already landed flat, or in a sentence of',
-  'its own that the fact then follows.',
-  'A 1 states the fact with nothing at all saying where it came from. True, and',
-  'indistinguishable from a piece of trivia a stranger sent.',
-  'Score 1 ALSO for the opposite failure - a look with specifics in it THE FACTS DO NOT',
-  'CARRY. The test is the facts object in front of you, not your sense of what Hale could',
-  "plausibly know: a town, a cycle name, a date, a time, an activity title or a child's",
-  'name that appears in those facts is GIVEN, and naming it inside the look is the message',
-  'reporting back, never an invented scope. A postal code, an area swept, a count of',
-  'places checked, a time the check ran or a schedule it runs on appears in no payload, so',
-  'any of THOSE is invented, and an invented scope is worse than no attribution at all.',
-  'Score 1 for a greeting, a brand line ("Welcome to Hale"), hype, or anything that reads',
-  'as a product introducing itself. This is a person saying they already looked.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const ATTRIBUTION_JUDGE_SYSTEM = judgePrompt('radar-attribution');
+
+/**
+ * The third judge, and it scores ONE property: one ask per turn. The shell always appends
+ * Hale's own question, so the composer's message must ask nothing. A model reads this
+ * rather than a character match, because an ask is a meaning, not a "?": "let me know and
+ * I'll hold it" asks with no question mark, and a question mark inside an activity's own
+ * title asks nothing.
+ */
+const ASK_JUDGE_SYSTEM = judgePrompt('radar-ask');
 
 // Deterministic broken stand-in: invents a venue, a price and a time none of which are
 // in any fixture's decision, re-asks the watch question, and rambles past the budget.
@@ -556,6 +497,16 @@ async function main() {
     cost,
     { samples: JUDGE_SAMPLES_MEDIAN },
   );
+  // Median of three, as for the other two: the ask gate is a hard floor too.
+  const askJudge = makeJudge(
+    judgeModel,
+    ASK_JUDGE_SYSTEM,
+    'radar-ask',
+    cachedOnly,
+    getClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
 
   console.log(
     `radar-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
@@ -602,12 +553,18 @@ async function main() {
       !message || !carriesAFind(fixture.decision)
         ? null
         : (await attributionJudge(fixture.id, { facts: context, message })).score;
+    // The ask judge runs in broken mode too, for the attribution judge's reason: its teeth
+    // are a model's opinion, so the harness has to prove it fails a message that re-asks.
+    const ask = message
+      ? (await askJudge(fixture.id, { message, shellQuestion: WATCH_OFFER })).score
+      : null;
     results.push({
       fixture,
       message,
       score,
       attribution,
-      failures: checkMessage(fixture, message, score, attribution),
+      ask,
+      failures: checkMessage(fixture, message, score, attribution, ask),
     });
   }
 
@@ -618,6 +575,7 @@ async function main() {
     const scoreLabel = [
       result.score === null ? '' : `voice=${result.score}`,
       result.attribution === null ? '' : `looked=${result.attribution}`,
+      result.ask === null ? '' : `ask=${result.ask}`,
     ]
       .filter(Boolean)
       .join(' ');
@@ -635,7 +593,7 @@ async function main() {
     (r) =>
       r.message && smsSegments(payloadOf(r.fixture.decision, r.message)) > MAX_PAYLOAD_SEGMENTS,
   );
-  const asking = results.filter((r) => r.message?.includes('?'));
+  const asking = results.filter((r) => r.message && !(r.ask >= JUDGE_MIN));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
   const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
   const attributions = results.map((r) => r.attribution).filter((s) => typeof s === 'number');
@@ -654,7 +612,7 @@ async function main() {
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
   console.log(`FABRICATIONS:                 ${fabricating.length}  (0 required — the hard gate)`);
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
-  console.log(`messages asking a question:   ${asking.length}  (0 required — the shell asks)`);
+  console.log(`messages asking of their own: ${asking.length}  (0 required — the shell asks)`);
   console.log(`mean voice score:             ${meanScore.toFixed(2)}  (each >= ${JUDGE_MIN})`);
   console.log(
     `finds landing as trivia:      ${unattributed.length}  (0 required — a find with no look behind it)`,
@@ -685,9 +643,14 @@ async function main() {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);
   }
-  const calibrated = !allPass;
+  // The ask judge is held to every broken message by name, not just "some gate failed":
+  // the fabrication gate alone would fail this corpus, which proves nothing about it.
+  const composed = results.filter((r) => r.message);
+  const askHasTeeth = composed.length > 0 && asking.length === composed.length;
+  const calibrated = !allPass && askHasTeeth;
+  console.log(`ask judge failed every broken message: ${askHasTeeth ? 'yes' : 'NO'}`);
   console.log(
-    `broken-mode calibration (must fail at least one gate): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    `broken-mode calibration (must fail at least one gate, and the ask judge on every message): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
   );
   process.exit(calibrated ? 0 : 1);
 }

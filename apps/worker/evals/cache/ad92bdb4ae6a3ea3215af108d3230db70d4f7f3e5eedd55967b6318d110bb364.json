@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every given fact is present and correct: the event (钢琴课 = Piano lesson, meaning preserved), today (今晚), start 7 PM and end 8 PM both marked as evening (今晚7点, 晚上8点), 'one hour' away matches minutesUntilStart 60, and the venue 'Ms. Chen studio' is given as-is. No address was provided, so none is missing. No invented details, no link, entirely in Chinese, bold none is fine.",
+    "score": 5
+  }
+}

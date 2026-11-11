@@ -5,7 +5,12 @@ import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
+import type {
+  ClassAvailabilityReading,
+  ClassAvailabilityTarget,
+} from '~/lib/registration/class-availability';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import type { SpotOpenFacts } from './copy';
 import { recordSpotWatchPromise } from './promise';
 import {
   MAX_EXPIRED_SPOTS_PER_RUN,
@@ -16,6 +21,7 @@ import {
   runWatchedSpotsSweep,
   spotOpenKey,
 } from './sweep';
+import { PAGE_SOURCE } from './watch-reading';
 
 /**
  * VIL-337 · the sweep, against the real DDL and zero network.
@@ -112,6 +118,25 @@ interface Harness {
   /** Milliseconds the fake wall clock advances per fetch — the run's own budget. */
   msPerFetch: number;
   randomValue: number;
+  /** Every fact set the writer was handed, in order. */
+  written: SpotOpenFacts[];
+  /** The writer's answer. The model's own words are judged by the eval
+   * (run-spot-open-voice-eval.mjs); here the writer is a seam, the way the email-alert
+   * notice writer is (testing/email-alert-notice.ts). */
+  writer: (facts: SpotOpenFacts) => string | null;
+  language: string;
+  /** What the model reader returns for a page outside the registry, per url. Its gate is
+   * proven in class-availability.test.ts and the model in its eval; here it is a port. */
+  pageReadings: Map<string, ClassAvailabilityReading>;
+  /** Every target the sweep asked the model reader about, in order. */
+  pageTargets: ClassAvailabilityTarget[];
+}
+
+/** A stand-in written text that says what the facts say. */
+function scriptedSpotText(facts: SpotOpenFacts): string {
+  const n = facts.spotsLeft;
+  const what = n === null ? 'room on the waitlist' : `${n} spot${n === 1 ? '' : 's'} left`;
+  return `${facts.source} shows ${what} for ${facts.label}.`;
 }
 
 function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>> = {}): Harness {
@@ -126,6 +151,11 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
     phone: '+15550001111',
     msPerFetch: 0,
     randomValue: 0.5,
+    written: [],
+    writer: scriptedSpotText,
+    language: 'en',
+    pageReadings: new Map(),
+    pageTargets: [],
     ...overrides,
     deps: undefined as unknown as WatchedSpotsSweepDeps,
   };
@@ -158,6 +188,12 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
       if (page instanceof Error) throw page;
       return page;
     },
+    readClassAvailability: async (target) => {
+      state.pageTargets.push(target);
+      const reading = state.pageReadings.get(target.sourceUrl);
+      if (reading === undefined) throw new Error('no page reading wired');
+      return reading;
+    },
     claimSlot: claimWatchedSpotsSlot,
     buildGate: () => ports,
     refuseUnbackedSend: async () => state.refusals,
@@ -183,6 +219,11 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
       state.threaded.push(input.body);
       return 'conversation-1';
     },
+    loadLanguage: async () => state.language,
+    writeSpotOpen: async (facts) => {
+      state.written.push(facts);
+      return state.writer(facts);
+    },
     random: () => state.randomValue,
     sleep: async (ms) => {
       state.slept.push(ms);
@@ -205,6 +246,8 @@ interface SeedOptions {
   nextPollAt?: Date;
   expiresAt?: Date;
   now?: Date;
+  sessionAnchor?: string | null;
+  pageDigest?: string | null;
 }
 
 /** One live watch and the open promise it is owed against. Written directly rather than
@@ -234,6 +277,8 @@ async function seedWatch(
       notifiedMessageId: options.notifiedMessageId ?? null,
       nextPollAt: options.nextPollAt ?? later(now, -TEN_MINUTES),
       expiresAt,
+      sessionAnchor: options.sessionAnchor ?? null,
+      pageDigest: options.pageDigest ?? null,
       createdFrom: 'CM-ack',
     })
     .returning({ id: schema.watchedSpots.id });
@@ -243,6 +288,15 @@ async function seedWatch(
     channelMessageId: 'CM-ack',
     expiresAt,
   });
+  // The seed's own mint row is setup, not the sweep's trail (store.pglite.test.ts proves it).
+  await database
+    .delete(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, family.familyId),
+        eq(schema.auditLog.actionTaken, 'commitment_recorded'),
+      ),
+    );
   return row.id;
 }
 
@@ -773,7 +827,7 @@ describe('runWatchedSpotsSweep — a held observation is re-derived, never repla
     // full waitlist, held through quiet hours, retaken by morning — but the queue has room
     // now. That is a `waitlist_reopened` text, and it is only reachable because the claim
     // no longer moves `last_state`: with the claimed state written at 02:00 the morning
-    // question was `transitionKind('open', full-with-room)`, which is null, so the parent
+    // question was `watchTransition('open', full-with-room)`, which is null, so the parent
     // heard nothing and the Radar counted a `closed_before_send` that never happened.
     // The kill: put `lastState: input.to` back in claimOpenTransition.
     const family = await seedFamily(db.database);
@@ -853,7 +907,7 @@ describe('runWatchedSpotsSweep — a reopened waitlist is news, a closed one is 
     // The mutation this kills: STATE_TOLD.waitlist_reopened = 'open'. What that text said
     // is "the queue has room", never "there is a seat" — so the state the parent's
     // knowledge is now consistent with is still `full`. Get it wrong and the next tick
-    // asks `transitionKind('open', ...)`, which makes a real seat opening on this page
+    // asks `watchTransition('open', ...)`, which makes a real seat opening on this page
     // no longer news: the parent is never told about the thing they are waiting for.
     // The mirror — a `seat_opened` receipt moving the column to 'open' — is asserted in
     // the delivery-truth test above.
@@ -944,7 +998,8 @@ describe('runWatchedSpotsSweep — a page nobody could read is never a state', (
     expect(summary.released.unreadable_streak).toBe(1);
     expect((await readWatch(spotId)).releasedReason).toBe('unreadable_streak');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((r) => r.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((r) => r.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
   });
@@ -1022,7 +1077,9 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     expect(summary.released.registration_closed).toBe(1);
     expect(summary.sent).toBe(0);
     expect((await readWatch(spotId)).releasedReason).toBe('registration_closed');
-    const [trail] = await auditVerbs(family.familyId);
+    const trail = (await auditVerbs(family.familyId)).find(
+      (entry) => entry.verb === 'watched_spot_released',
+    );
     expect(trail?.verb).toBe('watched_spot_released');
     expect(trail?.after).toMatchObject({ reason: 'registration_closed', readingReason: 'closed' });
     // Rule #1: the trail names the portal, never the page or the parent's own label.
@@ -1050,7 +1107,8 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     const row = await readWatch(spotId);
     expect(row.releasedReason).toBe('expired');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
 
@@ -1058,7 +1116,7 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     const again = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
 
     expect(again.released.expired).toBe(0);
-    expect((await auditVerbs(family.familyId)).length).toBe(1);
+    expect((await auditVerbs(family.familyId)).length).toBe(2);
   });
 
   it('leaves an expired watch to the fire that holds the slot, and ends it exactly once', async () => {
@@ -1095,7 +1153,8 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     expect(third.released.expired).toBe(1);
     expect((await readWatch(spotId)).releasedReason).toBe('expired');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
   });
@@ -1359,6 +1418,68 @@ describe('runWatchedSpotsSweep — bounded, spaced and source-respectful', () =>
   });
 });
 
+describe('runWatchedSpotsSweep — the model writes the text, code adds the link', () => {
+  it("sends the writer's text with the course link on its own line, and never hands it the link", async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.language = 'fr';
+    test.writer = () => 'Le portail montre 2 places pour Milliken swim.';
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    await seedWatch(db.database, family, { lastState: 'full' });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.sent).toBe(1);
+    expect(test.written).toEqual([
+      {
+        kind: 'seat_opened',
+        source: "Markham's portal",
+        label: 'Milliken swim',
+        spotsLeft: 2,
+        schedule: 'Monday 05:00 PM',
+        language: 'fr',
+      },
+    ]);
+    expect(JSON.stringify(test.written)).not.toContain(COURSE_ID);
+    expect(
+      test.sent[0]?.body.startsWith(
+        `Le portail montre 2 places pour Milliken swim.\n${SOURCE_URL}`,
+      ),
+    ).toBe(true);
+    // The thread keeps the composed text and link, without the wire's CASL line.
+    expect(test.threaded).toEqual([
+      `Le portail montre 2 places pour Milliken swim.\n${SOURCE_URL}`,
+    ]);
+  });
+
+  it('sends nothing when no draft was written, spends no attempt, and asks again next tick', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.writer = () => null;
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, { lastState: 'full' });
+
+    const first = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(first.unwritten).toBe(1);
+    expect(first.sent).toBe(0);
+    expect(test.sent).toEqual([]);
+    let row = await readWatch(spotId);
+    expect(row.sendAttempts).toBe(0);
+    expect(row.pendingKind).toBe('seat_opened');
+    expect(row.releasedAt).toBeNull();
+
+    // The positive control: the same held opening, a writer that answers, one text.
+    test.writer = (facts) => `${facts.source} shows ${facts.spotsLeft} spots left.`;
+    const next = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+
+    expect(next.sent).toBe(1);
+    expect(test.sent).toHaveLength(1);
+    row = await readWatch(spotId);
+    expect(row.sendAttempts).toBe(1);
+  });
+});
+
 describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
   it('counts a wire body the family ledger does not back, and spends no attempt', async () => {
     const family = await seedFamily(db.database);
@@ -1551,8 +1672,16 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
       closedBeforeSend: 0,
       awaitingReceipt: 0,
       refused: 0,
+      unwritten: 0,
+      queued: 0,
       failed: 0,
-      held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0, coparent_ask: 0 },
+      held: {
+        not_enrolled: 0,
+        opt_out_unread: 0,
+        no_watch_consent: 0,
+        quiet_hours: 0,
+        coparent_ask: 0,
+      },
       released: {
         notified: 0,
         expired: 0,
@@ -1563,7 +1692,142 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
         delivery_failed: 0,
         send_unconfirmed: 0,
       },
-      skipped: { wallBudget: 0, hostBudget: 0, f14Dark: 0, slotClaimed: false },
+      skipped: { wallBudget: 0, hostBudget: 0, f14Dark: 0, anyPageOff: 0, slotClaimed: false },
     });
+  });
+});
+
+/** A program page outside the PerfectMind registry: invented host, invented class. */
+const PAGE_URL = 'https://recreation.example.org/programs/swim';
+const ANCHOR = 'Preschool Swim - Tuesdays 4:30 PM';
+function pageRead(
+  overrides: Partial<Extract<ClassAvailabilityReading, { status: 'read' }>> = {},
+): ClassAvailabilityReading {
+  return {
+    status: 'read',
+    state: 'full',
+    session: ANCHOR,
+    spotsLeft: null,
+    waitlistRoom: false,
+    schedule: 'Tuesdays 4:30 PM',
+    sessionStartsAt: null,
+    digest: 'digest-full',
+    ...overrides,
+  };
+}
+
+describe('runWatchedSpotsSweep — a page outside the registry, read by the model', () => {
+  beforeEach(() => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'true');
+  });
+
+  it('texts once when the checked reading turns open, attributed to the page, never to the page’s own name for itself', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ state: 'open', spotsLeft: 2, digest: 'd-open' }));
+    await seedWatch(db.database, family, { sourceUrl: PAGE_URL, sessionAnchor: ANCHOR });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.sent).toBe(1);
+    expect(test.fetched).toEqual([]);
+    expect(test.pageTargets).toEqual([
+      { sourceUrl: PAGE_URL, label: 'Milliken swim', anchor: ANCHOR, lastDigest: null },
+    ]);
+    expect(test.written).toEqual([
+      {
+        kind: 'seat_opened',
+        source: PAGE_SOURCE,
+        label: 'Milliken swim',
+        spotsLeft: 2,
+        schedule: 'Tuesdays 4:30 PM',
+        language: 'en',
+      },
+    ]);
+    expect(
+      test.sent[0]?.body.startsWith(
+        `${PAGE_SOURCE} shows 2 spots left for Milliken swim.\n${PAGE_URL}`,
+      ),
+    ).toBe(true);
+  });
+
+  it('sends nothing on a challenge page or an uncorroborated reading, and counts it unreadable', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, { status: 'refused', reason: 'challenge_page' });
+    const spotId = await seedWatch(db.database, family, {
+      sourceUrl: PAGE_URL,
+      sessionAnchor: ANCHOR,
+    });
+
+    const first = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+    expect(first.unreadable).toBe(1);
+    expect(first.sent).toBe(0);
+    let row = await readWatch(spotId);
+    expect(row.lastState).toBe('full');
+    expect(row.consecutiveFailures).toBe(1);
+
+    test.pageReadings.set(PAGE_URL, { status: 'unknown', reason: 'uncorroborated' });
+    await db.database
+      .update(schema.watchedSpots)
+      .set({ nextPollAt: MIDDAY })
+      .where(eq(schema.watchedSpots.id, spotId));
+    const second = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+    expect(second.unreadable).toBe(1);
+    expect(test.sent).toEqual([]);
+    row = await readWatch(spotId);
+    expect(row.consecutiveFailures).toBe(2);
+  });
+
+  it('stores the digest of a quiet page, and an unchanged page costs no model read', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ digest: 'd-full' }));
+    const spotId = await seedWatch(db.database, family, {
+      sourceUrl: PAGE_URL,
+      sessionAnchor: ANCHOR,
+    });
+
+    expect((await runWatchedSpotsSweep(db.database, test.deps, MIDDAY)).quiet).toBe(1);
+    expect((await readWatch(spotId)).pageDigest).toBe('d-full');
+
+    test.pageReadings.set(PAGE_URL, { status: 'unchanged', digest: 'd-full' });
+    const next = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+
+    expect(next.quiet).toBe(1);
+    expect(test.pageTargets.map((target) => target.lastDigest)).toEqual([null, 'd-full']);
+    expect((await readWatch(spotId)).lastPolledAt).toEqual(later(MIDDAY, TEN_MINUTES));
+  });
+
+  it('re-reads a held opening afresh rather than trusting the digest', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ state: 'open', spotsLeft: 1, digest: 'd-open' }));
+    await seedWatch(db.database, family, {
+      sourceUrl: PAGE_URL,
+      sessionAnchor: ANCHOR,
+      pendingKind: 'seat_opened',
+      openTransitions: 1,
+      pageDigest: 'd-open',
+    });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(test.pageTargets.map((target) => target.lastDigest)).toEqual([null]);
+    expect(summary.sent).toBe(1);
+  });
+
+  it('does not read the page while its flag is off, and names the skip', async () => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'false');
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ state: 'open', spotsLeft: 2 }));
+    await seedWatch(db.database, family, { sourceUrl: PAGE_URL, sessionAnchor: ANCHOR });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.skipped.anyPageOff).toBe(1);
+    expect(test.pageTargets).toEqual([]);
+    expect(test.sent).toEqual([]);
   });
 });

@@ -20,6 +20,9 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') {
     return;
   }
+  const { reportTzdataAtBoot } = await import('~/lib/runtime/tzdata');
+  reportTzdataAtBoot();
+
   const { NodeTracerProvider } = await import('@opentelemetry/sdk-trace-node');
   const { langfuseSpanProcessor } = await import('~/lib/telemetry/langfuse');
 
@@ -27,9 +30,10 @@ export async function register(): Promise<void> {
   provider.register();
 
   // Process-level crashes (worker code runs in this process — apps/worker is a library
-  // the web functions import). Only installed when POSTHOG_PROJECT_API_KEY is set, so a
-  // keyless deploy keeps Node's exact default behaviour.
-  if (process.env.POSTHOG_PROJECT_API_KEY) {
+  // the web functions import). Dark until POSTHOG_PROJECT_API_KEY is set AND
+  // POSTHOG_ERROR_TRACKING_ENABLED=true, so a keyless / unflagged deploy keeps Node's
+  // exact default behaviour.
+  if (process.env.POSTHOG_PROJECT_API_KEY && process.env.POSTHOG_ERROR_TRACKING_ENABLED?.trim() === 'true') {
     const { installProcessErrorHandlers } = await import('~/lib/analytics/exceptions');
     installProcessErrorHandlers();
   }
@@ -37,8 +41,9 @@ export async function register(): Promise<void> {
 
 /**
  * Error tracking for every server request (API routes, crons, webhooks, RSC), via
- * Next's `onRequestError`. Dark until POSTHOG_PROJECT_API_KEY is set (exceptions.ts
- * returns 'not_configured' without touching the network). The error is REDACTED to its
+ * Next's `onRequestError`. Dark until POSTHOG_PROJECT_API_KEY is set AND
+ * POSTHOG_ERROR_TRACKING_ENABLED=true (exceptions.ts returns 'not_configured'
+ * without touching the network). The error is REDACTED to its
  * class + frames, and the properties are the closed allowlist: route path, method,
  * surface. Never the message, never a header, never a body (rule #1).
  */
@@ -49,6 +54,7 @@ export async function onRequestError(
 ): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
   if (!process.env.POSTHOG_PROJECT_API_KEY) return;
+  if (process.env.POSTHOG_ERROR_TRACKING_ENABLED?.trim() !== 'true') return;
   const { captureSafeException, surfaceForRoute } = await import('~/lib/analytics/exceptions');
   // The ROUTE PATTERN (`/api/webhooks/[provider]`), never the concrete path: a path can
   // carry a token (`/a/<token>`), a pattern cannot.

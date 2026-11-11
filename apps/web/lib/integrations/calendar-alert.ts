@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type CalendarStanding, type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
@@ -6,7 +6,9 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { formatDay, formatTime } from '~/lib/channel/linq/household-calendar';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
@@ -17,19 +19,24 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import { speak } from '~/lib/channel/spoken-line';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
+import { KID_NOTICE_PURPOSE, kidNoticeDedupeKey, readKidNoticeGates } from './calendar-kid-notice';
 
 /**
  * A change on a connected Google Calendar becomes ONE text to the parent.
  *
  * The sibling of lib/integrations/email-alert.ts, and the differences are the whole of
  * the design. The inbox needs a classifier because most of what arrives in it is not
- * about this family; a calendar does not, because the parent PUT the event there. So
- * there is no model call on this path at all — the only judgement left is about TIME
- * (is this soon enough to be worth interrupting for?) and the sentence is assembled from
- * Google's own fields.
+ * about this family; a calendar does not, because the parent PUT the event there.
+ *
+ * VIL-570: what is sent is the 1:1 kid notice ({@link kidNoticeSweep}): only a cancelled
+ * or moved event Hale tracks as the kids', in words the model writes, or nothing. The
+ * deterministic sentence further down is the retired VIL-527 path, kept behind a test
+ * switch for the memory machinery it shares.
  *
  * THE SWEEP HAS A MEMORY (calendar_event_snapshots), which is the whole of the second
  * pass on this module. events.list is a delta reader: it hands a change over once and the
@@ -101,10 +108,11 @@ export interface CalendarChange {
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
   location?: string;
-  /** `organizer.self` — this family's own event rather than one they were invited to.
-   * Carried because it is a fact about the change worth having in one place; nothing
-   * branches on it today. */
-  selfOrganized?: boolean;
+  /** Where the connecting parent stands on it (calendar-standing.ts, VIL-651). Read
+   * from the organizer and the attendee list, which are never stored. A tombstone carries
+   * neither, so it reads as `own`; nothing is spoken about one from its own fields. Null on
+   * a held text rebuilt from memory, which never kept it: not known, so not the parent's. */
+  standing: CalendarStanding | null;
 }
 
 /**
@@ -120,6 +128,8 @@ export interface CalendarChange {
 export const CALENDAR_ALERT_OUTCOMES = [
   'sent',
   'already_sent',
+  /** VIL-612 · live cadence queued the composed notice for the hourly decider. */
+  'queued',
   'dark',
   'seeding_run',
   'outside_window',
@@ -147,6 +157,30 @@ export const CALENDAR_ALERT_OUTCOMES = [
    * household notice. This SMS path stays quiet so a non-kid title never
    * reaches the group and nothing is retried as a 1:1. */
   'group_home',
+  /** VIL-527: the 1:1 SMS sentence was fixed English template copy about ANY title on the
+   * calendar, adult meetings included, re-minted on every `updated` stamp. A text that path
+   * still owed which is not kid news (a held first sighting) is dropped under this name
+   * and audited, never re-offered. */
+  'fixed_copy_retired',
+  /** VIL-570, the 1:1 kid notice. The change moved nothing a parent plans around: a first
+   * sighting, an edit that left the status, start and end as the parent was last told, or
+   * a title-only rename (the memory keeps no title, by its CHECK). */
+  'not_material',
+  /** Hale tracks no kid copy of this event (no live mirror with a `kid` verdict): an adult
+   * or unsure event, one not judged yet, or one past the reminder horizon. */
+  'not_kid_tracked',
+  /** A teenager's event, or a kid event tied to no child in a family with a teenager. The
+   * deterministic age gate keeps it from the parent (rule #1). */
+  'teen_held',
+  /** VIL-633. Someone else's invite the parent has not accepted (unanswered or tentative).
+   * It stays mirrored for the week view, but its title is a stranger's words, so Hale says
+   * nothing about it. */
+  'invite_not_accepted',
+  /** VIL-633. A kid copy mirrored before Hale read where the parent stands on it. Held the
+   * same way until the next mirror sweep writes it. */
+  'standing_unknown',
+  /** The writer returned no text, so nothing was sent and the key was not spent. */
+  'notice_unwritten',
   /** CALENDAR_ALERT_ENABLED is not `true`. The shape is remembered and a text already
    * owed is left as it was and re-offered once the lane is back on; one older than
    * {@link CALENDAR_ALERT_PENDING_MAX_DAYS} is aged out by the lane-off sweep itself. */
@@ -195,6 +229,7 @@ export const CALENDAR_ALERT_PENDING_MAX_DAYS = 3;
 const SERIES_MIN_INSTANCES = 2;
 
 export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
+export const CALENDAR_KID_NOTICE_TEMPLATE_KEY = 'connector:calendar_kid_notice';
 
 /**
  * The endings that mean "not yet", as opposed to "no".
@@ -285,7 +320,9 @@ interface Offer {
   dedupeKey: string;
   pendingSince: Date | null;
   startMs: number;
-  render(): string;
+  templateKey: string;
+  /** The text, or null when the writer declined: nothing is sent and nothing is claimed. */
+  write(): Promise<string | null>;
   /** What the memory has to keep if this one is held — the whole of the re-offer. */
   heldTitle: string;
   heldLocation: string | null;
@@ -307,6 +344,388 @@ interface Offer {
  * 11:40 p.m. is offered again at 8 a.m., and it would never survive a queue that always
  * put this minute's edits in front of it.
  */
+/** VIL-527: the fixed-copy sentence below is retired in production. Only the legacy
+ * suite flips this to keep exercising the memory/dedupe machinery it still relies on. */
+let fixedCopyRetired = true;
+export function __setCalendarAlertFixedCopyRetiredForTests(value: boolean): void {
+  fixedCopyRetired = value;
+}
+
+// ── VIL-570: the 1:1 kid notice ──────────────────────────────────────────────
+
+/** What a kid change is news of. A move carries the start (and, when Hale knows it, the
+ * end) the parent was last told. */
+type KidNews =
+  | { kind: 'cancelled' }
+  | { kind: 'moved'; was: { startMs: number; endMs: number | null; allDay: boolean } };
+
+interface KidPlaced extends Placed {
+  news: KidNews;
+  /** The event's name for the writer, '' unless the parent organized it or it is their own
+   * (readKidNoticeGates): Google's, or the kid copy's for a bare tombstone. */
+  title: string;
+  kidName: string | null;
+}
+
+/**
+ * The sweep for a family Hale may speak to 1:1: a kid event on the connected calendar was
+ * cancelled or moved, and the model writes the one text about it, or nothing is sent.
+ *
+ * It keeps the memory's whole contract. Every change is remembered; a quiet-hours hold is
+ * owed and re-offered for {@link CALENDAR_ALERT_PENDING_MAX_DAYS}; a weekly class edited
+ * at once is one text. What differs from the retired path is what may be said and how:
+ * only a material change (status, start, end) to an event Hale tracks as the kids', in
+ * words the model writes in the parent's language.
+ *
+ * A held text is re-offered without asking the kid gate again: the hold was only written
+ * for a change that passed it, and by the next sweep the mirror has dropped the copy of a
+ * cancelled event. A hold that is not news (only the retired path ever held a first
+ * sighting) is dropped and audited under the retired path's name.
+ */
+async function kidNoticeSweep(
+  database: Database,
+  input: CalendarAlertInput,
+  parentUserId: string,
+  ports: CalendarAlertPorts,
+): Promise<CalendarAlertSweep> {
+  const { familyId, integrationId, changes, now } = input;
+  // A claimed household group is the home channel and keeps its own notice; nothing here
+  // is retried there or as a 1:1.
+  const outbound = await familyOutboundTarget(database, familyId, {
+    contentClass: 'event_logistics',
+  });
+  if (outbound.channel === 'group') {
+    const reoffers = await expireStaleDebts(database, input, parentUserId, ports);
+    await rememberOnly(database, input, parentUserId, ports);
+    return { changes: changes.map(() => 'group_home'), reoffers };
+  }
+
+  const memory = await readSnapshots(database, integrationId, changes);
+  const arrived = new Set(changes.map((change) => change.eventId));
+  const debts = memory
+    .filter((row): row is PendingSnapshot => isPending(row) && !arrived.has(row.eventId))
+    .sort((a, b) => a.pendingSince.getTime() - b.pendingSince.getTime());
+  if (changes.length === 0 && debts.length === 0) return { changes: [], reoffers: [] };
+
+  const priorByEvent = new Map(memory.map((row) => [row.eventId, row]));
+  const timeZone = await ports.timeZone(parentUserId);
+  const changeOutcomes = new Array<CalendarAlertOutcome>(changes.length);
+  const reofferOutcomes = new Array<CalendarAlertOutcome>(debts.length);
+  const writes = new Map<string, SnapshotWrite>();
+
+  const fresh: Array<Placed & { news: KidNews }> = [];
+  changes.forEach((change, at) => {
+    const write = (outcome: CalendarAlertOutcome) => {
+      changeOutcomes[at] = outcome;
+    };
+    const span = eventSpan(change, timeZone);
+    if (span === null) {
+      write('no_start');
+      return;
+    }
+    const prior = priorByEvent.get(change.eventId);
+    const news = kidNewsOf(prior, change, span);
+    const placed: Placed = {
+      change,
+      span,
+      previous: news?.kind === 'moved' ? priorStartOf(news) : null,
+      pendingSince: prior?.pendingSince ?? null,
+      write,
+    };
+    if (news === null) {
+      write('not_material');
+      remember(writes, placed, null);
+      return;
+    }
+    if (!withinAlertWindow(change, span, now)) {
+      write('outside_window');
+      remember(writes, placed, null);
+      return;
+    }
+    fresh.push({ ...placed, news });
+  });
+
+  const owed: KidPlaced[] = [];
+  const retired: PendingSnapshot[] = [];
+  debts.forEach((row, at) => {
+    const write = (outcome: CalendarAlertOutcome) => {
+      reofferOutcomes[at] = outcome;
+    };
+    const placed = revive(row, timeZone, write);
+    if (now.getTime() - row.pendingSince.getTime() > CALENDAR_ALERT_PENDING_MAX_DAYS * 86_400_000) {
+      write('pending_expired');
+      remember(writes, placed, null);
+      return;
+    }
+    if (isOver(placed.span, now)) {
+      write('pending_outside_window');
+      remember(writes, placed, null);
+      return;
+    }
+    const news = heldNews(row);
+    if (news === null) {
+      write('fixed_copy_retired');
+      remember(writes, placed, null);
+      retired.push(row);
+      return;
+    }
+    owed.push({ ...placed, news, title: row.heldTitle, kidName: null });
+  });
+  await auditRetiredDebts(database, familyId, integrationId, retired);
+
+  const gates = await readKidNoticeGates(
+    database,
+    { familyId, integrationId, now },
+    fresh.map((placed) => placed.change),
+  );
+  const cleared: KidPlaced[] = [];
+  const notTheParents = { inviteNotAccepted: 0, standingUnknown: 0 };
+  for (const placed of fresh) {
+    const gate = gates.get(placed.change.eventId);
+    if (gate === undefined || !gate.cleared) {
+      const why = gate?.why ?? 'not_kid_tracked';
+      if (why === 'invite_not_accepted') notTheParents.inviteNotAccepted += 1;
+      if (why === 'standing_unknown') notTheParents.standingUnknown += 1;
+      placed.write(why);
+      remember(writes, placed, null);
+      continue;
+    }
+    cleared.push({ ...placed, title: gate.title, kidName: gate.kidName });
+  }
+  if (notTheParents.inviteNotAccepted + notTheParents.standingUnknown > 0) {
+    // Counts only: no family, connection, event or title (rule #1).
+    console.info(notTheParents, "calendar kid notice: not the parent's own event");
+  }
+
+  let language: Promise<string> | undefined;
+  const languageOnce = () => {
+    language ??= readParentLanguage(database, { familyId, parentUserId });
+    return language;
+  };
+  const offers = [
+    ...kidOffersOf(owed, integrationId, timeZone, languageOnce).sort(
+      (a, b) => (a.pendingSince?.getTime() ?? 0) - (b.pendingSince?.getTime() ?? 0),
+    ),
+    ...kidOffersOf(cleared, integrationId, timeZone, languageOnce).sort(
+      (a, b) => a.startMs - b.startMs,
+    ),
+  ];
+  for (const offer of offers) {
+    const outcome = await sendOffer(database, input, parentUserId, offer, ports);
+    settle(offer, outcome, writes, now);
+  }
+
+  await writeSnapshots(database, integrationId, writes, now);
+  const { syncPassportFromCalendarChanges } = await import('~/lib/passport/ingest');
+  await syncPassportFromCalendarChanges(database, {
+    familyId,
+    integrationId,
+    parentUserId,
+    changes,
+    now,
+  });
+  return { changes: changeOutcomes, reoffers: reofferOutcomes };
+}
+
+/**
+ * Whether this sighting is news a parent plans around, judged against what they were last
+ * told. A held change re-delivered unchanged is still the news it was held as.
+ */
+function kidNewsOf(
+  prior: SnapshotRow | undefined,
+  change: CalendarChange,
+  span: EventSpan,
+): KidNews | null {
+  if (prior !== undefined && prior.pendingSince !== null && sameShape(prior, change, span)) {
+    return heldNews(prior);
+  }
+  if (change.status === 'cancelled') {
+    return prior?.status === 'cancelled' && prior.pendingSince === null
+      ? null
+      : { kind: 'cancelled' };
+  }
+  if (prior === undefined || prior.status === 'cancelled') return null;
+  const told = toldSpan(prior);
+  if (told === null) return null;
+  const moved =
+    told.startMs !== span.startMs ||
+    told.allDay !== span.allDay ||
+    (told.endMs !== null && told.endMs !== span.endMs);
+  return moved ? { kind: 'moved', was: told } : null;
+}
+
+function sameShape(prior: SnapshotRow, change: CalendarChange, span: EventSpan): boolean {
+  return (
+    prior.status === change.status &&
+    prior.allDay === span.allDay &&
+    prior.startAt?.getTime() === span.startMs &&
+    (prior.endAt?.getTime() ?? null) === span.endMs
+  );
+}
+
+/** What the parent last heard. While a text is owed the row holds the unsaid shape, so
+ * only the held "moved from" is known, and not its end. */
+function toldSpan(
+  prior: SnapshotRow,
+): { startMs: number; endMs: number | null; allDay: boolean } | null {
+  if (prior.pendingSince !== null) {
+    return prior.heldMovedFromAt === null || prior.heldMovedFromAllDay === null
+      ? null
+      : {
+          startMs: prior.heldMovedFromAt.getTime(),
+          endMs: null,
+          allDay: prior.heldMovedFromAllDay,
+        };
+  }
+  if (prior.startAt === null) return null;
+  return {
+    startMs: prior.startAt.getTime(),
+    endMs: prior.endAt?.getTime() ?? null,
+    allDay: prior.allDay,
+  };
+}
+
+/** The news a hold was written for: a cancellation, or a move from its held start. */
+function heldNews(row: SnapshotRow): KidNews | null {
+  if (row.status === 'cancelled') return { kind: 'cancelled' };
+  if (row.heldMovedFromAt === null || row.heldMovedFromAllDay === null) return null;
+  return {
+    kind: 'moved',
+    was: { startMs: row.heldMovedFromAt.getTime(), endMs: null, allDay: row.heldMovedFromAllDay },
+  };
+}
+
+function priorStartOf(news: Extract<KidNews, { kind: 'moved' }>): PriorStart {
+  return { startMs: news.was.startMs, allDay: news.was.allDay };
+}
+
+/** One text per series-and-kind with two or more instances, one per everything else. */
+function kidOffersOf(
+  placed: readonly KidPlaced[],
+  integrationId: string,
+  timeZone: string,
+  language: () => Promise<string>,
+): Offer[] {
+  const groups = new Map<string, KidPlaced[]>();
+  for (const one of placed) {
+    const series = one.change.recurringEventId;
+    const key =
+      series === undefined ? `event:${one.change.eventId}` : `series:${one.news.kind}:${series}`;
+    const group = groups.get(key);
+    if (group) group.push(one);
+    else groups.set(key, [one]);
+  }
+  const offers: Offer[] = [];
+  for (const [key, members] of groups) {
+    members.sort((a, b) => a.span.startMs - b.span.startMs);
+    const asSeries = key.startsWith('series:') && members.length >= SERIES_MIN_INSTANCES;
+    const sets = asSeries ? [members] : members.map((one) => [one]);
+    for (const group of sets) offers.push(kidOfferOf(group, integrationId, timeZone, language));
+  }
+  return offers;
+}
+
+function kidOfferOf(
+  group: readonly KidPlaced[],
+  integrationId: string,
+  timeZone: string,
+  language: () => Promise<string>,
+): Offer {
+  const lead = group[0];
+  if (lead === undefined) throw new Error('kidOfferOf: an empty group');
+  const series = group.length > 1 ? lead.change.recurringEventId : undefined;
+  const title = group.map((member) => member.title).find((one) => one !== '') ?? '';
+  const pendingSince = group.reduce<Date | null>(
+    (oldest, member) =>
+      member.pendingSince === null || (oldest !== null && oldest <= member.pendingSince)
+        ? oldest
+        : member.pendingSince,
+    null,
+  );
+  return {
+    group,
+    dedupeKey: kidNoticeDedupeKey(
+      integrationId,
+      series === undefined ? lead.change.eventId : `series:${series}`,
+      group.map((member) => ({
+        status: member.change.status,
+        startMs: member.span.startMs,
+        endMs: member.span.endMs,
+        title,
+      })),
+    ),
+    pendingSince,
+    startMs: lead.span.startMs,
+    templateKey: CALENDAR_KID_NOTICE_TEMPLATE_KEY,
+    write: async () => {
+      const tag = await language();
+      return speak({
+        purpose: KID_NOTICE_PURPOSE,
+        language: tag,
+        facts: kidNoticeFacts(lead, group.length, title, timeZone, tag),
+      });
+    },
+    // The memory's CHECK needs a held name; an unnamed event is held as the empty string.
+    heldTitle: title,
+    heldLocation: null,
+  };
+}
+
+/** The facts the writer is given, every one of them already decided. No description, no
+ * attendee, no location (rule #1). */
+function kidNoticeFacts(
+  lead: KidPlaced,
+  instances: number,
+  title: string,
+  timeZone: string,
+  language: string,
+): Record<string, string> {
+  const start = new Date(lead.span.startMs);
+  const facts: Record<string, string> = {
+    change: lead.news.kind,
+    day: formatDay(start, timeZone, language),
+  };
+  if (title !== '') facts.event = title;
+  if (lead.kidName !== null) facts.kid = lead.kidName;
+  if (!lead.span.allDay) {
+    facts.time = formatTime(start, timeZone, language);
+    if (lead.span.endMs > lead.span.startMs) {
+      facts.end_time = formatTime(new Date(lead.span.endMs), timeZone, language);
+    }
+  }
+  if (lead.news.kind === 'moved') {
+    const was = new Date(lead.news.was.startMs);
+    facts.was_day = formatDay(was, timeZone, language);
+    if (!lead.news.was.allDay) facts.was_time = formatTime(was, timeZone, language);
+  }
+  if (instances > 1) facts.sessions = String(instances);
+  return facts;
+}
+
+/** One immutable row per dropped hold the retired path left behind. Enums only. */
+async function auditRetiredDebts(
+  database: Database,
+  familyId: string,
+  integrationId: string,
+  rows: readonly PendingSnapshot[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await database.insert(schema.auditLog).values(
+    rows.map((row) => ({
+      familyId,
+      actor: 'system' as const,
+      actionTaken: 'calendar_alert_debt_retired',
+      targetTable: 'calendar_event_snapshots',
+      targetId: `${integrationId}:${row.eventId}`,
+      after: {
+        reason: 'fixed_copy_retired',
+        moved: row.heldMovedFromAt !== null,
+        pendingSince: row.pendingSince.toISOString(),
+      },
+    })),
+  );
+}
+
 export async function alertParentForCalendarChanges(
   database: Database,
   input: CalendarAlertInput,
@@ -338,6 +757,10 @@ export async function alertParentForCalendarChanges(
     await rememberOnly(database, input, parentUserId, ports);
     return { changes: changes.map(() => 'dark'), reoffers: [] };
   }
+  // VIL-527 retired the fixed English sentence below this branch: it named any title on the
+  // calendar, adult meetings included, and re-minted on every `updated` stamp. VIL-570 is
+  // what speaks instead: a model-written notice, kid events only, material changes only.
+  if (fixedCopyRetired) return kidNoticeSweep(database, input, parentUserId, ports);
   // The group is the home channel. Kid dates are spoken by the household
   // notice. The SMS sentence names whatever title Google stored, including
   // events that are not the kids', so it does not move to the group and it
@@ -571,7 +994,7 @@ async function sendOffer(
         channel: 'sms',
         direction: 'out',
         category: 'calendar_alert',
-        templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
+        templateKey: offer.templateKey,
         dedupeKey: null,
         status: holdStatus(verdict.reason),
       });
@@ -583,7 +1006,44 @@ async function sendOffer(
     return `gate_refused:${verdict.reason}`;
   }
 
-  const message = offer.render();
+  const message = await offer.write();
+  if (message === null) {
+    console.warn({ familyId }, 'calendar alert: the writer returned no text - nothing sent');
+    return 'notice_unwritten';
+  }
+
+  if (await isQueuedForDecider(database, familyId, offer.dedupeKey)) return 'queued';
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId,
+        parentUserId,
+        kind: 'calendar_alert',
+        category: 'calendar_alert',
+        templateKey: offer.templateKey,
+        what: message,
+        why: 'calendar_alert',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: offer.dedupeKey,
+        payload: { auditVerb: 'calendar_alert_sent' },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { kind: 'calendar_alert' },
+    });
+    return 'queued';
+  }
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race.
   const [claimed] = await database
@@ -594,7 +1054,7 @@ async function sendOffer(
       channel: 'sms',
       direction: 'out',
       category: 'calendar_alert',
-      templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
+      templateKey: offer.templateKey,
       dedupeKey: offer.dedupeKey,
       status: acceptedStatus('sms'),
       sentAt: now,
@@ -803,7 +1263,8 @@ function offerOf(
       dedupeKey: calendarAlertDedupeKey(integrationId, lead.change.eventId, lead.change.updated),
       pendingSince,
       startMs: lead.span.startMs,
-      render: () => renderCalendarAlert(lead.change, lead.span, timeZone, now, lead.previous),
+      templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
+      write: async () => renderCalendarAlert(lead.change, lead.span, timeZone, now, lead.previous),
       heldTitle: eventTitle(lead.change),
       heldLocation: vettedLocation(lead.change),
     };
@@ -819,7 +1280,8 @@ function offerOf(
     dedupeKey: calendarSeriesAlertDedupeKey(integrationId, series, seriesNews(lead.change), stamp),
     pendingSince,
     startMs: lead.span.startMs,
-    render: () => renderCalendarSeriesAlert(group, timeZone, now),
+    templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
+    write: async () => renderCalendarSeriesAlert(group, timeZone, now),
     heldTitle: seriesTitle(group),
     // Deliberately none: one sentence about six sessions cannot honestly carry the
     // location of one of them.
@@ -1007,6 +1469,7 @@ function revive(
       start: point(startAt),
       end: point(endAt),
       location: row.heldLocation ?? undefined,
+      standing: null,
     },
     span: { startMs: startAt.getTime(), endMs: endAt.getTime(), allDay: row.allDay },
     // The prior's OWN shape, never this row's: an all-day start is a local midnight, and

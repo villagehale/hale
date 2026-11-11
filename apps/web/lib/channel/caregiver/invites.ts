@@ -1,11 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, isNull } from 'drizzle-orm';
-import { householdTimezone } from '~/lib/channel/household-timezone';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { CO_PARENT_GRANT_SCOPE, type CaregiverRole } from '~/lib/channel/role-scope';
+import { CO_PARENT_GRANT_SCOPE, type CaregiverRole, isParentRole } from '~/lib/channel/role-scope';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -930,6 +930,163 @@ export async function recordParentAssent(
   return { status: 'ready', body };
 }
 
+export type SeatGrant = { inviteId: string; grantedByUserId: string; open: boolean };
+
+/** The grant a seat read before its transaction no longer stands inside it; the seat rolls back. */
+export class SeatGrantChangedError extends Error {
+  constructor() {
+    super('grant_changed_during_seat');
+    this.name = 'SeatGrantChangedError';
+  }
+}
+
+/** A seat transaction that threw {@link SeatGrantChangedError} has rolled back: null. */
+export async function unlessSeatGrantChanged<T>(seat: Promise<T>): Promise<T | null> {
+  try {
+    return await seat;
+  } catch (error) {
+    if (error instanceof SeatGrantChangedError) return null;
+    throw error;
+  }
+}
+
+/**
+ * VIL-582 · a parent of `familyId` recorded a yes for THIS phone in THIS role through a
+ * 1:1 invite, and that invite still stands. Null otherwise. The group seat paths read
+ * this because a who's-who reply, a Linq add or "the second person in the chat" is at
+ * most the person's own yes, never the household's.
+ *
+ * A standing invite is `awaiting_caregiver_reply` still open and inside its clock, or
+ * `accepted` while the person it seated still holds that role here: a departure or an
+ * unseat ends the membership and leaves the invite `accepted`, and a former member's
+ * old grant is not a new one. The state alone is not proof (the legacy `identity_noted`
+ * seat moves a grant-less invite to `accepted`), so the grant's own audit row, written
+ * in the grant's transaction with this invite's id, binds person and role to it. A
+ * join-link grant names no phone and never matches. The inviter must still be a parent
+ * here.
+ *
+ * Read inside a transaction, the invite rows and the `family_members` rows the grant
+ * rests on (the seated caregiver's and the inviter's) stay locked until it ends, so a seat
+ * that re-reads its grant there cannot race a 1:1 close, a departure or an unseat (VIL-596).
+ */
+export async function recordedSeatGrant(
+  database: Database,
+  input: { familyId: string; phoneE164Hash: string; role: AddRole; now: Date },
+): Promise<SeatGrant | null> {
+  const invites = await database
+    .select({
+      id: schema.caregiverInvites.id,
+      invitedByUserId: schema.caregiverInvites.invitedByUserId,
+      state: schema.caregiverInvites.state,
+      expiresAt: schema.caregiverInvites.expiresAt,
+      closedAt: schema.caregiverInvites.closedAt,
+      caregiverUserId: schema.caregiverInvites.caregiverUserId,
+    })
+    .from(schema.caregiverInvites)
+    .where(
+      and(
+        eq(schema.caregiverInvites.familyId, input.familyId),
+        eq(schema.caregiverInvites.phoneE164Hash, input.phoneE164Hash),
+        eq(schema.caregiverInvites.role, input.role),
+      ),
+    )
+    .for('update');
+  const standing = invites
+    .map((row) => ({
+      ...row,
+      open:
+        row.state === 'awaiting_caregiver_reply' &&
+        row.closedAt === null &&
+        new Date(row.expiresAt).getTime() > input.now.getTime(),
+    }))
+    .filter((row) => row.open || row.state === 'accepted')
+    .sort((a, b) => Number(b.open) - Number(a.open));
+  const holdsRole = async (userId: string | null): Promise<boolean> => {
+    if (!userId) return false;
+    const [held] = await database
+      .select({ userId: schema.familyMembers.userId })
+      .from(schema.familyMembers)
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, input.familyId),
+          eq(schema.familyMembers.userId, userId),
+          eq(schema.familyMembers.role, input.role),
+        ),
+      )
+      .for('share');
+    return Boolean(held);
+  };
+  const grantVerb =
+    input.role === 'co_parent' ? 'co_parent_access_granted' : 'caregiver_access_granted';
+  for (const invite of standing) {
+    if (!invite.open && !(await holdsRole(invite.caregiverUserId))) continue;
+    const [granted] = await database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, input.familyId),
+          eq(schema.auditLog.actionTaken, grantVerb),
+          eq(schema.auditLog.targetTable, 'caregiver_invites'),
+          eq(schema.auditLog.targetId, invite.id),
+        ),
+      )
+      .limit(1);
+    if (!granted) continue;
+    const [inviter] = await database
+      .select({ role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, input.familyId),
+          eq(schema.familyMembers.userId, invite.invitedByUserId),
+        ),
+      )
+      .for('share');
+    if (!inviter || !isParentRole(inviter.role)) continue;
+    return { inviteId: invite.id, grantedByUserId: invite.invitedByUserId, open: invite.open };
+  }
+  return null;
+}
+
+/**
+ * The group seat that just wrote this person's channel ends the invite it was granted
+ * through: a number that owns an active channel has no open invite (see
+ * {@link supersedeOpenInviteOnEnrollment}). `accepted`, because they took the role they
+ * were invited to. MUST run inside the seat's transaction. True when it closed the invite;
+ * false when it was no longer awaiting the invitee.
+ */
+export async function closeInviteOnGroupSeat(
+  tx: Database,
+  input: { inviteId: string; role: AddRole; familyId: string; seatedUserId: string; now: Date },
+): Promise<boolean> {
+  const closed = await tx
+    .update(schema.caregiverInvites)
+    .set({
+      state: 'accepted',
+      caregiverUserId: input.seatedUserId,
+      closedAt: input.now,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(schema.caregiverInvites.id, input.inviteId),
+        eq(schema.caregiverInvites.state, 'awaiting_caregiver_reply'),
+      ),
+    )
+    .returning({ id: schema.caregiverInvites.id });
+  if (closed.length === 0) return false;
+  await tx.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.seatedUserId,
+    actionTaken: inviteVerb(input.role, 'accepted'),
+    targetTable: 'caregiver_invites',
+    targetId: input.inviteId,
+    after: { role: input.role, via: 'linq_group' },
+  });
+  return true;
+}
+
 /** Close an invite in a terminal state, with its audit row. */
 async function closeInvite(
   database: Database,
@@ -1263,27 +1420,33 @@ export async function recordLapsedInviteAnswered(
 }
 
 /**
- * How a number that had an invite in flight came to own a channel of its own — the two
+ * How a number that had an invite in flight came to own a channel of its own — the
  * doors onto {@link supersedeOpenInviteOnEnrollment}, each with the state and the audit
  * verb that says what actually happened to that person.
  *
  * They are not one bucket, because they are not one event: `co_parent_join` is somebody
- * accepting a BIGGER role in the household that invited them, and `sms_intake` is the
- * same phone signing up as a parent of its OWN family and walking away from the ask.
- * The inviting parent's trail has to be able to tell those apart.
+ * accepting a BIGGER role in the household that invited them, while `sms_intake`,
+ * `casl_start` (a number that STOPped texting START back) and `web_otp` (a code entered
+ * on the web) are the same phone becoming a parent's channel in its OWN family and
+ * walking away from the ask. The inviting parent's trail has to be able to tell the
+ * join apart from the other three; the three share one state and verb because, to the
+ * inviting parent, they are the same event.
  */
 const ENROLMENT_SUPERSEDES = {
   co_parent_join: { state: 'superseded_by_join', suffix: 'superseded_by_join' },
   sms_intake: { state: 'superseded_by_enrollment', suffix: 'superseded_by_enrollment' },
+  casl_start: { state: 'superseded_by_enrollment', suffix: 'superseded_by_enrollment' },
+  web_otp: { state: 'superseded_by_enrollment', suffix: 'superseded_by_enrollment' },
 } as const satisfies Record<string, { state: CaregiverInviteState; suffix: string }>;
 
 export type EnrolmentDoor = keyof typeof ENROLMENT_SUPERSEDES;
 
 /**
  * A number with an invite in flight has just been ENROLLED — given an active channel of
- * its own, by a forwarded co-parent link (VIL-297) or by finishing its own SMS intake
- * (VIL-305). The invite is closed by the same transaction, and this is the ONE invariant
- * behind every door: a number that owns an active channel has no open caregiver invite.
+ * its own, by a forwarded co-parent link (VIL-297), by finishing its own SMS intake
+ * (VIL-305), by START after a STOP, or by a web verification code (VIL-310). The invite
+ * is closed by the same transaction, and this is the ONE invariant behind every door: a
+ * number that owns an active channel has no open caregiver invite.
  *
  * {@link startCaregiverInvite} keeps the other end of it (`number_in_use`); nothing kept
  * this one, and the two states are not merely redundant. `loadOpenInviteByPhone` is read

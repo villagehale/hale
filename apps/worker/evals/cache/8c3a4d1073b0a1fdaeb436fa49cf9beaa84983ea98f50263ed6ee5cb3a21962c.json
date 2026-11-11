@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states a consequence not in the facts: that school is closed for students. The facts only say there is a PD Day tomorrow; that inference is an unstated fact, which is a fact failure. Otherwise the day is correctly relative to now, no clock time is given, and the language is English.",
+    "score": 2
+  }
+}

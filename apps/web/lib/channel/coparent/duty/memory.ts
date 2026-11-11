@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
-import { projectDutyOnFamilyEvent } from './calendar';
 import { noteDutyBurden } from './burden';
-import { coparentDutyMemoryEnabled } from './flag';
+import { projectDutyOnFamilyEvent } from './calendar';
+import { coparentDutyMemoryEnabled, coparentSplitDutyActive } from './flag';
 import { recordDutyAnswered } from './metrics';
 import type { DutyState } from './model';
 
@@ -23,7 +23,7 @@ export async function rememberDutyEffects(
     now: Date;
   },
 ): Promise<void> {
-  if (!coparentDutyMemoryEnabled()) return;
+  if (!coparentDutyMemoryEnabled() && !coparentSplitDutyActive(input.familyId)) return;
   const projected = await projectDutyOnFamilyEvent(database, input);
   if (projected.status === 'skipped') {
     console.info({ reason: projected.reason }, 'duty memory: calendar not updated');

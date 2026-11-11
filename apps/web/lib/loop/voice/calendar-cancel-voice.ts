@@ -5,6 +5,15 @@ import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { asciiDigits, textDestination, titleDestination } from './calendar-destination';
+import {
+  type CalendarInviteTimeInput,
+  type CalendarInviteTimeJudge,
+  MAX_INVITE_SUMMARY_CHARS,
+  type ZonedStart,
+  createCalendarInviteTimeJudge,
+  zonedStart,
+} from './calendar-invite-voice';
 
 /**
  * The cancellation text a parent gets when an event they were texted a tap-to-add link
@@ -15,12 +24,17 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * fallback text.
  */
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|cancelled|canceled|took|removed|might|may)\b/i;
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
-
-export const MAX_CANCEL_CHARS = 160;
+/*
+ * FACT CHECKS ONLY (VIL-450). The word-matching checks that used to live here
+ * (THIRD_PERSON_SELF, first-person-plural, a required "cancel" word, a capital-letter
+ * opener, a character cap) broke the no-wording-rules rule and failed every non-English
+ * parent. Voice and tone are graded by the judge model in the eval; the gate below only
+ * checks facts: no destination, and no number that was not handed. Whether the text
+ * names this event (in any language) at its start is the time judge's call (VIL-588).
+ *
+ * The renderer sends the composed line as is (templates/calendar-cancel/sms.ts), so the
+ * bytes the gate and the judge read are the bytes sent.
+ */
 const MAX_ATTEMPTS = 3;
 const MAX_TOKENS = 160;
 
@@ -29,17 +43,16 @@ export interface CalendarCancelRequest {
   summary: string;
   /** When it was going to start, in the family's timezone (inviteWhenLabel). */
   when: string;
+  /** The event start. The time judge compares the text to this instant. */
+  startsAt: Date;
+  /** The parent's zone, so the clock is the one they were told. */
+  timeZone: string;
 }
 
 export type CalendarCancelRefusal =
   | 'empty'
-  | 'over_char_cap'
-  | 'carries_link'
-  | 'not_a_sentence'
-  | 'third_person_self'
-  | 'first_person_plural'
-  | 'summary_missing'
-  | 'cancel_word_missing'
+  | 'carries_destination'
+  | 'when_missing'
   | 'invented_number';
 
 export function calendarCancelRefusals(
@@ -48,16 +61,13 @@ export function calendarCancelRefusals(
 ): CalendarCancelRefusal[] {
   if (body === '') return ['empty'];
   const found: CalendarCancelRefusal[] = [];
-  if (body.length > MAX_CANCEL_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
-  if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
-  const lower = body.toLowerCase();
-  if (!lower.includes(request.summary.toLowerCase())) found.push('summary_missing');
-  if (!/cancel/i.test(body)) found.push('cancel_word_missing');
-  const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
-  if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
+  if (textDestination(body, zonedStart(request.startsAt, request.timeZone))) {
+    found.push('carries_destination');
+  }
+  const handed = new Set(asciiDigits(`${request.summary} ${request.when}`).match(/\d+/g) ?? []);
+  if ((asciiDigits(body).match(/\d+/g) ?? []).some((n) => !handed.has(n))) {
+    found.push('invented_number');
+  }
   return found;
 }
 
@@ -76,9 +86,11 @@ export function calendarCancelUserMessage(
 }
 
 export type CalendarCancelDeferral =
+  | 'summary_carries_destination'
   | 'client_unavailable'
   | 'skill_unavailable'
   | 'model_failed'
+  | 'time_unjudged'
   | 'gate_exhausted';
 
 export type CalendarCancelOutcome =
@@ -105,9 +117,47 @@ function deferred(reason: CalendarCancelDeferral, detail?: string): CalendarCanc
   return { status: 'deferred', reason };
 }
 
-export function createCalendarCancelVoice(client: () => AgentClient): CalendarCancelVoice {
+/** What the time judge is shown. The cancel writer is not handed a language. */
+function cancelTimeInput(
+  text: string,
+  request: CalendarCancelRequest,
+  starts: ZonedStart,
+): CalendarInviteTimeInput {
   return {
-    async compose(request) {
+    text,
+    summary: request.summary,
+    when: request.when,
+    timeZone: request.timeZone,
+    language: null,
+    starts,
+  };
+}
+
+/**
+ * The title cut to the invite voice's bound, in code points. A cancellation is never
+ * held for a long title (the parent was told about the event): the gate, the writer and
+ * the time judge all read the cut title, so the read and the tokens stay bounded.
+ */
+function cutTitle(request: CalendarCancelRequest): CalendarCancelRequest {
+  const summary = Array.from(request.summary).slice(0, MAX_INVITE_SUMMARY_CHARS).join('');
+  return { ...request, summary };
+}
+
+export function createCalendarCancelVoice(
+  client: () => AgentClient,
+  judge: CalendarInviteTimeJudge = createCalendarInviteTimeJudge(client),
+): CalendarCancelVoice {
+  return {
+    async compose(uncut) {
+      const request = cutTitle(uncut);
+      let starts: ZonedStart;
+      try {
+        starts = zonedStart(request.startsAt, request.timeZone);
+      } catch (err) {
+        return deferred('time_unjudged', err instanceof Error ? err.name : 'unknown');
+      }
+      const held = titleDestination(request.summary, starts);
+      if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {
         resolved = client();
@@ -141,8 +191,17 @@ export function createCalendarCancelVoice(client: () => AgentClient): CalendarCa
         }
         const body = plainText(raw);
         const problems = calendarCancelRefusals(body, request);
-        if (problems.length === 0) return { status: 'composed', body };
-        rejected.push({ text: body, problems });
+        if (problems.length > 0) {
+          rejected.push({ text: body, problems });
+          continue;
+        }
+        const match = await judge.matches(cancelTimeInput(body, request, starts));
+        if (match === null) return deferred('time_unjudged');
+        if (!match) {
+          rejected.push({ text: body, problems: ['when_missing'] });
+          continue;
+        }
+        return { status: 'composed', body };
       }
       return deferred('gate_exhausted', rejected.map((r) => r.problems.join('+')).join(' | '));
     },
@@ -152,7 +211,7 @@ export function createCalendarCancelVoice(client: () => AgentClient): CalendarCa
 let cached: Anthropic | undefined;
 
 export function calendarCancelVoiceClient(): AgentClient {
-  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'voice' });
   return cached;
 }
 

@@ -26,7 +26,9 @@ interface ExtractionInput {
     child_ref?: string | null;
     original_time?: string | null;
     new_time?: string | null;
+    end_time?: string | null;
     location?: string | null;
+    address?: string | null;
   };
   source_confidence: number;
   quote_evidence: string;
@@ -463,5 +465,95 @@ describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {
     });
 
     expect(result.extraction?.teenContent).toBe(false);
+  });
+});
+
+describe('classifyChildEventEmail — end time', () => {
+  async function endOf(event: Partial<ExtractionInput['event']>) {
+    const client = scriptedClient(
+      { child_related: true, confidence: 0.9, rationale: 'new class' },
+      {
+        kind: 'new_event',
+        event: { title: 'Pottery', new_time: '2026-08-01T14:00:00Z', ...event },
+        source_confidence: 0.9,
+        quote_evidence: 'Pottery runs 2 to 3:30 on Saturday.',
+      },
+    );
+    const result = await classifyChildEventEmail(ENVELOPE, {
+      client,
+      children: [YOUNG_CHILD],
+      fetchBody: vi.fn().mockResolvedValue('body'),
+      correlationCandidates: [],
+    });
+    return result.extraction?.event.endTime;
+  }
+
+  it('carries the end the email stated', async () => {
+    expect(await endOf({ end_time: '2026-08-01T15:30:00Z' })).toBe('2026-08-01T15:30:00Z');
+  });
+
+  it('stays null when the email states none, and never guesses one', async () => {
+    expect(await endOf({})).toBeNull();
+    expect(await endOf({ end_time: null })).toBeNull();
+  });
+
+  it('drops an end that is not a real instant after the start', async () => {
+    expect(await endOf({ end_time: '2026-08-01T13:00:00Z' })).toBeNull();
+    expect(await endOf({ end_time: 'around 3' })).toBeNull();
+    expect(await endOf({ new_time: null, end_time: '2026-08-01T15:30:00Z' })).toBeNull();
+  });
+});
+
+describe('classifyChildEventEmail — street address', () => {
+  const BODY =
+    'You are registered for Swim Level 2.\nLocation: Brookfield Leisure Centre, Pool 2\n450 Example Road\nBrookfield, ON\nFirst class Saturday at 9:00 AM.';
+
+  async function addressOf(address: string | null | undefined, body = BODY) {
+    const client = scriptedClient(
+      { child_related: true, confidence: 0.9, rationale: 'receipt' },
+      {
+        kind: 'booking_confirmation',
+        event: {
+          title: 'Swim Level 2',
+          new_time: '2026-08-01T13:00:00Z',
+          location: 'Brookfield Leisure Centre, Pool 2',
+          ...(address === undefined ? {} : { address }),
+        },
+        source_confidence: 0.9,
+        quote_evidence: 'You are registered for Swim Level 2.',
+      },
+    );
+    const result = await classifyChildEventEmail(ENVELOPE, {
+      client,
+      children: [YOUNG_CHILD],
+      fetchBody: vi.fn().mockResolvedValue(body),
+      correlationCandidates: [],
+    });
+    return result.extraction?.event.address;
+  }
+
+  it('keeps an address the email states, across its line break and punctuation', async () => {
+    expect(await addressOf('450 Example Road, Brookfield, ON')).toBe(
+      '450 Example Road, Brookfield, ON',
+    );
+  });
+
+  it('drops an address the email does not contain, however plausible', async () => {
+    // A completed postal line, a different number, a street the body never names.
+    expect(await addressOf('450 Example Road, Brookfield, ON A1A 1A1')).toBeNull();
+    expect(await addressOf('452 Example Road')).toBeNull();
+    // Inside a token is not in the email: "50" is not "450".
+    expect(await addressOf('50 Example Road')).toBeNull();
+    expect(await addressOf('12 Lakeshore Road')).toBeNull();
+  });
+
+  it('drops a place name with no street number, and stays null when none is given', async () => {
+    expect(await addressOf('Brookfield Leisure Centre')).toBeNull();
+    expect(await addressOf(null)).toBeNull();
+    expect(await addressOf(undefined)).toBeNull();
+  });
+
+  it('drops a bare number, which is not a street address', async () => {
+    expect(await addressOf('450', 'Thank you. Total paid: $450.')).toBeNull();
   });
 });

@@ -1,12 +1,15 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
+import { noteFamilySignedUp, noteMessage } from '~/lib/analytics/product-hooks';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { HALE_CONTACT_FIRST_NAME, haleContactCardDay } from '~/lib/channel/linq/contact-card';
+import { linqChatAuditKey } from '~/lib/channel/linq/family-audit';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { acceptCalendarDate } from './calendar-date';
 import { type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
@@ -36,7 +39,8 @@ import {
  *   number — possession is proven by the fact of the inbound itself, which is strictly
  *   stronger evidence than echoing back a code we just sent. Sending an OTP would be
  *   asking someone to prove they hold the phone they are texting us from.
- * - Children carry `dob_precision = 'derived'`: the parent gave an age, not a date.
+ * - Children carry `dob_precision = 'derived'` when the parent gave an age, and
+ *   `'exact'` when they named a calendar day (VIL-531).
  */
 
 const CHANNEL_KIND = 'sms';
@@ -63,13 +67,20 @@ export interface ProvisionChild {
   name: string | null;
   ageMonths: number;
   agePrecision: AgePrecision;
+  /** Calendar day YYYY-MM-DD when the parent named a birth date (VIL-531). */
+  dateOfBirth?: string | null;
 }
 
 export interface ProvisionInput {
   phoneE164: string;
   phoneHash: string;
   children: readonly ProvisionChild[];
-  location: IntakeLocation;
+  /**
+   * Null when the parent declined to give a place. The family row then holds no
+   * country, code or area, and the user keeps the column's zone default: nothing is
+   * guessed from the phone number.
+   */
+  location: IntakeLocation | null;
   sourceCode: string | null;
   /** The parent's first message, stored as the consent's evidence. */
   firstMessage: string;
@@ -101,18 +112,20 @@ export interface ProvisionResult {
 async function ensureIntakeUser(
   tx: Database,
   externalAuthId: string,
-  timezone: string,
+  timezone: string | null,
 ): Promise<string> {
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null, timezone })
+    .values({ externalAuthId, email: null, name: null, ...(timezone ? { timezone } : {}) })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
   // A row created before this place was known still has the column default.
   // The postal code is the source of the zone, so the signup write wins.
-  await tx
-    .update(schema.users)
-    .set({ timezone, updatedAt: new Date() })
-    .where(eq(schema.users.externalAuthId, externalAuthId));
+  if (timezone) {
+    await tx
+      .update(schema.users)
+      .set({ timezone, updatedAt: new Date() })
+      .where(eq(schema.users.externalAuthId, externalAuthId));
+  }
 
   const [row] = await tx
     .select({ id: schema.users.id })
@@ -123,6 +136,73 @@ async function ensureIntakeUser(
     throw new Error('ensureIntakeUser: no users row after upsert');
   }
   return row.id;
+}
+
+/**
+ * An active SMS channel already held by this user or this number. Intake
+ * creates the row once; a later turn that retries after a post-commit throw
+ * (VIL-532) must reuse it instead of inserting a second (user, kind) row.
+ */
+async function existingActiveSmsChannel(
+  tx: Database,
+  keys: { userId: string; phoneHash: string },
+): Promise<ProvisionResult | null> {
+  const columns = {
+    id: schema.parentChannels.id,
+    familyId: schema.parentChannels.familyId,
+    userId: schema.parentChannels.userId,
+  };
+  const linked = (
+    row: { id: string; familyId: string; userId: string } | undefined,
+  ): ProvisionResult | null => {
+    if (!row?.id || !row.familyId || !row.userId) return null;
+    return { familyId: row.familyId, userId: row.userId, channelId: row.id };
+  };
+
+  const [byUser] = await tx
+    .select(columns)
+    .from(schema.parentChannels)
+    .where(
+      and(
+        eq(schema.parentChannels.userId, keys.userId),
+        eq(schema.parentChannels.kind, CHANNEL_KIND),
+        isNull(schema.parentChannels.revokedAt),
+      ),
+    )
+    .limit(1);
+  const fromUser = linked(byUser);
+  if (fromUser) return fromUser;
+
+  const [byPhone] = await tx
+    .select(columns)
+    .from(schema.parentChannels)
+    .where(
+      and(
+        eq(schema.parentChannels.phoneE164Hash, keys.phoneHash),
+        isNull(schema.parentChannels.revokedAt),
+      ),
+    )
+    .limit(1);
+  return linked(byPhone);
+}
+
+function childRowFromProvision(
+  familyId: string,
+  child: ProvisionChild,
+  now: Date,
+): {
+  familyId: string;
+  name: string;
+  dateOfBirth: string;
+  dobPrecision: 'exact' | 'derived';
+} {
+  const exact = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+  return {
+    familyId,
+    name: child.name?.trim() || 'your child',
+    dateOfBirth: exact ?? deriveDateOfBirth(child.ageMonths, child.agePrecision, now),
+    dobPrecision: exact ? 'exact' : 'derived',
+  };
 }
 
 export async function provisionFromIntake(
@@ -146,9 +226,14 @@ export async function provisionFromIntake(
   const lifetimeFamilyComp =
     input.sourceCode !== null && LIFETIME_FAMILY_SOURCE_CODES.has(input.sourceCode);
 
-  return database.transaction(async (rawTx) => {
+  const result = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const userId = await ensureIntakeUser(tx, externalAuthId, location.timezone);
+    const userId = await ensureIntakeUser(tx, externalAuthId, location?.timezone ?? null);
+
+    // VIL-532: a prior turn already wrote the channel and committed, then threw
+    // before the session was linked. Retrying must not insert a second SMS row.
+    const existing = await existingActiveSmsChannel(tx, { userId, phoneHash });
+    if (existing) return existing;
 
     const [family] = await tx
       .insert(schema.families)
@@ -159,10 +244,14 @@ export async function provisionFromIntake(
         // is what the sweeps select on, and it must not flip before that row.
         onboardingStage: 'sms_intake',
         primaryLanguage: input.language && input.language.length > 0 ? input.language : 'en',
-        country: location.country,
-        countryCode: location.countryCode,
-        postalCode: location.postalCode,
-        areaCoarse: location.areaCoarse,
+        ...(location
+          ? {
+              country: location.country,
+              countryCode: location.countryCode,
+              postalCode: location.postalCode,
+              areaCoarse: location.areaCoarse,
+            }
+          : {}),
         ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
       })
       .returning({ id: schema.families.id });
@@ -183,12 +272,7 @@ export async function provisionFromIntake(
       .values({ userId, loopChannel: 'sms' })
       .onConflictDoNothing({ target: schema.loopPrefs.userId });
 
-    const childRows = input.children.map((child) => ({
-      familyId,
-      name: child.name?.trim() || 'your child',
-      dateOfBirth: deriveDateOfBirth(child.ageMonths, child.agePrecision, now),
-      dobPrecision: 'derived',
-    }));
+    const childRows = input.children.map((child) => childRowFromProvision(familyId, child, now));
     if (childRows.length > 0) {
       await tx.insert(schema.children).values(childRows);
     }
@@ -269,6 +353,7 @@ export async function provisionFromIntake(
         category: 'intake',
         providerMessageId: entry.providerId,
         providerChatId: entry.channel === 'imessage' ? (entry.chatId ?? null) : null,
+        inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
         status:
           entry.direction === 'in' ? 'delivered' : entry.channel === 'imessage' ? 'sent' : 'queued',
         // Verbatim bodies are stored for INBOUND only, matching the ledger's rule:
@@ -280,6 +365,13 @@ export async function provisionFromIntake(
         // The reconciler re-drives unmarked inbound rows to C1, and a replayed
         // onboarding text is a parent answered twice, out of context.
         handedOffAt: entry.direction === 'in' ? now : null,
+      });
+      noteMessage({
+        direction: entry.direction,
+        familyId,
+        channel: entry.channel === 'imessage' ? 'imessage' : CHANNEL_KIND,
+        isGroup: entry.inGroup,
+        chatId: entry.chatId,
       });
     }
 
@@ -299,7 +391,7 @@ export async function provisionFromIntake(
         targetId: familyId,
         after: {
           childCount: childRows.length,
-          areaCoarse: location.areaCoarse,
+          areaCoarse: location?.areaCoarse ?? null,
           sourceCode: input.sourceCode,
           referredByFamilyId,
           maskedPhone: maskPhoneE164(phoneE164),
@@ -344,7 +436,7 @@ export async function provisionFromIntake(
               occurredAt: new Date(input.linqContactCardClaim.at),
               after: {
                 ...(input.linqContactCardClaim.chatId
-                  ? { chatId: input.linqContactCardClaim.chatId }
+                  ? linqChatAuditKey(input.linqContactCardClaim.chatId)
                   : {}),
                 sharedOn: haleContactCardDay(new Date(input.linqContactCardClaim.at)),
                 ...(input.linqContactCardClaim.outcome === 'shared'
@@ -369,4 +461,6 @@ export async function provisionFromIntake(
 
     return { familyId, userId, channelId };
   });
+  noteFamilySignedUp({ familyId: result.familyId });
+  return result;
 }

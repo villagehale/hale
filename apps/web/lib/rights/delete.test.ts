@@ -92,10 +92,7 @@ describe('scheduleFamilyDeletion', () => {
   });
 });
 
-const DUE_IDS = [
-  '11111111-1111-4111-8111-111111111111',
-  '22222222-2222-4222-8222-222222222222',
-];
+const DUE_IDS = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
 
 /**
  * Fakes the sweep's whole DB surface: the due-families select, the per-family
@@ -125,6 +122,15 @@ function fakeSweepDb(
     events.push('delete-family');
   });
   const deleteFn = vi.fn(() => ({ where: deletedWhere }));
+  /** Only the family row's delete is the erasure under test; the crisis marks and the
+   * shared-chat people rows the sweep also forgets are pinned against the real DDL
+   * (opt-out-recovery.pglite.test.ts, multi-family-private-aside.pglite.test.ts). */
+  const nothingMatched = () => ({
+    where: () => Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
+  });
+  const deleteFrom = (table: unknown) =>
+    table === schema.families ? deleteFn() : nothingMatched();
+  const update = () => ({ set: nothingMatched });
 
   /** `.from(t)` answers a `.where(...)` AND awaits on its own — the orphan sweep that
    * rides this same run reads whole tables with no predicate, and a chain that only
@@ -159,7 +165,7 @@ function fakeSweepDb(
   const transaction = vi.fn(async (run: (tx: unknown) => Promise<unknown>) => run(null));
 
   return {
-    db: { select, delete: deleteFn, transaction } as never,
+    db: { select, delete: deleteFrom, update, transaction } as never,
     removeObject,
     spies: { deleteFn, deletedWhere, events },
   };
@@ -236,12 +242,11 @@ describe('runDeletionSweep', () => {
       throw new Error('supabase remove 500');
     });
 
-    await expect(
-      runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), boom),
-    ).rejects.toThrow('supabase remove 500');
+    await expect(runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), boom)).rejects.toThrow(
+      'supabase remove 500',
+    );
     // A failed purge must NEVER strand bytes by erasing their pointer: the family row
     // stays, and the next sweep retries the whole erase (removeObject tolerates 404).
     expect(spies.deleteFn).not.toHaveBeenCalled();
   });
-
 });

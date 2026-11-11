@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { deriveStage } from '@hale/types';
 import { and, asc, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import { isNotKept } from '~/lib/channel/checkin/notes';
@@ -9,9 +10,9 @@ import {
   familyEventIdFromAskDedupeKey,
 } from '~/lib/channel/followup/ask-open';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { familyMemoryKindsEnabled } from '~/lib/memory/kinds';
 import { promoteMatchingInferredFacts } from '~/lib/memory/store';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { familyAreaKey } from './aggregate';
 import { type ReviewSubject, type SubjectUnresolved, resolveReviewSubject } from './subject';
 import type { VerdictReader } from './verdict';
@@ -41,7 +42,7 @@ export const ACTIVITY_REVIEWS_ENABLED_ENV = 'ACTIVITY_REVIEWS_ENABLED';
  * truthiness check reads that as ON.
  */
 export function activityReviewsEnabled(): boolean {
-  return process.env[ACTIVITY_REVIEWS_ENABLED_ENV] === 'true';
+  return isEnabled('activity-reviews');
 }
 
 export interface ReviewCaptureResult {
@@ -146,7 +147,7 @@ let verdictAnthropic: AgentClient | undefined;
  * deferral this pass already names.
  */
 export function reviewVerdictClient(): AgentClient {
-  verdictAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  verdictAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'compose' });
   return verdictAnthropic;
 }
 
@@ -469,7 +470,9 @@ async function reviewedEventTitle(
   const [event] = await database
     .select({ title: schema.familyEvents.title })
     .from(schema.familyEvents)
-    .where(and(eq(schema.familyEvents.id, familyEventId), eq(schema.familyEvents.familyId, familyId)))
+    .where(
+      and(eq(schema.familyEvents.id, familyEventId), eq(schema.familyEvents.familyId, familyId)),
+    )
     .limit(1);
   const title = event?.title?.trim() ?? '';
   return title.length >= 4 ? title : null;
@@ -517,4 +520,3 @@ async function readPlacement(
     .limit(1);
   return row ?? null;
 }
-

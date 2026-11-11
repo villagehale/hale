@@ -1,7 +1,8 @@
 import type { GuardDeps } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OfferedCandidate } from '~/lib/coach/tools';
+import { TEEN_NAME_SHARED_MATCHER_ENABLED_ENV } from '~/lib/privacy/teen-name';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
   type ChannelCoachToolArgs,
@@ -93,13 +94,16 @@ function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
   };
 }
 
-function fakePort(): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
+function fakePort(
+  pendingIdentical?: ChannelDraftPort['pendingIdentical'],
+): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
   const port = {
     drafts: [] as ChannelDraftInput[],
     async draft(input: ChannelDraftInput) {
       port.drafts.push(input);
       return { actionId: `action-${port.drafts.length}` };
     },
+    ...(pendingIdentical ? { pendingIdentical } : {}),
   };
   return port;
 }
@@ -133,13 +137,15 @@ function harness(
   events: ScheduleEvent[] = [scheduleEvent()],
   teenChildIds: ReadonlySet<string> = new Set(),
   offered: readonly OfferedCandidate[] = [],
+  pendingIdentical?: ChannelDraftPort['pendingIdentical'],
 ): Harness {
-  const port = fakePort();
+  const port = fakePort(pendingIdentical);
   const audit: unknown[] = [];
   const minted: string[] = [];
   const deps = guardDeps(audit, teenChildIds);
   const tools = buildChannelCoachTools({
     familyId: FAMILY,
+    familyCountry: 'CA',
     reader: fakeReader(events),
     draftPort: port,
     villageTool: null,
@@ -209,6 +215,10 @@ describe('lookup_week', () => {
   });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('calendar blocks the coach may see', () => {
   const start = new Date('2026-07-28T13:00:00.000Z');
 
@@ -242,6 +252,38 @@ describe('calendar blocks the coach may see', () => {
 
     expect(view?.title).toBe(PRIVATE_EVENT_WHAT);
     expect(JSON.stringify(view)).not.toContain('Nadia');
+    expect(JSON.stringify(view)).not.toContain('therapy');
+  });
+
+  it('unlit, keeps a title that names a teen only with an accent the legacy check misses', () => {
+    vi.stubEnv(TEEN_NAME_SHARED_MATCHER_ENABLED_ENV, undefined);
+    const view = calendarBlockForCoach(
+      {
+        startAt: start,
+        endAt: null,
+        allDay: false,
+        kidRelated: true,
+        title: 'Támsin therapy',
+      },
+      ['Tamsin'],
+    );
+    expect(view?.title).toBe('Támsin therapy');
+  });
+
+  it('lit, replaces a title that names a teen with an accent', () => {
+    vi.stubEnv(TEEN_NAME_SHARED_MATCHER_ENABLED_ENV, 'true');
+    const view = calendarBlockForCoach(
+      {
+        startAt: start,
+        endAt: null,
+        allDay: false,
+        kidRelated: true,
+        title: 'Támsin therapy',
+      },
+      ['Tamsin'],
+    );
+    expect(view?.title).toBe(PRIVATE_EVENT_WHAT);
+    expect(JSON.stringify(view)).not.toContain('Támsin');
     expect(JSON.stringify(view)).not.toContain('therapy');
   });
 
@@ -356,6 +398,28 @@ describe('propose_calendar_add', () => {
       }),
     ).rejects.toThrow(/already started/i);
     expect(h.port.drafts).toEqual([]);
+  });
+
+  it('does not draft again when that add is already waiting', async () => {
+    const h = harness([scheduleEvent()], new Set(), [], async () => ({
+      outcome: 'already_pending',
+      id: 'action-waiting',
+    }));
+
+    const result = await h.call('propose_calendar_add', {
+      title: 'Trunk or Treat',
+      date: '2026-08-05',
+      time: '10:00',
+      weekday: 'wed',
+    });
+
+    expect(result).toMatchObject({
+      drafted: true,
+      actionId: 'action-waiting',
+      alreadyPending: true,
+    });
+    expect(h.port.drafts).toEqual([]);
+    expect(h.minted).toEqual([]);
   });
 
   it('drafts an add from a family-local date and time', async () => {
@@ -648,6 +712,36 @@ describe('get_framework_guidance — the coaching tool the skill instructs (audi
     expect(result.whatsNow.length).toBeGreaterThan(0);
     expect(result.confirmWithProvider.length).toBeGreaterThan(0);
   });
+
+  /** D6: the family's country reaches the tool, so a US family's coach answer carries no
+   * Canadian cadence. The Canadian build is the positive control for the same input. */
+  it("answers with the family's country: Canada's cadence only for a Canadian family", async () => {
+    const guidance = async (familyCountry: ChannelCoachToolArgs['familyCountry']) => {
+      const tool = buildChannelCoachTools({
+        familyId: FAMILY,
+        familyCountry,
+        reader: {} as never,
+        draftPort: {} as never,
+        villageTool: null,
+        activity: null,
+        spots: null,
+        now: NOW,
+      }).find((t) => t.name === 'get_framework_guidance');
+      if (!tool) throw new Error('get_framework_guidance is not registered');
+      return (await tool.handler({ stage: 'newborn', ageMonths: 3 }, {} as never)) as Record<
+        string,
+        unknown
+      >;
+    };
+
+    const us = await guidance('US');
+    expect(us).not.toHaveProperty('nextHealth');
+    expect(us.healthSchedule).toBe('no_verified_us_schedule');
+
+    const ca = await guidance('CA');
+    expect((ca.nextHealth as unknown[]).length).toBeGreaterThan(0);
+    expect(ca).not.toHaveProperty('healthSchedule');
+  });
 });
 
 /**
@@ -663,6 +757,7 @@ describe('watch_for_opening — registered only when the whole wiring is there',
   const build = (extra: Partial<ChannelCoachToolArgs>) =>
     buildChannelCoachTools({
       familyId: FAMILY,
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: null,
@@ -676,6 +771,7 @@ describe('watch_for_opening — registered only when the whole wiring is there',
     fetchBody: {} as never,
     reader: {} as never,
     watchConsentGranted: {} as never,
+    readClassAvailability: {} as never,
   };
 
   it('is registered when the ports and the collector are both wired', () => {

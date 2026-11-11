@@ -8,6 +8,8 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import type { GoogleDisconnectPorts } from '~/lib/integrations/google-disconnect';
+import { encryptTokens } from '~/lib/integrations/token-vault';
 import { revokeMcpGrant } from '~/lib/mcp/oauth-store';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { CO_PARENT_INVITE_CONSENT_SCOPE, acceptCoParentInvite } from './accept';
@@ -220,7 +222,155 @@ function auditRows(familyId: string) {
     .where(eq(schema.auditLog.familyId, familyId));
 }
 
+/** One group plan and one poll in this household's chat, each answered by both parents.
+ * Keys are the real ones: the seat's phone blind index, as the RSVP turn writes them. */
+async function seedGroupAnswers(household: Household, chatId: string) {
+  const leaverKey = phoneBlindIndex(household.partnerPhone);
+  const stayerKey = phoneBlindIndex(parentPhone(households));
+  const [plan] = await db.database
+    .insert(schema.linqGroupPlans)
+    .values({ chatId, familyId: household.familyId, title: 'Saturday picnic', expectedCount: 2 })
+    .returning({ id: schema.linqGroupPlans.id });
+  const planId = plan?.id as string;
+  await db.database.insert(schema.linqGroupPlanExpected).values([
+    { planId, memberKey: leaverKey, displayName: 'Sam', userId: household.coParentUserId },
+    { planId, memberKey: stayerKey, displayName: 'Ana', userId: household.parentUserId },
+  ]);
+  await db.database.insert(schema.linqGroupPlanRsvps).values([
+    {
+      planId,
+      memberKey: leaverKey,
+      displayName: 'Sam',
+      userId: household.coParentUserId,
+      response: 'yes',
+      source: 'text',
+      verbatim: 'Sam here, we will bring the blanket',
+    },
+    {
+      planId,
+      memberKey: stayerKey,
+      displayName: 'Ana',
+      userId: household.parentUserId,
+      response: 'yes',
+      source: 'text',
+      verbatim: 'in!',
+    },
+  ]);
+  // Hale asked the leaver, in private, about this household's calendar.
+  await db.database.insert(schema.linqGroupPlanCalendarConsents).values({
+    planId,
+    familyId: household.familyId,
+    memberKey: leaverKey,
+    displayName: 'Sam',
+    householdLabel: null,
+    status: 'asked',
+  });
+  const [poll] = await db.database
+    .insert(schema.linqGroupPolls)
+    .values({
+      chatId,
+      familyId: household.familyId,
+      question: 'Which park?',
+      options: [{ key: 'o1', text: 'North', providerOptionId: null }],
+      expected: [
+        { memberKey: leaverKey, displayName: 'Sam' },
+        { memberKey: stayerKey, displayName: 'Ana' },
+      ],
+      origin: 'parent',
+    })
+    .returning({ id: schema.linqGroupPolls.id });
+  const pollId = poll?.id as string;
+  // The leaver's vote carries no user id: a text vote from a handle Hale only knows by number.
+  await db.database.insert(schema.linqGroupPollVotes).values([
+    { pollId, memberKey: leaverKey, displayName: 'Sam', optionKey: 'o1', source: 'text' },
+    {
+      pollId,
+      memberKey: stayerKey,
+      displayName: 'Ana',
+      userId: household.parentUserId,
+      optionKey: 'o1',
+      source: 'text',
+    },
+  ]);
+  return { planId, pollId };
+}
+
+async function groupNames(planId: string, pollId: string) {
+  const rsvps = await db.database
+    .select({
+      name: schema.linqGroupPlanRsvps.displayName,
+      verbatim: schema.linqGroupPlanRsvps.verbatim,
+    })
+    .from(schema.linqGroupPlanRsvps)
+    .where(eq(schema.linqGroupPlanRsvps.planId, planId))
+    .orderBy(asc(schema.linqGroupPlanRsvps.displayName));
+  const expected = await db.database
+    .select({ name: schema.linqGroupPlanExpected.displayName })
+    .from(schema.linqGroupPlanExpected)
+    .where(eq(schema.linqGroupPlanExpected.planId, planId))
+    .orderBy(asc(schema.linqGroupPlanExpected.displayName));
+  const votes = await db.database
+    .select({ name: schema.linqGroupPollVotes.displayName })
+    .from(schema.linqGroupPollVotes)
+    .where(eq(schema.linqGroupPollVotes.pollId, pollId))
+    .orderBy(asc(schema.linqGroupPollVotes.displayName));
+  const [poll] = await db.database
+    .select({ expected: schema.linqGroupPolls.expected })
+    .from(schema.linqGroupPolls)
+    .where(eq(schema.linqGroupPolls.id, pollId));
+  const calendarAsks = await db.database
+    .select({ name: schema.linqGroupPlanCalendarConsents.displayName })
+    .from(schema.linqGroupPlanCalendarConsents)
+    .where(eq(schema.linqGroupPlanCalendarConsents.planId, planId));
+  return {
+    rsvps,
+    expected: expected.map((row) => row.name),
+    votes: votes.map((row) => row.name),
+    pollExpected: (poll?.expected ?? []).map((row) => row.displayName),
+    calendarAsks: calendarAsks.map((row) => row.name),
+  };
+}
+
 describe('departCoParent — one actor leaves, the household keeps its record', () => {
+  it('renames the leaver on the household group plans and polls, and only the leaver', async () => {
+    const household = await seedSeatedHousehold();
+    const { planId, pollId } = await seedGroupAnswers(household, 'chat-departure');
+    const other = await seedSeatedHousehold();
+    const elsewhere = await seedGroupAnswers(other, 'chat-elsewhere');
+
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(await groupNames(planId, pollId)).toEqual({
+      rsvps: [
+        { name: 'Ana', verbatim: 'in!' },
+        { name: 'someone', verbatim: null },
+      ],
+      expected: ['Ana', 'someone'],
+      votes: ['Ana', 'someone'],
+      pollExpected: ['someone', 'Ana'],
+      calendarAsks: ['someone'],
+    });
+    // Positive control: another household's co-parent of the same name keeps theirs.
+    expect(await groupNames(elsewhere.planId, elsewhere.pollId)).toEqual({
+      rsvps: [
+        { name: 'Ana', verbatim: 'in!' },
+        { name: 'Sam', verbatim: 'Sam here, we will bring the blanket' },
+      ],
+      expected: ['Ana', 'Sam'],
+      votes: ['Ana', 'Sam'],
+      pollExpected: ['Sam', 'Ana'],
+      calendarAsks: ['Sam'],
+    });
+    const [departed] = (await auditRows(household.familyId)).filter(
+      (row) => row.actionTaken === 'co_parent_departed',
+    );
+    expect(departed?.after).toMatchObject({ groupNamesCleared: 5 });
+  });
+
   it('revokes the channel, removes the seat, withdraws the consent, and keeps the thread', async () => {
     const household = await seedSeatedHousehold();
     const { openInviteId } = await seedHouseholdRecord(household);
@@ -240,6 +390,7 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       teenGrantsRevoked: 0,
       openQuestionsDeleted: 'search_dark',
       membershipRemoved: true,
+      privateFactsDeleted: 0,
       consentWithdrawn: 1,
       threadRetained: 1,
       channelRecordRetained: 1,
@@ -401,6 +552,7 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       teenGrantsRevoked: 0,
       openQuestionsDeleted: 'search_dark',
       membershipRemoved: true,
+      privateFactsDeleted: 0,
       consentWithdrawn: 1,
       threadRetained: 1,
       channelRecordRetained: 1,
@@ -590,10 +742,34 @@ describe('departCoParent — every standing read into the household ends with th
         userId,
         provider: 'gmail',
         status: 'active',
-        oauthTokensEncrypted: encryptString('{"access_token":"tok"}'),
+        oauthTokensEncrypted: encryptTokens({ accessToken: 'tok', refreshToken: '1//dep-r' }),
       })
       .returning({ id: schema.integrations.id });
     return row?.id as string;
+  }
+
+  /** Google, faked at its port: departure revokes the leaver's grant there too. */
+  function googlePorts(): GoogleDisconnectPorts & { revoked: string[] } {
+    const revoked: string[] = [];
+    return {
+      revoked,
+      revoker: {
+        async revoke(token) {
+          revoked.push(token);
+          return { outcome: 'revoked' };
+        },
+      },
+      google: {
+        async request() {
+          throw new Error('push is off in this suite');
+        },
+      },
+      tokenFetch: async () => {
+        throw new Error('push is off in this suite');
+      },
+      env: {},
+      now: () => DEPARTED_AT,
+    };
   }
 
   async function grantTeenRead(household: Household, userId: string, childName: string) {
@@ -650,12 +826,17 @@ describe('departCoParent — every standing read into the household ends with th
     const stayerGmail = await connectGmail(household, household.parentUserId);
     const leaverTeen = await grantTeenRead(household, household.coParentUserId, 'Robin');
     const stayerTeen = await grantTeenRead(household, household.parentUserId, 'Robin');
+    const google = googlePorts();
 
-    const result = await departCoParent(db.database, {
-      familyId: household.familyId,
-      actorUserId: household.coParentUserId,
-      now: DEPARTED_AT,
-    });
+    const result = await departCoParent(
+      db.database,
+      {
+        familyId: household.familyId,
+        actorUserId: household.coParentUserId,
+        now: DEPARTED_AT,
+      },
+      google,
+    );
 
     expect(result).toMatchObject({
       outcome: 'departed',
@@ -665,6 +846,8 @@ describe('departCoParent — every standing read into the household ends with th
     });
     expect(await mcpGrant(leaverMcp)).toEqual([{ revokedAt: DEPARTED_AT }]);
     expect(await connector(leaverGmail)).toEqual([{ status: 'revoked', enc: null }]);
+    // Leaving revokes the leaver's grant at Google, and only theirs.
+    expect(google.revoked).toEqual(['1//dep-r']);
     expect(await teenGrant(leaverTeen)).toEqual([{ revokedAt: DEPARTED_AT }]);
 
     // THE PARENT WHO STAYED KEEPS EVERYTHING — the positive control.
@@ -683,11 +866,15 @@ describe('departCoParent — every standing read into the household ends with th
       .delete(schema.auditLog)
       .where(eq(schema.auditLog.familyId, household.familyId));
 
-    await departCoParent(db.database, {
-      familyId: household.familyId,
-      actorUserId: household.coParentUserId,
-      now: DEPARTED_AT,
-    });
+    await departCoParent(
+      db.database,
+      {
+        familyId: household.familyId,
+        actorUserId: household.coParentUserId,
+        now: DEPARTED_AT,
+      },
+      googlePorts(),
+    );
 
     const rows = await auditRows(household.familyId);
     expect(rows.map((r) => r.actionTaken).sort()).toEqual([
@@ -696,10 +883,16 @@ describe('departCoParent — every standing read into the household ends with th
       'co_parent_departed',
       'co_parent_integration_revoked',
       'co_parent_mcp_grant_revoked',
+      'integration_google_grant_revoked',
       'teen_content_access.revoked',
     ]);
+    // Google's answer is Hale's record, not the leaver's act.
     for (const row of rows) {
-      expect(row.actor).toBe(household.coParentUserId);
+      expect(row.actor).toBe(
+        row.actionTaken === 'integration_google_grant_revoked'
+          ? 'system'
+          : household.coParentUserId,
+      );
     }
   });
 
@@ -931,7 +1124,14 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
       (await auditRows(one.familyId)).filter((row) => row.actionTaken === 'co_parent_departed'),
     ).toEqual([
       expect.objectContaining({
-        after: { role: 'co_parent', threadRetained: 0, openQuestionsDeleted: 2 },
+        after: {
+          role: 'co_parent',
+          threadRetained: 0,
+          openQuestionsDeleted: 2,
+          freeBusyWithdrawn: 0,
+          groupNamesCleared: 0,
+          privateFactsDeleted: 0,
+        },
       }),
     ]);
   });
@@ -1069,6 +1269,7 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
         teenGrantsRevoked: 0,
         openQuestionsDeleted: 'not_migrated',
         membershipRemoved: true,
+        privateFactsDeleted: 0,
         consentWithdrawn: 0,
         threadRetained: 0,
         channelRecordRetained: 0,
@@ -1088,7 +1289,16 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
             ),
           ),
       ).toEqual([
-        { after: { role: 'co_parent', threadRetained: 0, openQuestionsDeleted: 'not_migrated' } },
+        {
+          after: {
+            role: 'co_parent',
+            threadRetained: 0,
+            openQuestionsDeleted: 'not_migrated',
+            freeBusyWithdrawn: 0,
+            groupNamesCleared: 0,
+            privateFactsDeleted: 0,
+          },
+        },
       ]);
       expect(warned.mock.calls).toEqual([
         [{ pendingAsk: 'not_migrated' }, 'co-parent departure: pending-ask table missing'],

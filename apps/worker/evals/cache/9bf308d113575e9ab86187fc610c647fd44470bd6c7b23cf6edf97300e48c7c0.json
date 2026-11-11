@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Priya asks for the live tally; intent ask_tally fits, and no RSVP or response is wrongly recorded. Headcount 1 is harmless here since no answer is being recorded."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text is in English, not French as facts.language requires. It also omits the swimming pickup, Jacqueline's name, and the Thursday 4 PM time, so mustSay items are missing."
+  }
+}

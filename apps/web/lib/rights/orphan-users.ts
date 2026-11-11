@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { POLICY_VERSION } from '../consent.js';
 
@@ -121,7 +122,7 @@ export const ORPHAN_USER_SWEEP_ENABLED_ENV = 'ORPHAN_USER_SWEEP_ENABLED';
  * and a truthiness check reads that as ON.
  */
 export function orphanUserSweepEnabled(): boolean {
-  return process.env[ORPHAN_USER_SWEEP_ENABLED_ENV] === 'true';
+  return isEnabled('orphan-user-sweep');
 }
 
 export interface OrphanedUser {
@@ -204,7 +205,10 @@ export async function selectOrphanedUsers(
     if (seated.has(row.userId)) continue;
     const held = candidates.get(row.userId);
     if (!held || held.familyId === null) {
-      candidates.set(row.userId, { familyId: row.familyId, liveChannel: held?.liveChannel ?? false });
+      candidates.set(row.userId, {
+        familyId: row.familyId,
+        liveChannel: held?.liveChannel ?? false,
+      });
     }
     if (row.revokedAt === null) {
       const entry = candidates.get(row.userId);
@@ -296,9 +300,7 @@ async function sweepOne(
     const revoked = await tx
       .update(schema.parentChannels)
       .set({ revokedAt: now, updatedAt: now })
-      .where(
-        and(eq(schema.parentChannels.userId, userId), isNull(schema.parentChannels.revokedAt)),
-      )
+      .where(and(eq(schema.parentChannels.userId, userId), isNull(schema.parentChannels.revokedAt)))
       .returning({ id: schema.parentChannels.id });
     result.channelsRevoked = revoked.length;
 

@@ -1,8 +1,10 @@
 import { type AgentClient, pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -33,7 +35,7 @@ export const HOLDING_LINE_ENABLED_ENV = 'HOLDING_LINE_ENABLED';
  * the literal 'true': a piped `vercel env add` stores 'true\n', which must stay off.
  */
 export function holdingLineEnabled(): boolean {
-  return process.env[HOLDING_LINE_ENABLED_ENV] === 'true';
+  return isEnabled('holding-line');
 }
 
 /** Two attempts. The line only matters while the answer is still coming; a third try
@@ -42,7 +44,6 @@ export const MAX_COMPOSE_ATTEMPTS = 2;
 
 const MAX_TOKENS = 96;
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
 /** A time nobody scheduled: nobody knows when the answer lands. */
 const PROMISED_TIME =
   /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
@@ -63,7 +64,7 @@ export type HoldingLineRefusal =
 export function refusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
   const found: HoldingLineRefusal[] = [];
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
   if (PROMISED_TIME.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');

@@ -31,7 +31,9 @@ function event(over: Partial<EventSnapshot> = {}): EventSnapshot {
 
 describe('reminderFireAt — the two offsets, family-local', () => {
   it('T-1h is exactly one hour before the start instant', () => {
-    expect(reminderFireAt(SUMMER_START, '-PT1H', TZ).toISOString()).toBe('2026-07-25T13:00:00.000Z');
+    expect(reminderFireAt(SUMMER_START, '-PT1H', TZ).toISOString()).toBe(
+      '2026-07-25T13:00:00.000Z',
+    );
   });
 
   it('T-24h is 18:00 local the day BEFORE the event day (summer EDT)', () => {
@@ -68,7 +70,7 @@ describe('offsetUrgency — T-1h is time-sensitive, T-24h is normal', () => {
   });
 });
 
-describe('classifyReminder — the don\'t-send matrix (the trust test)', () => {
+describe("classifyReminder — the don't-send matrix (the trust test)", () => {
   const DUE = new Date('2026-07-25T13:00:00Z'); // T-1h fire moment for SUMMER_START
 
   it('fires a due reminder for a live, not-yet-started event', () => {
@@ -94,7 +96,10 @@ describe('classifyReminder — the don\'t-send matrix (the trust test)', () => {
     const started = event({ startsAt: new Date('2026-07-25T13:00:00Z') });
     const r = reminder({ fireAt: new Date('2026-07-25T12:00:00Z') });
     const now = new Date('2026-07-25T13:00:00Z');
-    expect(classifyReminder(r, started, now, TZ)).toEqual({ action: 'suppress', reason: 'started' });
+    expect(classifyReminder(r, started, now, TZ)).toEqual({
+      action: 'suppress',
+      reason: 'started',
+    });
   });
 
   it('waits when the fire moment is still in the future', () => {
@@ -142,10 +147,14 @@ describe('expectedReminders — what a live event should have', () => {
 describe('batchReminders — same-evening T-24h merge into one message (rule #4)', () => {
   const eve = new Date('2026-07-24T22:00:00Z'); // 18:00 EDT on 07-24
   const firing = (over: Partial<FiringReminder>): FiringReminder => ({
-    eventRef: 'e1', parentUserId: 'p1', offset: '-P1D', fireAt: eve, ...over,
+    eventRef: 'e1',
+    parentUserId: 'p1',
+    offset: '-P1D',
+    fireAt: eve,
+    ...over,
   });
 
-  it('merges a parent\'s same-evening T-24h reminders into one batch', () => {
+  it("merges a parent's same-evening T-24h reminders into one batch", () => {
     const batches = batchReminders([firing({ eventRef: 'e1' }), firing({ eventRef: 'e2' })], TZ);
     expect(batches).toHaveLength(1);
     expect(batches[0]).toMatchObject({
@@ -158,7 +167,10 @@ describe('batchReminders — same-evening T-24h merge into one message (rule #4)
 
   it('never merges T-1h reminders — each fires on its own', () => {
     const t1h = (ref: string): FiringReminder => ({
-      eventRef: ref, parentUserId: 'p1', offset: '-PT1H', fireAt: new Date('2026-07-25T13:00:00Z'),
+      eventRef: ref,
+      parentUserId: 'p1',
+      offset: '-PT1H',
+      fireAt: new Date('2026-07-25T13:00:00Z'),
     });
     expect(batchReminders([t1h('e1'), t1h('e2')], TZ)).toHaveLength(2);
   });

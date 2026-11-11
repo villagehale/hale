@@ -1,47 +1,37 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { linqFromE164, linqGroupMembersEnabled, linqGroupWelcomeVoiceEnabled } from './config';
-import { type GroupOnboardingComposer, composeOnboardingLine } from './group-onboarding-voice';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { linqGroupMembersEnabled } from './config';
+import { recordSeatRefusal } from './family-audit';
+import { type GroupOnboardingComposer, sendGroupOnboardingLine } from './group-onboarding-voice';
+import { LinqSendError } from './transport';
 
 type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver';
 
 /**
  * VIL-398 — seats in a claimed household Linq group.
  *
- * Off unless `LINQ_GROUP_MEMBERS_ENABLED` is exactly `true`. A parent add, or
- * Hale when Linq names no actor, seats the phone and sends one welcome. Hale
- * adding someone still seats them. A named stranger does not. Removal unseats.
- * A phone already in another family is refused. There is no member cap.
+ * Off unless `LINQ_GROUP_MEMBERS_ENABLED` is exactly `true`. Only a named household
+ * parent's add seats, and only a person this family already holds: a verified channel
+ * and a family role here, written through a door that took a parent's recorded grant
+ * (VIL-582). That seat gets one welcome. An add with no named actor, by Hale, or by a
+ * stranger seats nobody; neither does an add of a phone the family does not hold.
+ * Removal unseats. A phone already in another family is refused. There is no member cap.
  */
 
 /**
- * One welcome when a newcomer is seated, and one hold when a stranger speaks.
- * The model writes both. Nothing else about the family goes into the thread
- * until a parent approves.
+ * One hold when a stranger speaks, written by the model. The newcomer's welcome is
+ * written by the group-onboarding voice from the T22 facts. Nothing else about the
+ * family goes into the thread until a parent approves.
  */
-export function groupMemberWelcome(
-  language: ReplyLanguage | null,
-  adder: string | null,
-): Promise<string | null> {
-  const name = adder?.trim() ?? '';
-  return speak({
-    purpose: 'group_member_welcome',
-    language,
-    facts: name ? { adder: name } : {},
-  });
-}
-
 export function groupStrangerHold(
   language: ReplyLanguage | null,
   parentA: string,
@@ -92,9 +82,9 @@ export function classifyParticipantAdd(input: {
 }): { kind: AddActorKind; seat: boolean; welcome: boolean } {
   const actorPhone = input.actorHandle ? normalizePhoneE164(input.actorHandle) : null;
   const unnamed = !actorPhone || actorPhone === input.participantPhone;
-  if (unnamed) return { kind: 'unnamed', seat: true, welcome: true };
+  if (unnamed) return { kind: 'unnamed', seat: false, welcome: false };
   if (input.actorIsHouseholdParent) return { kind: 'parent', seat: true, welcome: true };
-  if (input.isFromMe || input.actorIsHale) return { kind: 'hale', seat: true, welcome: false };
+  if (input.isFromMe || input.actorIsHale) return { kind: 'hale', seat: false, welcome: false };
   return { kind: 'other', seat: false, welcome: false };
 }
 
@@ -106,6 +96,7 @@ export type SeatParticipantResult =
   | { outcome: 'group_unclaimed' }
   | { outcome: 'group_member_refused'; reason: 'other_family' | 'actor' | 'other_chat' }
   | { outcome: 'group_member_already' }
+  | { outcome: 'seat_needs_parent_grant' }
   | { outcome: 'group_member_seated'; role: LinqGroupMemberRole; notice: SeatNotice };
 
 type SendGroup = (notice: { chatId: string; text: string }) => Promise<{
@@ -149,29 +140,13 @@ async function familyRoleOf(
   return rows.find((row) => row.familyId === familyId && row.userId === userId)?.role ?? null;
 }
 
-function groupRoleFor(familyRole: string | null, hasCoParent: boolean): LinqGroupMemberRole {
+function groupRoleFor(familyRole: string): LinqGroupMemberRole {
   if (familyRole === 'primary_parent') return 'parent';
   if (familyRole === 'co_parent') return 'co_parent';
   if (familyRole === 'nanny' || familyRole === 'babysitter' || familyRole === 'service') {
     return 'caregiver';
   }
-  if (familyRole === 'grandparent' || familyRole === 'extended') return 'other_family';
-  return hasCoParent ? 'other_family' : 'co_parent';
-}
-
-function familyRoleForSeat(role: LinqGroupMemberRole): 'co_parent' | 'extended' | 'service' | null {
-  if (role === 'co_parent') return 'co_parent';
-  if (role === 'other_family') return 'extended';
-  if (role === 'caregiver') return 'service';
-  return null;
-}
-
-async function familyHasCoParent(database: Database, familyId: string): Promise<boolean> {
-  const rows = await database
-    .select({ role: schema.familyMembers.role, familyId: schema.familyMembers.familyId })
-    .from(schema.familyMembers)
-    .where(eq(schema.familyMembers.familyId, familyId));
-  return rows.some((row) => row.familyId === familyId && row.role === 'co_parent');
+  return 'other_family';
 }
 
 async function liveSeats(database: Database) {
@@ -183,6 +158,7 @@ async function liveSeats(database: Database) {
       userId: schema.linqGroupMembers.userId,
       phoneE164Hash: schema.linqGroupMembers.phoneE164Hash,
       role: schema.linqGroupMembers.role,
+      addedByUserId: schema.linqGroupMembers.addedByUserId,
       removedAt: schema.linqGroupMembers.removedAt,
       welcomedAt: schema.linqGroupMembers.welcomedAt,
     })
@@ -190,7 +166,7 @@ async function liveSeats(database: Database) {
 }
 
 function haleLine(phone: string): boolean {
-  const from = linqFromE164();
+  const from = outboundLineFrom();
   if (!from) return false;
   return normalizePhoneE164(from) === phone;
 }
@@ -213,104 +189,7 @@ async function actorIsHouseholdParent(
   if (!existing || existing.familyId !== familyId) return { parent: false, userId: null };
   const role = await familyRoleOf(database, familyId, existing.userId);
   if (role && isParentRole(role)) return { parent: true, userId: existing.userId };
-  const hash = phoneBlindIndex(phone);
-  const seats = await liveSeats(database);
-  const seat = seats.find(
-    (row) =>
-      row.familyId === familyId &&
-      row.phoneE164Hash === hash &&
-      row.removedAt == null &&
-      (row.role === 'parent' || row.role === 'co_parent'),
-  );
-  return seat ? { parent: true, userId: seat.userId } : { parent: false, userId: null };
-}
-
-async function provisionMember(
-  database: Database,
-  input: {
-    familyId: string;
-    phone: string;
-    role: LinqGroupMemberRole;
-    invitedByUserId: string | null;
-    chatId: string;
-    now: Date;
-  },
-): Promise<string> {
-  const phoneHash = phoneBlindIndex(input.phone);
-  const familyRole = familyRoleForSeat(input.role);
-  return database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
-    await tx
-      .insert(schema.users)
-      .values({
-        externalAuthId: `sms:${phoneHash}`,
-        email: null,
-        name: null,
-        timezone: await householdTimezone(tx, input.familyId),
-      })
-      .onConflictDoNothing({ target: schema.users.externalAuthId });
-    const [user] = await tx
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.externalAuthId, `sms:${phoneHash}`))
-      .limit(1);
-    if (!user) throw new Error('linq group member: users insert returned no row');
-
-    if (familyRole) {
-      await tx
-        .insert(schema.familyMembers)
-        .values({
-          familyId: input.familyId,
-          userId: user.id,
-          role: familyRole,
-          invitedByUserId: input.invitedByUserId,
-        })
-        .onConflictDoNothing();
-    }
-
-    if (input.role === 'co_parent') {
-      await tx
-        .insert(schema.loopPrefs)
-        .values({ userId: user.id, loopChannel: 'sms' })
-        .onConflictDoNothing({ target: schema.loopPrefs.userId });
-      await tx.insert(schema.linqGroupOnboarding).values({
-        familyId: input.familyId,
-        userId: user.id,
-        providerChatId: input.chatId,
-        step: 'awaiting_name',
-        createdAt: input.now,
-        updatedAt: input.now,
-      });
-    }
-
-    const [consent] = await tx
-      .insert(schema.consentRecords)
-      .values({
-        userId: user.id,
-        familyId: input.familyId,
-        consentType: 'sms_service_messages',
-        granted: true,
-        consentScope: 'linq_group_member',
-        policyVersion: POLICY_VERSION,
-        evidence: {
-          interpretation: 'a household parent added this number to the family group',
-          channel: 'imessage',
-        },
-      })
-      .returning({ id: schema.consentRecords.id });
-    if (!consent) throw new Error('linq group member: consent insert returned no row');
-
-    await tx.insert(schema.parentChannels).values({
-      userId: user.id,
-      familyId: input.familyId,
-      kind: 'sms',
-      phoneE164Encrypted: encryptString(input.phone),
-      phoneE164Hash: phoneHash,
-      verifiedAt: input.now,
-      consentRecordId: consent.id,
-    });
-    return user.id;
-  });
+  return { parent: false, userId: null };
 }
 
 async function sendOnce(
@@ -370,16 +249,26 @@ async function sendOnce(
     const code = err instanceof LinqSendError ? err.code : 'unknown';
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set({ status: 'failed', errorCode: code, dedupeKey: null })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.warn({ familyId: input.familyId, code }, 'linq group member: the line did not land');
     return 'not_sent';
   }
 }
 
+function notSeated<T extends Exclude<SeatParticipantResult, { outcome: 'group_member_seated' }>>(
+  result: T,
+): T {
+  console.info(
+    { outcome: result.outcome, reason: 'reason' in result ? result.reason : undefined },
+    'linq group member: not seated',
+  );
+  return result;
+}
+
 /**
- * Seat the person Linq added. Hale (`isFromMe`, or no named actor) seats too.
- * A household parent, or Hale when Linq names nobody, gets one welcome.
+ * Seat the person a named household parent added, when this family already holds them.
+ * Every other add is a named outcome with its audit row and no seat.
  */
 export async function seatParticipantAdded(
   database: Database,
@@ -394,11 +283,11 @@ export async function seatParticipantAdded(
     voice?: GroupOnboardingComposer;
   },
 ): Promise<SeatParticipantResult> {
-  if (!linqGroupMembersEnabled()) return { outcome: 'flag_off' };
+  if (!linqGroupMembersEnabled()) return notSeated({ outcome: 'flag_off' });
   const phone = seatablePhone(input.participantHandle);
-  if (!phone) return { outcome: 'ignored' };
+  if (!phone) return notSeated({ outcome: 'ignored' });
   const familyId = await familyIdForChat(database, input.chatId);
-  if (!familyId) return { outcome: 'group_unclaimed' };
+  if (!familyId) return notSeated({ outcome: 'group_unclaimed' });
 
   const actor = await actorIsHouseholdParent(database, familyId, input.actorHandle);
   const actorPhone = input.actorHandle ? normalizePhoneE164(input.actorHandle) : null;
@@ -410,62 +299,59 @@ export async function seatParticipantAdded(
     actorIsHale: actorPhone ? haleLine(actorPhone) : false,
   });
   if (!decision.seat) {
-    await database.insert(schema.auditLog).values({
+    await recordSeatRefusal(database, {
       familyId,
       actor: 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_members',
       targetId: familyId,
-      after: { reason: 'actor' },
+      reason: 'actor',
     });
-    return { outcome: 'group_member_refused', reason: 'actor' };
+    return notSeated({ outcome: 'group_member_refused', reason: 'actor' });
   }
 
   const existing = await resolveVerifiedChannelByPhone(database, phone);
   if (existing && existing.familyId !== familyId) {
-    await database.insert(schema.auditLog).values({
+    await recordSeatRefusal(database, {
       familyId,
       actor: actor.userId ?? 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_members',
       targetId: familyId,
-      after: { reason: 'other_family' },
+      reason: 'other_family',
     });
-    return { outcome: 'group_member_refused', reason: 'other_family' };
+    return notSeated({ outcome: 'group_member_refused', reason: 'other_family' });
   }
 
   const hash = phoneBlindIndex(phone);
   const seats = await liveSeats(database);
   const live = seats.find((row) => row.phoneE164Hash === hash && row.removedAt == null);
   if (live && (live.familyId !== familyId || live.chatId !== input.chatId)) {
-    await database.insert(schema.auditLog).values({
+    const reason = live.familyId !== familyId ? 'other_family' : 'other_chat';
+    // Targets this family, not the seat row it collided with, which may be another
+    // household's.
+    await recordSeatRefusal(database, {
       familyId,
       actor: actor.userId ?? 'system',
-      actionTaken: 'linq_group_member_refused',
       targetTable: 'linq_group_members',
-      targetId: live.id,
-      after: { reason: live.familyId !== familyId ? 'other_family' : 'other_chat' },
+      targetId: familyId,
+      reason,
     });
-    return {
-      outcome: 'group_member_refused',
-      reason: live.familyId !== familyId ? 'other_family' : 'other_chat',
-    };
+    return notSeated({ outcome: 'group_member_refused', reason });
   }
-  if (live) return { outcome: 'group_member_already' };
+  if (live) return notSeated({ outcome: 'group_member_already' });
 
   const familyRole = existing ? await familyRoleOf(database, familyId, existing.userId) : null;
-  const hasCoParent = await familyHasCoParent(database, familyId);
-  const role = groupRoleFor(familyRole, hasCoParent);
-  const userId =
-    existing?.userId ??
-    (await provisionMember(database, {
+  if (!existing || !familyRole) {
+    await recordSeatRefusal(database, {
       familyId,
-      phone,
-      role,
-      invitedByUserId: actor.userId,
-      chatId: input.chatId,
-      now: input.now,
-    }));
+      actor: actor.userId ?? 'system',
+      targetTable: 'linq_group_members',
+      targetId: familyId,
+      reason: 'seat_needs_parent_grant',
+    });
+    return notSeated({ outcome: 'seat_needs_parent_grant' });
+  }
+  const role = groupRoleFor(familyRole);
+  const userId = existing.userId;
 
   const [inserted] = await database
     .insert(schema.linqGroupMembers)
@@ -500,50 +386,113 @@ export async function seatParticipantAdded(
   if (!decision.welcome || alreadyParent || priorWelcome) {
     return { outcome: 'group_member_seated', role, notice: 'skipped' };
   }
-
-  const primary = await primaryParentId(database, familyId);
-  if (!primary) {
-    console.warn(
-      { familyId, outcome: 'no_primary_parent' },
-      'linq group member: welcome was not ledgered',
-    );
-    return { outcome: 'group_member_seated', role, notice: 'no_primary_parent' };
-  }
-  const language = await familyReplyLanguage(database, familyId);
-  const adder = decision.kind === 'parent' ? await userFirstName(database, actor.userId) : null;
-  let text: string | null;
-  if (!linqGroupWelcomeVoiceEnabled()) {
-    text = await groupMemberWelcome(language, adder);
-  } else {
-    const written = await composeOnboardingLine(database, {
-      familyId,
-      request: { kind: 'member_welcome', adderName: adder },
-      language: language ?? 'en',
-      templateKey: WELCOME_TEMPLATE,
-      voice: input.voice,
-    });
-    // A welcome the model could not write is not sent; the seat stands and the
-    // next add or turn can try again. No fixed fallback line.
-    if (!('body' in written)) return { outcome: 'group_member_seated', role, notice: 'not_sent' };
-    text = written.body;
-  }
-  const notice = await sendOnce(database, {
+  const notice = await welcomeSeat(database, {
+    seatId: inserted.id,
     familyId,
-    parentUserId: primary,
     chatId: input.chatId,
-    text,
-    templateKey: WELCOME_TEMPLATE,
-    dedupeKey: `${WELCOME_TEMPLATE}:${input.chatId}:${hash}`,
+    phoneE164Hash: hash,
+    adderUserId: actor.userId,
     now: input.now,
     send: input.send,
+    voice: input.voice,
   });
-  if (notice === 'sent' || notice === 'already_sent') {
-    await database
-      .update(schema.linqGroupMembers)
-      .set({ welcomedAt: input.now, updatedAt: input.now })
-      .where(eq(schema.linqGroupMembers.id, inserted.id));
-  }
   return { outcome: 'group_member_seated', role, notice };
+}
+
+/**
+ * Say the seat's one welcome, written by the voice from the T22 facts. A welcome the
+ * model could not write, or a send that did not land, leaves `welcomed_at` null and
+ * spends no dedupe key, so {@link retryMemberWelcome} can try again.
+ */
+async function welcomeSeat(
+  database: Database,
+  input: {
+    seatId: string;
+    familyId: string;
+    chatId: string;
+    phoneE164Hash: string;
+    adderUserId: string | null;
+    now: Date;
+    send?: SendGroup;
+    voice?: GroupOnboardingComposer;
+  },
+): Promise<SeatNotice> {
+  const primary = await primaryParentId(database, input.familyId);
+  if (!primary) {
+    console.warn(
+      { familyId: input.familyId, outcome: 'no_primary_parent' },
+      'linq group member: welcome was not ledgered',
+    );
+    return 'no_primary_parent';
+  }
+  const language = await familyReplyLanguage(database, input.familyId);
+  const adder = await userFirstName(database, input.adderUserId);
+  const line = await sendGroupOnboardingLine(database, {
+    familyId: input.familyId,
+    ledgerUserId: primary,
+    chatId: input.chatId,
+    request: { kind: 'member_welcome', adderName: adder },
+    language: language ?? 'en',
+    templateKey: WELCOME_TEMPLATE,
+    dedupeKey: `${WELCOME_TEMPLATE}:${input.chatId}:${input.phoneE164Hash}`,
+    now: input.now,
+    voice: input.voice,
+    send: input.send,
+  });
+  if (line.outcome !== 'sent' && line.outcome !== 'already_sent') return 'not_sent';
+  await database
+    .update(schema.linqGroupMembers)
+    .set({ welcomedAt: input.now, updatedAt: input.now })
+    .where(eq(schema.linqGroupMembers.id, input.seatId));
+  return line.outcome;
+}
+
+export type MemberWelcomeRetry =
+  | { outcome: 'flag_off' }
+  | { outcome: 'not_owed' }
+  | { outcome: 'welcome_retried'; notice: SeatNotice };
+
+/**
+ * A member a parent seated whose welcome never landed speaks in the group: try the
+ * welcome again. Parent seats, roster seats (no adder) and welcomed seats owe none.
+ */
+export async function retryMemberWelcome(
+  database: Database,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    now: Date;
+    send?: SendGroup;
+    voice?: GroupOnboardingComposer;
+  },
+): Promise<MemberWelcomeRetry> {
+  if (!linqGroupMembersEnabled()) return { outcome: 'flag_off' };
+  const phone = seatablePhone(input.senderHandle);
+  if (!phone) return { outcome: 'not_owed' };
+  const hash = phoneBlindIndex(phone);
+  const seats = (await liveSeats(database)).filter(
+    (row) => row.chatId === input.chatId && row.phoneE164Hash === hash,
+  );
+  const live = seats.find((row) => row.removedAt == null);
+  const owed =
+    live &&
+    live.addedByUserId != null &&
+    live.role !== 'parent' &&
+    live.role !== 'co_parent' &&
+    seats.every((row) => row.welcomedAt == null);
+  if (!owed) return { outcome: 'not_owed' };
+  const notice = await welcomeSeat(database, {
+    seatId: live.id,
+    familyId: live.familyId,
+    chatId: input.chatId,
+    phoneE164Hash: hash,
+    adderUserId: live.addedByUserId,
+    now: input.now,
+    send: input.send,
+    voice: input.voice,
+  });
+  console.info({ outcome: 'welcome_retried', notice }, 'linq group member: welcome retried');
+  return { outcome: 'welcome_retried', notice };
 }
 
 /** Unseat the person Linq removed, including when Hale removed them. */

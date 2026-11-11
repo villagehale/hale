@@ -110,8 +110,8 @@ export type CalendarInviteOutcome =
   | 'send_failed'
   /** The placement row could not be read back (gone, or another family's). */
   | 'event_not_found'
-  /** The model could not write the cancellation text, so nothing was sent. There is no
-   * fixed fallback line. */
+  /** The model could not write the text (the tap-to-add confirmation, or the
+   * cancellation), so nothing was sent. There is no fixed fallback line. */
   | 'compose_deferred';
 
 export interface CalendarInviteParentOutcome {
@@ -132,7 +132,18 @@ export type CalendarInviteReport =
    * its invite (audit P1-4) — sending again here would double the parent's text. A
    * named skip (rule #11), recorded in the execution detail like every other leg. */
   | { status: 'skipped_already_written' }
-  | { status: 'reported'; parents: CalendarInviteParentOutcome[] };
+  | {
+      status: 'reported';
+      parents: CalendarInviteParentOutcome[];
+      /** VIL-443: a plan the family group made whose group could not be told (its
+       * audience refused, the send was held for anything but the night, or it did not
+       * land), so each parent got their own. Names why. */
+      groupNotTold?: string;
+    }
+  /** VIL-443: a plan the family group made. Its one add-to-calendar link goes to that
+   * group instead of each parent's 1:1 thread; `outcome` names how that ended, and
+   * `held:quiet_hours` is a text waiting for the group's 08:00 re-drive. */
+  | { status: 'group_reported'; outcome: string };
 
 export interface CalendarInviteSender {
   send(request: CalendarInviteRequest): Promise<CalendarInviteReport>;
@@ -478,13 +489,21 @@ async function calendarPlacement(
   const endsAt = optionalPayloadInstant(payload.endsAt, 'endsAt', actionType);
 
   if (actionType === 'calendar_move') {
-    // Only the new time. The row keeps its own title and place — see CalendarMoveInput.
+    // Time always. Place only when the schedule-change path set updateLocation
+    // (VIL-662). Coach moves omit that flag, so a projected/redacted location
+    // on the payload cannot overwrite the row (VIL-270).
     const result = await deps.moveCalendarEvent({
       familyId: input.familyId,
       actionId: input.approved.id,
       reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
       startsAt,
       endsAt,
+      ...(payload.updateLocation === true
+        ? {
+            updateLocation: true as const,
+            location: typeof payload.location === 'string' ? payload.location : null,
+          }
+        : {}),
     });
     const google = await syncGoogle(input, deps, result, 'update');
     const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'REQUEST');

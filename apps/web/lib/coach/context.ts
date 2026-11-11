@@ -6,9 +6,22 @@ import {
   ageInMonths,
   companionForChild,
   deriveStage,
+  familyCountryOf,
 } from '@hale/types';
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import {
+  type FactReader,
+  type RecordCorrections,
+  correctedAgeMonths,
+  episodesForContext,
+  factsForContext,
+  recordCorrections,
+} from '@hale/worker/memory-context';
+import { and, eq } from 'drizzle-orm';
+import type { HouseholdGroupFact } from '../channel/intake/household-group';
+import { readPlaceRow } from '../channel/off-domain/place';
+import { townFromStoredArea } from '../channel/town-from-area';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
+import { labelDay, readerTimeZone } from '@hale/worker/fact-sources';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
@@ -25,11 +38,9 @@ import type { TranscriptMessage } from './conversation';
  * model that asks for a teen's profile is refused there too.
  *
  * The memory slice (currently-valid facts + recent episodes) gives the agent its
- * longitudinal recall; the running transcript gives it the multi-turn thread. A
- * recent episode OR currently-valid fact attributed to a 13+ child is redacted at
- * the source too — neither table carries a teen flag, so the summary / factKey /
- * factValue is withheld and child scope dropped before the slice reaches the model
- * (rule #1).
+ * longitudinal recall; the running transcript gives it the multi-turn thread. Both
+ * come from the shared read (`@hale/worker/memory-context`), which leaves out every
+ * row about a 13+ child before the slice reaches the model (rule #1).
  */
 
 const RECENT_EPISODE_LIMIT = 10;
@@ -90,6 +101,12 @@ export interface MemoryFactContext {
   factKey: string;
   factValue: unknown;
   confidence: number;
+  /**
+   * VIL-429 · where Hale saw a fact it took from Gmail or Calendar: the email's sender
+   * and the day it arrived, or the event's title and its day (`YYYY-MM-DD`). Present
+   * only on such a fact, so every other context keeps its bytes.
+   */
+  seenIn?: { email: { from: string; on: string } } | { calendar: { title: string; on: string } };
 }
 
 export interface MemoryEpisodeContext {
@@ -97,63 +114,6 @@ export interface MemoryEpisodeContext {
   occurredAt: string;
   episodeType: string;
   summary: string;
-}
-
-/** Marker swapped in for a 13+ child's episode summary before the agent sees it —
- * only the coarse episodeType survives, the raw summary is withheld (rule #1). */
-const TEEN_EPISODE_PLACEHOLDER = '[teen content — summary withheld from agent (rule #1)]';
-
-/**
- * Redact any recent episode attributed to a 13+ child before it reaches the agent
- * (rule #1): the episode's child scope is dropped to null and its raw summary is
- * replaced with a marker, so no teen-specific detail can be surfaced. Non-teen and
- * family-wide (childId null) episodes pass through unchanged. The teen set is
- * derived LIVE from each child's DOB (deriveStage) — the episodes table carries no
- * teen flag. Pure, no I/O — mirrors the inferencer's snapshot redaction.
- */
-function redactEpisodesForTeens(
-  episodes: readonly MemoryEpisodeContext[],
-  stageByChild: ReadonlyMap<string, FamilyStage>,
-): MemoryEpisodeContext[] {
-  return episodes.map((e) =>
-    e.childId !== null && stageByChild.get(e.childId) === 'teenager'
-      ? {
-          childId: null,
-          occurredAt: e.occurredAt,
-          episodeType: e.episodeType,
-          summary: TEEN_EPISODE_PLACEHOLDER,
-        }
-      : e,
-  );
-}
-
-/** Marker swapped in for a 13+ child's fact key and value before the agent sees it —
- * only the coarse factType survives, the raw key/value is withheld (rule #1). */
-const TEEN_FACT_PLACEHOLDER = '[teen content — fact withheld from agent (rule #1)]';
-
-/**
- * Redact any currently-valid fact attributed to a 13+ child before it reaches the
- * agent (rule #1): the fact's child scope is dropped to null and BOTH its free-text
- * factKey and raw jsonb factValue are replaced with a marker, so no teen-specific
- * detail can be surfaced. Non-teen and family-wide (childId null) facts pass through
- * unchanged. The teen set is derived LIVE from each child's DOB (deriveStage) — the
- * facts table carries no teen flag. Pure, no I/O — mirrors redactEpisodesForTeens.
- */
-function redactFactsForTeens(
-  facts: readonly MemoryFactContext[],
-  stageByChild: ReadonlyMap<string, FamilyStage>,
-): MemoryFactContext[] {
-  return facts.map((f) =>
-    f.childId !== null && stageByChild.get(f.childId) === 'teenager'
-      ? {
-          childId: null,
-          factType: f.factType,
-          factKey: TEEN_FACT_PLACEHOLDER,
-          factValue: TEEN_FACT_PLACEHOLDER,
-          confidence: f.confidence,
-        }
-      : f,
-  );
 }
 
 /** Collapse whitespace and clip to `max` characters, marking the cut. */
@@ -201,7 +161,8 @@ function compactTranscript(transcript: readonly TranscriptMessage[]): {
   for (let i = older.length - 1; i >= 0; i -= 1) {
     const turn = older[i];
     if (!turn) continue;
-    const speaker = turn.role === 'assistant' ? 'Hale' : 'Parent';
+    const speaker =
+      turn.role === 'assistant' ? 'Hale' : turn.role === 'user' ? 'Parent' : 'External';
     const excerpt = `${speaker}: "${clip(turn.content, COMPACTED_EXCERPT_CHARS)}"`;
     if (excerpt.length + EXCERPT_SEPARATOR.length > budget) break;
     budget -= excerpt.length + EXCERPT_SEPARATOR.length;
@@ -267,6 +228,12 @@ export interface AgentContext {
   intent: string | null;
   /** The Hale note this reply is grounding on, or null for the general thread. */
   sourceNote: SourceNoteContext | null;
+  /**
+   * VIL-566 — they said yes to a group with the other parent: `claimed` once Hale is in
+   * it, `pending` until then. Absent when they never said yes, so that turn's prompt
+   * bytes are unchanged. Set by the channel coach's production `loadContext`.
+   */
+  householdGroup?: HouseholdGroupFact;
 }
 
 function toChildContext(
@@ -295,6 +262,16 @@ export interface LoadAgentContextInput {
   transcript: TranscriptMessage[];
   /** The Hale note this reply grounds on (redacted app view), or null. */
   sourceNote: SourceNoteContext | null;
+  /**
+   * The parent this context is read for. A fact from a mailbox says where it came from
+   * only to the adult whose mailbox it was; absent, no mailbox is theirs.
+   */
+  readerUserId?: string;
+  /**
+   * The turn is in the family group (VIL-599). Every adult hears it, so it carries only
+   * what every adult may hear: nothing one adult said in their own 1:1.
+   */
+  inGroup?: boolean;
 }
 
 /**
@@ -306,6 +283,7 @@ export interface LoadAgentContextInput {
 function toFocusedChild(
   focusedChildId: string,
   childRows: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>,
+  storedCountry: string | null,
   now: Date,
 ): FocusedChildContext | null {
   const row = childRows.find((c) => c.id === focusedChildId);
@@ -320,7 +298,10 @@ function toFocusedChild(
     name: row.name,
     ageMonths: ageInMonths(row.dateOfBirth, now),
     teenRedacted: false,
-    companion: companionForChild({ dateOfBirth: row.dateOfBirth, name: row.name }, now),
+    companion: companionForChild(
+      { dateOfBirth: row.dateOfBirth, name: row.name, country: familyCountryOf(storedCountry) },
+      now,
+    ),
   };
 }
 
@@ -334,20 +315,19 @@ export async function loadAgentContext(
   database: Database,
   now: Date = new Date(),
 ): Promise<AgentContext> {
-  // Four independent reads, all keyed on familyId alone — issued together rather
-  // than as four sequential round trips. Only the fact select genuinely depends on
+  // Five independent reads, all keyed on familyId alone — issued together rather
+  // than as sequential round trips. Only the fact select genuinely depends on
   // an earlier one (it narrows to the RESOLVED focused child), so it stays behind.
-  const [familyRows, parentRows, childRows, episodeRows] = await Promise.all([
+  const [familyRows, place, corrections, parentRows, childRows, episodeRows] = await Promise.all([
     database
-      .select({
-        planTier: schema.families.planTier,
-        city: schema.families.city,
-        province: schema.families.province,
-        country: schema.families.country,
-      })
+      .select({ planTier: schema.families.planTier, country: schema.families.country })
       .from(schema.families)
       .where(eq(schema.families.id, input.familyId))
       .limit(1),
+    // The row the find searches from (activity/place.ts), so the coach names the town
+    // the find looked in: the active saved area, else the home row.
+    readPlaceRow(database, input.familyId, now),
+    recordCorrections(database, input.familyId, now),
     database
       .select({ name: schema.users.name })
       .from(schema.familyMembers)
@@ -367,17 +347,7 @@ export async function loadAgentContext(
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, input.familyId)),
-    database
-      .select({
-        childId: schema.familyMemoryEpisodes.childId,
-        occurredAt: schema.familyMemoryEpisodes.occurredAt,
-        episodeType: schema.familyMemoryEpisodes.episodeType,
-        summary: schema.familyMemoryEpisodes.summary,
-      })
-      .from(schema.familyMemoryEpisodes)
-      .where(eq(schema.familyMemoryEpisodes.familyId, input.familyId))
-      .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
-      .limit(RECENT_EPISODE_LIMIT),
+    episodesForContext(database, input.familyId, { now, limit: RECENT_EPISODE_LIMIT }),
   ]);
 
   const family = familyRows[0];
@@ -385,90 +355,102 @@ export async function loadAgentContext(
     throw new Error(`loadAgentContext: no family row for ${input.familyId}`);
   }
 
-  const children = childRows.map((row) => toChildContext(row, now));
+  const children = childRows.map((row) =>
+    withCorrectedAge(toChildContext(row, now), corrections, now),
+  );
   const presentStages = new Set(children.map((c) => c.stage));
   const stages = FAMILY_STAGES.filter((s) => presentStages.has(s));
 
-  const focusedChild = input.focusedChildId
-    ? toFocusedChild(input.focusedChildId, childRows, now)
+  const focused = input.focusedChildId
+    ? toFocusedChild(input.focusedChildId, childRows, family.country, now)
     : null;
+  const focusedChild = focused ? withCorrectedAge(focused, corrections, now) : null;
 
   const thread = compactTranscript(input.transcript);
 
-  const factRows = await database
-    .select({
-      childId: schema.familyMemoryFacts.childId,
-      factType: schema.familyMemoryFacts.factType,
-      factKey: schema.familyMemoryFacts.factKey,
-      factValue: schema.familyMemoryFacts.factValue,
-      confidence: schema.familyMemoryFacts.confidence,
-    })
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, input.familyId),
-        isNull(schema.familyMemoryFacts.validUntil),
-        // Narrow to the focused child, family-wide facts included: "where do we
-        // live" belongs in a conversation about Ella. Keyed on the RESOLVED child
-        // (never the raw input) so an id that names nobody in this family falls
-        // back to the whole family rather than filtering everything away.
-        focusedChild
-          ? or(
-              isNull(schema.familyMemoryFacts.childId),
-              eq(schema.familyMemoryFacts.childId, focusedChild.id),
-            )
-          : undefined,
-      ),
-    )
-    .orderBy(
-      desc(schema.familyMemoryFacts.confidence),
-      desc(schema.familyMemoryFacts.validFrom),
-      schema.familyMemoryFacts.id,
-    )
-    .limit(RELEVANT_FACT_LIMIT);
-
-  const stageByChild = new Map<string, FamilyStage>(
-    childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
-  );
+  // Narrowed to the focused child, family-wide facts included: "where do we live"
+  // belongs in a conversation about Ella. Keyed on the RESOLVED child (never the raw
+  // input) so an id that names nobody in this family falls back to the whole family.
+  const reader: FactReader =
+    input.readerUserId && input.inGroup !== true ? { adult: input.readerUserId } : 'every_adult';
+  const [factRows, readerZone] = await Promise.all([
+    factsForContext(database, input.familyId, {
+      now,
+      reader,
+      limit: RELEVANT_FACT_LIMIT,
+      scope: focusedChild ? { focusedChildId: focusedChild.id } : undefined,
+    }),
+    readerTimeZone(database, input.readerUserId),
+  ]);
 
   const memoryBrief = briefWithActiveWorkstreams(
-    await assembleMemoryBrief(database, input.familyId, now),
+    await assembleMemoryBrief(database, input.familyId, reader, now),
     await activeWorkstreamBlock(database, input.familyId, now),
   );
 
   return {
     parentName: parentRows[0]?.name ?? null,
-    location: { city: family.city, province: family.province, country: family.country },
+    // The postal code is the current home, read in the find's order (postal code, then
+    // coarse area). A stored city loses when the code names one town, even if the city
+    // column still names an older one.
+    location: {
+      city: townFromStoredArea(place.postalCode || place.areaCoarse) ?? place.city,
+      province: place.province,
+      country: place.country,
+    },
     planTier: family.planTier,
     children,
     focusedChild,
     stages,
-    memoryFacts: redactFactsForTeens(
-      factRows.map((r) => ({
+    memoryFacts: factRows.flatMap((r): MemoryFactContext[] => {
+      const fact = {
         childId: r.childId,
         factType: r.factType,
         factKey: r.factKey,
         factValue: r.factValue,
         confidence: r.confidence,
-      })),
-      stageByChild,
-    ),
+      };
+      // The shared read already left out a connector fact this reader may not hear the
+      // source of, so every one that is here says where it came from.
+      if (!r.seenIn) return [fact];
+      const on = labelDay(r.seenIn.on, readerZone);
+      return [
+        {
+          ...fact,
+          seenIn:
+            r.seenIn.kind === 'email'
+              ? { email: { from: r.seenIn.from, on } }
+              : { calendar: { title: r.seenIn.title, on } },
+        },
+      ];
+    }),
     memoryBrief,
-    recentEpisodes: redactEpisodesForTeens(
-      episodeRows.map((r) => ({
-        childId: r.childId,
-        occurredAt: r.occurredAt.toISOString(),
-        episodeType: r.episodeType,
-        summary: r.summary,
-      })),
-      stageByChild,
-    ),
+    recentEpisodes: episodeRows.map((r) => ({
+      childId: r.childId,
+      occurredAt: r.occurredAt.toISOString(),
+      episodeType: r.episodeType,
+      summary: r.summary,
+    })),
     transcript: thread.transcript,
     transcriptSummary: thread.transcriptSummary,
     question: input.question,
     intent: input.intent,
     sourceNote: input.sourceNote,
   };
+}
+
+/**
+ * The parent's age correction, said after the date of birth was last written, stands in
+ * for the age the date of birth gives (VIL-519). In words, the age is left unknown and the
+ * correction rides in `memoryFacts`. The stage stays the date of birth's: the teen gate
+ * reads nothing else (rule #1).
+ */
+function withCorrectedAge<
+  T extends { id: string; ageMonths: number | null; teenRedacted?: boolean },
+>(child: T, corrections: RecordCorrections, now: Date): T {
+  const fact = corrections.age.get(child.id);
+  if (!fact || child.teenRedacted) return child;
+  return { ...child, ageMonths: correctedAgeMonths(fact, now) };
 }
 
 /**
@@ -495,8 +477,6 @@ function briefWithActiveWorkstreams(brief: MemoryBrief, block: string | null): M
 export const _internal = {
   toChildContext,
   toFocusedChild,
-  redactEpisodesForTeens,
-  redactFactsForTeens,
   compactTranscript,
   TRANSCRIPT_VERBATIM_TURNS,
 };

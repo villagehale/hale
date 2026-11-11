@@ -4,8 +4,13 @@ import { duePhrase, planChildItems } from './week.js';
 
 const NOW = new Date('2026-06-17T12:00:00Z');
 
-function child(id: string, dateOfBirth: string, name: string | null) {
-  return { id, ...companionForChild({ dateOfBirth, name }, NOW) };
+function child(
+  id: string,
+  dateOfBirth: string,
+  name: string | null,
+  country: 'CA' | 'US' | null = 'CA',
+) {
+  return { id, ...companionForChild({ dateOfBirth, name, country }, NOW) };
 }
 
 describe('duePhrase', () => {
@@ -37,6 +42,14 @@ describe('planChildItems', () => {
     expect(health?.what).toMatch(/4-month/);
     // 4mo well-baby + immunization both at 4mo — only the soonest single item.
     expect(items.filter((i) => i.key === 'c1-health')).toHaveLength(1);
+  });
+
+  it('offers a US family no health item, and keeps the milestone (D6)', () => {
+    // A 13-month-old is inside the Canadian 15-month set's lead and the 12–18mo windows.
+    const canadian = planChildItems([child('c1', '2025-05-15', 'Ada', 'CA')]);
+    expect(canadian.map((i) => i.key)).toEqual(['c1-health', 'c1-milestone']);
+    const american = planChildItems([child('c1', '2025-05-15', 'Ada', 'US')]);
+    expect(american.map((i) => i.key)).toEqual(['c1-milestone']);
   });
 
   it('maps well_child_visit to the "checkup" label, not the raw enum', () => {

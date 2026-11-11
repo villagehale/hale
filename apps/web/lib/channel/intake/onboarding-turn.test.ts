@@ -10,6 +10,8 @@ import {
   coldStartIsStale,
   coldStartQuestionIsStale,
   countRejectedScheduleAdds,
+  dropTakeBackName,
+  foldMessage,
   kidsAreNamed,
   mergeCaptures,
   mergeChildFacts,
@@ -49,6 +51,53 @@ describe('onboarding capture', () => {
     expect(storedFromCapture(prior, clean).place?.postalCode).toBe('M5V 2T6');
     const sentence = acceptOnboardingCapture({ postalCode: 'we are in M5V 2T6' });
     expect(storedFromCapture(prior, sentence).place).toBeNull();
+  });
+
+  it('drops a parentName that is the whole take-back message', () => {
+    const open = dropTakeBackName(
+      'pas maintenant',
+      acceptOnboardingCapture({ parentName: 'pas maintenant', nameDeclined: true }),
+    );
+    expect(open.parentName).toBeNull();
+    expect(open.nameDeclined).toBe(true);
+    const instead = dropTakeBackName(
+      'Robin',
+      acceptOnboardingCapture({ parentName: 'Robin', nameConfirmed: false }),
+    );
+    expect(instead.parentName).toBe('Robin');
+    expect(instead.nameConfirmed).toBe(false);
+    const retracted = dropTakeBackName(
+      'Undo',
+      acceptOnboardingCapture({ parentName: 'Undo', nameTakenBack: true }),
+    );
+    expect(retracted.parentName).toBeNull();
+    expect(retracted.nameDeclined).toBe(false);
+    expect(retracted.nameTakenBack).toBe(true);
+    const named = dropTakeBackName('Dana', acceptOnboardingCapture({ parentName: 'Dana' }));
+    expect(named.parentName).toBe('Dana');
+  });
+
+  it('folds quotes, end marks, accents, case and spaces, so a take-back is caught in any of them', () => {
+    expect(foldMessage('  « Béa. »  ')).toBe('bea');
+    expect(foldMessage('Pas   MAINTENANT!')).toBe('pas maintenant');
+    const shouted = dropTakeBackName(
+      'ANNULÉ',
+      acceptOnboardingCapture({ parentName: 'annule', nameTakenBack: true }),
+    );
+    expect(shouted.parentName).toBeNull();
+    const other = dropTakeBackName(
+      'ANNULÉ',
+      acceptOnboardingCapture({ parentName: 'Dana', nameTakenBack: true }),
+    );
+    expect(other.parentName).toBe('Dana');
+  });
+
+  it('a take-back does not close the name, and does not stick', () => {
+    const capture = acceptOnboardingCapture({ nameTakenBack: true });
+    expect(checklistAfter(EMPTY_CHECKLIST, capture).name).toBe(false);
+    const later = mergeCaptures(capture, acceptOnboardingCapture(null));
+    expect(later.nameTakenBack).toBe(false);
+    expect(later.nameDeclined).toBe(false);
   });
 
   it('takes the parent name and the kids names from one message', () => {
@@ -108,6 +157,35 @@ describe('onboarding capture', () => {
     expect(kidsAreNamed(capture.children)).toBe(true);
     const stored = storedFromCapture(prior, capture);
     expect(stored.collectedChildren[1]).toMatchObject({ name: 'Leo', ageMonths: null });
+  });
+
+  it('treats a named birth date as the age, so the age ask is done (VIL-532)', () => {
+    const capture = acceptOnboardingCapture({
+      children: [{ name: 'Lin', ageMonths: null, agePrecision: null, dateOfBirth: '2016-05-01' }],
+    });
+    expect(capture.children[0]?.dateOfBirth).toBe('2016-05-01');
+    expect(agesAreComplete(capture.children)).toBe(true);
+    const after = checklistAfter({ ...EMPTY_CHECKLIST, postal: true }, capture);
+    expect(after.kids).toBe(true);
+    expect(after.ages).toBe(true);
+    const stored = storedFromCapture(prior, capture);
+    expect(stored.collectedChildren[0]).toMatchObject({
+      name: 'Lin',
+      ageMonths: null,
+      dateOfBirth: '2016-05-01',
+    });
+  });
+
+  it('keeps a civil date off a datetime and drops a day that is not a date', () => {
+    const kept = acceptOnboardingCapture({
+      children: [{ name: 'Lin', dateOfBirth: '2016-05-01T00:00:00.000Z' }],
+    });
+    expect(kept.children[0]?.dateOfBirth).toBe('2016-05-01');
+    const dropped = acceptOnboardingCapture({
+      children: [{ name: 'Lin', dateOfBirth: 'May 1, 2016' }],
+    });
+    expect(dropped.children[0]?.dateOfBirth).toBeUndefined();
+    expect(agesAreComplete(dropped.children)).toBe(false);
   });
 
   it('updates the only child when the model returns a corrected age', () => {

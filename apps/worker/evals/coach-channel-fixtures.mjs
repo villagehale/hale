@@ -25,6 +25,30 @@ export const FIXTURE_NOW = '2026-08-03T13:00:00.000Z';
 
 export const FIXTURE_WEEK_START = '2026-08-03';
 
+/**
+ * The coarse area's outlook from FIXTURE_NOW on, in the shape the weather port returns
+ * (lib/weather/open-meteo.ts DailyOutlook) for the seven days the runtime asks for: an
+ * ordinary summer week with one wet day.
+ */
+export const FIXTURE_FORECAST = [
+  { date: '2026-08-03', precipitationChancePct: 10, highTempC: 27 },
+  { date: '2026-08-04', precipitationChancePct: 20, highTempC: 28 },
+  { date: '2026-08-05', precipitationChancePct: 80, highTempC: 21 },
+  { date: '2026-08-06', precipitationChancePct: 30, highTempC: 24 },
+  { date: '2026-08-07', precipitationChancePct: 10, highTempC: 26 },
+  { date: '2026-08-08', precipitationChancePct: 0, highTempC: 29 },
+  { date: '2026-08-09', precipitationChancePct: 15, highTempC: 27 },
+];
+
+/**
+ * What FIXTURE_NOW is where the family lives, for the GRADERS only. The first Monday of
+ * August is Ontario's Civic Holiday: not statutory, but many municipal places close or
+ * keep holiday hours. The model is handed only the date and works the day out itself (no
+ * holiday table, by design), so naming it is recall of a real fact, not an invention.
+ */
+export const FIXTURE_DAY_TRUTH =
+  "Monday Aug 3 2026 is Ontario's Civic Holiday (the August long weekend): not statutory, but many municipal places close or keep holiday hours";
+
 /** The children, with the DOBs the teen gate is derived from (never a stored flag). */
 export const FIXTURE_CHILDREN = [
   { id: 'kid-milo', name: 'Milo', gender: 'boy', dateOfBirth: '2021-05-02' },
@@ -574,6 +598,63 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'show-everything-grouped',
+    text: 'show me everything you found, grouped',
+    note: "VIL-536. A broad follow-up in an ongoing 1:1: the finds are already in the thread, and the parent asks for the whole map grouped. Preview 2026-11-01 spent the coach's 400-token ceiling on tools and reasoning, re-asked once, still wrote nothing (`truncated before speaking (1 re-ask)`, draftedThisTurn 0), and the parent got the failed-turn apology. The gate here is that the turn SPEAKS and names what it already found. Grouping is the model's; the names are the facts.",
+    village: {
+      candidates: [
+        {
+          title: 'Swim Kids 3',
+          kind: 'class',
+          summary: 'Saturday swim for school-age kids.',
+          venue: 'West pool',
+          when: 'Sat, Aug 8, 11:00 a.m.',
+          url: 'https://www.toronto.ca/explore-enjoy/recreation/swimming/',
+        },
+        {
+          title: 'Central Library story time',
+          kind: 'drop_in',
+          summary: 'Free indoor drop-in, all ages welcome.',
+          venue: 'Bloor/Gladstone branch',
+          when: 'Sat, Aug 8',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+        },
+        {
+          title: 'Riverdale Farm visit',
+          kind: 'outing',
+          summary: 'Free outdoor farm, open daily.',
+          venue: 'Riverdale Farm',
+          when: 'Sun, Aug 9',
+          url: 'https://www.toronto.ca/explore-enjoy/parks-gardens-beaches/riverdale-farm/',
+        },
+        {
+          title: 'High Park playground',
+          kind: 'outing',
+          summary: 'Jamie Bell Adventure Playground, free.',
+          venue: 'High Park',
+          when: 'Sat, Aug 8',
+          url: 'https://www.toronto.ca/explore-enjoy/parks-gardens-beaches/high-park/',
+        },
+      ],
+      inVerification: 0,
+      standingOption: null,
+    },
+    transcript: [
+      { role: 'user', content: 'anything fun for the kids this weekend?' },
+      {
+        role: 'assistant',
+        content:
+          'Swim Kids 3 at the West pool Saturday 11:00 a.m., Central Library story time Saturday at Bloor/Gladstone, Riverdale Farm visit Sunday, and High Park playground Saturday. Want me to pick one?',
+      },
+      ...smallTalk(2, 4),
+    ],
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['swim kids', 'story time', 'riverdale farm', 'high park'],
+      forbidden: [...HEDGES, 'the app'],
+    },
+  },
+  {
     id: 'yes-with-nothing-open',
     text: 'Yes, please',
     // Georgetown, because the message they are answering is a Cartwheels one and a
@@ -729,6 +810,16 @@ export const COACH_CHANNEL_FIXTURES = [
         'your settings',
         'the app',
       ],
+    },
+  },
+  {
+    id: 'connector-drive-ask',
+    text: 'connect my google drive',
+    note: 'Hale offers no Drive connect link (#1011), and the connector_link handler logs connector_not_offered and lets a plain Drive ask fall through (#1056), so this exact text DOES reach the coach. The failure to prevent is the loop: telling the parent that texting "connect my Google Drive" sends a link, when that text is the one that just reached the coach with nothing sent. The reply says, in its own words, that Drive is not something Hale connects.',
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['drive'],
+      forbidden: ['connect my google drive', 'http', 'drive link'],
     },
   },
   {
@@ -932,6 +1023,9 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['get_framework_guidance'],
       mustNotDraft: true,
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
+      // The first draw with the day facts on asked the readiness cues as a question next
+      // to the plan offer. A finding, not re-drawn (coach-channel-known-miss.mjs).
+      knownMiss: { ticket: 'VIL-652', failure: 'questions in one message' },
     },
   },
   /**
@@ -1215,4 +1309,135 @@ export const COACH_CHANNEL_FIXTURES = [
         'the coach cannot see or correct an email Hale sent on its own (open gap, PR #856)',
     },
   },
+  {
+    id: 'postal-home-unmarked-place',
+    text: 'anything fun Lin could do this Sunday afternoon?',
+    city: 'Markham',
+    postalTown: 'Markham',
+    olderPlace: 'Georgetown',
+    children: [{ id: 'kid-lin', name: 'Lin', gender: 'girl', dateOfBirth: '2016-05-01' }],
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    // 20 days before FIXTURE_NOW, parent_message, no record mark. Still inside the
+    // 365-day window, so the find slice would still hand it over. The postal town wins.
+    memoryFacts: [
+      {
+        childId: null,
+        factType: 'logistic',
+        factKey: 'home_city',
+        factValue: 'Georgetown',
+        confidence: 1,
+      },
+    ],
+    memoryBrief: {
+      status: 'ok',
+      text: 'memory_brief status=ok\nlife: logistic:home_city=Georgetown (source=parent_message confidence=1 valid_from=2026-07-14)',
+      asOf: '2026-08-03T13:00:00.000Z',
+      digestFreshness: 'unavailable',
+    },
+    webPick: {
+      name: 'Sunday drop-in at the museum',
+      ageFit: 'ages 6-12',
+      sourceName: 'Markham Museum',
+      when: 'Sunday afternoon',
+      price: null,
+      url: 'https://www.markham.ca/museum',
+    },
+    judgeHome:
+      "Home is Markham, from the postal code. Georgetown is an older or unconfirmed place from memory. Score 1 if the reply states Georgetown as where they live or as the place that was searched. One question, in the reply's own words, about whether that other place still matters is not that failure. Do not require particular wording.",
+    note: 'Sloane, VIL-519. Postal town is home. A 20-day unmarked home_city must not be named as home and must not be the search. The model judges the conflict.',
+    expect: {
+      mustNotDraft: true,
+      mustCall: ['find_activities'],
+      searchTown: 'Markham',
+      subjectMustNotName: 'Georgetown',
+      },
+    },
+    {
+    id: 'fact-seen-in-email',
+    text: 'is Ada still doing art on fridays?',
+    // VIL-429. The one fact here came from an email, not from the parent. The context
+    // carries it exactly as loadAgentContext does for the mailbox owner.
+    memoryFacts: [
+      {
+        childId: 'kid-ada',
+        factType: 'routine',
+        factKey: 'art_class_day',
+        factValue: 'art class Fridays at 4:30',
+        confidence: 0.9,
+        seenIn: { email: { from: 'Harbour Art Studio', on: '2026-07-28' } },
+      },
+    ],
+    note: 'VIL-429. Hale knows the Friday art class only from a Harbour Art Studio email of Jul 28. The answer leans on that fact, so it says, in its own words, that it saw it in that email and roughly when, and lets the parent correct it. It never quotes the email or claims anything about it beyond the sender and the day.',
+    expect: {
+      mustMention: ['harbour'],
+    },
+  },
 ];
+
+/**
+ * VIL-500 · one venue page calls the card; a comparison of venues does not.
+ * Opt-in (`VIL_500_CARD_EVAL=1`) so the standing coach corpus and its cache stay put
+ * until these two turns are recorded live. `eval:experience-card` sets the flag.
+ */
+export const EXPERIENCE_CARD_FIXTURES = [
+  {
+    id: 'experience-card-one-venue',
+    experienceCard: true,
+    text: 'Find an art class for Ada at Harbour Art Studio and send me their page.',
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    webPicks: [
+      {
+        name: 'Kids classes',
+        ageFit: 'ages 6 to 12',
+        sourceName: 'Harbour Art Studio',
+        when: 'several classes and sessions on this one page',
+        price: null,
+        url: 'https://example.org/harbour-art-studio/kids-classes',
+      },
+    ],
+    note: 'VIL-500. One venue page, and that page lists several classes. The card must be called for that page; citing the ref does not replace it. toolsOnly so a voice score cannot move the corpus mean.',
+    expect: {
+      toolsOnly: true,
+      mustCall: ['find_activities', 'share_experience_card'],
+      mustNotDraft: true,
+      cardForUrl: 'https://example.org/harbour-art-studio/kids-classes',
+      mustMention: ['harbour'],
+    },
+  },
+  {
+    id: 'experience-card-compare-venues',
+    experienceCard: true,
+    text: 'Which is the better fit for Ada, Harbour Art Studio or Lakeshore Art Studio? Send me both pages so I can compare them.',
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    webPicks: [
+      {
+        name: 'Kids classes',
+        ageFit: 'ages 6 to 12',
+        sourceName: 'Harbour Art Studio',
+        when: 'several classes and sessions on this one page',
+        price: null,
+        url: 'https://example.org/harbour-art-studio/kids-classes',
+      },
+      {
+        name: 'Kids classes',
+        ageFit: 'ages 6 to 12',
+        sourceName: 'Lakeshore Art Studio',
+        when: 'several classes and sessions on this one page',
+        price: null,
+        url: 'https://example.org/lakeshore-art-studio/kids-classes',
+      },
+    ],
+    note: 'VIL-500 negative. Comparing different venues stays a plain link: cite each ref, do not call the card.',
+    expect: {
+      toolsOnly: true,
+      mustCall: ['find_activities'],
+      mustNotCall: ['share_experience_card'],
+      mustNotDraft: true,
+      mustMention: ['harbour', 'lakeshore'],
+    },
+  },
+];
+
+if (process.env.VIL_500_CARD_EVAL === '1') {
+  COACH_CHANNEL_FIXTURES.push(...EXPERIENCE_CARD_FIXTURES);
+}

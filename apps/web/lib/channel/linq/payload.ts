@@ -2,6 +2,9 @@ import { type InboundMediaPart, mediaPartFromLinq } from '~/lib/channel/inbound-
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { describeInboundAppCard } from './app-card-inbound';
+import { groupLinkCardsEnabled, linqExperiencesEnabled } from './config';
+import { linqMessageEditEnabled } from './edit';
 import { LINQ_WEBHOOK_VERSION } from './signature';
 
 /**
@@ -34,7 +37,8 @@ export type LinqSignalEvent =
   | 'poll.vote.removed'
   | 'participant.added'
   | 'participant.removed'
-  | 'chat.created';
+  | 'chat.created'
+  | 'chat.background_updated';
 
 /** A webhook this door records and does not route as a parent text. Handles
  * are never logged. */
@@ -55,6 +59,11 @@ export interface LinqSignal {
   actorHandle: string | null;
   /** True when Linq says the event is ours. Our own tapback echo is not a parent. */
   isFromMe: boolean;
+  /**
+   * True only when Linq marks the added or removed participant as Hale (`participant.is_me`).
+   * Unlike `isFromMe`, a member event that merely carries `is_from_me` never sets it.
+   */
+  participantIsMe: boolean;
   /**
    * Every member but Hale, on `chat.created` only — the one webhook that lists
    * them. Empty on every other signal. Never logged.
@@ -97,6 +106,18 @@ export interface LinqInboundText {
    * which is not a no: such a text is still routed as a 1:1 text, and the absence rides
    * on to the queued job so the router can treat the chat as one that might be a group. */
   isGroup?: boolean;
+  /**
+   * VIL-475 — every mention Linq put on a text part, in order. Empty when the
+   * parts carried none (or `mentions` was null). Handles are never logged.
+   * `isMe` is whether Hale's line was the one named.
+   */
+  mentions: LinqInboundMention[];
+}
+
+/** One inbound mention on a text part. `handle` is never logged. */
+export interface LinqInboundMention {
+  handle: string;
+  isMe: boolean;
 }
 
 export type LinqLocationEvent = 'location.sharing.started' | 'location.sharing.stopped';
@@ -111,16 +132,34 @@ export interface LinqLocationSignal {
   eventId: string | null;
 }
 
-/** VIL-226 · Linq's status for one of Hale's own sending lines. */
+/** VIL-226 · Linq's status and reputation for one of Hale's own sending lines. */
 export interface LinqLineHealthEvent {
   phoneNumber: string;
+  /** Linq's `new_status` (ACTIVE | FLAGGED). */
   status: string;
+  /** Linq's `new_reputation` (HEALTHY | AT_RISK | CRITICAL). */
+  reputation: string;
+}
+
+/**
+ * VIL-479 · `message.edited` (2026-02-03 only). Confirms a text part changed.
+ * `text` is the bubble as it reads now. Never logged.
+ */
+export interface LinqMessageEdit {
+  messageId: string;
+  chatId: string | null;
+  partIndex: number;
+  text: string;
+  editedAt: Date | null;
+  direction: 'inbound' | 'outbound' | null;
+  isFromMe: boolean;
 }
 
 export type LinqParsedWebhook =
   | { kind: 'message'; message: LinqInboundText }
   | { kind: 'group'; message: LinqInboundText }
   | { kind: 'receipt'; receipt: LinqDeliveryReceipt }
+  | { kind: 'edit'; edit: LinqMessageEdit }
   | { kind: 'signal'; signal: LinqSignal }
   | { kind: 'location'; location: LinqLocationSignal }
   | { kind: 'line_health'; line: LinqLineHealthEvent }
@@ -150,6 +189,7 @@ const SIGNAL_EVENTS: readonly LinqSignalEvent[] = [
   'participant.added',
   'participant.removed',
   'chat.created',
+  'chat.background_updated',
 ];
 
 const LOCATION_EVENTS: readonly LinqLocationEvent[] = [
@@ -178,11 +218,12 @@ function parseLocation(
 function parseLineHealth(payload: Record<string, unknown>): LinqParsedWebhook {
   if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
   // Signed, but still a third party's strings, and the number is the row's key: a
-  // number that is not E.164 or a status that is not a short token is not stored.
+  // number that is not E.164 or a word that is not a short token is not stored.
   const phoneNumber = normalizePhoneE164(stringField(payload.data.phone_number));
-  const status = lineStatusToken(stringField(payload.data.status));
-  if (!phoneNumber || !status) return { kind: 'ignored', reason: 'malformed' };
-  return { kind: 'line_health', line: { phoneNumber, status } };
+  const status = lineStatusToken(stringField(payload.data.new_status));
+  const reputation = lineStatusToken(stringField(payload.data.new_reputation));
+  if (!phoneNumber || !status || !reputation) return { kind: 'ignored', reason: 'malformed' };
+  return { kind: 'line_health', line: { phoneNumber, status, reputation } };
 }
 
 function isSignalEvent(value: unknown): value is LinqSignalEvent {
@@ -203,6 +244,10 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     return { kind: 'ignored', reason: 'unsupported_version' };
   }
   if (isReceiptEvent(payload.event_type)) return parseReceipt(payload, payload.event_type);
+  // VIL-479 · read only while LINQ_MESSAGE_EDIT_ENABLED is on; unset, it stays an ignored event.
+  if (payload.event_type === 'message.edited' && linqMessageEditEnabled()) {
+    return parseEdit(payload);
+  }
   if (isLocationEvent(payload.event_type)) return parseLocation(payload, payload.event_type);
   if (isSignalEvent(payload.event_type)) return parseSignal(payload, payload.event_type);
   // VIL-226 · read only while PROACTIVE_CADENCE is armed; unset, it stays an ignored event.
@@ -238,6 +283,18 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     if (!isRecord(part)) continue;
     if (part.type === 'text' && typeof part.value === 'string' && part.value.trim()) {
       texts.push(part.value);
+    } else if (
+      part.type === 'link' &&
+      typeof part.value === 'string' &&
+      part.value.trim() &&
+      groupLinkCardsEnabled()
+    ) {
+      // VIL-399 · a rich-link part is a public URL fact, not an unnamed file.
+      texts.push(part.value.trim());
+    } else if (part.type === 'imessage_app' && linqExperiencesEnabled()) {
+      // VIL-480 · a card a parent sent is read as what it says, not as an unnamed file.
+      const card = describeInboundAppCard(part);
+      if (card) texts.push(card);
     } else if (part.type && part.type !== 'text') {
       media.push(mediaPartFromLinq(part));
     }
@@ -261,8 +318,25 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
       receivedAt,
       otherHandles: otherHandles(data.chat),
       isGroup: saidGroup,
+      mentions: mentionsFromParts(parts),
     },
   };
+}
+
+/** Linq puts every mention on the text part as `mentions`. `is_me` is whether
+ * the named participant is the line reading the webhook — Hale, here. */
+function mentionsFromParts(parts: unknown[]): LinqInboundMention[] {
+  const out: LinqInboundMention[] = [];
+  for (const part of parts) {
+    if (!isRecord(part) || part.type !== 'text' || !Array.isArray(part.mentions)) continue;
+    for (const mention of part.mentions) {
+      if (!isRecord(mention)) continue;
+      const handle = typeof mention.handle === 'string' ? mention.handle : '';
+      if (!handle) continue;
+      out.push({ handle, isMe: mention.is_me === true });
+    }
+  }
+  return out;
 }
 
 function otherHandles(chat: Record<string, unknown>): string[] {
@@ -288,7 +362,9 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
   const sender = isRecord(data.sender_handle) ? data.sender_handle : null;
   const from = isRecord(data.from) ? data.from : null;
   const participant = isRecord(data.participant) ? data.participant : null;
+  const actorRecord = isRecord(data.actor_handle) ? data.actor_handle : null;
   const isFromMe =
+    actorRecord?.is_me === true ||
     data.is_from_me === true ||
     fromHandle?.is_me === true ||
     sender?.is_me === true ||
@@ -302,6 +378,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
   const addedBy = isRecord(data.added_by) ? data.added_by : null;
   const actor = isRecord(data.actor) ? data.actor : null;
   const actorHandle =
+    stringField(actorRecord?.handle) ||
     stringField(addedBy?.handle) ||
     stringField(actor?.handle) ||
     (typeof data.added_by === 'string' ? data.added_by : '') ||
@@ -319,6 +396,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
       participantHandle: participantHandle || null,
       actorHandle: actorHandle || null,
       isFromMe,
+      participantIsMe: participant?.is_me === true,
       handles: [],
       isGroup: null,
     },
@@ -339,8 +417,42 @@ function parseChatCreated(data: Record<string, unknown>): LinqParsedWebhook {
       participantHandle: null,
       actorHandle: null,
       isFromMe: false,
+      participantIsMe: false,
       handles: otherHandles(data),
       isGroup: data.is_group === true,
+    },
+  };
+}
+
+function parseEdit(payload: Record<string, unknown>): LinqParsedWebhook {
+  if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
+  const data = payload.data;
+  const messageId = stringField(data.id);
+  const part = isRecord(data.part) ? data.part : null;
+  const text = part && typeof part.text === 'string' ? part.text : '';
+  const partIndex = part?.index;
+  if (!messageId || !part || !text || (partIndex !== undefined && typeof partIndex !== 'number')) {
+    return { kind: 'ignored', reason: 'malformed' };
+  }
+  if (typeof partIndex === 'number' && (!Number.isInteger(partIndex) || partIndex < 0)) {
+    return { kind: 'ignored', reason: 'malformed' };
+  }
+  const chat = isRecord(data.chat) ? data.chat : null;
+  const sender = isRecord(data.sender_handle) ? data.sender_handle : null;
+  const direction =
+    data.direction === 'inbound' || data.direction === 'outbound' ? data.direction : null;
+  const editedAtRaw = stringField(data.edited_at);
+  const editedAt = editedAtRaw ? new Date(editedAtRaw) : null;
+  return {
+    kind: 'edit',
+    edit: {
+      messageId,
+      chatId: chat ? stringField(chat.id) || null : null,
+      partIndex: typeof partIndex === 'number' ? partIndex : 0,
+      text,
+      editedAt: editedAt && !Number.isNaN(editedAt.getTime()) ? editedAt : null,
+      direction,
+      isFromMe: sender?.is_me === true || direction === 'outbound',
     },
   };
 }

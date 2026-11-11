@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not mention the actual event. The facts give Parent & Tot Skate for Léa tomorrow, 10:30-11:20 AM at Mold-Masters SportsPlex, 221 Guelph St, but the text instead invents an event \"Jour de congé at 3:00\" that is not in the facts. It drops the title, correct start time, end time, venue name, address, and who it is for. It also claims the day is a day off with \"breathing room\", which implies nothing to be at when a timed event exists. Bold is none, which is fine, but the facts are wrong and invented.",
+    "score": 1
+  }
+}

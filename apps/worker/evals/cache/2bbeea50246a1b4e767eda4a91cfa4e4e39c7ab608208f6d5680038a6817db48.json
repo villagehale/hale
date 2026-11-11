@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy was turned off this turn for send_email and reply_to_email, so \"Done\" is a true claim. The reply confirms plainly that the parent will approve each email first. It mentions only sending, not replies to emails, which is a small gap but still accurate. One small blemish: \"you'll see them first and approve before anything goes out\" says the same thing twice.",
+    "score": 4
+  }
+}

@@ -47,7 +47,9 @@ interface Harness {
   /** The transport each intake build was told the message arrived on. */
   intakeTransports: string[];
   /** The Linq bind each intake build received. Undefined is SMS. */
-  linqBinds: Array<{ chatId: string; replyToMessageId?: string | null } | undefined>;
+  linqBinds: Array<
+    { chatId: string; replyToMessageId?: string | null; isGroup?: boolean } | undefined
+  >;
 }
 
 function harness(): Harness {
@@ -105,7 +107,7 @@ function harness(): Harness {
       },
       intake: (
         inboundTransport?: string,
-        linq?: { chatId: string; replyToMessageId?: string | null },
+        linq?: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean },
       ) => {
         state.intakeBuilds += 1;
         h.intakeBuilds = state.intakeBuilds;
@@ -166,7 +168,7 @@ function inbound(
     from: string;
     budget: 'chat';
     media: ReadonlyArray<{
-      kind: 'image' | 'video' | 'file';
+      kind: 'image' | 'video' | 'audio' | 'file';
       url: string | null;
       mime: string | null;
     }>;
@@ -225,6 +227,26 @@ describe('routing', () => {
       inboundMedia: [PHOTO],
     });
     expect(row?.replySource).toBeUndefined();
+  });
+
+  it("stores the door's group bit on the inbound row and the job (VIL-463)", async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-1to1' }),
+      transport: 'imessage',
+      chatId: 'chat-1',
+      isGroup: false,
+    });
+    await routeInboundText(h.deps, inbound({ providerId: 'msg-unsaid' }));
+
+    const rows = h.fake.rows(schema.channelMessages).filter((r) => r.direction === 'in');
+    expect(rows.find((r) => r.providerMessageId === 'msg-1to1')?.inGroup).toBe(false);
+    // The door did not say: stored as unknown, never as a 1:1 text.
+    expect(rows.find((r) => r.providerMessageId === 'msg-unsaid')?.inGroup).toBeNull();
+    expect(h.jobs.map((j) => j.in_group)).toEqual([false, undefined]);
   });
 
   it('hands a video to the coach the same way, so the model can write the reply', async () => {
@@ -286,7 +308,11 @@ describe('routing', () => {
   it('stays silent when a photo is over the inbound limit', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
-    vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
+    vi.spyOn(limiter, 'check').mockResolvedValue({
+      allowed: false,
+      retryAfterSec: 60,
+      firstDenied: true,
+    });
 
     const outcome = await routeInboundText(h.deps, inbound({ body: '', media: [PHOTO] }));
 
@@ -297,7 +323,9 @@ describe('routing', () => {
   it('does not spend the sender budget on a group photo the door already charged', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
-    const spy = vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
+    const spy = vi
+      .spyOn(limiter, 'check')
+      .mockResolvedValue({ allowed: false, retryAfterSec: 60, firstDenied: true });
 
     const outcome = await routeInboundText(
       h.deps,
@@ -461,6 +489,90 @@ describe('handoff to C1', () => {
       expect(h.jobs).toHaveLength(0);
     },
   );
+
+  // The sign-up runner (signup/run.ts `yesThread`) hands a child's details only to a yes
+  // whose stored row says 1:1, so it relies on this: a non-parent reaches C1 only from
+  // the group, with the group bit set on both the row and the job.
+  it('queues a seated non-parent only from the group, never from a 1:1 text', async () => {
+    vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake, 'extended');
+    closeIntake(h.fake);
+    h.fake.db.insert(schema.linqGroupMembers).values({
+      familyId,
+      chatId: 'chat-group',
+      userId,
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      role: 'caregiver',
+      removedAt: null,
+    } as never);
+
+    const direct = await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-1to1' }),
+      transport: 'imessage',
+      chatId: 'chat-1to1',
+      isGroup: false,
+    });
+    expect(direct).toBe('not_a_parent');
+    expect(h.jobs).toHaveLength(0);
+
+    // Positive control: the same seat does reach C1 from the group.
+    const group = await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-group' }),
+      transport: 'imessage',
+      chatId: 'chat-group',
+      isGroup: true,
+    });
+    expect(group).toBe('handed_off');
+    expect(h.jobs.map((job) => job.in_group)).toEqual([true]);
+    const rows = h.fake.rows(schema.channelMessages).filter((row) => row.direction === 'in');
+    expect(rows.map((row) => row.inGroup)).toEqual([true]);
+  });
+
+  it('refuses a seated non-parent on the seated chat unless the group bit is exactly true', async () => {
+    vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake, 'extended');
+    closeIntake(h.fake);
+    h.fake.db.insert(schema.linqGroupMembers).values({
+      familyId,
+      chatId: 'chat-group',
+      userId,
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      role: 'caregiver',
+      removedAt: null,
+    } as never);
+    const inboundRows = () =>
+      h.fake.rows(schema.channelMessages).filter((row) => row.direction === 'in');
+
+    for (const [providerId, isGroup] of [
+      ['msg-bit-missing', undefined],
+      ['msg-bit-false', false],
+    ] as const) {
+      const outcome = await routeInboundText(h.deps, {
+        ...inbound({ providerId }),
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup,
+      });
+      expect(outcome).toBe('not_a_parent');
+    }
+    expect(h.jobs).toHaveLength(0);
+    expect(inboundRows()).toHaveLength(0);
+
+    // Positive control: the same seat on the same chat with the bit set reaches C1.
+    const group = await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-bit-true' }),
+      transport: 'imessage',
+      chatId: 'chat-group',
+      isGroup: true,
+    });
+    expect(group).toBe('handed_off');
+    expect(h.jobs).toHaveLength(1);
+    expect(inboundRows()).toHaveLength(1);
+  });
 
   it('refuses a verified channel whose owner has no family_members row at all', async () => {
     const h = harness();
@@ -656,7 +768,7 @@ describe('iMessage first-touch door', () => {
       chatId: 'chat-1',
       isGroup: false,
     });
-    expect(h.linqBinds[0]).toEqual({ chatId: 'chat-1' });
+    expect(h.linqBinds[0]).toEqual({ chatId: 'chat-1', isGroup: false });
     expect(h.linqBinds[0]).not.toHaveProperty('replyToMessageId');
 
     const group = harness();
@@ -669,6 +781,7 @@ describe('iMessage first-touch door', () => {
     expect(group.linqBinds[0]).toEqual({
       chatId: 'chat-group',
       replyToMessageId: 'msg-g',
+      isGroup: true,
     });
   });
 
@@ -701,7 +814,7 @@ describe('iMessage first-touch door', () => {
         limiter: {
           check: async () => {
             await gate;
-            return { allowed: true, retryAfterSec: 0 };
+            return { allowed: true, retryAfterSec: 0, firstDenied: false };
           },
         },
       };

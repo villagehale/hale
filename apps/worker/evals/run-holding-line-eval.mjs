@@ -24,14 +24,18 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { normalizeForCompare } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -130,29 +134,13 @@ function refusals(body) {
 // ── the judge ────────────────────────────────────────────────────────────────
 
 // Scoped to MEANING: every mechanical property is already decided by refusals() above.
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring the MEANING of ONE text message Hale sends a parent',
-  'while their answer is still being written. Hale composed it BLIND: it was shown nothing',
-  'about the parent or what they asked - only that the answer is still coming, and which',
-  'language to write in. The real answer arrives right after this line.',
-  'IMPORTANT: links, digits and times are ALREADY verified mechanically, and sentence count,',
-  "length and punctuation are the writer's own. Do not score any of them. Judge only what the",
-  'message MEANS and whether it sounds like Hale.',
-  'You are given the message, the language and watchFor. Score 1-5.',
-  'A 5 says plainly, in the first person and in the requested language, that Hale is on it',
-  'and the answer is coming - like a competent friend glancing up from their phone.',
-  'A LOW score is any of: hinting at or pre-empting the answer, or reassuring about the',
-  'substance ("that should be fine", "good news"); claiming what Hale is doing to get it',
-  '("searching", "checking the schedule"); apologising for the wait or implying something',
-  'went wrong; a greeting, sign-off, hype or emoji; support-desk language ("your request',
-  'has been received"); third person ("Hale is"); the wrong language.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('holding-line');
 
 const BROKEN_LINE =
   'Hi! Good news, I checked the schedule and it looks fine 😊. Back in 2 minutes - see https://villagehale.com, ok?';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -234,6 +222,10 @@ async function main() {
 
   const allPass = results.every((r) => r.failures.length === 0) && !tooSame;
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('holding-line', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

@@ -4,6 +4,7 @@ import {
   HEALTH_HORIZON_MONTHS,
   companionForChild,
   healthItemKey,
+  healthScheduleFor,
   milestoneStatusLabel,
   stageDisplayLabel,
 } from './index.js';
@@ -22,7 +23,7 @@ describe('companionForChild — health timeline', () => {
   it("a 3-month-old's next health item is the 4-month set, soonest first", () => {
     // Born 2026-03-15 → exactly 3mo on 2026-06-15. The 2-month items are behind
     // it and dropped; the soonest upcoming entry is the 4-month visit/shots.
-    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2026-03-15', country: 'CA' }, NOW);
 
     expect(view.ageMonths).toBe(3);
     expect(view.stage).toBe('newborn');
@@ -43,7 +44,7 @@ describe('companionForChild — health timeline', () => {
   });
 
   it('includes the 4-month immunizations exactly one set ahead for a 3-month-old', () => {
-    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2026-03-15', country: 'CA' }, NOW);
     const fourMonthShots = view.nextHealth.find(
       (h) => h.ageMonths === 4 && h.kind === 'immunization',
     );
@@ -53,7 +54,7 @@ describe('companionForChild — health timeline', () => {
   it('drops past items: an 18-month-old has no infant immunizations left, next is 4–6y', () => {
     // Born 2024-12-15 → 18mo on 2026-06-15. Everything through 18mo is at-or-past
     // its own age, so the 18mo items remain (>= current age) but nothing earlier.
-    const view = companionForChild({ dateOfBirth: '2024-12-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2024-12-15', country: 'CA' }, NOW);
     expect(view.ageMonths).toBe(18);
     expect(view.nextHealth.some((h) => h.ageMonths < 18)).toBe(false);
     // The next milestone-grade health items after 18mo are the 4–6y (60mo) set.
@@ -66,17 +67,56 @@ describe('companionForChild — health timeline', () => {
     // schedule's last entry is the 144mo (pre-teen) set, so a 13+ child has run
     // off the end of the timeline: nextHealth is empty. whatsNow is keyed by
     // stage, so it stays non-empty — Home's Today fills the freed card with it.
-    const view = companionForChild({ dateOfBirth: '2013-05-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2013-05-15', country: 'CA' }, NOW);
     expect(view.stage).toBe('teenager');
     expect(view.nextHealth).toHaveLength(0);
     expect(view.whatsNow.length).toBeGreaterThan(0);
   });
 });
 
+describe('companionForChild — the schedule follows the family country (D6)', () => {
+  // A 3-month-old is inside the Canadian cadence: due the 4-month set, and the
+  // 2-month set passed within RECENT_PASSED_MONTHS, so every health list is non-empty.
+  const DOB = '2026-03-15';
+
+  it('a Canadian family keeps the Canadian schedule (positive control)', () => {
+    const view = companionForChild({ dateOfBirth: DOB, country: 'CA' }, NOW);
+    expect(view.healthSchedule).toBe('canada');
+    expect(view.nextHealth.map((h) => h.what)).toContain('4-month immunizations');
+    expect(view.todayHealth?.ageMonths).toBe(4);
+    expect(view.recentlyPassedHealth.map((h) => h.ageMonths)).toContain(2);
+  });
+
+  it('a US family is shown no schedule, and the view names why', () => {
+    const view = companionForChild({ dateOfBirth: DOB, country: 'US' }, NOW);
+    expect(view.healthSchedule).toBe('no_verified_us_schedule');
+    expect(view.nextHealth).toEqual([]);
+    expect(view.todayHealth).toBeNull();
+    expect(view.recentlyPassedHealth).toEqual([]);
+    // Only the schedule goes: the stage guidance and milestones are not country-keyed.
+    expect(view.milestones.length).toBeGreaterThan(0);
+    expect(view.whatsNow.length).toBeGreaterThan(0);
+  });
+
+  it('a family Hale cannot place is not given Canada by default', () => {
+    const view = companionForChild({ dateOfBirth: DOB, country: null }, NOW);
+    expect(view.healthSchedule).toBe('country_unknown');
+    expect(view.nextHealth).toEqual([]);
+    expect(view.todayHealth).toBeNull();
+    expect(view.recentlyPassedHealth).toEqual([]);
+  });
+
+  it('healthScheduleFor names one outcome per country', () => {
+    expect(healthScheduleFor('CA')).toBe('canada');
+    expect(healthScheduleFor('US')).toBe('no_verified_us_schedule');
+    expect(healthScheduleFor(null)).toBe('country_unknown');
+  });
+});
+
 describe('companionForChild — milestones', () => {
   it("a 13-month-old's milestone list includes walking and first words, both in-window", () => {
     // Born 2025-05-15 → 13mo on 2026-06-15 → toddler (>=12mo).
-    const view = companionForChild({ dateOfBirth: '2025-05-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2025-05-15', country: 'CA' }, NOW);
     expect(view.ageMonths).toBe(13);
     expect(view.stage).toBe('toddler');
 
@@ -92,7 +132,7 @@ describe('companionForChild — milestones', () => {
   it("tags a milestone 'upcoming' before its window and 'watch' past it", () => {
     // A 2-month-old (born 2026-04-15) is a newborn: "Sits without support" [6,9]
     // is upcoming; "First social smile" [1,3] is in-window.
-    const young = companionForChild({ dateOfBirth: '2026-04-15' }, NOW);
+    const young = companionForChild({ dateOfBirth: '2026-04-15', country: 'CA' }, NOW);
     expect(young.ageMonths).toBe(2);
     expect(young.milestones.find((m) => m.what === 'Sits without support')?.timing).toBe(
       'upcoming',
@@ -103,7 +143,7 @@ describe('companionForChild — milestones', () => {
 
     // An 11-month-old (still newborn stage, <12mo) is past every newborn window
     // top-bound (max is 9mo) → "Rolls over" [4,6] reads 'watch' (worth asking).
-    const older = companionForChild({ dateOfBirth: '2025-07-15' }, NOW);
+    const older = companionForChild({ dateOfBirth: '2025-07-15', country: 'CA' }, NOW);
     expect(older.ageMonths).toBe(11);
     expect(older.stage).toBe('newborn');
     expect(older.milestones.find((m) => m.what === 'Rolls over')?.timing).toBe('watch');
@@ -123,7 +163,7 @@ describe('companionForChild — milestones', () => {
   it("keeps 'worth asking' live while asking could still change something", () => {
     // Born 2024-06-15 → exactly 24mo. Walking typically arrives by 18 months, so a
     // two-year-old who is not walking is a real, useful thing to raise.
-    const two = companionForChild({ dateOfBirth: '2024-06-15' }, NOW);
+    const two = companionForChild({ dateOfBirth: '2024-06-15', country: 'CA' }, NOW);
     expect(two.ageMonths).toBe(24);
     expect(two.milestones.find((m) => m.what === 'Walks independently')?.timing).toBe('watch');
     expect(two.milestones.find((m) => m.what === 'Says first words')?.timing).toBe('watch');
@@ -133,7 +173,7 @@ describe('companionForChild — milestones', () => {
     // Born 2022-07-15 → 47mo, the last month of the toddler stage. Four of the five
     // toddler windows closed six months or more ago; only potty-training interest
     // (through 42mo) is still a live question.
-    const nearlyFour = companionForChild({ dateOfBirth: '2022-07-15' }, NOW);
+    const nearlyFour = companionForChild({ dateOfBirth: '2022-07-15', country: 'CA' }, NOW);
     expect(nearlyFour.ageMonths).toBe(47);
     expect(nearlyFour.stage).toBe('toddler');
 
@@ -146,7 +186,7 @@ describe('companionForChild — milestones', () => {
 
   it('returns teenager milestones for a 13-year-old', () => {
     // Born 2013-05-15 → 157mo on 2026-06-15 → teenager (>=156mo).
-    const view = companionForChild({ dateOfBirth: '2013-05-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2013-05-15', country: 'CA' }, NOW);
     expect(view.stage).toBe('teenager');
     expect(view.milestones.map((m) => m.area)).toContain('independence');
     expect(view.milestones.some((m) => m.what === 'Walks independently')).toBe(false);
@@ -155,20 +195,23 @@ describe('companionForChild — milestones', () => {
 
 describe('companionForChild — guidance and safety framing (rule #1)', () => {
   it("surfaces stage 'what matters now' and the next stage transition", () => {
-    const newborn = companionForChild({ dateOfBirth: '2026-03-15', name: 'Maya' }, NOW);
+    const newborn = companionForChild(
+      { dateOfBirth: '2026-03-15', name: 'Maya', country: 'CA' },
+      NOW,
+    );
     expect(newborn.name).toBe('Maya');
     expect(newborn.whatsNow.length).toBeGreaterThan(0);
     expect(newborn.whatsNext).toContain('toddler');
   });
 
   it('attaches the confirm-with-provider note to every health and milestone item', () => {
-    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2026-03-15', country: 'CA' }, NOW);
     expect(view.nextHealth.every((h) => h.note === CONFIRM_WITH_PROVIDER)).toBe(true);
     expect(view.milestones.every((m) => m.note === CONFIRM_WITH_PROVIDER)).toBe(true);
   });
 
   it('echoes a null name when none is provided', () => {
-    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2026-03-15', country: 'CA' }, NOW);
     expect(view.name).toBeNull();
   });
 });
@@ -178,7 +221,7 @@ describe('companionForChild — done marking', () => {
     // 13-month-old toddler: "Walks independently" is in-window. Marking it done
     // must set done:true on that milestone and leave the others done:false.
     const done = { milestones: new Set(['Walks independently']), health: new Set<string>() };
-    const view = companionForChild({ dateOfBirth: '2025-05-15' }, NOW, done);
+    const view = companionForChild({ dateOfBirth: '2025-05-15', country: 'CA' }, NOW, done);
 
     const walk = view.milestones.find((m) => m.what === 'Walks independently');
     const words = view.milestones.find((m) => m.what === 'Says first words');
@@ -186,12 +229,12 @@ describe('companionForChild — done marking', () => {
     expect(words?.done).toBe(false);
     // Done never removes a milestone — it stays in the list, just flagged.
     expect(view.milestones).toHaveLength(
-      companionForChild({ dateOfBirth: '2025-05-15' }, NOW).milestones.length,
+      companionForChild({ dateOfBirth: '2025-05-15', country: 'CA' }, NOW).milestones.length,
     );
   });
 
   it('defaults every item to not-done when no done set is passed', () => {
-    const view = companionForChild({ dateOfBirth: '2025-05-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2025-05-15', country: 'CA' }, NOW);
     expect(view.milestones.every((m) => m.done === false)).toBe(true);
     expect(view.nextHealth.every((h) => h.done === false)).toBe(true);
   });
@@ -201,7 +244,7 @@ describe('companionForChild — done marking', () => {
     const target = { ageMonths: 4, kind: 'well_child_visit' as const };
     const key = healthItemKey(target);
     const done = { milestones: new Set<string>(), health: new Set([key]) };
-    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW, done);
+    const view = companionForChild({ dateOfBirth: '2026-03-15', country: 'CA' }, NOW, done);
 
     const visit = view.nextHealth.find((h) => h.key === key);
     expect(visit?.what).toBe('4-month well-baby visit');
@@ -247,7 +290,7 @@ describe('companionForChild — the preschool years', () => {
    */
   it('puts a four-year-old in the preschool stage, not school-age', () => {
     // Born 2022-05-15 → 49mo.
-    const four = companionForChild({ dateOfBirth: '2022-05-15' }, NOW);
+    const four = companionForChild({ dateOfBirth: '2022-05-15', country: 'CA' }, NOW);
     expect(four.ageMonths).toBe(49);
     expect(four.stage).toBe('preschool');
     expect(stageDisplayLabel(four.stage, four.ageMonths)).toBe('preschool');
@@ -255,25 +298,25 @@ describe('companionForChild — the preschool years', () => {
   });
 
   it('gives a four-year-old milestones their own age can be in', () => {
-    const four = companionForChild({ dateOfBirth: '2022-05-15' }, NOW);
+    const four = companionForChild({ dateOfBirth: '2022-05-15', country: 'CA' }, NOW);
     expect(four.milestones.some((m) => m.timing === 'in_window')).toBe(true);
     // Not the eight-year-old's list.
     expect(four.milestones.some((m) => m.what.toLowerCase().includes('homework'))).toBe(false);
   });
 
   it('does not hand a four-year-old school-age guidance', () => {
-    const four = companionForChild({ dateOfBirth: '2022-05-15' }, NOW);
-    const eight = companionForChild({ dateOfBirth: '2018-06-15' }, NOW);
+    const four = companionForChild({ dateOfBirth: '2022-05-15', country: 'CA' }, NOW);
+    const eight = companionForChild({ dateOfBirth: '2018-06-15', country: 'CA' }, NOW);
     expect(eight.ageMonths).toBe(96);
     expect(four.whatsNow).not.toEqual(eight.whatsNow);
     expect(four.whatsNow.join(' ')).not.toMatch(/homework|screen-time/i);
     // A toddler is told what actually comes next, not that they turn school-age.
-    const toddler = companionForChild({ dateOfBirth: '2024-06-15' }, NOW);
+    const toddler = companionForChild({ dateOfBirth: '2024-06-15', country: 'CA' }, NOW);
     expect(toddler.whatsNext).not.toMatch(/school-age/i);
   });
 
   it('still hands a school-age child their own guidance and list', () => {
-    const eight = companionForChild({ dateOfBirth: '2018-06-15' }, NOW);
+    const eight = companionForChild({ dateOfBirth: '2018-06-15', country: 'CA' }, NOW);
     expect(eight.stage).toBe('child');
     expect(eight.whatsNow.join(' ')).toMatch(/school/i);
     expect(eight.milestones.some((m) => m.what === 'Manages homework with some support')).toBe(true);
@@ -287,7 +330,7 @@ describe('companionForChild — the preschool years', () => {
    */
   it('keeps a five-year-old on preschool content though their stage is child', () => {
     // Born 2021-05-15 → 61mo: past the preschool stage, short of school age.
-    const five = companionForChild({ dateOfBirth: '2021-05-15' }, NOW);
+    const five = companionForChild({ dateOfBirth: '2021-05-15', country: 'CA' }, NOW);
     expect(five.ageMonths).toBe(61);
     expect(five.stage).toBe('child');
     expect(stageDisplayLabel(five.stage, five.ageMonths)).toBe('preschool');
@@ -307,7 +350,7 @@ describe('companionForChild — recently-passed health (not silently dropped)', 
     // Born 2026-01-15 → 5mo on 2026-06-15. The 4-month set passed 1 month ago and
     // is within RECENT_PASSED_MONTHS(3), so it surfaces in recentlyPassedHealth —
     // NOT in nextHealth (which is at-or-after age only).
-    const view = companionForChild({ dateOfBirth: '2026-01-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2026-01-15', country: 'CA' }, NOW);
     expect(view.ageMonths).toBe(5);
 
     const passedAges = view.recentlyPassedHealth.map((h) => h.ageMonths);
@@ -325,14 +368,14 @@ describe('companionForChild — recently-passed health (not silently dropped)', 
   it('drops a recently-passed item from recentlyPassedHealth once it is marked done', () => {
     const key = healthItemKey({ ageMonths: 4, kind: 'well_child_visit' });
     const done = { milestones: new Set<string>(), health: new Set([key]) };
-    const view = companionForChild({ dateOfBirth: '2026-01-15' }, NOW, done);
+    const view = companionForChild({ dateOfBirth: '2026-01-15', country: 'CA' }, NOW, done);
     expect(view.recentlyPassedHealth.some((h) => h.key === key)).toBe(false);
   });
 
   it('does not resurface an item that passed longer ago than RECENT_PASSED_MONTHS', () => {
     // Born 2025-11-15 → 7mo. The 2-month set passed 5 months ago (> 3) → gone; the
     // 6-month set passed 1 month ago → surfaces.
-    const view = companionForChild({ dateOfBirth: '2025-11-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2025-11-15', country: 'CA' }, NOW);
     expect(view.ageMonths).toBe(7);
     const passedAges = view.recentlyPassedHealth.map((h) => h.ageMonths);
     expect(passedAges).toContain(6);
@@ -343,14 +386,14 @@ describe('companionForChild — recently-passed health (not silently dropped)', 
 describe('companionForChild — todayHealth horizon gate', () => {
   it('leads with the soonest upcoming item when it is within the horizon', () => {
     // 3-month-old: next is the 4-month set, ~1 month out (within horizon).
-    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2026-03-15', country: 'CA' }, NOW);
     expect(view.todayHealth?.ageMonths).toBe(4);
   });
 
   it('returns null rather than leading with a checkup years away', () => {
     // Born 2024-10-15 → 20mo. The 18-month set has passed; the next real routine
     // item is the 4–6 year (60mo) set — 40 months out, far beyond the horizon.
-    const view = companionForChild({ dateOfBirth: '2024-10-15' }, NOW);
+    const view = companionForChild({ dateOfBirth: '2024-10-15', country: 'CA' }, NOW);
     expect(view.ageMonths).toBe(20);
     expect(view.nextHealth[0]?.ageMonths).toBe(60);
     // The list still shows the far item, but the "today" lead is suppressed.
@@ -365,7 +408,7 @@ describe('companionForChild — todayHealth horizon gate', () => {
     // next not-done in-horizon item (the 4-month immunizations, same age).
     const doneKey = healthItemKey({ ageMonths: 4, kind: 'well_child_visit' });
     const done = { milestones: new Set<string>(), health: new Set([doneKey]) };
-    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW, done);
+    const view = companionForChild({ dateOfBirth: '2026-03-15', country: 'CA' }, NOW, done);
     expect(view.todayHealth?.done).toBe(false);
     expect(view.todayHealth?.key).not.toBe(doneKey);
   });

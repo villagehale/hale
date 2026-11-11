@@ -6,9 +6,9 @@ import { type LinqChatPage, LinqSendError, listLinqChatsPage } from '~/lib/chann
 import {
   type CapacityLatchStore,
   type CapacityThreshold,
-  LINQ_CHAT_ID_LIMIT,
   LINQ_CHATS_MAX_PAGES,
   LINQ_CHATS_PAGE_LIMIT,
+  LINQ_CHAT_ID_LIMIT,
   type LinqCapacityDeps,
   type LinqChatCount,
   type LinqCountResult,

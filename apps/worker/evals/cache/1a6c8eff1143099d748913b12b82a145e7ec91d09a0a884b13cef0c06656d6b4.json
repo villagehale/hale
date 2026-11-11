@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says only 'Reminder set!' and omits the who (Priya), the what (book Maya's dentist), the when (tomorrow Thursday at 3 PM), that it arrives as a private text, and how to cancel or change it. Several mustSay items are missing."
+  }
+}

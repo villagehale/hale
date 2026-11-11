@@ -13,6 +13,8 @@
  * read as configured.
  */
 
+import { isEnabled } from '@hale/flags';
+
 function trimmed(name: string): string | null {
   const value = (process.env[name] ?? '').trim();
   return value.length > 0 ? value : null;
@@ -60,7 +62,7 @@ export function linqPhoneOutboundConfigured(): boolean {
  * This tree does not set the flag. Ops turns LINQ_POLLS on after the poll PR ships.
  */
 export function linqPollsEnabled(): boolean {
-  return trimmed('LINQ_POLLS') === 'on';
+  return isEnabled('linq-polls');
 }
 
 /**
@@ -69,7 +71,7 @@ export function linqPollsEnabled(): boolean {
  * Unset, empty, and `on` all enable it. SMS never reads this flag.
  */
 export function linqGroupCoparentEnabled(): boolean {
-  return trimmed('LINQ_GROUP_COPARENT') !== 'off';
+  return isEnabled('linq-group-coparent');
 }
 
 /**
@@ -77,7 +79,7 @@ export function linqGroupCoparentEnabled(): boolean {
  * Unset, empty, `on`, and `false` stay dark. Default off.
  */
 export function linqGroupMembersEnabled(): boolean {
-  return trimmed('LINQ_GROUP_MEMBERS_ENABLED') === 'true';
+  return isEnabled('linq-group-members');
 }
 
 /**
@@ -87,7 +89,7 @@ export function linqGroupMembersEnabled(): boolean {
  * seat.
  */
 export function linqMultiFamilyGroupsEnabled(): boolean {
-  return trimmed('LINQ_MULTI_FAMILY_GROUPS_ENABLED') === 'true';
+  return isEnabled('linq-multi-family-groups');
 }
 
 /**
@@ -96,14 +98,185 @@ export function linqMultiFamilyGroupsEnabled(): boolean {
  * off. Off means no roster step runs and the door answers as it did before.
  */
 export function linqGroupOnboardingV2Enabled(): boolean {
-  return trimmed('LINQ_GROUP_ONBOARDING_V2_ENABLED') === 'true';
+  return isEnabled('linq-group-onboarding-v2');
 }
 
 /**
- * VIL-438 (T22) — the new-member welcome is written by the model from facts
- * (`member_welcome`) instead of the fixed line. Exactly `true` enables it. Default off:
- * off keeps today's welcome byte-for-byte, so no eval re-record is needed to merge.
+ * VIL-445 (T16) — read who is driving from the group and remind the night before.
+ * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */
-export function linqGroupWelcomeVoiceEnabled(): boolean {
-  return trimmed('LINQ_GROUP_WELCOME_VOICE_ENABLED') === 'true';
+export function linqGroupCarpoolEnabled(): boolean {
+  return isEnabled('linq-group-carpool') || groupCarpoolEnabled();
+}
+
+/**
+ * VIL-399 — native yes/no/maybe RSVP and time polls in a Linq group. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ * The native card additionally needs `LINQ_POLLS`; when that is off, Hale asks
+ * in model-written plain text and tallies the replies.
+ */
+export function groupPollsEnabled(): boolean {
+  return trimmed('GROUP_POLLS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — a posted https link in a group: Hale says the public facts, then
+ * takes registration in each family's 1:1. Exactly `true` enables it. Default off.
+ */
+export function groupLinkCardsEnabled(): boolean {
+  return trimmed('GROUP_LINK_CARDS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — carpool in a group under the new name. Exactly `true` enables it.
+ * Also arms the existing `LINQ_GROUP_CARPOOL_ENABLED` path (see
+ * {@link linqGroupCarpoolEnabled}). Default off.
+ */
+export function groupCarpoolEnabled(): boolean {
+  return trimmed('GROUP_CARPOOL_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — a private question (allergy, DOB, address, login, payment) leaves
+ * the multi-family group for that family's 1:1. Exactly `true` enables it.
+ * Default off.
+ */
+export function groupPrivateQuestionEnabled(): boolean {
+  return trimmed('GROUP_PRIVATE_QUESTION_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — a Gmail provider time-change is posted into the household group.
+ * Exactly `true` enables it. Default off. Never a login.
+ */
+export function groupMailNoticeEnabled(): boolean {
+  return trimmed('GROUP_MAIL_NOTICE_ENABLED') === 'true';
+}
+
+/** Any inbound VIL-399 experience turn that is not carpool or bring-list. */
+export function groupExperienceTurnEnabled(): boolean {
+  return groupPollsEnabled() || groupLinkCardsEnabled() || groupPrivateQuestionEnabled();
+}
+
+/**
+ * VIL-444 (T24) — a clash in the household group gets one model-written alert with a
+ * suggested fix, in place of the household conflict line, and a pickup someone takes in
+ * that group settles it (group-pickup-claim.ts). Exactly `true` enables it.
+ * Default off: off plans and sends exactly what it did before.
+ */
+export function linqGroupConflictAlertsEnabled(): boolean {
+  return isEnabled('linq-group-conflict-alerts');
+}
+
+/**
+ * VIL-609 — one child's two overlapping plans, each held by a different parent, is a
+ * clash, and Hale tells both parents privately in their own 1:1 Linq threads. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function crossParentClashEnabled(): boolean {
+  return isEnabled('cross-parent-clash');
+}
+
+/**
+ * VIL-442 (T15) — RSVP tracking for any plan in a Linq group. Exactly `true`
+ * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function linqGroupPlanRsvpEnabled(): boolean {
+  return isEnabled('linq-group-plan-rsvp');
+}
+
+/**
+ * VIL-503 — after a household says yes to a tracked plan, Hale may ask before
+ * writing that household's calendar. Exactly `true`, and only on a Vercel
+ * Preview deploy. Unset, empty, `on`, `false`, and every production deploy
+ * stay dark, so copying the env var cannot turn it on in Prod. Dark leaves
+ * the RSVP tally as it was: no ask, no calendar copy. The plan RSVP flag
+ * still has to be on for a plan to exist.
+ */
+export function linqGroupPlanRsvpCalendarEnabled(): boolean {
+  return (
+    process.env.VERCEL_ENV === 'preview' &&
+    trimmed('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED') === 'true'
+  );
+}
+
+/**
+ * VIL-471 — parent-made polls in a Linq group, read in the same group turn as
+ * plan RSVPs. Exactly `true` enables it. Unset, empty, `on`, and `false` stay
+ * dark. Default off. The native poll card additionally needs LINQ_POLLS.
+ */
+export function linqGroupPollsEnabled(): boolean {
+  return isEnabled('linq-group-polls');
+}
+
+/**
+ * VIL-476 — native iMessage voice memos: an iMessage capability check (cached) and the
+ * voice-memo send, plus inbound audio named as a voice memo for the model. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off reads
+ * inbound audio as a `file` and never calls the capability or voice-memo endpoints.
+ */
+export function linqVoiceMemosEnabled(): boolean {
+  return isEnabled('linq-voice-memos');
+}
+
+/**
+ * VIL-480 — Linq experience cards (`link`/`open`, rendered by Linq's own iMessage app)
+ * instead of a bare link preview. Exactly `true` enables it. Unset, empty, `on`, and
+ * `false` stay dark: dark never sends an experience and reads an inbound app card
+ * exactly as before (a `file`).
+ */
+export function linqExperiencesEnabled(): boolean {
+  return isEnabled('linq-experiences');
+}
+
+/**
+ * VIL-477 — Hale may leave a group chat when the family explicitly asks. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off,
+ * Hale never calls Linq's leave endpoint.
+ */
+export function linqGroupLeaveEnabled(): boolean {
+  return isEnabled('linq-group-leave');
+}
+
+/**
+ * VIL-478 — Hale sets the `ice` colour background once, when it opens a household
+ * group. Exactly `true` (trimmed) enables it. Unset, empty, `on`, and `false` stay
+ * dark. Default off. Production may light it the same way as any other environment.
+ */
+export function linqGroupBackgroundEnabled(): boolean {
+  return trimmed('LINQ_GROUP_BACKGROUND_ENABLED') === 'true';
+}
+
+/**
+ * VIL-459 — in a group several families share, "when can we all do it?" gets times read
+ * from each consenting family's free/busy. Exactly `true` enables it. Default off: off,
+ * the ask is an ordinary shared-group answer and no family's calendar is read.
+ */
+export function linqGroupCommonTimeEnabled(): boolean {
+  return isEnabled('linq-group-common-time');
+}
+
+/**
+ * VIL-475 — iMessage @mentions in Linq group chats. On when the value is exactly
+ * `true` (trimmed). Unset, empty, `on`, and `false` stay dark. Default off.
+ * Production may light it the same way as any other environment.
+ *
+ * On, inbound `mentions` become facts for the group-turn reader, and a group
+ * reply may carry one outbound `mention` when the model names a seated member.
+ * Off leaves today's parse unused and every send without a mention field.
+ */
+export function linqGroupMentionsEnabled(): boolean {
+  return isEnabled('linq-group-mentions');
+}
+
+export const LINQ_APP_CLIP_PAY_ENABLED_ENV = 'LINQ_APP_CLIP_PAY_ENABLED';
+
+/**
+ * App Clip payment. ENV-ONLY and OFF unless exactly `true`.
+ * Not a PostHog flag — nothing in PostHog may turn a payment on.
+ */
+export function linqAppClipPayEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[LINQ_APP_CLIP_PAY_ENABLED_ENV] === 'true';
 }

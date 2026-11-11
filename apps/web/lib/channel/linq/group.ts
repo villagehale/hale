@@ -1,23 +1,27 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { CopyLanguage, ReplyLanguage } from '~/lib/channel/language';
+import { noteGroupChatCreated, noteGroupChatMemberAdded } from '~/lib/analytics/product-hooks';
+import { type CopyLanguage, type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
+import {
+  addLinqParticipant,
+  createLinqChat,
+  outboundLineFrom,
+  removeLinqParticipant,
+  sendLinqChatMessage,
+  setLinqChatBackground,
+  updateLinqGroupChat,
+} from '~/lib/channel/outbound-transport';
 import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { linqFromE164 } from './config';
+import { linqGroupBackgroundEnabled } from './config';
 import { haleContactImageUrl } from './contact-card';
-import { groupAudienceAllows } from './group-audience';
-import {
-  LinqSendError,
-  addLinqParticipant,
-  createLinqChat,
-  listLinqParticipantHandles,
-  removeLinqParticipant,
-  sendLinqChatMessage,
-  updateLinqGroupChat,
-} from './transport';
+import { type GroupLineClass, groupAudienceAllows } from './group-audience';
+import { resolveGroupMention } from './group-mention-reader';
+import type { ListChatHandles } from './roster';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-335 phase (b) — one household group, not a classmate-logistics brand.
@@ -29,20 +33,36 @@ import {
  */
 
 /**
- * DESIGN LOCK PENDING (Sloane). First bubble when Hale opens the co-parent
- * group. No URL: Linq rejects a link on the create-chat message.
+ * First bubble when Hale opens (or claims) the co-parent group. The model writes it
+ * (VIL-506); a miss sends nothing. No URL: Linq rejects a link on the create-chat message.
  */
-export const LINQ_GROUP_OPEN_TEXT = "This thread is your kids' year — both of you, and me.";
+export function linqGroupOpenLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_open', language });
+}
 
 /** DESIGN LOCK PENDING (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
 export const LINQ_GROUP_DISPLAY_NAME = "Kids' year";
 
+/** The family's own language for a group line (Design #973: never an English default).
+ * Local, not family-outbound's reader, because that module imports this one. */
+async function groupLineLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage | null> {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(rows.find((row) => row.id === familyId)?.primaryLanguage);
+}
+
 /**
- * DESIGN LOCK PENDING (Sloane). Sent in the 1:1 when Linq will not open the
- * group. The sandbox requires the co-parent to have texted the line first.
+ * Sent in the 1:1 when Linq will not open the group (the co-parent has to have texted
+ * the line first). The model writes it (VIL-506); a miss sends nothing.
  */
-export const LINQ_GROUP_UNREACHABLE_TEXT =
-  "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.";
+export function linqGroupUnreachableLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_unreachable', language });
+}
 
 /**
  * An unclaimed group has no parent to name. Hale sends nothing about the
@@ -125,7 +145,7 @@ export function linqGroupClaimRefused(language: ReplyLanguage | null): Promise<s
   return speak({ purpose: 'linq_group_claim_refused', language });
 }
 
-/** Ack after a claim. The body is {@link LINQ_GROUP_OPEN_TEXT}. */
+/** Ack after a claim. The body is {@link linqGroupOpenLine}. */
 export const LINQ_GROUP_CLAIMED_TEMPLATE_KEY = 'linq:group_claimed';
 /** Refusal when this chat is already another household, or this household already has one. */
 export const LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY = 'linq:group_claim_refused';
@@ -237,6 +257,7 @@ export async function claimHouseholdLinqGroup(
     targetId: input.familyId,
     after: { outcome: 'claimed' },
   });
+  noteGroupChatCreated({ familyId: input.familyId, chatId: input.chatId, familyCount: 1 });
   return { status: 'claimed', chatId: input.chatId };
 }
 
@@ -268,15 +289,46 @@ export async function deliverLinqGroupNotice(
     now: Date;
     fetch?: typeof fetch;
     send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+    /**
+     * Audience class. A direct reply in the turn is `reply`; a proactive line
+     * (e.g. a ride reminder) names its content class so an incomplete roster
+     * holds it instead of treating it as a reply.
+     */
+    lineClass: GroupLineClass;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<'sent' | 'not_sent' | 'group_audience_refused'> {
-  if (!(await groupAudienceAllows(database, input.chatId, 'reply')).allowed) {
+  const listChatHandles: ListChatHandles =
+    input.listChatHandles ?? ((i) => listLinqParticipantHandles({ ...i, fetch: input.fetch }));
+  if (
+    !(await groupAudienceAllows(database, input.chatId, input.lineClass, listChatHandles)).allowed
+  ) {
     return 'group_audience_refused';
   }
+  let sent: { providerMessageId: string };
   try {
-    const sent = input.send
+    const mention = input.send
+      ? undefined
+      : await resolveGroupMention({ database, chatId: input.chatId, text: input.text });
+    sent = input.send
       ? await input.send({ chatId: input.chatId, text: input.text })
-      : await sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch });
+      : await sendLinqChatMessage({
+          chatId: input.chatId,
+          text: input.text,
+          ...(mention ? { mention } : {}),
+          fetch: input.fetch,
+        });
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    console.warn(
+      { familyId: input.familyId, code },
+      'linq group: the household-thread notice did not land',
+    );
+    return 'not_sent';
+  }
+  // The text left. A ledger failure past this point is logged, never reported
+  // as not_sent, so no caller replays a line the group already has.
+  try {
     const [row] = await database
       .insert(schema.channelMessages)
       .values({
@@ -301,15 +353,13 @@ export async function deliverLinqGroupNotice(
       targetTable: 'channel_messages',
       targetId: id,
     });
-    return 'sent';
   } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    console.warn(
-      { familyId: input.familyId, code },
-      'linq group: the household-thread notice did not land',
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq group: notice sent but not ledgered',
     );
-    return 'not_sent';
   }
+  return 'sent';
 }
 
 export type OpenHouseholdGroupOutcome =
@@ -323,7 +373,9 @@ export type OpenHouseholdGroupOutcome =
         | 'no_chat'
         | 'not_configured'
         | 'same_number'
-        | 'unavailable';
+        | 'unavailable'
+        /** VIL-506: the model wrote no opening line, so no group was opened. */
+        | 'no_line';
     }
   | { status: 'degraded'; reason: 'coparent_not_reachable'; code: string; httpStatus: number };
 
@@ -359,7 +411,7 @@ export async function openHouseholdLinqGroup(
       };
     }
     chatIdForDegrade = door.chatId;
-    const from = linqFromE164();
+    const from = outboundLineFrom();
     if (!from) {
       console.warn(
         { familyId: args.familyId },
@@ -384,13 +436,22 @@ export async function openHouseholdLinqGroup(
         targetId: args.familyId,
         after: { outcome: 'added' },
       });
+      noteGroupChatMemberAdded({ familyId: args.familyId, chatId: groupId, familyCount: 1 });
       return { status: 'added', chatId: groupId };
     }
 
+    const openText = await linqGroupOpenLine(await groupLineLanguage(database, args.familyId));
+    if (!openText) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written opening line - group not opened, nothing sent',
+      );
+      return { status: 'skipped', reason: 'no_line' };
+    }
     const created = await createLinqChat({
       from,
       to: [parent, coParent],
-      text: LINQ_GROUP_OPEN_TEXT,
+      text: openText,
       fetch: args.fetch,
     });
     await updateLinqGroupChat({
@@ -403,6 +464,12 @@ export async function openHouseholdLinqGroup(
       .update(schema.families)
       .set({ linqGroupChatId: created.chatId, updatedAt: args.now })
       .where(eq(schema.families.id, args.familyId));
+    await setHouseholdGroupBackgroundOnce(database, {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      chatId: created.chatId,
+      fetch: args.fetch,
+    });
     await database.insert(schema.channelMessages).values({
       familyId: args.familyId,
       parentUserId: args.parentUserId,
@@ -423,6 +490,7 @@ export async function openHouseholdLinqGroup(
       targetId: args.familyId,
       after: { outcome: 'opened' },
     });
+    noteGroupChatCreated({ familyId: args.familyId, chatId: created.chatId, familyCount: 1 });
     return { status: 'opened', chatId: created.chatId };
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {
@@ -440,15 +508,126 @@ export async function openHouseholdLinqGroup(
   }
 }
 
+/** The one colour Hale ever sets (VIL-478 Design lock: calm, readable). */
+export const HOUSEHOLD_GROUP_BACKGROUND = 'ice' as const;
+
+/**
+ * VIL-478 — set the household group's background once, right after Hale creates
+ * it. Never on a 1:1, a multi-family chat, or a group Hale did not just create
+ * (those may already carry a wallpaper). Skips when a parent has already changed
+ * it. Sends no bubble. A refusal or throw never blocks the group open.
+ */
+export async function setHouseholdGroupBackgroundOnce(
+  database: Database,
+  args: { familyId: string; parentUserId: string; chatId: string; fetch?: typeof fetch },
+): Promise<'set' | 'off' | 'parent_owned' | 'refused'> {
+  if (!linqGroupBackgroundEnabled()) return 'off';
+  try {
+    if (await parentOwnsGroupBackground(database, args.familyId, args.chatId)) {
+      return 'parent_owned';
+    }
+    const result = await setLinqChatBackground({
+      chatId: args.chatId,
+      variant: HOUSEHOLD_GROUP_BACKGROUND,
+      fetch: args.fetch,
+    });
+    if (result.status !== 'accepted') {
+      console.warn(
+        { familyId: args.familyId, status: result.status },
+        'linq group: background not set',
+      );
+      return 'refused';
+    }
+    await database.insert(schema.auditLog).values({
+      familyId: args.familyId,
+      actor: args.parentUserId,
+      actionTaken: 'linq_group_background_set',
+      targetTable: 'families',
+      targetId: args.familyId,
+      after: { variant: HOUSEHOLD_GROUP_BACKGROUND },
+    });
+    return 'set';
+  } catch (err) {
+    console.warn(
+      { familyId: args.familyId, code: err instanceof LinqSendError ? err.code : 'unknown' },
+      'linq group: background not set',
+    );
+    return 'refused';
+  }
+}
+
+/**
+ * Ownership is per CHAT, not per family (Devin #991): a parent who changed an old
+ * group's wallpaper has said nothing about the next group Hale opens for them.
+ */
+async function parentOwnsGroupBackground(
+  database: Database,
+  familyId: string,
+  chatId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'linq_group_background_parent_set'),
+      ),
+    );
+  return rows.some(
+    (row) =>
+      row.actionTaken === 'linq_group_background_parent_set' &&
+      typeof row.after === 'object' &&
+      row.after !== null &&
+      (row.after as { chatId?: unknown }).chatId === chatId,
+  );
+}
+
+/**
+ * VIL-478 — a `chat.background_updated` webhook. When a participant (not Hale's
+ * own line, `actor_handle.is_me`) changed the household group's background, record
+ * it so Hale never sets it over theirs. Hale's own echo is ignored. Sends nothing.
+ */
+export async function noteGroupBackgroundChange(
+  database: Database,
+  args: { chatId: string; isFromMe: boolean },
+): Promise<'linq_background_mine' | 'linq_background_parent_noted' | 'linq_background_no_family'> {
+  if (args.isFromMe) return 'linq_background_mine';
+  const rows = await database
+    .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, args.chatId));
+  const familyId = rows.find((row) => row.linqGroupChatId === args.chatId)?.id;
+  if (!familyId) return 'linq_background_no_family';
+  await database.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: 'linq_group_background_parent_set',
+    targetTable: 'families',
+    targetId: familyId,
+    // Internal only: scopes the parent's choice to THIS chat (Devin #991).
+    after: { chatId: args.chatId },
+  });
+  return 'linq_background_parent_noted';
+}
+
 async function tellParentTheGroupDidNotOpen(
   database: Database,
   args: { familyId: string; parentUserId: string; now: Date; fetch?: typeof fetch },
   chatId: string,
 ): Promise<void> {
   try {
+    const text = await linqGroupUnreachableLine(await groupLineLanguage(database, args.familyId));
+    if (!text) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written degrade line - nothing sent',
+      );
+      return;
+    }
     const sent = await sendLinqChatMessage({
       chatId,
-      text: LINQ_GROUP_UNREACHABLE_TEXT,
+      text,
       fetch: args.fetch,
     });
     await database.insert(schema.channelMessages).values({

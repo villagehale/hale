@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly reports sold_out with no registration and no charge, matches facts, no spot claimed, no hint of retry. Minor issue: it does not mention a link follows, which watchFor says the registration page follows, and the text says the page follows implicitly only via watchFor; text itself is acceptable. Tone is plain and warm. Score 5 is justified.",
+    "score": 5
+  }
+}

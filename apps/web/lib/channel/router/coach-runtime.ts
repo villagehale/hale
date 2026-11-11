@@ -1,8 +1,9 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { CapabilityNotes } from '~/lib/channel/capabilities/ledger';
+import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
-import { capabilityReply } from './copy';
 
 /**
  * VIL-220 · C1 → VIL-221 · C2 — the seam between the router and the agent.
@@ -70,6 +71,8 @@ export interface ChannelTurn {
    * Absent on a text-only turn.
    */
   inboundMedia?: readonly InboundMediaPart[];
+  /** VIL-477 — the Linq group this turn is in; absent/null on a 1:1 or SMS turn. */
+  groupChatId?: string | null;
 }
 
 /**
@@ -97,6 +100,44 @@ export interface ChannelTurnResult {
    * "I'm watching that" and never reached a transport arms nothing at all.
    */
   spotWatch: SpotWatchIntent | null;
+  /**
+   * VIL-497 — the one find the model chose to send as a Linq experience card (url from a
+   * tool ref, title model-written), or null/absent. Only ever set while
+   * `LINQ_EXPERIENCES_ENABLED` is lit on a 1:1 turn; the router delivers it after the text.
+   */
+  experienceCard?: ExperienceCardIntent | null;
+  /**
+   * VIL-477 — a member plainly asked Hale to leave this group, and the model's reply is
+   * its goodbye. Only ever true while `LINQ_GROUP_LEAVE_ENABLED` is lit on a group turn;
+   * the router leaves AFTER the reply is sent, through the guarded `leaveGroupOnFamilyAsk`.
+   * `ifLeaveFails` is the model's own line sent only if that leave is then refused.
+   */
+  groupLeave?: { ifLeaveFails: string } | null;
+  /**
+   * VIL-303 · what this reply said about a deferred capability: a no it gave, or an
+   * earlier no it corrected. Rides out for the reason the promises above do, and the
+   * router writes it only once the reply is sent. Null or absent means neither.
+   */
+  capabilityNotes?: CapabilityNotes | null;
+  /**
+   * VIL-495 — the model chose to say this reply as a voice memo. Only ever true while
+   * `LINQ_VOICE_MEMOS_ENABLED` is lit on a 1:1 turn. The router sends the SAME reply as a
+   * memo when every send-time gate holds (linq/voice-reply.ts), and as text otherwise.
+   */
+  voiceMemo?: boolean;
+  /**
+   * VIL-581 · the actions this turn's tools drafted, so a turn that breaks AFTER the
+   * coach returned (the claim read) can still send the drafts receipt. The production
+   * runtime always sets it; absent means none.
+   */
+  draftedActionIds?: readonly string[];
+  /**
+   * VIL-616 · the reply was written after `read_email` handed this turn an email's text,
+   * so it may repeat a stranger's name, number or code. The router marks the thread row
+   * it lands in, and the nightly memory writer never learns from that row. The
+   * production runtime always sets it; absent means no email was read.
+   */
+  emailRead?: boolean;
 }
 
 export interface ChannelCoachRuntime {
@@ -154,10 +195,11 @@ export function draftsFromFailure(err: unknown): readonly string[] {
  * plus where the rest lives. C2 keeps that same line for genuinely out-of-scope asks,
  * so the stub is the narrow case of the real thing rather than a dead alternative.
  */
+/** VIL-504 · Degraded coach: send nothing rather than a fixed out-of-scope line. */
 export function capabilityStubRuntime(): ChannelCoachRuntime {
   return {
     async respond() {
-      return { reply: capabilityReply(), planOffer: null, activityPromise: null, spotWatch: null };
+      return { reply: '', planOffer: null, activityPromise: null, spotWatch: null };
     },
   };
 }

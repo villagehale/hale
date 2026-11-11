@@ -10,6 +10,7 @@ import {
   structuredToolChoice,
   withoutThinking,
 } from './model.js';
+import { type PromptCacheTtl, cachedSystem } from './prompt-cache.js';
 
 /**
  * Single-shot structured output, validated against the caller's Zod schema. The one
@@ -32,7 +33,8 @@ import {
  * tool: forced where the model accepts it (Haiku 5.5), otherwise `auto` with one call
  * and ONE identical re-ask when the reply came back in prose — the same one re-ask a JSON
  * output gets when it comes back with no text. Truncation, refusal, a
- * missing answer and unparseable JSON are each a named {@link StructuredOutputError};
+ * missing answer, unparseable JSON and call markup inside a tool answer's string are each
+ * a named {@link StructuredOutputError};
  * Zod stays the gate for every bound the grammar does not carry.
  *
  * The client is injected so tests drive the mechanics with a fake; answer QUALITY is
@@ -45,6 +47,13 @@ export interface StructuredRequestArgs {
    */
   lane: LaneConfig;
   system: string;
+  /**
+   * Skill addendums after the cache breakpoint (per-family / per-turn). Concatenated
+   * model text is `system` plus these, joined by `\n\n`.
+   */
+  systemExtras?: readonly string[];
+  /** Default 5m. Sparse composers pass 1h so a later wave still reads the prefix. */
+  cacheTtl?: PromptCacheTtl;
   userMessage: string;
   toolName: string;
   toolDescription: string;
@@ -63,6 +72,11 @@ export interface ForceToolJsonArgs<TSchema extends z.ZodTypeAny> extends Structu
    * timeout sized for a ten-second one.
    */
   transport?: 'create' | 'stream';
+  /**
+   * Aborts every send of this call (the first, a re-ask, a thinking-off re-ask). It rides
+   * as the SDK REQUEST OPTION, never in the body, so no recorded request moves.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ForceToolJsonResult<TValue> {
@@ -71,7 +85,12 @@ export interface ForceToolJsonResult<TValue> {
   usage: Anthropic.Usage;
 }
 
-export type StructuredOutcome = 'truncated' | 'refusal' | 'no_answer' | 'unparseable';
+export type StructuredOutcome =
+  | 'truncated'
+  | 'refusal'
+  | 'no_answer'
+  | 'unparseable'
+  | 'tool_markup';
 
 /** A structured call that produced no answer to parse, named by why. */
 export class StructuredOutputError extends Error {
@@ -85,15 +104,6 @@ export class StructuredOutputError extends Error {
     super(message);
     this.name = 'StructuredOutputError';
   }
-}
-
-/**
- * The stable system prompt behind one ephemeral cache breakpoint. Wire order is
- * tools → system → messages, so the breakpoint caches the tool definitions and the
- * instructions together; the per-turn payload goes in the user message, after it.
- */
-export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }];
 }
 
 /**
@@ -119,7 +129,7 @@ export function structuredRequest(args: StructuredRequestArgs): StructuredReques
   const common = {
     ...fields,
     max_tokens: args.maxTokens,
-    system: cachedSystem(args.system),
+    system: cachedSystem(args.system, args.cacheTtl, args.systemExtras),
     messages: [{ role: 'user' as const, content: args.userMessage }],
   };
   if (grammar) {
@@ -144,13 +154,19 @@ export function structuredRequest(args: StructuredRequestArgs): StructuredReques
 
 type Send = (request: StructuredRequest) => Promise<Anthropic.Message>;
 
-function sender(client: AgentClient, transport: 'create' | 'stream' | undefined): Send {
+function sender(
+  client: AgentClient,
+  transport: 'create' | 'stream' | undefined,
+  signal: AbortSignal | undefined,
+): Send {
   // The widened body is the wire request; see StructuredRequest.
   const wire = (request: StructuredRequest) =>
     request as unknown as Anthropic.MessageCreateParamsNonStreaming;
+  // Only a caller that passed a signal sends a second argument: every other call is unchanged.
+  const options: [] | [{ signal: AbortSignal }] = signal ? [{ signal }] : [];
   return transport === 'stream'
-    ? (request) => client.messages.stream(wire(request)).finalMessage()
-    : (request) => client.messages.create(wire(request));
+    ? (request) => client.messages.stream(wire(request), ...options).finalMessage()
+    : (request) => client.messages.create(wire(request), ...options);
 }
 
 function findToolUse(response: Anthropic.Message, toolName: string) {
@@ -209,6 +225,10 @@ export function readStructuredAnswer(
   if (request.tools) {
     const toolUse = findToolUse(response, stage);
     if (!toolUse) fail(stage, 'no_answer', response, `model returned no ${stage} tool call`);
+    const leak = markupAt(toolUse.input, fieldNames(request.tools), inputText(request));
+    if (leak !== null) {
+      fail(stage, 'tool_markup', response, `tool-call markup inside the string at ${leak}`);
+    }
     return toolUse.input;
   }
   const text = response.content
@@ -222,6 +242,73 @@ export function readStructuredAnswer(
   } catch {
     return fail(stage, 'unparseable', response, 'the JSON output did not parse');
   }
+}
+
+/**
+ * A plain tool's input can come back with the call's own markup written INTO a string:
+ * the field closed early (`true</parentQuestion>`) and the next one opened inside it
+ * (`<parameter name="connectorsOffered">[]`), so that next field is lost. Refused, never
+ * stripped: stripping keeps the answer but not the swallowed field. Only a closing tag
+ * that names one of the tool's own fields counts, so a `</b>` in a reply is left alone.
+ *
+ * Only markup the MODEL wrote is a leak. A tag that occurs in the request's own input is
+ * an echo of it — a STOP text holding `</intent>` copied into `verbatim`, an email
+ * subject holding `</title>` — and refusing it would fail that read on every attempt.
+ */
+const PARAMETER_TAG = /<\/?(?:\w+:)?parameter(?=[\s>])[^<>]*>?/g;
+const CLOSING_TAG = /<\/([A-Za-z_][\w-]*)>/g;
+
+/** The user turns' text: the data the caller handed the model, where an echo comes from. */
+function inputText(request: StructuredRequest): string {
+  return request.messages
+    .filter((message) => message.role === 'user')
+    .flatMap((message) =>
+      typeof message.content === 'string'
+        ? [message.content]
+        : message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])),
+    )
+    .join('\n');
+}
+
+/** In the input as written, or as a JSON payload quotes it. */
+function echoed(tag: string, input: string): boolean {
+  return input.includes(tag) || input.includes(JSON.stringify(tag).slice(1, -1));
+}
+
+function fieldNames(node: unknown, names = new Set<string>()): Set<string> {
+  if (!node || typeof node !== 'object') return names;
+  for (const [key, child] of Object.entries(node)) {
+    if (key === 'properties' && child && typeof child === 'object') {
+      for (const name of Object.keys(child)) names.add(name);
+    }
+    fieldNames(child, names);
+  }
+  return names;
+}
+
+/** The dotted path of the first string holding call markup, or null. */
+function markupAt(
+  value: unknown,
+  fields: ReadonlySet<string>,
+  input: string,
+  path: string[] = [],
+): string | null {
+  if (typeof value === 'string') {
+    const tags = [
+      ...[...value.matchAll(PARAMETER_TAG)].map((match) => match[0]),
+      ...[...value.matchAll(CLOSING_TAG)]
+        .filter((match) => fields.has(match[1] as string))
+        .map((match) => match[0]),
+    ];
+    return tags.some((tag) => !echoed(tag, input)) ? path.join('.') : null;
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value)) {
+      const found = markupAt(child, fields, input, [...path, key]);
+      if (found !== null) return found;
+    }
+  }
+  return null;
 }
 
 function sumUsage(a: Anthropic.Usage, b: Anthropic.Usage): Anthropic.Usage {
@@ -240,7 +327,7 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   args: ForceToolJsonArgs<TSchema>,
 ): Promise<ForceToolJsonResult<z.infer<TSchema>>> {
   const request = structuredRequest(args);
-  const send = sender(args.client, args.transport);
+  const send = sender(args.client, args.transport, args.signal);
   let response = await send(request);
   let usage = response.usage;
 
@@ -285,15 +372,41 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
     response = await send(retry);
     usage = sumUsage(usage, response.usage);
     return {
-      value: args.schema.parse(readStructuredAnswer(retry, response, args.toolName)),
+      value: args.schema.parse(readCounted(retry, response, args.toolName)),
       usage,
     };
   }
 
   return {
-    value: args.schema.parse(readStructuredAnswer(request, response, args.toolName)),
+    value: args.schema.parse(readCounted(request, response, args.toolName)),
     usage,
   };
+}
+
+/** Markup refusals so far in this process, per stage. */
+const toolMarkupRefusals = new Map<string, number>();
+
+/**
+ * readStructuredAnswer, with each markup refusal logged under a running per-stage count,
+ * so a stage that keeps losing reads to it shows up. Stage, model and count only.
+ */
+function readCounted(
+  request: StructuredRequest,
+  response: Anthropic.Message,
+  stage: string,
+): unknown {
+  try {
+    return readStructuredAnswer(request, response, stage);
+  } catch (err) {
+    if (err instanceof StructuredOutputError && err.outcome === 'tool_markup') {
+      const count = (toolMarkupRefusals.get(stage) ?? 0) + 1;
+      toolMarkupRefusals.set(stage, count);
+      console.warn(
+        JSON.stringify({ event: 'structured_tool_markup', stage, model: request.model, count }),
+      );
+    }
+    throw err;
+  }
 }
 
 function cameBackEmpty(

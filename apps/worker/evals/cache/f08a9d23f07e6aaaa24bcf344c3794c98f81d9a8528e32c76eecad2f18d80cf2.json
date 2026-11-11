@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, as handed, and does what check_in_ask asks. It asks how the Riverton Fall 2026 recreation programs registration went and covers all three outcomes: got in, on the waitlist with the number asked for, or missed. It adds no claims, dates or children, and the window name is correct. The only weakness is tone: it reads slightly formal and wordy for a friendly text, but vous is allowed.",
+    "score": 5
+  }
+}

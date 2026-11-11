@@ -8,6 +8,7 @@ import {
   CHECKOUT_KEEP_ALIVE_SECONDS,
   readBrowserUseConfirmation,
   runBrowserUseSignup,
+  signupFacts,
 } from './engine';
 import browserCreated from './fixtures/browser-created.json';
 import profileCreated from './fixtures/profile-created.json';
@@ -170,6 +171,38 @@ describe('browser use signup engine', () => {
     }
   });
 
+  it('refuses a live view on any other host: no link goes back and the browser is stopped', async () => {
+    const spoofed = {
+      ...eventsReady,
+      events: eventsReady.events.map((event) =>
+        event.type === 'browser.ready'
+          ? { ...event, data: { ...event.data, live_view_url: 'https://live.example.test/s/x' } }
+          : event,
+      ),
+    };
+    const { deps, requests } = setup({
+      ...happyRoutes(),
+      [`GET ${RUN}/events`]: { body: spoofed },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const result = await runBrowserUseSignup(input(), deps);
+      expect(result).toMatchObject({ outcome: 'error', detail: 'no_live_view', liveViewUrl: null });
+      expect(JSON.stringify(result)).not.toContain('live.example.test');
+      expect(warn).toHaveBeenCalledWith(
+        { refused: 'live_view_host' },
+        expect.stringContaining('live view'),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('live.example.test');
+      const runBrowser = eventsReady.events[1]?.data.browser_session_id;
+      expect(
+        requests.some((r) => r.method === 'PATCH' && r.path === `/api/v4/browsers/${runBrowser}`),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('sends only the granted fields, no secrets, no payment link, and keeps the cart alive', async () => {
     const { deps, requests } = setup(happyRoutes());
     await runBrowserUseSignup(input(), deps);
@@ -180,11 +213,11 @@ describe('browser use signup engine', () => {
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
     });
-    // V4 keepAlive is integer seconds (120-14400), not the V2/V3 boolean. The
-    // 4-hour `timeout_at` on browser.released is Browser Use's hard limit, not this.
+    // V4 keepAlive is integer seconds (120-14400). Omitting it defaults to 14400
+    // (four hours). Hale always sends 900 so the timeout actually reaches Browser Use.
     expect(CHECKOUT_KEEP_ALIVE_SECONDS).toBe(900);
-    expect(body.keepAlive).toBeGreaterThanOrEqual(120);
-    expect(body.keepAlive).toBeLessThanOrEqual(14400);
+    expect(body.keepAlive).toBe(900);
+    expect(Object.prototype.hasOwnProperty.call(body, 'keepAlive')).toBe(true);
     expect(body).not.toHaveProperty('secretBindings');
     expect(body).not.toHaveProperty('opVaultId');
     expect(body).not.toHaveProperty('stripeLinkConnectionId');
@@ -197,6 +230,36 @@ describe('browser use signup engine', () => {
     expect(task).not.toContain('Grace');
     expect(task).not.toContain('cookie-value-fixture');
     expect(JSON.stringify(body.outputSchema)).toContain('reached_checkout');
+  });
+
+  it('passes credential aliases and secretBindings, never the secret in the task', async () => {
+    vi.stubEnv('PROVIDER_ACCOUNT_CREATE_ENABLED', 'true');
+    try {
+      const { deps, requests } = setup(happyRoutes());
+      await runBrowserUseSignup(
+        input({
+          credentials: { username: 'ada', password: 's3cret-city', totp: '123456' },
+          accountCreate: true,
+        }),
+        deps,
+      );
+      const run = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/runs');
+      const body = run?.body as Record<string, unknown>;
+      const bindings = body.secretBindings as { alias: string }[];
+      expect(bindings.map((item) => item.alias).sort()).toEqual([
+        'provider_password',
+        'provider_totp',
+        'provider_username',
+      ]);
+      const task = String(body.task);
+      expect(task).toContain('provider_username');
+      expect(task).toContain('provider_password');
+      expect(task).not.toContain('s3cret-city');
+      expect(task).not.toContain('123456');
+      expect(task).toContain('"account_create": true');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('reuses a profile already seeded from this session', async () => {
@@ -226,7 +289,6 @@ describe('browser use signup engine', () => {
 
   it.each([
     ['needs_login', 'login_wall'],
-    ['needs_human', 'captcha'],
     ['needs_human', 'verification_code'],
   ] as const)(
     'returns %s (%s) with the live view so the parent can step in',
@@ -242,6 +304,26 @@ describe('browser use signup engine', () => {
       });
     },
   );
+
+  it.each([
+    ['needs_human', 'captcha'],
+    ['needs_human', 'session_not_found'],
+  ] as const)('closes the browser on %s (%s)', async (outcome, detail) => {
+    const summary = summaryWith({ outcome, detail, checkout_url: null, cart_total_cents: null });
+    const { deps, requests } = setup({ ...happyRoutes(summary), ...costRoutes() });
+    const result = await runBrowserUseSignup(input(), deps);
+    expect(result).toMatchObject({ outcome, detail, liveViewUrl: null });
+    expect(
+      requests.some((r) => r.method === 'PATCH' && r.path.startsWith('/api/v4/browsers/')),
+    ).toBe(true);
+  });
+
+  it('never types a derived date of birth into the agent facts', () => {
+    const facts = signupFacts(input({ identity: { ...IDENTITY, childDob: null } })) as {
+      child: { date_of_birth?: string };
+    };
+    expect(facts.child.date_of_birth).toBeUndefined();
+  });
 
   it('turns a cart above the approved price into needs_human', async () => {
     const { deps } = setup(happyRoutes(summaryWith({ cart_total_cents: 12500 })));
@@ -370,6 +452,13 @@ describe('browser use run settings, browser stop and session cost', () => {
     });
     const seed = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/browsers');
     expect(seed?.body).toMatchObject({ proxyCountryCode: null });
+  });
+
+  it('turns the CAPTCHA solver off on every browser Hale creates', async () => {
+    const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
+    await runBrowserUseSignup(input(), deps);
+    const seed = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/browsers');
+    expect(seed?.body).toMatchObject({ solveCaptchas: true });
   });
 
   it('turns the proxy back on only for a provider that asks for it', async () => {

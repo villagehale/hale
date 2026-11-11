@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent took the cancel back with \"nvm\", so the correct handling is to draft nothing and confirm in one line. The reply does exactly that and names the right event: there is a single Thursday swim in the week. No greeting, no sign-off and nothing invented. Short and exact.",
+    "score": 5
+  }
+}

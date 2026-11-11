@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Text omits the required time (tomorrow Thursday at 10 AM) and the reminder recipient and task; says only 'Reminder set!' which misses both mustSay items."
+  }
+}

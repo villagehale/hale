@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { type SpotReading, readCourseModel, readSpot, transitionKind } from './availability';
+import { type SpotReading, readCourseModel, readSpot } from './availability';
+import { fromSpotReading, watchTransition } from './watch-reading';
 
 /**
  * VIL-337 · the reader, against the real bytes six PerfectMind course pages served.
@@ -336,7 +337,7 @@ describe('readSpot — evidence is quoted from the bytes', () => {
   });
 });
 
-describe('transitionKind', () => {
+describe('watchTransition over a course page', () => {
   const reading = (overrides: Record<string, unknown>) =>
     readSpot(variant(overrides), OPEN_FULL_COURSE);
   const open = readSpot(fixture('open-window-open-markham'), OPEN_SEATS_COURSE);
@@ -360,7 +361,7 @@ describe('transitionKind', () => {
     ['full', fullWithWaitlistRoom, null],
     ['open', open, null],
   ] as const)('%s -> the new reading', (prev, next, kind) => {
-    expect(transitionKind(prev, next)).toBe(kind);
+    expect(watchTransition(prev, fromSpotReading(next, "Markham's portal"))).toBe(kind);
   });
 });
 

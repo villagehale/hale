@@ -1,4 +1,3 @@
-import type { Municipality } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { groundUserMessage } from '~/lib/channel/activity/lane';
@@ -33,7 +32,7 @@ describe('buildWeekdayActivityQuery', () => {
   it('sends stage, town, and the date, and never a name or an exact age', () => {
     const built = buildWeekdayActivityQuery({
       children: [{ stage: 'child', interests: ['swimming'] }],
-      municipality: 'toronto' as Municipality,
+      town: 'Toronto',
       now: NOW,
       timeZone: TZ,
       householdNames: ['Maya', 'Ana'],
@@ -57,7 +56,7 @@ describe('buildWeekdayActivityQuery', () => {
         { stage: 'toddler', interests: [] },
         { stage: 'teenager', interests: ['Ava soccer'] },
       ],
-      municipality: null,
+      town: 'Seattle, Washington, United States',
       now: NOW,
       timeZone: TZ,
       householdNames: ['Mia', 'Ava'],
@@ -74,7 +73,7 @@ describe('buildWeekdayActivityQuery', () => {
   it('uses the verified break date as availability and does not invent a category list', () => {
     const built = buildWeekdayActivityQuery({
       children: [{ stage: 'child', interests: [] }],
-      municipality: 'toronto' as Municipality,
+      town: 'Toronto',
       now: NOW,
       timeZone: TZ,
       householdNames: [],
@@ -88,6 +87,18 @@ describe('buildWeekdayActivityQuery', () => {
     expect(built.query.subject).not.toContain('sports');
     expect(built.query.subject).not.toContain('tutoring');
   });
+  it('does not search with no place on file', () => {
+    expect(
+      buildWeekdayActivityQuery({
+        children: [{ stage: 'child', interests: [] }],
+        town: null,
+        now: NOW,
+        timeZone: TZ,
+        householdNames: [],
+        prompt: 'after_school',
+      }),
+    ).toEqual({ ok: false, reason: 'no_place' });
+  });
 });
 
 describe('runWeekdaySearch', () => {
@@ -95,7 +106,7 @@ describe('runWeekdaySearch', () => {
     const search = finder({ found: true, picks: [PICK] });
     const built = buildWeekdayActivityQuery({
       children: [{ stage: 'child', interests: [] }],
-      municipality: 'toronto' as Municipality,
+      town: 'Toronto',
       now: NOW,
       timeZone: TZ,
       householdNames: ['Maya'],
@@ -119,7 +130,7 @@ describe('runWeekdaySearch', () => {
     const search = finder({ found: false, reason: 'no_picks' });
     const delivery = await runWeekdaySearch(
       search,
-      { subject: 'after-school activities', window: null, town: null, stage: 'child' },
+      { subject: 'after-school activities', window: null, town: 'Toronto', stage: 'child' },
       [],
     );
     expect(delivery).toEqual({ status: 'abstain', reason: 'no_picks' });
@@ -132,7 +143,7 @@ describe('runWeekdaySearch', () => {
     });
     const delivery = await runWeekdaySearch(
       search,
-      { subject: 'after-school activities', window: null, town: null, stage: 'child' },
+      { subject: 'after-school activities', window: null, town: 'Toronto', stage: 'child' },
       ['Maya'],
     );
     expect(delivery).toEqual({ status: 'abstain', reason: 'not_deliverable' });
@@ -142,7 +153,7 @@ describe('runWeekdaySearch', () => {
     const search = finder({ found: false, reason: 'not_grounded' });
     const delivery = await runWeekdaySearch(
       search,
-      { subject: 'weekday activities', window: null, town: null, stage: null },
+      { subject: 'weekday activities', window: null, town: 'Toronto', stage: null },
       [],
     );
     expect(delivery).toEqual({ status: 'abstain', reason: 'not_grounded' });

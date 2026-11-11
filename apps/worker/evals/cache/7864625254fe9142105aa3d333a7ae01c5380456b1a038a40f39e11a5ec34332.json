@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct: event is tomorrow (Monday, from Sunday now), start 4:45 PM and end 5:45 PM are both given, no location is invented, and it stays generic as 'an appointment' without guessing. Language is English, short, calm, and natural. No travel or departure timing is stated, and there is no filler sentence. Phrasing 'until 5:45 PM' is a natural English time range.",
+    "score": 5
+  }
+}

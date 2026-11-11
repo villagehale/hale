@@ -211,11 +211,7 @@ const NON_TORONTO_M_FSAS = new Set(['M0R', 'M7R']);
  * Names are the community-council areas, not the release's paired mornings.
  * `etobicoke_york` is the former cities of Etobicoke and York.
  */
-export type TorontoDistrict =
-  | 'etobicoke_york'
-  | 'north_york'
-  | 'scarborough'
-  | 'toronto_east_york';
+export type TorontoDistrict = 'etobicoke_york' | 'north_york' | 'scarborough' | 'toronto_east_york';
 
 /**
  * FSA → district, transcribed from the neighbourhood names on

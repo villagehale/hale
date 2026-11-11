@@ -51,6 +51,23 @@ describe('offerConnectorLink', () => {
     await db.close();
   });
 
+  // VIL-617: a link minted on a Preview deploy lands on that deploy's app host when its
+  // APP_URL names one, not on production. The default host is pinned by the test below.
+  it('builds the link on the app host APP_URL names', async () => {
+    vi.stubEnv('APP_URL', 'https://hale-preview.example.test');
+    const outcome = await offerConnectorLink(db.database, {
+      familyId,
+      parentUserId,
+      provider: 'gmail',
+      now: NOW,
+    });
+
+    if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
+    expect(outcome.url).toMatch(
+      /^https:\/\/hale-preview\.example\.test\/connect\?t=[A-Za-z0-9_-]+&to=gmail$/,
+    );
+  });
+
   it('mints a link for a verified parent, with the audit row beside it (rule #6)', async () => {
     const outcome = await offerConnectorLink(db.database, {
       familyId,
@@ -141,7 +158,8 @@ describe('offerConnectorLink', () => {
     );
 
     expect(outcome).toEqual({ calendar: 'sent', gmail: 'sent' });
-    const [calendarBody, gmailBody] = transport.bodies();
+    // Each card is its prose, then its link as its own text.
+    const [, calendarBody, , gmailBody] = transport.bodies();
     const calendarToken = calendarBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     const gmailToken = gmailBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     if (!calendarToken || !gmailToken) throw new Error('expected a token in each card');
@@ -259,7 +277,7 @@ describe('connectorLinkHandler', () => {
     expect(verdict.outcome).toBe('sent');
     expect(verdict.reply).toContain('https://app.villagehale.com/connect?t=');
     expect(verdict.reply).toContain('Google Calendar');
-    expect(verdict.reply).toContain('minutesValid=15');
+    expect(verdict.reply).toContain('minutesValid: 15');
   });
 
   it('asks the model for a French line when the household is French', async () => {
@@ -325,9 +343,9 @@ describe('connectorLinkHandler', () => {
       );
       if (!verdict.claimed) throw new Error('expected the handler to claim');
       expect(verdict.outcome).toBe('sent');
-      expect(verdict.reply).toContain('service=Gmail');
+      expect(verdict.reply).toContain('service: Gmail');
       expect(verdict.reply).toContain('to=gmail');
-      expect(verdict.reply).toContain('minutesValid=15');
+      expect(verdict.reply).toContain('minutesValid: 15');
       expect(verdict.reply).not.toMatch(/text me the words/i);
       expect(verdict.reply).not.toContain('old-gmail');
       const tokens = await db.database.select().from(schema.channelSigninTokens);
@@ -347,7 +365,7 @@ describe('connectorLinkHandler', () => {
       turn('give me a fresh one', conversationId),
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
-    expect(verdict.reply).toContain('service=Google Calendar');
+    expect(verdict.reply).toContain('service: Google Calendar');
     expect(verdict.reply).toContain('to=gcal');
     expect(verdict.reply).not.toContain('old-gcal');
   });
@@ -384,7 +402,36 @@ describe('connectorLinkHandler', () => {
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
     expect(verdict.outcome).toBe('mint_failed');
-    expect(verdict.reply).toContain('nothing was changed');
+    // VIL-504 · claimed, and nothing fixed is sent.
+    expect(verdict.reply).toBeNull();
+  });
+
+  it('declines a Drive ask so the coach answers it, names connector_not_offered, while Calendar still mints', async () => {
+    const log = { ...console, error: vi.fn(), info: vi.fn() };
+    const handler = connectorLinkHandler(log, scriptedSaidLine());
+
+    const drive = await handler.handle(db.database, turn('connect my google drive'));
+
+    expect(drive).toEqual({ claimed: false });
+    expect(log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'gdrive', outcome: 'connector_not_offered' }),
+      expect.any(String),
+    );
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
+    expect(
+      await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'connector_link_minted')),
+    ).toHaveLength(0);
+
+    const calendar = await handler.handle(db.database, turn('connect my google calendar'));
+
+    if (!calendar.claimed) throw new Error('expected the handler to claim');
+    expect(calendar.outcome).toBe('sent');
+    expect(calendar.reply).toContain('https://app.villagehale.com/connect?t=');
+    expect(calendar.reply).toContain('to=gcal');
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(1);
   });
 
   it('sends the link 1:1 and says nothing in the group when the ask came from the family group', async () => {
@@ -412,6 +459,7 @@ describe('connectorLinkHandler', () => {
           providerChatId: chatId,
           status: 'delivered',
           body: 'connect my google calendar',
+          inGroup: chatId === GROUP,
           sentAt: at,
           createdAt: at,
         })
@@ -440,7 +488,37 @@ describe('connectorLinkHandler', () => {
     vi.unstubAllGlobals();
   });
 
-  async function inboundIn(chatId: string, at: Date): Promise<string> {
+  it('a Drive ask from the family group is declined to the coach: no token, no 1:1 text', async () => {
+    const GROUP = 'chat-family-group';
+    const PERSONAL = 'chat-parent-direct';
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, familyId));
+    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'), false);
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'), true);
+    const wire: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        wire.push(String(url));
+        return Response.json({ message: { id: 'out-1' } });
+      }),
+    );
+
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(db.database, {
+      ...turn('connect my google drive'),
+      inboundChannelMessageId: groupRow,
+    });
+
+    expect(verdict).toEqual({ claimed: false });
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
+    expect(wire).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  async function inboundIn(chatId: string, at: Date, inGroup: boolean): Promise<string> {
     const [row] = await db.database
       .insert(schema.channelMessages)
       .values({
@@ -453,6 +531,7 @@ describe('connectorLinkHandler', () => {
         providerChatId: chatId,
         status: 'delivered',
         body: 'give me a fresh one',
+        inGroup,
         sentAt: at,
         createdAt: at,
       })
@@ -468,8 +547,8 @@ describe('connectorLinkHandler', () => {
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, familyId));
-    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'));
-    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'), false);
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'), true);
     const conversationId = await threadOffer(
       'Calendar: https://app.villagehale.com/connect?t=old-gcal&to=gcal Gmail: https://app.villagehale.com/connect?t=old-gmail&to=gmail',
     );
@@ -507,7 +586,7 @@ describe('connectorLinkHandler', () => {
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, familyId));
-    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'), true);
     const wire: string[] = [];
     vi.stubGlobal(
       'fetch',

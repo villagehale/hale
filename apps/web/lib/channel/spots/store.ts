@@ -6,7 +6,7 @@ import {
   schema,
 } from '@hale/db';
 import { and, asc, eq, isNotNull, isNull, lte, sql } from 'drizzle-orm';
-import { recordSpotWatchPromise } from './promise';
+import { recordSpotWatchPromise, resettleSpotWatchPromise } from './promise';
 
 /**
  * VIL-337 · THE WATCHED-SPOTS STORE — the whole write surface for a watch, in eight
@@ -71,9 +71,15 @@ export function faultOf(err: unknown): {
   };
 }
 
-/** How long a watch stands before it is released as `expired`. A season, not a year: past
- * this the class the parent asked about is a different class. */
+/** How long a watch stands when its page publishes no future session start to end at. A
+ * season, not a year: past this the class the parent asked about is a different class. */
 export const WATCH_TTL_DAYS = 60;
+
+/** The session start when it is still ahead, else the season ceiling. */
+function watchExpiry(sessionStartsAt: Date | null, now: Date): Date {
+  if (sessionStartsAt !== null && sessionStartsAt.getTime() > now.getTime()) return sessionStartsAt;
+  return new Date(now.getTime() + WATCH_TTL_DAYS * 86_400_000);
+}
 
 /** Two attempts per opening — the send claim and the retry bound are the same counter.
  * The second exists because a provider accept is not a delivery: a `failed` receipt on the
@@ -100,6 +106,13 @@ export interface SpotWatchIntent {
   label: string;
   instant: boolean;
   lastState: WatchedSpotState;
+  /** When the class starts, off the page the arming read fetched, or null when the page
+   * publishes no start Hale can read. The watch ends then: past it, a freed spot is in a
+   * class that is already running. */
+  sessionStartsAt: Date | null;
+  /** A page outside the registry only: the page text naming the session, which every
+   * later read must find again. Null on a registry course page. */
+  sessionAnchor: string | null;
 }
 
 /**
@@ -131,6 +144,8 @@ export interface LiveWatchedSpot {
   sendAttempts: number;
   notifiedMessageId: string | null;
   expiresAt: Date;
+  sessionAnchor: string | null;
+  pageDigest: string | null;
 }
 
 const LIVE_SPOT_COLUMNS = {
@@ -148,6 +163,8 @@ const LIVE_SPOT_COLUMNS = {
   sendAttempts: schema.watchedSpots.sendAttempts,
   notifiedMessageId: schema.watchedSpots.notifiedMessageId,
   expiresAt: schema.watchedSpots.expiresAt,
+  sessionAnchor: schema.watchedSpots.sessionAnchor,
+  pageDigest: schema.watchedSpots.pageDigest,
 };
 
 /**
@@ -192,7 +209,8 @@ export async function armWatchedSpot(
         label: input.intent.label,
         instant: input.intent.instant,
         lastState: input.intent.lastState,
-        expiresAt: new Date(input.now.getTime() + WATCH_TTL_DAYS * 86_400_000),
+        expiresAt: watchExpiry(input.intent.sessionStartsAt, input.now),
+        sessionAnchor: input.intent.sessionAnchor,
         createdFrom: input.channelMessageId,
         createdAt: input.now,
         updatedAt: input.now,
@@ -290,12 +308,7 @@ export async function loadDueSpots(
   return database
     .select(LIVE_SPOT_COLUMNS)
     .from(schema.watchedSpots)
-    .where(
-      and(
-        isNull(schema.watchedSpots.releasedAt),
-        lte(schema.watchedSpots.nextPollAt, now),
-      ),
-    )
+    .where(and(isNull(schema.watchedSpots.releasedAt), lte(schema.watchedSpots.nextPollAt, now)))
     .orderBy(asc(schema.watchedSpots.nextPollAt), asc(schema.watchedSpots.createdAt))
     .limit(limit);
 }
@@ -317,12 +330,7 @@ export async function loadExpiredSpots(
   return database
     .select(LIVE_SPOT_COLUMNS)
     .from(schema.watchedSpots)
-    .where(
-      and(
-        isNull(schema.watchedSpots.releasedAt),
-        lte(schema.watchedSpots.expiresAt, now),
-      ),
-    )
+    .where(and(isNull(schema.watchedSpots.releasedAt), lte(schema.watchedSpots.expiresAt, now)))
     .orderBy(asc(schema.watchedSpots.expiresAt))
     .limit(limit);
 }
@@ -343,6 +351,8 @@ export async function recordPoll(
     lastState: WatchedSpotState | null;
     consecutiveFailures: number;
     nextPollAt: Date | null;
+    /** A page outside the registry: the text this quiet read was of. */
+    pageDigest?: string;
     now: Date;
   },
 ): Promise<void> {
@@ -350,6 +360,7 @@ export async function recordPoll(
     .update(schema.watchedSpots)
     .set({
       ...(input.lastState === null ? {} : { lastState: input.lastState }),
+      ...(input.pageDigest === undefined ? {} : { pageDigest: input.pageDigest }),
       ...(input.nextPollAt === null ? {} : { nextPollAt: input.nextPollAt }),
       consecutiveFailures: input.consecutiveFailures,
       lastPolledAt: input.now,
@@ -529,11 +540,88 @@ export async function markNotifiedAndRelease(
 export async function releaseWatchedSpot(
   database: Database,
   input: { spotId: string; reason: WatchedSpotReleaseReason; now: Date },
-): Promise<void> {
-  await database
+): Promise<boolean> {
+  const released = await database
     .update(schema.watchedSpots)
     .set({ releasedAt: input.now, releasedReason: input.reason, updatedAt: input.now })
-    .where(and(eq(schema.watchedSpots.id, input.spotId), isNull(schema.watchedSpots.releasedAt)));
+    .where(and(eq(schema.watchedSpots.id, input.spotId), isNull(schema.watchedSpots.releasedAt)))
+    .returning({ id: schema.watchedSpots.id });
+  return released.length > 0;
+}
+
+/** One live watch as the parent who armed it may name it. */
+export interface ParentLiveWatch {
+  id: string;
+  label: string;
+  host: string;
+}
+
+/**
+ * The live watches ONE parent armed. Scoped to the parent rather than the family because
+ * a watch texts only the parent who asked for it: a co-parent ending it would be one
+ * adult changing what the other is told (rule #5).
+ */
+export async function loadParentLiveWatches(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<ParentLiveWatch[]> {
+  const rows = await database
+    .select({
+      id: schema.watchedSpots.id,
+      label: schema.watchedSpots.label,
+      sourceUrl: schema.watchedSpots.sourceUrl,
+    })
+    .from(schema.watchedSpots)
+    .where(
+      and(
+        eq(schema.watchedSpots.familyId, input.familyId),
+        eq(schema.watchedSpots.parentUserId, input.parentUserId),
+        isNull(schema.watchedSpots.releasedAt),
+      ),
+    )
+    .orderBy(asc(schema.watchedSpots.createdAt));
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    host: new URL(row.sourceUrl).hostname,
+  }));
+}
+
+/**
+ * The parent asked Hale to stop watching. `parent_stopped` is the vocabulary's word for a
+ * parent ending it (migration 0109's CHECK); the trail row says it was ASKED, which is what
+ * tells it apart from a STOP on the channel. The promise is resettled as an ordinary
+ * ending: the household is still here.
+ *
+ * False when the watch had already ended — the sweep released it first — and then nothing
+ * else is written, so one ending is never filed twice.
+ */
+export async function releaseWatchByParent(
+  database: Database,
+  input: { familyId: string; parentUserId: string; spot: ParentLiveWatch; now: Date },
+): Promise<boolean> {
+  const released = await releaseWatchedSpot(database, {
+    spotId: input.spot.id,
+    reason: 'parent_stopped',
+    now: input.now,
+  });
+  if (!released) return false;
+  await resettleSpotWatchPromise(database, {
+    familyId: input.familyId,
+    keptBy: null,
+    cancelReason: 'spot_watch_ended',
+    now: input.now,
+  });
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.parentUserId,
+    actionTaken: 'watched_spot_released',
+    targetTable: 'watched_spots',
+    targetId: input.spot.id,
+    // Provenance only, never the label or the page (rule #1).
+    after: { reason: 'parent_stopped', via: 'asked', host: input.spot.host },
+  });
+  return true;
 }
 
 /**

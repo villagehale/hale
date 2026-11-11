@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start time 15 h, and the place, but omits the end time 16 h (4 PM) which is in the facts; per the rules, dropping the end time is a fact failure requiring a low score. The title and language are otherwise natural.",
+    "score": 2
+  }
+}

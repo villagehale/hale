@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { estimateCostUsd } from './cost.js';
+import { SONNET_MODEL, pickLane } from './model.js';
 import { loadSkill, parseSkill } from './skill.js';
 
 const SKILL = `---
@@ -80,7 +82,7 @@ describe('loadSkill', () => {
   it('loads the bundled reminder skill by bare name', async () => {
     const skill = await loadSkill('reminder');
     expect(skill.meta.name).toBe('reminder');
-    expect(skill.meta.task).toBe('speak');
+    expect(skill.meta.task).toBe('draft');
     expect(skill.meta.tools).toEqual([]);
     expect(skill.instructions.length).toBeGreaterThan(0);
   });
@@ -126,5 +128,25 @@ describe('loadSkill partials', () => {
   it('throws on a marker naming a partial that does not exist', () => {
     const raw = SKILL.replace('# Ask Hale', '{{include:no-such-partial}}');
     expect(() => parseSkill(raw)).toThrow(/unresolved include/);
+  });
+});
+
+describe('said-line writer tier', () => {
+  it('runs on Sonnet 5.5 with thinking off (Barton, 2026-10-27)', async () => {
+    const skill = await loadSkill('said-line');
+    const lane = pickLane(skill.meta.task);
+    expect(lane.model).toBe(SONNET_MODEL);
+    expect(SONNET_MODEL).toBe('claude-sonnet-5-5');
+    expect(lane.thinking).toBe('between_tools');
+  });
+
+  it('is priced at Sonnet 5.5 list rates, so the spend cap never sees it as free', () => {
+    const cost = estimateCostUsd(SONNET_MODEL, {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+    expect(cost).toBeCloseTo(12, 6);
   });
 });

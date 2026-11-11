@@ -40,11 +40,15 @@ function fakeDb(args: {
   members: MemberRow[];
   saves?: { title: string; savedAt: Date }[];
   preparations?: {
-    municipality: string;
-    cycleLabel: string;
+    municipality: string | null;
+    cycleLabel: string | null;
     courseUrl: string | null;
     courseOpensAt: Date | null;
     readinessReady: boolean | null;
+    lastReadAt: Date | null;
+    nextCheckAt: Date | null;
+    pausedAt: Date | null;
+    pendingChange: Record<string, unknown> | null;
     updatedAt: Date;
   }[];
   watches?: {
@@ -103,6 +107,10 @@ function fakeDb(args: {
   sameActivityOptIns?: {
     kind: string;
     activityKey: string;
+    createdAt: Date;
+    revokedAt: Date | null;
+  }[];
+  goingCountOptIns?: {
     createdAt: Date;
     revokedAt: Date | null;
   }[];
@@ -192,6 +200,37 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.sameActivityOptIns ?? []) };
   });
 
+  const goingCountOptInsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.goingCountOptIns ?? []) };
+  });
+
+  const requesterWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return {
+      limit: vi
+        .fn()
+        .mockResolvedValue([
+          { proactiveLanguage: null, languageStreakTag: null, languageStreakCount: 0 },
+        ]),
+    };
+  });
+
+  const householdOrderedWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue([]) };
+  });
+
+  const seatsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return Promise.resolve([]);
+  });
+
+  const requesterOrderedWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue([]) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
   // preparation join, the watched spots, the activity bookings, the evening check-in
@@ -204,7 +243,7 @@ function fakeDb(args: {
     if (which === 2) return { from: () => ({ innerJoin: () => ({ where: membersWhere }) }) };
     if (which === 3) return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
     if (which === 4) return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
-    if (which === 5) return { from: () => ({ innerJoin: () => ({ where: preparationsWhere }) }) };
+    if (which === 5) return { from: () => ({ leftJoin: () => ({ where: preparationsWhere }) }) };
     if (which === 6) return { from: () => ({ where: watchesWhere }) };
     if (which === 7) return { from: () => ({ where: bookingsWhere }) };
     if (which === 8) return { from: () => ({ where: checkInPrefsWhere }) };
@@ -215,14 +254,48 @@ function fakeDb(args: {
     if (which === 13) return { from: () => ({ where: signupsWhere }) };
     if (which === 14) return { from: () => ({ where: consentsWhere }) };
     if (which === 15) return { from: () => ({ where: optInsWhere }) };
+    if (which === 16) return { from: () => ({ where: goingCountOptInsWhere }) };
+    // The four memory reads (facts, episodes, workstreams, commitments), empty here;
+    // export.pglite.test.ts covers their content against real Postgres.
+    if (which >= 17 && which <= 20) {
+      return { from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([]) }) }) };
+    }
+    // How often each workstream was written, from the audit trail; none here.
+    if (which === 21) {
+      return { from: () => ({ where: () => ({ groupBy: vi.fn().mockResolvedValue([]) }) }) };
+    }
+    // The household section (export-household.ts): the calendar, the shared threads,
+    // this family's seats and the group lists; export-household.pglite.test.ts covers
+    // the content.
+    if (which === 22) return { from: () => ({ where: householdOrderedWhere }) };
+    if (which === 23)
+      return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
+    if (which === 24) return { from: () => ({ where: seatsWhere }) };
+    if (which === 25)
+      return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
+    // The requester's own section (export-requester.ts): their language settings, their
+    // 1:1 thread, their language changes, consent rows, connections, calendar mirrors and
+    // private asides; export.pglite.test.ts, export-household.pglite.test.ts and
+    // group-private-aside.pglite.test.ts cover the content.
+    if (which === 26) return { from: () => ({ where: requesterWhere }) };
+    if (which === 27) {
+      return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
+    }
+    if (which >= 28 && which <= 30) return { from: () => ({ where: requesterOrderedWhere }) };
+    if (which === 31) {
+      return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
+    }
+    if (which === 32) return { from: () => ({ where: requesterOrderedWhere }) };
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
   const insert = vi.fn().mockReturnValue({ values });
+  // The memory export's "another adult on record" read; no other adult here.
+  const execute = vi.fn().mockResolvedValue([]);
 
   return {
-    db: { select, insert } as never,
+    db: { select, insert, execute } as never,
     spies: { insert, values, whereFamilyIds },
   };
 }
@@ -287,6 +360,7 @@ describe('assembleFamilyExport', () => {
     expect(doc.authorizedSignups).toEqual([]);
     expect(doc.signupFieldConsents).toEqual([]);
     expect(doc.sameActivityOptIns).toEqual([]);
+    expect(doc.goingCountOptIns).toEqual([]);
   });
 
   it('exports this household same-activity yes and not another household', async () => {
@@ -318,6 +392,33 @@ describe('assembleFamilyExport', () => {
       },
     ]);
     expect(JSON.stringify(doc.sameActivityOptIns)).not.toContain(OTHER_FAMILY_ID);
+  });
+
+  it('exports this household going-count yes and not another household', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      goingCountOptIns: [
+        {
+          createdAt: new Date('2026-10-01T12:00:00.000Z'),
+          revokedAt: null,
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.goingCountOptIns).toEqual([
+      {
+        createdAt: '2026-10-01T12:00:00.000Z',
+        revokedAt: null,
+      },
+    ]);
+    expect(JSON.stringify(doc.goingCountOptIns)).not.toContain(OTHER_FAMILY_ID);
   });
 
   it('exports an unconfirmed Google given name apart from the confirmed call name', async () => {
@@ -366,6 +467,10 @@ describe('assembleFamilyExport', () => {
             'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928',
           courseOpensAt: new Date('2026-09-15T10:30:00Z'),
           readinessReady: true,
+          lastReadAt: null,
+          nextCheckAt: null,
+          pausedAt: null,
+          pendingChange: null,
           updatedAt: new Date('2026-09-01T12:00:00Z'),
         },
       ],
@@ -383,6 +488,10 @@ describe('assembleFamilyExport', () => {
         courseHost: 'cityofmarkham.perfectmind.com',
         courseOpensAt: '2026-09-15T10:30:00.000Z',
         readinessReady: true,
+        lastReadAt: null,
+        nextCheckAt: null,
+        pausedAt: null,
+        hasPendingChange: false,
         // When this ROW last changed, which is not the same thing as when the parent
         // pasted the link: the anchor is refreshed by later reads. The dated bind is a
         // trail line, and the trail is in this document.
@@ -542,9 +651,8 @@ describe('assembleFamilyExport', () => {
 
   it('carries the classes this family signed up for, with the host and no receipt detail', async () => {
     // A booking is a fact Hale HOLDS and acts on a week later, so a right-to-access copy
-    // without it omits the thing Hale is doing on the family's behalf. The host and not
-    // the address; no confirmation number, no amount, no child, because the table has no
-    // column for any of them.
+    // without it omits the thing Hale is doing on the family's behalf. No confirmation
+    // number, no amount, no child, because the table has no column for any of them.
     const { db } = fakeDb({
       family: FAMILY,
       children: [],
@@ -624,14 +732,17 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Sixteen scoped selects (family, children, members, village saves, this parent's
+    // Twenty-seven scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
     // parent's trips, the memory digests, the authorized signup offers, the signup
-    // field consents, and this household's same-activity opt-ins) each recorded a
+    // field consents, this household's same-activity opt-ins, the household calendar,
+    // shared threads, seats and group lists, and the requester's own language settings,
+    // text thread, language changes, consents, connections, calendar mirrors and private
+    // asides) each recorded a
     // where-condition; none was left unscoped. (The condition objects are opaque
     // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(16);
+    expect(spies.whereFamilyIds).toHaveLength(28);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

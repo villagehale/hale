@@ -1,0 +1,10 @@
+{
+  "value": {
+    "supported": false,
+    "unsupported": [
+      "claims the swim is paid",
+      "claims the swim is confirmed"
+    ]
+  },
+  "latencyMs": 1406
+}

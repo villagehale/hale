@@ -1,0 +1,52 @@
+{
+  "response": {
+    "id": "msg_011CgZZBTi52qdHRAN2vMZrt",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS4QUKEAgTGAI4AUIIdGhpbmtpbmcSDCmDvvDNnlYo6hApThoMLc6ponEBKlukNN07IjAx9bBvEOi1lmh2a4wTqPDZESanVdGo/YvCsZQ+g7I+XyNZ/f4FaDtaaMUMqCc6qvIq/gQ4XzepyPwfisB2DlwKvyE+Y1TyIEgOjGj+pjszRD1pOV63dTywflc027XoR4gvUm9vy/7yLwIdk6E6ZGdz1zqWN9gXtgR7o19E0DguqpaFPy1aHcOh+rnqt38+0fLkZir6/yUPjAWSiiRFzUWu8PAKDMLi1tqyFQY/uSQzhImrqaHL0hBWMEZe3XjT7a10lWXsLoQ404C2RcL+9lAeKSdbkp1KhOjXd/t8HesrcKV0NsYAanQy9UXen5MaCpB/ywH/yfqpQfFDR+nnDDaeWdFy0jliQehO1ypVu1tIPMo0Vy3TSydLlabskvXy4dao/5mhhVOBE/NzNKg3WlsA2lhc6yKbN4B3sh0c5+mTG8kG5g320DkJwl9qpdRs8KcnmM3wzwlqz9cIWjYqsNurA09OBmzB4sCbiMxu++pOAxRBvcYrzaGy+InB+sZzFYWQOrGdw1xncvvAnNmEs9SEURLE/zFJyqEcfWhlRmZd1XCxZQG84nY71AiyvqBaLiAOJLE0DP4cD/QvtEGGXrD4L9BpsyRVzH9zH469jaO2cniwmnQJGaw61FfrdqbSXl19RI2nMY2J2eQU2C6yJn2SxNyKr4j2t3vkXXtLD0GFXaX8tAU+jlJ9xIqjE8lkqO/r2PNZKOX/zR4DbLTYKKz/ydrwCyvfzEXFWH6DKhSrd3Y8p5gi24OmQKBclEwM9oSz81fuaWRFV8wF9n+YYQzU/SuizxBt6g6vLnTYwz2skRxLYeLzLxso7jbOlDbAx362ye4J9B5vTs5+ZKVZ02zY7Lrz7C2Z+ycxxyS3br+kTcA4x/bxhJp40of5fcDTxv4XmkGufNgNeMOXMeqZDk3iFxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_015oRnCBzcTX2QWLwFEyTUZc",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Cf6waALeoRxH5A5wBmExGf",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 382,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21928,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 103,
+      "output_tokens_details": {
+        "thinking_tokens": 51
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1702
+}

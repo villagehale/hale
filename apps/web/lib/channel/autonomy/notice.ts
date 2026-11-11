@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
 import { and, desc, eq, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
@@ -15,6 +16,7 @@ import {
   holdStatus,
 } from '~/lib/channel/outbound-gate';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
@@ -52,7 +54,7 @@ export type AutonomyNoticeOutcome =
 
 /** The same brake as the orchestrator: exact `=== 'true'`, no trim. */
 export function autonomousLaneOn(): boolean {
-  return process.env.AUTONOMOUS_EXECUTE_ENABLED === 'true';
+  return isEnabled('autonomous-execute');
 }
 
 export interface AutonomyNoticePorts {
@@ -76,20 +78,16 @@ export function autonomyNoticeReaders(
 const RECENT_INBOUND = 5;
 
 /**
- * What the writer may use to pick a language. `localeHint` is the stored locale
- * and nothing else — a blank column is null, never a language this code chose.
+ * What the writer may use to pick a language. `localeHint` is the parent's one stored
+ * proactive language (VIL-572, `readParentLanguage`), never a language this code chose.
  * `recentInbound` is the parent's own words.
  */
 async function parentVoice(
   database: Database,
+  familyId: string,
   userId: string,
 ): Promise<{ localeHint: string | null; recentInbound: string[] }> {
-  const rows = await database
-    .select({ locale: schema.users.locale })
-    .from(schema.users)
-    .where(eq(schema.users.id, userId))
-    .limit(1);
-  const locale = rows[0]?.locale?.trim() ?? '';
+  const localeHint = await readParentLanguage(database, { familyId, parentUserId: userId });
   const inbound = await database
     .select({ body: schema.channelMessages.body })
     .from(schema.channelMessages)
@@ -108,7 +106,7 @@ async function parentVoice(
       return body.length > 0 ? [body] : [];
     })
     .reverse();
-  return { localeHint: locale.length > 0 ? locale : null, recentInbound };
+  return { localeHint, recentInbound };
 }
 
 async function occasionForGrant(
@@ -447,7 +445,7 @@ export async function tellParentOpenNotices(
   },
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
-  const voice = await parentVoice(database, input.parentUserId);
+  const voice = await parentVoice(database, input.familyId, input.parentUserId);
   const built: BuiltNotice[] = [];
   for (const notice of input.notices) {
     if (notice.kind === 'armed') {

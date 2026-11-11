@@ -1,6 +1,9 @@
 import type { ShareableSignupField } from '../consent';
+import { credentialFactAliases, credentialSecretBindings } from '../credentials/bindings';
+import { providerAccountCreateEnabled } from '../credentials/flag';
 import { LINK_SPEND_CEILING_CENTS, LinkApiError, type LinkCard } from '../link/client';
 import type { SignupPaymentWallet } from '../link/wallet';
+import type { SiteChoice, SiteFees } from '../site-choices';
 import type { SignupIdentity } from '../types';
 import {
   type BrowserUseApi,
@@ -9,6 +12,8 @@ import {
   type BrowserUseRunStatus,
   TERMINAL_RUN_STATUSES,
 } from './client';
+import { CHECKOUT_KEEP_ALIVE_SECONDS, parentTakesOverLiveView } from './keep-alive';
+import { liveViewUrl } from './live-view';
 import {
   BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA,
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
@@ -21,6 +26,7 @@ import {
   parseSignupOutput,
   sameProviderHttpsUrl,
 } from './outcome';
+import type { BrowserUsePlanResult } from './plan-engine';
 import type { ProviderSessionSeeder } from './seed';
 import type { ProviderStorageState } from './vault';
 
@@ -37,12 +43,14 @@ import type { ProviderStorageState } from './vault';
  * one-time card. AgentMail is off. The browser keeps the cart alive for
  * `CHECKOUT_KEEP_ALIVE_SECONDS` after the run stops, which is the parent's
  * window to pay; provider cart holds are usually shorter, so the hold the page
- * states wins when it is shorter.
+ * states wins when it is shorter. That 15-minute timeout is always passed on
+ * the run; omitting it would default to four hours.
  */
-export const CHECKOUT_KEEP_ALIVE_SECONDS = 900;
+export { CHECKOUT_KEEP_ALIVE_SECONDS, parentTakesOverLiveView } from './keep-alive';
 export const DEFAULT_CART_HOLD_MINUTES = 10;
 export const RUN_DEADLINE_MS = 10 * 60 * 1000;
 export const POLL_INTERVAL_MS = 2000;
+/** Per-run Browser Use spend cap. Independent of the payment env flag. */
 export const SIGNUP_RUN_MAX_COST_USD = 3;
 export const CONFIRMATION_RUN_MAX_COST_USD = 0.5;
 const SEED_BROWSER_TIMEOUT_MINUTES = 5;
@@ -120,6 +128,11 @@ export interface BrowserUseSignupInput {
    * without one. See `browserUseProxyFor`.
    */
   proxyCountryCode?: string | null;
+  /** Decrypted only for this run. Never logged. Absent when the flag is off. */
+  credentials?: { username: string; password: string; totp: string | null } | null;
+  accountCreate?: boolean;
+  joinWaitlist?: boolean;
+  askedStart?: string | null;
 }
 
 /** The agent's outcomes plus the two that only the payment step reaches. */
@@ -154,6 +167,11 @@ export interface BrowserUseSignupResult {
   sessionCostUsd: string | null;
   /** The run's browser, so a later step can stop it. Never a credential. */
   browserId: string | null;
+  passwordRejectionMessage?: string | null;
+  passwordRule?: string | null;
+  siteChoices?: SiteChoice[];
+  seatsOpen?: number | null;
+  fees?: SiteFees | null;
 }
 
 export type BrowserUseConfirmationResult =
@@ -176,7 +194,7 @@ export interface BrowserUseEngineDeps {
   now: () => Date;
 }
 
-function failure(
+export function failure(
   outcome: BrowserUseEngineOutcome,
   detail: BrowserUseEngineDetail,
   run: { runId?: string | null; sessionId?: string | null; costUsd?: string | null } = {},
@@ -200,7 +218,20 @@ function failure(
 }
 
 /** Only the slots on the consent grant, and only those with a value. */
-export function signupFacts(input: BrowserUseSignupInput): Record<string, unknown> {
+export function signupFacts(
+  input: Pick<
+    BrowserUseSignupInput,
+    | 'fieldsAllowed'
+    | 'identity'
+    | 'session'
+    | 'registrationUrl'
+    | 'approvedPriceCents'
+    | 'credentials'
+    | 'accountCreate'
+    | 'joinWaitlist'
+    | 'askedStart'
+  >,
+): Record<string, unknown> {
   const grant = new Set<string>(input.fieldsAllowed);
   const pick = (slot: ShareableSignupField, value: string | number | null | undefined) => {
     if (!grant.has(slot) || value === null || value === undefined) return undefined;
@@ -228,20 +259,27 @@ export function signupFacts(input: BrowserUseSignupInput): Record<string, unknow
       email: pick('parent_email', identity.parentEmail),
       postal_code: pick('postal_code', identity.postalCode),
     },
+    credentials: input.credentials ? credentialFactAliases(Boolean(input.credentials.totp)) : null,
+    account_create: input.accountCreate === true && providerAccountCreateEnabled(),
+    join_waitlist: input.joinWaitlist === true,
+    asked_start: input.askedStart ?? null,
   };
 }
 
-function taskWithFacts(skillBody: string, facts: Record<string, unknown>): string {
-  return `${skillBody.trim()}\n\n## This registration\n\n\`\`\`json\n${JSON.stringify(facts, null, 2)}\n\`\`\`\n`;
+export function secretBindingsFor(
+  input: Pick<BrowserUseSignupInput, 'registrationUrl' | 'credentials'>,
+) {
+  if (!input.credentials) return undefined;
+  return credentialSecretBindings({
+    host: new URL(input.registrationUrl).hostname,
+    username: input.credentials.username,
+    password: input.credentials.password,
+    totp: input.credentials.totp,
+  });
 }
 
-function httpsUrl(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  try {
-    return new URL(value).protocol === 'https:' ? value : null;
-  } catch {
-    return null;
-  }
+export function taskWithFacts(skillBody: string, facts: Record<string, unknown>): string {
+  return `${skillBody.trim()}\n\n## This registration\n\n\`\`\`json\n${JSON.stringify(facts, null, 2)}\n\`\`\`\n`;
 }
 
 type RunWait =
@@ -249,7 +287,7 @@ type RunWait =
   | { kind: 'timeout'; liveViewUrl: string | null };
 
 /** The run's browser id, read from browser.ready / browser.reattached events. */
-interface BrowserTracker {
+export interface BrowserTracker {
   browserId: string | null;
   /** Set as soon as Browser Use creates a run or session, so a throw can carry it. */
   runId?: string | null;
@@ -284,14 +322,30 @@ export class BrowserUseEngineThrew extends Error {
   }
 }
 
-async function waitForRun(
+export async function waitForRun(
   deps: BrowserUseEngineDeps,
   runId: string,
   tracker: BrowserTracker = { browserId: null },
 ): Promise<RunWait> {
-  const deadline = deps.now().getTime() + RUN_DEADLINE_MS;
+  const waited = await waitForRunUntil(
+    deps,
+    runId,
+    deps.now().getTime() + RUN_DEADLINE_MS,
+    tracker,
+  );
+  if (waited.kind === 'timeout') await deps.api.cancelRun(runId).catch(() => undefined);
+  return waited;
+}
+
+/** Polls until the run ends or `deadline` (epoch ms) passes. Leaves a run still going running. */
+export async function waitForRunUntil(
+  deps: BrowserUseEngineDeps,
+  runId: string,
+  deadline: number,
+  tracker: BrowserTracker = { browserId: null },
+): Promise<RunWait> {
   let cursor = 0;
-  let liveViewUrl: string | null = null;
+  let live: string | null = null;
   for (;;) {
     const status = await deps.api.getRunStatus(runId);
     for (let page = 0; page < 20; page += 1) {
@@ -299,7 +353,12 @@ async function waitForRun(
       for (const event of events.events) {
         cursor = Math.max(cursor, event.id);
         if (event.type === 'browser.ready' || event.type === 'browser.reattached') {
-          liveViewUrl = httpsUrl(event.data.live_view_url) ?? liveViewUrl;
+          const announced = event.data.live_view_url;
+          const pinned = liveViewUrl(announced);
+          if (pinned === null && announced !== undefined && announced !== null) {
+            console.warn({ refused: 'live_view_host' }, 'browser use: live view refused');
+          }
+          live = pinned ?? live;
           const browserId = event.data.browser_session_id;
           if (typeof browserId === 'string' && browserId) tracker.browserId = browserId;
         }
@@ -310,17 +369,19 @@ async function waitForRun(
       }
       cursor = events.nextAfter;
     }
-    if (TERMINAL_RUN_STATUSES.includes(status)) return { kind: 'terminal', status, liveViewUrl };
-    if (deps.now().getTime() >= deadline) {
-      await deps.api.cancelRun(runId).catch(() => undefined);
-      return { kind: 'timeout', liveViewUrl };
+    if (TERMINAL_RUN_STATUSES.includes(status)) {
+      return { kind: 'terminal', status, liveViewUrl: live };
     }
+    if (deps.now().getTime() >= deadline) return { kind: 'timeout', liveViewUrl: live };
     await deps.sleep(POLL_INTERVAL_MS);
   }
 }
 
-async function ensureProfile(
-  input: BrowserUseSignupInput,
+export async function ensureProfile(
+  input: Pick<
+    BrowserUseSignupInput,
+    'providerSession' | 'correlationId' | 'onProfileCreated' | 'proxyCountryCode'
+  >,
   deps: BrowserUseEngineDeps,
 ): Promise<{ ok: true; profileId: string } | { ok: false; detail: BrowserUseEngineDetail }> {
   const existing = input.providerSession.browserUseProfileId;
@@ -355,17 +416,17 @@ async function ensureProfile(
  * over on its live view, then reads the session's true cost. The 900s
  * keepAlive only matters for that takeover.
  */
-async function settleBrowser(
+export async function settleBrowser<T extends BrowserUseSignupResult | BrowserUsePlanResult>(
   deps: BrowserUseEngineDeps,
-  result: BrowserUseSignupResult,
+  result: T,
   tracker: BrowserTracker,
-): Promise<BrowserUseSignupResult> {
+): Promise<T> {
   const settled = { ...result, browserId: tracker.browserId };
   if (settled.liveViewUrl !== null) return settled;
   return { ...settled, sessionCostUsd: await stopAndReadCost(deps, settled) };
 }
 
-async function stopAndReadCost(
+export async function stopAndReadCost(
   deps: BrowserUseEngineDeps,
   ids: { browserId: string | null; sessionId: string | null },
 ): Promise<string | null> {
@@ -426,6 +487,7 @@ async function driveSignup(
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
       maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+      ...(secretBindingsFor(input) ? { secretBindings: secretBindingsFor(input) } : {}),
     });
     runId = run.id;
     sessionId = run.sessionId;
@@ -442,6 +504,7 @@ async function driveSignup(
 
     const output = parseSignupOutput(summary.output);
     if (!output) return failure('error', 'unreadable_output', ids);
+    // Code limit: stop before any payment > $0, even if a payment flag were on.
     if (output.payment_details_entered) return failure('error', 'payment_boundary', ids);
 
     const live = waited.liveViewUrl;
@@ -476,11 +539,15 @@ async function driveSignup(
         paymentHosts: output.payment_hosts,
       });
     }
-    const handsOn = output.outcome === 'needs_human' || output.outcome === 'needs_login';
     return {
       ...failure(output.outcome, output.detail, ids),
-      liveViewUrl: handsOn ? live : null,
+      liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
       cartTotalCents: output.cart_total_cents,
+      passwordRejectionMessage: output.password_rejection_message,
+      passwordRule: output.password_rule,
+      siteChoices: output.site_choices,
+      seatsOpen: output.seats_open,
+      fees: output.fees,
     };
   } catch (error) {
     if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
@@ -490,7 +557,7 @@ async function driveSignup(
   }
 }
 
-function sumCost(a: string | null, b: string | null): string | null {
+export function sumCost(a: string | null, b: string | null): string | null {
   if (a === null && b === null) return null;
   return (Number(a ?? 0) + Number(b ?? 0)).toFixed(4);
 }

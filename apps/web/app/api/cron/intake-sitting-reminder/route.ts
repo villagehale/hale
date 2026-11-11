@@ -16,8 +16,8 @@ export const maxDuration = 60;
 /**
  * GET /api/cron/intake-sitting-reminder — VIL-324.
  *
- * Hourly Vercel Cron (the minute-8 slot): the next-morning Still here, only in the
- * Toronto morning hour. The same-day first reply (VIL-332) is no longer here: a parent
+ * Hourly Vercel Cron (the minute-8 slot): the next-morning Still here, in each
+ * session's own morning hour (its postal code's zone). The same-day first reply (VIL-332) is no longer here: a parent
  * who heard nothing cannot wait for the hour, so the every-minute drain owns it
  * (app/api/cron/drain/route.ts).
  *
@@ -30,7 +30,9 @@ export const GET = cronRoute('intake-sitting-reminder', async () => {
   const database = db();
   const sitting = await runSittingReminderCron(database, {
     ...defaultSittingReminderDeps(),
-    friendVoice: createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    friendVoice: createFriendVoiceComposer(
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' }),
+    ),
   });
   return NextResponse.json({ ok: true, ...sitting }, { status: 200 });
 });

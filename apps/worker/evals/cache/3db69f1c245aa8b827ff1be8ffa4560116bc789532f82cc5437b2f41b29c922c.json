@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific Calgary venues with no Ontario programs, and each is sourced from the operator's own site (YMCA Calgary, Families Matter). The message leads with the YMCA Family Play by name and attributes both picks with \"their site says.\" The time and the 'free' price match the picks, and nothing is invented. Under no_page_read it correctly uses \"I couldn't get into their pages today\" rather than \"not posted yet.\" It names the missing price and day and says what Hale is doing about them. With watch true, the first-person \"I'll keep watching and text you\" is earned. It is plain text with no link and no question. One small nit: \"for the price or day\" lumps the two gaps together without saying which pick is missing which.",
+    "score": 5
+  }
+}

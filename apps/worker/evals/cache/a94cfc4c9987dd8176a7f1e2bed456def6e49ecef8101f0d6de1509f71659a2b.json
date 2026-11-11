@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message mentions a collision that doesn't match the input: it names 'Maya allergist' which is not in items, and the items are only Maya swim pickup and a Barton busy block. It also asks for a number reply and includes a link, both forbidden, and gives two asks instead of one suggested fix for Sam. It doesn't name Sam taking the pickup, and mentions a poll-like choice though poll is null.",
+    "score": 1
+  }
+}

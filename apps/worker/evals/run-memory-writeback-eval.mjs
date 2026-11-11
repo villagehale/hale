@@ -27,7 +27,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { register } from 'tsx/esm/api';
 import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
-import { installEvalSpendCap, priceRates, withoutMessageCacheMarkers } from './lib/harness.mjs';
+import {
+  installEvalSpendCap,
+  priceRates,
+  reportEvalGeneration,
+  withoutCacheTtl,
+  withoutMessageCacheMarkers,
+  wrapEvalAnthropic,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -64,7 +71,9 @@ const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * child ids so those are stable rather than masked.
  */
 function cacheKey(payload) {
-  return createHash('sha256').update(payload.replace(UUID_PATTERN, '<uuid>')).digest('hex');
+  return createHash('sha256')
+    .update(withoutCacheTtl(payload).replace(UUID_PATTERN, '<uuid>'))
+    .digest('hex');
 }
 
 async function cacheGet(key) {
@@ -96,7 +105,15 @@ function cachingClient({ cachedOnly, cost }) {
         });
         const key = cacheKey(canonical);
         const cached = await cacheGet(key);
-        if (cached) return cached.response;
+        if (cached) {
+          reportEvalGeneration({
+            suite: 'memory-writeback',
+            caseName: 'infer',
+            model: request.model,
+            cached: true,
+          });
+          return cached.response;
+        }
 
         if (cachedOnly) {
           // The request is stored beside the response, so a miss can be diffed
@@ -110,10 +127,16 @@ function cachingClient({ cachedOnly, cost }) {
           process.exit(1);
         }
 
-        live ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
-          rates: priceRates,
-          tag: 'memory-writeback',
-        });
+        live ??= capSdkClient(
+          wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+            suite: 'memory-writeback',
+            stage: 'memory_infer',
+          }),
+          {
+            rates: priceRates,
+            tag: 'memory-writeback',
+          },
+        );
         const response = await live.messages.create(request);
         cost.liveCalls += 1;
         cost.input +=
@@ -237,6 +260,23 @@ async function runNightly({ fixture, mode, cachedOnly, cost, modules }) {
       })),
     );
 
+    // VIL-429: connector items the inferencer reads, at fixed ids and times so the request
+    // (the cache key) is the same every run.
+    if (fixture.events?.length) {
+      await test.database.insert(db.schema.events).values(
+        fixture.events.map((event) => ({
+          id: event.id,
+          familyId,
+          source: event.source,
+          eventType: event.eventType,
+          payload: event.payload,
+          dedupHash: event.id,
+          status: 'classified',
+          receivedAt: new Date(now.getTime() - event.minutesBefore * 60_000),
+        })),
+      );
+    }
+
     const calls = [];
     const inner =
       mode === 'broken' ? mislabelingNightlyClient(fixture) : cachingClient({ cachedOnly, cost });
@@ -292,6 +332,12 @@ function checkNightly(fixture, { calls, rows }, classify) {
       if (kind !== expected.kind || disposition !== expected.disposition) {
         failures.push(
           `${expected.item} ('${row.factKey}') stored ${kind}/${disposition}, expected ${expected.kind}/${expected.disposition}`,
+        );
+      }
+      // VIL-429: a fact that rests on an email names it, so Hale can say where it saw it.
+      if (expected.sourceEvents && !expected.sourceEvents.includes(row.sourceEventId)) {
+        failures.push(
+          `${expected.item} ('${row.factKey}') names source ${row.sourceEventId}, expected one of ${expected.sourceEvents.join(', ')}`,
         );
       }
     }

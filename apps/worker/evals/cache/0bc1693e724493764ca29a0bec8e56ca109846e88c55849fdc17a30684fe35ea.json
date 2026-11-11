@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events, days, and times are present and correct, with correct morning/afternoon. Issues: the soccer end time is given as 6:00 (6点) rather than the 6:30 PM in the facts? Checking: text says 下午5点半到6点半 which is 5:30 to 6:30 PM, correct. The planLink is absent, which is fine. The phrasing 明天有两件事 is natural. However, the Chinese time range 5点半到6点半 with 下午 is idiomatic. The story time 上午11点 is correct. Native speaker check passes; no invented details. The text is short and calm. Minor: no violation found, so high score.",
+    "score": 5
+  }
+}

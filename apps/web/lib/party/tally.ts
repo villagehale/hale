@@ -85,9 +85,7 @@ export function renderTally(tally: RsvpTally): string {
   const shown = tally.names.slice(0, MAX_NAMES_IN_REPLY);
   const overflow = tally.names.length - shown.length;
   const roster =
-    shown.length === 0
-      ? ''
-      : ` - ${shown.join(', ')}${overflow > 0 ? ` +${overflow} more` : ''}`;
+    shown.length === 0 ? '' : ` - ${shown.join(', ')}${overflow > 0 ? ` +${overflow} more` : ''}`;
 
   return `${parts.join(', ')}.${roster}`;
 }

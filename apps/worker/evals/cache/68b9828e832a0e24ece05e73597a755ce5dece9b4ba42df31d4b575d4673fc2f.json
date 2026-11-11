@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The input is a supply-order draft (a diaper purchase from DiaperCo) rather than a family message, so it does not fit the tone-and-appropriateness rubric. Scoring it as a family message would be off-purpose; the draft is a functional, clearly structured order with no warm or personal tone to evaluate, though it contains no obvious fabricated details beyond the stated figures.",
+    "score": 3
+  }
+}

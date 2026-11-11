@@ -1,0 +1,32 @@
+{
+  "name": "@hale/flags",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "browser": "./dist/browser.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/browser.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo",
+    "sync": "tsx ../../scripts/posthog-sync-flags.ts"
+  },
+  "dependencies": {
+    "posthog-node": "^5.57.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
+  }
+}

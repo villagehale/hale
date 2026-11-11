@@ -13,9 +13,7 @@ import { type DutyState, commitDutyUpdate, dutyStateFromFact } from './model';
  * `superseded_by`. Nothing is deleted.
  */
 
-export type DutyUndo =
-  | { kind: 'clear' }
-  | { kind: 'reassign'; name: string };
+export type DutyUndo = { kind: 'clear' } | { kind: 'reassign'; name: string };
 
 export function readDutyUndo(text: string): DutyUndo | null {
   if (text.includes('?')) return null;
@@ -201,6 +199,7 @@ export async function applyDutyUndo(
     factValue: value,
     confidence: 1,
     inferredBy: 'coparent_duty_undo',
+    heard: { in: 'family' as const, userId: input.actorUserId },
     validFrom: input.now,
   };
   const audit = {

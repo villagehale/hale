@@ -555,7 +555,9 @@ describe('a diary answer through the real router', () => {
       turns: auditTurnLedger(db.database),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
+      floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
+      recordCapabilityNotes: async () => ({ status: 'recorded', declined: 0, corrected: 0 }),
       recordActivityPromise: async () => ({
         status: 'recorded',
         commitmentId: '77777777-7777-4777-8777-777777777777',
@@ -565,6 +567,13 @@ describe('a diary answer through the real router', () => {
       weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
+      claimShadow: { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' },
+      claimEnforcer: {
+        enforces: () => false,
+        read: async () => {
+          throw new Error('the claim reader is not enforced here');
+        },
+      },
       recordStatedState: async () => ({ status: 'nothing_stated' }),
       weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
       searchWeekdays: async () => ({ status: 'abstain' as const, reason: 'not_configured' }),
@@ -611,6 +620,7 @@ describe('a diary answer through the real router', () => {
         channel_message_id: row?.id as string,
         provider_message_id: providerMessageId,
         received_at: at.toISOString(),
+        in_group: false,
       },
     );
     expect(answered.handler).toBe('evening_check_in');
@@ -642,6 +652,7 @@ describe('a diary answer through the real router', () => {
         channel_message_id: laterRow?.id as string,
         provider_message_id: laterId,
         received_at: later.toISOString(),
+        in_group: false,
       },
     );
     expect(dropped.handler).not.toBe('evening_check_in');

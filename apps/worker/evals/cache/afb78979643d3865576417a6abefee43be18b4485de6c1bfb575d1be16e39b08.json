@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Jour de congé at 3:00 but omits the end time 4:00 PM, which the facts provide, and omits the place Georgetown library. It also says 'Tomorrow's a day off, so you've got a bit of breathing room' in English, not French, and frames the day as breathing room, which is a LOW-score pattern. Mixed language and dropped end time and location are fact and language failures.",
+    "score": 1
+  }
+}

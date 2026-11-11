@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import type { OfferedCandidate } from '~/lib/coach/tools';
 import { matchAreaKey, normalizeFsa } from '~/lib/village/intros/matcher';
@@ -24,7 +25,7 @@ export const ACTIVITY_REVIEWS_SURFACE_ENV = 'ACTIVITY_REVIEWS_SURFACE';
  * this product now states.
  */
 export function activityReviewsSurfaceEnabled(): boolean {
-  return process.env[ACTIVITY_REVIEWS_SURFACE_ENV] === 'true';
+  return isEnabled('activity-reviews-surface');
 }
 
 export interface ReviewSubjectRef {
@@ -158,10 +159,7 @@ export function offeredSubject(offer: OfferedCandidate): ReviewSubjectRef | null
  * you" means. Null when the family's area is not FSA-shaped, which is the honest answer
  * for a household whose `area_coarse` fell back to a city of three million.
  */
-export async function familyAreaKey(
-  database: Database,
-  familyId: string,
-): Promise<string | null> {
+export async function familyAreaKey(database: Database, familyId: string): Promise<string | null> {
   const [family] = await database
     .select({ areaCoarse: schema.families.areaCoarse })
     .from(schema.families)

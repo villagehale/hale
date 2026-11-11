@@ -1,21 +1,25 @@
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { resolveGroupMention } from './group-mention-reader';
 import {
   type GroupOnboardingKind,
   type GroupOnboardingLine,
   type GroupOnboardingRequest,
   groupOnboardingLineInput,
 } from './group-onboarding-line-input';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — say one who's-who line into the group.
@@ -32,6 +36,7 @@ export type GroupLineSend = (input: {
   chatId: string;
   text: string;
   replyTo?: string;
+  mention?: string;
 }) => Promise<{ providerMessageId: string }>;
 
 export type GroupLineSource = 'composed' | 'retry';
@@ -95,10 +100,10 @@ function parseSpokenLine(answer: string | null, questions: 0 | 1): { line: strin
 function lineUsable(line: string, input: GroupOnboardingLine): boolean {
   // VIL-438: the member welcome has no word or punctuation gate. Whether it carries
   // the facts is the model's (and the eval judge's) call, not a string match.
-  if (input.kind === 'member_welcome') return line.trim().length > 0 && !/https?:\/\//i.test(line);
+  if (input.kind === 'member_welcome') return line.trim().length > 0 && !hasLinkShape(line);
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
-  if (/https?:\/\//i.test(line)) return false;
+  if (hasLinkShape(line)) return false;
   return input.mustMention.every((slot) => line.includes(slot));
 }
 
@@ -112,11 +117,12 @@ async function pageUnsent(kind: GroupOnboardingKind, fallback: GroupLineFallback
 function productionComposer(
   scope: { familyId: string; database: Database } | undefined,
 ): GroupOnboardingComposer | undefined {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return undefined;
   return {
     async compose(input, options) {
       const skill = await loadCronSkill('group-onboarding-voice');
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client =
+        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       if (scope) {
         const composed = await composeVoice({
           skill,
@@ -212,13 +218,14 @@ async function speak(
 
 async function deliver(
   send: GroupLineSend | undefined,
-  input: { chatId: string; text: string; replyTo?: string },
+  input: { chatId: string; text: string; replyTo?: string; mention?: string },
 ): Promise<{ providerMessageId: string }> {
   if (send) return send(input);
   return sendLinqChatMessage({
     chatId: input.chatId,
     text: input.text,
     replyTo: input.replyTo ? { messageId: input.replyTo } : undefined,
+    ...(input.mention ? { mention: input.mention } : {}),
   });
 }
 
@@ -310,10 +317,16 @@ export async function sendGroupOnboardingLine(
   if (!claimed) return { outcome: 'already_sent' };
 
   try {
+    const mention = await resolveGroupMention({
+      database,
+      chatId: input.chatId,
+      text: spoken.body,
+    });
     const sent = await deliver(input.send, {
       chatId: input.chatId,
       text: spoken.body,
       replyTo: input.replyTo,
+      ...(mention ? { mention } : {}),
     });
     await database
       .update(schema.channelMessages)

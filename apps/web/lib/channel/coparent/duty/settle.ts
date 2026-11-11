@@ -1,14 +1,19 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { queueGroupActivityDecision } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { loadRememberedLogistics } from '~/lib/channel/linq/logistics-poll';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { acknowledgeDutyWrite } from './ack';
+import { DUTY_OPEN_FACT_KEY } from './asks';
 import { asksBurden, burdenMayLeave } from './burden';
-import { coparentDutyMemoryEnabled } from './flag';
+import { coparentDutyMemoryEnabled, coparentSplitDutyActive } from './flag';
 import type { DutyExtractor } from './interpret';
 import { interpretDutyReply } from './interpret';
 import { commitDutyUpdate, loadLiveDutyFacts } from './model';
+import { type SplitDutyEvent, emptySplitDutyRead, extractSplitDutyReply } from './split-read';
+import { commitSplitDutyRead } from './split-settle';
 import { readDutySyncDecision } from './sync-line';
 import { applyDutyUndo } from './undo';
 
@@ -40,9 +45,10 @@ export async function settleDutyMemory(
     language?: 'en' | 'fr';
     extract?: DutyExtractor;
     fetch?: typeof fetch;
+    replyClient?: AgentClient | null;
   },
 ): Promise<DutySettleResult> {
-  if (!coparentDutyMemoryEnabled()) {
+  if (!coparentDutyMemoryEnabled() && !coparentSplitDutyActive(input.familyId)) {
     return { status: 'skipped', reason: 'flag_off', sent: false, spoken: null };
   }
   if (asksBurden(input.text)) {
@@ -71,6 +77,51 @@ export async function settleDutyMemory(
     now: input.now,
     childId: null,
   });
+  if (coparentSplitDutyActive(input.familyId)) {
+    const split = await settleSplitDuty(database, {
+      familyId: input.familyId,
+      actorUserId: input.actorUserId,
+      text: input.text,
+      now: input.now,
+      home,
+      replyClient: input.replyClient,
+    });
+    if (split) {
+      const ack = await acknowledgeDutyWrite({
+        database,
+        familyId: input.familyId,
+        actorUserId: input.actorUserId,
+        source: 'llm',
+        now: input.now,
+        timeZone,
+        inboundChatId: input.inboundChatId,
+        inboundMessageId: input.inboundMessageId,
+        language,
+        name: home.speakerName,
+        kid: null,
+        event: null,
+        day: null,
+        time: null,
+        fetch: input.fetch,
+      });
+      return {
+        status: ack.status === 'held' ? 'held' : 'recorded',
+        reason:
+          ack.status === 'held'
+            ? 'quiet_hours'
+            : ack.status === 'audience_held'
+              ? ack.reason
+              : null,
+        sent: ack.sent,
+        spoken: ack.status === 'restated' ? ack.text : null,
+      };
+    }
+  }
+
+  if (!coparentDutyMemoryEnabled()) {
+    return { status: 'skipped', reason: 'flag_off', sent: false, spoken: null };
+  }
+
   if (undo.status === 'undone' || undo.status === 'reassigned') {
     const ack = await acknowledgeDutyWrite({
       database,
@@ -208,10 +259,112 @@ export async function settleDutyMemory(
   });
   return {
     status: ack.status === 'held' ? 'held' : 'recorded',
-    reason: ack.status === 'held' ? 'quiet_hours' : null,
+    reason:
+      ack.status === 'held' ? 'quiet_hours' : ack.status === 'audience_held' ? ack.reason : null,
     sent: ack.sent,
     spoken: ack.status === 'restated' ? ack.text : null,
   };
+}
+
+async function settleSplitDuty(
+  database: Database,
+  input: {
+    familyId: string;
+    actorUserId: string;
+    text: string;
+    now: Date;
+    home: Awaited<ReturnType<typeof household>>;
+    replyClient?: AgentClient | null;
+  },
+): Promise<boolean> {
+  const [open] = await database
+    .select({
+      factValue: schema.familyMemoryFacts.factValue,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, input.familyId),
+        eq(schema.familyMemoryFacts.factType, 'logistic'),
+        eq(schema.familyMemoryFacts.factKey, DUTY_OPEN_FACT_KEY),
+        isNull(schema.familyMemoryFacts.validUntil),
+      ),
+    )
+    .limit(1);
+  const openValue = open?.factValue as {
+    split?: boolean;
+    eventKey?: string;
+    peerEventKey?: string | null;
+    role?: SplitDutyEvent['role'];
+  } | null;
+  if (openValue?.split !== true || !openValue.eventKey) return false;
+  const events = await loadSplitEventsForKeys(
+    database,
+    input.familyId,
+    [openValue.eventKey, openValue.peerEventKey ?? null],
+    openValue.role ?? 'attend',
+  );
+  if (events.length < 2) return false;
+  const client = await resolveReplyClient(input.replyClient);
+  const read = client
+    ? await extractSplitDutyReply(
+        {
+          text: input.text,
+          speakerUserId: input.actorUserId,
+          parents: input.home.parents,
+          events,
+        },
+        client,
+      )
+    : emptySplitDutyRead();
+  if (!read.write) return false;
+  const committed = await commitSplitDutyRead(database, {
+    familyId: input.familyId,
+    actorUserId: input.actorUserId,
+    parentCount: input.home.parentCount,
+    childNames: input.home.childNames,
+    events,
+    read,
+    now: input.now,
+  });
+  return committed.written;
+}
+
+async function loadSplitEventsForKeys(
+  database: Database,
+  familyId: string,
+  keys: readonly [string, string | null],
+  role: SplitDutyEvent['role'],
+): Promise<SplitDutyEvent[]> {
+  const wanted = new Set(keys.filter((key): key is string => Boolean(key)));
+  if (wanted.size === 0) return [];
+  const blocks = await database
+    .select({
+      eventId: schema.parentCalendarBlocks.eventId,
+      title: schema.parentCalendarBlocks.title,
+      childId: schema.parentCalendarBlocks.childId,
+      childName: schema.children.name,
+      familyId: schema.parentCalendarBlocks.familyId,
+      status: schema.parentCalendarBlocks.status,
+    })
+    .from(schema.parentCalendarBlocks)
+    .leftJoin(schema.children, eq(schema.children.id, schema.parentCalendarBlocks.childId))
+    .where(eq(schema.parentCalendarBlocks.familyId, familyId));
+  const events: SplitDutyEvent[] = [];
+  const seen = new Set<string>();
+  for (const row of blocks) {
+    if (row.familyId !== familyId || row.status === 'cancelled') continue;
+    if (!wanted.has(row.eventId) || seen.has(row.eventId)) continue;
+    seen.add(row.eventId);
+    events.push({
+      eventKey: row.eventId,
+      role,
+      kid: row.childName,
+      label: row.title,
+      childId: row.childId,
+    });
+  }
+  return events;
 }
 
 async function loneSubject(database: Database, familyId: string): Promise<string | null> {

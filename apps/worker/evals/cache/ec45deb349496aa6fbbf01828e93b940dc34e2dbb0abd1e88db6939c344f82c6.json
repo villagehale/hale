@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says a lot came in at once and Hale can't get to this one, which matches the watchFor. It invites a resend without promising any answer, and it avoids scolding, wait times, and third-party mentions. However, 'I can't promise a reply to that either' and 'if it's urgent, try someone else' add a slight support-desk tone and point toward redirecting, but it does not violate the explicit no-promise rule. Mostly compliant.",
+    "score": 4
+  }
+}

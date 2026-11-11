@@ -1,11 +1,13 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import type { CoachingPlaybook } from '@hale/types';
 import { z } from 'zod';
+import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanTopic } from './topics';
 
@@ -39,8 +41,6 @@ export const MAX_NOTE_SEGMENTS = 2;
 export const MAX_NOTE_ATTEMPTS = 3;
 
 const MAX_TOKENS = 400;
-
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
 export type NoteKind = 'too_young' | 'check_in';
 
@@ -122,7 +122,7 @@ export function noteViolations(body: string, grounding: NoteGrounding): string[]
       `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_NOTE_SEGMENTS}. Cut it to about 300 characters.`,
     );
   }
-  if (LINK_SHAPE.test(text)) {
+  if (hasLinkShape(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
 
@@ -179,17 +179,20 @@ export function createNoteComposer(client: () => AgentClient): NoteComposer {
       for (let attempt = 1; attempt <= MAX_NOTE_ATTEMPTS; attempt += 1) {
         let value: z.infer<typeof noteSchema>;
         try {
-          const result = await forceToolJson({
-            client: resolved,
-            lane: pickLane(skill.meta.task),
-            system: skill.instructions,
-            userMessage: retryNoteMessage(noteUserMessage(grounding), violations),
-            toolName: 'note',
-            toolDescription: 'Return the one message to send.',
-            inputJsonSchema: noteJsonSchema,
-            schema: noteSchema,
-            maxTokens: MAX_TOKENS,
-          });
+          const result = await withLlmContext({ stage: 'plan' }, () =>
+            forceToolJson({
+              client: resolved,
+              lane: pickLane(skill.meta.task),
+              system: skill.instructions,
+              cacheTtl: SPARSE_CACHE_TTL,
+              userMessage: retryNoteMessage(noteUserMessage(grounding), violations),
+              toolName: 'note',
+              toolDescription: 'Return the one message to send.',
+              inputJsonSchema: noteJsonSchema,
+              schema: noteSchema,
+              maxTokens: MAX_TOKENS,
+            }),
+          );
           value = result.value;
         } catch (err) {
           if (modelIsUnreachable(err)) return deferred('model_unreachable', [message(err)]);

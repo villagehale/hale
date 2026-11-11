@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Day, time range, AM/PM and location are all correct and the title is kept as the event name. However, 'It's on the calendar at that time, so plan for it' is calendar talk and an unrequested instruction, and reads like an automated alert rather than how a friend would text. Score capped at 3.",
+    "score": 3
+  }
+}

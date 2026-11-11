@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import type {
   GoogleCalendarOp,
   GoogleCalendarSyncReport,
@@ -7,6 +8,7 @@ import type {
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkBeyond, hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -26,7 +28,7 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 export const CALENDAR_WRITE_NOTICE_SKILL = 'calendar-write-notice';
 
 export function calendarWriteNoticeEnabled(env: Record<string, string | undefined> = process.env) {
-  return env.CALENDAR_WRITE_NOTICE_ENABLED?.trim() === 'true';
+  return isEnabled('calendar-write-notice', undefined, env);
 }
 
 export type CalendarWriteOutcome =
@@ -115,7 +117,6 @@ export function calendarWriteNoticeUserMessage(input: CalendarWriteNoticeInput):
 }
 
 export const CALENDAR_WRITE_NOTICE_MAX_CHARS = 480;
-const URL_SHAPE = /https?:\/\/\S+/gi;
 
 /**
  * Structural refusals only, never wording: empty, too long, a link that is not the one
@@ -129,12 +130,11 @@ export function calendarWriteNoticeRefusals(
   if (text === '') return ['empty'];
   const found: string[] = [];
   if (text.length > CALENDAR_WRITE_NOTICE_MAX_CHARS) found.push('over_char_cap');
-  const urls = text.match(URL_SHAPE) ?? [];
   if (input.connectLink === null) {
-    if (urls.length > 0) found.push('carries_link');
+    if (hasLinkShape(text)) found.push('carries_link');
   } else {
     if (!text.includes(input.connectLink)) found.push('link_missing');
-    if (urls.some((url) => !url.startsWith(input.connectLink as string))) found.push('other_link');
+    if (hasLinkBeyond(text, [input.connectLink])) found.push('other_link');
   }
   return found;
 }
@@ -163,6 +163,7 @@ export async function composeCalendarWriteNotice(
         client,
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
+        cacheTtl: SPARSE_CACHE_TTL,
         userMessage: calendarWriteNoticeUserMessage(input),
         toolName: 'calendar_write_notice',
         toolDescription: 'The one text Hale sends the parent.',

@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { namesAPerson } from '~/lib/channel/activity/deidentify';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { GmailAlertEnvelope } from '~/lib/integrations/email-alert';
-import { isAwayDestination } from './away';
+import { type KnownTravelHome, isAwayDestination, readTravelHome } from './away';
 import type { TravelExtractInput, TravelExtraction } from './extract';
 import { travelBriefEnabledFor } from './flag';
 
@@ -32,9 +32,8 @@ import { travelBriefEnabledFor } from './flag';
  * the only outcome with a durable record of its own (`travel_booking_passed_over`),
  * because a count in a cron response does not survive the week.
  *
- * `home_region_unknown` is deliberately ABSENT: the home region is a constant, so nothing
- * could produce it, and an outcome nothing can produce is a line that reads as a covered
- * case.
+ * `home_region_unknown` is a family whose own home cannot be named, so nothing can be
+ * away from it: counted per booking-shaped envelope, before any body is read.
  */
 export const TRAVEL_DETECT_OUTCOMES = [
   'trip_written',
@@ -58,6 +57,9 @@ export const TRAVEL_DETECT_OUTCOMES = [
    * that survives, and the flight folds into it at overlap collapse. */
   'no_dates',
   'not_away',
+  /** The family's home row names no city {@link readTravelHome} can judge from. Nothing is
+   * read, nothing is written; the reason is logged. */
+  'home_region_unknown',
   /** Longer than {@link MAX_TRIP_NIGHTS}, or ending before it starts. A year-long lease
    * confirmation is not a trip. */
   'implausible_window',
@@ -291,6 +293,12 @@ export async function detectTravelBookingsForSweep(
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   if (dated.length === 0) return outcomes;
 
+  const home = await readTravelHome(database, familyId);
+  if (home.status === 'unknown') {
+    console.info({ familyId, reason: home.reason }, 'travel detect: no home city to judge from');
+    return [...outcomes, ...dated.map(() => 'home_region_unknown' as const)];
+  }
+
   const [childFirstNames, householdNames, timeZone] = await Promise.all([
     ports.childFirstNames(),
     ports.householdNames(),
@@ -308,6 +316,7 @@ export async function detectTravelBookingsForSweep(
         childFirstNames,
         householdNames,
         today,
+        home,
         ports,
       }),
     );
@@ -325,6 +334,7 @@ async function detectOne(
     childFirstNames: readonly string[];
     householdNames: readonly string[];
     today: string;
+    home: KnownTravelHome;
     ports: TravelDetectPorts;
   },
 ): Promise<TravelDetectOutcome> {
@@ -377,7 +387,7 @@ async function detectOne(
   const nights = nightsBetween(startsOn, endsOn);
   if (nights < 0 || nights > MAX_TRIP_NIGHTS) return 'implausible_window';
   if (startsOn < args.today) return 'in_the_past';
-  if (!isAwayDestination(city)) return 'not_away';
+  if (!isAwayDestination(city, args.home)) return 'not_away';
 
   if (extraction.childEvidence === 'none') {
     // THE MISS RATE, MADE DURABLE. An enum and nothing else — no city, no dates, no

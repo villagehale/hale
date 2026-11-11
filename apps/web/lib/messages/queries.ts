@@ -1,15 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { effectiveTeenContent } from '~/lib/dashboard/mappers';
+import { familyHasTeenager, readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
 import { loadTeenAccessUnlocks, redactsTeenContent } from '~/lib/teen-access';
-import { effectiveTeenContent } from '~/lib/dashboard/mappers';
-import { familyHasTeenager, readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import {
-  type MessageActionState,
-  type MessageView,
-  toActionMessage,
-} from './mappers';
+import { type MessageActionState, type MessageView, toActionMessage } from './mappers';
 
 /**
  * The mobile Messages inbox loader — "Hale's notes to you": the action lifecycle a
@@ -37,10 +33,7 @@ const FEED_STATES: readonly MessageActionState[] = [
   'reverted',
 ];
 
-async function loadMessagesForFamily(
-  database: Database,
-  familyId: string,
-): Promise<MessageView[]> {
+async function loadMessagesForFamily(database: Database, familyId: string): Promise<MessageView[]> {
   const [familyHasTeen, timeZone, unlocks] = await Promise.all([
     familyHasTeenager(database, familyId),
     readFamilyTimezone(database, familyId),
@@ -73,7 +66,9 @@ async function loadMessagesForFamily(
     // The DB top-N window must match the feed's sort key (settled instant, not
     // drafted_at) — otherwise a long-ago-drafted action that settled recently
     // falls out of this window and vanishes from the top of the feed.
-    .orderBy(sql`coalesce(${schema.actions.revertedAt}, ${schema.actions.executedAt}, ${schema.actions.draftedAt}) desc`)
+    .orderBy(
+      sql`coalesce(${schema.actions.revertedAt}, ${schema.actions.executedAt}, ${schema.actions.draftedAt}) desc`,
+    )
     .limit(FEED_LIMIT);
 
   // Tag each row with the raw instant it sorts by BEFORE formatting — the feed is

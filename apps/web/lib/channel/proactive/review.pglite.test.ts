@@ -10,7 +10,9 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
+import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { travelBriefDedupeKey } from '~/lib/travel/sweep';
 import type { WriterResult } from './compose';
 import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
@@ -32,17 +34,20 @@ import {
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
 /**
- * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
- * live path here is tested as it will run then; `routing.complete = false` is today's
- * table, where a requested live runs as shadow.
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING).
+ * `routing.complete = false` is a table that still has an unrouted class, where a
+ * requested live runs as shadow.
  */
 const routing = vi.hoisted(() => ({ complete: true }));
 vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
   return {
     ...actual,
-    proactiveCadence: () =>
-      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+    proactiveCadence: () => {
+      const requested = actual.requestedCadence();
+      if (!routing.complete && requested === 'live') return 'shadow';
+      return requested;
+    },
   };
 });
 
@@ -1289,9 +1294,9 @@ describe('runProactiveReview', () => {
       cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
     });
     expect(await memoryFacts()).toEqual([]);
-    expect((await assembleMemoryBrief(db.database, familyId, THURSDAY_EVENING)).text).not.toContain(
-      'text me less',
-    );
+    expect(
+      (await assembleMemoryBrief(db.database, familyId, 'every_adult', THURSDAY_EVENING)).text,
+    ).not.toContain('text me less');
 
     await handOffProactive(
       db.database,
@@ -1372,6 +1377,17 @@ describe('runProactiveReview', () => {
       cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
     });
     expect(await memoryFacts()).toEqual([]);
+  });
+
+  it('never shows the decider a live browser link from a parent text (VIL-613)', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await parentText('done here https://live.browser-use.com/s/fixture-live-token', HOUR_BEFORE);
+    await enqueue();
+    const h = harness(lessPlease);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.recentParentTexts).toEqual([`done here ${LIVE_VIEW_LINK_WITHHELD}`]);
   });
 
   it('reads no parent text for a batch two parents own, and names the withhold', async () => {
@@ -1878,6 +1894,27 @@ describe('runProactiveReview', () => {
     // VIL-393 · the family's stored language tag rides along; no pace words do.
     expect(handed).toEqual([['client', 'items', 'language']]);
     expect(languages).toEqual(['en']);
+  });
+
+  it('VIL-572 · writes a parent’s own copy in that parent’s proactive language', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await storedPaceAndPriorHold();
+    await db.database
+      .update(schema.users)
+      .set({ proactiveLanguage: 'zh' })
+      .where(eq(schema.users.id, parentUserId));
+    const languages: (string | null | undefined)[] = [];
+    const h = harness(sendAll, {
+      compose: async (input): Promise<WriterResult> => {
+        languages.push(input.language);
+        return { message: MESSAGE };
+      },
+    });
+
+    expect(await runProactiveReview(db.database, h.deps, THURSDAY_EVENING)).toMatchObject({
+      sent: 1,
+    });
+    expect(languages).toEqual(['zh']);
   });
 
   it('reads only the newest parent texts the decider is shown on its first look', async () => {
@@ -2748,5 +2785,117 @@ describe('runProactiveReview', () => {
         reason: null,
       });
     });
+  });
+});
+
+describe('classes the decider sends for their own sweeps', () => {
+  async function seedTrip(startsOn: string, endsOn: string, messageId: string) {
+    const [trip] = await db.database
+      .insert(schema.familyTrips)
+      .values({
+        familyId,
+        parentUserId,
+        integrationId: '99999999-9999-4999-8999-999999999999',
+        messageId,
+        destinationCity: 'Springfield',
+        destinationRegion: null,
+        startsOn,
+        endsOn,
+        childEvidence: 'named_traveller',
+      })
+      .returning({ id: schema.familyTrips.id });
+    return trip?.id as string;
+  }
+
+  async function trip(id: string) {
+    const [row] = await db.database
+      .select()
+      .from(schema.familyTrips)
+      .where(eq(schema.familyTrips.id, id));
+    return row;
+  }
+
+  it('closes the briefed trip and the one it overlaps, under the sweep verb', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const flight = await seedTrip('2026-10-14', '2026-10-17', 'gmail-flight');
+    const hotel = await seedTrip('2026-10-15', '2026-10-18', 'gmail-hotel');
+    const later = await seedTrip('2026-11-20', '2026-11-22', 'gmail-later');
+    const id = await enqueue(travelBriefDedupeKey(flight), {
+      kind: 'travel_brief',
+      category: 'travel_brief',
+      templateKey: 'travel:brief',
+      what: 'Springfield next week: the science museum and the zoo',
+      why: 'travel_brief',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'live', sent: 1 });
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [ledger] = await db.database
+      .select({ id: schema.channelMessages.id, dedupeKey: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+    expect(ledger?.dedupeKey).toBe(travelBriefDedupeKey(flight));
+    expect(await trip(flight)).toMatchObject({
+      closedReason: 'sent',
+      briefChannelMessageId: ledger?.id,
+    });
+    expect(await trip(hotel)).toMatchObject({
+      closedReason: 'merged',
+      briefChannelMessageId: ledger?.id,
+    });
+    // The control: a trip the brief does not overlap stays open.
+    expect((await trip(later))?.closedAt).toBeNull();
+    const [sent] = await audits('travel_brief_sent');
+    expect(sent).toMatchObject({ targetTable: 'channel_messages', targetId: ledger?.id });
+    expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
+    expect(await audits('proactive_cadence_sent')).toEqual([]);
+  });
+
+  it('audits a departure notice under the sweep verb', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue(`co_parent_departed:${familyId}:gone`, {
+      kind: 'co_parent_departed',
+      category: 'co_parent_departed',
+      templateKey: 'co_parent:departed',
+      what: 'Your co-parent left the household on Hale.',
+      why: 'co_parent_departed',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [sent] = await audits('co_parent_departure_notice_sent');
+    expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
+    expect(await audits('proactive_cadence_sent')).toEqual([]);
+  });
+
+  it('sends a queued email-alert CTA verbatim, without the writer', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const cta = 'Swim Level 2 is Thursday at 4. Want me to add it to your week?';
+    const id = await enqueue('email_alert:conn:msg-1', {
+      kind: 'email_alert',
+      category: 'email_alert',
+      templateKey: 'connector:email_alert',
+      what: cta,
+      why: 'email_alert',
+      sourceUrl: null,
+      payload: { auditVerb: 'email_alert_sent' },
+    });
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'live', sent: 1 });
+    expect(h.composed).toBe(0);
+    expect(h.transport.bodies()).toEqual([cta]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [sent] = await audits('email_alert_sent');
+    expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
   });
 });

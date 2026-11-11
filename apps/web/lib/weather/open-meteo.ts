@@ -86,7 +86,11 @@ export function parseDailyOutlook(raw: unknown): DailyOutlook[] {
   if (typeof raw !== 'object' || raw === null) return [];
   const daily = (raw as { daily?: unknown }).daily;
   if (typeof daily !== 'object' || daily === null) return [];
-  const { time, precipitation_probability_max: precip, temperature_2m_max: high } = daily as {
+  const {
+    time,
+    precipitation_probability_max: precip,
+    temperature_2m_max: high,
+  } = daily as {
     time?: unknown;
     precipitation_probability_max?: unknown;
     temperature_2m_max?: unknown;

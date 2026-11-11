@@ -45,6 +45,8 @@ export const LIVE_CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
 export const LIVE_FROM = '+15555550100';
 /** A Monday. The stub mailbox and calendar sit in the two weeks after it. */
 export const LIVE_NOW = new Date('2026-10-05T14:00:00.000Z');
+/** The zone the walk's postal code gives (an Ontario FSA). */
+export const LIVE_TIME_ZONE = 'America/Toronto';
 
 export const LIVE_MAP_GROUPS: readonly ActivityMapGroup[] = [
   {
@@ -190,13 +192,14 @@ export function liveCalendarStub(now: Date = LIVE_NOW): AhaSnapshot {
       event(LIVE_PARENT_CALENDAR[1], '2026-10-24T20:00:00Z', '2026-10-25T02:00:00Z'),
     ],
     now,
+    LIVE_TIME_ZONE,
   );
   return {
     provider: 'gcal',
     read: 'ok',
     calendar,
     email: [],
-    overlaps: calendarOverlaps(calendar),
+    overlaps: calendarOverlaps(calendar, LIVE_TIME_ZONE),
   };
 }
 
@@ -292,6 +295,7 @@ export async function runOnboardingReplay(
       receivedAt: now,
       transport: 'imessage',
       chatId: LIVE_CHAT,
+      isGroup: false,
     };
     const started = Date.now();
     const outcome = await routeInboundText(
