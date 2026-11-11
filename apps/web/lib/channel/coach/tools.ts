@@ -757,9 +757,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    *   + save_memory, no skill prose                      3/3                     2/3
    *   + save_memory, 6-line section at the end           2/3                     1/3
    *
-   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
-   * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
-   * parent handed nothing about the fall.
+   * That is the budget this lane already runs at (CHANNEL_COACH_MAX_TOKENS 2000,
+   * thinking, tools and text sharing it — see runtime.ts), and a turn that stops
+   * reaching for the live web is a parent handed nothing about the fall.
    *
    * The gap it would have closed is smaller than it looks: a durable fact stated over
    * text is already written by the NIGHTLY distiller, which reads every conversation this

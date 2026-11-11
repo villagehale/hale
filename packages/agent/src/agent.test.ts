@@ -420,7 +420,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
     guardDeps: guardDeps().deps,
   });
 
-  it('asks again with thinking off, at the same budget', async () => {
+  it('asks again with thinking off, no tools, at the same budget', async () => {
     const { client, requests, sent } = capturing([
       truncatedThinkingMessage(usage(1_000, 400)),
       textMessage('Around 18 months, once he is walking outside.', usage(1_000, 40)),
@@ -431,13 +431,13 @@ describe('runAgent when a step is truncated before it says anything', () => {
     // The recovery, not the symptom: the parent gets the answer the model was in the
     // middle of composing, not the apology template.
     expect(result.answer).toBe('Around 18 months, once he is walking outside.');
-    // ONE re-ask, at the SAME budget with the mode flipped off. A bigger number is the
-    // same bet with more chips — `max_tokens` bounds thinking plus text together and
-    // Sonnet 5.5 has no field that bounds the thinking half, so only its thinking-off
-    // shape (`between_tools`; `disabled` is a 400 there) makes the 400 a reply ceiling
-    // again. Same messages: this is a re-ask, not a next step.
+    // ONE re-ask, at the SAME budget, thinking off, tools dropped. Offering tools on
+    // this leg is how VIL-536 spent the recovery on another call and never spoke.
+    // Same messages: this is a re-ask, not a next step.
     expect(requests).toHaveLength(2);
     expect(requests[1]?.max_tokens).toBe(400);
+    expect(requests[0]?.tools).toBeDefined();
+    expect(requests[1]?.tools).toBeUndefined();
     expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
     // Effort survives the flip — it is the knob that governs tool reach on this lane.
     expect((requests[1] as unknown as WireShape).output_config).toEqual({ effort: 'high' });
@@ -470,6 +470,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
     // The handler never ran: a clipped call is re-drawn whole, not half-run.
     expect(read).toEqual([]);
     expect(requests).toHaveLength(2);
+    expect(requests[1]?.tools).toBeUndefined();
     expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
     expect(result.answer).toBe('He is five months old.');
     expect(result.truncatedRetries).toBe(1);
@@ -537,6 +538,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
     const result = await runAgent(args(client));
 
     expect(requests).toHaveLength(2);
+    expect(requests[1]?.tools).toBeUndefined();
     expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
     expect(result.answer).toBe(
       "Nothing's on Sebby's calendar today. The Kids & Me drop-in at St. Lawrence runs 1-2:30 p.m.",
@@ -594,6 +596,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
     // a parent is waiting on is worse than saying nothing.
     expect(requests).toHaveLength(2);
     expect(requests[1]?.max_tokens).toBe(400);
+    expect(requests[1]?.tools).toBeUndefined();
     expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
     expect(read).toEqual([]);
     expect(result.answer).toBeNull();
@@ -602,6 +605,48 @@ describe('runAgent when a step is truncated before it says anything', () => {
     expect(result.truncated).toBe(true);
     expect(result.truncatedRetries).toBe(1);
     expect(result.usage.completionTokens).toBe(800);
+  });
+
+  /**
+   * VIL-536. The re-ask offers no tools, so a complete tool call on that leg is not
+   * work to dispatch — it is the model spending the reply budget on another call.
+   * The parent gets nothing from this step rather than a silent write.
+   */
+  it('does not dispatch a tool call from the no-tools re-ask', async () => {
+    const read: string[] = [];
+    const { client, requests } = capturing([
+      truncatedThinkingMessage(usage(1_000, 400)),
+      toolUseMessage('call-1', 'get_child_profile', { childId: 'kid-1' }, usage(1_000, 40)),
+    ]);
+
+    const result = await runAgent(args(client, [recordingProfileTool(read)]));
+
+    expect(requests[1]?.tools).toBeUndefined();
+    expect(read).toEqual([]);
+    expect(result.answer).toBeNull();
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedRetries).toBe(1);
+  });
+
+  it('keeps the text from a no-tools re-ask even if a tool call rides along', async () => {
+    const read: string[] = [];
+    const { client } = capturing([
+      truncatedThinkingMessage(usage(1_000, 400)),
+      textAndToolUseMessage(
+        'Around 18 months, once he is walking outside.',
+        'call-1',
+        'get_child_profile',
+        { childId: 'kid-1' },
+        usage(1_000, 40),
+      ),
+    ]);
+
+    const result = await runAgent(args(client, [recordingProfileTool(read)]));
+
+    expect(read).toEqual([]);
+    expect(result.answer).toBe('Around 18 months, once he is walking outside.');
+    expect(result.truncated).toBe(false);
+    expect(result.truncatedRetries).toBe(1);
   });
 });
 

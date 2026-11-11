@@ -220,9 +220,9 @@ const AUTONOMY_SWITCH_OFF_SRC = join(
   'autonomy-switch-off-tool.ts',
 );
 
-/** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
+/** Mirrors MAX_STEPS / CHANNEL_COACH_MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
 /** The per-fixture voice FLOOR that sits alongside the corpus mean. See the header for
@@ -1207,8 +1207,8 @@ function channelContext(fixture, compact, severed = false) {
  * `legs` receives one entry per model call, cached or live. Without it a re-ask is
  * invisible: the loop's own numbers are summed over the turn, so a leg that cost a full
  * budget and said nothing looks exactly like a leg that answered. The re-ask is a MODE
- * change (thinking off at the same max_tokens), so the report has to be able to show
- * which shape each call actually went out in.
+ * change (thinking off, tools dropped, same max_tokens), so the report has to be able
+ * to show which shape each call actually went out in.
  */
 function makeCachedAgentClient(
   tag,
@@ -1244,6 +1244,7 @@ function makeCachedAgentClient(
           legs.push({
             max_tokens: request.max_tokens,
             thinking: request.thinking?.type ?? 'none',
+            tools: Array.isArray(request.tools) && request.tools.length > 0,
             stop_reason: response.stop_reason,
             output_tokens: response.usage?.output_tokens ?? 0,
             thinking_tokens: response.usage?.output_tokens_details?.thinking_tokens ?? null,
@@ -2357,9 +2358,9 @@ async function main() {
       `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}${result.draws ? ` of ${result.draws.join('/')}` : ''}`}  tools=${reached}${reask}`,
     );
     if (result.truncatedRetries) {
-      for (const leg of (result.legs ?? []).filter((l) => l.thinking === 'disabled')) {
+      for (const leg of (result.legs ?? []).filter((l) => l.tools === false)) {
         console.log(
-          `        · re-ask leg: max_tokens=${leg.max_tokens} thinking=${leg.thinking} stop=${leg.stop_reason} out=${leg.output_tokens}${
+          `        · re-ask leg: max_tokens=${leg.max_tokens} thinking=${leg.thinking} tools=off stop=${leg.stop_reason} out=${leg.output_tokens}${
             leg.thinking_tokens === null ? '' : ` (think ${leg.thinking_tokens})`
           } cache_read=${leg.cache_read} cache_write=${leg.cache_write}`,
         );

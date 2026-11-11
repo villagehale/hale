@@ -598,6 +598,63 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'show-everything-grouped',
+    text: 'show me everything you found, grouped',
+    note: "VIL-536. A broad follow-up in an ongoing 1:1: the finds are already in the thread, and the parent asks for the whole map grouped. Preview 2026-11-01 spent the coach's 400-token ceiling on tools and reasoning, re-asked once, still wrote nothing (`truncated before speaking (1 re-ask)`, draftedThisTurn 0), and the parent got the failed-turn apology. The gate here is that the turn SPEAKS and names what it already found. Grouping is the model's; the names are the facts.",
+    village: {
+      candidates: [
+        {
+          title: 'Swim Kids 3',
+          kind: 'class',
+          summary: 'Saturday swim for school-age kids.',
+          venue: 'West pool',
+          when: 'Sat, Aug 8, 11:00 a.m.',
+          url: 'https://www.toronto.ca/explore-enjoy/recreation/swimming/',
+        },
+        {
+          title: 'Central Library story time',
+          kind: 'drop_in',
+          summary: 'Free indoor drop-in, all ages welcome.',
+          venue: 'Bloor/Gladstone branch',
+          when: 'Sat, Aug 8',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+        },
+        {
+          title: 'Riverdale Farm visit',
+          kind: 'outing',
+          summary: 'Free outdoor farm, open daily.',
+          venue: 'Riverdale Farm',
+          when: 'Sun, Aug 9',
+          url: 'https://www.toronto.ca/explore-enjoy/parks-gardens-beaches/riverdale-farm/',
+        },
+        {
+          title: 'High Park playground',
+          kind: 'outing',
+          summary: 'Jamie Bell Adventure Playground, free.',
+          venue: 'High Park',
+          when: 'Sat, Aug 8',
+          url: 'https://www.toronto.ca/explore-enjoy/parks-gardens-beaches/high-park/',
+        },
+      ],
+      inVerification: 0,
+      standingOption: null,
+    },
+    transcript: [
+      { role: 'user', content: 'anything fun for the kids this weekend?' },
+      {
+        role: 'assistant',
+        content:
+          'Swim Kids 3 at the West pool Saturday 11:00 a.m., Central Library story time Saturday at Bloor/Gladstone, Riverdale Farm visit Sunday, and High Park playground Saturday. Want me to pick one?',
+      },
+      ...smallTalk(2, 4),
+    ],
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['swim kids', 'story time', 'riverdale farm', 'high park'],
+      forbidden: [...HEDGES, 'the app'],
+    },
+  },
+  {
     id: 'yes-with-nothing-open',
     text: 'Yes, please',
     // Georgetown, because the message they are answering is a Cartwheels one and a
