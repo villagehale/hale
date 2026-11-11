@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { CarpoolReading } from './carpool-apply';
+import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
+import { type CarpoolReading, carpoolLocalClock, carpoolLocalDay } from './carpool-apply';
 import type { CarpoolIntent } from './carpool-cadence';
 
 /**
@@ -15,6 +16,8 @@ import type { CarpoolIntent } from './carpool-cadence';
 
 export const CARPOOL_READ_ATTEMPTS = 2;
 export const CARPOOL_READING_MAX_TOKENS = 300;
+export const CARPOOL_READING_TOOL = 'carpool_reading';
+export const CARPOOL_READING_TOOL_DESCRIPTION = 'Who is driving after this group message.';
 
 export const CARPOOL_INTENTS = [
   'driver_claim',
@@ -32,7 +35,8 @@ export interface CarpoolReadInput {
   senderName: string | null;
   memberNames: readonly string[];
   currentDriver: string | null;
-  nowIso: string;
+  /** Instant the message arrived. The payload converts this in `timeZone`. */
+  now: Date;
   timeZone: string;
   recent: readonly { from: 'hale' | 'member'; text: string }[];
 }
@@ -46,7 +50,8 @@ const readingSchema = z.object({
   driverName: z.string().nullable(),
   driverIsSender: z.boolean().default(false),
   eventLabel: z.string().nullable(),
-  pickupAtIso: z.string().nullable(),
+  pickupDate: z.string().nullable().optional(),
+  pickupTime: z.string().nullable().optional(),
   pickupPlace: z.string().nullable(),
   kids: z.string().nullable(),
   confidence: z.enum(['high', 'low']),
@@ -60,7 +65,14 @@ const readingJsonSchema = {
     driverName: { type: ['string', 'null'] },
     driverIsSender: { type: 'boolean' },
     eventLabel: { type: ['string', 'null'] },
-    pickupAtIso: { type: ['string', 'null'] },
+    pickupDate: {
+      type: ['string', 'null'],
+      description: 'YYYY-MM-DD copied from now.nextDays, or null.',
+    },
+    pickupTime: {
+      type: ['string', 'null'],
+      description: 'HH:MM wall clock in timeZone, 24-hour, or null. No offset.',
+    },
     pickupPlace: { type: ['string', 'null'] },
     kids: { type: ['string', 'null'] },
     confidence: { type: 'string', enum: ['high', 'low'] },
@@ -70,7 +82,8 @@ const readingJsonSchema = {
     'driverName',
     'driverIsSender',
     'eventLabel',
-    'pickupAtIso',
+    'pickupDate',
+    'pickupTime',
     'pickupPlace',
     'kids',
     'confidence',
@@ -81,11 +94,45 @@ const UNCLEAR: CarpoolReading = {
   intent: 'unclear',
   driverName: null,
   eventLabel: null,
+  pickupDate: null,
+  pickupTime: null,
   pickupAtIso: null,
   pickupPlace: null,
   kids: null,
   confidence: 'low',
 };
+
+function weekdayIn(instant: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone }).format(instant);
+}
+
+/**
+ * `now` as the reader sees it. The date is the family's local calendar day, so
+ * a Friday after 8pm Toronto (already Saturday in UTC) still names Friday, and
+ * tomorrow is Saturday. The model must not add a day to a UTC timestamp.
+ */
+export function carpoolReaderNow(
+  now: Date,
+  timeZone: string,
+): {
+  date: string;
+  weekday: string;
+  time: string;
+  nextDays: { date: string; weekday: string }[];
+} {
+  const today = dayKeyIn(now, timeZone);
+  const time = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+  }).format(now);
+  const nextDays = Array.from({ length: 8 }, (_, i) => {
+    const date = addDaysToKey(today, i);
+    return { date, weekday: weekdayIn(new Date(`${date}T12:00:00Z`), 'UTC') };
+  });
+  return { date: today, weekday: weekdayIn(now, timeZone), time, nextDays };
+}
 
 export function carpoolUserMessage(input: CarpoolReadInput): string {
   return JSON.stringify({
@@ -93,7 +140,7 @@ export function carpoolUserMessage(input: CarpoolReadInput): string {
     senderName: input.senderName,
     memberNames: [...input.memberNames],
     currentDriver: input.currentDriver,
-    nowIso: input.nowIso,
+    now: carpoolReaderNow(input.now, input.timeZone),
     timeZone: input.timeZone,
     recent: input.recent.slice(-8),
   });
@@ -111,7 +158,11 @@ export function parseCarpoolReading(value: unknown): CarpoolReading {
     driverName: empty(parsed.data.driverName),
     driverIsSender: parsed.data.driverIsSender === true,
     eventLabel: empty(parsed.data.eventLabel),
-    pickupAtIso: empty(parsed.data.pickupAtIso),
+    pickupDate: carpoolLocalDay(parsed.data.pickupDate),
+    pickupTime: carpoolLocalClock(parsed.data.pickupTime),
+    // The model never supplies an instant: an offset it attaches is not the clock the
+    // parent said. Only code sets this, from a ride already stored.
+    pickupAtIso: null,
     pickupPlace: empty(parsed.data.pickupPlace),
     kids: empty(parsed.data.kids),
     confidence: parsed.data.confidence,
@@ -135,6 +186,8 @@ export function readingFromTapback(input: {
     // The reactor answered Hale's ask themself.
     driverIsSender: true,
     eventLabel: null,
+    pickupDate: null,
+    pickupTime: null,
     pickupAtIso: null,
     pickupPlace: null,
     kids: null,
@@ -155,8 +208,8 @@ export function createCarpoolReader(
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
       userMessage: carpoolUserMessage(input),
-      toolName: 'carpool_reading',
-      toolDescription: 'Who is driving after this group message.',
+      toolName: CARPOOL_READING_TOOL,
+      toolDescription: CARPOOL_READING_TOOL_DESCRIPTION,
       inputJsonSchema: readingJsonSchema,
       schema: readingSchema,
       maxTokens: CARPOOL_READING_MAX_TOKENS,

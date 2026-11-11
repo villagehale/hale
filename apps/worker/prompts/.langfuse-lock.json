@@ -69,11 +69,6 @@
     "version": null,
     "sha256": "27cea18015ddf86912a654ec57b02449f94ec644b414675bc439ad94a4eb37a8"
   },
-  "judges/carpool": {
-    "name": "judges/carpool",
-    "version": null,
-    "sha256": "80e4c5d204a3a01025497410ed1970d6820b913d113bc3650bd997bc3aedaa8f"
-  },
   "judges/coach-capability-correction": {
     "name": "judges/coach-capability-correction",
     "version": null,
