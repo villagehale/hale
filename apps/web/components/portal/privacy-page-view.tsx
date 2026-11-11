@@ -8,6 +8,7 @@ import { ExportDataButton } from '~/components/hale/export-data-button';
 import type { WhatHaleDidItem } from '~/lib/dashboard/what-hale-did';
 import type { ConnectionState } from '~/lib/integrations/connection-state';
 import { PRIVACY_URL } from '~/lib/legal-links';
+import { accessExportBlurb } from '~/lib/rights/export-round-2';
 import { PortalHeading } from './heading';
 import styles from './portal.module.css';
 
@@ -107,7 +108,7 @@ function Household({ household, canExport }: { household: PrivacyHousehold; canE
             </span>
             <span>
               <h3>Export your data</h3>
-              <p className={styles.meta}>A copy of everything Hale holds.</p>
+              <p className={styles.meta}>{accessExportBlurb()}</p>
             </span>
             <span className={styles.end}>
               <ExportDataButton idleLabel="Export" className={styles.secondary} />

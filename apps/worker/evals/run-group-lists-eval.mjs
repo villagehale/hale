@@ -56,9 +56,9 @@ const DB_SRC = join(REPO_ROOT, 'packages', 'db', 'src', 'index.ts');
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-/** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
+/** Mirrors MAX_STEPS / CHANNEL_COACH_MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 /** --dry only: assumed input growth per agent step (tool calls and results). */
 const DRY_STEP_GROWTH_TOKENS = 1500;
 const NOW = new Date('2026-10-26T16:00:00.000Z');

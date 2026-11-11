@@ -1673,6 +1673,7 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
       awaitingReceipt: 0,
       refused: 0,
       unwritten: 0,
+      queued: 0,
       failed: 0,
       held: {
         not_enrolled: 0,

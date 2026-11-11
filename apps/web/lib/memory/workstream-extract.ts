@@ -43,7 +43,7 @@ const EVENT_LIMIT = 8;
 export function workstreamExtractClient(): AgentClient | null {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key?.startsWith('sk-')) return null;
-  return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 });
+  return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 }, { stage: 'memory_infer' });
 }
 
 const STATUSES = [

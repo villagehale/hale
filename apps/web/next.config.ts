@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
+import { posthogProxyRewrites } from './lib/analytics/posthog-proxy';
 import { MARKETING_SITE_URL, TERMS_URL } from './lib/legal-links';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -9,6 +10,10 @@ const repoRoot = join(here, '..', '..');
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // PostHog /ingest/e/ and /ingest/flags/ end with a slash. Without this, Next 308s
+  // each of those onto the no-slash URL and every event pays an extra round trip.
+  // /signin/ still has its own explicit redirect below.
+  skipTrailingSlashRedirect: true,
   // Browser source maps exist only on a build that will upload them to PostHog and then
   // delete them (scripts/posthog-sourcemaps.mjs --delete-after). Without the key —
   // every build today — this is false and nothing changes.
@@ -21,6 +26,9 @@ const config: NextConfig = {
   // the middleware so a policy link never costs an Edge invocation, and so the
   // forward survives independently of the auth middleware's matcher. The app's
   // /privacy is the signed-in data-rights page (VIL-432), which links the policy.
+  async rewrites() {
+    return posthogProxyRewrites();
+  },
   async redirects() {
     return [
       { source: '/terms', destination: TERMS_URL, permanent: true },
