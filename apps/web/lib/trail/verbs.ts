@@ -561,6 +561,10 @@ export const AUDIT_VERBS = [
   // This household's own yes. The trail sentence names no other household.
   'same_activity_opt_in_recorded',
   'same_activity_opt_in_revoked',
+  // ── going-count share (VIL-399) ─────────────────────────────────────────
+  // This household's own yes. The trail sentence names no other household.
+  'going_count_opt_in_recorded',
+  'going_count_opt_in_revoked',
   // ── active workstreams (VIL-419) ────────────────────────────────────────
   'workstream_opened',
   'workstream_updated',
@@ -2062,6 +2066,14 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you took back a yes to a meet or a group',
     family: 'done',
   },
+  going_count_opt_in_recorded: {
+    sentence: 'you said Hale may count your household among other Hale families',
+    family: 'done',
+  },
+  going_count_opt_in_revoked: {
+    sentence: 'you took back a yes to being counted among other Hale families',
+    family: 'done',
+  },
   workstream_opened: {
     sentence: 'started keeping track of something for you',
     family: 'note',
@@ -2298,6 +2310,7 @@ const TARGET_NOUNS: Record<string, string> = {
   village_candidates: 'village suggestion', // Historical audit rows retain this key.
   consent_records: 'consent',
   activity_bookings: 'a class you signed up for',
+  going_count_opt_ins: 'going-count share',
   // A BARE noun, like every value here ('draft', 'plan', 'child'): an article baked into
   // the value is an article the renderer may double. Deliberately absent from
   // TARGET_ROUTES - there is no receipts page for a trip, so targetLink correctly

@@ -49,7 +49,7 @@ import {
 import { EMAIL_ALERT_BODY_ENABLED_ENV } from './email-alert-body-flag';
 import type { EmailAlertNotice } from './email-alert-notice';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
-import { GOING_COUNT_ENABLED_ENV, sessionKey } from './going';
+import { GOING_COUNT_ENABLED_ENV, recordGoingCountShare, sessionKey } from './going';
 import { type GoogleDisconnectPorts, disconnectGoogle } from './google-disconnect';
 import { CONNECTOR_SCOPES } from './google-oauth';
 import { saveConnection } from './store';
@@ -1180,6 +1180,11 @@ describe('the going count in the alert path', () => {
       }),
       channelMessageId: message?.id as string,
     });
+    await recordGoingCountShare(db.database, {
+      familyId: other.familyId,
+      parentUserId: other.parentUserId,
+      granted: true,
+    });
     return other.familyId;
   }
 
@@ -1214,6 +1219,7 @@ describe('the going count in the alert path', () => {
     // The pglite instance is shared across this file and the count reads ACROSS families,
     // so an earlier describe's bookings would be counted into this one's sentence.
     await db.database.delete(schema.activityBookings);
+    await db.database.delete(schema.goingCountOptIns);
   });
 
   it('speaks the count, audits the NUMBER and nothing else, and writes no row on the other side', async () => {
@@ -1249,9 +1255,12 @@ describe('the going count in the alert path', () => {
     // the one that would catch anybody "improving" the design by auditing the subjects.
     expect(counted).toHaveLength(2);
     for (const id of counted) {
-      await expect(
-        db.database.select().from(schema.auditLog).where(eq(schema.auditLog.familyId, id)),
-      ).resolves.toEqual([]);
+      const rows = await db.database
+        .select({ actionTaken: schema.auditLog.actionTaken })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, id));
+      // Their own yes to being counted — never a row that names this family's receipt.
+      expect(rows.map((row) => row.actionTaken)).toEqual(['going_count_opt_in_recorded']);
       // Exactly the one row this fixture wrote to hang their booking off, and nothing Hale
       // sent: no second text, no suppression receipt, no thread.
       await expect(

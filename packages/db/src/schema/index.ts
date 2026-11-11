@@ -35,6 +35,7 @@ export * from './provider-login-links.js';
 export * from './provider-login-notices.js';
 export * from './provider-watch.js';
 export * from './same-activity-opt-ins.js';
+export * from './going-count-opt-ins.js';
 export * from './channel-turn-answer-claims.js';
 export * from './sms-intake-sessions.js';
 export * from './sms-intake-turn-claims.js';
