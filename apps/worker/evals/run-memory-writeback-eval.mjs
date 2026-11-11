@@ -27,7 +27,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { register } from 'tsx/esm/api';
 import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
-import { installEvalSpendCap, priceRates, withoutMessageCacheMarkers } from './lib/harness.mjs';
+import {
+  installEvalSpendCap,
+  priceRates,
+  reportEvalGeneration,
+  withoutMessageCacheMarkers,
+  wrapEvalAnthropic,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -96,7 +102,15 @@ function cachingClient({ cachedOnly, cost }) {
         });
         const key = cacheKey(canonical);
         const cached = await cacheGet(key);
-        if (cached) return cached.response;
+        if (cached) {
+          reportEvalGeneration({
+            suite: 'memory-writeback',
+            caseName: 'infer',
+            model: request.model,
+            cached: true,
+          });
+          return cached.response;
+        }
 
         if (cachedOnly) {
           // The request is stored beside the response, so a miss can be diffed
@@ -110,7 +124,12 @@ function cachingClient({ cachedOnly, cost }) {
           process.exit(1);
         }
 
-        live ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        live ??= capSdkClient(
+          wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+            suite: 'memory-writeback',
+            stage: 'memory_infer',
+          }),
+          {
           rates: priceRates,
           tag: 'memory-writeback',
         });

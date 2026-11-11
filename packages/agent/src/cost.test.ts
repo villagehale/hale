@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentRunCostUsd, estimateCostUsd } from './cost.js';
+import { agentRunCostUsd, estimateCostUsd, tryEstimateCostUsd } from './cost.js';
 import { DEEPSEEK_MODEL, HAIKU_MODEL, OPUS_MODEL, SONNET_MODEL } from './model.js';
 
 /**
@@ -125,5 +125,12 @@ describe('agentRunCostUsd', () => {
         completionTokens: 0,
       }),
     ).toBeCloseTo(4, 6);
+  });
+});
+
+describe('tryEstimateCostUsd', () => {
+  it('returns undefined for an unlisted model instead of throwing', () => {
+    expect(tryEstimateCostUsd('not-a-model', tiers({ inputTokens: 1 }))).toBeUndefined();
+    expect(tryEstimateCostUsd(SONNET_MODEL, tiers({ inputTokens: 1_000_000 }))).toBe(2);
   });
 });

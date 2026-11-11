@@ -84,7 +84,7 @@ export type WorkstreamComposeResult = { ok: true; body: string } | { ok: false; 
 export function workstreamFollowupClient(): AgentClient | null {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key?.startsWith('sk-')) return null;
-  return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 });
+  return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 }, { stage: 'memory_infer' });
 }
 
 const WEEKDAY_ISO: Record<string, number> = {

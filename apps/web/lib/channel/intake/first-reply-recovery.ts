@@ -169,7 +169,7 @@ export function firstReplyRecoveryDeps(
   database: Database,
   now: Date = new Date(),
 ): FirstReplyRecoveryDeps {
-  const client = budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  const client = budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' });
   return {
     transport: createOutboundTransport(),
     limiter: new PostgresRateLimiter(database),

@@ -290,7 +290,7 @@ let cached: Anthropic | undefined;
  * construction — it must produce the named `client_unavailable` deferral. */
 export function introVoiceClient(): AgentClient {
   // Sweep composer under the nudge cron's maxDuration 300 (audit P1-7).
-  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'voice' });
   return cached;
 }
 

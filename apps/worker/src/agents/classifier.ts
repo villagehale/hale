@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { SPARSE_CACHE_TTL, forceToolJson, pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
 import { z } from 'zod';
+import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
 import { anthropicClient } from '../anthropic/client.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { redactEventPayload } from '../redaction/redact.js';
@@ -181,19 +182,23 @@ export async function runClassifier(
 
   const lane = pickLane('classify');
   const startedAt = Date.now();
-  const { value: parsed, usage } = await forceToolJson({
-    client: deps.client ?? anthropicClient('classify_event'),
-    lane,
-    system: basePrompt,
-    systemExtras: extras,
-    cacheTtl: SPARSE_CACHE_TTL,
-    userMessage,
-    toolName: 'classification',
-    toolDescription: 'Return the structured classification of the inbound signal.',
-    inputJsonSchema: classifierOutputJsonSchema,
-    schema: classifierOutputSchema,
-    maxTokens: 4096,
-  });
+  const { value: parsed, usage } = await withLlmContext(
+    { stage: 'classify_event', ...llmFamilyContext(input.familyId) },
+    () =>
+      forceToolJson({
+        client: deps.client ?? anthropicClient('classify_event'),
+        lane,
+        system: basePrompt,
+        systemExtras: extras,
+        cacheTtl: SPARSE_CACHE_TTL,
+        userMessage,
+        toolName: 'classification',
+        toolDescription: 'Return the structured classification of the inbound signal.',
+        inputJsonSchema: classifierOutputJsonSchema,
+        schema: classifierOutputSchema,
+        maxTokens: 4096,
+      }),
+  );
 
   return {
     eventType: parsed.event_type,

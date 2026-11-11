@@ -6,10 +6,21 @@ import { PostHog } from 'posthog-node';
  * import from apps/web (web depends on the worker, not the reverse).
  *
  * Reads POSTHOG_PROJECT_API_KEY. Unset → null, and every caller is a named no-op
- * (rule #11): no client, no network. `privacyMode: true` always.
+ * (rule #11): no client, no network. `privacyMode` stays on unless
+ * POSTHOG_LLM_CONTENT_ENABLED is exactly `true`.
  */
 
 let project: PostHog | null | undefined;
+let shutdownHooked = false;
+
+function hookShutdown(): void {
+  if (shutdownHooked) return;
+  shutdownHooked = true;
+  const flush = () => {
+    void flushPosthog();
+  };
+  process.on('beforeExit', flush);
+}
 
 export function projectClient(): PostHog | null {
   if (project !== undefined) return project;
@@ -22,13 +33,26 @@ export function projectClient(): PostHog | null {
           'https://us.i.posthog.com',
         flushAt: 1,
         flushInterval: 0,
-        privacyMode: true,
+        privacyMode: process.env.POSTHOG_LLM_CONTENT_ENABLED !== 'true',
         disableGeoip: true,
         requestTimeout: 4_000,
         fetchRetryCount: 0,
       })
     : null;
+  if (project) hookShutdown();
   return project;
+}
+
+/** Flush the worker client. Never throws: analytics must not fail a parent reply. */
+export async function flushPosthog(): Promise<void> {
+  if (!project) return;
+  try {
+    await project.flush();
+  } catch (err) {
+    console.warn('analytics: posthog flush failed', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
 }
 
 /** Test seam: env is read once per process. */

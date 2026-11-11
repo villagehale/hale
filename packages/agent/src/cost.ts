@@ -97,6 +97,16 @@ export function estimateCostUsd(model: string, usage: TokenUsage): number {
   );
 }
 
+/** USD for one call, or `undefined` when the model is not in the table.
+ * Tracing uses this so an unpriced id cannot throw into a parent's turn. */
+export function tryEstimateCostUsd(model: string, usage: TokenUsage): number | undefined {
+  try {
+    return estimateCostUsd(model, usage);
+  } catch {
+    return undefined;
+  }
+}
+
 /** USD for a finished {@link runAgent} loop, whose `promptTokens` is the merged
  * full-rate total (fresh input + cache writes) the agent_runs row records. */
 export function agentRunCostUsd(model: string, usage: AgentUsage): number {
