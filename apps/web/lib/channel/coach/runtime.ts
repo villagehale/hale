@@ -438,18 +438,33 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
         ]);
       const localDay = localDayContext(timeZone ? familyLocalNow(now, timeZone) : null, forecast);
-      const providerWatch = ports.loadProviderWatch
-        ? await ports.loadProviderWatch(turn.familyId, now)
-        : [];
+      const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
+      // VIL-524 / VIL-567. Only a nearby-find turn gets the find addenda. A model reads
+      // the parent's words in any language; there is no word list, and a failed read is
+      // not a find. The read is a model call on the SMS hot path, so it runs beside the
+      // family context and the other reads rather than in front of them.
+      const [providerWatch, emailLit, { findTurn }, familyContext] = await Promise.all([
+        ports.loadProviderWatch ? ports.loadProviderWatch(turn.familyId, now) : [],
+        emailReader ? emailReader.connected(turn.familyId, turn.parentUserId) : false,
+        ports.readFindTurn({ text: turn.body, transcript }),
+        ports.loadContext({
+          familyId: turn.familyId,
+          question: turn.body,
+          intent: null,
+          // A text has no per-child chip to focus, so the turn is whole-family and the
+          // model resolves who is meant from the words and the schedule.
+          focusedChildId: null,
+          transcript,
+          sourceNote: null,
+          readerUserId: turn.parentUserId,
+          inGroup: turn.audience === 'group',
+        }),
+      ]);
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
       const voiceLit = turn.audience !== 'group' && (ports.voiceMemosEnabled?.() ?? false);
-      const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
-      const emailLit =
-        emailReader !== undefined &&
-        (await emailReader.connected(turn.familyId, turn.parentUserId));
       const groupedSkill =
         turn.audience === 'group'
           ? // VIL-447: the shared-list verbs exist only in a group, and only with the flag on.
@@ -468,12 +483,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...groupedSkill,
         instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
       };
-      // VIL-524 / VIL-567. Only a nearby-find turn gets these addenda. A model
-      // reads the parent's words in any language; there is no word list. A failed
-      // read is not a find. coach-nearby-find itself stays byte-identical, so
-      // coach-channel and group-privacy recordings stay keyed on the prompt they
-      // already have.
-      const { findTurn } = await ports.readFindTurn({ text: turn.body, transcript });
+      // coach-nearby-find itself stays byte-identical, so coach-channel and
+      // group-privacy recordings stay keyed on the prompt they already have.
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
       // VIL-567: the same gate, so a bare find reads its day from the thread.
       const findDay = findTurn ? await loadCronSkill('coach-find-day') : null;
@@ -516,18 +527,6 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           ...offeredThisTurn.links().map((link) => link.url),
         ].map((url) => ({ ref: linkRef(url), url }));
 
-      const familyContext = await ports.loadContext({
-        familyId: turn.familyId,
-        question: turn.body,
-        intent: null,
-        // A text has no per-child chip to focus, so the turn is whole-family and the
-        // model resolves who is meant from the words and the schedule.
-        focusedChildId: null,
-        transcript,
-        sourceNote: null,
-        readerUserId: turn.parentUserId,
-        inGroup: turn.audience === 'group',
-      });
       // VIL-566: the household-group addendum rides only when the fact does, so every
       // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
       // only a 1:1 turn holding a fact Hale read in email or the calendar carries it.

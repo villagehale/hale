@@ -81,7 +81,7 @@ interface Recorded {
 }
 
 function readingFindTurn(findTurn = true): ChannelCoachPorts['readFindTurn'] {
-  return async () => ({ findTurn });
+  return async () => (findTurn ? { findTurn: true } : { findTurn: false, reason: 'not_find' });
 }
 
 function ports(overrides: Partial<ChannelCoachPorts> = {}) {
@@ -1643,12 +1643,12 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
 
   it('production wires a find-turn reader, not a word list', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', '');
-    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const reading = await productionChannelCoachPorts({} as Database).readFindTurn({
       text: "what's on this weekend",
       transcript: [],
     });
-    expect(reading).toEqual({ findTurn: false });
+    expect(reading).toEqual({ findTurn: false, reason: 'client_unavailable' });
     expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
     expect(JSON.stringify(logged.mock.calls)).not.toContain("what's on this weekend");
     logged.mockRestore();
@@ -1800,6 +1800,30 @@ describe('the day a find is for (VIL-567)', () => {
     expect(instructions).toContain('The day a find is for');
     expect(instructions).toContain('Keep the finding to yourself');
   });
+
+  // The read is a model call on the SMS hot path. A reader that only answers once the
+  // family context has started loading never answers when it runs in front of that load.
+  it('reads the find turn while the family context loads, not in front of it', async () => {
+    let contextStarted = () => {};
+    const contextLoading = new Promise<void>((resolve) => {
+      contextStarted = resolve;
+    });
+    const p = ports({
+      readFindTurn: async () => {
+        await contextLoading;
+        return { findTurn: true };
+      },
+      judgeFindReply: send,
+      runAgent: answering('Family skate at the arena, today at 1.'),
+    });
+    const loadContext = p.loadContext;
+    p.loadContext = async (input) => {
+      contextStarted();
+      return loadContext(input);
+    };
+    const { reply } = await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(reply).toBe('Family skate at the arena, today at 1.');
+  }, 2000);
 });
 
 /**

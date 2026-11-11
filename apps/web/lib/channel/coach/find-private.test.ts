@@ -16,8 +16,20 @@ const BASE: Skill = {
 describe('toFindTurnReading', () => {
   it('is a find only when the model named find', () => {
     expect(toFindTurnReading({ intent: 'find' })).toEqual({ findTurn: true });
-    expect(toFindTurnReading({ intent: 'not_find' })).toEqual({ findTurn: false });
-    expect(toFindTurnReading({ intent: 'unclear' })).toEqual({ findTurn: false });
+    expect(toFindTurnReading({ intent: 'not_find' })).toEqual({
+      findTurn: false,
+      reason: 'not_find',
+    });
+  });
+
+  it('names an intent off the enum and logs it, apart from a not_find', () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(toFindTurnReading({ intent: 'unclear' })).toEqual({
+      findTurn: false,
+      reason: 'off_enum_intent',
+    });
+    expect(JSON.stringify(warned.mock.calls)).toContain('off_enum_intent');
+    warned.mockRestore();
   });
 });
 
@@ -45,17 +57,18 @@ describe('findTurnUserMessage', () => {
 });
 
 describe('createFindTurnReader', () => {
-  it('names a missing client and is not a find, without the parent text', async () => {
-    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+  it('names a missing client as a failed read, warns, and leaves out the parent text', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const reader = createFindTurnReader(() => {
       throw new Error('no key');
     });
     await expect(reader.read({ text: "what's on this weekend", transcript: [] })).resolves.toEqual({
       findTurn: false,
+      reason: 'client_unavailable',
     });
-    expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
-    expect(JSON.stringify(logged.mock.calls)).not.toContain("what's on this weekend");
-    logged.mockRestore();
+    expect(JSON.stringify(warned.mock.calls)).toContain('client_unavailable');
+    expect(JSON.stringify(warned.mock.calls)).not.toContain("what's on this weekend");
+    warned.mockRestore();
   });
 });
 

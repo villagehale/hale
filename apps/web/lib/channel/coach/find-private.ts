@@ -9,9 +9,10 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  *
  * A model reads the parent's words in any language. There is no word list. A calendar
  * edit or a read of their own calendar is not a find, even when it names a weekend.
- * A missing client, a missing skill, or a model failure is `not_find` (rule #11): the
- * standing coach prompt still answers, and a wrong `find` would search when they meant
- * to edit.
+ * A missing client, a missing skill, a model failure or an intent off the enum is not a
+ * find either, so the standing coach prompt still answers and a wrong `find` never
+ * searches when they meant to edit. Each of those is its own named reason, apart from
+ * the model's own `not_find`, and is logged at warn (rule #11).
  */
 
 export const FIND_TURN_MAX_TOKENS = 128;
@@ -26,9 +27,17 @@ const MAX_PRIOR_TURNS = 6;
 
 export type FindTurnIntent = 'find' | 'not_find';
 
-export interface FindTurnReading {
-  findTurn: boolean;
-}
+/** Why a turn is not a find: the model's own reading, or the read that failed. */
+export type FindTurnNotFindReason =
+  | 'not_find'
+  | 'client_unavailable'
+  | 'skill_unavailable'
+  | 'model_failed'
+  | 'off_enum_intent';
+
+export type FindTurnReading =
+  | { findTurn: true }
+  | { findTurn: false; reason: FindTurnNotFindReason };
 
 export interface FindTurnReader {
   read(input: {
@@ -79,16 +88,22 @@ export function findTurnUserMessage(
 }
 
 export function toFindTurnReading(raw: { intent: string }): FindTurnReading {
-  return { findTurn: raw.intent === 'find' };
+  if (raw.intent === 'find') return { findTurn: true };
+  if (raw.intent === 'not_find') return { findTurn: false, reason: 'not_find' };
+  // The value is model output, so it is not logged (rule #1).
+  return readFailed('off_enum_intent');
 }
 
 function message(err: unknown): string {
   return err instanceof Error ? err.constructor.name : 'unknown';
 }
 
-function notFind(reason: string, detail?: string): FindTurnReading {
-  console.info({ reason, detail }, 'find turn: not a find, standing prompt');
-  return { findTurn: false };
+function readFailed(
+  reason: Exclude<FindTurnNotFindReason, 'not_find'>,
+  detail?: string,
+): FindTurnReading {
+  console.warn({ reason, detail }, 'find turn: read failed, standing prompt');
+  return { findTurn: false, reason };
 }
 
 /**
@@ -103,14 +118,14 @@ export function createFindTurnReader(client: () => AgentClient): FindTurnReader 
       try {
         resolved = client();
       } catch (err) {
-        return notFind('client_unavailable', message(err));
+        return readFailed('client_unavailable', message(err));
       }
 
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
       try {
         skill = await loadCronSkill(FIND_TURN_SKILL);
       } catch (err) {
-        return notFind('skill_unavailable', message(err));
+        return readFailed('skill_unavailable', message(err));
       }
 
       try {
@@ -127,7 +142,7 @@ export function createFindTurnReader(client: () => AgentClient): FindTurnReader 
         });
         return toFindTurnReading(value);
       } catch (err) {
-        return notFind('model_failed', message(err));
+        return readFailed('model_failed', message(err));
       }
     },
   };
