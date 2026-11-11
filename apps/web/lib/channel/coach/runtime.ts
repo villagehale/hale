@@ -338,11 +338,12 @@ export interface ChannelCoachPorts {
   client(): AgentClient;
   /**
    * VIL-524 / VIL-567. Whether this inbound is a nearby-find, in any language.
-   * Production wires a model read. Absent: not a find — scripted tests that are
-   * not about the gate, and a missing client in production, fail the same way so
-   * a calendar edit is never treated as a search.
+   * Required: it decides both the find addenda and whether the find-reply judge
+   * gates the send, so a coach built without it must say what it reads. Production
+   * wires the model read, which answers not a find on a missing client or a failed
+   * read (logged), so a calendar edit is never treated as a search.
    */
-  readFindTurn?(input: {
+  readFindTurn(input: {
     text: string;
     transcript: readonly { role: string; content: string }[];
   }): Promise<FindTurnReading>;
@@ -468,13 +469,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
       };
       // VIL-524 / VIL-567. Only a nearby-find turn gets these addenda. A model
-      // reads the parent's words in any language; there is no word list. Absent
-      // port or a failed read is not a find. coach-nearby-find itself stays
-      // byte-identical, so coach-channel and group-privacy recordings stay keyed
-      // on the prompt they already have.
-      const findTurn = ports.readFindTurn
-        ? (await ports.readFindTurn({ text: turn.body, transcript })).findTurn
-        : false;
+      // reads the parent's words in any language; there is no word list. A failed
+      // read is not a find. coach-nearby-find itself stays byte-identical, so
+      // coach-channel and group-privacy recordings stay keyed on the prompt they
+      // already have.
+      const { findTurn } = await ports.readFindTurn({ text: turn.body, transcript });
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
       // VIL-567: the same gate, so a bare find reads its day from the thread.
       const findDay = findTurn ? await loadCronSkill('coach-find-day') : null;

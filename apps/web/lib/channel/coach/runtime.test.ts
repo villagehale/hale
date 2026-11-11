@@ -80,7 +80,7 @@ interface Recorded {
   costUsd: number;
 }
 
-function readingFindTurn(findTurn = true): NonNullable<ChannelCoachPorts['readFindTurn']> {
+function readingFindTurn(findTurn = true): ChannelCoachPorts['readFindTurn'] {
   return async () => ({ findTurn });
 }
 
@@ -108,6 +108,8 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     guardDeps: { async writeAudit() {} },
     // Never reached: `runAgent` is injected below, and it is the only consumer.
     client: () => ({ messages: {} }) as never,
+    // Not a find by default; the find-turn cases override this.
+    readFindTurn: readingFindTurn(false),
     judgeFindReply: findReplyNotJudged,
     runAgent: answering('Move swim to Tue 4:30? YES to confirm.'),
     recordRun: async (run) => {
@@ -1642,11 +1644,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
   it('production wires a find-turn reader, not a word list', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', '');
     const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
-    const ports = productionChannelCoachPorts({} as Database);
-    const readFindTurn = ports.readFindTurn;
-    expect(typeof readFindTurn).toBe('function');
-    if (readFindTurn === undefined) throw new Error('expected readFindTurn');
-    const reading = await readFindTurn({
+    const reading = await productionChannelCoachPorts({} as Database).readFindTurn({
       text: "what's on this weekend",
       transcript: [],
     });
@@ -1736,7 +1734,7 @@ describe('the day a find is for (VIL-567)', () => {
         { role: 'user' as const, content: 'find me something to do' },
       ],
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Family skate at the arena, today at 1.')(args);
       },
     });
@@ -1756,7 +1754,7 @@ describe('the day a find is for (VIL-567)', () => {
         read: async () => ({ read: true as const, body: 'unused', truncated: false }),
       },
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Family skate at the arena, today at 1.')(args);
       },
     });
@@ -1775,7 +1773,7 @@ describe('the day a find is for (VIL-567)', () => {
     let instructions = '';
     const p = ports({
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Swim moved.')(args);
       },
     });
@@ -1793,7 +1791,7 @@ describe('the day a find is for (VIL-567)', () => {
       },
       judgeFindReply: send,
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Patinoire familiale à 13h.')(args);
       },
     });
