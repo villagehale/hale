@@ -48,6 +48,7 @@ export type RegistrationNoteFacts =
             /** Where the count started: the parent's own message. Null with `deadline`. */
             clockFrom: Moment | null;
             deadline: Moment | null;
+            clockFromSource: 'parent_message' | null;
           }
         | {
             kind: 'waitlist_final';
@@ -56,6 +57,7 @@ export type RegistrationNoteFacts =
             /** Where the count started: the parent's own message. Null with `deadline`. */
             clockFrom: Moment | null;
             deadline: Moment | null;
+            clockFromSource: 'parent_message' | null;
             hoursLeft: number;
           }
         | { kind: 'outcome_registered'; window: string }
@@ -68,6 +70,7 @@ export type RegistrationNoteFacts =
             /** Where the count started: the parent's own message. Null with `deadline`. */
             clockFrom: Moment | null;
             deadline: Moment | null;
+            clockFromSource: 'parent_message' | null;
           }
         | { kind: 'readiness_answer'; ready: boolean; portal: string; account: string; who: string }
         | {

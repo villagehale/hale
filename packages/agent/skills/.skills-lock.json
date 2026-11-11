@@ -389,7 +389,7 @@
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
-    "sha256": "19ddfbe362f31e731b996221819939de5a9c88a9fa8fb89f2e4f3939d9e0361e"
+    "sha256": "c744821d114bb793c617057f31bbd109932cbb8876af0078b01ed5fd3e64ba15"
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
@@ -473,7 +473,7 @@
   },
   "onboarding-friend-leftover-marks.md": {
     "file": "onboarding-friend-leftover-marks.md",
-    "sha256": "0caafed95c90e9aa15b2a91edf309183e8e4e52eafc733fc9e12306ff1694ff9"
+    "sha256": "939546816f4bc3003ec086b54f8f04719e5062f100661f06bc3e1c6cf243b9f1"
   },
   "onboarding-friend-place.md": {
     "file": "onboarding-friend-place.md",
@@ -481,11 +481,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "bc4c94dcdb61995f545e495b8b39f05b28feeb4595c45added14adfb1f191ab6"
+    "sha256": "7b14eeac2120c2e6234777a3d9ab727d4b1945c54a1673ac45d432434941dd2a"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "7d120960e043c508ae64688f4bedeff5ed175797f32b023cb431a2c620bdd9a6"
+    "sha256": "2a9e653cc8a4a142f5aea407f33530af160a16c1745997da1c8c4da4663f2f60"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
@@ -561,7 +561,7 @@
   },
   "registration-note.md": {
     "file": "registration-note.md",
-    "sha256": "ef7d1f7ed8b310b5015627de5f5fa1a600a3cbc475d1270130e22495e308b31b"
+    "sha256": "92104ae4c6debe7c7c07ce8a46588a26d7bb22ef47966d248c039465e850c741"
   },
   "registration-reminder.md": {
     "file": "registration-reminder.md",

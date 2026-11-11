@@ -650,6 +650,69 @@ describe('forceToolJson — a tool answer with call markup inside a string is re
   });
 });
 
+describe('forceToolJson — JSON output with call markup inside a string is refused (VIL-645)', () => {
+  const JSON_REPLY = {
+    type: 'object',
+    properties: {
+      reply: { type: 'string' },
+      parentQuestion: { type: 'boolean' },
+    },
+    required: ['reply', 'parentQuestion'],
+  } as const;
+  const jsonReplySchema = z.object({
+    reply: z.string(),
+    parentQuestion: z.boolean(),
+  });
+
+  function callJsonReply(input: Record<string, unknown>, userMessage = 'msg') {
+    const { client } = fakeClient(
+      message([{ type: 'text', text: JSON.stringify(input) }], 'end_turn'),
+    );
+    return forceToolJson({
+      client,
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage,
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: JSON_REPLY,
+      schema: jsonReplySchema,
+      maxTokens: 20,
+    });
+  }
+
+  it('goes out as JSON output, not a forced tool', () => {
+    const req = structuredRequest({
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: JSON_REPLY,
+      maxTokens: 20,
+    });
+    expect(req.tools).toBeUndefined();
+    expect(req.output_config?.format).toEqual({ type: 'json_schema', schema: expect.any(Object) });
+  });
+
+  it('refuses a JSON field that closed early and swallowed the next one', async () => {
+    await expect(
+      callJsonReply({
+        reply: 'Got it, thanks.',
+        parentQuestion: 'true</parentQuestion>\n<parameter name="connectorsOffered">[]',
+      }),
+    ).rejects.toMatchObject({ outcome: 'tool_markup' });
+  });
+
+  it('keeps a clean JSON answer', async () => {
+    await expect(
+      callJsonReply({ reply: 'Ages 3 < 5 love it.', parentQuestion: false }),
+    ).resolves.toMatchObject({
+      value: { reply: 'Ages 3 < 5 love it.', parentQuestion: false },
+    });
+  });
+});
+
 describe('forceToolJson — markup the sender wrote is an echo, not a leak (VIL-645)', () => {
   // A reader with an open field has no grammar, so it goes out as a plain tool and its
   // answer passes the markup guard.

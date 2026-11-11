@@ -120,6 +120,7 @@ describe('the top pick is named', () => {
     const composite: ActivityPick = {
       ...PICK,
       name: 'Kinderfun (Toddler Program), Halton Hills Gymnastics Centre',
+      when: 'Saturdays 9:15am from Sept 13, running Sept 10 - Dec 16',
     };
     const real =
       'Halton Hills Gymnastics Centre has a Kinderfun toddler program (18 months - 3 years) running Sept 10 - Dec 16 - their site says.';
@@ -219,6 +220,8 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
       ...PICK,
       name: 'Preschool A, Town of Oakville Learn to Swim',
       sourceName: 'Town of Oakville',
+      when: 'Saturdays 9:00-9:30',
+      price: null,
     };
 
     expect(waitsOnAPageItCouldNotRead(honest)).toBe(false);
@@ -660,14 +663,14 @@ describe('an empty search tells the composer where it looked', () => {
       sourceUrl: 'https://library.example/workshop',
       ageFit: null,
       when: null,
-      price: null,
+      price: '$32.50',
       status: 'unconfirmed' as const,
       evidence: {
         program: 'Family workshop',
         age: null,
         sessions: [],
         schedule: null,
-        price: null,
+        price: '$32.50 drop-in',
         history: null,
         windowConfirmed: false,
       },
@@ -689,14 +692,41 @@ describe('an empty search tells the composer where it looked', () => {
     expect(payload).not.toHaveProperty('picks_empty');
     expect(payload.searched).toEqual({
       town: searched.town,
-      references: [reference],
+      references: [
+        {
+          name: reference.name,
+          sourceName: reference.sourceName,
+          sourceUrl: reference.sourceUrl,
+          ageFit: null,
+          status: 'unconfirmed',
+          evidence: {
+            program: 'Family workshop',
+            age: null,
+            windowConfirmed: false,
+          },
+        },
+      ],
       checkedSources: [reference.sourceUrl],
     });
     expect(JSON.stringify(payload)).not.toContain('$999');
+    expect(JSON.stringify(payload)).not.toContain('$32.50');
     expect(payload.searched).not.toHaveProperty('notes');
     expect(
       followUpUserMessage({ ...base, picks: [PICK], searched: { ...searched, references: [] } }),
     ).toBe(followUpUserMessage({ ...base, picks: [PICK] }));
+  });
+
+  it('refuses a price or time that is not on a bound pick', () => {
+    expect(
+      gates('Goldfish Swim School is $32.50 drop-in - their site says.', grounding({ picks: [] })),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/bound pick/),
+      ]),
+    );
+    const honest =
+      'Halton Hills Gymnastics has parent & tot Saturdays 9:15 from Sept 13, $142 - their site says.';
+    expect(gates(honest, grounding())).toEqual([]);
   });
 
   it('never returns rejected research facts to the writer through empty-search notes', () => {

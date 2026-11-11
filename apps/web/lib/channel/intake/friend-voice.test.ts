@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
+import { strictToolSchema } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   loadCronSkill,
@@ -91,17 +92,29 @@ describe('friend voice brief', () => {
 
   it("hands a stored language tag only to Hale's own messages; beside their words it is left out (VIL-538)", () => {
     const stored = { language: 'fr', address: 'tu' as const };
+    const now = new Date('2026-11-09T15:00:00Z');
     const answering = friendVoiceContext(
-      blank({ step: 'coparent', ...stored, parentWords: 'No calendar for now, thanks' }),
+      blank({
+        step: 'coparent',
+        ...stored,
+        parentWords: 'No calendar for now, thanks',
+        now,
+        timeZone: EASTERN,
+      }),
     ) as Record<string, unknown>;
     expect(answering.languageHint).toBeNull();
     expect(answering).not.toHaveProperty('address');
+    const answeringFacts = answering.facts as { today: { label: string } };
+    expect(answeringFacts.today.label).toMatch(/Monday/);
+    expect(answeringFacts.today.label).not.toMatch(/lundi/i);
 
     const own = friendVoiceContext(
-      blank({ step: 'connected', ...stored, parentWords: '' }),
+      blank({ step: 'connected', ...stored, parentWords: '', now, timeZone: EASTERN }),
     ) as Record<string, unknown>;
     expect(own.languageHint).toBe('fr');
     expect(own.address).toBe('tu');
+    const ownFacts = own.facts as { today: { label: string } };
+    expect(ownFacts.today.label).toMatch(/lundi/i);
 
     // A French group thread still says vous: that is the thread, not a guess at language.
     const group = friendVoiceContext(
@@ -489,7 +502,8 @@ describe('onboarding friend fixtures', () => {
     expect(short.instructions).toContain('nameDeclined` stays false');
     expect(short.instructions).toContain('asks what to call them');
     expect(short.instructions).not.toContain("I'll call you");
-    expect(short.instructions).toContain('below, not null');
+    expect(short.instructions).toContain('A yes with coparentJoin: below');
+    expect(short.instructions).toContain('their words beat `languageHint`');
     expect(short.instructions).toContain('no tool markup');
     expect(short.instructions).toContain('three postal characters');
     expect(short.meta.task).toBe('speak');
@@ -2073,11 +2087,11 @@ describe('a declined postal code', () => {
     },
   });
 
-  function toolReply(input: Record<string, unknown>): Anthropic.Message {
+  function jsonReply(input: Record<string, unknown>): Anthropic.Message {
     return {
       ...recorded.response,
-      stop_reason: 'tool_use',
-      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: JSON.stringify(input) }],
     } as Anthropic.Message;
   }
 
@@ -2133,8 +2147,8 @@ describe('a declined postal code', () => {
       };
       const { sent, composer } = replaying([
         // Two questions: the judge refuses it, so the short retry runs.
-        toolReply({ ...fields, reply: 'Totally fair. Just the first part of it? Or your ZIP?' }),
-        toolReply({ ...fields, reply: 'Totally fair. How many kids are we looking for?' }),
+        jsonReply({ ...fields, reply: 'Totally fair. Just the first part of it? Or your ZIP?' }),
+        jsonReply({ ...fields, reply: 'Totally fair. How many kids are we looking for?' }),
       ]);
       const spoken = await speakFriend(composer, declined, { page: async () => {} });
       expect(spoken.source).toBe('retry');
@@ -2181,8 +2195,8 @@ describe('a garbled parentQuestion', () => {
       const input = inputs.length > 1 ? inputs.shift() : inputs[0];
       return {
         ...base,
-        stop_reason: 'tool_use',
-        content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: JSON.stringify(input) }],
       } as Anthropic.Message;
     };
     const client = {
@@ -2565,8 +2579,8 @@ describe('a declined place, closed in code', () => {
     const composerReplying = (input: Record<string, unknown>) => {
       const response = {
         ...base,
-        stop_reason: 'tool_use',
-        content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: JSON.stringify(input) }],
       } as Anthropic.Message;
       const next = async () => response;
       return createFriendVoiceComposer({
@@ -2775,6 +2789,28 @@ describe('leftover marks: model fields, not ? or word lists', () => {
       claimsSaved: false,
     });
     expect(composed.parentQuestion).toBe(true);
+  });
+
+  it('compiles leftover onboarding compose to JSON grammar, so it is not a tool call', () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    const leftover = onboardingReplyToolSchema(blank({ step: 'email' }));
+    expect(strictToolSchema(leftover as never)).not.toBeNull();
+    expect(leftover.properties.joinPointer).toEqual({
+      type: 'string',
+      enum: ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'],
+    });
+    expect(
+      strictToolSchema(onboardingReplyToolSchema(blank({ step: 'place' })) as never),
+    ).not.toBeNull();
+    expect(
+      strictToolSchema(onboardingReplyToolSchema(blank({ step: 'coparent' })) as never),
+    ).not.toBeNull();
+  });
+
+  it('compiles onboarding compose to JSON grammar with leftover marks off', () => {
+    expect(
+      strictToolSchema(onboardingReplyToolSchema(blank({ step: 'email' })) as never),
+    ).not.toBeNull();
   });
 
   it('gives leftover-marks and household-group compose a larger completion budget', () => {

@@ -5,8 +5,9 @@ import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
-import type { EmptySearch } from './lane';
-import type { ActivityPick } from './lane';
+import type { ActivityFactEvidence, ActivityReference } from './facts';
+import type { ActivityPick, EmptySearch } from './lane';
+import { factKeys } from './quote-match';
 
 /**
  * THE KEPT PROMISE, IN WORDS — the one text the activity follow-up sweep sends.
@@ -193,6 +194,27 @@ function composerEvidence(
 }
 
 /**
+ * Unconfirmed references may name a venue. They must not hand a price or a
+ * schedule the bind did not put on a pick — oakville quoted $32.50 off a
+ * reference with empty picks.
+ */
+function composerReference(reference: ActivityReference) {
+  return {
+    name: reference.name,
+    sourceName: reference.sourceName,
+    sourceUrl: reference.sourceUrl,
+    ageFit: reference.ageFit,
+    status: reference.status,
+    ...(reference.season != null ? { season: reference.season } : {}),
+    evidence: {
+      program: reference.evidence.program,
+      age: reference.evidence.age,
+      windowConfirmed: reference.evidence.windowConfirmed,
+    } satisfies Pick<ActivityFactEvidence, 'program' | 'age' | 'windowConfirmed'>,
+  };
+}
+
+/**
  * Shared with the eval, which REPLICATES this request shape. It carries the picks and the
  * subject and nothing else — no family, no child, no thread (rule #1).
  *
@@ -241,7 +263,9 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
       ? {
           searched: {
             town: grounding.searched.town,
-            ...(grounding.searched.references ? { references: grounding.searched.references } : {}),
+            ...(grounding.searched.references
+              ? { references: grounding.searched.references.map(composerReference) }
+              : {}),
             ...(grounding.searched.checkedSources
               ? { checkedSources: grounding.searched.checkedSources }
               : {}),
@@ -461,6 +485,43 @@ export function asksTheParent(body: string): boolean {
     .includes('?');
 }
 
+const DISTINCTIVE_FACT = /^(money|time|date|code):/;
+
+function distinctiveFactKeys(text: string): string[] {
+  return factKeys(text).filter((key) => DISTINCTIVE_FACT.test(key));
+}
+
+function boundDistinctiveKeys(grounding: FollowUpGrounding): Set<string> {
+  const keys = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    if (!value) return;
+    for (const key of distinctiveFactKeys(value)) keys.add(key);
+  };
+  for (const pick of grounding.picks) {
+    add(pick.name);
+    add(pick.ageFit);
+    add(pick.when);
+    add(pick.price);
+    add(pick.sourceName);
+    add(pick.registration);
+    if (pick.evidence) {
+      add(pick.evidence.program);
+      add(pick.evidence.age);
+      add(pick.evidence.price);
+      add(pick.evidence.schedule);
+      for (const session of pick.evidence.sessions) add(session);
+    }
+  }
+  add(grounding.pageAge?.quote);
+  return keys;
+}
+
+/** A price, time, date or session code the composer was not handed on a pick. */
+function namesUnboundFact(body: string, grounding: FollowUpGrounding): boolean {
+  const allowed = boundDistinctiveKeys(grounding);
+  return distinctiveFactKeys(body).some((key) => !allowed.has(key));
+}
+
 /**
  * Everything wrong with this follow-up, phrased for the model that will rewrite it. An
  * empty array means it may be sent.
@@ -507,6 +568,11 @@ export function followUpViolations(
   if (waitsOnAPageItCouldNotRead(text)) {
     violations.push(
       'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
+    );
+  }
+  if (namesUnboundFact(text, grounding)) {
+    violations.push(
+      'The message names a price, time, date or session code that is not on a bound pick or page_age. Only those facts may be said.',
     );
   }
   if (grounding.watch !== commitsToReturn) {

@@ -230,7 +230,12 @@ describe('activity facts stay attached to their source', () => {
     );
     expect(archived.references[0]?.status).toBe('historical');
     const unknown = bind([{ ...raw, sessions: [] }]);
-    expect(unknown.references[0]?.status).toBe('unconfirmed');
+    expect(unknown.picks[0]).toMatchObject({
+      name: raw.name,
+      when: null,
+      price: raw.price_evidence,
+    });
+    expect(unknown.references).toEqual([]);
   });
   it('preserves explicitly evidenced regular hours without inventing dated sessions', () => {
     const regular = {

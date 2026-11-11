@@ -482,14 +482,20 @@ export function bindActivityFacts(
       occurrenceUrl,
       season,
     };
+    // Missing `when` is a gap the follow-up names, not a reason to drop the
+    // program: a current age-fitting listing with no published schedule is still
+    // a pick (ActivityPick). Dated sessions that missed the window, a term
+    // range, a foreign season, or history stay references.
+    const unknownSchedule = !item.sessions?.length && !regular;
     if (
       !foreignSeason &&
       age &&
       stageCompatible &&
-      when &&
       !historical &&
       (!range || range.end >= today) &&
-      (sessions.length > 0 || (regular && item.schedule_kind !== 'term'))
+      (sessions.length > 0 ||
+        (regular && item.schedule_kind !== 'term') ||
+        unknownSchedule)
     ) {
       picks.push({
         ...item,

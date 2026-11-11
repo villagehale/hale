@@ -502,10 +502,21 @@ function waitlistClock(
   startedAt: Date | null,
   responseHours: number | null,
   timeZone: string,
-): { clockFrom: Moment | null; deadline: Moment | null } {
+): {
+  clockFrom: Moment | null;
+  deadline: Moment | null;
+  /** Hale never sees the offer email: a running clock started at the parent's message. */
+  clockFromSource: 'parent_message' | null;
+} {
   const deadline = startedAt === null ? null : waitlistDeadline(startedAt, responseHours);
-  if (startedAt === null || deadline === null) return { clockFrom: null, deadline: null };
-  return { clockFrom: moment(startedAt, timeZone), deadline: moment(deadline, timeZone) };
+  if (startedAt === null || deadline === null) {
+    return { clockFrom: null, deadline: null, clockFromSource: null };
+  }
+  return {
+    clockFrom: moment(startedAt, timeZone),
+    deadline: moment(deadline, timeZone),
+    clockFromSource: 'parent_message',
+  };
 }
 
 /**
