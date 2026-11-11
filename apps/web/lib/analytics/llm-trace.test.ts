@@ -1,15 +1,22 @@
+import { createHmac } from 'node:crypto';
 import type { PostHog } from 'posthog-node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildGenerationProperties, traceAnthropic, withLlmContext } from './llm-trace';
+import {
+  buildGenerationProperties,
+  llmFamilyContext,
+  traceAnthropic,
+  withLlmContext,
+} from './llm-trace';
 import { resetPosthogClientsForTests } from './posthog-node';
 
 /**
- * LLM tracing in PRIVACY MODE. The assertions are on structure — which keys leave —
- * never on the wording of any prompt or reply.
+ * LLM tracing. Default is privacy mode (no prompt/completion on the wire). Content
+ * capture is a separate flag and redacts PII before send.
  */
 
 const PROMPT_MARKER = 'prompt-marker-7f3a';
 const REPLY_MARKER = 'reply-marker-91bc';
+const EMAIL_MARKER = 'parent@example.com';
 
 function fakeAnthropic() {
   const create = vi.fn(async (_params: unknown) => ({
@@ -64,13 +71,12 @@ describe('inert without POSTHOG_PROJECT_API_KEY', () => {
   });
 });
 
-describe('with a key: one $ai_generation per call, privacy mode', () => {
+describe('with a key: one $ai_generation per call, privacy mode by default', () => {
   it('reports model, tokens, latency, stage — and never the prompt or the completion', async () => {
     const client = fakeAnthropic();
     const ph = fakePosthog();
     const traced = traceAnthropic(client, { stage: 'coach' }, ph.client);
     const res = await traced.messages.create(params as never);
-    // The caller still gets the real response.
     expect((res as { id: string }).id).toBe('msg_1');
     await vi.waitFor(() => expect(ph.capture).toHaveBeenCalledTimes(1));
     const sent = ph.capture.mock.calls[0]?.[0] as {
@@ -88,7 +94,9 @@ describe('with a key: one $ai_generation per call, privacy mode', () => {
       $ai_is_error: false,
       hale_stage: 'coach',
       privacy_mode: true,
+      env: 'preview',
     });
+    expect(typeof sent.properties.$ai_span_id).toBe('string');
     expect(sent.properties).not.toHaveProperty('$ai_input');
     expect(sent.properties).not.toHaveProperty('$ai_output_choices');
     const wire = JSON.stringify(sent);
@@ -154,30 +162,75 @@ describe('with a key: one $ai_generation per call, privacy mode', () => {
     const traced = traceAnthropic(fakeAnthropic(), {}, ph.client);
     expect(traced.other).toBe('kept');
   });
+
+  it('a PostHog capture throw does not reject the model call', async () => {
+    const client = fakeAnthropic();
+    const ph = {
+      capture: vi.fn(() => {
+        throw new Error('posthog down');
+      }),
+      flush: vi.fn(async () => {
+        throw new Error('flush down');
+      }),
+    } as unknown as PostHog;
+    const traced = traceAnthropic(client, { stage: 'coach' }, ph);
+    await expect(traced.messages.create(params as never)).resolves.toMatchObject({ id: 'msg_1' });
+  });
+});
+
+describe('content capture behind POSTHOG_LLM_CONTENT_ENABLED', () => {
+  it('sends redacted prompt and completion when the flag is exactly true', async () => {
+    vi.stubEnv('POSTHOG_LLM_CONTENT_ENABLED', 'true');
+    const client = fakeAnthropic();
+    const ph = fakePosthog();
+    const traced = traceAnthropic(client, { stage: 'coach' }, ph.client);
+    await traced.messages.create({
+      model: 'claude-x',
+      system: `Email ${EMAIL_MARKER}`,
+      messages: [{ role: 'user', content: 'Call +1 (416) 555-0199 at 12 Maple Street' }],
+    } as never);
+    await vi.waitFor(() => expect(ph.capture).toHaveBeenCalledTimes(1));
+    const sent = ph.capture.mock.calls[0]?.[0] as { properties: Record<string, unknown> };
+    expect(sent.properties.privacy_mode).toBe(false);
+    expect(sent.properties).toHaveProperty('$ai_input');
+    expect(sent.properties).toHaveProperty('$ai_output_choices');
+    const wire = JSON.stringify(sent);
+    expect(wire).toContain('[email]');
+    expect(wire).toContain('[phone]');
+    expect(wire).toContain('[address]');
+    expect(wire).not.toContain(EMAIL_MARKER);
+    expect(wire).not.toContain('416');
+    expect(wire).not.toContain('Maple');
+  });
+});
+
+describe('llmFamilyContext', () => {
+  it('HMACs the family id and never returns the raw id', () => {
+    vi.stubEnv('POSTHOG_ID_SALT', 's');
+    const familyId = 'fam-raw-id';
+    const ctx = llmFamilyContext(familyId);
+    expect(ctx.distinctId).toBe(createHmac('sha256', 's').update(familyId).digest('hex'));
+    expect(JSON.stringify(ctx)).not.toContain(familyId);
+  });
+
+  it('omits distinctId when the salt is unset', () => {
+    vi.stubEnv('POSTHOG_ID_SALT', '');
+    expect(llmFamilyContext('fam-raw-id')).toEqual({});
+  });
 });
 
 describe('buildGenerationProperties', () => {
-  it('has no field a prompt or completion could ride in', () => {
+  it('keeps content off the wire in privacy mode', () => {
     const props = buildGenerationProperties({
       ctx: { stage: 'triage' },
       model: 'm',
       latencyMs: 1500,
       usage: { input_tokens: 1, output_tokens: 2 },
     });
-    expect(Object.keys(props).sort()).toEqual(
-      [
-        '$ai_input_tokens',
-        '$ai_is_error',
-        '$ai_latency',
-        '$ai_model',
-        '$ai_output_tokens',
-        '$ai_provider',
-        '$ai_trace_id',
-        'hale_stage',
-        'privacy_mode',
-      ].sort(),
-    );
     expect(props.$ai_latency).toBe(1.5);
+    expect(props.privacy_mode).toBe(true);
+    expect(props).not.toHaveProperty('$ai_input');
+    expect(props).not.toHaveProperty('$ai_output_choices');
   });
 
   it('reports cache hit rate from the three token fields', () => {

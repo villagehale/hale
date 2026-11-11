@@ -27,6 +27,8 @@ import {
   readCapUsd,
   readLedger,
 } from '../../../web/lib/testing/spend-cap.mjs';
+import { reportEvalGeneration, wrapEvalAnthropic } from './eval-llm-trace.mjs';
+export { reportEvalGeneration, wrapEvalAnthropic };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 import { GENERAL_REFERENCE_TEXTS, renderReferenceTexts } from './judge-references.mjs';
@@ -402,11 +404,14 @@ export function lazyAnthropic(tag = 'eval') {
   return () => {
     if (isDryRun()) return dryClient(tag);
     requireSpendGuard(tag);
-    client ??= new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
-      fetch: globalThis.fetch,
-    });
+    client ??= wrapEvalAnthropic(
+      new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
+        fetch: globalThis.fetch,
+      }),
+      { suite: tag, stage: 'unattributed' },
+    );
     return capSdkClient(client, { rates: priceRates, tag });
   };
 }
@@ -421,10 +426,13 @@ export function evalSubjectClient(getCurrentClient) {
   requireSpendGuard('gateway');
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('Set AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY');
-  gatewayAnthropic ??= new Anthropic({
-    apiKey,
-    baseURL: 'https://ai-gateway.vercel.sh',
-  });
+  gatewayAnthropic ??= wrapEvalAnthropic(
+    new Anthropic({
+      apiKey,
+      baseURL: 'https://ai-gateway.vercel.sh',
+    }),
+    { suite: 'gateway', stage: 'unattributed' },
+  );
   return capSdkClient(gatewayAnthropic, { rates: gatewayRates, tag: 'gateway' });
 }
 
@@ -601,6 +609,13 @@ export async function cachedToolCall(opts) {
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
     if (opts.lane) await replayThroughGuard({ ...opts, maxTokens }, cached.value);
+    reportEvalGeneration({
+      suite: tag,
+      caseName: tag,
+      model,
+      latencyMs: cached.latencyMs,
+      cached: true,
+    });
     return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
   }
 
@@ -873,6 +888,14 @@ export async function cachedTextCall(opts) {
   if (cached) {
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
+    reportEvalGeneration({
+      suite: tag,
+      caseName: tag,
+      model,
+      latencyMs: cached.latencyMs,
+      usage: cached.inputTokens != null ? { input_tokens: cached.inputTokens } : undefined,
+      cached: true,
+    });
     return {
       text: cached.text,
       latencyMs: cached.latencyMs,
@@ -1033,6 +1056,13 @@ async function gatewayCall(opts, tool) {
   if (cached) {
     noteLatency(opts.model, cached.latencyMs);
     if (Array.isArray(opts.cost.latencies)) opts.cost.latencies.push(cached.latencyMs);
+    reportEvalGeneration({
+      suite: opts.tag,
+      caseName: opts.tag,
+      model: opts.model,
+      latencyMs: cached.latencyMs,
+      cached: true,
+    });
     return { ...cached, cached: true };
   }
   if (opts.cachedOnly) failCachedMiss(opts.tag, key);
@@ -1294,7 +1324,15 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     );
     const cached = await cacheGet(key);
     const hit = cached && isVerdict(cached.parsed);
-    if (hit && !isDryRun()) return cached.parsed;
+    if (hit && !isDryRun()) {
+      reportEvalGeneration({
+        suite: tagPrefix,
+        caseName: sampleTag,
+        model,
+        cached: true,
+      });
+      return cached.parsed;
+    }
     if (isDryRun()) {
       // No network: price the request the live guard would see, with an offline count.
       const agent = await loadAgent();

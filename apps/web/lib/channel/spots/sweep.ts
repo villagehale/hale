@@ -336,7 +336,9 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
 function lazyClassAvailabilityReader(): ClassAvailabilityReader {
   let reader: ClassAvailabilityReader | undefined;
   return (target) => {
-    reader ??= createLiveClassAvailabilityReader(budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS));
+    reader ??= createLiveClassAvailabilityReader(
+      budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'registration' }),
+    );
     return reader(target);
   };
 }
