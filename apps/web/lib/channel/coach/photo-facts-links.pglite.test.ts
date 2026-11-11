@@ -93,6 +93,7 @@ async function toolsFor(body: string, photoFacts: TurnPhotoFacts) {
         pick('offer_signup'),
         {
           child: 'Ada',
+          activity: 'Fall swim',
           source: 'flyer',
           registrationUrl: PAGE,
           evidence: 'Fall swim, Tuesdays 4:30 at Harbor Rec',
