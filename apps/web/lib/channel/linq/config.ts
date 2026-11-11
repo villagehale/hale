@@ -106,7 +106,56 @@ export function linqGroupOnboardingV2Enabled(): boolean {
  * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */
 export function linqGroupCarpoolEnabled(): boolean {
-  return isEnabled('linq-group-carpool');
+  return isEnabled('linq-group-carpool') || groupCarpoolEnabled();
+}
+
+/**
+ * VIL-399 — native yes/no/maybe RSVP and time polls in a Linq group. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ * The native card additionally needs `LINQ_POLLS`; when that is off, Hale asks
+ * in model-written plain text and tallies the replies.
+ */
+export function groupPollsEnabled(): boolean {
+  return trimmed('GROUP_POLLS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — a posted https link in a group: Hale says the public facts, then
+ * takes registration in each family's 1:1. Exactly `true` enables it. Default off.
+ */
+export function groupLinkCardsEnabled(): boolean {
+  return trimmed('GROUP_LINK_CARDS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — carpool in a group under the new name. Exactly `true` enables it.
+ * Also arms the existing `LINQ_GROUP_CARPOOL_ENABLED` path (see
+ * {@link linqGroupCarpoolEnabled}). Default off.
+ */
+export function groupCarpoolEnabled(): boolean {
+  return trimmed('GROUP_CARPOOL_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — a private question (allergy, DOB, address, login, payment) leaves
+ * the multi-family group for that family's 1:1. Exactly `true` enables it.
+ * Default off.
+ */
+export function groupPrivateQuestionEnabled(): boolean {
+  return trimmed('GROUP_PRIVATE_QUESTION_ENABLED') === 'true';
+}
+
+/**
+ * VIL-399 — a Gmail provider time-change is posted into the household group.
+ * Exactly `true` enables it. Default off. Never a login.
+ */
+export function groupMailNoticeEnabled(): boolean {
+  return trimmed('GROUP_MAIL_NOTICE_ENABLED') === 'true';
+}
+
+/** Any inbound VIL-399 experience turn that is not carpool or bring-list. */
+export function groupExperienceTurnEnabled(): boolean {
+  return groupPollsEnabled() || groupLinkCardsEnabled() || groupPrivateQuestionEnabled();
 }
 
 /**
@@ -197,6 +246,15 @@ export function linqGroupLeaveEnabled(): boolean {
  */
 export function linqEffectsEnabled(): boolean {
   return trimmed('LINQ_EFFECTS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-478 — Hale sets the `ice` colour background once, when it opens a household
+ * group. Exactly `true` (trimmed) enables it. Unset, empty, `on`, and `false` stay
+ * dark. Default off. Production may light it the same way as any other environment.
+ */
+export function linqGroupBackgroundEnabled(): boolean {
+  return trimmed('LINQ_GROUP_BACKGROUND_ENABLED') === 'true';
 }
 
 /**

@@ -121,6 +121,12 @@ Redeploy steps, same for every flag:
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_POLLS_ENABLED` | empty | Parent-made group polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`. |
 | `LINQ_EFFECTS_ENABLED` | empty | iMessage screen and bubble effects stay dark. Trimmed `true` lets the model attach one to a rare celebratory reply in any environment, including production. |
+| `GROUP_POLLS_ENABLED` | empty | VIL-399 RSVP and time polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`; otherwise Hale asks in model-written plain text. Needs migration `0231_linq_group_experience`. |
+| `GROUP_LINK_CARDS_ENABLED` | empty | A posted group link stays an unnamed media part. Trimmed `true` lifts it into text and Hale says the public facts, then registration continues 1:1. |
+| `GROUP_CARPOOL_ENABLED` | empty | Same dark path as `LINQ_GROUP_CARPOOL_ENABLED` unless that flag is already on. |
+| `GROUP_BRING_LIST_ENABLED` | empty | Same dark path as `GROUP_SHARED_LISTS_ENABLED` unless that flag is already on. |
+| `GROUP_PRIVATE_QUESTION_ENABLED` | empty | A private question stays in the group turn. Trimmed `true` moves it 1:1. |
+| `GROUP_MAIL_NOTICE_ENABLED` | empty | A Gmail time-change is not posted into the household group. |
 
 To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-web Production and redeploy with the steps above. The route returns 503 `linq_not_configured` and writes nothing. Linq retries that 503, so put the secret back and redeploy to accept the retries.
 

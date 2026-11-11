@@ -282,6 +282,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'lib/channel/linq/household-calendar.ts',
     "the VIL-444 group clash alert — a sensitive row, a 13+ child's row or a row whose title names a 13+ child reaches the writer only as one person being busy, with no title and no times",
   ],
+  [
+    'lib/channel/linq/group-experience/mail-notice.ts',
+    "the VIL-399 household-group time-change — reads title and start by id through householdFamilyEvent; a 13+ child's or sensitive row is skipped, so those words never reach the group",
+  ],
 ];
 
 /** Any reference to the table by any Drizzle API, including a bare destructured one. */

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseLinqWebhook } from './payload';
 
 /** The 2026-02-03 message.received shape from Linq's public event guide.
@@ -110,6 +110,30 @@ describe('parseLinqWebhook', () => {
     expect(parsed.message.mentions).toEqual([]);
   });
 
+  it('keeps a link part as media while GROUP_LINK_CARDS_ENABLED is off', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'link', value: 'https://park.example/camp' }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('');
+    expect(parsed.message.mediaCount).toBe(1);
+  });
+
+  it('lifts a link part into text when GROUP_LINK_CARDS_ENABLED is on', () => {
+    vi.stubEnv('GROUP_LINK_CARDS_ENABLED', 'true');
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'link', value: 'https://park.example/camp' }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    vi.unstubAllEnvs();
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('https://park.example/camp');
+    expect(parsed.message.mediaCount).toBe(0);
+  });
+
   it('counts a media part and keeps the text beside it', () => {
     const body = received();
     const data = body.data as { parts: unknown[] };
@@ -140,6 +164,27 @@ describe('parseLinqWebhook', () => {
       { kind: 'image', url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
       { kind: 'video', url: 'https://cdn.example/clip.mp4', mime: 'video/mp4' },
       { kind: 'image', url: null, mime: 'image/png' },
+    ]);
+  });
+
+  it('classifies a .vcf as a contact card rather than a generic file', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [
+      { type: 'text', value: 'my mom' },
+      {
+        type: 'media',
+        url: 'https://cdn.example/Jane.vcf',
+        mime_type: 'text/vcard',
+        filename: 'Jane.vcf',
+      },
+    ];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('my mom');
+    expect(parsed.message.media).toEqual([
+      { kind: 'contact', url: 'https://cdn.example/Jane.vcf', mime: 'text/vcard' },
     ]);
   });
 

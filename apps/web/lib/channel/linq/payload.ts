@@ -3,7 +3,7 @@ import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { describeInboundAppCard } from './app-card-inbound';
-import { linqExperiencesEnabled } from './config';
+import { groupLinkCardsEnabled, linqExperiencesEnabled } from './config';
 import { LINQ_WEBHOOK_VERSION } from './signature';
 
 /**
@@ -36,7 +36,8 @@ export type LinqSignalEvent =
   | 'poll.vote.removed'
   | 'participant.added'
   | 'participant.removed'
-  | 'chat.created';
+  | 'chat.created'
+  | 'chat.background_updated';
 
 /** A webhook this door records and does not route as a parent text. Handles
  * are never logged. */
@@ -172,6 +173,7 @@ const SIGNAL_EVENTS: readonly LinqSignalEvent[] = [
   'participant.added',
   'participant.removed',
   'chat.created',
+  'chat.background_updated',
 ];
 
 const LOCATION_EVENTS: readonly LinqLocationEvent[] = [
@@ -261,6 +263,14 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     if (!isRecord(part)) continue;
     if (part.type === 'text' && typeof part.value === 'string' && part.value.trim()) {
       texts.push(part.value);
+    } else if (
+      part.type === 'link' &&
+      typeof part.value === 'string' &&
+      part.value.trim() &&
+      groupLinkCardsEnabled()
+    ) {
+      // VIL-399 · a rich-link part is a public URL fact, not an unnamed file.
+      texts.push(part.value.trim());
     } else if (part.type === 'imessage_app' && linqExperiencesEnabled()) {
       // VIL-480 · a card a parent sent is read as what it says, not as an unnamed file.
       const card = describeInboundAppCard(part);
@@ -332,7 +342,9 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
   const sender = isRecord(data.sender_handle) ? data.sender_handle : null;
   const from = isRecord(data.from) ? data.from : null;
   const participant = isRecord(data.participant) ? data.participant : null;
+  const actorRecord = isRecord(data.actor_handle) ? data.actor_handle : null;
   const isFromMe =
+    actorRecord?.is_me === true ||
     data.is_from_me === true ||
     fromHandle?.is_me === true ||
     sender?.is_me === true ||
@@ -346,6 +358,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
   const addedBy = isRecord(data.added_by) ? data.added_by : null;
   const actor = isRecord(data.actor) ? data.actor : null;
   const actorHandle =
+    stringField(actorRecord?.handle) ||
     stringField(addedBy?.handle) ||
     stringField(actor?.handle) ||
     (typeof data.added_by === 'string' ? data.added_by : '') ||

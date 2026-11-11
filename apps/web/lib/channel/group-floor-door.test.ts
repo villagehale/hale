@@ -53,6 +53,8 @@ const GROUP_FLOOR_MODULES: Record<string, string> = {
     'the family-outbound door: groupAudienceAllows before any group target',
   'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
     'the claimed family group, after groupAudienceAllows with no skip path',
+  'apps/web/lib/channel/linq/group-experience/send.ts':
+    'the claimed family group, after groupAudienceAllows with no skip path',
   'apps/web/lib/channel/linq/group.ts':
     'deliverLinqGroupNotice asks the floor; the did-not-open notice is the parent 1:1',
   'apps/web/lib/channel/linq/household-calendar.ts':

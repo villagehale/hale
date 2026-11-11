@@ -11,6 +11,7 @@ import {
   dedupeActive,
 } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { postMailNoticeToHouseholdGroup } from '~/lib/channel/linq/group-experience';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -709,13 +710,32 @@ export async function alertParentForEmail(
   // no move, confidence, provider-owned events only, and an audit_log undo row. Above the
   // gate for the cancellation closer's reason: writing down a provider fact is not
   // speaking to anybody.
-  await recordEmailProviderChange(database, {
+  const providerChange = await recordEmailProviderChange(database, {
     familyId,
     from: input.envelope.from,
     extraction,
     timeZone: input.timeZone,
     now,
   });
+  if (
+    providerChange &&
+    extraction.matchedEventRef?.table === 'family_events' &&
+    extraction.matchedEventRef.id
+  ) {
+    try {
+      await postMailNoticeToHouseholdGroup(database, {
+        familyId,
+        eventId: extraction.matchedEventRef.id,
+        change: providerChange,
+        now,
+      });
+    } catch (err) {
+      console.warn(
+        { familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'email alert: household group mail notice was not posted',
+      );
+    }
+  }
 
   // VIL-662 · a matched team schedule change updates the calendar (ask, or
   // autonomy) instead of only texting about the email. Unmatched mail falls
