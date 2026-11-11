@@ -5,6 +5,9 @@ import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import { TEEN_NAME_SHARED_MATCHER_ENABLED_ENV } from '~/lib/privacy/teen-name';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
+import { ACCESS_EXPORT_ROUND_2_ENABLED_ENV } from './export-round-2';
+
+const PRIVATE_CALENDAR_ITEM = 'A private calendar item';
 
 /**
  * VIL-622 · the household calendar, the shared threads, the group lists and the
@@ -404,5 +407,147 @@ describe("the requester's consent records in a right-to-access copy", () => {
     expect(text).not.toContain('teen raw');
     // The children block names every child by id; the consent rows must not.
     expect(JSON.stringify(doc.requesterOnly)).not.toContain(teenId);
+  });
+});
+
+describe('access export round 2 on the household calendar and consents', () => {
+  it('genericizes a sensitive event and carries the source-changed columns when lit', async () => {
+    vi.stubEnv(ACCESS_EXPORT_ROUND_2_ENABLED_ENV, 'true');
+    const { familyId, parentA, kidId } = await seedHousehold();
+    const changedAt = new Date('2026-11-07T12:00:00.000Z');
+    await db.database.insert(schema.familyEvents).values([
+      {
+        familyId,
+        childId: kidId,
+        title: 'therapy at the clinic',
+        startsAt: new Date('2026-11-14T15:00:00.000Z'),
+        location: 'health clinic',
+        source: 'parent',
+        sensitive: true,
+        sourceChangedField: 'venue',
+        sourceChangedFromLocation: 'old clinic',
+        sourceChangedAt: changedAt,
+      },
+      {
+        familyId,
+        title: 'library morning',
+        startsAt: new Date('2026-11-15T15:00:00.000Z'),
+        location: 'the library',
+        source: 'parent',
+        sourceChangedField: 'time',
+        sourceChangedFromStartsAt: new Date('2026-11-15T14:00:00.000Z'),
+        sourceChangedAt: changedAt,
+      },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+    expect(doc.calendarEvents.map((event) => event.title)).toEqual([
+      PRIVATE_CALENDAR_ITEM,
+      'library morning',
+    ]);
+    expect(doc.calendarEvents[0]).toEqual(
+      expect.objectContaining({
+        location: null,
+        withheld: null,
+        sourceChangedField: 'venue',
+        sourceChangedFromLocation: null,
+        sourceChangedAt: changedAt.toISOString(),
+      }),
+    );
+    expect(doc.calendarEvents[1]).toEqual(
+      expect.objectContaining({
+        location: 'the library',
+        sourceChangedField: 'time',
+        sourceChangedFromStartsAt: '2026-11-15T14:00:00.000Z',
+        sourceChangedAt: changedAt.toISOString(),
+      }),
+    );
+    const text = JSON.stringify(doc);
+    expect(text).not.toContain('therapy');
+    expect(text).not.toContain('health clinic');
+    expect(text).not.toContain('old clinic');
+  });
+
+  it('leaves a sensitive title and omits the source-changed columns when unlit', async () => {
+    const { familyId, parentA, kidId } = await seedHousehold();
+    await db.database.insert(schema.familyEvents).values({
+      familyId,
+      childId: kidId,
+      title: 'therapy at the clinic',
+      startsAt: new Date('2026-11-14T15:00:00.000Z'),
+      location: 'health clinic',
+      source: 'parent',
+      sensitive: true,
+      sourceChangedField: 'venue',
+      sourceChangedFromLocation: 'old clinic',
+      sourceChangedAt: new Date('2026-11-07T12:00:00.000Z'),
+    });
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+    expect(doc.calendarEvents[0]).toEqual(
+      expect.objectContaining({
+        title: 'therapy at the clinic',
+        location: 'health clinic',
+        withheld: null,
+      }),
+    );
+    expect(doc.calendarEvents[0]).not.toHaveProperty('sourceChangedField');
+  });
+
+  it('runs every consent type through the teen gate and withholds another household when lit', async () => {
+    vi.stubEnv(ACCESS_EXPORT_ROUND_2_ENABLED_ENV, 'true');
+    const { familyId, parentA } = await seedHousehold();
+    await db.database.insert(schema.consentRecords).values([
+      {
+        familyId,
+        userId: parentA,
+        consentType: 'sms_service_messages',
+        granted: true,
+        grantedAt: new Date('2026-10-01T12:00:00.000Z'),
+        policyVersion: 'v1',
+        evidence: { reply: `${TEEN_NAME} can hear this` },
+      },
+      {
+        familyId,
+        userId: parentA,
+        consentType: 'village_intro',
+        granted: true,
+        grantedAt: new Date('2026-10-02T12:00:00.000Z'),
+        policyVersion: 'v1',
+        evidence: {
+          question: 'introduce you to the Park family',
+          verbatimReply: 'yes please',
+        },
+      },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+    expect(doc.requesterOnly.consents).toEqual([
+      expect.objectContaining({
+        type: 'sms_service_messages',
+        evidence: null,
+        withheld: 'teen',
+      }),
+      expect.objectContaining({
+        type: 'village_intro',
+        evidence: null,
+        withheld: 'another_adult',
+      }),
+    ]);
+    const text = JSON.stringify(doc.requesterOnly);
+    expect(text).not.toContain(TEEN_NAME);
+    expect(text).not.toContain('Park family');
   });
 });
