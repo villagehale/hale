@@ -6,14 +6,16 @@ import {
   PAYMENT_RUN_MAX_COST_USD,
   SIGNUP_RUN_MAX_COST_USD,
 } from '../browser-use/engine';
-import type {
-  BrowserUsePlanCheckpoint,
-  BrowserUsePlanInput,
-  BrowserUsePlanResult,
-  PlanEngineDetail,
-  PlanEngineOutcome,
-  PlanPaymentInput,
-  PlanResumeToken,
+import { browserUseSignupPaymentEnabled } from '../browser-use/flag';
+import {
+  type BrowserUsePlanCheckpoint,
+  type BrowserUsePlanInput,
+  type BrowserUsePlanResult,
+  CHECKOUT_REVIEW_RUN_MAX_COST_USD,
+  type PlanEngineDetail,
+  type PlanEngineOutcome,
+  type PlanPaymentInput,
+  type PlanResumeToken,
 } from '../browser-use/plan-engine';
 import { browserUseProxyFor } from '../browser-use/proxy';
 import { loadProviderSession, recordBrowserUseProfile } from '../browser-use/vault';
@@ -64,8 +66,12 @@ export const PLAN_SWEEP_BUDGET_MS = 10 * 60_000;
 export const PLAN_LEASE_MS = 15 * 60_000;
 /** Plans one sweep starts at most. Each family still gets one session at a time. */
 export const PLAN_SWEEP_MAX = 10;
-/** The signup and saved-card payment agent caps, plus $1 for browser time and seeding. */
-export const PLAN_RUN_ALLOWANCE_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
+/**
+ * The signup, checkout review and saved-card payment agent caps, plus $1 for browser time
+ * and seeding.
+ */
+export const PLAN_RUN_ALLOWANCE_USD =
+  SIGNUP_RUN_MAX_COST_USD + CHECKOUT_REVIEW_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
 
 export interface PlanSignupRunner {
   run(input: BrowserUsePlanInput): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>;
@@ -141,8 +147,11 @@ export type PlanSweepResult =
 /**
  * VIL-558 · carries out every day-before plan whose open is now. Dark behind its own
  * kill switch. Each plan writes one audit row per step: started, checkout, spending
- * cap, payment, finished (rule #6). A plan whose yes no longer stands ({@link planLapse},
- * read at the claim and again before payment) ends `cancelled` and texts no one.
+ * cap, final total, spending cap, payment, finished (rule #6). A plan whose yes no longer
+ * stands ({@link planLapse}, read at the claim and again before payment) ends `cancelled`
+ * and texts no one. The saved card is used only while the env-only payment switch
+ * (`BROWSER_USE_SIGNUP_PAYMENT_ENABLED`) is exactly `true`; otherwise the plan stops at
+ * checkout and the parent pays on the live browser.
  *
  * A run still going when the sweep's budget runs out is checkpointed, not cancelled: the
  * offer stays `submitting` with its resume token, the browser keeps the family's place in
@@ -452,6 +461,7 @@ async function runOnePlan(
       choices,
       maxPriceCents: plan.maxPriceCents,
       waiverAccepted: plan.waiverAccepted,
+      paymentEnabled: browserUseSignupPaymentEnabled(),
       credentials,
       accountCreate: providerAccountCreateEnabled(),
       joinWaitlist: pick === 'join_waitlist',

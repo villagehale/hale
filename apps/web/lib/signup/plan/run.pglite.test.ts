@@ -12,6 +12,7 @@ import type {
   PlanPaymentInput,
   PlanResumeToken,
 } from '../browser-use/plan-engine';
+import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import { storeProviderSession } from '../browser-use/vault';
 import {
   PROVIDER_ACCOUNT_CREATE_ENABLED_ENV,
@@ -437,6 +438,84 @@ describe('carrying out plans at the open', () => {
     const { runner } = engineLike(PAID);
     await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
     expect((await offerRow(family.offerId))?.status).toBe('planned');
+  });
+
+  it.each([
+    ['exactly `true`', 'true', true],
+    ['`true` with a trailing newline', 'true\n', false],
+    ['unset', '', false],
+  ])('the pay step obeys the env-only payment kill switch: %s', async (_name, value, expected) => {
+    vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, value);
+    const family = await plannedFamily();
+    const { runner, inputs } = engineLike(PAID);
+    await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.paymentEnabled).toBe(expected);
+  });
+
+  it('a final total it could not read hands the cart back, audited step by step, and tells the parent', async () => {
+    const family = await plannedFamily();
+    const live = 'https://live.browser-use.com/s/fixture-live-view-token';
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        await input.onStep({ step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 });
+        await input.onStep({
+          step: 'final_total',
+          checkoutTotalCents: 9800,
+          finalTotalCents: null,
+          taxCents: null,
+          feesCents: null,
+          currency: null,
+          detail: 'total_unread',
+          ok: false,
+        });
+        return {
+          ...PAID,
+          outcome: 'needs_human' as const,
+          detail: 'total_unread' as const,
+          liveViewUrl: live,
+          confirmationNumber: null,
+          amountChargedCents: null,
+          sessionCostUsd: null,
+        };
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'needs_human',
+      detail: 'total_unread',
+      notice: 'sent',
+    });
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    const audit = await steps(family.offerId);
+    expect(audit.map((s) => s.step)).toEqual([
+      'plan_approved',
+      'plan_started',
+      'plan_checkout',
+      'plan_final_total',
+      'plan_finished',
+    ]);
+    // Every figure survives the audit redaction; the live view never reaches the row.
+    expect(audit[3]).toEqual({
+      step: 'plan_final_total',
+      checkoutTotalCents: 9800,
+      finalTotalCents: null,
+      taxCents: null,
+      feesCents: null,
+      currency: null,
+      detail: 'total_unread',
+      ok: false,
+      host: AUTO_HOST,
+    });
+    expect(audit.at(-1)).toMatchObject({ detail: 'total_unread', confirmed: false });
+    expect(JSON.stringify(audit)).not.toContain(live);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'total_unread',
+      liveViewUrl: live,
+    });
   });
 
   it('runs an ActiveNet host on the generic auto path even with the assisted switch off', async () => {

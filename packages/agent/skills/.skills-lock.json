@@ -43,6 +43,10 @@
     "file": "browser-use-assisted-signup.md",
     "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
   },
+  "browser-use-checkout-review.md": {
+    "file": "browser-use-checkout-review.md",
+    "sha256": "59b270c2df1a578c6fb8413816bda6e4f8241d64f17447a6a6b0c0d7247c2acc"
+  },
   "browser-use-confirmation.md": {
     "file": "browser-use-confirmation.md",
     "sha256": "346a0f5250505a31aa9c5327a35e7699ef84c30319583eea044f80ecdb12cce8"
