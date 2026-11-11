@@ -198,13 +198,15 @@ export interface CalendarPlacementInput {
 }
 
 /**
- * calendar_move: the target row (reversalHandle) plus its new time — and nothing else.
+ * calendar_move: the target row (reversalHandle) plus its new time — and, only
+ * when `updateLocation` is true, a new place (VIL-662 team schedule changes).
  *
- * A move RE-TIMES a row the database already holds; it does not re-describe it. There
- * is deliberately no `title`/`location` here, which is what lets the channel project a
- * private row before it drafts (VIL-270): the draft carries a handle, the row keeps its
- * own words, and no payload can overwrite a teen's real title with the placeholder the
- * model was shown. A future "rename while moving" is a new action, not a field.
+ * A coach move RE-TIMES a row the database already holds; it does not re-describe
+ * it. There is deliberately no `title` here, which is what lets the channel
+ * project a private row before it drafts (VIL-270): the draft carries a handle,
+ * the row keeps its own words, and no payload can overwrite a teen's real title
+ * with the placeholder the model was shown. Location rides only when the
+ * schedule-change path sets `updateLocation: true`.
  */
 export interface CalendarMoveInput {
   familyId: string;
@@ -212,6 +214,10 @@ export interface CalendarMoveInput {
   reversalHandle: string;
   startsAt: Date;
   endsAt: Date | null;
+  /** Set only with {@link updateLocation}. Scrubbed place; never a link or phone. */
+  location?: string | null;
+  /** When true, the UPDATE writes `location`. Coach moves omit this. */
+  updateLocation?: boolean;
 }
 
 /** calendar_cancel: just the target row to soft-delete. */
@@ -381,10 +387,18 @@ export function moveCalendarEvent(
 
     const updated = await tx
       .update(schema.familyEvents)
-      .set({
-        startsAt: input.startsAt,
-        endsAt: input.endsAt,
-      })
+      .set(
+        input.updateLocation === true
+          ? {
+              startsAt: input.startsAt,
+              endsAt: input.endsAt,
+              location: input.location ?? null,
+            }
+          : {
+              startsAt: input.startsAt,
+              endsAt: input.endsAt,
+            },
+      )
       .where(
         and(
           eq(schema.familyEvents.id, input.reversalHandle),

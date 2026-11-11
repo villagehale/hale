@@ -55,6 +55,7 @@
     "eval:injection": "node evals/run-injection-eval.mjs --cached-only",
     "eval:email-alert-notice:broken": "node evals/run-email-alert-notice-eval.mjs --broken --cached-only",
     "eval:email-alert-notice:dry": "node evals/run-email-alert-notice-eval.mjs --dry",
+    "eval:team-schedule:dry": "node evals/run-team-schedule-eval.mjs --dry",
     "eval:intro-voice": "node evals/run-intro-voice-eval.mjs --cached-only",
     "eval:intro-group-voice": "node evals/run-intro-group-voice-eval.mjs --cached-only",
     "eval:group-welcome-voice": "node evals/run-group-welcome-voice-eval.mjs --cached-only",

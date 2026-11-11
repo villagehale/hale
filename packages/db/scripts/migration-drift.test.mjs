@@ -58,6 +58,7 @@ describe('catalog history cutover', () => {
       '0225_sms_intake_sessions_became_family',
       '0227_audit_log_audience',
       '0228_proactive_candidates_payload',
+      '0229_team_schedule_changes',
     ]);
   });
 });
