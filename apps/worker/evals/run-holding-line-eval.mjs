@@ -15,13 +15,16 @@
 //   node --env-file=../../.env evals/run-holding-line-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-holding-line-eval.mjs --cached-only                    # CI: replay only
 //
-// THE HARD ZEROS: an unsendable body (the composer's own refusals()), and too few distinct
-// lines across the plain draws - a composed line that never varies is a constant with an
-// API bill. Everything else is the judge's bar (JUDGE_MIN per draw).
+// THE HARD ZEROS: an unsendable body, and too few distinct lines across the plain draws - a
+// composed line that never varies is a constant with an API bill. Unsendable is the
+// composer's own two gates, run in its own loop: the mechanical refusals() (empty, a link,
+// a digit) and the PRODUCTION meaning judge (holding-line-judge.ts: a promised time, or an
+// app or a website, in any language). Everything else is the quality judge's bar
+// (JUDGE_MIN per draw).
 
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { tsImport } from 'tsx/esm/api';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { register, tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
   assertRunFlags,
@@ -42,6 +45,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'holding-line.md');
+const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
+const MEANING_JUDGE_SRC = join(WEB_ROOT, 'lib', 'channel', 'router', 'holding-line-judge.ts');
+
+// The meaning judge's request is IMPORTED, not replicated: it sits behind the web app's
+// `~/` alias, so the web tsconfig is registered for that one import.
+register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 
 // ── the corpus: draws, since the stage is blind ─────────────────────────────
 
@@ -72,7 +81,7 @@ const FIXTURES = [
     language: 'zh',
     rejected: [],
     countsTowardVariance: false,
-    watchFor: `${WATCH} It must be written in CHINESE, with no word standing in for a time (马上, 一会儿, 稍等, 很快).`,
+    watchFor: `${WATCH} It must be written in CHINESE.`,
   })),
   {
     id: 'recompose-promised-time',
@@ -87,7 +96,7 @@ const FIXTURES = [
     watchFor: `${WATCH} The refused body promised a time; the fix drops it and keeps the meaning.`,
   },
   {
-    // The time gate reads English only, so a Chinese "right away" is the judge's to catch.
+    // A Chinese line the meaning judge refused for a time goes back once with the reason.
     id: 'zh-recompose-promised-time',
     language: 'zh',
     rejected: [{ line: '我马上回来告诉你', problems: ['promised_a_time'] }],
@@ -134,26 +143,51 @@ function flatten(text) {
   return out.replace(/\s+/g, ' ').trim();
 }
 
-// Mirrors `refusals` in holding-line.ts.
+// Mirrors the MECHANICAL `refusals` in holding-line.ts. A promised time or an app/website
+// is not a pattern here: it is the production meaning judge, below.
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const PROMISED_TIME =
-  /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
-const PROMISED_TIME_ZH = /马上|一会儿|稍等|很快/;
-const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
 
 function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
-  if (PROMISED_TIME.test(body) || PROMISED_TIME_ZH.test(body)) found.push('promised_a_time');
-  if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
 }
 
-// ── the judge ────────────────────────────────────────────────────────────────
+/**
+ * The composer's second gate, as createHoldingLine runs it on a line refusals() passed:
+ * the production holding-line-judge request, replayed from the cache. A verdict that is
+ * not yes/no is production's `judge_failed`: nothing is sent, so it counts as unsendable.
+ */
+async function meaningProblems(meaningJudge, tag, body, run) {
+  const request = await meaningJudge.holdingLineJudgeRequest(body);
+  const { value } = await cachedToolCall({
+    tag,
+    lane: request.lane,
+    system: request.system,
+    userMessage: request.userMessage,
+    toolName: request.toolName,
+    toolSchema: request.toolSchema,
+    toolDescription: request.toolDescription,
+    maxTokens: request.maxTokens,
+    ...run,
+  });
+  const time = value?.promises_a_time;
+  const place = value?.points_at_an_app;
+  if ((time !== 'yes' && time !== 'no') || (place !== 'yes' && place !== 'no')) {
+    return ['judge_failed'];
+  }
+  const problems = [];
+  if (time === 'yes') problems.push('promised_a_time');
+  if (place === 'yes') problems.push('points_at_the_app');
+  return problems;
+}
 
-// Scoped to MEANING: every mechanical property is already decided by refusals() above.
+// ── the quality judge ────────────────────────────────────────────────────────
+
+// Scoped to quality: a link, a digit, a promised time and an app or a website are already
+// decided above, by refusals() and the meaning judge, before a line reaches this judge.
 const JUDGE_SYSTEM = judgePrompt('holding-line');
 
 const BROKEN_LINE =
@@ -167,6 +201,8 @@ async function main() {
   const getClient = lazyAnthropic('holding-line');
   const cost = makeCost();
 
+  // Before tsImport: a module graph loaded after it resolved without the web paths.
+  const meaningJudge = await import(pathToFileURL(MEANING_JUDGE_SRC).href);
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -181,9 +217,9 @@ async function main() {
 
   const results = [];
   for (const fixture of FIXTURES) {
-    // The composer's own loop (holding-line.ts createHoldingLine): a line its gate refuses
+    // The composer's own loop (holding-line.ts createHoldingLine): a line its gates refuse
     // goes back once with the reasons, and the line that reaches the parent is the first
-    // one the gate passes. Every refused attempt is printed below.
+    // one both gates pass. Every refused attempt is printed below.
     const rejected = [...fixture.rejected];
     const refused = [];
     let body = flatten(BROKEN_LINE);
@@ -207,6 +243,18 @@ async function main() {
       ).value.line;
       body = flatten(String(raw ?? ''));
       failures = refusals(body);
+      if (failures.length === 0) {
+        failures = await meaningProblems(
+          meaningJudge,
+          attempt === 0
+            ? `holding-line:meaning:${fixture.id}`
+            : `holding-line:meaning:${fixture.id}:retry`,
+          body,
+          { cachedOnly, getClient, cost },
+        );
+        // Production sends nothing on a judge that gave no verdict; it does not recompose.
+        if (failures.includes('judge_failed')) break;
+      }
       if (failures.length === 0) break;
       refused.push(`refused at the gate (${failures.join('+')}): "${body}"`);
       rejected.push({ line: body, problems: failures });

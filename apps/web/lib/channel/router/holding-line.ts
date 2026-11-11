@@ -7,6 +7,7 @@ import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { judgeHoldingLine } from './holding-line-judge';
 
 /**
  * THE HOLDING LINE — what a parent reads while a slow answer is still being composed.
@@ -22,7 +23,9 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * sees nothing the parent wrote, so it cannot leak it and cannot pretend to have
  * understood it (rule #1).
  * When no sendable line can be written, NOTHING is sent and the outcome says why — there
- * is no canned line underneath.
+ * is no canned line underneath. A time or an app or a website is a meaning, judged in
+ * whatever language the line is written (VIL-540). If that check fails or errors, nothing
+ * is sent. There is no fixed line and no fallback copy.
  */
 
 /** The ledger's name for this line, so a read-back can tell it from the turn's answer. */
@@ -48,14 +51,6 @@ export const MAX_COMPOSE_ATTEMPTS = 2;
 
 const MAX_TOKENS = 96;
 
-/** A time nobody scheduled: nobody knows when the answer lands. */
-const PROMISED_TIME =
-  /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
-/** The same promise in Chinese, which has no word boundary for the pattern above. The
- * skill already forbids it; Haiku still wrote 马上 in live zh draws, so code refuses it. */
-const PROMISED_TIME_ZH = /马上|一会儿|稍等|很快/;
-const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
-
 export type HoldingLineRefusal =
   | 'empty'
   | 'carries_link'
@@ -64,17 +59,16 @@ export type HoldingLineRefusal =
   | 'points_at_the_app';
 
 /**
- * Every reason this line cannot go out, all at once, fed back on the next attempt. These
- * guard facts only — a time, a number, a link or an app nobody gave it. How the line is
- * worded is the model's.
+ * Mechanical reasons this line cannot go out, fed back on the next attempt. A link or a
+ * digit is a fact in any language. Whether the line promises a time, or points at an app
+ * or a website, is {@link judgeHoldingLine} — meaning, not a word list. How the line is
+ * worded otherwise is the model's.
  */
 export function refusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
   const found: HoldingLineRefusal[] = [];
   if (hasLinkShape(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
-  if (PROMISED_TIME.test(body) || PROMISED_TIME_ZH.test(body)) found.push('promised_a_time');
-  if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
 }
 
@@ -96,6 +90,8 @@ export type HoldingLineFallback =
   | 'client_unavailable'
   | 'skill_unavailable'
   | 'model_failed'
+  | 'judge_unavailable'
+  | 'judge_failed'
   | 'gate_exhausted';
 
 export type HoldingLineCompose =
@@ -157,6 +153,19 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
         }
         const line = plainText(raw);
         const problems = refusals(line);
+        // A line the mechanical facts already block is not judged: the writer can fix
+        // a digit or a link without a second model. A line that passes is judged for
+        // meaning. A verdict that does not arrive sends nothing — the unchecked line
+        // does not go out, and nothing is substituted for it.
+        if (problems.length === 0) {
+          const judged = await judgeHoldingLine(resolved, line);
+          if (judged.verdict === 'unjudged') {
+            return unavailable(
+              judged.reason === 'skill_unavailable' ? 'judge_unavailable' : 'judge_failed',
+            );
+          }
+          if (judged.verdict === 'refuse') problems.push(...judged.problems);
+        }
         if (problems.length === 0) return { status: 'composed', line };
         rejected.push({ line, problems });
       }
@@ -209,7 +218,8 @@ export async function holdingLineRead(
 /**
  * What became of the holding line on one turn (rule #11): sent, not needed because the
  * answer came first, not armed because the flag is dark or the turn is skipped, withheld
- * when it was due, or not sent and why.
+ * when it was due, or not sent and why. `read_failed` is a due line whose read of the
+ * screen threw: nobody knows whether the text is a crisis, so nothing is written.
  */
 export type HoldingLineOutcome =
   | 'sent'
@@ -217,6 +227,7 @@ export type HoldingLineOutcome =
   | 'lane_off'
   | HoldingLineSkip
   | HoldingLineWithheld
+  | 'read_failed'
   | 'compose_failed'
   | 'send_failed';
 
@@ -259,7 +270,18 @@ export function armHoldingLine(input: {
   let sending: Promise<void> | null = null;
 
   const fire = async () => {
-    const read = await input.read();
+    let read: HoldingLineRead;
+    try {
+      read = await input.read();
+    } catch (err) {
+      if (settled) return;
+      outcome = 'read_failed';
+      input.log.warn(
+        { outcome, err: err instanceof Error ? err.name : 'unknown' },
+        'holding line: the read failed, none sent, the answer is still coming',
+      );
+      return;
+    }
     if (settled) return;
     if (read.status === 'withheld') {
       outcome = read.reason;

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in Chinese and says in the first person that Hale is handling the question and the answer is already on its way, which matches the requested tone. It does not hint at the substance, claim specific actions, apologise, or add greetings or emoji. It sounds like a brief, natural acknowledgement. One minor point: 正在处理 slightly describes what Hale is doing, but only generically, so it stays within the brief.",
+    "score": 4
+  }
+}
