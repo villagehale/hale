@@ -41,6 +41,8 @@ const signupOutput = z.object({
   cart_total_cents: z.number().int().nonnegative().nullable(),
   hold_minutes: z.number().int().positive().nullable(),
   payment_details_entered: z.boolean(),
+  submitted: z.boolean().default(false),
+  confirmation_number: z.string().trim().min(1).max(100).nullable().default(null),
   opens_at: z.string().trim().min(1).max(120).nullable().default(null),
   cart_currency: z
     .string()
@@ -65,6 +67,8 @@ export const BROWSER_USE_SIGNUP_OUTPUT_SCHEMA: Record<string, unknown> = {
     'cart_total_cents',
     'hold_minutes',
     'payment_details_entered',
+    'submitted',
+    'confirmation_number',
     'opens_at',
     'cart_currency',
     'payment_hosts',
@@ -76,6 +80,8 @@ export const BROWSER_USE_SIGNUP_OUTPUT_SCHEMA: Record<string, unknown> = {
     cart_total_cents: { type: ['integer', 'null'], minimum: 0 },
     hold_minutes: { type: ['integer', 'null'], minimum: 1 },
     payment_details_entered: { type: 'boolean' },
+    submitted: { type: 'boolean' },
+    confirmation_number: { type: ['string', 'null'] },
     opens_at: { type: ['string', 'null'] },
     cart_currency: { type: ['string', 'null'] },
     payment_hosts: { type: 'array', items: { type: 'string' } },
@@ -119,6 +125,8 @@ const planOutput = z.object({
   saved_card_on_file: z.boolean(),
   security_code_required: z.boolean(),
   payment_details_entered: z.boolean(),
+  submitted: z.boolean().default(false),
+  confirmation_number: z.string().trim().min(1).max(100).nullable().default(null),
 });
 
 export type BrowserUsePlanOutput = z.infer<typeof planOutput>;
@@ -137,6 +145,8 @@ export const BROWSER_USE_PLAN_OUTPUT_SCHEMA: Record<string, unknown> = {
     'saved_card_on_file',
     'security_code_required',
     'payment_details_entered',
+    'submitted',
+    'confirmation_number',
   ],
   properties: {
     outcome: { type: 'string', enum: [...BROWSER_USE_PLAN_OUTCOMES] },
@@ -149,6 +159,8 @@ export const BROWSER_USE_PLAN_OUTPUT_SCHEMA: Record<string, unknown> = {
     saved_card_on_file: { type: 'boolean' },
     security_code_required: { type: 'boolean' },
     payment_details_entered: { type: 'boolean' },
+    submitted: { type: 'boolean' },
+    confirmation_number: { type: ['string', 'null'] },
   },
 };
 

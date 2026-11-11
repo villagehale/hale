@@ -24,7 +24,7 @@ The facts for this plan are in the JSON block at the end, under "This registrati
 
 ## Hard limits
 
-- If a captcha or any "prove you are human" challenge appears, stop at once with `needs_human` and detail `captcha`. Do not click it, do not wait for it to clear, and do not try another way around it.
+- A captcha or "prove you are human" check is not a reason to stop. Browser Use's solver clears it: wait for it to finish, then carry on. Never type a value into a captcha yourself. Stop with `needs_human` and detail `captcha` only if the same check is still blocking the page after the solver has had a minute.
 - Never press add to cart, submit, confirm, complete registration, checkout, pay or place order. The parent does that.
 - Never queue in more than one tab or window, and never try to skip or move up in a queue.
 - Never type, choose or confirm any card number, expiry date, security code, saved payment method, bank details or gift card.
@@ -42,7 +42,7 @@ The facts for this plan are in the JSON block at the end, under "This registrati
   - `waitlist` — every choice is full and the site only offers a waitlist.
   - `sold_out` — every choice is full or closed with no waitlist.
   - `needs_login` — the site asked for a sign-in.
-  - `needs_human` — a captcha, a verification code, a child the account does not list, no session matching any choice, every open choice above `max_price_cents`, or anything else that only the parent can do.
+  - `needs_human` — a captcha the solver could not clear, a verification code, a child the account does not list, no session matching any choice, every open choice above `max_price_cents`, or anything else that only the parent can do.
   - `error` — the site failed or you could not continue for another reason.
 - `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
 - `choice_index`: for `ready_for_parent`, the position in `choices` of the session you filled, counting from 0 (rank 1 is 0). Otherwise null.

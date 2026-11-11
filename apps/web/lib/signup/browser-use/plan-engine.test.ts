@@ -184,103 +184,74 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
 const runPosts = (log: Logged[]) => log.filter((r) => r.method === 'POST' && r.path === '/runs');
 
 describe('day-before plan engine', () => {
-  it('takes the first open choice, checks the cap on the cart total, then pays with the saved card', async () => {
+  it('takes the first open choice and stops a charged cart at checkout, never paying', async () => {
     const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
     const { input, steps, cap } = plan();
     const result = await runBrowserUsePlanSignup(input, deps);
 
     expect(result).toMatchObject({
+      outcome: 'reached_checkout',
+      detail: 'none',
+      choiceIndex: 1,
+      cartTotalCents: 9800,
+      confirmationNumber: null,
+      liveViewUrl: LIVE,
+    });
+    expect(cap).not.toHaveBeenCalled();
+    expect(steps).toEqual([{ step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 }]);
+    const posts = runPosts(log);
+    expect(posts).toHaveLength(1);
+    expect(String(posts[0]?.body.task)).toContain('# skill browser-use-plan-signup');
+    expect(String(posts[0]?.body.task)).toContain('"rank": 2');
+    expect(String(posts[0]?.body.task)).toContain('"max_price_cents": 10000');
+    expect(String(posts[0]?.body.task)).not.toContain('grace@example.test');
+    expect(posts[0]?.body).toMatchObject({ maxCostUsd: 3 });
+    expect(posts[0]?.body).not.toHaveProperty('secretBindings');
+  });
+
+  it('refuses a charged cart the agent submitted', async () => {
+    const { deps, log } = setup({ plan: { ...CHECKOUT, submitted: true } });
+    const result = await runBrowserUsePlanSignup(plan().input, deps);
+    expect(result).toMatchObject({ outcome: 'error', detail: 'submit_boundary' });
+    expect(runPosts(log)).toHaveLength(1);
+  });
+
+  it('completes a $0 class the agent submitted after the parent approved', async () => {
+    const { deps, log } = setup({
+      plan: {
+        ...CHECKOUT,
+        cart_total_cents: 0,
+        submitted: true,
+        confirmation_number: 'FREE-1',
+      },
+    });
+    const { input, cap } = plan({ maxPriceCents: 0 });
+    const result = await runBrowserUsePlanSignup(input, deps);
+    expect(result).toMatchObject({
       outcome: 'completed',
       detail: 'none',
       choiceIndex: 1,
-      confirmationNumber: 'R-55120',
-      amountChargedCents: 9800,
-      liveViewUrl: null,
-      costUsd: '0.0500',
-      sessionCostUsd: '0.090000',
+      cartTotalCents: 0,
+      confirmationNumber: 'FREE-1',
     });
-    expect(cap).toHaveBeenCalledWith(9800);
-    expect(steps).toEqual([
-      { step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 },
-      { step: 'spending_cap', amountCents: 9800, ok: true },
-      {
-        step: 'payment',
-        outcome: 'completed',
-        detail: 'none',
-        amountChargedCents: 9800,
-        confirmed: true,
-      },
-    ]);
-    const [first, second] = runPosts(log);
-    expect(String(first?.body.task)).toContain('# skill browser-use-plan-signup');
-    expect(String(first?.body.task)).toContain('"rank": 2');
-    expect(String(first?.body.task)).toContain('"max_price_cents": 10000');
-    expect(String(first?.body.task)).not.toContain('grace@example.test');
-    expect(String(second?.body.task)).toContain('# skill browser-use-saved-card-payment');
-    expect(second?.body).toMatchObject({ sessionId: 'bu-session-1' });
-    // The saved card is the city's; Hale sends no card at all.
-    expect(second?.body).not.toHaveProperty('secretBindings');
-    expect(second?.body).not.toHaveProperty('stripeLinkConnectionId');
+    expect(cap).not.toHaveBeenCalled();
+    expect(runPosts(log)).toHaveLength(1);
   });
 
-  it('never pays when the spending cap refuses: the cart stays on the live browser', async () => {
-    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
-    const { input, steps } = plan({
-      checkSpendingCap: async () => ({ ok: false, reason: 'over' }),
+  it('hands the cart to the parent when the total is above the plan maximum', async () => {
+    const { deps, log } = setup({
+      plan: { ...CHECKOUT, cart_total_cents: 10001 },
+      payment: PAID,
     });
+    const { input, cap } = plan();
     const result = await runBrowserUsePlanSignup(input, deps);
-
     expect(result).toMatchObject({
       outcome: 'needs_human',
-      detail: 'spending_cap',
+      detail: 'price_change',
       liveViewUrl: LIVE,
     });
+    expect(cap).not.toHaveBeenCalled();
     expect(runPosts(log)).toHaveLength(1);
-    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
-  });
-
-  it("never pays once the parent's yes no longer stands: the browser stops, no payment run", async () => {
-    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
-    const stillAuthorized = vi.fn(async () => false);
-    const { input, steps, cap } = plan({ stillAuthorized });
-    const result = await runBrowserUsePlanSignup(input, deps);
-
-    expect(result).toMatchObject({
-      outcome: 'cancelled',
-      detail: 'authorization_lapsed',
-      liveViewUrl: null,
-      confirmationNumber: null,
-      amountChargedCents: null,
-    });
-    // Checked after the cap, just before the card: the last moment that matters.
-    expect(cap).toHaveBeenCalledWith(9800);
-    expect(stillAuthorized).toHaveBeenCalledTimes(1);
-    expect(runPosts(log)).toHaveLength(1);
-    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
-    expect(log.some((r) => r.method === 'PATCH' && r.path === '/browsers/browser-1')).toBe(true);
-  });
-
-  it.each([
-    ['a total above the plan maximum', { cart_total_cents: 10001 }, 'price_change'],
-    ['no saved card on the account', { saved_card_on_file: false }, 'no_saved_card'],
-    ['a security code prompt', { security_code_required: true }, 'security_code'],
-  ])(
-    'hands the cart to the parent on %s, before the cap or any payment',
-    async (_name, change, detail) => {
-      const { deps, log } = setup({ plan: { ...CHECKOUT, ...change }, payment: PAID });
-      const { input, cap } = plan();
-      const result = await runBrowserUsePlanSignup(input, deps);
-
-      expect(result).toMatchObject({ outcome: 'needs_human', detail, liveViewUrl: LIVE });
-      expect(cap).not.toHaveBeenCalled();
-      expect(runPosts(log)).toHaveLength(1);
-    },
-  );
-
-  it('never reports a registration whose charge does not match the cart', async () => {
-    const { deps } = setup({ plan: CHECKOUT, payment: { ...PAID, amount_charged_cents: 12000 } });
-    const result = await runBrowserUsePlanSignup(plan().input, deps);
-    expect(result).toMatchObject({ outcome: 'needs_human', detail: 'charge_mismatch' });
   });
 
   it('refuses a choice index the plan does not have', async () => {
@@ -350,16 +321,18 @@ describe('a plan run longer than one sweep', () => {
     const third = plan({ resume: paused.resume, waitUntil: new Date(NOW.getTime() + 32 * MIN) });
     const done = await runBrowserUsePlanSignup(third.input, deps);
 
-    expect(done).toMatchObject({ outcome: 'completed', confirmationNumber: 'R-55120' });
-    // One signup run and one payment run across all three sweeps.
+    expect(done).toMatchObject({
+      outcome: 'reached_checkout',
+      cartTotalCents: 9800,
+      liveViewUrl: LIVE,
+    });
     expect(runPosts(log).map((r) => String(r.body.task).split('\n')[0])).toEqual([
       '# skill browser-use-plan-signup',
-      '# skill browser-use-saved-card-payment',
     ]);
-    expect(third.steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap', 'payment']);
+    expect(third.steps.map((s) => s.step)).toEqual(['checkout']);
   });
 
-  it('writes the paying checkpoint before it creates the payment run', async () => {
+  it('does not write a paying checkpoint for a charged cart', async () => {
     const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
     const order: string[] = [];
     const { input } = plan({
@@ -368,32 +341,11 @@ describe('a plan run longer than one sweep', () => {
         return true;
       },
     });
-    await runBrowserUsePlanSignup(input, deps);
-
-    expect(order).toEqual([
-      'signup:run-1 after 1 runs',
-      'paying:none after 1 runs',
-      'paying:run-2 after 2 runs',
-    ]);
-  });
-
-  it('a plan taken back before its paying checkpoint is stored is never paid', async () => {
-    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
-    const { input, steps } = plan({
-      onCheckpoint: async (token) => token.phase !== 'paying',
-    });
     const result = await runBrowserUsePlanSignup(input, deps);
 
-    expect(result).toMatchObject({
-      outcome: 'cancelled',
-      detail: 'authorization_lapsed',
-      liveViewUrl: null,
-      confirmationNumber: null,
-      amountChargedCents: null,
-    });
+    expect(result.outcome).toBe('reached_checkout');
+    expect(order).toEqual(['signup:run-1 after 1 runs']);
     expect(runPosts(log)).toHaveLength(1);
-    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
-    expect(browserStops(log).map((r) => r.path)).toEqual(['/browsers/browser-1']);
   });
 
   it('a resumed payment waits on its own run and never creates another', async () => {

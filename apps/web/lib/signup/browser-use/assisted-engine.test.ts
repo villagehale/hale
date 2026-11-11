@@ -213,7 +213,7 @@ describe('assisted plan engine (ActiveNet)', () => {
     });
   });
 
-  it('leaves the browser with the parent at a sign-in, a captcha or a queue that has not reached them', async () => {
+  it('leaves the browser with the parent at a sign-in, a captcha the solver could not clear, or a queue that has not reached them', async () => {
     for (const stop of [
       { outcome: 'needs_login', detail: 'login_wall' },
       { outcome: 'needs_human', detail: 'captcha' },

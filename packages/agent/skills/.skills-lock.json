@@ -37,7 +37,7 @@
   },
   "browser-use-assisted-signup.md": {
     "file": "browser-use-assisted-signup.md",
-    "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
+    "sha256": "d98d97351c219a6043cc260aa95ddf587b76c00a64799d755daa8dc882bc5f63"
   },
   "browser-use-confirmation.md": {
     "file": "browser-use-confirmation.md",
@@ -49,15 +49,15 @@
   },
   "browser-use-plan-signup.md": {
     "file": "browser-use-plan-signup.md",
-    "sha256": "23d60bc84ec685643a8d9da6b75f91c039f4e725c3528520f569db92fe289bc9"
+    "sha256": "9efa12131d35f6cb8cdb90b4eb6875bf34d0cacf3c0d78427bfe4643b05109c4"
   },
   "browser-use-saved-card-payment.md": {
     "file": "browser-use-saved-card-payment.md",
-    "sha256": "944d6bd3e553ce9b099121120529b5444cbd804bb8fe3bf7b763e81887d7b846"
+    "sha256": "bbb4e6035810e7a29951dac02aaaca27649fa4d739a98178ec3dbe0ce623aa4c"
   },
   "browser-use-signup.md": {
     "file": "browser-use-signup.md",
-    "sha256": "850b1a16363873cb8d547f4ab7703cf1798019af805ef84f4dcf711f3965aa1d"
+    "sha256": "e8eb392cea93d0354f910ce2503d9fb1f202bfa56f98e1dc707153ed72e49c83"
   },
   "browser-use-watch.md": {
     "file": "browser-use-watch.md",
@@ -521,7 +521,7 @@
   },
   "signup-offer.md": {
     "file": "signup-offer.md",
-    "sha256": "e2e870f2d2e42df1668815156e15d1052c164436383ad1e299c938b04b69b820"
+    "sha256": "c5fdfb0f96c6a80511450ea5a5fbc3d0eacb012f7f8b00e4ed4bf0185c2b831d"
   },
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
@@ -533,7 +533,7 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "7a0319f7e100b646081932352c3096d31580a22f3526f1162e6c4f96bbc13be0"
+    "sha256": "2c177a4b99c821efcd7f6a7b88186715055381c926c76ec1635a6df07341355b"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
