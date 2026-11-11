@@ -105,6 +105,8 @@ interface Seen {
   toolChoice?: string;
   userMessage?: string;
   system?: string;
+  /** The wire system blocks, cache_control included (the flattened `system` drops it). */
+  systemBlocks?: unknown;
   outputSchema?: unknown;
   thinking?: unknown;
   maxTokens?: number;
@@ -128,6 +130,7 @@ function makeClient(
           thinking: req.thinking,
           maxTokens: req.max_tokens,
           userMessage: req.messages?.[0]?.content,
+          systemBlocks: req.system,
           system:
             typeof req.system === 'string'
               ? req.system
@@ -207,7 +210,7 @@ describe('the payloads', () => {
         ),
       ).find({ ...QUERY, today });
       const ground = seen[0];
-      return JSON.stringify({ tools: ground?.tools ?? null, system: ground?.system ?? null });
+      return JSON.stringify({ tools: ground?.tools ?? null, system: ground?.systemBlocks ?? null });
     };
     const a = await prefix('2026-10-12 (Monday)');
     const b = await prefix('2026-03-01 (Sunday)');
