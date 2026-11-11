@@ -5,7 +5,9 @@
 // cache and shows up here on the next run. What is REPLICATED rather than imported is
 // the web half — the five tools and the SMS post-processor — for the same reason the
 // nudge / radar / intake evals replicate: those modules sit behind the `~/` alias, which
-// the tsx loader here cannot resolve. Each replicated block names its source file.
+// the tsx loader here could not resolve. Each replicated block names its source file.
+// The loader now reads the web tsconfig (see WEB_TSCONFIG), which is how the production
+// de-identifier behind `search_village` is imported rather than replicated.
 //
 // This is the highest-stakes model surface in the product so far, because it is the
 // first one that can CHANGE something. The gates are ordered by what it costs to get
@@ -100,17 +102,18 @@
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // The stage primitives are IMPORTED, never replicated: the coaching fixtures make a
 // child's age load-bearing (the companion answers a five-month-old and a five-year-old
 // differently), and TEENAGER_START_MONTHS is the floor rule #1 keys off. A hand-rolled
 // copy here is the positional-reader bug STAGE_BOUNDARIES_MONTHS' own comment warns
 // about, one file further from the test that would notice.
 import { TEENAGER_START_MONTHS, ageInMonths, deriveStage } from '@hale/types';
-import { tsImport } from 'tsx/esm/api';
+import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
 import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
+import { gatedSearchVillageHandler } from './coach-channel-search-village.mjs';
 import {
   COACH_CHANNEL_FIXTURES,
   FIND_DAY_JUDGE_SYSTEM,
@@ -180,6 +183,26 @@ const CONTEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts')
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
 /** The REAL family-local clock (VIL-435). It reaches for no `~/` alias. */
 const LOCAL_NOW_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'local-now.ts');
+/**
+ * The REAL activity de-identifier, which every `search_village` query crosses before the
+ * search (village/live.ts). It reaches for `~/`, so it loads with the web tsconfig.
+ */
+const DEIDENTIFY_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'activity',
+  'deidentify.ts',
+);
+const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
+
+// ONE loader for every web module, as the other web-importing evals do. A `tsImport` per
+// file stacks a loader each time, and the de-identifier's graph never finished loading
+// behind the ten this suite stacked.
+register({ tsconfig: WEB_TSCONFIG });
+const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const LOCAL_DAY_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-local-day.md');
 /**
  * VIL-567 · the find-turn addenda the runtime appends. Only a `findTurnPrompt`
@@ -767,7 +790,7 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
 const SEARCH_VILLAGE_DESCRIPTION =
   'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.';
 
-function windowedSearchVillageTool(agent, record, village, yearVillage, toolOutputs) {
+function windowedSearchVillageTool(agent, search, record, village, yearVillage, toolOutputs) {
   return agent.defineTool({
     name: 'search_village',
     description: SEARCH_VILLAGE_DESCRIPTION,
@@ -779,21 +802,15 @@ function windowedSearchVillageTool(agent, record, village, yearVillage, toolOutp
     inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Kingston' }],
     monetary: false,
     touchesChildContent: false,
-    handler: async (input) => {
-      const window = input.window?.trim() ? input.window.trim() : null;
-      record('search_village', { window });
-      const found = window ? village : yearVillage;
-      const shown = {
-        candidates: (found.candidates ?? []).map(({ url, ...candidate }) =>
-          url ? { ...candidate, ref: linkRef(url) } : candidate,
-        ),
-        inVerification: found.inVerification ?? 0,
-        standingOption: found.standingOption ?? null,
-        liveRead: 'verified',
-      };
-      toolOutputs.push(shown);
-      return shown;
-    },
+    handler: gatedSearchVillageHandler({
+      deidentify: search.deidentify,
+      family: search.family,
+      record,
+      village,
+      yearVillage,
+      toolOutputs,
+      linkRef,
+    }),
   });
 }
 
@@ -806,6 +823,7 @@ function buildFixtureTools(
   toolOutputs,
   searchTown = null,
   yearVillage = undefined,
+  search = undefined,
 ) {
   let draftsThisTurn = 0;
 
@@ -920,7 +938,7 @@ function buildFixtureTools(
   });
 
   const searchVillage = yearVillage
-    ? windowedSearchVillageTool(agent, record, village, yearVillage, toolOutputs)
+    ? windowedSearchVillageTool(agent, search, record, village, yearVillage, toolOutputs)
     : agent.defineTool({
         name: 'search_village',
         description:
@@ -1438,6 +1456,28 @@ let familyLocalNow = null;
 
 function fixtureLocalNow(fixture) {
   return familyLocalNow(fixture.now ? new Date(fixture.now) : NOW, FIXTURE_TIMEZONE);
+}
+
+/**
+ * What findFamilyActivities hands the de-identifier for this family (village/live.ts):
+ * the town, the youngest non-teen child's stage, every household name and its first word,
+ * and today on the family's clock.
+ */
+function searchFamilyFor(fixture) {
+  const now = fixture.now ? new Date(fixture.now) : NOW;
+  const children = childrenFor(fixture);
+  const youngest = children
+    .filter((child) => teenChildren([child], now).length === 0)
+    .sort((a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now))[0];
+  const local = fixtureLocalNow(fixture);
+  return {
+    town: cityFor(fixture),
+    stage: deriveStage(youngest.dateOfBirth, now),
+    householdNames: [...children.map((child) => child.name), CONTEXT_PARENT_NAME].flatMap(
+      (name) => [name, name.trim().split(/\s+/)[0]],
+    ),
+    today: `${local.date} (${local.weekday})`,
+  };
 }
 
 function presentCandidate(candidate) {
@@ -1974,22 +2014,19 @@ async function main() {
   }
 
   const agent = await loadAgent();
-  ({ spokenFind } = await tsImport(
+  const deidentify = await importTs(DEIDENTIFY_SRC);
+  ({ spokenFind } = await importTs(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
-    import.meta.url,
   ));
-  ({ attachLinks, linkRef } = await tsImport(
+  ({ attachLinks, linkRef } = await importTs(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
-    import.meta.url,
   ));
-  const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
-  const { turnOffAutonomyTool, augmentCoachSkillForAutonomySwitchOff } = await tsImport(
-    AUTONOMY_SWITCH_OFF_SRC,
-    import.meta.url,
-  );
-  const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
-  const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
-  const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
+  const { frameworkGuidanceTool } = await importTs(FRAMEWORK_TOOL_SRC);
+  const { turnOffAutonomyTool, augmentCoachSkillForAutonomySwitchOff } =
+    await importTs(AUTONOMY_SWITCH_OFF_SRC);
+  const { _internal: contextInternal } = await importTs(CONTEXT_SRC);
+  const { sanitizeSpotUrl } = await importTs(SPOTS_URL_SRC);
+  const { readSpot } = await importTs(SPOTS_READ_SRC);
   const spots = {
     sanitizeSpotUrl,
     readSpot,
@@ -2018,12 +2055,10 @@ async function main() {
   const homePlaceSkill = await agent.loadSkill(
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-home-place.md'),
   );
-  const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } = await tsImport(
-    EXPERIENCE_CARD_TOOL_SRC,
-    import.meta.url,
-  );
+  const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } =
+    await importTs(EXPERIENCE_CARD_TOOL_SRC);
   const experienceCardAddendum = await agent.loadSkill(EXPERIENCE_CARD_SKILL_PATH);
-  ({ familyLocalNow } = await tsImport(LOCAL_NOW_SRC, import.meta.url));
+  ({ familyLocalNow } = await importTs(LOCAL_NOW_SRC));
   const findTurnAddenda = await Promise.all(FIND_TURN_SKILL_PATHS.map((p) => agent.loadSkill(p)));
   // VIL-429: the runtime appends this last, and only on a 1:1 turn holding a fact with
   // `seenIn` (channel/coach/runtime.ts appendFactSourceSkill).
@@ -2153,6 +2188,7 @@ async function main() {
           toolOutputs,
           fixture.postalTown ?? null,
           fixture.findTurnPrompt ? presentVillage(fixture.yearVillage) : undefined,
+          fixture.findTurnPrompt ? { deidentify, family: searchFamilyFor(fixture) } : undefined,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
         ...(fixture.autonomy
