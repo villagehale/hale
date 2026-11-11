@@ -1710,6 +1710,7 @@ function pageRead(
     spotsLeft: null,
     waitlistRoom: false,
     schedule: 'Tuesdays 4:30 PM',
+    sessionStartsAt: null,
     digest: 'digest-full',
     ...overrides,
   };

@@ -9,7 +9,10 @@
     "state": "not_yet_open",
     "spots_left": null,
     "waitlist_room": null,
-    "confidence": 0.93
+    "confidence": 0.93,
+    "session_start_quote": null,
+    "session_start_date_text": null,
+    "session_start": null
   },
   "latencyMs": 1650
 }

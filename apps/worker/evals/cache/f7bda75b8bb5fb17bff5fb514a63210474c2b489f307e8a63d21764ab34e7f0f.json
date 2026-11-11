@@ -1,6 +1,6 @@
 {
   "value": {
-    "page_kind": "program_page",
+    "page_kind": "challenge_page",
     "session_quote": null,
     "sessions_matching": "none",
     "availability_quote": null,
@@ -9,7 +9,10 @@
     "state": "unknown",
     "spots_left": null,
     "waitlist_room": null,
-    "confidence": 0.9
+    "confidence": 0.97,
+    "session_start_quote": null,
+    "session_start_date_text": null,
+    "session_start": null
   },
-  "latencyMs": 2063
+  "latencyMs": 1263
 }
