@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { signupProviderHost } from '../consent';
 import { hashLoginCode, loginLinkExpiresAt, loginLinkUrl, newLoginCode } from './code';
@@ -100,6 +100,27 @@ export async function consumeLoginLink(
       and(eq(schema.providerLoginLinks.id, input.id), isNull(schema.providerLoginLinks.consumedAt)),
     )
     .returning({ id: schema.providerLoginLinks.id });
+  return Boolean(row);
+}
+
+/** Whether the host already has a live card: unspent and not expired. */
+export async function hasOpenLoginLink(
+  database: Database,
+  input: { familyId: string; providerHost: string; now: Date },
+): Promise<boolean> {
+  const links = schema.providerLoginLinks;
+  const [row] = await database
+    .select({ id: links.id })
+    .from(links)
+    .where(
+      and(
+        eq(links.familyId, input.familyId),
+        eq(links.providerHost, signupProviderHost(input.providerHost)),
+        isNull(links.consumedAt),
+        gt(links.expiresAt, input.now),
+      ),
+    )
+    .limit(1);
   return Boolean(row);
 }
 

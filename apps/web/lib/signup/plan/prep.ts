@@ -3,7 +3,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { signupProviderHost } from '../consent';
 import { providerCredentialsEnabled } from '../credentials/flag';
-import { mintFreshLoginLink } from '../login-link/store';
+import { hasOpenLoginLink, mintFreshLoginLink } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
 import type { SignupSession } from '../types';
 import { type PlanNoticePart, asBubbles, withLinkBubbles } from './bubbles';
@@ -47,15 +47,24 @@ export interface PlanPrepWriter {
   write(facts: PlanPrepFacts): Promise<string | readonly string[] | null>;
 }
 
-/** One notice, in order. The login link is its own part, so the deliver can send it as a card. */
+/** What became of one notice: sent, held back (the parent cannot be texted), or stopped by a failed part. */
+export type PlanPrepDelivery = 'sent' | 'withheld' | 'failed';
+
+/**
+ * One notice, in order. The login link is its own part, so the deliver can send it as a card.
+ * `noticeKey` names a notice the sweep sends once per offer and retries until it goes: each
+ * text bubble is ledgered under it with its index, so a retry never sends a bubble that
+ * already went. Null for a one-off notice, which may rightly repeat.
+ */
 export type PlanPrepDeliver = (input: {
   familyId: string;
   parentUserId: string;
   offerId: string;
   kind: PlanNoticeKind;
+  noticeKey: string | null;
   parts: readonly PlanNoticePart[];
   now: Date;
-}) => Promise<boolean>;
+}) => Promise<PlanPrepDelivery>;
 
 export interface PlanPrepDeps {
   writer: PlanPrepWriter;
@@ -65,7 +74,8 @@ export interface PlanPrepDeps {
 export interface PlanPrepSummary {
   offerId: string;
   kind: PlanPrepKind;
-  sent: boolean;
+  /** `unwritten`: the model wrote nothing. Anything but `sent` leaves the notice for the next sweep. */
+  outcome: PlanPrepDelivery | 'unwritten';
 }
 
 export async function hasPlanNotice(
@@ -174,10 +184,12 @@ function nextKind(
 /**
  * VIL-558 · the three parent texts that must exist before the open: the login
  * ask (with a /l/<code> link), account prep (create the provider account and
- * add the child as a family member, with a link), and the 30-minute reminder.
+ * add the child as a family member), and the 30-minute reminder.
  * One kind per offer per sweep. Model-written; a failed draft sends nothing.
- * Each link replaces any open one for the host, and neither ask goes while the
- * run can already sign in.
+ * The login ask's link replaces any open one for the host. Account prep follows a
+ * sweep later and carries a link only when the host has no live card, so the
+ * login-ask card is never killed under the parent. Neither ask goes while the run
+ * can already sign in.
  */
 export async function runDueSignupPlanPrep(
   database: Database,
@@ -231,32 +243,41 @@ export async function runDueSignupPlanPrep(
     };
     const written = asBubbles(await deps.writer.write(facts));
     if (!written) {
-      notices.push({ offerId: offer.id, kind, sent: false });
+      console.warn({ offerId: offer.id, kind, code: 'unwritten' }, 'signup plan prep: not sent');
+      notices.push({ offerId: offer.id, kind, outcome: 'unwritten' });
       continue;
     }
-    const link =
-      kind === 'login_ask' || kind === 'account_prep'
-        ? (
-            await mintFreshLoginLink(database, {
-              familyId: offer.familyId,
-              parentUserId: offer.parentUserId,
-              offerId: offer.id,
-              providerHost: host,
-              purpose: { kind, sessionLabel, opensAt },
-              now: sweep.now,
-            })
-          ).url
-        : null;
+    const mints =
+      kind === 'login_ask' ||
+      (kind === 'account_prep' &&
+        !(await hasOpenLoginLink(database, {
+          familyId: offer.familyId,
+          providerHost: host,
+          now: sweep.now,
+        })));
+    const link = mints
+      ? (
+          await mintFreshLoginLink(database, {
+            familyId: offer.familyId,
+            parentUserId: offer.parentUserId,
+            offerId: offer.id,
+            providerHost: host,
+            purpose: { kind, sessionLabel, opensAt },
+            now: sweep.now,
+          })
+        ).url
+      : null;
     const delivered = await deps.deliver({
       familyId: offer.familyId,
       parentUserId: offer.parentUserId,
       offerId: offer.id,
       kind,
+      noticeKey: `${offer.id}:${kind}`,
       parts: withLinkBubbles(written, link),
       now: sweep.now,
     });
-    if (!delivered) {
-      notices.push({ offerId: offer.id, kind, sent: false });
+    if (delivered !== 'sent') {
+      notices.push({ offerId: offer.id, kind, outcome: delivered });
       continue;
     }
     await recordPlanNotice(database, {
@@ -272,7 +293,7 @@ export async function runDueSignupPlanPrep(
       offerId: offer.id,
       after: { step: `plan_${kind}`, host },
     });
-    notices.push({ offerId: offer.id, kind, sent: true });
+    notices.push({ offerId: offer.id, kind, outcome: 'sent' });
   }
   return { notices };
 }
@@ -300,10 +321,11 @@ export async function sendSignupPlanNotice(
     parentUserId: input.parentUserId,
     offerId: input.offerId,
     kind: input.kind,
+    noticeKey: null,
     parts: withLinkBubbles(written, input.link ?? null, input.linkAfter ?? 0),
     now: input.now,
   });
-  if (!delivered) return false;
+  if (delivered !== 'sent') return false;
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.parentUserId,

@@ -192,10 +192,12 @@ async function deliverDirect(
 
 /**
  * The door for the login ask, account prep, the 30-minute reminder and the event notices.
- * Each bubble has its own ledger row beside its send. The login link goes once through
- * {@link sendLinkOnce}, on the chat the bubble before it used: a Linq link card on
- * iMessage, its own text where a card cannot go. A part that does not go stops the
- * notice, and the sweep sends it again with a fresh link.
+ * Each bubble has its own ledger row beside its send; under a notice key that row is keyed
+ * `signup_plan_prep:<noticeKey>:<index>`, so the sweep's retry skips a bubble that went and
+ * sends one whose try failed. The login link goes once through {@link sendLinkOnce}, on the
+ * chat the bubble before it used: a Linq link card on iMessage, its own text where a card
+ * cannot go. A part that does not go stops the notice as `failed`, and the sweep sends the
+ * rest next time.
  */
 export function createPlanPrepDeliver(
   database: Database,
@@ -208,20 +210,26 @@ export function createPlanPrepDeliver(
         { offerId: input.offerId, kind: input.kind, code: 'withheld' },
         'signup plan prep: not sent',
       );
-      return false;
+      return 'withheld';
     }
     let carried: { channel: 'sms' | 'imessage'; chatId: string | null } = {
       channel: 'sms',
       chatId: null,
     };
+    let textIndex = 0;
     for (const part of input.parts) {
       if (part.type === 'text') {
         const sent = await sendPrepText(database, deps.transport, {
           ...input,
           to,
           body: part.body,
+          dedupeKey:
+            input.noticeKey === null
+              ? null
+              : `${PLAN_PREP_TEMPLATE}:${input.noticeKey}:${textIndex}`,
         });
-        if (!sent) return false;
+        textIndex += 1;
+        if (!sent) return 'failed';
         carried = sent;
         continue;
       }
@@ -242,7 +250,7 @@ export function createPlanPrepDeliver(
           { offerId: input.offerId, kind: input.kind, why: link.why, code: link.code },
           'signup plan prep: the login link did not go',
         );
-        return false;
+        return 'failed';
       }
       if (link.status === 'text') {
         console.info(
@@ -251,7 +259,73 @@ export function createPlanPrepDeliver(
         );
       }
     }
-    return true;
+    return 'sent';
+  };
+}
+
+/**
+ * The row a text sends under. With a dedupe key, a bubble that already went (or is going)
+ * is not sent again: its row comes back as `went`, with the chat it used. A bubble whose
+ * try failed is claimed again and sent.
+ */
+async function claimPrepText(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    offerId: string;
+    kind: PlanNoticeKind;
+    dedupeKey: string | null;
+  },
+): Promise<
+  | { claimed: true; id: string }
+  | { claimed: false; went: { channel: 'sms' | 'imessage'; chatId: string | null } }
+> {
+  const messages = schema.channelMessages;
+  const [row] = await database
+    .insert(messages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      templateKey: `${PLAN_PREP_TEMPLATE}:${input.kind}`,
+      dedupeKey: input.dedupeKey,
+      status: 'queued',
+      sentAt: null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: messages.id });
+  if (row) return { claimed: true, id: row.id };
+  if (input.dedupeKey === null) throw new Error('channel_messages insert returned no row');
+  const [retried] = await database
+    .update(messages)
+    .set({ status: 'queued', errorCode: null })
+    .where(
+      and(
+        eq(messages.dedupeKey, input.dedupeKey),
+        eq(messages.familyId, input.familyId),
+        eq(messages.status, 'failed'),
+      ),
+    )
+    .returning({ id: messages.id });
+  if (retried) return { claimed: true, id: retried.id };
+  const [prior] = await database
+    .select({ channel: messages.channel, chatId: messages.providerChatId, sentAt: messages.sentAt })
+    .from(messages)
+    .where(and(eq(messages.dedupeKey, input.dedupeKey), eq(messages.familyId, input.familyId)))
+    .limit(1);
+  if (!prior) throw new Error('channel_messages dedupe row not found');
+  if (!prior.sentAt) {
+    console.warn(
+      { offerId: input.offerId, kind: input.kind, code: 'claimed_unconfirmed' },
+      'signup plan prep: a bubble was claimed but never confirmed; not sending it again',
+    );
+  }
+  return {
+    claimed: false,
+    went: { channel: prior.channel === 'imessage' ? 'imessage' : 'sms', chatId: prior.chatId },
   };
 }
 
@@ -265,29 +339,18 @@ async function sendPrepText(
     kind: PlanNoticeKind;
     to: string;
     body: string;
+    dedupeKey: string | null;
     now: Date;
   },
 ): Promise<{ channel: 'sms' | 'imessage'; chatId: string | null } | null> {
   const messages = schema.channelMessages;
-  const [row] = await database
-    .insert(messages)
-    .values({
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'reply',
-      templateKey: `${PLAN_PREP_TEMPLATE}:${input.kind}`,
-      status: 'queued',
-      sentAt: null,
-    })
-    .returning({ id: messages.id });
-  if (!row) throw new Error('channel_messages insert returned no row');
+  const claim = await claimPrepText(database, input);
+  if (!claim.claimed) return claim.went;
   const failed = async (code: string): Promise<null> => {
     await database
       .update(messages)
       .set({ status: 'failed', errorCode: code.slice(0, 80) })
-      .where(and(eq(messages.id, row.id), eq(messages.familyId, input.familyId)));
+      .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
     console.warn(
       { offerId: input.offerId, kind: input.kind, code },
       'signup plan prep: a text did not go',
@@ -318,7 +381,7 @@ async function sendPrepText(
       providerChatId: delivered.chatId,
       sentAt: input.now,
     })
-    .where(and(eq(messages.id, row.id), eq(messages.familyId, input.familyId)));
+    .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
   return { channel: delivered.channel, chatId: delivered.chatId };
 }
 
