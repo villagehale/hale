@@ -466,6 +466,50 @@ describe('common time in a shared group', () => {
     expect(calls[0]?.facts?.askFamilies).toBe('family 2, family 3');
   });
 
+  it("a parent's own words withdraw calendar use only: Hale stays, their busy time does not", async () => {
+    const { ada } = await threeFamilies();
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+
+    const withdrawn = await turn(
+      { reader: saying('withdraw_calendar'), write: writer().write },
+      sender(),
+      'in-1',
+      ADA,
+      minutesLater(1),
+    );
+    const { write, calls } = writer();
+    await turn({ reader, write }, sender(), 'in-2', MEI, minutesLater(2));
+
+    expect(withdrawn).toMatchObject({ handled: true, outcome: 'calendar_withdrawn' });
+    expect(await freeBusyLedger(ada.userId)).toEqual([true, false]);
+    const people = await db.database
+      .select({ stoppedAt: schema.linqSharedGroupPeople.stoppedAt })
+      .from(schema.linqSharedGroupPeople)
+      .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(ADA)));
+    expect(people[0]?.stoppedAt).toBeNull();
+    expect(calls[0]?.facts?.checkedFamilies).toBe('family 1');
+    expect(calls[0]?.facts?.askFamilies).toBe('family 2, family 3');
+  });
+
+  it('flag off: a calendar-only withdrawal does not change the ledger', async () => {
+    const { ada } = await threeFamilies();
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+    vi.stubEnv('LINQ_GROUP_COMMON_TIME_ENABLED', 'false');
+
+    const out = await turn(
+      { reader: saying('withdraw_calendar'), write: writer().write },
+      sender(),
+      'in-1',
+      ADA,
+      minutesLater(1),
+    );
+
+    expect(out).toMatchObject({ handled: false });
+    expect(await freeBusyLedger(ada.userId)).toEqual([true]);
+  });
+
   it("a parent's stop in this chat ends their say-so: their busy time is no longer read", async () => {
     const { ada } = await threeFamilies();
     const { reader } = findTime();
@@ -662,6 +706,20 @@ describe('common time in a shared group', () => {
     await turn({ reader, write: parent.write }, sender(), 'in-2', MEI);
     expect(parent.calls).toHaveLength(1);
     expect(await proposedSlots()).toHaveLength(2);
+  });
+
+  it('the first proposal built from busy times says so; a later one does not', async () => {
+    await threeFamilies();
+    const { reader } = findTime();
+    const first = writer();
+    await turn({ reader, write: first.write }, sender(), 'in-0', ADA);
+    const second = writer();
+    await turn({ reader, write: second.write }, sender(), 'in-1', MEI, minutesLater(1));
+
+    expect(first.calls[0]?.facts?.fromBusyTimes).toBe(
+      'first time using the busy times those families shared',
+    );
+    expect(second.calls[0]?.facts?.fromBusyTimes).toBeUndefined();
   });
 
   it('sends nothing when the AI cannot write the line, and names it', async () => {

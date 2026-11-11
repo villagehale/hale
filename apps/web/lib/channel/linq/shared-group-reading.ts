@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { linqGroupCommonTimeEnabled } from './config';
 
 /**
  * VIL-456 — read one turn in a multi-family group.
@@ -14,11 +15,30 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * then `unclear`, and Hale does not change state.
  */
 
+/**
+ * Intents the recorded shared-group-reading skill (and its cached eval) asks for.
+ * Byte-stable: adding a value here re-keys that eval.
+ */
+export const SHARED_GROUP_RECORDED_INTENTS = [
+  'who_i_am',
+  'join',
+  'leave',
+  'stop_me',
+  'find_time',
+  'pick_time',
+  'question',
+  'yes',
+  'no',
+  'chatter',
+  'unclear',
+] as const;
+
 export const SHARED_GROUP_INTENTS = [
   'who_i_am',
   'join',
   'leave',
   'stop_me',
+  'withdraw_calendar',
   'find_time',
   'pick_time',
   'question',
@@ -101,38 +121,46 @@ const readingSchema = z
   })
   .strict();
 
-export const sharedGroupReadingJsonSchema = {
-  type: 'object' as const,
-  additionalProperties: false,
-  properties: {
-    intent: { type: 'string', enum: [...SHARED_GROUP_INTENTS] },
-    role: { type: 'string', enum: [...SHARED_GROUP_ROLES] },
-    familyLabel: { type: ['string', 'null'] },
-    kidName: { type: ['string', 'null'] },
-    confidence: { type: 'string', enum: ['high', 'low'] },
-    ruledOut: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: { start: { type: 'string' }, end: { type: 'string' } },
-        required: ['start', 'end'],
+function readingJsonSchema(intents: readonly string[]) {
+  return {
+    type: 'object' as const,
+    additionalProperties: false,
+    properties: {
+      intent: { type: 'string', enum: [...intents] },
+      role: { type: 'string', enum: [...SHARED_GROUP_ROLES] },
+      familyLabel: { type: ['string', 'null'] },
+      kidName: { type: ['string', 'null'] },
+      confidence: { type: 'string', enum: ['high', 'low'] },
+      ruledOut: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { start: { type: 'string' }, end: { type: 'string' } },
+          required: ['start', 'end'],
+        },
       },
+      picked: { type: ['string', 'null'] },
+      planTitle: { type: ['string', 'null'] },
     },
-    picked: { type: ['string', 'null'] },
-    planTitle: { type: ['string', 'null'] },
-  },
-  required: [
-    'intent',
-    'role',
-    'familyLabel',
-    'kidName',
-    'confidence',
-    'ruledOut',
-    'picked',
-    'planTitle',
-  ],
-};
+    required: [
+      'intent',
+      'role',
+      'familyLabel',
+      'kidName',
+      'confidence',
+      'ruledOut',
+      'picked',
+      'planTitle',
+    ],
+  };
+}
+
+/** Request shape of the recorded shared-group-reading skill. Do not add enum values. */
+export const sharedGroupReadingJsonSchema = readingJsonSchema(SHARED_GROUP_RECORDED_INTENTS);
+
+/** VIL-643: common-time reader, which also returns `withdraw_calendar`. */
+export const sharedGroupReadingCommonTimeJsonSchema = readingJsonSchema(SHARED_GROUP_INTENTS);
 
 const UNCLEAR: SharedGroupReading = {
   intent: 'unclear',
@@ -150,6 +178,7 @@ const STATE_CHANGE: ReadonlySet<SharedGroupIntent> = new Set([
   'join',
   'leave',
   'stop_me',
+  'withdraw_calendar',
   'pick_time',
 ]);
 
@@ -234,7 +263,13 @@ export function createSharedGroupReader(
 ): SharedGroupReader {
   const once = async (input: SharedGroupReadInput): Promise<SharedGroupReading | null> => {
     const client = typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
-    const skill = await loadCronSkill('shared-group-reading');
+    // VIL-643: while common time is dark, the live reader stays the recorded
+    // shared-group-reading skill and schema (cached evals keep hitting). Once
+    // the flag is on, the common-time skill also reads a calendar-only withdrawal.
+    const commonTime = linqGroupCommonTimeEnabled();
+    const skill = await loadCronSkill(
+      commonTime ? 'shared-group-reading-common-time' : 'shared-group-reading',
+    );
     const { value } = await forceToolJson({
       client,
       lane: pickLane(skill.meta.task),
@@ -242,7 +277,9 @@ export function createSharedGroupReader(
       userMessage: sharedGroupUserMessage(input),
       toolName: 'record_shared_group_reading',
       toolDescription: 'What this person meant in the shared group.',
-      inputJsonSchema: sharedGroupReadingJsonSchema,
+      inputJsonSchema: commonTime
+        ? sharedGroupReadingCommonTimeJsonSchema
+        : sharedGroupReadingJsonSchema,
       schema: readingSchema,
       maxTokens: SHARED_GROUP_READ_MAX_TOKENS,
     });

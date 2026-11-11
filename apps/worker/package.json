@@ -69,6 +69,8 @@
     "eval:common-time": "node evals/run-common-time-eval.mjs --cached-only",
     "eval:shared-group-reading": "node evals/run-shared-group-reading-eval.mjs --cached-only",
     "eval:shared-group-reading:estimate": "node evals/run-shared-group-reading-eval.mjs --estimate",
+    "eval:shared-group-calendar-withdraw": "node evals/run-shared-group-calendar-withdraw-eval.mjs --cached-only",
+    "eval:shared-group-calendar-withdraw:estimate": "node evals/run-shared-group-calendar-withdraw-eval.mjs --estimate",
     "eval:shared-group-voice:estimate": "node evals/run-shared-group-voice-eval.mjs --estimate",
     "eval:group-mention-read": "node evals/run-group-mention-read-eval.mjs --cached-only",
     "eval:calendar-cancel-voice": "node evals/run-calendar-cancel-voice-eval.mjs --cached-only",
