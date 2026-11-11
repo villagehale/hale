@@ -216,7 +216,7 @@ Dependencies, as the code reads them:
 - Light `LINQ_GROUP_TURN_AI_ENABLED` with `LINQ_GROUP_ONBOARDING_V2_ENABLED`: the turn reader is the only group turn path, and dark means silent in the group (`apps/web/lib/channel/linq/group-turn-reader.ts:13-17`).
 - `LINQ_GROUP_REMINDERS_ENABLED` reads only a turn the AI turn reader judged Hale's, in a v2 group: it needs `LINQ_GROUP_TURN_AI_ENABLED` and `LINQ_GROUP_ONBOARDING_V2_ENABLED`.
 - `LINQ_GROUP_POLLS_ENABLED`: the native card also needs `LINQ_POLLS`.
-- `GROUP_POLLS_ENABLED`: the native RSVP/time card also needs `LINQ_POLLS`. Off, Hale asks in model-written plain text and tallies replies. Needs migration `0230_linq_group_experience`.
+- `GROUP_POLLS_ENABLED`: the native RSVP/time card also needs `LINQ_POLLS`. Off, Hale asks in model-written plain text and tallies replies. Needs migration `0231_linq_group_experience`.
 - `GROUP_CARPOOL_ENABLED` arms the same path as `LINQ_GROUP_CARPOOL_ENABLED`.
 - `GROUP_BRING_LIST_ENABLED` arms the same path as `GROUP_SHARED_LISTS_ENABLED`.
 - `GROUP_MAIL_NOTICE_ENABLED` posts into the household group after a provider time-change; it does not replace the 1:1 email alert.
@@ -259,9 +259,9 @@ Code is merged for every row.
 | `GOING_COUNT_ENABLED` | A sweep may count how many others are going. | A count that does not match the booking rows. | `false` | Noah |
 | `GROUP_BRING_LIST_ENABLED` | A group bring-list (who brings which snack) uses the existing shared-list path. | A list write while the flag is off. | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_CARPOOL_ENABLED` | Who is driving, using the existing carpool path. | A carpool ask while both this flag and `LINQ_GROUP_CARPOOL_ENABLED` are off. | empty, or `false` | unassigned |
-| `GROUP_LINK_CARDS_ENABLED` | A posted https link in a group: Hale says the public facts, then registration continues in each family's 1:1. Needs migration `0230_linq_group_experience`. | A login or payment in the multi-family group. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_LINK_CARDS_ENABLED` | A posted https link in a group: Hale says the public facts, then registration continues in each family's 1:1. Needs migration `0231_linq_group_experience`. | A login or payment in the multi-family group. | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_MAIL_NOTICE_ENABLED` | A Gmail provider time-change is posted into the household group. No login. | A time-change in a multi-family group, or a login. | empty, or `false` | Noah (copy: Sloane) |
-| `GROUP_POLLS_ENABLED` | Yes/no/maybe RSVP and time polls in a Linq group. Native cards also need `LINQ_POLLS`; otherwise Hale asks in model-written plain text. Needs migration `0230_linq_group_experience`. | A poll started while the flag is off, or a fallback Yes/No/Maybe template. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_POLLS_ENABLED` | Yes/no/maybe RSVP and time polls in a Linq group. Native cards also need `LINQ_POLLS`; otherwise Hale asks in model-written plain text. Needs migration `0231_linq_group_experience`. | A poll started while the flag is off, or a fallback Yes/No/Maybe template. | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_PRIVATE_QUESTION_ENABLED` | A private question (allergy, DOB, address, login, payment) leaves the group for that family's 1:1. | The allergy or another family's calendar spoken in the group. | empty, or `false` | Noah (copy: Sloane) |
 | `GOOGLE_PUSH_SYNC_ENABLED` | Gmail and Calendar can sync from push, not only the 15-minute poll. | Log lines `google push: skipped, flag_off` after the flip, and webhook failures. | `false` | Noah |
 | `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | The 1:1 coach never offers, nor agrees, to tell the group for a family. Hale has no path from a 1:1 reply into the group. Dark leaves the coach skill bytes unchanged. The model writes the reply. The private aside already never offers. | A 1:1 reply that offers to tell the group, or promises a group post after the parent asked for one. | `false` | Sloane |
