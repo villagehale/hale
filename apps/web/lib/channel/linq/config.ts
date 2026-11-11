@@ -120,6 +120,15 @@ export function linqGroupConflictAlertsEnabled(): boolean {
 }
 
 /**
+ * VIL-609 — one child's two overlapping plans, each held by a different parent, is a
+ * clash, and Hale tells both parents privately in their own 1:1 Linq threads. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function crossParentClashEnabled(): boolean {
+  return isEnabled('cross-parent-clash');
+}
+
+/**
  * VIL-442 (T15) — RSVP tracking for any plan in a Linq group. Exactly `true`
  * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */

@@ -2,16 +2,22 @@ import { type CalendarStanding, type Database, householdFamilyEvent, schema } fr
 import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import {
+  crossParentClashEnabled,
   linqGroupConflictAlertsEnabled,
   linqGroupCoparentEnabled,
   linqPollsEnabled,
 } from './config';
+import { crossParentClashLineInput } from './cross-parent-clash';
+import { sharedCrossParentClashWriter } from './cross-parent-clash-voice';
 import { groupAudienceAllows } from './group-audience';
 import {
   type ClashBusy,
@@ -19,8 +25,10 @@ import {
   type ClashPlan,
   type GroupClash,
   clashCalendar,
+  clashCrossParent,
   clashPollOffer,
   clashPollOptions,
+  crossParentClashDedupeKey,
   findGroupClashes,
   groupConflictLineInput,
   watchedPlan,
@@ -43,7 +51,13 @@ import {
 } from './kid-event';
 
 export { classifyKidCalendarItem, splitKidEvent, titleForStorage };
-import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import {
+  createOutboundTransport,
+  failedSendPatch,
+  readSendRefusal,
+  sendLinqChatMessage,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import {
   groupBothFreeText,
   groupConflictText,
@@ -101,6 +115,11 @@ import { LinqSendError, listLinqParticipantHandles } from './transport';
  * the conflict's turn. With LINQ_POLLS on it may carry the who-takes poll after it: the
  * names as stored, the last option the model's. A vote is stored as the who-takes
  * decision, and the clash planner reads it the way it reads a claim.
+ *
+ * VIL-609: with CROSS_PARENT_CLASH_ENABLED, one child's two overlapping plans, each
+ * held by a different parent, is a clash. Hale tells both parents privately in their
+ * own 1:1 Linq threads (never the household group, never a multi-family group). A
+ * driver on a different overlapping plan does not cover it.
  *
  * Kid-event, conflict, handoff, and post-event notices leave only through the
  * family's `linq_group_chat_id`. A Linq refusal is `not_sent`. Nothing on this
@@ -1011,18 +1030,37 @@ export async function narrateHouseholdCalendar(
 ): Promise<void> {
   if (!linqGroupCoparentEnabled()) return;
   const context = await loadFamilyCalendarContext(database, input.familyId);
-  if (!context.parentUserIds || !context.chatId) return;
+  if (!context.parentUserIds) return;
   const listChatHandles: ListChatHandles = (i) =>
     listLinqParticipantHandles({ ...i, fetch: input.fetch });
   const { blocks, teens } = await loadSweepBlocks(database, input.familyId, context, input.now);
   const parentNames = await loadParentNames(database, context.parentUserIds);
+  const remembered = await loadRememberedLogistics(database, input.familyId);
+  if (crossParentClashEnabled()) {
+    const cross = await notifyCrossParentClashes(database, {
+      familyId: input.familyId,
+      chatId: context.chatId,
+      now: input.now,
+      timeZone: context.timeZone,
+      language: context.language,
+      parentUserIds: context.parentUserIds,
+      parentNames,
+      calendarUserIds: context.calendarUserIds,
+      blocks,
+      remembered,
+      children: context.children,
+      teens,
+      fetch: input.fetch,
+    });
+    if (cross === 'unsent' || cross === 'held' || cross === 'sent_1to1') return;
+  }
+  if (!context.chatId) return;
   const statements = await loadHandoffStatements(
     database,
     input.familyId,
     context.chatId,
     input.now,
   );
-  const remembered = await loadRememberedLogistics(database, input.familyId);
   const planInput: NoticePlanInput = {
     blocks,
     parentUserIds: context.parentUserIds,
@@ -1154,6 +1192,7 @@ async function clashNotice(
   input: ClashPlanningInput,
   listChatHandles: ListChatHandles,
 ): Promise<HouseholdNotice | 'held' | 'unsent' | null> {
+  if (!input.chatId) return null;
   const audience = await groupAudienceAllows(
     database,
     input.chatId,
@@ -1168,8 +1207,18 @@ async function clashNotice(
     return null;
   }
   const { parents, people, plans, busy, kids } = await planClashes(database, input);
-  const clashes = findGroupClashes({ plans, busy, people, now: input.now });
+  const uncoverSameKid = crossParentClashEnabled();
+  const clashes = findGroupClashes({
+    plans,
+    busy,
+    people,
+    now: input.now,
+    kids,
+    uncoverSameKid,
+  });
   for (const clash of clashes) {
+    // VIL-609: both parents hear this in 1:1, never in the group.
+    if (uncoverSameKid && clashCrossParent(clash, kids, parents)) continue;
     if (await dedupeActive(clash.dedupeKey, database)) continue;
     const pair = 'plan' in clash.second ? [clash.first, clash.second.plan] : [clash.first];
     const recipient =
@@ -1247,7 +1296,7 @@ async function clashNotice(
 
 interface ClashPlanningInput {
   familyId: string;
-  chatId: string;
+  chatId: string | null;
   now: Date;
   timeZone: string;
   language: ReplyLanguage;
@@ -1283,21 +1332,23 @@ async function planClashes(
     name: firstName(input.parentNames[id]),
     calendar: input.calendarUserIds.includes(id),
   }));
-  const seats = await database
-    .select({
-      userId: schema.linqGroupMembers.userId,
-      role: schema.linqGroupMembers.role,
-      name: schema.users.name,
-    })
-    .from(schema.linqGroupMembers)
-    .innerJoin(schema.users, eq(schema.users.id, schema.linqGroupMembers.userId))
-    .where(
-      and(
-        eq(schema.linqGroupMembers.chatId, input.chatId),
-        eq(schema.linqGroupMembers.familyId, input.familyId),
-        isNull(schema.linqGroupMembers.removedAt),
-      ),
-    );
+  const seats = input.chatId
+    ? await database
+        .select({
+          userId: schema.linqGroupMembers.userId,
+          role: schema.linqGroupMembers.role,
+          name: schema.users.name,
+        })
+        .from(schema.linqGroupMembers)
+        .innerJoin(schema.users, eq(schema.users.id, schema.linqGroupMembers.userId))
+        .where(
+          and(
+            eq(schema.linqGroupMembers.chatId, input.chatId),
+            eq(schema.linqGroupMembers.familyId, input.familyId),
+            isNull(schema.linqGroupMembers.removedAt),
+          ),
+        )
+    : [];
   for (const seat of seats) {
     if (seat.role !== 'caregiver' || parents.includes(seat.userId)) continue;
     people.push({ id: seat.userId, name: firstName(seat.name), calendar: false });
@@ -1785,6 +1836,253 @@ async function sendWhoTakesPoll(
       source: 'poll',
     },
   });
+}
+
+const CROSS_PARENT_CLASH_TEMPLATE = 'linq:cross_parent_clash';
+
+/**
+ * VIL-609 — both parents, each in their own 1:1, when one child is on two overlapping
+ * plans they each hold. Never the group. The model writes every word; a miss sends nothing
+ * to that parent. Each parent is told once per clash.
+ */
+async function notifyCrossParentClashes(
+  database: Database,
+  input: ClashPlanningInput & { fetch?: typeof fetch },
+): Promise<'sent_1to1' | 'already_sent' | 'held' | 'unsent' | null> {
+  const { parents, people, plans, busy, kids } = await planClashes(database, input);
+  const clashes = findGroupClashes({
+    plans,
+    busy,
+    people,
+    now: input.now,
+    kids,
+    uncoverSameKid: true,
+  }).filter((clash) => clashCrossParent(clash, kids, parents));
+  if (clashes.length === 0) return null;
+
+  let sent = false;
+  let held = false;
+  let unsent = false;
+  let already = true;
+  const mark: Array<{ integrationId: string; eventId: string; field: 'announced' }> = [];
+
+  for (const clash of clashes) {
+    if (!('plan' in clash.second)) continue;
+    const holders = [clash.restsOn[clash.first.key], clash.restsOn[clash.second.plan.key]].filter(
+      (id): id is string => typeof id === 'string' && parents.includes(id),
+    );
+    for (const parentId of holders) {
+      const dedupeKey = crossParentClashDedupeKey(clash, parentId);
+      if (await dedupeActive(dedupeKey, database)) continue;
+      already = false;
+      const line = crossParentClashLineInput(clash, parentId, {
+        people,
+        kids,
+        timeZone: input.timeZone,
+        language: input.language,
+      });
+      if (!line) {
+        unsent = true;
+        continue;
+      }
+      const verdict = await assertProactiveSendAllowed(
+        {
+          familyId: input.familyId,
+          parentUserId: parentId,
+          kind: 'activity_followup',
+          now: input.now,
+        },
+        buildOutboundGatePorts(database),
+      );
+      if (!verdict.allowed) {
+        console.warn(
+          { familyId: input.familyId, kind: 'cross_parent_clash', reason: verdict.reason },
+          'household calendar: cross-parent clash held',
+        );
+        held = true;
+        continue;
+      }
+      const text = await sharedCrossParentClashWriter().write(line);
+      if (!text) {
+        console.warn(
+          { familyId: input.familyId, outcome: 'cross_parent_clash_unsent' },
+          'household calendar: cross-parent clash not written, nothing sent',
+        );
+        unsent = true;
+        continue;
+      }
+      const outcome = await sendCrossParentOneToOne(database, {
+        familyId: input.familyId,
+        parentUserId: parentId,
+        groupChatId: input.chatId,
+        text,
+        optOut: verdict.optOut,
+        dedupeKey,
+        now: input.now,
+        fetch: input.fetch,
+      });
+      if (outcome === 'held') {
+        held = true;
+        continue;
+      }
+      if (outcome === 'already_sent') continue;
+      if (outcome !== 'sent') {
+        unsent = true;
+        continue;
+      }
+      sent = true;
+    }
+    if (sent) {
+      const pair = [clash.first, clash.second.plan];
+      for (const plan of pair) {
+        for (const row of plan.rows) {
+          mark.push({ ...row, field: 'announced' });
+        }
+      }
+    }
+  }
+
+  if (sent) {
+    for (const row of mark) {
+      await database
+        .update(schema.parentCalendarBlocks)
+        .set({ announcedAt: input.now, updatedAt: input.now })
+        .where(
+          and(
+            eq(schema.parentCalendarBlocks.integrationId, row.integrationId),
+            eq(schema.parentCalendarBlocks.eventId, row.eventId),
+          ),
+        );
+    }
+    return 'sent_1to1';
+  }
+  if (held) return 'held';
+  if (unsent) return 'unsent';
+  if (!already) return 'unsent';
+  return 'already_sent';
+}
+
+async function sendCrossParentOneToOne(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    groupChatId: string | null;
+    text: string;
+    optOut: Parameters<typeof withOptOut>[1];
+    dedupeKey: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<'sent' | 'already_sent' | 'held' | 'not_sent'> {
+  if (await dedupeActive(input.dedupeKey, database)) return 'already_sent';
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return 'held';
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        kind: 'activity_followup',
+        category: 'calendar_alert',
+        templateKey: CROSS_PARENT_CLASH_TEMPLATE,
+        what: input.text,
+        why: 'activity_followup',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+        payload: { auditVerb: 'calendar_alert_sent' },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: 'cross_parent_clash' },
+    });
+    return 'held';
+  }
+  const door = await resolveMessagingDoor(database, input.parentUserId, {
+    excludeChatId: input.groupChatId,
+  });
+  // Linq 1:1 only. An SMS last turn is a different app; never the group.
+  if (door.channel !== 'imessage') return 'not_sent';
+  const chatId = door.chatId;
+  const phone = chatId ? null : await resolveSendablePhone(database, input.parentUserId);
+  if (!chatId && !phone) return 'not_sent';
+  const body = withOptOut(input.text, input.optOut);
+  const [claimed] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'calendar_alert',
+      templateKey: CROSS_PARENT_CLASH_TEMPLATE,
+      dedupeKey: input.dedupeKey,
+      providerChatId: chatId,
+      status: acceptedStatus('imessage'),
+      sentAt: input.now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.channelMessages.id });
+  if (!claimed) return 'already_sent';
+  try {
+    let providerMessageId: string;
+    let sentChatId = chatId;
+    if (chatId) {
+      ({ providerMessageId } = await sendLinqChatMessage({
+        chatId,
+        text: body,
+        fetch: input.fetch,
+      }));
+    } else {
+      const sent = await sendResolvingNewChat(createOutboundTransport({ fetch: input.fetch }), {
+        to: phone as string,
+        body,
+      });
+      providerMessageId = sent.providerMessageId;
+      sentChatId = sent.chatId ?? null;
+    }
+    await database
+      .update(schema.channelMessages)
+      .set({ providerMessageId, providerChatId: sentChatId })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'calendar_alert_sent',
+      targetTable: 'channel_messages',
+      targetId: claimed.id,
+      after: { kind: 'cross_parent_clash' },
+    });
+    await threadProactiveMessage(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      body,
+    });
+    return 'sent';
+  } catch (err) {
+    const code = readSendRefusal(err)?.code ?? 'unknown';
+    await database
+      .update(schema.channelMessages)
+      .set(failedSendPatch(code))
+      .where(eq(schema.channelMessages.id, claimed.id));
+    console.warn(
+      { familyId: input.familyId, code },
+      'household calendar: cross-parent clash did not land',
+    );
+    return 'not_sent';
+  }
 }
 
 async function sendGroupNotice(

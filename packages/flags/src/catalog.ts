@@ -142,6 +142,7 @@ export const FLAGS = [
 
   trimmed('linq-group-carpool', 'LINQ_GROUP_CARPOOL_ENABLED'),
   trimmed('linq-group-conflict-alerts', 'LINQ_GROUP_CONFLICT_ALERTS_ENABLED'),
+  trimmed('cross-parent-clash', 'CROSS_PARENT_CLASH_ENABLED'),
   trimmed('linq-group-members', 'LINQ_GROUP_MEMBERS_ENABLED'),
   // VIL-475: Production may light it like any other env (preview-only gate lifted).
   trimmed('linq-group-mentions', 'LINQ_GROUP_MENTIONS_ENABLED'),

@@ -175,6 +175,10 @@
     "file": "consent-reply.md",
     "sha256": "b72df8e839e92b36cff701496e26439fca7339ac98e3292f4c3e7a39f71a5951"
   },
+  "cross-parent-clash.md": {
+    "file": "cross-parent-clash.md",
+    "sha256": "88bbb9be83eaf34cde92bc0b8817d18be50e28e7fcbc8edde23a734529487578"
+  },
   "draft-action.md": {
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
