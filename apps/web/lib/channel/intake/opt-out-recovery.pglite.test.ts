@@ -1961,13 +1961,15 @@ describe('recoverHeldOptOutReads', () => {
     stubWebhook();
     const erased = await seedFamily(db.database, 'First Family');
     await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
-    // Before the family existed: an intake session on its number with no family yet.
+    // Before the family existed, inside the intake lifetime before first
+    // verification (VIL-649). A family-less session older than that window is a
+    // recycled number's, not this family's.
     await intake(
       PHONE_A,
-      [{ providerId: 'pm-presignup', body: OVERDOSE_TEXT, at: ago(60 * 24 * 32) }],
-      { closedAt: ago(60 * 24 * 31) },
+      [{ providerId: 'pm-presignup', body: OVERDOSE_TEXT, at: ago(60 * 24 * 30 + 12 * 60) }],
+      { closedAt: ago(60 * 24 * 30 + 6 * 60) },
     );
-    await hold(PHONE_A, 'pm-presignup', ago(60 * 24 * 32));
+    await hold(PHONE_A, 'pm-presignup', ago(60 * 24 * 30 + 12 * 60));
     await failurePageCrisisPager(db.database).record(keptCrisis('pm-presignup', null));
     // The number's next holder, mid-intake after the family let it go: their own text.
     await intake(PHONE_A, [{ providerId: 'pm-next-holder', body: OVERDOSE_TEXT, at: ago(30) }]);

@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { type FamilyBasicsView, toFamilyBasics } from '~/lib/dashboard/family-basics';
 import { type FamilyMembersView, toFamilyMembersView } from '~/lib/dashboard/family-members';
-import type { TrailView } from '~/lib/dashboard/mappers';
+import { TEEN_REDACTED_PLACEHOLDER, type TrailView } from '~/lib/dashboard/mappers';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
@@ -10,6 +10,7 @@ import type { AuditVerb } from '~/lib/trail/verbs';
 import { type HouseholdExport, loadHouseholdExport } from './export-household';
 import { type FamilyMemoryExport, exportTeenGate, loadFamilyMemoryExport } from './export-memory';
 import { type RequesterOnlyExport, loadRequesterOnlyExport } from './export-requester';
+import { accessExportRound2Enabled } from './export-round-2';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -128,7 +129,9 @@ export interface FamilyExportDocument {
    * what makes the "how did it go?" ask happen - so a right-to-access copy without it
    * would omit something Hale does on their behalf. The place and the street address
    * leave as the email wrote them (null when it gave none); no confirmation number, no
-   * amount, no child, because the table has no column for any of them.
+   * amount, no child, because the table has no column for any of them. Lit
+   * (`ACCESS_EXPORT_ROUND_2_ENABLED`), the copy is this adult's bookings only, like
+   * trips, and a title that names a 13+ child becomes the teen placeholder.
    */
   activityBookings: {
     title: string;
@@ -358,6 +361,7 @@ export async function assembleFamilyExport(
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId))
     .orderBy(schema.children.dateOfBirth);
+  const gate = exportTeenGate(childRows, now);
 
   const memberRows = await database
     .select({
@@ -504,10 +508,20 @@ export async function assembleFamilyExport(
       cancelledAt: schema.activityBookings.cancelledAt,
     })
     .from(schema.activityBookings)
-    .where(eq(schema.activityBookings.familyId, familyId))
+    .where(
+      accessExportRound2Enabled()
+        ? and(
+            eq(schema.activityBookings.familyId, familyId),
+            eq(schema.activityBookings.parentUserId, deps.actorUserId),
+          )
+        : eq(schema.activityBookings.familyId, familyId),
+    )
     .orderBy(schema.activityBookings.firstSessionAt);
   const activityBookings = bookingRows.map((row) => ({
-    title: row.title,
+    title:
+      accessExportRound2Enabled() && gate.isPrivate([], [row.title])
+        ? TEEN_REDACTED_PLACEHOLDER
+        : row.title,
     firstSessionAt: row.firstSessionAt.toISOString(),
     providerHost: row.providerHost,
     location: row.location,
@@ -711,7 +725,6 @@ export async function assembleFamilyExport(
     { userId: deps.actorUserId },
     now,
   );
-  const gate = exportTeenGate(childRows, now);
   const household = await loadHouseholdExport(database, familyId, deps.actorUserId, gate);
   const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId, gate);
 
