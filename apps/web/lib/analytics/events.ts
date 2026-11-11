@@ -18,9 +18,6 @@
  *   sign_up, preview_submitted  — the pre-pivot marketing funnel; the site owns its own
  *                                 catalog now (apps/site/lib/analytics/events.ts).
  *   waitlist_signup             — same, and the app never had a waitlist form.
- *   onboarding_completed        — the /onboarding wizard is DELETED, not flagged off
- *                                 (lib/onboarding/onboarding-retired.test.ts pins it).
- *                                 intake_started/intake_completed replace it.
  *   party_invite_created        — never a capture; the string is an audit actionTaken
  *                                 (lib/party/store.ts) and stays there.
  *
@@ -81,6 +78,22 @@ export type AnalyticsEvent =
   // out a card, which is its own bucket rather than a code that means "none".
   | 'intake_started'
   | 'intake_completed'
+  // Launch product analytics (POSTHOG_PRODUCT_EVENTS_ENABLED). Keyed on the HMAC of
+  // the family id (POSTHOG_ID_SALT). Never a phone, a name, or message text.
+  | 'message_inbound'
+  | 'message_outbound'
+  | 'task_completed'
+  | 'group_chat_created'
+  | 'group_chat_member_added'
+  | 'onboarding_step'
+  | 'onboarding_completed'
+  | 'family_signed_up'
+  // Launch error events (POSTHOG_ERROR_TRACKING_ENABLED). Same hashing. Closed
+  // enum properties only — $exception rides beside them via captureSafeException.
+  | 'send_failed'
+  | 'message_unanswered'
+  | 'turn_failed'
+  | 'registration_run_failed'
   // The quiet failures — one per seam that can break without anybody being told. Their
   // payloads are assembled by `captureAgentError` from a closed union, never by a call
   // site, so a lane, an enum-valued class and a hashed family id are the only things

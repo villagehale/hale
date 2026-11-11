@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { noteOnboardingCompleted, noteOnboardingStep } from '~/lib/analytics/product-hooks';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { SealedBlobRejected, decryptString, encryptString } from '~/lib/crypto/string-cipher';
@@ -843,6 +844,13 @@ export async function saveSession(
       updatedAt: now,
     })
     .where(eq(schema.smsIntakeSessions.id, session.id));
+  if (patch.state && patch.state !== session.state) {
+    const familyId = patch.familyId ?? session.familyId;
+    noteOnboardingStep({ sessionId: session.id, step: patch.state, familyId });
+    if (patch.state === 'complete') {
+      noteOnboardingCompleted({ sessionId: session.id, familyId });
+    }
+  }
 }
 
 export function appendTranscript(

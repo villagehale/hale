@@ -124,6 +124,25 @@ describe('buildEvent privacy gate', () => {
     expect(built.properties).toEqual({ tier: 'plus' });
   });
 
+  it('keeps launch message properties and drops a body or name', () => {
+    const built = buildEvent('message_inbound', {
+      channel: 'group',
+      is_group: true,
+      family_count: 2,
+      media_type: 'image',
+      reply_ms: 1200,
+      parentName: 'Sam',
+      message: 'hi',
+    });
+    expect(built.properties).toEqual({
+      channel: 'group',
+      is_group: true,
+      family_count: 2,
+      media_type: 'image',
+      reply_ms: 1200,
+    });
+  });
+
   it('never lets a name/email/content field through under any casing', () => {
     const built = buildEvent('endorse', {
       ChildName: 'Maya',

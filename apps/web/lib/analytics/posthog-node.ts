@@ -5,11 +5,14 @@ import { PostHog } from 'posthog-node';
  * apps/web (posthog-node-singleton.test.ts pins it).
  *
  *  - `productClient()` — product events (the SMS funnel, inbound counts, agent-error
- *    rates). Reads NEXT_PUBLIC_POSTHOG_KEY, the same key the browser provider reads,
- *    so the funnel lands in the same project as the landing and portal events.
+ *    rates, and launch events behind POSTHOG_PRODUCT_EVENTS_ENABLED). Reads
+ *    NEXT_PUBLIC_POSTHOG_KEY, the same key the browser provider reads, so the funnel
+ *    lands in the same project as the landing and portal events.
  *  - `projectClient()` — LLM generations ($ai_generation) and exceptions ($exception).
  *    Reads POSTHOG_PROJECT_API_KEY, a SEPARATE env var on purpose: tracing and error
- *    tracking ship dark, and turn on only when that key is set (Barton's call).
+ *    tracking ship dark, and turn on only when that key is set AND
+ *    POSTHOG_ERROR_TRACKING_ENABLED=true (Barton's call). The worker copy of this
+ *    module is apps/worker/src/analytics/posthog.ts — keep them in sync (#1222).
  *
  * A MISSING KEY IS A NAMED ABSENCE (rule #11): each getter returns null and the caller
  * returns 'not_configured'. No client is constructed, no network is touched.
