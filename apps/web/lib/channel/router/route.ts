@@ -2,6 +2,7 @@ import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
+import { noteMessage, noteSendFailed, noteTurnFailed } from '~/lib/analytics/product-hooks';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
@@ -50,6 +51,11 @@ import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-deci
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import {
+  linqMessageEditEnabled,
+  listEditableLinqSends,
+  sharedLinqEditDecider,
+} from '~/lib/channel/linq/edit';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -75,10 +81,12 @@ import {
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
   productionVoiceReplyDeps,
   sendReplyAsVoiceMemo,
+  voiceMemoTextOnly,
 } from '~/lib/channel/linq/voice-reply';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
@@ -354,6 +362,8 @@ export type HandlerVerdict =
       claimed: true;
       outcome: string;
       reply: string | null;
+      /** Separate Linq sends. When present and non-empty, each body is sent in order. */
+      replies?: string[];
       /**
        * The ledger name for the message this reply goes out as — written onto its
        * `channel_messages` row exactly as a proactive send's is.
@@ -1083,7 +1093,15 @@ async function routeChannelMessageInner(
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
   // thread, and the coach re-reads that thread on the attempt that finally works.
   if (!redriven) {
-    await appendMessage(conversationId, 'user', context.body, deps.database);
+    // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
+    // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
+    const inboundProviderId =
+      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
+    await appendMessage(conversationId, 'user', context.body, deps.database, {
+      childId: null,
+      topic: null,
+      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+    });
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -2122,14 +2140,23 @@ async function deliver(
     groupSync?: GroupActivityDecision,
   ) => Promise<string>,
 ): Promise<void> {
-  if (verdict.reply === null) return;
-  const channelMessageId = await answer(
-    verdict.reply,
-    null,
-    null,
-    verdict.templateKey ?? null,
-    verdict.groupSync,
-  );
+  const bodies =
+    verdict.replies && verdict.replies.length > 0
+      ? verdict.replies
+      : verdict.reply !== null
+        ? [verdict.reply]
+        : [];
+  if (bodies.length === 0) return;
+  let channelMessageId = '';
+  for (const body of bodies) {
+    channelMessageId = await answer(
+      body,
+      null,
+      null,
+      verdict.templateKey ?? null,
+      verdict.groupSync,
+    );
+  }
   await verdict.afterSend?.(channelMessageId);
 }
 
@@ -2591,6 +2618,20 @@ async function runAgentTurn(
         reason: disposition.reason,
         familyId: args.job.family_id,
       });
+      noteTurnFailed({
+        familyId: args.job.family_id,
+        reason: disposition.reason,
+        chatId: args.turn.groupChatId,
+      });
+      if (err instanceof LinqSendError) {
+        noteSendFailed({
+          familyId: args.job.family_id,
+          channel: args.turn.groupChatId ? 'imessage' : 'sms',
+          isGroup: args.job.in_group,
+          chatId: args.turn.groupChatId,
+          reason: err.code,
+        });
+      }
       if (pageThisFailure) {
         // The deferral row carries the class. Page #ops in this request; the
         // five-minute sweep posts it if this call never lands. Never throws,
@@ -2634,6 +2675,22 @@ async function runAgentTurn(
       reason: disposition.reason,
       familyId: args.job.family_id,
     });
+    if (disposition.reply === null) {
+      noteTurnFailed({
+        familyId: args.job.family_id,
+        reason: disposition.reason,
+        chatId: args.turn.groupChatId,
+      });
+    }
+    if (err instanceof LinqSendError) {
+      noteSendFailed({
+        familyId: args.job.family_id,
+        channel: args.turn.groupChatId ? 'imessage' : 'sms',
+        isGroup: args.job.in_group,
+        chatId: args.turn.groupChatId,
+        reason: err.code,
+      });
+    }
     return done(deps, args.job, {
       status: disposition.outcome,
       handler: null,
@@ -3301,6 +3358,35 @@ async function sendReply(
   }
   const voiced = await voiceMemoFor(deps, args);
   if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+    let edit:
+      | {
+          decider: ReturnType<typeof sharedLinqEditDecider>;
+          candidates: Awaited<ReturnType<typeof listEditableLinqSends>>;
+          audience: 'direct' | 'group';
+          conversationId: string;
+        }
+      | undefined;
+    if (linqMessageEditEnabled() && args.conversationId) {
+      try {
+        edit = {
+          decider: sharedLinqEditDecider(),
+          candidates: await listEditableLinqSends(deps.database, {
+            familyId: args.job.family_id,
+            conversationId: args.conversationId,
+            chatId: args.route.chatId,
+            now: deps.now(),
+            inboundAt: new Date(args.job.received_at),
+          }),
+          audience: args.job.in_group === false ? 'direct' : 'group',
+          conversationId: args.conversationId,
+        };
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq edit: candidates unread; the follow-up still goes out',
+        );
+      }
+    }
     try {
       const moment = await considerLinqReply(deps.database, {
         route: args.route,
@@ -3310,6 +3396,7 @@ async function sendReply(
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(edit ? { edit } : {}),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
@@ -3325,11 +3412,15 @@ async function sendReply(
         return moment.channelMessageId;
       }
     } catch (err) {
+      // VIL-479 (Devin BUG_0003): a turn that expired while the edit read ran is over.
+      // It must not edit a bubble, and it must not send the follow-up either.
+      if (isTurnTimeout(err)) throw err;
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
     }
+    assertTurnLive();
   }
   const sent = voiced ?? (await deps.transport.send({ route: args.route, body: args.body }));
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
@@ -3396,12 +3487,28 @@ async function sendReply(
     // The form only, never the words (rule #1): this reply went as a voice memo.
     ...(voiced ? { after: { form: 'voice_memo' } } : {}),
   });
+  noteMessage({
+    direction: 'out',
+    familyId: args.job.family_id,
+    channel: carriedBy,
+    isGroup: args.job.in_group,
+    chatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
+    mediaKind: voiced ? 'audio' : 'none',
+    latencyMs: Math.max(0, deps.now().getTime() - new Date(args.job.received_at).getTime()),
+    database: deps.database,
+  });
 
   if (args.conversationId) {
     await appendMessage(args.conversationId, 'assistant', args.body, deps.database, {
       childId: null,
       topic: null,
       source: args.threadSource ?? null,
+      ...(!voiced &&
+      linqMessageEditEnabled() &&
+      args.route.channel === 'imessage' &&
+      sent.providerMessageId
+        ? { providerMessageId: sent.providerMessageId }
+        : {}),
     });
   }
 
@@ -3423,6 +3530,7 @@ async function voiceMemoFor(
     body: string;
     job: ChannelMessageReceivedJob;
     voiceMemo?: boolean;
+    templateKey?: string | null;
   },
 ): Promise<ReplySent | null> {
   if (!args.voiceMemo) return null;
@@ -3431,7 +3539,7 @@ async function voiceMemoFor(
     text: args.body,
     modelChoseVoice: true,
     isGroup: args.job.in_group !== false,
-    textOnly: false,
+    textOnly: voiceMemoTextOnly({ templateKey: args.templateKey }),
     chatId: route.channel === 'imessage' ? route.chatId : null,
     address: route.to,
   };

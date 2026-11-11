@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSession, saveSession } from '~/lib/channel/intake/session';
+import {
+  INTAKE_SESSION_LIFETIME_MS,
+  createSession,
+  saveSession,
+} from '~/lib/channel/intake/session';
 import type { CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -39,6 +43,12 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-10-20T15:00:00.000Z');
 const MINUTE = 60_000;
 const DAY = 24 * 60;
+/** First verification on the erased family's channel in these tests. */
+const VERIFIED_MINUTES = 30 * DAY;
+/** A pre-signup session inside the intake lifetime before that verification. */
+const WITHIN_WINDOW_MINUTES = VERIFIED_MINUTES + 12 * 60;
+/** A recycled-number session from before that window. */
+const BEFORE_WINDOW_MINUTES = VERIFIED_MINUTES + INTAKE_SESSION_LIFETIME_MS / MINUTE + 60;
 const PHONE_A = '+15555550101';
 const PHONE_B = '+15555550102';
 const WEBHOOK = 'https://hooks.example.test/ops';
@@ -88,7 +98,7 @@ async function channel(owner: Owner, phone: string, revokedAt: Date | null): Pro
     kind: 'sms',
     phoneE164Encrypted: encryptString(phone),
     phoneE164Hash: phoneBlindIndex(phone),
-    verifiedAt: ago(30 * DAY),
+    verifiedAt: ago(VERIFIED_MINUTES),
     revokedAt,
   });
 }
@@ -129,6 +139,7 @@ async function session(id: string) {
       dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
       phoneEncrypted: schema.smsIntakeSessions.phoneEncrypted,
       familyId: schema.smsIntakeSessions.familyId,
+      becameFamilyId: schema.smsIntakeSessions.becameFamilyId,
       closedAt: schema.smsIntakeSessions.closedAt,
     })
     .from(schema.smsIntakeSessions)
@@ -209,8 +220,8 @@ describe('erasure · the pre-signup intake of the erased parent', () => {
   it("redacts the parent's older pre-signup session in the same sweep, and never the next holder's", async () => {
     const erased = await seedFamily(db.database, 'First Family');
     await channel(erased, PHONE_A, ago(DAY));
-    const presignup = await intake(PHONE_A, 'pm-presignup', ago(40 * DAY), {
-      closedAt: ago(39 * DAY),
+    const presignup = await intake(PHONE_A, 'pm-presignup', ago(WITHIN_WINDOW_MINUTES), {
+      closedAt: ago(WITHIN_WINDOW_MINUTES - 60),
     });
     // The number's next holder, mid-intake after the family let it go.
     const nextHolder = await intake(PHONE_A, 'pm-next-holder', ago(30));
@@ -224,7 +235,7 @@ describe('erasure · the pre-signup intake of the erased parent', () => {
       dataEncrypted: INTAKE_CONTENT_REDACTED,
       phoneEncrypted: INTAKE_CONTENT_REDACTED,
       familyId: null,
-      closedAt: ago(39 * DAY),
+      closedAt: ago(WITHIN_WINDOW_MINUTES - 60),
     });
     // Positive control: the session opened after the family let the number go is not theirs.
     const kept = await session(nextHolder);
@@ -236,7 +247,9 @@ describe('erasure · the pre-signup intake of the erased parent', () => {
   it("takes the crisis claim of a pre-signup text; another family's and the next holder's stay", async () => {
     const erased = await seedFamily(db.database, 'First Family');
     await channel(erased, PHONE_A, ago(DAY));
-    await intake(PHONE_A, 'pm-presignup', ago(40 * DAY), { closedAt: ago(39 * DAY) });
+    await intake(PHONE_A, 'pm-presignup', ago(WITHIN_WINDOW_MINUTES), {
+      closedAt: ago(WITHIN_WINDOW_MINUTES - 60),
+    });
     await crisisMarked('pm-presignup', null);
     await intake(PHONE_A, 'pm-next-holder', ago(30));
     await crisisMarked('pm-next-holder', null);
@@ -256,6 +269,82 @@ describe('erasure · the pre-signup intake of the erased parent', () => {
         keyOf('pm-other'),
       ].sort(),
     );
+  }, 30_000);
+});
+
+describe('erasure · a recycled number is not swept as this family (VIL-649)', () => {
+  it('an older session on the same number, from before the window, is not swept and keeps its crisis marks', async () => {
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, ago(DAY));
+    const previousHolder = await intake(PHONE_A, 'pm-previous', ago(BEFORE_WINDOW_MINUTES), {
+      closedAt: ago(BEFORE_WINDOW_MINUTES - 60),
+    });
+    await crisisMarked('pm-previous', null);
+
+    expect((await erase(erased.familyId)).erased).toBe(1);
+
+    const kept = await session(previousHolder);
+    expect(kept?.dataEncrypted).not.toBe(INTAKE_CONTENT_REDACTED);
+    expect(kept?.phoneEncrypted).not.toBe(INTAKE_CONTENT_REDACTED);
+    expect(await crisisKeys()).toEqual([keyOf('pm-previous'), keyOf('pm-previous')].sort());
+  }, 30_000);
+
+  it("the family's own pre-signup session is still swept", async () => {
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, ago(DAY));
+    const own = await intake(PHONE_A, 'pm-own', ago(WITHIN_WINDOW_MINUTES), {
+      closedAt: ago(WITHIN_WINDOW_MINUTES - 60),
+    });
+    await crisisMarked('pm-own', null);
+
+    expect((await erase(erased.familyId)).erased).toBe(1);
+
+    expect(await session(own)).toMatchObject({
+      dataEncrypted: INTAKE_CONTENT_REDACTED,
+      phoneEncrypted: INTAKE_CONTENT_REDACTED,
+    });
+    expect(await crisisKeys()).toEqual([]);
+  }, 30_000);
+
+  it('the explicit tie wins over the time window', async () => {
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, ago(DAY));
+    const tied = await intake(PHONE_A, 'pm-tied', ago(BEFORE_WINDOW_MINUTES), {
+      closedAt: ago(BEFORE_WINDOW_MINUTES - 60),
+    });
+    await db.database
+      .update(schema.smsIntakeSessions)
+      .set({ becameFamilyId: erased.familyId })
+      .where(eq(schema.smsIntakeSessions.id, tied));
+    await crisisMarked('pm-tied', null);
+
+    expect((await erase(erased.familyId)).erased).toBe(1);
+
+    expect(await session(tied)).toMatchObject({
+      dataEncrypted: INTAKE_CONTENT_REDACTED,
+      phoneEncrypted: INTAKE_CONTENT_REDACTED,
+      becameFamilyId: null,
+    });
+    expect(await crisisKeys()).toEqual([]);
+  }, 30_000);
+
+  it('the signup path records which intake session became the family', async () => {
+    const family = await seedFamily(db.database, 'Signup Family');
+    const opened = await createSession(db.database, {
+      phoneE164: PHONE_A,
+      state: 'awaiting_details',
+      sourceCode: null,
+    });
+    await saveSession(
+      db.database,
+      opened,
+      { familyId: family.familyId, userId: family.parentUserId },
+      NOW,
+    );
+    expect(await session(opened.id)).toMatchObject({
+      familyId: family.familyId,
+      becameFamilyId: family.familyId,
+    });
   }, 30_000);
 });
 
@@ -291,8 +380,10 @@ describe('erasure · an intake session that will not decode', () => {
   it('a fault in the decoder is not counted as undecodable: it stops the sweep, and the cron pages', async () => {
     const erased = await seedFamily(db.database, 'First Family');
     await channel(erased, PHONE_A, ago(DAY));
-    await intake(PHONE_A, 'pm-presignup', ago(40 * DAY), { closedAt: ago(39 * DAY) });
-    await hold(PHONE_A, 'pm-presignup', ago(40 * DAY));
+    await intake(PHONE_A, 'pm-presignup', ago(WITHIN_WINDOW_MINUTES), {
+      closedAt: ago(WITHIN_WINDOW_MINUTES - 60),
+    });
+    await hold(PHONE_A, 'pm-presignup', ago(WITHIN_WINDOW_MINUTES));
     decoder.fault = new TypeError("Cannot read properties of undefined (reading 'flatMap')");
 
     await expect(erase(erased.familyId)).rejects.toThrow(TypeError);

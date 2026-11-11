@@ -1,44 +1,46 @@
 import { signupProviderHost } from '../consent';
-import { registrationAssistedRunEnabled } from './flag';
 
 /**
- * VIL-558 · where Hale carries a plan out end to end. PerfectMind towns come first
- * (Barton's 11-04 decision): Markham and Oakville open Tue Dec 1. A host is added
- * here only once its own registration flow has passed a live check.
+ * VIL-558 · any public https provider host uses the generic Browser Use path
+ * (Barton, 11/11/2026). Host allowlists and per-platform adapters are gone.
+ * PerfectMind / ActiveNet knowledge may be passed to the agent as an optional
+ * hint, never as a requirement.
+ *
+ * These lists are empty on purpose: they used to gate Markham, Oakville and
+ * ActiveNet. Callers that still pass `autoHosts` are ignored.
  */
-export const PLAN_AUTO_HOSTS: readonly string[] = [
-  'cityofmarkham.perfectmind.com',
-  'townofoakville.perfectmind.com',
-];
+export const PLAN_AUTO_HOSTS: readonly string[] = [];
+
+/** @deprecated Assisted host gating is gone. The assisted engine remains for a later speed-tuned path. */
+export const PLAN_ASSISTED_HOSTS: readonly string[] = [];
 
 /**
- * VIL-558 step 6 · ActiveNet (Canada and US), where Hale prepares the registration and the
- * parent submits it. Every ActiveNet portal runs reCAPTCHA on sign-in and add-to-cart, and
- * ACTIVE's terms bar automation around it without ACTIVE's written consent, so Hale never
- * signs in, adds to the cart, submits or pays there: it fills, then hands over the browser.
- */
-export const PLAN_ASSISTED_HOSTS: readonly string[] = [
-  'anc.ca.apm.activecommunities.com',
-  'apm.activecommunities.com',
-];
-
-/**
- * `auto`: Hale registers and pays at the open. `assisted`: Hale fills at the open and the
- * parent submits and pays. `parent`: no plan; the parent registers.
+ * `auto`: Hale's generic Browser Use agent carries the plan. `assisted`: fill
+ * and hand the live browser to the parent (never selected by host). `parent`:
+ * no host, so no plan.
  */
 export type PlanMode = 'auto' | 'assisted' | 'parent';
 
 export function planModeFor(
   hostname: string,
-  autoHosts: readonly string[] = PLAN_AUTO_HOSTS,
+  _autoHosts: readonly string[] = PLAN_AUTO_HOSTS,
 ): PlanMode {
-  const host = signupProviderHost(hostname);
-  if (autoHosts.includes(host)) return 'auto';
-  if (registrationAssistedRunEnabled() && PLAN_ASSISTED_HOSTS.includes(host)) return 'assisted';
-  return 'parent';
+  return signupProviderHost(hostname).trim() ? 'auto' : 'parent';
 }
 
-/** How a plan's texts describe it. A town whose switch went off since is told as assisted. */
+/** How a plan's texts describe it. Every valid host is the generic auto path. */
 export function planReplyMode(registrationUrl: string): 'auto' | 'assisted' {
   return planModeFor(new URL(registrationUrl).hostname) === 'auto' ? 'auto' : 'assisted';
+}
+
+/** Optional hint only — never a gate. The generic agent may read this. */
+export function providerHint(hostname: string): string | null {
+  const host = signupProviderHost(hostname);
+  if (host.endsWith('.perfectmind.com')) return 'perfectmind';
+  if (host === 'anc.ca.apm.activecommunities.com' || host === 'apm.activecommunities.com') {
+    return 'activenet';
+  }
+  if (host.includes('jackrabbit')) return 'jackrabbit';
+  if (host.includes('uplifter')) return 'uplifter';
+  return null;
 }

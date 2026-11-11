@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says Hale will register and pay with the saved card, which is wrong in assisted mode where the parent pays and submits; it also asks for a max and sessions order together (two asks), and invents a 'two places in line' claim not in facts.",
+    "score": 1
+  }
+}

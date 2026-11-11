@@ -335,8 +335,8 @@ export interface FakeDb {
  * It does NOT evaluate `where` clauses — it returns the whole table and lets the code
  * under test apply its own post-checks (which the real lookups already do as defense in
  * depth). Four tables are the exception, because their predicate is the bound:
- * sms_intake_sessions (the open session on this number), parent_channels, audit_log,
- * and children. Those SELECTs honor where, orderBy, and limit. Returning another
+ * sms_intake_sessions (the open session on this number), parent_channels, users
+ * (an intake user is keyed on its number), audit_log, and children. Those SELECTs honor where, orderBy, and limit. Returning another
  * family's rows would hide an unbounded read. A session reader has no post-check:
  * the question is which row, and the where clause is the only thing that answers it.
  */
@@ -457,6 +457,7 @@ export function makeFakeDb(): FakeDb {
   const selectsAreScoped = (table: unknown): boolean =>
     table === schema.smsIntakeSessions ||
     table === schema.parentChannels ||
+    table === schema.users ||
     table === schema.auditLog ||
     table === schema.children;
 
@@ -485,6 +486,9 @@ export function makeFakeDb(): FakeDb {
    *      co-parent's link), each one guards it by a check of its own, and a fake that
    *      accepted the second row would let a routing bug read as "two rows, both fine"
    *      here while 500-ing the webhook in production and handing the carrier a retry.
+   *   4b. parent_channels(user_id, kind) WHERE revoked_at IS NULL — one active SMS
+   *      channel per parent (VIL-532). Intake that retried after writing the first
+   *      row 500'd on this index; the fake must raise the same violation.
    *
    * Faithful in BOTH directions: a conflicting insert that declared
    * `onConflictDoNothing` resolves to no rows, and one that did NOT raises the unique
@@ -509,6 +513,19 @@ export function makeFakeDb(): FakeDb {
       existing.some((row) => row.dedupeKey === value.dedupeKey)
     ) {
       return 'channel_messages_dedupe_key_uniq';
+    }
+    if (
+      table === schema.parentChannels &&
+      (value.revokedAt === null || value.revokedAt === undefined) &&
+      typeof value.userId === 'string' &&
+      existing.some(
+        (row) =>
+          row.userId === value.userId &&
+          row.kind === (value.kind ?? 'sms') &&
+          (row.revokedAt === null || row.revokedAt === undefined),
+      )
+    ) {
+      return 'parent_channels_user_kind_active_idx';
     }
     if (
       table === schema.parentChannels &&

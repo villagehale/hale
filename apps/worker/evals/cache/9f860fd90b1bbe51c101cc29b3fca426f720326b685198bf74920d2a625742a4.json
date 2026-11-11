@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately reports sold_out with both sessions full, no registration and no charge, consistent with run.confirmed false. It does not hint a spot may open or promise retries. Minor issue: it says 'the registration page follows' is only in watchFor, not text, which is fine. Wording is plain, one message, English, no links, no invented facts; scores high.",
+    "score": 5
+  }
+}

@@ -34,17 +34,20 @@ import {
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
 /**
- * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
- * live path here is tested as it will run then; `routing.complete = false` is today's
- * table, where a requested live runs as shadow.
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING).
+ * `routing.complete = false` is a table that still has an unrouted class, where a
+ * requested live runs as shadow.
  */
 const routing = vi.hoisted(() => ({ complete: true }));
 vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
   return {
     ...actual,
-    proactiveCadence: () =>
-      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+    proactiveCadence: () => {
+      const requested = actual.requestedCadence();
+      if (!routing.complete && requested === 'live') return 'shadow';
+      return requested;
+    },
   };
 });
 
@@ -2870,5 +2873,29 @@ describe('classes the decider sends for their own sweeps', () => {
     const [sent] = await audits('co_parent_departure_notice_sent');
     expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
     expect(await audits('proactive_cadence_sent')).toEqual([]);
+  });
+
+  it('sends a queued email-alert CTA verbatim, without the writer', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const cta = 'Swim Level 2 is Thursday at 4. Want me to add it to your week?';
+    const id = await enqueue('email_alert:conn:msg-1', {
+      kind: 'email_alert',
+      category: 'email_alert',
+      templateKey: 'connector:email_alert',
+      what: cta,
+      why: 'email_alert',
+      sourceUrl: null,
+      payload: { auditVerb: 'email_alert_sent' },
+    });
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'live', sent: 1 });
+    expect(h.composed).toBe(0);
+    expect(h.transport.bodies()).toEqual([cta]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [sent] = await audits('email_alert_sent');
+    expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
   });
 });

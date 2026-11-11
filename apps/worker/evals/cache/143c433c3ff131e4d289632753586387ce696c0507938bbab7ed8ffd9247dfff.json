@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada's spot is held and that the parent is booked, which contradicts run.confirmed being false; the cart only holds a spot if the parent finishes, and the text also omits the browser/9-minute context and uses 'held' wrongly.",
+    "score": 1
+  }
+}

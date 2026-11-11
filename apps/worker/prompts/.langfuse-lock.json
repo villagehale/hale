@@ -169,6 +169,16 @@
     "version": null,
     "sha256": "b1457d0a4fe5b63f2bcc0519a156ed6b5cfc08bc29b91ad80ccc4632fe80bfff"
   },
+  "judges/group-plan-rsvp-calendar-read": {
+    "name": "judges/group-plan-rsvp-calendar-read",
+    "version": null,
+    "sha256": "2eb03a45d0ae30711dae7ef2650f2276a40b4f6bd04a8c06a52562db11a3377f"
+  },
+  "judges/group-plan-rsvp-calendar-voice": {
+    "name": "judges/group-plan-rsvp-calendar-voice",
+    "version": null,
+    "sha256": "04cab4419f96665b5293ca43458e82a9c3e08d5958ce1fc26e2e4b6525110497"
+  },
   "judges/group-plan-rsvp-read": {
     "name": "judges/group-plan-rsvp-read",
     "version": 2,
@@ -248,6 +258,11 @@
     "name": "judges/kid-relevance",
     "version": null,
     "sha256": "56ea5732dc885267a97abf0af90f43e1f5683935c99138bb6b7ebf66c78962cc"
+  },
+  "judges/linq-edit": {
+    "name": "judges/linq-edit",
+    "version": null,
+    "sha256": "0979ef98474ff9236d06afdea2ec2416a01007d74d046818d62cfd192b1a51bb"
   },
   "judges/linq-sticker": {
     "name": "judges/linq-sticker",
@@ -352,7 +367,7 @@
   "judges/signup-plan-reply": {
     "name": "judges/signup-plan-reply",
     "version": null,
-    "sha256": "974bedbe39392a04aa42f0454a398b1972157839e7211e221a5efd1fbba97b25"
+    "sha256": "1f3df67267abb90c71687b7f47b44cefc02751d597e86e66cdfab63f1c13d112"
   },
   "judges/spot-open-voice": {
     "name": "judges/spot-open-voice",

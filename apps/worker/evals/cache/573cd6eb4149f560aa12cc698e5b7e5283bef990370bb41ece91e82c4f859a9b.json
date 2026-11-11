@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately says Hale is not registering due to the max price refusal, gives the correct open time, does not claim a spot, and notes the link follows without writing one; single ask-free message, plain English, friendly tone. Minor issue: it says the maximum is 'outside what I'm allowed to pay' without naming a limit, which is consistent with facts since maxPriceCents is null, so no invented figures.",
+    "score": 5
+  }
+}

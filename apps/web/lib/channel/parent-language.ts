@@ -181,6 +181,7 @@ export async function observeParentLanguage(
         familyId: input.familyId,
         actor: input.parentUserId,
         actionTaken: 'parent_language_changed',
+        audience: input.parentUserId,
         targetTable: 'users',
         targetId: input.parentUserId,
         before: { language: step.from },

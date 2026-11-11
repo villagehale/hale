@@ -1,4 +1,5 @@
 import { type AgentClient, pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -34,7 +35,7 @@ export const HOLDING_LINE_ENABLED_ENV = 'HOLDING_LINE_ENABLED';
  * the literal 'true': a piped `vercel env add` stores 'true\n', which must stay off.
  */
 export function holdingLineEnabled(): boolean {
-  return process.env[HOLDING_LINE_ENABLED_ENV] === 'true';
+  return isEnabled('holding-line');
 }
 
 /** Two attempts. The line only matters while the answer is still coming; a third try

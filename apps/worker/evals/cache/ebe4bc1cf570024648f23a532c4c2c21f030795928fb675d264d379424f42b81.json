@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgriVc6CyFfcGmCUX8Knt",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjAkKEAgTGAI4AUIIdGhpbmtpbmcSDIefmQ46uplOh66bwBoMmsTmJJhnFM2PCfQZIjCA26lwLQGwWEbsJnM7+fQnlpiPxU1+K+EBNmmkTPtY32cx/O28bCMQ/9LxEZfv+8kqqQimqcOevCwIewtUbtKPLWg7w2EUcsbqz1At0G1PD4guz6dvI5PTiBTilid9R40IrQnYjQrfndr1OFiVwoBrHO+QK+CDtmfFmNYQopZDeghTKcdJYayVJ4P2AR/jehlIS/yBhg5o9dWdnQAuYjym/UozRaF1maRJGdd4OJ3bTJjI2ch1G5c5ncHvOnp6t5brbX2aoAYnbYtIf1kAQwn5FXE3zsuYugZlXtyAoRxxmiUG1aIUlJzNgjqs3UdEQwJnuBTpr+sfmAJ73T58Ug4qGD9X2YxiqCXsswoe1zHn0lWdTjWD/4rL5tcBH7X3Ee3ydm/96g2HGhKo4SlRa2yIsmWf1JOKVnjrBzEmuqroS7MzF20T4ufkcneDqFPVhGyBJ5I8LfgxQ/uRZUbQm6T3PpsHMQ9dorq2K/jXFxlaI9X2tH13wwEgVS4ialTutnuMQbPiHgkVHlbsaqzzap7Kk8mkEliq+Khu64YeBvNccEzk4BuUWrboSskdX2Yh5vyyQJB0H/XJJ6RTq7/WmzvCSvNGhpuRxnNlh/nTCdVRmP/Kw+hT2xnynMZRK0VRd2UMLdYiAe12SKghQ1PExoeRhdzgU2xj79QCGG5QmVOqVMS5p95nrvfLG4ScX8QtlT8J6G5dFzUSyzu3UaCEUunuv0gecuyeWQqfV5LHIxgt+kLAPDr3Uj0fy3CN0QMZLs9l8gZ3JEHFh3xq1H+8+DFx7Of1BT5rkj7W6lG87D5VAb4LTNfoPl6miAGzVIiU3aES0cSKfZAfxE6H4k+dGAdhRnKREV8Xf7WfpbjsELX+ghGCTJpLat7YSTbO6WwVCbhDzOQkLHCF0SmOeOS9A5nG04+45x49FYTaAQ2zHwPwmjjQZJHXzoeutf2d2bn7syOh7st5byS4+1t7Wg36Iqln84yvYFDRIlPSZ+/WFy2Xe+T1xDNedFtyXlsQu94ooFx6GiukPeJnQFNYE/aS9hJfcethJkCIa3mDs9+j1qUAf5wNot2Xfs8nhFsbfxytMXTX9lDhT701VsF5A/PdW7r0ThkcjTWO6CENsyFWOXzoA0gMyAhTSRhrWL8DNIUJx4YGHo+9EW0F5IX/vgCf7JKePBZkFdx9Q/DfCOozC9Sh9CUSHS6nQy9RLlQ4HRKP1Xa9STwViZXu/ttBNfptYiL/dgnr1ARlpX90AE/MwSRu01sSW3NKibXNQOeISE4XIVKm9A042WYz9lEVCChiNGqkT5wOLqqZu7dIVo43THk/HUZRu0+luc2BQxLhaTau2u0pX1Uv0N0KYLy+ChIKHqdERXtartCZN8xiKn+X7QT4hKbe9muAXCxNIzoEDxpEpQ+R0+QdTMcwz4/Ue2cuTDd48g29wInlE3lQU8e5ddipxxBi48gCsNNgX2+RE3eTF6oGGAFm3LVeLwDSoLMYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Indoor open play gym at Riverbend Community Centre runs Saturdays 9 to noon, $6 per child, and it fits your 2-year-old, per their program page. [link-187000] It's a nice dry 22 today, so the Toddler nature walk (outdoor trail) is also an option. It's free and starts Saturdays at 10, so it's probably already underway, per Cedar Park Conservancy's events page. [link-0b6114] Neither has been checked by me, so those are their sites' words."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 301,
+      "cache_read_input_tokens": 21088,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 301,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 344,
+      "output_tokens_details": {
+        "thinking_tokens": 178
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
