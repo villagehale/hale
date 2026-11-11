@@ -96,7 +96,10 @@ describe('untrustedSourceFor', () => {
   it('maps the inbound origin, not by matching words in the content', () => {
     expect(untrustedSourceFor('gmail')).toBe('email');
     expect(untrustedSourceFor('gcal')).toBe('calendar');
+    expect(untrustedSourceFor('family_event_invite')).toBe('calendar');
+    expect(untrustedSourceFor('calendar_conflict_detected')).toBe('calendar');
     expect(untrustedSourceFor('pdf')).toBe('web');
     expect(untrustedSourceFor('sms')).toBe('email');
+    expect(untrustedSourceFor('school_communication')).toBe('email');
   });
 });

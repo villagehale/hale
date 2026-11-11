@@ -118,15 +118,16 @@ async function estimate() {
   if (!price) throw new Error(`no list price for ${lane.model}`);
   let usd = 0;
   for (const fixture of FRIEND_MARKS_FIXTURES) {
+    const turn = inputFor(voice, fixture);
     const input =
       estimateTokens((fixture.prompt === 'short' ? shortSkill : skill).instructions) +
-      estimateTokens(JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture)))) +
-      estimateTokens(voice.onboardingReplyToolSchema(inputFor(voice, fixture)));
+      estimateTokens(JSON.stringify(voice.friendVoiceContext(turn))) +
+      estimateTokens(voice.onboardingReplyToolSchema(turn));
     // A turn graded through code may draw its one rewrite too.
     const draws = fixture.throughCode ? 2 : 1;
     usd +=
       draws *
-      ((input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output);
+      ((input / 1e6) * price.input + (voice.onboardingReplyMaxTokens(turn) / 1e6) * price.output);
     if (fixture.watchFor) {
       const judgePrice = PRICE[await readJudgeModel(PLACE_JUDGE_TIER)];
       if (!judgePrice) throw new Error('no list price for the judge model');
@@ -183,7 +184,7 @@ async function record() {
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
       toolSchema: voice.onboardingReplyToolSchema(turn),
-      maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
+      maxTokens: voice.onboardingReplyMaxTokens(turn),
       cachedOnly,
       getClient,
       cost,
@@ -250,7 +251,11 @@ async function record() {
       : 0;
     // A reply code would send: the same judge speakFriend runs, for this step.
     const judged = fixture.sendable
-      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+      ? voice.judgeFriendReply(
+          String(result.value?.reply ?? ''),
+          input,
+          voice.leftoverJudgeOptions(result.value),
+        )
       : null;
     const context = voice.friendVoiceContext(input);
     const meaning = fixture.watchFor

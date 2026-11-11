@@ -32,8 +32,17 @@ import {
  * Claude in `apps/worker/evals/run-coach-channel-eval.mjs`.
  */
 
-function promptOf(args: RunAgentArgs): string {
+function promptOf(args: RunAgentArgs | undefined): string {
+  if (!args) return '';
   return [args.skill.instructions, ...(args.systemExtras ?? [])].join('\n\n');
+}
+
+/** Skill add-ons ride in extras after the cache breakpoint; concatenated text is unchanged. */
+function expectAddendumAfterBreakpoint(args: RunAgentArgs | undefined, addendum: string) {
+  expect(args).toBeDefined();
+  expect(args?.skill.instructions).not.toContain(addendum);
+  expect(args?.systemExtras?.join('\n\n') ?? '').toContain(addendum);
+  expect(promptOf(args)).toContain(addendum);
 }
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
@@ -198,6 +207,7 @@ describe('channelCoachRuntime', () => {
     expect(pending?.context).toMatchObject({ householdGroup: 'pending' });
     expect(pending?.instructions.endsWith(`\n\n${group}`)).toBe(true);
     expect(pending?.prefix).not.toContain(group);
+    expect(pending?.prefix).toBe(SKILL.instructions);
     const none = await run();
     expect(none?.context).not.toHaveProperty('householdGroup');
     expect(none?.instructions).not.toContain(group);
@@ -207,27 +217,29 @@ describe('channelCoachRuntime', () => {
     const addendum = (await loadCronSkill('coach-fact-source')).instructions;
     const fact = { childId: null, factType: 'routine', factKey: 'soccer_day', factValue: 'Thu' };
     const sourced = { ...fact, seenIn: { email: { from: 'Northside Rec', on: '2026-10-03' } } };
-    const run = async (seen: boolean, audience: ChannelTurn['audience']) => {
-      const calls: string[] = [];
+    const run = async (seenFact: boolean, audience: ChannelTurn['audience']) => {
+      let seen: RunAgentArgs | undefined;
       const p = ports({
         loadContext: async (input) =>
           ({
             question: input.question,
             transcript: input.transcript,
-            memoryFacts: [seen ? sourced : fact],
+            memoryFacts: [seenFact ? sourced : fact],
             location: { city: null, province: null, country: 'Canada' },
           }) as never,
         runAgent: async (args) => {
-          calls.push(promptOf(args));
+          seen = args;
           return answering('ok.')(args);
         },
       });
       await channelCoachRuntime(p).respond({ ...turn(), audience }, []);
-      return calls[0] ?? '';
+      return seen;
     };
-    expect((await run(true, 'direct')).endsWith(`\n\n${addendum}`)).toBe(true);
-    expect(await run(false, 'direct')).not.toContain(addendum);
-    expect(await run(true, 'group')).not.toContain(addendum);
+    const lit = await run(true, 'direct');
+    expectAddendumAfterBreakpoint(lit, addendum);
+    expect(promptOf(lit).endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(promptOf(await run(false, 'direct'))).not.toContain(addendum);
+    expect(promptOf(await run(true, 'group'))).not.toContain(addendum);
   });
 
   it('asks for the context as the parent who texted (VIL-429)', async () => {
@@ -268,11 +280,11 @@ describe('channelCoachRuntime', () => {
 
   it('hands the loop the family-local day and forecast as facts, with their skill (VIL-435)', async () => {
     const addendum = (await loadCronSkill('coach-local-day')).instructions;
-    const seen: { context: Record<string, unknown>; instructions: string }[] = [];
+    const seen: { context: Record<string, unknown>; args: RunAgentArgs }[] = [];
     const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
       seen.push({
         context: args.context as Record<string, unknown>,
-        instructions: promptOf(args),
+        args,
       });
       return answering('ok.')(args);
     };
@@ -296,7 +308,8 @@ describe('channelCoachRuntime', () => {
       timeZone: 'America/Toronto',
     });
     expect(seen[0]?.context.forecast).toEqual([{ ...rainy, weekday: 'Monday' }]);
-    expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+    expectAddendumAfterBreakpoint(seen[0]?.args, addendum);
+    expect(promptOf(seen[0]?.args).endsWith(`\n\n${addendum}`)).toBe(true);
   });
 
   it('leaves the day facts and their skill out when neither is known', async () => {
@@ -377,7 +390,7 @@ describe('channelCoachRuntime', () => {
         seen.push({
           context: args.context as Record<string, unknown>,
           attachments: args.attachments as unknown[],
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         return answering('ok.')(args);
       },
@@ -432,7 +445,7 @@ describe('channelCoachRuntime', () => {
 
     expect(seen[0]?.arrivedContacts).toEqual([{ name: 'Ada', phones: [] }]);
     expect(seen[0]?.arrivedContactsTruncated).toBe(true);
-    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]).not.toHaveProperty('photoFacts');
   });
 
   it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {
@@ -452,12 +465,12 @@ describe('channelCoachRuntime', () => {
   });
 
   it('offers the shared-list verbs only on a group turn with GROUP_SHARED_LISTS_ENABLED on (VIL-447)', async () => {
-    const seen: Array<{ tools: string[]; instructions: string }> = [];
+    const seen: Array<{ tools: string[]; args: RunAgentArgs }> = [];
     const p = ports({
       runAgent: async (args) => {
         seen.push({
           tools: [...args.skill.meta.tools],
-          instructions: promptOf(args),
+          args,
         });
         return answering('ok.')(args);
       },
@@ -480,18 +493,19 @@ describe('channelCoachRuntime', () => {
     }
     // A 1:1 turn adds only the VIL-303 decline verb, which rides while a capability is dark.
     expect(seen[2]?.tools).toEqual([...SKILL.meta.tools, 'note_capability_declined']);
-    // Tone is the disk skill, appended only when the list verbs are offered.
-    expect(seen[0]?.instructions).not.toContain(tone.instructions);
-    expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
-    expect(seen[2]?.instructions).not.toContain(tone.instructions);
+    // Tone is the disk skill, after the breakpoint only when the list verbs are offered.
+    expect(promptOf(seen[0]?.args)).not.toContain(tone.instructions);
+    expectAddendumAfterBreakpoint(seen[1]?.args, tone.instructions);
+    expect(promptOf(seen[1]?.args).endsWith(`\n\n${tone.instructions}`)).toBe(true);
+    expect(promptOf(seen[2]?.args)).not.toContain(tone.instructions);
   });
 
   it('appends the age-fit correction skill only on a 1:1 turn with AGE_FIT_CORRECTION_ENABLED on (VIL-568)', async () => {
     const addendum = (await loadCronSkill('age-fit-correction')).instructions;
-    const seen: string[] = [];
+    const seen: RunAgentArgs[] = [];
     const p = ports({
       runAgent: async (args) => {
-        seen.push(args.skill.instructions);
+        seen.push(args);
         return answering('ok.')(args);
       },
     });
@@ -504,17 +518,18 @@ describe('channelCoachRuntime', () => {
     } finally {
       vi.unstubAllEnvs();
     }
-    expect(seen[0]).not.toContain(addendum);
-    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
-    expect(seen[2]).not.toContain(addendum);
+    expect(promptOf(seen[0])).not.toContain(addendum);
+    expectAddendumAfterBreakpoint(seen[1], addendum);
+    expect(promptOf(seen[1]).endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(promptOf(seen[2])).not.toContain(addendum);
   });
 
   it('appends the no-group-relay skill only on a 1:1 turn with GROUP_1TO1_NO_GROUP_RELAY_ENABLED on (VIL-577)', async () => {
     const addendum = (await loadCronSkill('coach-no-group-relay')).instructions;
-    const seen: string[] = [];
+    const seen: RunAgentArgs[] = [];
     const p = ports({
       runAgent: async (args) => {
-        seen.push(args.skill.instructions);
+        seen.push(args);
         return answering('ok.')(args);
       },
     });
@@ -527,9 +542,10 @@ describe('channelCoachRuntime', () => {
     } finally {
       vi.unstubAllEnvs();
     }
-    expect(seen[0]).not.toContain(addendum);
-    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
-    expect(seen[2]).not.toContain(addendum);
+    expect(promptOf(seen[0])).not.toContain(addendum);
+    expectAddendumAfterBreakpoint(seen[1], addendum);
+    expect(promptOf(seen[1]).endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(promptOf(seen[2])).not.toContain(addendum);
   });
 
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
@@ -1296,6 +1312,7 @@ describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
       context: Record<string, unknown>;
       instructions: string;
       attachments?: unknown[];
+      args: RunAgentArgs;
     }> = [];
     const p = photoPorts({
       photoFactsEnabled: () => true,
@@ -1307,14 +1324,16 @@ describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
       runAgent: async (args) => {
         seen.push({
           context: args.context as Record<string, unknown>,
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
           attachments: args.attachments as unknown[],
+          args,
         });
         return answering('Fall swim is Tuesdays.')(args);
       },
     });
     await channelCoachRuntime(p).respond(photoTurn(), []);
     expect(seen[0]?.context.photoFacts).toEqual(FLYER);
+    expectAddendumAfterBreakpoint(seen[0]?.args, addendum);
     expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
     expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
     expect(toolsTurns[0]?.photoFacts).toEqual(FLYER);
@@ -1881,7 +1900,7 @@ describe('the day a find is for (VIL-567)', () => {
         { role: 'user' as const, content: 'find me something to do' },
       ],
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Family skate at the arena, today at 1.')(args);
       },
     });
@@ -1901,7 +1920,7 @@ describe('the day a find is for (VIL-567)', () => {
         read: async () => ({ read: true as const, body: 'unused', truncated: false }),
       },
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Family skate at the arena, today at 1.')(args);
       },
     });
@@ -1920,7 +1939,7 @@ describe('the day a find is for (VIL-567)', () => {
     let instructions = '';
     const p = ports({
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Swim moved.')(args);
       },
     });
@@ -1938,7 +1957,7 @@ describe('the day a find is for (VIL-567)', () => {
       },
       judgeFindReply: send,
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('Patinoire familiale à 13h.')(args);
       },
     });
@@ -1972,8 +1991,13 @@ describe('deferred capabilities', () => {
       call?: { tool: string; capability: string }[];
     } = {},
   ) {
-    const seen: { tools: string[]; listed: string[]; context: unknown; instructions: string }[] =
-      [];
+    const seen: {
+      tools: string[];
+      listed: string[];
+      context: unknown;
+      instructions: string;
+      args: RunAgentArgs;
+    }[] = [];
     const p = ports({
       ...(options.owed ? { loadOwedCorrections: async () => options.owed ?? [] } : {}),
       runAgent: async (args) => {
@@ -1982,6 +2006,7 @@ describe('deferred capabilities', () => {
           listed: args.skill.meta.tools,
           context: args.context,
           instructions: promptOf(args),
+          args,
         });
         for (const call of options.call ?? []) {
           const tool = args.tools.find((t) => t.name === call.tool);
@@ -2046,6 +2071,7 @@ describe('deferred capabilities', () => {
     });
 
     expect(seen?.context).toEqual(expect.objectContaining({ capabilityCorrections: owed }));
+    expectAddendumAfterBreakpoint(seen?.args, addendum);
     expect(seen?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
     expect(seen?.listed).toContain('note_capability_correction');
     expect(result.capabilityNotes).toEqual({ declined: [], corrected: ['sign_up'] });

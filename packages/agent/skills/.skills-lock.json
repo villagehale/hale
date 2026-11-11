@@ -113,7 +113,7 @@
   },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
-    "sha256": "a8ae2e1144b89222884054cad344c3e56e0880820778da60450e72bb4a223cd1"
+    "sha256": "acf8143664006b5907d2375cc423960db69d486a7144c1b6d40104cb7e677eeb"
   },
   "coach-channel-shorten.md": {
     "file": "coach-channel-shorten.md",
@@ -193,7 +193,7 @@
   },
   "draft-action.md": {
     "file": "draft-action.md",
-    "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
+    "sha256": "c474fab5d4a91fd3b73965c446cbceadd99d6a2661d27f6fe409886da9b5a80d"
   },
   "duty-night-check.md": {
     "file": "duty-night-check.md",
@@ -373,7 +373,7 @@
   },
   "household-group.md": {
     "file": "household-group.md",
-    "sha256": "49051843ca92f7a51cd97d63b14414217ac7f2c83e87c8e7789332deaa048410"
+    "sha256": "e822f44ae23c84e6dbf1d5432a582b6807f76152b63258c17a6bf609d78b6882"
   },
   "identity-ask.md": {
     "file": "identity-ask.md",
@@ -473,19 +473,19 @@
   },
   "onboarding-friend-leftover-marks.md": {
     "file": "onboarding-friend-leftover-marks.md",
-    "sha256": "ad75a408e295ff03b8951a37243c610e0754c9c4b1f055a3cfb7cdcb786e62f9"
+    "sha256": "0caafed95c90e9aa15b2a91edf309183e8e4e52eafc733fc9e12306ff1694ff9"
   },
   "onboarding-friend-place.md": {
     "file": "onboarding-friend-place.md",
-    "sha256": "0c6c8ff7577e971b6d67ec5f8cf152367e25e108e1c3c4ff6a2a4835f2df1410"
+    "sha256": "89fc59454d7fc90f8a0dced6828f48be03567f6199518b763614e3b3e38fce37"
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "d6a31bf9b3d075bdc6a1603222574e86f3c7212f1b81f5eb2b4e29cf205eed6f"
+    "sha256": "bc4c94dcdb61995f545e495b8b39f05b28feeb4595c45added14adfb1f191ab6"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "3d92e04ea8945a899225e6185a2c17654f764ad6fe46d7149bf45048d1e28961"
+    "sha256": "7d120960e043c508ae64688f4bedeff5ed175797f32b023cb431a2c620bdd9a6"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
@@ -561,7 +561,7 @@
   },
   "registration-note.md": {
     "file": "registration-note.md",
-    "sha256": "6705555a4a7117a19c098f3fcd87625bbbc6f875a21d3b702ba8147835a9397a"
+    "sha256": "ef7d1f7ed8b310b5015627de5f5fa1a600a3cbc475d1270130e22495e308b31b"
   },
   "registration-reminder.md": {
     "file": "registration-reminder.md",

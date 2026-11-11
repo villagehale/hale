@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { SPARSE_CACHE_TTL, markUntrustedTree, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, markUntrustedTree, pickLane, untrustedSourceFor } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { loadDraftActionSkill } from './skill';
@@ -53,7 +53,7 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
     action_type: input.actionType,
     event: {
       ...input.event,
-      payload: markUntrustedTree('email', input.event.payload),
+      payload: markUntrustedTree(untrustedSourceFor(input.event.eventType), input.event.payload),
     },
     memory_slice: input.memorySlice ?? null,
   });

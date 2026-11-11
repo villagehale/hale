@@ -1,4 +1,10 @@
-import { SPARSE_CACHE_TTL, forceToolJson, markUntrustedTree, pickLane } from '@hale/agent';
+import {
+  SPARSE_CACHE_TTL,
+  forceToolJson,
+  markUntrustedTree,
+  pickLane,
+  untrustedSourceFor,
+} from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { anthropicClient } from '../anthropic/client.js';
@@ -59,7 +65,10 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
     action_type: input.actionType,
     event: {
       ...input.event,
-      payload: markUntrustedTree('email', input.event.payload) as Record<string, unknown>,
+      payload: markUntrustedTree(
+        untrustedSourceFor(input.event.eventType),
+        input.event.payload,
+      ) as Record<string, unknown>,
     },
     memory_slice: input.memorySlice ?? null,
     voice_profile: input.voiceProfile ?? null,

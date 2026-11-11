@@ -12,6 +12,7 @@ import {
   type FriendComposed,
   type FriendVoiceComposer,
   type FriendVoiceInput,
+  askInWords,
   assembleFriendBody,
   createFriendVoiceComposer,
   friendVoiceContext,
@@ -19,11 +20,12 @@ import {
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
+  leftoverJudgeOptions,
   nameAskVoiceInput,
   onboardingReplyMaxTokens,
   onboardingReplyToolSchema,
-  parseReplyTool,
   parentReading,
+  parseReplyTool,
   readGroupLeads,
   speakFriend,
   tidyProse,
@@ -83,6 +85,8 @@ describe('friend voice brief', () => {
     const pending = await friendVoiceSystem({ step: 'ack', householdGroup: 'pending' }, false);
     expect(pending.extras).toEqual([group]);
     expect(pending.skill.instructions).toBe(base);
+    expect(group).toContain('unclaimed');
+    expect(group).toContain('The other parent is not set up');
   });
 
   it("hands a stored language tag only to Hale's own messages; beside their words it is left out (VIL-538)", () => {
@@ -485,6 +489,9 @@ describe('onboarding friend fixtures', () => {
     expect(short.instructions).toContain('nameDeclined` stays false');
     expect(short.instructions).toContain('asks what to call them');
     expect(short.instructions).not.toContain("I'll call you");
+    expect(short.instructions).toContain('below, not null');
+    expect(short.instructions).toContain('no tool markup');
+    expect(short.instructions).toContain('three postal characters');
     expect(short.meta.task).toBe('speak');
   });
 
@@ -2408,6 +2415,8 @@ describe('a declined place, closed in code', () => {
     const email = onboardingReplyToolSchema(blank({ step: 'email' }));
     expect(email.properties).not.toHaveProperty('placeAsk');
     expect(email.required).not.toContain('placeAsk');
+    expect(place).toContain('first three characters of a postal code');
+    expect(place).toContain('A town, a city, or a neighbourhood is not that ask');
   });
 
   it('refuses a reply that asks for the place after the second no, and sends the rewrite', async () => {
@@ -2777,6 +2786,29 @@ describe('leftover marks: model fields, not ? or word lists', () => {
     expect(onboardingReplyMaxTokens({ householdGroup: null })).toBe(2000);
   });
 
+  it('the sendable judge reads leftover marks the same way speakFriend does', () => {
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+    expect(leftoverJudgeOptions({ asksCount: 1, asksName: false })).toEqual({
+      asksCount: 1,
+      asksName: false,
+      speaksAsParent: false,
+    });
+    const place = blank({ step: 'place', parentWords: 'no thanks' });
+    expect(
+      judgeFriendReply(
+        'Just the first three of your postal code?',
+        place,
+        leftoverJudgeOptions({ asksCount: 1 }),
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it('briefs a place retry as one coarse-code ask, never a town', () => {
+    expect(askInWords('place')).toMatch(/coarse code/);
+    expect(askInWords('place')).toMatch(/town/);
+    expect(askInWords('place', { coarseCodeAsked: true })).toMatch(/placeDeclined/);
+  });
+
   it('the judge counts questions from asksCount, not from a mark', () => {
     vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
     const place = blank({ step: 'place', parentWords: 'hi' });
@@ -2878,5 +2910,8 @@ describe('leftover marks: model fields, not ? or word lists', () => {
         'parentLoneName',
       ]),
     );
+    expect(leftover).toContain('first no');
+    expect(leftover).toContain('joinPointer');
+    expect(leftover).toContain('no tool-call markup');
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { type RegistrationNoteFacts, noteRefusals, registrationNoteWriter } from './note-compose';
 
 const NOW = { date: 'Monday, September 14, 2026', time: '6:00 p.m.' };
@@ -56,6 +57,25 @@ describe('VIL-543 · noteRefusals', () => {
 
   it('passes a plain note', () => {
     expect(noteRefusals('How did Springfield swim go this morning?', CHECK_IN)).toEqual([]);
+  });
+
+  it('refuses an approval card the model marked as asking', () => {
+    expect(
+      noteRefusals('Swim opens Tuesday. Hale never registers for you.', CARD, { asks: true }),
+    ).toEqual(['asks']);
+    expect(
+      noteRefusals('Swim opens Tuesday. Hale never registers for you.', CARD, { asks: false }),
+    ).toEqual([]);
+  });
+});
+
+describe('VIL-543 · registration-note skill', () => {
+  it('the approval card never asks and never prints internal text keys', async () => {
+    const skill = await loadCronSkill('registration-note');
+    expect(skill.instructions).toContain('internal name for you, never for the parent');
+    expect(skill.instructions).toContain('Approuvez-vous');
+    expect(skill.instructions).toContain('asks` is false');
+    expect(skill.instructions).toContain('never print those keys');
   });
 });
 
