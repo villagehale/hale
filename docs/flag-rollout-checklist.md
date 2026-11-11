@@ -87,6 +87,8 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `MEMORY_DIGEST_APPLY` | `apps/web/lib/memory/digest.ts:40` | `true` | OFF | `false` | Noah |
 | `MEMORY_SYNTHESIS_APPLY` | `apps/web/lib/memory/synthesis.ts:44` | `true` | OFF | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | `apps/web/lib/channel/mid-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
+| `NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED` | `apps/web/lib/analytics/flags.ts:18`; also `apps/site/lib/analytics/flags.ts:15` | `true` (exact, no trim) | OFF | unset, or anything except exact `true` | Noah |
+| `NEXT_PUBLIC_POSTHOG_WEB_ENABLED` | `apps/web/lib/analytics/flags.ts:14`; also `apps/site/lib/analytics/flags.ts:11` | `true` (exact, no trim) | OFF | unset, or anything except exact `true` | Noah |
 | `ONBOARDING_FRIEND_VOICE_ENABLED` | none on main (#868) | none | no reader on main | none (no reader) | unassigned |
 | `ORPHAN_USER_SWEEP_ENABLED` | `apps/web/lib/rights/orphan-users.ts:124` | `true` | OFF | `false` | Noah |
 | `PARENT_CALENDAR_MIRROR_ENABLED` | `apps/web/lib/channel/lanes.ts:19` (compared at :26) | `true` | OFF | unset | Barton |
@@ -194,6 +196,7 @@ Dependencies, as the code reads them:
 - `AUTHORIZED_SIGNUP_ENABLED` is its own gate: `BROWSER_USE_SIGNUP_ENABLED` and `SIGNUP_SANDBOX_RUNTIME_ENABLED` do not turn signup on (`apps/web/lib/signup/browser-use/flag.ts:9-11`). `SIGNUP_BROWSER_RUNTIME` is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`.
 - `MEMORY_DIGEST_APPLY` also needs `MEMORY_DIGEST_FAMILY_ALLOWLIST`.
 - `PREVIEW_CAPTURE_GROUPS` needs `PREVIEW_CAPTURE_TRANSPORT` and a Vercel preview.
+- `NEXT_PUBLIC_POSTHOG_WEB_ENABLED` arms posthog-js on villagehale.com and the portal (pageviews, autocapture allowlist, heatmaps, web surveys). Light it after `NEXT_PUBLIC_POSTHOG_KEY` is set on both projects. `NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED` does nothing until the web flag is on, because the SDK never loads. Replay still needs the PostHog project recording switch and authorized domains.
 
 ### Light one at a time
 
