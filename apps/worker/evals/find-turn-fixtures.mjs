@@ -3,8 +3,7 @@
  *
  * Each case has one right `intent`. Scored through the same parse production uses
  * (`toFindTurnReading`). The texts are parent inbounds in several languages; there is
- * no word list to match. Not named run-*.mjs so the Monday sweep does not pick this
- * suite up before recordings exist.
+ * no word list to match.
  */
 export const FIND_TURN_FIXTURES = [
   {

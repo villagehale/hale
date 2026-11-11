@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgwfah7tg7xWHxEK7xEtT",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6AcKEAgTGAI4AUIIdGhpbmtpbmcSDLod09tCVZ84covv4hoMq1B8Evm9PbXsHPsiIjAfGPCoQ6Zic66Ige19RXyJ0CZILclKGgkAAz3MWdoRaijDcMvlbLqgI31cytnJGJMqhQdz3QBZL99CQ3db3yt7ykw/Nzz+b9usTkRKl53SYOlcsvGtt89lGaqH3Bb0hbwnUwcCsGDFN0GvJ2pyJAqDOnSnBffWef7RsXOYARSqg3+xQQq07wgdxaphE3BdtN32Gkqxdm8pK50+Dl3TvY7VY+pQMK0LSga5lwSMZLcX3MOjbqoo9pCI8Qt8hqZ8+MJVwntNqJOVSL10TSNKWeWNrqaUdlEk0Tjgzomdqt2LS0kWCswGvomWRW12bNhNC+VNzPtWanPE2eNC/Qt2/oX0us5+XYU98BetHHexU1FdN8lXtr9TnwDoFlAjxcGLTZbpYI/cffe0zH6eeLmacsaqyoRJbvJB4OLqy8Wb3aAyPqainlFi1ma+EppxMGiyoxKZSyLZLGVIwcgu6SYor8tj+8991/M3h0SMJYzyQgtFbi/udCSUbGenus4qv8zEM1G/Kl/9t67vHcXXCxI0JKg4PmwaeA0F7a+zcisw+LFbk3bFqRRLb8dkiJtpZwIpukfFUEny7JmxMXJPJo24NmTAxKe5bobeNiLA28NZ5LgtUiU/Rc48p4UW6fPIJ7cZqTgTows4WJXJIXSi8T/aCRDTGpSRKoYzZJ061Oj588JKkXpiGZnIY96ZYux3hR79Qj/JwIaYbAH8kiX47Gejrd7ku1uv/0DTcchNQ/XmUycBtHsnlKtIX41r0TG33E2MlkyGGsb9MqPjhff3bI3jUG7Ktjb3w8BmIGa8IssRcx4ig06Gl7nbzH3aINZoy/nOeQX00C2xq6mpMlYcDASfkiEyFTH4PUSVMKyDJtOnwlAY15VXh+D60U7XktZNG0D7oxfkzp0zWf3Cz1MilRIUctisfA6IqowQ9AFcTHkdgMZpRSgyRXzlyfHAfhG/IJExR8XQJsacXwKz0Alit7O36bGwAPLBh552ufLT7J1RJL13HLoR9pE78P65bKv3Elbb+ipjfqXRYX5K5UjM2DKHdK5Kk/eqjrwyJnuhuJZTME32wZCAE746Qsv5qcnF8rz0Qhqzy7uOFq0MmKealTkLljExMSg0vY4oDiNAne1+TrbhnNOVsONBlx9rNMxZQCD0N3xgjuNqigHvDetrhsUvCuPYpvmeV3DyztVrbokAfBs4QpWpV6KV3+q6ck/Gyqq8zcVtAeb/bko8y+Bg/YdsZ6ruYrwfpJTVuSqeCuqBfoRYD8GyZmXFnMs4GAE="
+      },
+      {
+        "type": "text",
+        "text": "Today's Thanksgiving, so a lot of places are closed or on odd hours. Riverbend Community Centre's page lists Little Movers drop-in on Thursdays 9:30 to 11:30 a.m., free, for ages 1 to 4. [link-c6988f] Willow Branch Library's events page has Toddler story time on Thursdays at 10:30 a.m., free, for 18 months to 3 years. [link-ce743d] Both are weekly listings and neither mentions the holiday, so call or check before you head out."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 274,
+      "cache_read_input_tokens": 21728,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 274,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 282,
+      "output_tokens_details": {
+        "thinking_tokens": 106
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

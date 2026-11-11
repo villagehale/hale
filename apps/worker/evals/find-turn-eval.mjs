@@ -9,8 +9,7 @@
 // shape, schema and parse are imported from apps/web/lib/channel/coach/find-private.ts,
 // so the eval cannot drift from production.
 //
-// This file is not named run-*.mjs, so the Monday eval sweep does not pick it up
-// before recordings exist. Do not add it to ci.yml until a paid record lands.
+// CI replays it from the committed recordings (`eval:find-turn` in ci.yml).
 //
 // Usage (from apps/worker):
 //   node evals/find-turn-eval.mjs --dry
