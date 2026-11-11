@@ -4,7 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
-import type { CarpoolReading } from './carpool-apply';
+import { type CarpoolReading, carpoolLocalClock, carpoolLocalDay } from './carpool-apply';
 import type { CarpoolIntent } from './carpool-cadence';
 
 /**
@@ -52,7 +52,6 @@ const readingSchema = z.object({
   eventLabel: z.string().nullable(),
   pickupDate: z.string().nullable().optional(),
   pickupTime: z.string().nullable().optional(),
-  pickupAtIso: z.string().nullable().optional(),
   pickupPlace: z.string().nullable(),
   kids: z.string().nullable(),
   confidence: z.enum(['high', 'low']),
@@ -103,9 +102,6 @@ const UNCLEAR: CarpoolReading = {
   confidence: 'low',
 };
 
-const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
-const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 function weekdayIn(instant: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone }).format(instant);
 }
@@ -150,16 +146,6 @@ export function carpoolUserMessage(input: CarpoolReadInput): string {
   });
 }
 
-function localDay(value: string | null | undefined): string | null {
-  const trimmed = value?.trim() ?? '';
-  return DAY_KEY.test(trimmed) ? trimmed : null;
-}
-
-function localClock(value: string | null | undefined): string | null {
-  const trimmed = value?.trim() ?? '';
-  return CLOCK.test(trimmed) ? trimmed : null;
-}
-
 export function parseCarpoolReading(value: unknown): CarpoolReading {
   const parsed = readingSchema.safeParse(value);
   if (!parsed.success) return UNCLEAR;
@@ -172,9 +158,11 @@ export function parseCarpoolReading(value: unknown): CarpoolReading {
     driverName: empty(parsed.data.driverName),
     driverIsSender: parsed.data.driverIsSender === true,
     eventLabel: empty(parsed.data.eventLabel),
-    pickupDate: localDay(parsed.data.pickupDate),
-    pickupTime: localClock(parsed.data.pickupTime),
-    pickupAtIso: empty(parsed.data.pickupAtIso ?? null),
+    pickupDate: carpoolLocalDay(parsed.data.pickupDate),
+    pickupTime: carpoolLocalClock(parsed.data.pickupTime),
+    // The model never supplies an instant: an offset it attaches is not the clock the
+    // parent said. Only code sets this, from a ride already stored.
+    pickupAtIso: null,
     pickupPlace: empty(parsed.data.pickupPlace),
     kids: empty(parsed.data.kids),
     confidence: parsed.data.confidence,

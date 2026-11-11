@@ -73,6 +73,23 @@ const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
+ * A YYYY-MM-DD that is a real calendar day, or null. `Date` alone would roll
+ * 2026-02-30 forward into March instead of refusing it.
+ */
+export function carpoolLocalDay(value: string | null | undefined): string | null {
+  const day = value?.trim() ?? '';
+  if (!DAY_KEY.test(day)) return null;
+  const noon = new Date(`${day}T12:00:00Z`);
+  return !Number.isNaN(noon.getTime()) && noon.toISOString().slice(0, 10) === day ? day : null;
+}
+
+/** A 24-hour HH:MM wall clock, or null. */
+export function carpoolLocalClock(value: string | null | undefined): string | null {
+  const clock = value?.trim() ?? '';
+  return CLOCK.test(clock) ? clock : null;
+}
+
+/**
  * The pickup instant.
  *
  * A local date plus wall clock wins. Those are the family's calendar day and
@@ -86,34 +103,23 @@ export function resolveCarpoolPickup(
   reading: Pick<CarpoolReading, 'pickupAtIso' | 'pickupDate' | 'pickupTime'>,
   timeZone: string,
 ): Date | null {
-  const date = reading.pickupDate?.trim() ?? '';
-  const time = reading.pickupTime?.trim() ?? '';
-  if (DAY_KEY.test(date) && CLOCK.test(time)) {
-    try {
-      return zonedLocalInstant(date, time, timeZone);
-    } catch {
-      return null;
-    }
-  }
+  const date = carpoolLocalDay(reading.pickupDate);
+  const time = carpoolLocalClock(reading.pickupTime);
+  if (date && time) return zonedLocalInstant(date, time, timeZone);
   return parsePickupAt(reading.pickupAtIso);
 }
 
 /** `HH:MM` of an instant on the wall clock of `timeZone`. */
 function localClockIn(at: Date, timeZone: string): string | null {
-  try {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(at);
-    const hour = parts.find((part) => part.type === 'hour')?.value;
-    const minute = parts.find((part) => part.type === 'minute')?.value;
-    const clock = hour && minute ? `${hour}:${minute}` : '';
-    return CLOCK.test(clock) ? clock : null;
-  } catch {
-    return null;
-  }
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const hour = parts.find((part) => part.type === 'hour')?.value;
+  const minute = parts.find((part) => part.type === 'minute')?.value;
+  return carpoolLocalClock(hour && minute ? `${hour}:${minute}` : null);
 }
 
 /**
@@ -127,9 +133,9 @@ export function withKnownClock<R extends Pick<CarpoolReading, 'pickupDate' | 'pi
   plan: Pick<CarpoolPlanState, 'pickupAt' | 'driverTimezone'> | null,
   timeZone: string,
 ): R {
-  const date = reading.pickupDate?.trim() ?? '';
-  const time = reading.pickupTime?.trim() ?? '';
-  if (!DAY_KEY.test(date) || CLOCK.test(time) || !plan?.pickupAt) return reading;
+  const dated = carpoolLocalDay(reading.pickupDate) !== null;
+  const timed = carpoolLocalClock(reading.pickupTime) !== null;
+  if (!dated || timed || !plan?.pickupAt) return reading;
   const clock = localClockIn(plan.pickupAt, plan.driverTimezone || timeZone);
   return clock ? { ...reading, pickupTime: clock } : reading;
 }
@@ -139,9 +145,11 @@ function isDateOnlyMove(
   reading: Pick<CarpoolReading, 'pickupDate' | 'pickupTime'>,
   plan: Pick<CarpoolPlanState, 'pickupAt'> | null,
 ): boolean {
-  const date = reading.pickupDate?.trim() ?? '';
-  const time = reading.pickupTime?.trim() ?? '';
-  return Boolean(plan?.pickupAt) && DAY_KEY.test(date) && !CLOCK.test(time);
+  return (
+    Boolean(plan?.pickupAt) &&
+    carpoolLocalDay(reading.pickupDate) !== null &&
+    carpoolLocalClock(reading.pickupTime) === null
+  );
 }
 
 function claimedDriverName(reading: CarpoolReading, sender: CarpoolSender): string | null {

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resolveCarpoolPickup } from './carpool-apply';
 import {
   CARPOOL_READING_TOOL_SCHEMA,
   carpoolUserMessage,
@@ -63,6 +64,58 @@ describe('parseCarpoolReading', () => {
       intent: 'unclear',
       confidence: 'low',
     });
+  });
+
+  it('never takes a pickup instant from the model, only its local day and clock', () => {
+    // Friday's EDT offset pinned on Sunday 08:00: the reading that stored Sunday 07:00.
+    const offsetOnly = parseCarpoolReading({
+      intent: 'driver_claim',
+      driverName: 'Maya',
+      eventLabel: 'soccer',
+      pickupAtIso: '2026-11-01T08:00:00-04:00',
+      pickupPlace: null,
+      kids: null,
+      confidence: 'high',
+    });
+    expect(offsetOnly.pickupAtIso).toBeNull();
+    expect(resolveCarpoolPickup(offsetOnly, 'America/Toronto')).toBeNull();
+
+    const withDay = parseCarpoolReading({
+      intent: 'driver_claim',
+      driverName: 'Maya',
+      eventLabel: 'soccer',
+      pickupDate: '2026-10-31',
+      pickupTime: '08:00',
+      pickupAtIso: '2026-11-01T08:00:00-04:00',
+      pickupPlace: null,
+      kids: null,
+      confidence: 'high',
+    });
+    expect(resolveCarpoolPickup(withDay, 'America/Toronto')?.toISOString()).toBe(
+      '2026-10-31T12:00:00.000Z',
+    );
+  });
+
+  it('leaves a day that is not on the calendar empty instead of rolling it into March', () => {
+    const reading = parseCarpoolReading({
+      intent: 'plan_needs_driver',
+      driverName: null,
+      eventLabel: 'soccer',
+      pickupDate: '2026-02-30',
+      pickupTime: '08:00',
+      pickupPlace: null,
+      kids: null,
+      confidence: 'high',
+    });
+    expect(reading.pickupDate).toBeNull();
+    const at = (pickupDate: string) =>
+      resolveCarpoolPickup(
+        { pickupDate, pickupTime: '08:00', pickupAtIso: null },
+        'America/Toronto',
+      );
+    expect(at('2026-02-30')).toBeNull();
+    // 2028 is a leap year; Toronto is on EST (UTC−5) in February.
+    expect(at('2028-02-29')?.toISOString()).toBe('2028-02-29T13:00:00.000Z');
   });
 });
 
