@@ -243,6 +243,21 @@ describe('preview fake group inbound door', () => {
     expect(await res.text()).toBe('');
   });
 
+  it('stays an empty 404 outside Preview when the body carries a .vcf', async () => {
+    const res = await handlePreviewFakeGroupInbound(
+      post({
+        from: A,
+        participants: [A, B],
+        text: 'This is John.',
+        media: [{ url: 'https://cdn.example/cards/John_Doe.vcf', mime: 'text/vcard' }],
+      }),
+      deps({ env: { ...env, VERCEL_ENV: 'production' } }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe('');
+    expect(sink.calls).toHaveLength(0);
+  });
+
   it('is an empty 404, with no reason, when the group flag is off', async () => {
     const res = await handlePreviewFakeGroupInbound(
       post({}),
