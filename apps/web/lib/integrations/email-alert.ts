@@ -1024,6 +1024,7 @@ export async function alertParentForEmail(
     familyId,
     actor: 'system',
     actionTaken: 'email_alert_sent',
+    audience: parentUserId,
     targetTable: 'channel_messages',
     targetId: claimed.id,
     // Enums and flags only. Not the title, not the sender, not the subject: an audit row

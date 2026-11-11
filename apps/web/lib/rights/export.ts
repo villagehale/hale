@@ -42,6 +42,8 @@ const NOT_IN_FAMILY_EXPORT = [
   'parent_language_changed',
   // That one adult connected their Google account again, possibly in another household.
   'integration_google_revoke_cancelled',
+  // VIL-635. A rail refusal names one adult; the family copy never carries it.
+  'tool_refused',
 ] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {
@@ -323,6 +325,7 @@ export async function assembleFamilyExport(
       loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, {
         includeInternal: true,
         exclude: NOT_IN_FAMILY_EXPORT,
+        viewerUserId: deps.actorUserId,
       }));
   const now = deps.now ?? new Date();
 

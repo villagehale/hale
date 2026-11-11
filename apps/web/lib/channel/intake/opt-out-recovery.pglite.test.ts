@@ -381,6 +381,7 @@ async function auditReads(familyId: string): Promise<unknown[]> {
   return db.database
     .select({
       actor: schema.auditLog.actor,
+      audience: schema.auditLog.audience,
       targetTable: schema.auditLog.targetTable,
       targetId: schema.auditLog.targetId,
       after: schema.auditLog.after,
@@ -395,7 +396,13 @@ async function auditReads(familyId: string): Promise<unknown[]> {
 }
 
 function readRow(parentUserId: string) {
-  return { actor: 'system', targetTable: 'users', targetId: parentUserId, after: null };
+  return {
+    actor: 'system',
+    audience: parentUserId,
+    targetTable: 'users',
+    targetId: parentUserId,
+    after: null,
+  };
 }
 
 async function auditVerbs(familyId: string): Promise<string[]> {
