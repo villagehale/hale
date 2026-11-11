@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with a real, local, free program, Links2Care's EarlyON Child and Family Centres in Halton Hills (Acton and Georgetown). It fits the toddler stage and is attributed to the operator's own site ('their site says'). Under page_has_schedule it correctly owns the gap in the first person ('I couldn't confirm a drop-in day or time') rather than claiming nothing is posted. It invents no time or price. With watch true, the first-person follow-up promise is backed. It is plain text with no link and no question. Two things hold it back from a 5. The extracted picks list is empty even though the message names a find, so the structured output does not match what was sent. It also stays at the umbrella-program level rather than naming a specific location the parent could walk into, such as the Georgetown EarlyON Centre at 8 James St, which the page lists.",
+    "score": 4
+  }
+}

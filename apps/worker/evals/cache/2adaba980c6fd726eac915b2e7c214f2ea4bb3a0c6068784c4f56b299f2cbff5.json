@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The SMS leads by name with a real, local, stage-fitting program: Links2Care's EarlyON centres, sourced from the operator's own page. It attributes the facts (\"their site says\"), has no link and no question, and invents no time or price. Under page_has_schedule it correctly owns the gap in first person (\"I couldn't confirm a drop-in day or time\"), and with watch=true the first-person keep-watching promise is earned. Two things hold it back: the pick list is empty even though the message presents a find, so the structured output withholds it; and the message names only Acton and Georgetown broadly rather than a specific centre a parent could turn up to (e.g. Georgetown EarlyON Centre, 8 James St).",
+    "score": 4
+  }
+}

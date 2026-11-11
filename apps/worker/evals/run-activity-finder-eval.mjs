@@ -1330,13 +1330,17 @@ async function cachedGround(opts) {
     );
     process.exit(1);
   }
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: 4096,
-    system,
-    tools,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  // STREAMED, as production's ground turn is (lane.ts): a non-streamed web_search turn sits
+  // silent for minutes and the box's egress drops it (read ETIMEDOUT). Same request body.
+  const response = await getClient()
+    .messages.stream({
+      model,
+      max_tokens: 4096,
+      system,
+      tools,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+    .finalMessage();
   noteUsage(cost, model, response.usage);
   const evidence = readEvidence(response.content);
   const value = {
