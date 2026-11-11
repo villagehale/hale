@@ -77,6 +77,7 @@ import {
   linqGroupTriggerInOneToOne,
   mapGroupHandlesToFamily,
   matchLinqGroupTrigger,
+  noteGroupBackgroundChange,
 } from './group';
 import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import {
@@ -1476,6 +1477,16 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     },
     'linq signal',
   );
+  if (signal.event === 'chat.background_updated') {
+    const outcome = signal.chatId
+      ? await noteGroupBackgroundChange(deps.database, {
+          chatId: signal.chatId,
+          isFromMe: signal.isFromMe,
+        })
+      : 'linq_background_no_family';
+    await deps.countOutcome('ignored');
+    return json({ outcome });
+  }
   if (signal.event === 'participant.removed' && signal.chatId) {
     await forgetSharedGroupPresence(deps.database, {
       chatId: signal.chatId,
