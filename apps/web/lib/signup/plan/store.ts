@@ -62,7 +62,8 @@ export async function approveSignupPlan(
     alreadyOpen?: boolean;
   },
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
-  const offer = await loadPendingOffer(database, input.familyId);
+  // The named ask, not the newest: a family can hold several, and a yes may name an older one.
+  const offer = await loadPendingOffer(database, input.familyId, input.offerId);
   if (!offer || offer.id !== input.offerId) return { ok: false, reason: 'no_offer' };
   // The run types this parent's details and pays with their city account's saved card, and
   // re-checks their standing before paying. Only their own yes can consent to that.
@@ -476,9 +477,9 @@ export interface ConversablePlan {
 /**
  * The offers with a known open still ahead: a `pending` offer the coach recorded with its
  * open time, or a `planned` one the parent may still take back. A plan whose run is going
- * (possibly checkpointed between sweeps) can still be taken back too. A running plan comes
- * first, so a stop reaches money in flight; then the newest, because the last thing Hale
- * asked is what a bare yes answers.
+ * (possibly checkpointed between sweeps) can still be taken back too. Newest first,
+ * because the last thing Hale asked is what a bare yes or stop answers; an older plan,
+ * running or not, is reached by words that name it (see runPlanTurn).
  */
 export async function loadConversablePlans(
   database: Database,
@@ -508,7 +509,8 @@ export async function loadConversablePlans(
         ),
       ),
     )
-    .orderBy(sql`${offers.status} = 'submitting' desc`, desc(offers.createdAt));
+    // Newest first: the plan a bare yes or stop is read against before any older one.
+    .orderBy(desc(offers.createdAt));
   return rows.flatMap((row) => {
     if (!row.planOpensAt) return [];
     const status =

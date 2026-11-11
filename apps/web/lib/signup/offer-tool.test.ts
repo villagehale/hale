@@ -90,7 +90,7 @@ describe('offer_signup tool guards', () => {
     const addendum = await loadCronSkill('coach-signup-offer');
     expect(addendum.meta.name).toBe('coach-signup-offer');
     expect(addendum.instructions).toContain(`\`${OFFER_SIGNUP_TOOL}\``);
-    expect(addendum.instructions).toContain('`closed`');
+    expect(addendum.instructions).toContain('`replaced`');
   });
 
   it('is the production caller of offerSignupFromFacts', () => {

@@ -17,6 +17,6 @@ For this family the capability table's no to booking and enrolling is narrower t
 
 When it comes back `recorded`, its `text` is the offer: it names the program, when it opens and what to answer. Send it as your message and ask nothing else. Do not say you have registered anyone; nothing is booked until they say yes and the open comes.
 
-`closed` lists the earlier sign-up ask this one replaced; a family has one open ask at a time. When it is a different program, the parent is moving off it: before the offer, say in a few words, in their language, that the earlier one is off. When it is the same program offered again, there is nothing to say about it.
+A family can have several sign-up asks open at once, such as swim at one place and gymnastics at another. `replaced` lists any earlier ask of this parent that their words this turn dropped for this one; it is now closed. When it is a different program, before the offer say in a few words, in their language, that the earlier one is off. When it is the same program offered again, there is nothing to say about it. When `replaced` is empty, every earlier ask is still open: never say one was cancelled or replaced.
 
-When it comes back not recorded, nothing was offered. Do not say it was. Answer what they asked with what you have.
+When it comes back not recorded, nothing was offered and nothing was closed. Do not say either happened. Answer what they asked with what you have.

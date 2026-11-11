@@ -1,9 +1,10 @@
 import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { and, eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { offerSignupTool } from './offer-tool';
+import type { SignupSupersedeReader, SupersedeReadInput } from './supersede-reader';
 import { echoOfferWriter } from './test-models';
 
 const NOW = new Date('2026-10-28T15:00:00.000Z');
@@ -65,71 +66,253 @@ describe('offer_signup coach verb', () => {
     expect(rows).toEqual([{ status: 'pending' }]);
   });
 
-  it('a new ask tells the coach which earlier ask it closed', async () => {
-    const seeded = await seedFamily(db.database);
-    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
-    const gymUrl = 'https://gym.example-rec.test/register/tots';
-    const kickersUrl = 'https://kickers.example-sport.test/register/sat';
-    const offer = (url: string, activity: string, label: string, at: Date) =>
-      invokeTool(
-        offerSignupTool({
-          database: db.database,
-          familyId: seeded.familyId,
-          parentUserId: seeded.parentUserId,
-          now: at,
-          parentWords: `${activity} ${label} ${url}`,
-          linksThisTurn: () => [],
-          writer: echoOfferWriter(),
-        }),
-        {
-          child: 'Ada',
-          activity,
-          source: 'chat',
-          registrationUrl: url,
-          evidence: `${activity} ${label}`,
-          sessions: [
-            {
-              id: 'sat-session',
-              label,
-              startsAt: '2027-01-09T15:15:00.000Z',
-              endsAt: '2027-01-09T16:00:00.000Z',
-              full: false,
-              priceCents: 12000,
-            },
-          ],
-          approvedPriceCents: null,
-        },
-        { familyId: seeded.familyId, actor: seeded.parentUserId },
-        { writeAudit: async () => {} },
-      ) as Promise<{ recorded: boolean; closed?: unknown[] }>;
+  const GYM_URL = 'https://gym.example-rec.test/register/tots';
+  const KICKERS_URL = 'https://kickers.example-sport.test/register/sat';
 
-    const first = await offer(gymUrl, 'Gymnastics Tots', 'Sat 10:15', NOW);
-    expect(first).toMatchObject({ recorded: true, closed: [] });
-    const second = await offer(
-      kickersUrl,
-      'Little Kickers',
-      'Sat 9:30',
-      new Date(NOW.getTime() + 60_000),
-    );
-    expect(second).toMatchObject({
-      recorded: true,
-      closed: [
-        { activity: 'Gymnastics Tots', host: 'gym.example-rec.test', sessions: ['Sat 10:15'] },
-      ],
-    });
-    const rows = await db.database
+  /**
+   * Stands in for the supersede model: it drops the asks whose label `drops` names. The
+   * model itself is the signup-offer-supersede eval's subject.
+   */
+  function supersedeReader(drops: string | null): SignupSupersedeReader {
+    return {
+      read: vi.fn(async ({ earlier }: SupersedeReadInput) =>
+        earlier.filter((ask) => ask.activity === drops).map((ask) => ask.offerId),
+      ),
+    };
+  }
+
+  function ask(
+    f: { familyId: string; parentUserId: string },
+    url: string,
+    activity: string,
+    label: string,
+    at: Date,
+    reader: SignupSupersedeReader,
+    words = `${activity} ${label} ${url}`,
+  ) {
+    return invokeTool(
+      offerSignupTool({
+        database: db.database,
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        now: at,
+        parentWords: words,
+        linksThisTurn: () => [],
+        writer: echoOfferWriter(),
+        supersedeReader: reader,
+      }),
+      {
+        child: 'Ada',
+        activity,
+        source: 'chat',
+        registrationUrl: url,
+        evidence: `${activity} ${label}`,
+        sessions: [
+          {
+            id: 'sat-session',
+            label,
+            startsAt: '2027-01-09T15:15:00.000Z',
+            endsAt: '2027-01-09T16:00:00.000Z',
+            full: false,
+            priceCents: 12000,
+          },
+        ],
+        approvedPriceCents: null,
+      },
+      { familyId: f.familyId, actor: f.parentUserId },
+      { writeAudit: async () => {} },
+    ) as Promise<{ recorded: boolean; reason?: string; replaced?: unknown[] }>;
+  }
+
+  async function asks(familyId: string) {
+    return db.database
       .select({
         label: schema.authorizedSignupOffers.activityLabel,
         status: schema.authorizedSignupOffers.status,
       })
       .from(schema.authorizedSignupOffers)
-      .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
-    expect(rows).toEqual(
+      .where(eq(schema.authorizedSignupOffers.familyId, familyId));
+  }
+
+  async function seedCoParent(familyId: string): Promise<string> {
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${familyId}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('seedCoParent: users insert returned no row');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user.id, role: 'co_parent' });
+    return user.id;
+  }
+
+  it('a new ask the parent added beside the earlier one leaves both open', async () => {
+    const seeded = await seedFamily(db.database);
+    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+    const first = await ask(
+      seeded,
+      GYM_URL,
+      'Gymnastics Tots',
+      'Sat 10:15',
+      NOW,
+      supersedeReader(null),
+    );
+    expect(first).toMatchObject({ recorded: true, replaced: [] });
+    const reader = supersedeReader(null);
+    const second = await ask(
+      seeded,
+      KICKERS_URL,
+      'Little Kickers',
+      'Sat 9:30',
+      new Date(NOW.getTime() + 60_000),
+      reader,
+    );
+    expect(second).toMatchObject({ recorded: true, replaced: [] });
+    expect(vi.mocked(reader.read).mock.calls[0]?.[0]).toMatchObject({
+      next: { activity: 'Little Kickers', host: 'kickers.example-sport.test' },
+      earlier: [
+        { activity: 'Gymnastics Tots', host: 'gym.example-rec.test', sessionLabels: ['Sat 10:15'] },
+      ],
+    });
+    expect(await asks(seeded.familyId)).toEqual(
+      expect.arrayContaining([
+        { label: 'Gymnastics Tots', status: 'pending' },
+        { label: 'Little Kickers', status: 'pending' },
+      ]),
+    );
+  });
+
+  it('a new ask the parent switched to closes the earlier one and tells the coach', async () => {
+    const seeded = await seedFamily(db.database);
+    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+    await ask(seeded, GYM_URL, 'Gymnastics Tots', 'Sat 10:15', NOW, supersedeReader(null));
+    const second = await ask(
+      seeded,
+      KICKERS_URL,
+      'Little Kickers',
+      'Sat 9:30',
+      new Date(NOW.getTime() + 60_000),
+      supersedeReader('Gymnastics Tots'),
+    );
+    expect(second).toMatchObject({
+      recorded: true,
+      replaced: [
+        { activity: 'Gymnastics Tots', host: 'gym.example-rec.test', sessions: ['Sat 10:15'] },
+      ],
+    });
+    expect(await asks(seeded.familyId)).toEqual(
       expect.arrayContaining([
         { label: 'Gymnastics Tots', status: 'handed_back' },
         { label: 'Little Kickers', status: 'pending' },
       ]),
     );
+  });
+
+  it("the reader is shown only this parent's own asks, never the co-parent's", async () => {
+    const seeded = await seedFamily(db.database);
+    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+    const coParentUserId = await seedCoParent(seeded.familyId);
+    await ask(
+      { ...seeded, parentUserId: coParentUserId },
+      GYM_URL,
+      'Gymnastics Tots',
+      'Sat 10:15',
+      NOW,
+      supersedeReader(null),
+    );
+    const reader = supersedeReader('Gymnastics Tots');
+    const mine = await ask(
+      seeded,
+      KICKERS_URL,
+      'Little Kickers',
+      'Sat 9:30',
+      new Date(NOW.getTime() + 60_000),
+      reader,
+    );
+    expect(mine).toMatchObject({ recorded: true, replaced: [] });
+    // With no earlier ask of their own there is nothing to read.
+    expect(reader.read).not.toHaveBeenCalled();
+    expect(await asks(seeded.familyId)).toEqual(
+      expect.arrayContaining([{ label: 'Gymnastics Tots', status: 'pending' }]),
+    );
+  });
+
+  it('an unreadable supersede read stops: nothing is recorded and nothing closes', async () => {
+    const seeded = await seedFamily(db.database);
+    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+    await ask(seeded, GYM_URL, 'Gymnastics Tots', 'Sat 10:15', NOW, supersedeReader(null));
+    const result = await ask(
+      seeded,
+      KICKERS_URL,
+      'Little Kickers',
+      'Sat 9:30',
+      new Date(NOW.getTime() + 60_000),
+      { read: async () => null },
+    );
+    expect(result).toEqual({ recorded: false, reason: 'supersede_unread' });
+    expect(await asks(seeded.familyId)).toEqual([{ label: 'Gymnastics Tots', status: 'pending' }]);
+  });
+
+  describe('a group member who may not authorize a sign-up', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('creates and closes no ask, and the refusal is audited', async () => {
+      vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
+      const seeded = await seedFamily(db.database);
+      await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+      await ask(seeded, GYM_URL, 'Gymnastics Tots', 'Sat 10:15', NOW, supersedeReader(null));
+      const [caregiver] = await db.database
+        .insert(schema.users)
+        .values({ email: `care-${seeded.familyId}@example.test`, name: 'Care Giver' })
+        .returning({ id: schema.users.id });
+      if (!caregiver) throw new Error('no caregiver');
+      await db.database.insert(schema.linqGroupMembers).values({
+        familyId: seeded.familyId,
+        chatId: 'chat-household',
+        userId: caregiver.id,
+        phoneE164Encrypted: 'invented-ciphertext',
+        phoneE164Hash: `invented-hash-${caregiver.id}`,
+        role: 'caregiver',
+      });
+      const reader = supersedeReader('Gymnastics Tots');
+      const result = await ask(
+        { familyId: seeded.familyId, parentUserId: caregiver.id },
+        KICKERS_URL,
+        'Little Kickers',
+        'Sat 9:30',
+        new Date(NOW.getTime() + 60_000),
+        reader,
+      );
+
+      expect(result).toEqual({ recorded: false, reason: 'group_member_not_authorized' });
+      expect(reader.read).not.toHaveBeenCalled();
+      expect(await asks(seeded.familyId)).toEqual([
+        { label: 'Gymnastics Tots', status: 'pending' },
+      ]);
+      const refusals = await db.database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, seeded.familyId),
+            eq(schema.auditLog.actionTaken, 'linq_group_member_refused'),
+          ),
+        );
+      expect(refusals).toEqual([{ after: { capability: 'signup' } }]);
+
+      // Positive control: the parent, with no seat, still offers.
+      const own = await ask(
+        seeded,
+        KICKERS_URL,
+        'Little Kickers',
+        'Sat 9:30',
+        new Date(NOW.getTime() + 120_000),
+        supersedeReader(null),
+      );
+      expect(own).toMatchObject({ recorded: true });
+    });
   });
 
   it('refuses a URL the turn never saw', async () => {

@@ -38,6 +38,7 @@ function record(
   url: string,
   activityLabel: string,
   minutesAfter: number,
+  supersede?: readonly string[],
 ) {
   return recordSignupOffer(db.database, {
     familyId: f.familyId,
@@ -48,8 +49,22 @@ function record(
     registrationUrl: url,
     sessions: [SESSION],
     approvedPriceCents: null,
+    supersede,
     now: new Date(NOW.getTime() + minutesAfter * 60_000),
   });
+}
+
+/** A second adult in the household with full parent scope. */
+async function seedCoParent(familyId: string): Promise<string> {
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({ email: `co-${familyId}@example.test`, name: 'Co Parent' })
+    .returning({ id: schema.users.id });
+  if (!user) throw new Error('seedCoParent: users insert returned no row');
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId, userId: user.id, role: 'co_parent' });
+  return user.id;
 }
 
 async function statusOf(id: string) {
@@ -76,19 +91,29 @@ async function supersededAudits(id: string) {
   return rows.filter((row) => (row.after as { step?: string }).step === 'offer_superseded');
 }
 
-describe('one live signup ask per family', () => {
-  it('a new ask closes the pending ask for another program, audits it, and names it', async () => {
+describe('several signup asks at once', () => {
+  it('a new ask for another program leaves the earlier ask open', async () => {
     const f = await family();
     const gym = await record(f, GYM_URL, 'Gymnastics Tots', 0);
     if (!gym.ok) throw new Error(gym.reason);
-    expect(gym.closed).toEqual([]);
-
     const kickers = await record(f, KICKERS_URL, 'Little Kickers', 5);
     if (!kickers.ok) throw new Error(kickers.reason);
 
-    expect(await statusOf(gym.id)).toEqual({ status: 'handed_back', label: 'Gymnastics Tots' });
+    expect(kickers.replaced).toEqual([]);
+    expect(await statusOf(gym.id)).toEqual({ status: 'pending', label: 'Gymnastics Tots' });
     expect(await statusOf(kickers.id)).toEqual({ status: 'pending', label: 'Little Kickers' });
-    expect(kickers.closed).toEqual([
+    expect(await supersededAudits(gym.id)).toEqual([]);
+  });
+
+  it('closes the earlier ask the parent replaced, audits it, and names it', async () => {
+    const f = await family();
+    const gym = await record(f, GYM_URL, 'Gymnastics Tots', 0);
+    if (!gym.ok) throw new Error(gym.reason);
+    const kickers = await record(f, KICKERS_URL, 'Little Kickers', 5, [gym.id]);
+    if (!kickers.ok) throw new Error(kickers.reason);
+
+    expect(await statusOf(gym.id)).toEqual({ status: 'handed_back', label: 'Gymnastics Tots' });
+    expect(kickers.replaced).toEqual([
       {
         offerId: gym.id,
         activityLabel: 'Gymnastics Tots',
@@ -106,16 +131,41 @@ describe('one live signup ask per family', () => {
     });
   });
 
-  it('a new ask on the same host replaces the old one instead of being refused', async () => {
+  it("never closes the co-parent's ask, even when it is named", async () => {
+    const f = await family();
+    const coParentUserId = await seedCoParent(f.familyId);
+    const theirs = await record(
+      { ...f, parentUserId: coParentUserId },
+      GYM_URL,
+      'Gymnastics Tots',
+      0,
+    );
+    if (!theirs.ok) throw new Error(theirs.reason);
+    const mine = await record(f, KICKERS_URL, 'Little Kickers', 5, [theirs.id]);
+    if (!mine.ok) throw new Error(mine.reason);
+
+    expect(mine.replaced).toEqual([]);
+    expect((await statusOf(theirs.id))?.status).toBe('pending');
+    expect(await supersededAudits(theirs.id)).toEqual([]);
+  });
+
+  it('a second ask on the same site is refused unless it replaces the open one', async () => {
     const f = await family();
     const first = await record(f, GYM_URL, 'Gymnastics Tots', 0);
     if (!first.ok) throw new Error(first.reason);
-    const second = await record(f, SAME_HOST_URL, 'Preschool Swim', 5);
-    expect(second.ok).toBe(true);
+
+    expect(await record(f, SAME_HOST_URL, 'Preschool Swim', 5)).toEqual({
+      ok: false,
+      reason: 'offer_exists',
+    });
+    expect((await statusOf(first.id))?.status).toBe('pending');
+
+    const replacing = await record(f, SAME_HOST_URL, 'Preschool Swim', 6, [first.id]);
+    expect(replacing.ok).toBe(true);
     expect((await statusOf(first.id))?.status).toBe('handed_back');
   });
 
-  it('an approved plan is not an ask: a new ask leaves it planned and closes nothing', async () => {
+  it('an approved plan is not an ask: naming it closes nothing', async () => {
     const f = await family();
     const planned = await record(f, GYM_URL, 'Gymnastics Tots', 0);
     if (!planned.ok) throw new Error(planned.reason);
@@ -124,21 +174,21 @@ describe('one live signup ask per family', () => {
       .set({ status: 'planned' })
       .where(eq(schema.authorizedSignupOffers.id, planned.id));
 
-    const next = await record(f, KICKERS_URL, 'Little Kickers', 5);
+    const next = await record(f, KICKERS_URL, 'Little Kickers', 5, [planned.id]);
     if (!next.ok) throw new Error(next.reason);
-    expect(next.closed).toEqual([]);
+    expect(next.replaced).toEqual([]);
     expect((await statusOf(planned.id))?.status).toBe('planned');
     expect(await supersededAudits(planned.id)).toEqual([]);
   });
 
-  it("closes only this family's asks", async () => {
+  it("never closes another family's ask", async () => {
     const mine = await family();
     const theirs = await family();
     const other = await record(theirs, GYM_URL, 'Gymnastics Tots', 0);
     if (!other.ok) throw new Error(other.reason);
-    const own = await record(mine, KICKERS_URL, 'Little Kickers', 5);
+    const own = await record(mine, KICKERS_URL, 'Little Kickers', 5, [other.id]);
     if (!own.ok) throw new Error(own.reason);
-    expect(own.closed).toEqual([]);
+    expect(own.replaced).toEqual([]);
     expect((await statusOf(other.id))?.status).toBe('pending');
   });
 });
@@ -146,7 +196,7 @@ describe('one live signup ask per family', () => {
 describe('loadPendingOffer', () => {
   it('binds the newest pending ask when older rows are still pending', async () => {
     const f = await family();
-    // Rows written before one-live-ask: two pending asks on different hosts.
+    // Two pending asks on different hosts.
     const rows = await db.database
       .insert(schema.authorizedSignupOffers)
       .values(
@@ -171,7 +221,12 @@ describe('loadPendingOffer', () => {
         url: schema.authorizedSignupOffers.registrationUrl,
       });
     const newest = rows.find((row) => row.url === KICKERS_URL);
+    const older = rows.find((row) => row.url === GYM_URL);
 
     expect((await loadPendingOffer(db.database, f.familyId))?.id).toBe(newest?.id);
+    // A named ask is loaded as itself, so an older plan can still be approved.
+    expect((await loadPendingOffer(db.database, f.familyId, older?.id))?.id).toBe(older?.id);
+    const stranger = await family();
+    expect(await loadPendingOffer(db.database, stranger.familyId, older?.id)).toBeNull();
   });
 });

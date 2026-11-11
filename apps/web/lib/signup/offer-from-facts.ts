@@ -18,7 +18,7 @@ import {
   planOpensAtLocal,
   planReplyBody,
 } from './plan/writer';
-import { type ClosedSignupOffer, recordSignupOffer } from './store';
+import { type ReplacedSignupOffer, recordSignupOffer } from './store';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -36,11 +36,12 @@ export type OfferSignupReason =
   | 'url_refused'
   | 'child_missing'
   | 'unwritten'
+  | 'offer_exists'
   | 'activity_key'
   | 'sessions';
 
 export type OfferSignupResult =
-  | { ok: true; offerId: string; text: string; closed: ClosedSignupOffer[] }
+  | { ok: true; offerId: string; text: string; replaced: ReplacedSignupOffer[] }
   | { ok: false; reason: OfferSignupReason };
 
 export interface OfferSignupInput {
@@ -53,6 +54,8 @@ export interface OfferSignupInput {
   planOpensAt?: Date | null;
   /** The program's public name as the page or the parent gave it. */
   activityLabel?: string | null;
+  /** This parent's pending asks their own words this turn replaced (see recordSignupOffer). */
+  supersede?: readonly string[];
 }
 
 export interface OfferSignupDeps {
@@ -145,6 +148,7 @@ export async function offerSignupFromFacts(
     approvedPriceCents: input.facts.approvedPriceCents,
     planOpensAt,
     planAlreadyOpen: alreadyOpen,
+    supersede: input.supersede,
     now: input.now,
   });
   if (!stored.ok) {
@@ -158,7 +162,7 @@ export async function offerSignupFromFacts(
     sessionCount: input.facts.sessions.length,
     plan: planOpensAt !== null,
   });
-  return { ok: true, offerId: stored.id, text, closed: stored.closed };
+  return { ok: true, offerId: stored.id, text, replaced: stored.replaced };
 }
 
 async function writeOffer(

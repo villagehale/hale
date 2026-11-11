@@ -138,7 +138,9 @@ const APPROVE: PlanReading = {
   choiceIds: ['sun-1000', 'sat-0900'],
   maxPriceCents: 10500,
   waiverAccepted: true,
+  named: false,
 };
+const TAKE_BACK: PlanReading = { verdict: 'take_back', named: false };
 
 describe('the day-before plan conversation', () => {
   it("stores the parent's ranked yes as the plan and replies with the model's text", async () => {
@@ -256,7 +258,7 @@ describe('the day-before plan conversation', () => {
       now: new Date(NOW.getTime() - 30 * 60_000),
     });
     expect(approved).toEqual({ ok: true });
-    const { planReader, planWriter, written } = fakes({ verdict: 'take_back' });
+    const { planReader, planWriter, written } = fakes(TAKE_BACK);
     const result = await runPlanTurn(db.database, turn(f, 'actually never mind'), {
       planReader,
       planWriter,
@@ -319,7 +321,7 @@ describe('the day-before plan conversation', () => {
         ...turn(f, 'stop, I will do it myself'),
         now: new Date(OPENS.getTime() + 20 * 60_000),
       };
-      const { planReader, planWriter, written } = fakes({ verdict: 'take_back' });
+      const { planReader, planWriter, written } = fakes(TAKE_BACK);
       const result = await runPlanTurn(db.database, later, { planReader, planWriter });
 
       expect(vi.mocked(planReader.read).mock.calls[0]?.[0].offer).toMatchObject({
@@ -344,7 +346,7 @@ describe('the day-before plan conversation', () => {
         ]);
       }
       // Taken back: the plan lane no longer owns this family's turns.
-      const again = fakes({ verdict: 'take_back' });
+      const again = fakes(TAKE_BACK);
       expect(await runPlanTurn(db.database, later, again)).toBeNull();
       expect(again.planReader.read).not.toHaveBeenCalled();
     },
@@ -352,7 +354,7 @@ describe('the day-before plan conversation', () => {
 
   it('a no to the offered plan closes the offer', async () => {
     const f = await family();
-    const { planReader, planWriter } = fakes({ verdict: 'take_back' });
+    const { planReader, planWriter } = fakes(TAKE_BACK);
     const result = await runPlanTurn(db.database, turn(f, "no thanks, I'll do it"), {
       planReader,
       planWriter,
@@ -438,51 +440,53 @@ describe('which ask a message answers', () => {
   const KICKERS_OPENS = new Date('2026-12-08T12:00:00.000Z');
 
   /** A pending ask for another program, newer than the swim offer, opening after it. */
-  async function kickersAsk(
-    f: { familyId: string; parentUserId: string; childId: string },
-    status: 'pending' | 'insert-alongside',
-  ) {
-    if (status === 'pending') {
-      const recorded = await recordSignupOffer(db.database, {
+  async function kickersAsk(f: { familyId: string; parentUserId: string; childId: string }) {
+    const recorded = await recordSignupOffer(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      activityKey: 'kickers-sat',
+      activityLabel: 'Little Kickers',
+      registrationUrl: KICKERS_URL,
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      planOpensAt: KICKERS_OPENS,
+      now: new Date(NOW.getTime() - 10 * 60_000),
+    });
+    if (!recorded.ok) throw new Error(recorded.reason);
+    return recorded.id;
+  }
+
+  async function approveSwim(f: { familyId: string; parentUserId: string; offerId: string }) {
+    expect(
+      await approveSignupPlan(db.database, {
+        offerId: f.offerId,
         familyId: f.familyId,
-        childId: f.childId,
         parentUserId: f.parentUserId,
-        activityKey: 'kickers-sat',
-        activityLabel: 'Little Kickers',
-        registrationUrl: KICKERS_URL,
-        sessions: SESSIONS,
-        approvedPriceCents: null,
-        planOpensAt: KICKERS_OPENS,
-        now: new Date(NOW.getTime() - 10 * 60_000),
-      });
-      if (!recorded.ok) throw new Error(recorded.reason);
-      return recorded.id;
-    }
-    // Rows written before one-live-ask could leave two pending asks side by side.
-    const [row] = await db.database
-      .insert(schema.authorizedSignupOffers)
-      .values({
-        familyId: f.familyId,
-        childId: f.childId,
-        parentUserId: f.parentUserId,
-        activityKey: 'kickers-sat',
-        activityLabel: 'Little Kickers',
-        registrationUrl: KICKERS_URL,
-        providerHost: 'kickers.example-sport.test',
-        sessions: SESSIONS,
-        planOpensAt: KICKERS_OPENS,
-        status: 'pending',
-        createdAt: new Date(NOW.getTime() - 10 * 60_000),
-        updatedAt: new Date(NOW.getTime() - 10 * 60_000),
-      })
-      .returning({ id: schema.authorizedSignupOffers.id });
-    if (!row) throw new Error('no kickers row');
-    return row.id;
+        messageId: `msg-approve-${f.offerId}`,
+        choiceIds: ['sat-0900'],
+        maxPriceCents: 9800,
+        opensAt: OPENS,
+        waiverAccepted: false,
+        now: new Date(NOW.getTime() - 30 * 60_000),
+      }),
+    ).toEqual({ ok: true });
+  }
+
+  /** Stands in for the model: one stipulated reading per program. */
+  function readerBy(readings: Record<string, PlanReading | null>): PlanReader {
+    return {
+      read: vi.fn(async ({ offer: read }) => readings[read.activity ?? ''] ?? null),
+    };
+  }
+
+  function readOrder(reader: PlanReader) {
+    return vi.mocked(reader.read).mock.calls.map((call) => call[0].offer.activity);
   }
 
   it('a yes answers the newest ask, not the one that opens first', async () => {
     const f = await family();
-    const kickersId = await kickersAsk(f, 'insert-alongside');
+    const kickersId = await kickersAsk(f);
     const { planReader, planWriter } = fakes(APPROVE);
     const result = await runPlanTurn(db.database, turn(f, 'yes'), { planReader, planWriter });
 
@@ -495,30 +499,14 @@ describe('which ask a message answers', () => {
     expect((await offer(f.offerId)).status).toBe('pending');
   });
 
-  it('a message about the older plan reads past the newest ask and lands on that plan', async () => {
+  it('a take-back naming the older plan reads past the newest ask and lands on that plan', async () => {
     const f = await family();
-    expect(
-      await approveSignupPlan(db.database, {
-        offerId: f.offerId,
-        familyId: f.familyId,
-        parentUserId: f.parentUserId,
-        messageId: 'msg-approve-swim',
-        choiceIds: ['sat-0900'],
-        maxPriceCents: 9800,
-        opensAt: OPENS,
-        waiverAccepted: false,
-        now: new Date(NOW.getTime() - 30 * 60_000),
-      }),
-    ).toEqual({ ok: true });
-    const kickersId = await kickersAsk(f, 'pending');
-    const planReader: PlanReader = {
-      // Stands in for the model: the take-back is about swim, so the kickers read is unrelated.
-      read: vi.fn(async ({ offer: read }) =>
-        read.activity === 'Preschool Swim'
-          ? ({ verdict: 'take_back' } as const)
-          : ({ verdict: 'unrelated' } as const),
-      ),
-    };
+    await approveSwim(f);
+    const kickersId = await kickersAsk(f);
+    const planReader = readerBy({
+      'Little Kickers': { verdict: 'unrelated' },
+      'Preschool Swim': { verdict: 'take_back', named: true },
+    });
     const { planWriter } = fakes(null);
     const result = await runPlanTurn(db.database, turn(f, 'cancel the swim one'), {
       planReader,
@@ -526,29 +514,36 @@ describe('which ask a message answers', () => {
     });
 
     expect(result?.outcome).toBe('plan_cancelled');
-    expect(vi.mocked(planReader.read).mock.calls.map((call) => call[0].offer.activity)).toEqual([
-      'Little Kickers',
-      'Preschool Swim',
-    ]);
+    expect(readOrder(planReader)).toEqual(['Little Kickers', 'Preschool Swim']);
     expect((await offer(f.offerId)).status).toBe('handed_back');
     expect((await offer(kickersId)).status).toBe('pending');
   });
 
-  it('a plan whose run is going is read before a newer ask, so a stop reaches the run', async () => {
+  it('a take-back that does not name the older plan stops there, unclaimed', async () => {
     const f = await family();
-    expect(
-      await approveSignupPlan(db.database, {
-        offerId: f.offerId,
-        familyId: f.familyId,
-        parentUserId: f.parentUserId,
-        messageId: 'msg-approve-running',
-        choiceIds: ['sat-0900'],
-        maxPriceCents: 9800,
-        opensAt: OPENS,
-        waiverAccepted: false,
-        now: new Date(NOW.getTime() - 30 * 60_000),
-      }),
-    ).toEqual({ ok: true });
+    await approveSwim(f);
+    const kickersId = await kickersAsk(f);
+    const planReader = readerBy({
+      'Little Kickers': { verdict: 'unrelated' },
+      'Preschool Swim': { verdict: 'take_back', named: false },
+    });
+    const { planWriter, written } = fakes(null);
+    const result = await runPlanTurn(db.database, turn(f, 'cancel'), { planReader, planWriter });
+
+    expect(result).toEqual({
+      claimed: false,
+      outcome: 'plan_unnamed',
+      reply: null,
+      deliverOnThread: false,
+    });
+    expect(written).toEqual([]);
+    expect((await offer(f.offerId)).status).toBe('planned');
+    expect((await offer(kickersId)).status).toBe('pending');
+  });
+
+  it('a bare stop reaches the newest ask, not an older plan whose run is going', async () => {
+    const f = await family();
+    await approveSwim(f);
     await db.database
       .update(schema.authorizedSignupOffers)
       .set({
@@ -557,17 +552,114 @@ describe('which ask a message answers', () => {
         planLeaseUntil: null,
       })
       .where(eq(schema.authorizedSignupOffers.id, f.offerId));
-    const kickersId = await kickersAsk(f, 'pending');
-    const { planReader, planWriter } = fakes({ verdict: 'take_back' });
+    const kickersId = await kickersAsk(f);
+    const later = { now: new Date(OPENS.getTime() + 5 * 60_000) };
+    const { planReader, planWriter } = fakes(TAKE_BACK);
     const result = await runPlanTurn(
       db.database,
-      { ...turn(f, 'stop'), now: new Date(OPENS.getTime() + 5 * 60_000) },
+      { ...turn(f, 'stop'), ...later },
       { planReader, planWriter },
     );
 
-    expect(result?.outcome).toBe('plan_cancelled');
-    expect(vi.mocked(planReader.read).mock.calls[0]?.[0].offer.activity).toBe('Preschool Swim');
+    expect(result?.outcome).toBe('plan_declined');
+    expect(readOrder(planReader)).toEqual(['Little Kickers']);
+    expect((await offer(kickersId)).status).toBe('handed_back');
+    expect((await offer(f.offerId)).planCancelRequestedAt).toBeNull();
+
+    // A stop that names the running plan reaches it.
+    const named = readerBy({ 'Preschool Swim': { verdict: 'take_back', named: true } });
+    const stopped = await runPlanTurn(
+      db.database,
+      { ...turn(f, 'stop the swim registration'), ...later },
+      { planReader: named, planWriter },
+    );
+    expect(stopped?.outcome).toBe('plan_cancelled');
     expect((await offer(f.offerId)).planCancelRequestedAt).not.toBeNull();
+  });
+
+  it('a yes that names an older ask approves that ask', async () => {
+    const f = await family();
+    const kickersId = await kickersAsk(f);
+    const planReader = readerBy({
+      'Little Kickers': { verdict: 'unrelated' },
+      'Preschool Swim': { ...APPROVE, named: true },
+    });
+    const { planWriter } = fakes(null);
+    const result = await runPlanTurn(db.database, turn(f, 'yes to the swim one'), {
+      planReader,
+      planWriter,
+    });
+
+    expect(result?.outcome).toBe('plan_approved');
+    expect((await offer(f.offerId)).status).toBe('planned');
+    expect((await offer(kickersId)).status).toBe('pending');
+  });
+
+  it('a yes the reader put on an older ask without naming it stops, unclaimed', async () => {
+    const f = await family();
+    const kickersId = await kickersAsk(f);
+    const planReader = readerBy({
+      'Little Kickers': { verdict: 'unrelated' },
+      'Preschool Swim': APPROVE,
+    });
+    const { planWriter } = fakes(null);
+    const result = await runPlanTurn(db.database, turn(f, 'ok'), { planReader, planWriter });
+
+    expect(result).toMatchObject({ claimed: false, outcome: 'plan_unnamed' });
+    expect((await offer(f.offerId)).status).toBe('pending');
+    expect((await offer(kickersId)).status).toBe('pending');
+  });
+
+  it('a bare yes binds the newest ask still waiting, past a newer approved plan', async () => {
+    const f = await family();
+    const kickersId = await kickersAsk(f);
+    await approveSignupPlan(db.database, {
+      offerId: kickersId,
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      messageId: 'msg-approve-kickers',
+      choiceIds: ['sat-0900'],
+      maxPriceCents: 9800,
+      opensAt: KICKERS_OPENS,
+      waiverAccepted: false,
+      now: new Date(NOW.getTime() - 5 * 60_000),
+    });
+    const planReader = readerBy({
+      'Little Kickers': { verdict: 'unrelated' },
+      'Preschool Swim': APPROVE,
+    });
+    const { planWriter } = fakes(null);
+    const result = await runPlanTurn(db.database, turn(f, 'yes'), { planReader, planWriter });
+
+    expect(readOrder(planReader)).toEqual(['Little Kickers', 'Preschool Swim']);
+    expect(result?.outcome).toBe('plan_approved');
+    expect((await offer(f.offerId)).status).toBe('planned');
+  });
+
+  it('a reading that fails stops the turn: no later plan is read, and nothing moves', async () => {
+    const consentReader: SignupConsentReader = {
+      read: vi.fn(async () => ({ verdict: 'consent' as const, sessionId: 'sat-0900' })),
+    };
+    const f = await family();
+    const kickersId = await kickersAsk(f);
+    const planReader = readerBy({ 'Little Kickers': null, 'Preschool Swim': APPROVE });
+    const { planWriter, written } = fakes(null);
+    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+      planReader,
+      planWriter,
+      consentReader,
+    });
+
+    expect(result).toEqual({
+      claimed: false,
+      outcome: 'plan_unread',
+      reply: null,
+      deliverOnThread: false,
+    });
+    expect(readOrder(planReader)).toEqual(['Little Kickers']);
+    expect(consentReader.read).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    expect((await offer(f.offerId)).status).toBe('pending');
     expect((await offer(kickersId)).status).toBe('pending');
   });
 
@@ -576,7 +668,7 @@ describe('which ask a message answers', () => {
       read: vi.fn(async () => ({ verdict: 'consent' as const, sessionId: 'sat-0900' })),
     };
     const f = await family();
-    await kickersAsk(f, 'insert-alongside');
+    await kickersAsk(f);
     const { planReader, planWriter } = fakes({ verdict: 'unrelated' });
     const result = await runAuthorizedSignup(db.database, turn(f, 'what time is pickup'), {
       planReader,
@@ -660,6 +752,19 @@ describe('when the site options do not match', () => {
       kind: 'take_option',
       choice: expect.objectContaining({ id: 'nov-21' }),
     });
+  });
+
+  it('a pick that cannot be read stops the turn and parks nothing', async () => {
+    const f = await mismatched();
+    const mismatchReader: MismatchReader = { read: vi.fn(async () => null) };
+    const { planWriter, written } = fakes(APPROVE);
+    const result = await runPlanTurn(db.database, turn(f, 'the 21st'), {
+      planWriter,
+      mismatchReader,
+    });
+    expect(result).toMatchObject({ claimed: false, outcome: 'plan_unread' });
+    expect(written).toEqual([]);
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
   });
 
   it('emails the provider from Gmail only after they say yes', async () => {

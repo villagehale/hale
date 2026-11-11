@@ -56,9 +56,12 @@ export interface PlanTurnDeps {
  * `approveSignupPlan`, a take-back calls `cancelSignupPlan` (or closes the offer when it
  * was never approved). Every claimed turn writes one audit row and a model-written reply.
  *
- * The newest ask is read first, so a bare yes answers the last thing Hale asked. A message
- * the reader finds is about something else is read against the family's next plan, so a
- * take-back naming an older plan still reaches it.
+ * A family can hold several plans at once. The newest is read first; a message the reader
+ * finds is about something else is read against the next one. A bare yes binds the newest
+ * ask still waiting on one. Any other plan moves only on words that name it (its program
+ * or site): a take-back of a plan other than the newest, or a yes to an ask other than the
+ * newest waiting one, that does not name it stops the turn. So does a reading that failed:
+ * it is never carried on to the next plan. A stopped turn is unclaimed, logged and named.
  */
 export async function runPlanTurn(
   database: Database,
@@ -67,9 +70,13 @@ export async function runPlanTurn(
 ): Promise<SignupRunResult | null> {
   if (!registrationPlanRunEnabled()) return null;
   const plans = await loadConversablePlans(database, { familyId: input.familyId, now: input.now });
+  const newestAsk = plans.find((plan) => plan.status === 'pending')?.offerId ?? null;
   let keepOneShotOff = false;
-  for (const plan of plans) {
-    const turn = await planTurnFor(database, input, deps, plan);
+  for (const [index, plan] of plans.entries()) {
+    const turn = await planTurnFor(database, input, deps, plan, {
+      newest: index === 0,
+      newestAsk: plan.offerId === newestAsk,
+    });
     if (turn !== 'unrelated') return turn;
     // A pending plan offer, or a plan waiting on a site pick, is this lane's alone: the
     // one-shot sign-up must never book it. An approved plan leaves it free to read any
@@ -81,11 +88,20 @@ export async function runPlanTurn(
   return keepOneShotOff ? unclaimed() : null;
 }
 
+/** Where a plan stands among the family's: what a message may do to it unnamed. */
+interface PlanPlace {
+  /** The newest plan of any status: a take-back need not name it. */
+  newest: boolean;
+  /** The newest plan still waiting on a yes: a bare yes binds it. */
+  newestAsk: boolean;
+}
+
 async function planTurnFor(
   database: Database,
   input: SignupRunInput,
   deps: PlanTurnDeps,
   plan: ConversablePlan,
+  place: PlanPlace,
 ): Promise<SignupRunResult | null | 'unrelated'> {
   if (plan.availability && plan.availability.kind === 'options_mismatch') {
     return runMismatchTurn(database, input, deps, plan);
@@ -104,13 +120,15 @@ async function planTurnFor(
       plan: plan.plan,
     },
   });
-  if (!reading || reading.verdict === 'unrelated') return 'unrelated';
+  if (!reading) return stopped('plan_unread', plan);
+  if (reading.verdict === 'unrelated') return 'unrelated';
 
   if (reading.verdict === 'unclear') {
     return reply(database, input, deps, plan, 'clarify', { question: reading.question });
   }
 
   if (reading.verdict === 'take_back') {
+    if (!place.newest && !reading.named) return stopped('plan_unnamed', plan);
     if (plan.status === 'pending') {
       await markOffer(database, {
         offerId: plan.offerId,
@@ -134,6 +152,7 @@ async function planTurnFor(
     return reply(database, input, deps, plan, 'cancelled', {});
   }
 
+  if (!place.newestAsk && !reading.named) return stopped('plan_unnamed', plan);
   if (deps.declineSeat && (await deps.declineSeat())) {
     return {
       claimed: true,
@@ -214,7 +233,8 @@ async function runMismatchTurn(
     typeof plan.availability?.askedStart === 'string' ? plan.availability.askedStart : null;
   const reader = deps.mismatchReader ?? createMismatchReader(() => resolveReplyClient(undefined));
   const reading = await reader.read({ text: input.body, askedStart, choices: parsed });
-  if (!reading || reading.verdict === 'unrelated') return 'unrelated';
+  if (!reading) return stopped('plan_unread', plan);
+  if (reading.verdict === 'unrelated') return 'unrelated';
   if (reading.verdict === 'unclear') {
     return reply(database, input, deps, plan, 'clarify', { question: reading.question });
   }
@@ -269,6 +289,19 @@ async function runMismatchTurn(
 
 function unclaimed(): SignupRunResult {
   return { claimed: false, outcome: 'not_claimed', reply: null, deliverOnThread: false };
+}
+
+/**
+ * The turn ends here and nothing moves: the reading failed (`plan_unread`), or it would
+ * move a plan the parent's words do not name (`plan_unnamed`). Unclaimed, so the one-shot
+ * sign-up never reads it and the coach answers; no later plan reads it either.
+ */
+function stopped(outcome: 'plan_unread' | 'plan_unnamed', plan: ConversablePlan): SignupRunResult {
+  console.warn(
+    { outcome, offerId: plan.offerId, status: plan.status },
+    'signup plans: turn stopped',
+  );
+  return { claimed: false, outcome, reply: null, deliverOnThread: false };
 }
 
 const OUTCOME: Record<Exclude<PlanReplyMoment, 'offer' | 'run_finished'>, string> = {

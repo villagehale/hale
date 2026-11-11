@@ -2,9 +2,11 @@
 //
 // SUBJECT: packages/agent/skills/signup-plan-read.md, called the way the runtime calls it
 // (apps/web/lib/signup/plan/reader.ts): the REAL user message, the REAL strict schema on
-// the skill's lane, and the REAL structural check (`toPlanReading`). An approval moves a
-// family's money at the open, so the answer is exact: the verdict, and for an approval the
-// sessions in the parent's order, the maximum and the waiver answer. No judge.
+// the skill's lane, and the REAL structural check and bindings (`toPlanReading`). An
+// approval moves a family's money at the open, so the answer is exact: the verdict, for an
+// approval the sessions in the parent's order, the maximum and the waiver answer, and
+// `named` where a case sets it. A case whose `expect` is a list passes on any one of them.
+// No judge.
 //
 //   node evals/run-signup-plan-read-eval.mjs --max-usd <cap>   # live, then caches
 //   node evals/run-signup-plan-read-eval.mjs --cached-only      # replay only
@@ -38,7 +40,9 @@ function offerOf(fixture) {
 }
 
 function matches(reading, expected) {
+  if (Array.isArray(expected)) return expected.some((one) => matches(reading, one));
   if (!reading || reading.verdict !== expected.verdict) return false;
+  if (expected.named !== undefined && reading.named !== expected.named) return false;
   if (expected.verdict !== 'approve') return true;
   return (
     JSON.stringify(reading.choiceIds) === JSON.stringify(expected.choiceIds) &&
@@ -76,7 +80,7 @@ async function main() {
     });
     if (dry) continue;
     const parsed = reader.signupPlanReadSchema.safeParse(call.value);
-    const reading = parsed.success ? reader.toPlanReading(parsed.data, offer) : null;
+    const reading = parsed.success ? reader.toPlanReading(parsed.data, offer, fixture.text) : null;
     const ok = matches(reading, fixture.expect);
     if (!ok) failures.push(fixture.id);
     console.info(

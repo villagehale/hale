@@ -11,7 +11,8 @@
 // `signup` cases run as runtime.ts runs a turn with the registration plan lane lit: the
 // REAL `augmentCoachSkillForSignupOffer` with the coach-signup-offer addendum, and the REAL
 // `offer_signup` over a fresh pglite family (the real DDL), whose plan offer the REAL
-// signup-plan-reply writer composes through this runner's cached client.
+// signup-plan-reply writer composes, and whose earlier-ask question the REAL
+// signup-offer-supersede reader answers, both through this runner's cached client.
 //
 //   node evals/run-coach-capability-correction-eval.mjs --max-usd 1.5   # live, then caches
 //   node evals/run-coach-capability-correction-eval.mjs --broken        # calibration: must FAIL,
@@ -326,6 +327,9 @@ async function main() {
   const { offerFullPlanTool } = await importTs(join(WEB_LIB, 'channel', 'plan', 'offer.ts'));
   const signupTool = await importTs(join(WEB_LIB, 'signup', 'offer-tool.ts'));
   const { createPlanReplyWriter } = await importTs(join(WEB_LIB, 'signup', 'plan', 'writer.ts'));
+  const { createSignupSupersedeReader } = await importTs(
+    join(WEB_LIB, 'signup', 'supersede-reader.ts'),
+  );
   const { eq } = await import('drizzle-orm');
   const real = {
     agent,
@@ -411,6 +415,14 @@ async function main() {
             cost,
           ),
         ),
+        supersedeReader: createSignupSupersedeReader(() =>
+          cachedAgentClient(
+            `coach-capability-correction:${fixture.id}:supersede`,
+            cachedOnly,
+            getClient,
+            cost,
+          ),
+        ),
       });
       extraTools.push({
         ...offerTool,
@@ -457,9 +469,11 @@ async function main() {
     }
     failures.push(...callFailures(fixture, calls));
     if (signupDb) {
-      if (fixture.signup.closesEarlier && signupFamily.earlierId) {
+      if (fixture.signup.earlierAfter && signupFamily.earlierId) {
         const status = await offerStatus(real, signupDb.database, signupFamily.earlierId);
-        if (status !== 'handed_back') failures.push(`earlier ask still ${status}`);
+        if (status !== fixture.signup.earlierAfter) {
+          failures.push(`earlier ask ${status}, wanted ${fixture.signup.earlierAfter}`);
+        }
       }
       await signupDb.close();
     }

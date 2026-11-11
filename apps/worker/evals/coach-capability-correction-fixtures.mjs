@@ -11,8 +11,9 @@
 // `signup` cases run with the registration plan lane lit: the coach carries the
 // coach-signup-offer addendum and the REAL `offer_signup` over a fresh pglite family (the
 // runner seeds it). `child` is an invented first name the family knows; `earlier` is a
-// pending ask recorded before this turn; `closesEarlier` checks that ask is closed after
-// it. `mustRecord` checks the offer was stored, not only attempted.
+// pending ask recorded before this turn; `earlierAfter` is the status that ask must have
+// after it (`handed_back` when the parent's words replaced it, `pending` when they added
+// beside it). `mustRecord` checks the offer was stored, not only attempted.
 
 const COLUMBUS = { city: 'Columbus', province: 'OH', country: 'US' };
 const OTTAWA = { city: 'Ottawa', province: 'ON', country: 'CA' };
@@ -155,7 +156,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
     location: OTTAWA,
     dark: ['spot_watch'],
     owed: [],
-    signup: { child: 'Ada', language: null, earlier: null, closesEarlier: false },
+    signup: { child: 'Ada', language: null, earlier: null, earlierAfter: null },
     text: `can you get Ada into Gymnastics Tots, the Saturday 10:15 class? registration opens Dec 1 at 7am ${GYM_URL}`,
     mustCall: [],
     mustRecord: true,
@@ -176,7 +177,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
   },
   {
     id: 'signup-switch-closes-the-older-ask',
-    note: 'Hale asked about a gymnastics class; the parent switches to Little Kickers in Chinese and sends its page. The new ask closes the gymnastics one.',
+    note: 'Hale asked about a gymnastics class; the parent switches to Little Kickers in Chinese and sends its page. Their words replace the gymnastics ask, so recording the new one closes it.',
     location: OTTAWA,
     dark: ['spot_watch'],
     owed: [],
@@ -189,7 +190,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
         session: { id: 'sat-1015', label: 'Sat 10:15' },
         said: '体操 Gymnastics Tots 周六10:15那个班12月1日早上7点开放报名，要我到时帮Ada报吗？',
       },
-      closesEarlier: true,
+      earlierAfter: 'handed_back',
     },
     text: `体操那个不要了，换 Little Kickers 吧，周六9:30那个班，12月1号早上7点开放报名 ${KICKERS_URL}`,
     mustCall: [],
@@ -197,7 +198,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
     mustNotCall: ['note_capability_declined', 'note_capability_correction'],
     rubric: [
       'Hale had asked whether to register Ada for a gymnastics class. The parent switched to',
-      'Little Kickers. Recording the new ask closed the gymnastics one (`closed` in the tool',
+      'Little Kickers. Recording the new ask closed the gymnastics one (`replaced` in the tool',
       'result in `facts`). PASS (4-5): written in Chinese, the reply says briefly that the',
       'gymnastics ask is off, offers to register the Saturday 9:30 Little Kickers class at the',
       'open (Dec 1, 7am), and asks one thing. FAIL (1-2): it does not say the gymnastics ask is',
@@ -206,6 +207,41 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
     ].join(' '),
     broken: {
       reply: '好的，我会帮Ada报体操和Little Kickers两个班。',
+      calls: [],
+    },
+  },
+  {
+    id: 'signup-add-keeps-the-older-ask',
+    note: 'Hale asked about a gymnastics class; the parent asks to also sign up for Little Kickers and sends its page. Their words add an ask beside the gymnastics one, which stays open.',
+    location: OTTAWA,
+    dark: ['spot_watch'],
+    owed: [],
+    signup: {
+      child: 'Ada',
+      language: null,
+      earlier: {
+        activity: 'Gymnastics Tots',
+        url: GYM_URL,
+        session: { id: 'sat-1015', label: 'Sat 10:15' },
+        said: 'Gymnastics Tots, the Saturday 10:15 class, opens for registration Dec 1 at 7am. Want me to register Ada then?',
+      },
+      earlierAfter: 'pending',
+    },
+    text: `can you also get Ada into Little Kickers, the Saturday 9:30 class? registration opens Dec 1 at 7am too ${KICKERS_URL}`,
+    mustCall: [],
+    mustRecord: true,
+    mustNotCall: ['note_capability_declined', 'note_capability_correction'],
+    rubric: [
+      'Hale had asked whether to register Ada for a gymnastics class. The parent asked to also',
+      'sign her up for Little Kickers. Recording the new ask left the gymnastics ask open',
+      '(`replaced` is empty in the tool result in `facts`). PASS (4-5): the reply offers to',
+      'register the Saturday 9:30 Little Kickers class at the open (Dec 1, 7am) and asks one',
+      'thing, and does not say the gymnastics ask is off, cancelled or replaced. FAIL (1-2):',
+      'it says the gymnastics ask is off, cancelled or replaced, says anyone is registered,',
+      'gives another session or time, or says Hale cannot register.',
+    ].join(' '),
+    broken: {
+      reply: 'Done, I dropped the gymnastics one and will register Ada for Little Kickers instead.',
       calls: [],
     },
   },
