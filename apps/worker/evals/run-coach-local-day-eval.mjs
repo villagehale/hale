@@ -252,9 +252,7 @@ async function main() {
     const extraText = composed.instructions.startsWith(`${base.instructions}\n\n`)
       ? composed.instructions.slice(base.instructions.length + 2)
       : '';
-    const skill = extraText
-      ? { ...composed, instructions: base.instructions }
-      : composed;
+    const skill = extraText ? { ...composed, instructions: base.instructions } : composed;
     let reply = fixture.broken;
     if (!broken) {
       const run = await agent.runAgent({

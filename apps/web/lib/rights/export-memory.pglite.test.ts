@@ -146,6 +146,8 @@ const NOT_IN_EXPORT: Record<string, string> = {
   sms_intake_sessions: 'unreviewed',
   social_spots: 'unreviewed',
   teen_access_grants: 'unreviewed',
+  team_schedule_changes:
+    'VIL-662 pointer from a Gmail id to the calendar move it proposed; the event and action are exported',
   village_endorsements: 'unreviewed',
   week_plans: 'unreviewed',
 };

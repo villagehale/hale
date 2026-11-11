@@ -1,4 +1,3 @@
-import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
 import {
@@ -123,7 +122,11 @@ export interface TeamScheduleApplyPorts {
   }): Promise<{ actionId: string }>;
   autonomous(actionType: ActionType): Promise<{ autonomous: boolean; parentUserId: string | null }>;
   execute(actionId: string, approvedBy: string): Promise<void>;
-  gate(request: { familyId: string; parentUserId: string; now: Date }): Promise<ProactiveSendVerdict>;
+  gate(request: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+  }): Promise<ProactiveSendVerdict>;
   resolvePhone(database: Database, parentUserId: string): Promise<string | null>;
   transport: ChannelTransport;
   threadMessage: typeof threadProactiveMessage;
@@ -192,7 +195,8 @@ export async function applyTeamScheduleChange(
   const candidates = await loadScheduleCandidates(database, {
     familyId: input.familyId,
     event: extraction.event,
-    receivedAt: extraction.event.originalTime ?? extraction.event.newTime ?? input.now.toISOString(),
+    receivedAt:
+      extraction.event.originalTime ?? extraction.event.newTime ?? input.now.toISOString(),
     timeZone: input.timeZone,
     children: input.children,
   });
@@ -240,8 +244,7 @@ export async function applyTeamScheduleChange(
   if (spoken !== 'cancel' && spoken !== 'location' && newStartsAt === null) {
     return { handled: false };
   }
-  const durationMs =
-    live.endsAt !== null ? live.endsAt.getTime() - live.startsAt.getTime() : null;
+  const durationMs = live.endsAt !== null ? live.endsAt.getTime() - live.startsAt.getTime() : null;
   const newEndsAt =
     newStartsAt !== null && durationMs !== null && durationMs > 0
       ? new Date(newStartsAt.getTime() + durationMs)
@@ -263,7 +266,8 @@ export async function applyTeamScheduleChange(
   const language = await ports.parentLanguage(input.parentUserId);
   const text = await ports.composeParent({
     mode,
-    kid: kidName(input.children, live.childId) ?? kidName(input.children, extraction.event.childRef),
+    kid:
+      kidName(input.children, live.childId) ?? kidName(input.children, extraction.event.childRef),
     team: facts.team ?? live.title,
     change: spoken,
     wasAt: live.startsAt,
@@ -313,11 +317,15 @@ export async function applyTeamScheduleChange(
 
   if (standing.autonomous && standing.parentUserId) {
     await ports.execute(drafted.actionId, standing.parentUserId);
-    await applyTeamScheduleEffects(database, {
-      actionId: drafted.actionId,
-      familyId: input.familyId,
-      now: input.now,
-    }, ports.driver);
+    await applyTeamScheduleEffects(
+      database,
+      {
+        actionId: drafted.actionId,
+        familyId: input.familyId,
+        now: input.now,
+      },
+      ports.driver,
+    );
   }
 
   if (text === null) {

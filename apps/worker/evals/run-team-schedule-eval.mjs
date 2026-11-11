@@ -8,8 +8,8 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { TEAM_SCHEDULE_FIXTURES } from './team-schedule-fixtures.mjs';
 import { PRICE, REPO_ROOT } from './lib/harness.mjs';
+import { TEAM_SCHEDULE_FIXTURES } from './team-schedule-fixtures.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -17,7 +17,15 @@ const EXTRACT_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'extract-ch
 const MATCH_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'match-team-schedule.md');
 const PARENT_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'team-schedule-parent.md');
 const DRIVER_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'team-schedule-driver.md');
-const MATCH_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'integrations', 'team-schedule', 'match.ts');
+const MATCH_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'integrations',
+  'team-schedule',
+  'match.ts',
+);
 const VOICE_SRC = join(
   REPO_ROOT,
   'apps',
@@ -129,8 +137,7 @@ async function dryRun() {
       team: 'U11 Lightning',
       change: fixture.expect.change,
       wasAt: new Date('2026-11-15T18:00:00.000Z'),
-      whenAt:
-        fixture.expect.change === 'cancel' ? null : new Date('2026-11-15T19:00:00.000Z'),
+      whenAt: fixture.expect.change === 'cancel' ? null : new Date('2026-11-15T19:00:00.000Z'),
       place: fixture.expect.change === 'location' ? 'Rink 2' : 'Rink 1',
       language: 'en',
       timeZone: 'America/Toronto',

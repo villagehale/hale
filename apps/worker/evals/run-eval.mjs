@@ -223,9 +223,10 @@ function makeRealClassifier(lane, basePrompt, cachedOnly) {
         stage: 'classify_event',
       }),
       {
-      rates: priceRates,
-      tag: 'classifier',
-    });
+        rates: priceRates,
+        tag: 'classifier',
+      },
+    );
     const response = await liveStructuredCall({
       client,
       lane,

@@ -164,8 +164,23 @@ export function withoutMessageCacheMarkers(messages) {
   });
 }
 
+/**
+ * A canonical request with every cache_control TTL dropped, for hashing (VIL-674).
+ * `{type:'ephemeral', ttl:'1h'}` and `{type:'ephemeral'}` ask the model the same
+ * question; the TTL changes the bill and how long the prefix is kept, not the answer.
+ * So #1222's 1h TTL must not move a replay key: a 1h marker hashes as the 5m one did.
+ */
+export function withoutCacheTtl(payload) {
+  return String(payload).replaceAll(
+    '"cache_control":{"type":"ephemeral","ttl":"1h"}',
+    '"cache_control":{"type":"ephemeral"}',
+  );
+}
+
 export function cacheKey(tag, payload) {
-  return createHash('sha256').update(`${tag}\n${payload}`).digest('hex');
+  return createHash('sha256')
+    .update(`${tag}\n${withoutCacheTtl(payload)}`)
+    .digest('hex');
 }
 
 /**

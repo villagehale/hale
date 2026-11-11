@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import { type SQL, and, eq, inArray, isNull } from 'drizzle-orm';
+import { groupLineLabels, noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
@@ -801,8 +801,7 @@ export async function sendClaimedGroupLine(
       direction: 'out',
       familyId: input.familyId,
       channel: 'imessage',
-      isGroup: true,
-      chatId: input.chatId,
+      ...groupLineLabels(input.chatId),
       database,
     });
     return 'sent';
@@ -815,8 +814,7 @@ export async function sendClaimedGroupLine(
     noteSendFailed({
       familyId: input.familyId,
       channel: 'imessage',
-      isGroup: true,
-      chatId: input.chatId,
+      ...groupLineLabels(input.chatId),
       reason: code,
     });
     return 'not_sent';
