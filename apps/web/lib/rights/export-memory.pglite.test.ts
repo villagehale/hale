@@ -123,6 +123,8 @@ const NOT_IN_EXPORT: Record<string, string> = {
   kid_interests: 'unreviewed',
   kid_passport_profiles: 'unreviewed',
   kid_relevance_verdicts: 'unreviewed',
+  linq_group_experience:
+    'live RSVP/time/link/mail/private-question keys for one chat; the lines themselves are on exported channel_messages',
   linq_group_carpools: 'unreviewed',
   linq_group_members: 'unreviewed',
   linq_group_onboarding: 'unreviewed',
