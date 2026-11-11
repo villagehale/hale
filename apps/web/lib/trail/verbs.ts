@@ -2008,8 +2008,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale came back to you about an activity search',
     family: 'done',
   },
-  // Hidden from the trail via INTERNAL_TRAIL_VERBS: it is about one adult's own question,
-  // and the answer it brings is the row History shows (activity_followup_sent).
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide export:
+  // it is about one adult's own question, so the row carries that adult as its audience
+  // (VIL-635). The answer it brings is the row History shows (activity_followup_sent).
   activity_deep_dispatched: {
     sentence: 'Hale started a closer look at an activity question',
     family: 'note',

@@ -558,7 +558,7 @@ export interface ChannelRouterDeps {
    * exists for. A silent no-op would look exactly like a subject nobody thought worth
    * researching.
    */
-  dispatchDeepResearch(payload: DeepResearchPayload): Promise<DeepDispatchOutcome>;
+  dispatchDeepResearch(payload: DeepResearchPayload, askedBy: string): Promise<DeepDispatchOutcome>;
   /**
    * What the parent's own message settled, written down before anything reads state
    * (VIL-294 — lib/channel/stated-state.ts).
@@ -2488,6 +2488,7 @@ async function runAgentTurn(
       // kept either way and the only thing at stake is how fast (deep-queue.ts).
       const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
         familyId: args.turn.familyId,
+        parentUserId: args.turn.parentUserId,
         recorded,
       });
       deps.log.info(

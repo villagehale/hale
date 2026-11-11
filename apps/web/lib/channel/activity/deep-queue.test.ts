@@ -15,6 +15,8 @@ import {
  */
 
 const PAYLOAD: DeepResearchPayload = { commitment_id: 'commit-7', family_id: 'fam-7' };
+/** The adult whose 1:1 ask made the promise. */
+const ASKED_BY = 'parent-7';
 
 type AuditRow = typeof schema.auditLog.$inferInsert;
 
@@ -43,6 +45,7 @@ describe('dispatchDeepResearch', () => {
     const outcome = await dispatchDeepResearch(
       { resolve: async () => q, audit: async (row) => void audited.push(row) },
       PAYLOAD,
+      ASKED_BY,
     );
 
     expect(outcome).toEqual({ status: 'enqueued' });
@@ -61,6 +64,8 @@ describe('dispatchDeepResearch', () => {
         targetTable: 'agent_commitments',
         targetId: 'commit-7',
         after: { status: 'enqueued' },
+        // VIL-635: one adult's ask, so the row is that adult's, not every parent seat's.
+        audience: ASKED_BY,
       },
     ]);
   });
@@ -70,6 +75,7 @@ describe('dispatchDeepResearch', () => {
     const outcome = await dispatchDeepResearch(
       { resolve: async () => queue(null), audit: async (row) => void audited.push(row) },
       PAYLOAD,
+      ASKED_BY,
     );
     expect(outcome).toEqual({ status: 'already_queued' });
     expect(audited.map((row) => row.after)).toEqual([{ status: 'already_queued' }]);
@@ -86,6 +92,7 @@ describe('dispatchDeepResearch', () => {
         audit: async (row) => void audited.push(row),
       },
       PAYLOAD,
+      ASKED_BY,
     );
     expect(outcome).toEqual({ status: 'not_enqueued', reason: 'queue_unavailable' });
     expect(audited.map((row) => row.after)).toEqual([
@@ -103,6 +110,7 @@ describe('dispatchDeepResearch', () => {
         },
       },
       PAYLOAD,
+      ASKED_BY,
     );
     expect(outcome).toEqual({ status: 'enqueued' });
     expect(error).toHaveBeenCalledWith(
@@ -116,6 +124,7 @@ describe('dispatchDeepResearch', () => {
     await dispatchDeepResearch(
       { resolve: async () => queue('job-1'), audit: async (row) => void audited.push(row) },
       PAYLOAD,
+      ASKED_BY,
     );
     // Positive control first: there IS a row, with an `after`, to look inside.
     expect(audited).toHaveLength(1);
@@ -124,23 +133,29 @@ describe('dispatchDeepResearch', () => {
 });
 
 describe('dispatchDepthForPromise', () => {
-  it('dispatches every recorded promise, whatever it is about', async () => {
-    const dispatched: DeepResearchPayload[] = [];
+  it('dispatches every recorded promise, whatever it is about, for the adult who asked', async () => {
+    const dispatched: Array<{ payload: DeepResearchPayload; askedBy: string }> = [];
     const outcome = await dispatchDepthForPromise(
-      async (payload) => {
-        dispatched.push(payload);
+      async (payload, askedBy) => {
+        dispatched.push({ payload, askedBy });
         return { status: 'enqueued' };
       },
-      { familyId: 'fam-7', recorded: { status: 'recorded', commitmentId: 'commit-7' } },
+      {
+        familyId: 'fam-7',
+        parentUserId: ASKED_BY,
+        recorded: { status: 'recorded', commitmentId: 'commit-7' },
+      },
     );
     expect(outcome).toEqual({ status: 'enqueued' });
-    expect(dispatched).toEqual([PAYLOAD]);
+    // The adult rides beside the job, never inside it: the payload stays ids of the promise.
+    expect(dispatched).toEqual([{ payload: PAYLOAD, askedBy: ASKED_BY }]);
   });
 
   it('a promise that never became a row is not dispatched', async () => {
     const dispatch = vi.fn();
     const outcome = await dispatchDepthForPromise(dispatch, {
       familyId: 'fam-7',
+      parentUserId: ASKED_BY,
       recorded: { status: 'not_recorded', reason: 'no_ledger_row' },
     });
     expect(outcome).toEqual({ status: 'not_enqueued', reason: 'not_recorded' });

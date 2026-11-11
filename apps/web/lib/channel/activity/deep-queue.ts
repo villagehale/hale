@@ -171,7 +171,8 @@ export interface DeepDispatchPorts {
 /**
  * Enqueue the deep pass for a promise that was just written down, and keep the outcome as
  * one audit row on that commitment: the status, and the reason when it did not enqueue.
- * Never the subject (rule #1).
+ * Never the subject (rule #1). The row is about one adult's own ask, so it carries that
+ * adult as its audience (VIL-635) and is not a family row every parent seat reads.
  *
  * IT NEVER THROWS, and that is the contract with the router. This runs after the parent's
  * reply has already been sent and the promise is already a row; an exception here would
@@ -183,6 +184,8 @@ export interface DeepDispatchPorts {
 export async function dispatchDeepResearch(
   ports: DeepDispatchPorts,
   payload: DeepResearchPayload,
+  /** The adult whose 1:1 ask made the promise. Beside the job, never in its payload. */
+  askedBy: string,
 ): Promise<DeepDispatchOutcome> {
   const outcome = await enqueueDeepResearch(ports.resolve, payload);
   try {
@@ -193,6 +196,7 @@ export async function dispatchDeepResearch(
       targetTable: 'agent_commitments',
       targetId: payload.commitment_id,
       after: outcome,
+      audience: askedBy,
     });
   } catch (err) {
     console.error(
@@ -250,17 +254,22 @@ async function enqueueDeepResearch(
  * The only thing at stake is how fast.
  */
 export async function dispatchDepthForPromise(
-  dispatch: (payload: DeepResearchPayload) => Promise<DeepDispatchOutcome>,
+  dispatch: (payload: DeepResearchPayload, askedBy: string) => Promise<DeepDispatchOutcome>,
   input: {
     familyId: string;
+    /** The adult whose ask made the promise: the audience of the dispatch's audit row. */
+    parentUserId: string;
     recorded: ActivityPromiseRecordOutcome;
   },
 ): Promise<DeepDispatchOutcome> {
   if (input.recorded.status !== 'recorded') {
     return { status: 'not_enqueued', reason: 'not_recorded' };
   }
-  return dispatch({
-    commitment_id: input.recorded.commitmentId,
-    family_id: input.familyId,
-  });
+  return dispatch(
+    {
+      commitment_id: input.recorded.commitmentId,
+      family_id: input.familyId,
+    },
+    input.parentUserId,
+  );
 }

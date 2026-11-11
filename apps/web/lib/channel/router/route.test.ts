@@ -4122,14 +4122,16 @@ describe('a promise worth opening pages for is dispatched at question time', () 
   it('mints the commitment AND enqueues the deep pass keyed to it', async () => {
     const promises: unknown[] = [];
     const dispatched: unknown[] = [];
+    const askers: unknown[] = [];
     const h = harness({
       coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
       recordActivityPromise: async (_db, input) => {
         promises.push(input);
         return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
       },
-      dispatchDeepResearch: async (payload) => {
+      dispatchDeepResearch: async (payload, askedBy) => {
         dispatched.push(payload);
+        askers.push(askedBy);
         return { status: 'enqueued' as const };
       },
     });
@@ -4146,6 +4148,8 @@ describe('a promise worth opening pages for is dispatched at question time', () 
     // ONE job, keyed to the promise that was just written — never to the message, never
     // to the family: the commitment is what the job is about and what it re-reads.
     expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
+    // The adult whose ask it was, so the dispatch's audit row is theirs (VIL-635).
+    expect(askers).toEqual([PARENT]);
   });
 
   // A subject is never read for keywords to decide this: the promise was made, so it is
