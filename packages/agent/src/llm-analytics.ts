@@ -55,6 +55,11 @@ export interface LlmTraceContext {
   caseName?: string;
   /** True when this generation was replayed from the eval cache. */
   cached?: boolean;
+  /**
+   * When true, `$ai_input` / `$ai_output_choices` stay off even if content capture is
+   * on. Set when the request holds an email body for one compose (VIL-619).
+   */
+  omitContent?: boolean;
 }
 
 export interface Usage {

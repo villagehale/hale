@@ -92,6 +92,7 @@ export const FLAGS = [
     allowlistMode: 'arm',
   }),
   exact('email-alert', 'EMAIL_ALERT_ENABLED'),
+  exact('email-alert-body', 'EMAIL_ALERT_BODY_ENABLED'),
   exact('f14', 'F14_ENABLED', {
     allowlistEnv: 'F14_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',

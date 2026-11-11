@@ -97,6 +97,24 @@ describe('worker PostHog: privacy mode with a key', () => {
     expect(wire).not.toContain(EMAIL);
   });
 
+  it('omitContent keeps $ai_input off even when content capture is on', async () => {
+    vi.stubEnv('POSTHOG_LLM_CONTENT_ENABLED', 'true');
+    const capture = vi.fn();
+    const ph = { capture, flush: vi.fn(async () => {}) } as unknown as PostHog;
+    const traced = traceAnthropic(fakeAnthropic(), { stage: 'notice' }, ph);
+    const secret = 'SECRET_EMAIL_BODY_7f3a';
+    await withLlmContext({ stage: 'notice', omitContent: true }, () =>
+      traced.messages.create({
+        model: 'claude-x',
+        messages: [{ role: 'user', content: secret }],
+      } as never),
+    );
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    const sent = capture.mock.calls[0]?.[0] as { properties: Record<string, unknown> };
+    expect(sent.properties).not.toHaveProperty('$ai_input');
+    expect(JSON.stringify(sent)).not.toContain(secret);
+  });
+
   it('reports cache hit rate from the three token fields', () => {
     const props = buildGenerationProperties({
       ctx: { stage: 'reviewer' },
