@@ -245,7 +245,9 @@ export function createGroupMentionReader(
 let shared: GroupMentionReader | null = null;
 
 export function sharedGroupMentionReader(): GroupMentionReader {
-  shared ??= createGroupMentionReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupMentionReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

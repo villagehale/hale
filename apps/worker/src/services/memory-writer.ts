@@ -99,6 +99,7 @@ export async function recordAgentRun(
       completionTokens: input.metrics.completionTokens,
       cacheReadTokens: input.metrics.cacheReadTokens,
       cacheWriteTokens: input.metrics.cacheWriteTokens,
+      promptCacheHit: input.metrics.promptCacheHit,
       costUsd: input.metrics.costUsd.toFixed(6),
       latencyMs: input.metrics.latencyMs,
       completedAt: new Date(),

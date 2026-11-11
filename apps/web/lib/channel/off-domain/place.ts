@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { postalCountryOf } from '@hale/types';
+import { recordCorrections } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
 import type { HealthPlace } from '../health-line';
 import type { FamilyPlace, PlaceUnknown } from './answer';
@@ -424,7 +425,7 @@ export async function healthPlaceOf(family: {
 
 /** The columns {@link placeOf} and {@link healthPlaceOf} read: the active saved area's,
  * with the family's country, or the home row's when there is no active area. */
-export async function readPlaceRow(database: Database, familyId: string) {
+export async function readPlaceRow(database: Database, familyId: string, now: Date = new Date()) {
   const [active] = await database
     .select({
       province: schema.familyAreas.province,
@@ -446,7 +447,44 @@ export async function readPlaceRow(database: Database, familyId: string) {
     .where(eq(schema.families.id, familyId))
     .limit(1);
   if (!family) throw new Error('off-domain place: no family row');
+  // The parent said where they live after the record was last written (VIL-519): that is
+  // where they are now, but only when what they said IS a place name in the table for the
+  // family's country, sent in the table's spelling. Any other text is the parent's own words
+  // (a street, a child's name): it stays out of every place read and rides only in the
+  // teen-filtered memory facts, and the stored record stands.
+  const corrected = await tableCityNamed(
+    family.country,
+    placeText((await recordCorrections(database, familyId, now)).place?.factValue),
+  );
+  if (corrected !== null) {
+    return {
+      country: family.country,
+      province: null,
+      city: corrected,
+      postalCode: null,
+      areaCoarse: null,
+    };
+  }
   return active ? { ...active, country: family.country, areaCoarse: null } : family;
+}
+
+async function tableCityNamed(country: string | null, text: string | null): Promise<string | null> {
+  const postalCountry = country === null ? undefined : postalCountryOf(country);
+  if (postalCountry === undefined || text === null) return null;
+  const asSaid = folded(text);
+  const table = await TABLES[postalCountry]();
+  return table.cities.find((city) => folded(city) === asSaid) ?? null;
+}
+
+function placeText(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const fields = value as Record<string, unknown>;
+  for (const key of ['city', 'text', 'summary', 'value']) {
+    const field = fields[key];
+    if (typeof field === 'string' && field.trim()) return field.trim();
+  }
+  return null;
 }
 
 /**

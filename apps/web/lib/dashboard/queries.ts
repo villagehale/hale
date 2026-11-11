@@ -177,8 +177,9 @@ export function loadViewerTeenUnlocks(): Promise<TeenAccessUnlocks> {
 
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
-    const unlocks = await loadTeenAccessUnlocks(database, familyId, await currentUserId(database));
-    return loadTrailForFamily(database, familyId, unlocks);
+    const viewerUserId = await currentUserId(database);
+    const unlocks = await loadTeenAccessUnlocks(database, familyId, viewerUserId);
+    return loadTrailForFamily(database, familyId, unlocks, { viewerUserId });
   }, []);
 }
 

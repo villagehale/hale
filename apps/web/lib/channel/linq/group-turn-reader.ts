@@ -123,7 +123,9 @@ export function createGroupTurnReader(
 let shared: GroupTurnReader | null = null;
 
 export function sharedGroupTurnReader(): GroupTurnReader {
-  shared ??= createGroupTurnReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupTurnReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 
