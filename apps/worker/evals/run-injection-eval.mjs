@@ -67,6 +67,7 @@ import {
   makeCost,
   noteUsage,
   totalUsd,
+  withoutCacheTtl,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import {
@@ -109,7 +110,9 @@ function requestKey(request) {
   })
     .replace(UUID, '<uuid>')
     .replace(INSTANT, '<instant>');
-  return createHash('sha256').update(`injection\n${canonical}`).digest('hex');
+  return createHash('sha256')
+    .update(`injection\n${withoutCacheTtl(canonical)}`)
+    .digest('hex');
 }
 
 /**

@@ -1,4 +1,6 @@
 import type { Database } from '@hale/db';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import {
   BrowserUseEngineThrew,
   PAYMENT_RUN_MAX_COST_USD,
@@ -16,6 +18,9 @@ import type {
 import { browserUseProxyFor } from '../browser-use/proxy';
 import { loadProviderSession, recordBrowserUseProfile } from '../browser-use/vault';
 import { signupProviderHost, typedOutsideGrant } from '../consent';
+import { providerAccountCreateEnabled, providerCredentialsEnabled } from '../credentials/flag';
+import { loadCredentialsForRun, markCredentialsStale } from '../credentials/store';
+import { mintFreshLoginLink } from '../login-link/store';
 import { BROWSER_USE_REGISTRATION_RESERVE_USD, signupSpendingCap } from '../run';
 import {
   loadSignupIdentity,
@@ -24,12 +29,16 @@ import {
   reserveBrowserUseAllowance,
 } from '../store';
 import { registrationUrlAllowed } from '../url';
+import { childFirstName, parentTimeZone } from './conversation';
 import { registrationPlanRunEnabled } from './flag';
+import { signupPlanPrepDepsFromEnv } from './notice';
+import { type PlanNoticeKind, type PlanPrepDeps, sendSignupPlanNotice } from './prep';
 import {
   type ClaimedPlan,
   claimDuePlan,
   claimResumablePlan,
   loadPlanConsent,
+  parkSignupPlan,
   planFieldsToType,
   planLapse,
   planTakenBack,
@@ -37,6 +46,7 @@ import {
   writePlanAudit,
 } from './store';
 import { planModeFor } from './towns';
+import { planOpensAtLocal } from './writer';
 
 /** Hale joins the open this long before it, the way a punctual parent would. */
 export const PLAN_JOIN_LEAD_MS = 3 * 60_000;
@@ -115,6 +125,8 @@ export interface PlanRunDeps {
   ) => Promise<{ ok: boolean; reason: string }>;
   /** Undefined uses `PLAN_AUTO_HOSTS`. */
   autoHosts?: readonly string[];
+  /** Event notices (rejected password, mismatched options). Undefined uses env wiring. */
+  prep?: PlanPrepDeps;
 }
 
 export type PlanRunSummary =
@@ -282,6 +294,20 @@ async function runOnePlan(
       notice,
       host,
     });
+    if (result.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: plan.familyId,
+        providerDomain: host,
+        stage: result.detail,
+        source: mode === 'assisted' ? 'assisted' : 'plan',
+      });
+    } else if (result.outcome === 'completed') {
+      noteTaskCompleted({
+        familyId: plan.familyId,
+        type: 'registration',
+        source: mode === 'assisted' ? 'assisted' : 'plan',
+      });
+    }
     return { offerId: plan.offerId, outcome: result.outcome, detail: result.detail, notice };
   };
   const handBack = (detail: PlanRunDetail, outcome: PlanRunOutcome = 'needs_human') =>
@@ -333,6 +359,9 @@ async function runOnePlan(
       await audit({ step: 'plan_checkpointed', phase: result.resume.phase, host });
       return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
     }
+    if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
+      return parkAndTell(database, plan, result, now, host, deps);
+    }
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
     return end({
       outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,
@@ -361,7 +390,7 @@ async function runOnePlan(
     return handBack('authorization_lapsed', 'cancelled');
   }
   if (!allowed.ok || !host) return handBack('url_refused');
-  if (now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) {
+  if (!plan.alreadyOpen && now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) {
     return held ? handBack('open_window_passed', 'not_open') : handBack('missed_open');
   }
   if (mode === 'parent') return handBack('parent_town');
@@ -391,7 +420,14 @@ async function runOnePlan(
     providerHost,
     now,
   });
-  if (!stored) return handBack('no_provider_session', 'needs_login');
+  const credentials = providerCredentialsEnabled()
+    ? await loadCredentialsForRun(database, {
+        familyId: plan.familyId,
+        providerHost,
+        now,
+      })
+    : null;
+  if (!stored && !credentials) return handBack('no_provider_session', 'needs_login');
   if (!held) {
     const reserved = await reserveBrowserUseAllowance(database, {
       offerId: plan.offerId,
@@ -405,6 +441,7 @@ async function runOnePlan(
   }
 
   const cap = deps.checkSpendingCap ?? signupSpendingCap(plan.maxPriceCents);
+  const pick = typeof plan.availability?.kind === 'string' ? plan.availability.kind : null;
   return carry(() =>
     runner.run({
       mode,
@@ -415,12 +452,20 @@ async function runOnePlan(
       choices,
       maxPriceCents: plan.maxPriceCents,
       waiverAccepted: plan.waiverAccepted,
-      providerSession: {
-        storageState: stored.storageState,
-        browserUseProfileId: stored.browserUseProfileId,
-      },
+      credentials,
+      accountCreate: providerAccountCreateEnabled(),
+      joinWaitlist: pick === 'join_waitlist',
+      askedStart: askedStartFromAvailability(plan.availability),
+      providerSession: stored
+        ? {
+            storageState: stored.storageState,
+            browserUseProfileId: stored.browserUseProfileId,
+          }
+        : { storageState: { cookies: [], origins: [] }, browserUseProfileId: null },
       onProfileCreated: (profileId) =>
-        recordBrowserUseProfile(database, { sessionRowId: stored.id, profileId }),
+        stored
+          ? recordBrowserUseProfile(database, { sessionRowId: stored.id, profileId })
+          : Promise.resolve(),
       proxyCountryCode: browserUseProxyFor(providerHost),
       checkSpendingCap: (amountCents) =>
         cap(plan.familyId, { amountUsd: amountCents / 100, category: 'registration' }),
@@ -447,4 +492,109 @@ async function runOnePlan(
         }),
     }),
   );
+}
+
+function askedStartFromAvailability(availability: Record<string, unknown> | null): string | null {
+  if (!availability) return null;
+  if (
+    availability.kind === 'take_option' &&
+    availability.choice &&
+    typeof availability.choice === 'object'
+  ) {
+    const starts = (availability.choice as { starts_at?: unknown }).starts_at;
+    if (typeof starts === 'string' && starts.trim()) return starts;
+  }
+  return typeof availability.askedStart === 'string' ? availability.askedStart : null;
+}
+
+async function parkAndTell(
+  database: Database,
+  plan: ClaimedPlan,
+  result: BrowserUsePlanResult,
+  now: Date,
+  host: string | null,
+  deps: PlanRunDeps,
+): Promise<PlanRunSummary> {
+  const passwordRejected = result.detail === 'password_rejected';
+  if (passwordRejected) {
+    await markCredentialsStale(database, {
+      familyId: plan.familyId,
+      providerHost: host ?? new URL(plan.registrationUrl).hostname,
+      now,
+    });
+  }
+  const minted = passwordRejected
+    ? await mintFreshLoginLink(database, {
+        familyId: plan.familyId,
+        parentUserId: plan.parentUserId,
+        offerId: plan.offerId,
+        providerHost: host ?? new URL(plan.registrationUrl).hostname,
+        now,
+      })
+    : null;
+  await parkSignupPlan(database, {
+    offerId: plan.offerId,
+    familyId: plan.familyId,
+    availability: passwordRejected
+      ? { kind: 'password_rejected' }
+      : {
+          kind: 'options_mismatch',
+          choices: result.siteChoices ?? [],
+          askedStart: plan.sessions[0]?.label ?? null,
+        },
+    now,
+  });
+  if (result.sessionCostUsd) {
+    await recordBrowserUseCost(database, {
+      offerId: plan.offerId,
+      familyId: plan.familyId,
+      sessionCostUsd: result.sessionCostUsd,
+      now,
+    });
+  }
+  const kind: PlanNoticeKind = passwordRejected ? 'password_rejected' : 'options_mismatch';
+  const facts = {
+    kind,
+    childFirstName: await childFirstName(database, {
+      familyId: plan.familyId,
+      childId: plan.childId,
+    }),
+    opensAt: planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId)),
+    host: host ?? new URL(plan.registrationUrl).hostname,
+    language: await readParentLanguage(database, {
+      familyId: plan.familyId,
+      parentUserId: plan.parentUserId,
+    }),
+    passwordRejectionMessage: result.passwordRejectionMessage ?? null,
+    passwordRule: result.passwordRule ?? null,
+    siteChoices: result.siteChoices ?? [],
+    askedStart: plan.sessions[0]?.label ?? null,
+  };
+  const sent = await sendSignupPlanNotice(
+    database,
+    {
+      familyId: plan.familyId,
+      parentUserId: plan.parentUserId,
+      offerId: plan.offerId,
+      providerHost: host ?? new URL(plan.registrationUrl).hostname,
+      kind,
+      facts,
+      link: minted?.url ?? null,
+      linkAfter: 0,
+      now,
+    },
+    deps.prep ?? signupPlanPrepDepsFromEnv(database),
+  );
+  await writePlanAudit(database, {
+    familyId: plan.familyId,
+    actor: plan.parentUserId,
+    offerId: plan.offerId,
+    after: { step: 'plan_parked', kind, host },
+  });
+  return {
+    offerId: plan.offerId,
+    outcome: result.outcome,
+    detail: result.detail,
+    notice: sent ? 'sent' : 'failed',
+  };
 }

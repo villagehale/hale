@@ -11,6 +11,7 @@
  * kind and source travel with each fact. Do not invent a second export shape.
  */
 
+import { isEnabled } from '@hale/flags';
 // Relative on purpose. The coach eval loads this file through context.ts, and
 // the tsx loader there cannot resolve the web app's `~` alias.
 import { copyLanguage } from '../channel/language';
@@ -99,7 +100,7 @@ export const MEMORY_RECALL_LINES_PER_BUBBLE = 10;
 export type MemoryKindCopyKey = keyof (typeof MEMORY_KIND_COPY)['en'];
 
 export function familyMemoryKindsEnabled(env: MemoryKindEnv = process.env): boolean {
-  return env[FAMILY_MEMORY_KINDS_ENABLED_ENV] === 'true';
+  return isEnabled('family-memory-kinds', undefined, env);
 }
 
 export function memoryKindBodies(): string[] {

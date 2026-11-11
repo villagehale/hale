@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { peelLinqSticker } from '~/lib/channel/outbound-transport';
@@ -19,7 +20,7 @@ import { LinqSendError } from './transport';
  */
 
 export function linqStickersEnabled(): boolean {
-  return process.env.LINQ_STICKERS_ENABLED?.trim() === 'true';
+  return isEnabled('linq-stickers');
 }
 
 export interface LinqStickerInput {
@@ -126,7 +127,9 @@ export function createLinqStickerDecider(
 let shared: LinqStickerDecider | null = null;
 
 export function sharedLinqStickerDecider(): LinqStickerDecider {
-  shared ??= createLinqStickerDecider(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createLinqStickerDecider(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

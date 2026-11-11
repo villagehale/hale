@@ -59,7 +59,7 @@ describe('browser use client', () => {
 
 describe('browser use outcome', () => {
   it('requires every field in the schema', () => {
-    expect(BROWSER_USE_SIGNUP_OUTPUT_SCHEMA.required).toHaveLength(9);
+    expect(BROWSER_USE_SIGNUP_OUTPUT_SCHEMA.required).toHaveLength(14);
     expect(parseSignupOutput({ outcome: 'reached_checkout' })).toBeNull();
     expect(
       parseSignupOutput({
@@ -71,6 +71,42 @@ describe('browser use outcome', () => {
         payment_details_entered: false,
       })?.outcome,
     ).toBe('waitlist');
+  });
+
+  it('keeps a site rejection, its options, seats and fees from the page', () => {
+    const parsed = parseSignupOutput({
+      outcome: 'options_mismatch',
+      detail: 'none',
+      checkout_url: null,
+      cart_total_cents: null,
+      hold_minutes: null,
+      payment_details_entered: false,
+      password_rejection_message: 'Password must include a number',
+      password_rule: '8 characters and a number',
+      site_choices: [
+        {
+          id: 'nov-21',
+          label: 'Nov 21',
+          starts_at: '2026-11-21',
+          price_cents: 12000,
+          waitlist: false,
+          billing_note: 'billed December',
+        },
+      ],
+      seats_open: 3,
+      fees: {
+        session_cents: 9800,
+        admin_cents: 2500,
+        membership_cents: 0,
+        total_cents: 12300,
+        billing_note: 'charged at registration',
+      },
+    });
+    expect(parsed?.outcome).toBe('options_mismatch');
+    expect(parsed?.password_rule).toBe('8 characters and a number');
+    expect(parsed?.site_choices[0]?.label).toBe('Nov 21');
+    expect(parsed?.fees?.admin_cents).toBe(2500);
+    expect(parsed?.seats_open).toBe(3);
   });
 
   it('keeps a checkout url only on the provider site over https', () => {

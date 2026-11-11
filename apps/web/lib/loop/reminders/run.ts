@@ -2,8 +2,16 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import { coparentSplitDutyActive } from '~/lib/channel/coparent/duty/flag';
+import { loadLiveDutyFacts } from '~/lib/channel/coparent/duty/model';
+import {
+  confirmedParentDutyOwners,
+  resolveSplitReminderOwner,
+  splitReminderDecision,
+} from '~/lib/channel/coparent/duty/split-target';
 import { laneEnabled } from '~/lib/channel/lanes';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { proactiveFloorOpensAt, proactiveQuietNow } from '~/lib/channel/outbound-gate';
@@ -127,6 +135,10 @@ export interface LiveEvent extends EventSnapshot {
    * the frequency cap and quiet hours are the dispatch's.
    */
   googleEventId: string | null;
+  /** Hale's write-back copy of this placement on a parent's Google Calendar. */
+  placedGoogleEventId?: string | null;
+  /** `family_events.duty_owner_user_id` — who is driving, when duty is recorded. */
+  dutyOwnerUserId: string | null;
   /** `family_events.created_by`. For a mirror this is the parent who connected
    * that calendar. Null when the row has no acting user. */
   createdBy: string | null;
@@ -373,7 +385,9 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           location: schema.familyEvents.location,
           notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
+          placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
           createdBy: schema.familyEvents.createdBy,
+          dutyOwnerUserId: schema.familyEvents.dutyOwnerUserId,
           kidVerdict: schema.kidRelevanceVerdicts.verdict,
         })
         .from(schema.familyEvents)
@@ -449,7 +463,9 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           location: schema.familyEvents.location,
           notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
+          placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
           createdBy: schema.familyEvents.createdBy,
+          dutyOwnerUserId: schema.familyEvents.dutyOwnerUserId,
           kidVerdict: schema.kidRelevanceVerdicts.verdict,
           sourceChangedField: schema.familyEvents.sourceChangedField,
           sourceChangedFromStartsAt: schema.familyEvents.sourceChangedFromStartsAt,
@@ -801,6 +817,14 @@ async function fireDueReminders(
   };
 
   const firing: FiringRow[] = [];
+  const dutyOwnersByFamily = new Map<string, Map<string, string>>();
+  const dutyOwnersFor = async (familyId: string): Promise<Map<string, string>> => {
+    const cached = dutyOwnersByFamily.get(familyId);
+    if (cached) return cached;
+    const owners = confirmedParentDutyOwners(await loadLiveDutyFacts(db, familyId));
+    dutyOwnersByFamily.set(familyId, owners);
+    return owners;
+  };
   let suppressed = 0;
   let cancelled = 0;
   let heldLaneOff = 0;
@@ -862,6 +886,37 @@ async function fireDueReminders(
           if (!(await recipientMaySee(row, event))) {
             await drop(row, 'out_of_scope');
             break;
+          }
+          if (
+            coparentSplitDutyActive(row.familyId) &&
+            row.role !== null &&
+            isParentRole(row.role)
+          ) {
+            const owners = await dutyOwnersFor(row.familyId);
+            const familyEvents = await deps.loadHorizonEvents(db, row.familyId, now);
+            const decision = splitReminderDecision({
+              event: {
+                eventKey: event.id,
+                childId: event.childId,
+                startsAt: event.startsAt,
+                endsAt: event.endsAt ?? null,
+                ownerUserId: resolveSplitReminderOwner(event, owners),
+              },
+              siblings: familyEvents
+                .filter((other) => other.id !== event.id && other.deletedAt === null)
+                .map((other) => ({
+                  eventKey: other.id,
+                  childId: other.childId,
+                  startsAt: other.startsAt,
+                  endsAt: other.endsAt ?? null,
+                  ownerUserId: resolveSplitReminderOwner(other, owners),
+                })),
+              parentUserId: row.parentUserId,
+            });
+            if (decision.action === 'suppress') {
+              await drop(row, decision.reason);
+              break;
+            }
           }
           firing.push({
             reminderId: row.id,
@@ -1145,6 +1200,7 @@ async function fireDueReminders(
         await deps.markStatus(db, r.reminderId, 'sent', null);
         if (isLateFire(r.fireAt, now)) firedLate += 1;
       }
+      noteTaskCompleted({ familyId: group.familyId, type: 'reminder', source: 'cron' });
       fired += batch.eventRefs.length;
       // Coarse telemetry (buildEvent drops any PII key): counts + enum only.
       await deps.capture('reminder_sent', parentUserId, {

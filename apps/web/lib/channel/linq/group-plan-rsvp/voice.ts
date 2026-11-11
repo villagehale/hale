@@ -1,10 +1,13 @@
 import { pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
+import { type EventDate, textDestination } from '~/lib/loop/voice/calendar-destination';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL, type GroupPlanCalendarLineInput } from './calendar';
 import type { GroupPlanRsvpLineInput } from './facts';
 import type { GroupPollLineInput } from './poll-facts';
 
@@ -24,7 +27,10 @@ export type GroupPlanRsvpVoiceSkip =
   | 'model_failed'
   | 'unusable';
 
-export type GroupLineInput = GroupPlanRsvpLineInput | GroupPollLineInput;
+export type GroupLineInput =
+  | GroupPlanRsvpLineInput
+  | GroupPollLineInput
+  | GroupPlanCalendarLineInput;
 
 export interface GroupPlanRsvpComposer {
   compose(
@@ -34,6 +40,9 @@ export interface GroupPlanRsvpComposer {
 }
 
 export const GROUP_PLAN_RSVP_VOICE_MAX_TOKENS = 400;
+
+export const GROUP_PLAN_VOICE_TOOL_NAME = 'send_group_line';
+export const GROUP_PLAN_VOICE_TOOL_DESCRIPTION = 'The one message Hale sends.';
 
 /** One model-written line. Code never stitches parts of a message together. */
 export const GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA = {
@@ -53,27 +62,42 @@ const voiceAnswerSchema = z.object({
   why: z.string().optional(),
 });
 
+/**
+ * A private calendar line is handed its start as a spoken label ("Sun, Nov 1 at
+ * 11:00 AM"), never a numeric date, so no date excuses a run of digits in it.
+ */
+const NO_HANDED_DATE: EventDate = { year: 0, month: 0, day: 0 };
+
 function lineUsable(line: string, input: GroupLineInput): boolean {
   if (!line.trim()) return false;
   if (hasLinkShape(line)) return false;
+  // A 1:1 line goes to one parent's own phone: no number to dial or address to mail,
+  // whatever the plan title or their own words held.
+  if (
+    input.skill === GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL &&
+    textDestination(line, NO_HANDED_DATE) !== null
+  ) {
+    return false;
+  }
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
   return true;
 }
 
 export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undefined {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return undefined;
   return {
     async compose(input, options) {
       const skill = await loadCronSkill(input.skill);
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client =
+        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const result = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
         userMessage: JSON.stringify({ ...input, retry: options?.prompt === 'short' }),
-        toolName: 'send_group_line',
-        toolDescription: 'The one message Hale sends.',
+        toolName: GROUP_PLAN_VOICE_TOOL_NAME,
+        toolDescription: GROUP_PLAN_VOICE_TOOL_DESCRIPTION,
         inputJsonSchema: GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA,
         schema: voiceAnswerSchema,
         maxTokens: options?.prompt === 'short' ? 160 : GROUP_PLAN_RSVP_VOICE_MAX_TOKENS,

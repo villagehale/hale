@@ -1,4 +1,5 @@
 import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -26,7 +27,7 @@ export const GROUP_PLAN_REPORT_TOOL = 'group_plan_report';
 export function groupPlanReportEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env.GROUP_PLAN_CALENDAR_REPORT_ENABLED?.trim() === 'true';
+  return isEnabled('group-plan-calendar-report', undefined, env);
 }
 
 export type GroupPlanChange = 'added' | 'moved' | 'cancelled';

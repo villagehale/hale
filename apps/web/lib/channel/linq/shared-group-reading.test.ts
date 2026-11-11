@@ -3,10 +3,40 @@ import {
   createSharedGroupReader,
   parseSharedGroupReading,
   reactionAsVote,
+  sharedGroupReadingCommonTimeJsonSchema,
+  sharedGroupReadingJsonSchema,
   sharedGroupUserMessage,
 } from './shared-group-reading';
 
 describe('shared group reading', () => {
+  it('the recorded reader schema does not ask for a calendar withdrawal', () => {
+    expect(sharedGroupReadingJsonSchema.properties.intent.enum).not.toContain('withdraw_calendar');
+    expect(sharedGroupReadingCommonTimeJsonSchema.properties.intent.enum).toContain(
+      'withdraw_calendar',
+    );
+  });
+
+  it('a calendar-only withdrawal is a high-confidence state change, and not a stop', () => {
+    expect(
+      parseSharedGroupReading({
+        intent: 'withdraw_calendar',
+        role: 'unclear',
+        familyLabel: null,
+        kidName: null,
+        confidence: 'high',
+      }).intent,
+    ).toBe('withdraw_calendar');
+    expect(
+      parseSharedGroupReading({
+        intent: 'withdraw_calendar',
+        role: 'unclear',
+        familyLabel: null,
+        kidName: null,
+        confidence: 'low',
+      }).intent,
+    ).toBe('unclear');
+  });
+
   it('accepts a high-confidence state change and drops a low-confidence one', () => {
     expect(
       parseSharedGroupReading({

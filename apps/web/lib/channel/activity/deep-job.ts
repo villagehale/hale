@@ -253,6 +253,7 @@ export async function runDeepResearchJob(
       reason: outcome.reason === 'not_configured' ? 'deferred' : 'unsendable',
     };
   }
+  if (outcome.status === 'queued') return { status: 'left_open', reason: 'deferred' };
   return { status: 'sent', watch: outcome.watch };
 }
 

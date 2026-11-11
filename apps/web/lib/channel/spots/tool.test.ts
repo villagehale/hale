@@ -46,6 +46,7 @@ const FULL_PAGE_READ: ClassAvailabilityReading = {
   spotsLeft: null,
   waitlistRoom: false,
   schedule: 'Tuesdays 4:30 PM',
+  sessionStartsAt: null,
   digest: 'digest-1',
 };
 
@@ -404,9 +405,9 @@ describe('watch_for_opening — through the guarded invoker', () => {
     ).rejects.toThrow(/child_content/);
     expect(fetchBody).not.toHaveBeenCalled();
     expect(armed).toEqual([]);
-    // The rail refuses BEFORE the audit write, so a blocked call is not recorded as an
-    // authorized one (tool.ts invokeTool).
-    expect(audit).toEqual([]);
+    // The rail refuses BEFORE the tool:<name> audit write, so a blocked call is not
+    // recorded as an authorized one. VIL-635 leaves a content-free tool_refused row.
+    expect(audit.map((a) => a.actionTaken)).toEqual(['tool_refused']);
   });
 
   it('records the pre-gate input in the audit row and passes NONE of it on when refused', async () => {
@@ -531,6 +532,24 @@ describe('watch_for_opening — a program page outside the registry', () => {
         sessionStartsAt: null,
         sessionAnchor: 'Preschool Swim - Tuesdays 4:30 PM',
       },
+    ]);
+  });
+
+  it('arms with the listing session start when the reader stood behind one', async () => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'true');
+    const start = new Date('2026-09-15T04:00:00.000Z');
+    const { tool, armed } = ports({
+      readClassAvailability: async () => ({ ...FULL_PAGE_READ, sessionStartsAt: start }),
+    });
+
+    await expect(
+      tool.handler({ url: PAGE_URL, label: 'Tuesday preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(armed).toEqual([
+      expect.objectContaining({
+        sessionStartsAt: start,
+        sessionAnchor: 'Preschool Swim - Tuesdays 4:30 PM',
+      }),
     ]);
   });
 

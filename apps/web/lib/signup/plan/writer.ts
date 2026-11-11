@@ -81,12 +81,102 @@ export const SIGNUP_PLAN_REPLY_TOOL_SCHEMA = {
 /** Moments where the parent is told about queueing on their own phone as well. */
 const QUEUE_MOMENTS: ReadonlySet<PlanReplyMoment> = new Set(['offer', 'approved']);
 
+const MONEY =
+  /(?:\$\s*(\d+)(?:\.(\d{2}))?|(\d+)(?:\.(\d{2}))?\s*\$|(\d+)\s*(?:dollars|cad|usd|加元))/gi;
+const CLOCK =
+  /\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b|\b(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b|\b(\d{1,2})(a\.?m\.?|p\.?m\.?)\b|\b(\d{1,2})h(\d{2})\b/gi;
+
+function moneyCentsIn(text: string): number[] {
+  const out: number[] = [];
+  for (const match of text.matchAll(MONEY)) {
+    const dollars = Number(match[1] ?? match[3] ?? match[5]);
+    const fraction = match[2] ?? match[4];
+    if (!Number.isFinite(dollars)) continue;
+    out.push(dollars * 100 + (fraction ? Number(fraction) : 0));
+  }
+  return out;
+}
+
+function knownCents(facts: PlanReplyFacts): Set<number> {
+  const known = new Set<number>();
+  const add = (value: number | null | undefined) => {
+    if (value == null || !Number.isFinite(value)) return;
+    known.add(value);
+  };
+  add(facts.maxPriceCents);
+  for (const session of facts.sessions) add(session.priceCents);
+  add(facts.run?.cartTotalCents);
+  add(facts.run?.amountChargedCents);
+  return known;
+}
+
+function clockMinutes(hour: number, minute: number, mer: string | undefined): number | null {
+  if (hour > 23 || minute > 59) return null;
+  const ap = mer?.replace(/\./g, '').toLowerCase();
+  let h = hour;
+  if (ap === 'am' || ap === 'pm') {
+    if (hour > 12) return null;
+    if (ap === 'am') h = hour === 12 ? 0 : hour;
+    else h = hour === 12 ? 12 : hour + 12;
+  }
+  return h * 60 + minute;
+}
+
+function clocksIn(text: string): number[] {
+  const out: number[] = [];
+  for (const match of text.matchAll(CLOCK)) {
+    if (match[1] !== undefined) {
+      const mins = clockMinutes(Number(match[1]), Number(match[2]), match[3]);
+      if (mins !== null) out.push(mins);
+      continue;
+    }
+    if (match[4] !== undefined) {
+      const mins = clockMinutes(Number(match[4]), 0, match[5]);
+      if (mins !== null) out.push(mins);
+      continue;
+    }
+    if (match[6] !== undefined) {
+      const mins = clockMinutes(Number(match[6]), 0, match[7]);
+      if (mins !== null) out.push(mins);
+      continue;
+    }
+    if (match[8] !== undefined) {
+      const mins = clockMinutes(Number(match[8]), Number(match[9]), undefined);
+      if (mins !== null) out.push(mins);
+    }
+  }
+  return out;
+}
+
+function knownClocks(facts: PlanReplyFacts): Set<number> {
+  const blobs = [facts.opensAt.local, ...facts.sessions.map((session) => session.label)];
+  const known = new Set<number>();
+  for (const blob of blobs) {
+    for (const value of clocksIn(blob)) known.add(value);
+  }
+  return known;
+}
+
 /** Why a draft cannot leave. Empty means it can. */
-export function planReplyViolations(text: string): string[] {
+export function planReplyViolations(text: string, facts?: PlanReplyFacts): string[] {
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
   if (hasLinkShape(tidy)) out.push('contains a link: Hale adds any link after the text');
+  if (facts) {
+    const allowedMoney = knownCents(facts);
+    if (
+      allowedMoney.size === 0
+        ? moneyCentsIn(tidy).length > 0
+        : moneyCentsIn(tidy).some((cents) => !allowedMoney.has(cents))
+    ) {
+      out.push('invented figure: a price or limit that is not in the facts');
+    }
+    const allowedClocks = knownClocks(facts);
+    if (clocksIn(tidy).some((mins) => !allowedClocks.has(mins))) {
+      out.push('invented figure: a time that is not in the facts');
+    }
+  }
   return out;
 }
 
@@ -196,7 +286,7 @@ export function createPlanReplyWriter(
             maxTokens: SIGNUP_PLAN_REPLY_MAX_TOKENS,
           });
           const text = planReplyText(value.text);
-          const violations = planReplyViolations(text);
+          const violations = planReplyViolations(text, facts);
           if (violations.length === 0) return text;
           note = violations.join('; ');
         } catch (err) {

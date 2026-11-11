@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { noteGroupChatCreated, noteGroupChatMemberAdded } from '~/lib/analytics/product-hooks';
 import { type CopyLanguage, type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -256,6 +257,7 @@ export async function claimHouseholdLinqGroup(
     targetId: input.familyId,
     after: { outcome: 'claimed' },
   });
+  noteGroupChatCreated({ familyId: input.familyId, chatId: input.chatId, familyCount: 1 });
   return { status: 'claimed', chatId: input.chatId };
 }
 
@@ -434,6 +436,7 @@ export async function openHouseholdLinqGroup(
         targetId: args.familyId,
         after: { outcome: 'added' },
       });
+      noteGroupChatMemberAdded({ familyId: args.familyId, chatId: groupId, familyCount: 1 });
       return { status: 'added', chatId: groupId };
     }
 
@@ -487,6 +490,7 @@ export async function openHouseholdLinqGroup(
       targetId: args.familyId,
       after: { outcome: 'opened' },
     });
+    noteGroupChatCreated({ familyId: args.familyId, chatId: created.chatId, familyCount: 1 });
     return { status: 'opened', chatId: created.chatId };
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {
