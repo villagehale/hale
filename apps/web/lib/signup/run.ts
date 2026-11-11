@@ -5,6 +5,7 @@ import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { type AskPlace, loadLiveAsks, stoppedTurn } from './asks';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -48,13 +49,15 @@ import {
   createSignupOutcomeWriter,
 } from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
-import { type PlanTurnDeps, runPlanTurn } from './plan/conversation';
+import { namesFacts } from './parent-quote';
+import { type PlanTurnDeps, runPlanAsk } from './plan/conversation';
+import { untrustedActivityLabel } from './plan/reader';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import {
+  type PendingSignupOffer,
   loadBusy,
-  loadPendingOffer,
   loadSignupIdentity,
   markOffer,
   recordBrowserUseCost,
@@ -176,7 +179,7 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
-  const planTurn = await runPlanTurn(database, input, {
+  const planDeps: PlanTurnDeps = {
     planReader: deps.planReader,
     planWriter: deps.planWriter,
     mismatchReader: deps.mismatchReader,
@@ -190,25 +193,57 @@ export async function runAuthorizedSignup(
           { familyId: payload.familyId, actorUserId: payload.actorUserId },
         );
       }),
-  });
-  if (planTurn) return planTurn;
+  };
+  // Newest ask first, plan and one-shot alike: each is read by its own lane, and a message
+  // one ask's reader finds unrelated goes on to the next. No ask left: someone else's.
+  for (const ask of await loadLiveAsks(database, { familyId: input.familyId, now: input.now })) {
+    const turn =
+      ask.lane === 'plan'
+        ? await runPlanAsk(database, input, planDeps, ask.plan, ask.place)
+        : await runOneShotAsk(database, input, deps, ask.offer, ask.place);
+    if (turn !== 'unrelated') return turn;
+  }
+  return UNCLAIMED;
+}
 
-  // No pending offer: nothing to consent to, and the message is someone else's. An offer
-  // made to the other parent is theirs to answer: this parent's yes would register with
-  // their own details on a sign-up the other parent was asked about.
-  const offer = await loadPendingOffer(database, input.familyId);
-  if (!offer || offer.parentUserId !== input.parentUserId) return UNCLAIMED;
+/**
+ * One pending ask with no open ahead: the consent read, then the booking. `unrelated` hands
+ * the message to the next ask. A yes binds this ask unnamed only when it is the newest ask
+ * waiting on one, and a no only when it is the newest ask; otherwise the parent's words must
+ * carry its program's name or its site, or the turn stops. A reading that failed stops too.
+ */
+async function runOneShotAsk(
+  database: Database,
+  input: SignupRunInput,
+  deps: SignupRunDeps,
+  offer: PendingSignupOffer,
+  place: AskPlace,
+): Promise<SignupRunResult | 'unrelated'> {
+  // An offer made to the other parent is theirs to answer: this parent's yes would register
+  // with their own details on a sign-up the other parent was asked about.
+  if (offer.parentUserId !== input.parentUserId) return 'unrelated';
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
   // Unreadable (no model, model failure) is not consent and does not claim the message.
-  if (!reading || reading.verdict === 'unrelated') return UNCLAIMED;
-  if (reading.verdict === 'consent' && deps.declineSeat && (await deps.declineSeat())) {
-    return {
-      claimed: true,
-      outcome: 'group_member_not_authorized',
-      reply: null,
-      deliverOnThread: false,
-    };
+  if (!reading) return stoppedTurn('signup_unread', { offerId: offer.id, status: 'pending' });
+  if (reading.verdict === 'unrelated') return 'unrelated';
+  if (reading.verdict === 'consent' || reading.verdict === 'decline') {
+    const unnamedOk = reading.verdict === 'consent' ? place.newestAsk : place.newest;
+    const named = namesFacts(input.body, {
+      activity: untrustedActivityLabel(offer.activityLabel),
+      host: offer.providerHost,
+    });
+    if (!unnamedOk && !named) {
+      return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
+    }
+    if (deps.declineSeat && (await deps.declineSeat())) {
+      return {
+        claimed: true,
+        outcome: 'group_member_not_authorized',
+        reply: null,
+        deliverOnThread: false,
+      };
+    }
   }
   const door = await reportDoor(database, input);
 

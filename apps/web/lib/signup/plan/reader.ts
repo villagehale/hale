@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { quotesParent } from '../parent-quote';
+import { foldWords, isClause, namesFacts, quotesParent } from '../parent-quote';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -16,9 +16,11 @@ import { MAX_PLAN_CHOICES } from './store';
  *
  * The offer's activity name came from a web page or the coach model, so it is untrusted:
  * it reaches the model marked as such, cleaned and cut short, and nothing in it can carry
- * an approval. An approval holds only on the parent's own words, copied (`said`); its
- * maximum only on a price Hale stored for what they chose or an amount they wrote; the
- * waiver only on their own words (`waiverSaid`). Anything else fails closed.
+ * an approval. An approval holds only on a clause of the parent's own words, copied
+ * (`said`); its maximum only on a price Hale's offer stated or an amount of money they
+ * wrote; the waiver only on a plan whose offer asks about it, and only on a clause of
+ * their own words other than the go-ahead (`waiverSaid`). A plan is named only by their
+ * words that carry its program's name or its site. Anything else fails closed.
  *
  * A missing client, a missing skill, a model failure or an unreadable result is null, and
  * the log names which. The caller treats null as no plan: it claims nothing.
@@ -37,11 +39,18 @@ export interface PlanReadOffer {
   sessions: readonly SignupSession[];
   approvedPriceCents: number | null;
   plan: { choiceIds: readonly string[]; maxPriceCents: number; waiverAccepted: boolean } | null;
+  /**
+   * Hale's plan for this offer asks whether it may tick the waiver: an `auto` plan. On an
+   * `assisted` plan the parent ticks it on the page, so no answer of theirs ticks it here.
+   * Code only: never shown to the model.
+   */
+  asksWaiver: boolean;
 }
 
 /**
  * `named`: the parent's own words name this plan's program or site, checked against their
- * message. A plan other than the newest is only ever moved on words that name it.
+ * message and against the plan's own name and host. A plan other than the newest is only
+ * ever moved on words that name it.
  */
 export type PlanReading =
   | {
@@ -158,18 +167,33 @@ function cleanQuestion(value: string | null): string | null {
 }
 
 // Digit runs only, thousands commas allowed, up to two decimals. Never a word list.
-const AMOUNT = /\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?/g;
+const AMOUNT = String.raw`\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?`;
+const BARE = new RegExp(AMOUNT, 'g');
+// An amount of money: a currency sign or word on either side of it. A sign right before
+// another number is that number's, so "the 2027 $98 session" is $98 and never $2027.
+const SIGN_FIRST = new RegExp(String.raw`(?:[$€£¥]|\b(?:cad|usd)\b)\s*(${AMOUNT})(?!\d)`, 'giu');
+const SIGN_AFTER = new RegExp(
+  String.raw`(?<![\d.,])(${AMOUNT})\s*(?:[$€£¥](?!\s*\d)|加元|美元|元|块|(?:dollars?|bucks|cad|usd)\b)`,
+  'giu',
+);
 
-/** Every amount written in the parent's words, in cents (full-width digits included). */
-export function amountsWritten(text: string): number[] {
-  const runs = text.normalize('NFKC').match(AMOUNT) ?? [];
-  return runs.map((run) => Math.round(Number(run.replace(/,/g, '')) * 100));
+function cents(run: string): number {
+  return Math.round(Number(run.replace(/,/g, '')) * 100);
+}
+
+/** Every amount of money in the parent's words, in cents (full-width digits included). */
+export function moneyWritten(text: string): number[] {
+  const normal = text.normalize('NFKC');
+  return [...normal.matchAll(SIGN_FIRST), ...normal.matchAll(SIGN_AFTER)].flatMap((match) =>
+    match[1] === undefined ? [] : [cents(match[1])],
+  );
 }
 
 /**
  * A maximum holds on Hale's own stored facts — the highest price stated for the sessions
- * the parent chose, or a price they already accepted — or on an amount they wrote. Never
- * on the activity label or anything else a page said.
+ * the parent chose, or a price they already accepted — on an amount of money they wrote,
+ * or on a bare number they wrote that is a price Hale's offer stated. Never on the activity
+ * label, and never on any other number (an address, a year).
  */
 function maxSupported(
   maxPriceCents: number,
@@ -182,7 +206,30 @@ function maxSupported(
   );
   if (stated.length > 0 && maxPriceCents === Math.max(...stated)) return true;
   if (offer.approvedPriceCents !== null && maxPriceCents === offer.approvedPriceCents) return true;
-  return amountsWritten(text).includes(maxPriceCents);
+  if (moneyWritten(text).includes(maxPriceCents)) return true;
+  const offered = [
+    offer.approvedPriceCents,
+    ...offer.sessions.map((session) => session.priceCents),
+  ];
+  const bare = (text.normalize('NFKC').match(BARE) ?? []).map(cents);
+  return offered.includes(maxPriceCents) && bare.includes(maxPriceCents);
+}
+
+/** The waiver answer holds on its own clause of the parent's words, not on the go-ahead. */
+function waiverGranted(
+  raw: z.infer<typeof signupPlanReadSchema>,
+  offer: PlanReadOffer,
+  text: string,
+): boolean {
+  const { waiverSaid, said } = raw;
+  return (
+    offer.asksWaiver &&
+    raw.waiverAccepted &&
+    waiverSaid !== null &&
+    isClause(waiverSaid) &&
+    quotesParent(text, waiverSaid) &&
+    (said === null || foldWords(waiverSaid) !== foldWords(said))
+  );
 }
 
 /**
@@ -197,7 +244,10 @@ export function toPlanReading(
   offer: PlanReadOffer,
   text: string,
 ): PlanReading | null {
-  const named = quotesParent(text, raw.named);
+  const named =
+    raw.named !== null &&
+    quotesParent(text, raw.named) &&
+    namesFacts(raw.named, { activity: untrustedActivityLabel(offer.activity), host: offer.host });
   if (raw.verdict === 'take_back') return { verdict: 'take_back', named };
   if (raw.verdict === 'unrelated') return { verdict: 'unrelated' };
   if (raw.verdict === 'unclear') {
@@ -216,13 +266,14 @@ export function toPlanReading(
     max !== null &&
     max > 0 &&
     maxSupported(max, chosen, offer, text) &&
+    isClause(raw.said) &&
     quotesParent(text, raw.said);
   if (valid && max !== null) {
     return {
       verdict: 'approve',
       choiceIds: [...ids],
       maxPriceCents: max,
-      waiverAccepted: raw.waiverAccepted && quotesParent(text, raw.waiverSaid),
+      waiverAccepted: waiverGranted(raw, offer, text),
       named,
     };
   }

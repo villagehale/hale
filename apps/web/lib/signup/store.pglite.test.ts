@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { loadPendingOffer, recordSignupOffer } from './store';
+import { loadPendingOffer, loadPendingOffers, recordSignupOffer } from './store';
 
 // Invented hosts and programs only.
 const NOW = new Date('2026-11-20T15:00:00.000Z');
@@ -193,8 +193,8 @@ describe('several signup asks at once', () => {
   });
 });
 
-describe('loadPendingOffer', () => {
-  it('binds the newest pending ask when older rows are still pending', async () => {
+describe('loadPendingOffers', () => {
+  it('lists every pending ask newest first, and loads a named one as itself', async () => {
     const f = await family();
     // Two pending asks on different hosts.
     const rows = await db.database
@@ -222,11 +222,16 @@ describe('loadPendingOffer', () => {
       });
     const newest = rows.find((row) => row.url === KICKERS_URL);
     const older = rows.find((row) => row.url === GYM_URL);
+    if (!newest || !older) throw new Error('rows not inserted');
 
-    expect((await loadPendingOffer(db.database, f.familyId))?.id).toBe(newest?.id);
+    expect((await loadPendingOffers(db.database, f.familyId)).map((row) => row.id)).toEqual([
+      newest.id,
+      older.id,
+    ]);
     // A named ask is loaded as itself, so an older plan can still be approved.
-    expect((await loadPendingOffer(db.database, f.familyId, older?.id))?.id).toBe(older?.id);
+    expect((await loadPendingOffer(db.database, f.familyId, older.id))?.id).toBe(older.id);
     const stranger = await family();
-    expect(await loadPendingOffer(db.database, stranger.familyId, older?.id)).toBeNull();
+    expect(await loadPendingOffers(db.database, stranger.familyId)).toEqual([]);
+    expect(await loadPendingOffer(db.database, stranger.familyId, older.id)).toBeNull();
   });
 });

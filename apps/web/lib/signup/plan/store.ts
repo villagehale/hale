@@ -461,6 +461,9 @@ export async function cancelSignupPlan(
 export interface ConversablePlan {
   offerId: string;
   childId: string;
+  /** The parent Hale asked: only their words may set the plan or take it back. */
+  parentUserId: string;
+  createdAt: Date;
   status: 'pending' | 'planned' | 'running';
   /** The program's public name, or null for an offer recorded before names were kept. */
   activityLabel: string | null;
@@ -477,9 +480,9 @@ export interface ConversablePlan {
 /**
  * The offers with a known open still ahead: a `pending` offer the coach recorded with its
  * open time, or a `planned` one the parent may still take back. A plan whose run is going
- * (possibly checkpointed between sweeps) can still be taken back too. Newest first,
- * because the last thing Hale asked is what a bare yes or stop answers; an older plan,
- * running or not, is reached by words that name it (see runPlanTurn).
+ * (possibly checkpointed between sweeps) can still be taken back too. Newest first; which
+ * of the family's asks a message answers is `loadLiveAsks`'s ordering, plans and one-shot
+ * asks together.
  */
 export async function loadConversablePlans(
   database: Database,
@@ -509,7 +512,6 @@ export async function loadConversablePlans(
         ),
       ),
     )
-    // Newest first: the plan a bare yes or stop is read against before any older one.
     .orderBy(desc(offers.createdAt));
   return rows.flatMap((row) => {
     if (!row.planOpensAt) return [];
@@ -532,6 +534,8 @@ export async function loadConversablePlans(
       {
         offerId: row.id,
         childId: row.childId,
+        parentUserId: row.parentUserId,
+        createdAt: row.createdAt,
         status,
         activityLabel: row.activityLabel,
         providerHost: row.providerHost,

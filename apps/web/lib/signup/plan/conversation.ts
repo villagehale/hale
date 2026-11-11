@@ -2,12 +2,12 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { type AskPlace, stoppedTurn } from '../asks';
 import { signupProviderHost } from '../consent';
 import type { SignupRunInput, SignupRunResult } from '../run';
 import { siteChoiceSchema } from '../site-choices';
 import { loadSignupIdentity, markOffer } from '../store';
 import type { SignupSession } from '../types';
-import { registrationPlanRunEnabled } from './flag';
 import { type MismatchReader, createMismatchReader } from './mismatch-reader';
 import { hasPlanNotice, recordPlanNotice } from './prep';
 import { type PlanReader, type PlanReading, createPlanReader } from './reader';
@@ -15,7 +15,6 @@ import {
   type ConversablePlan,
   approveSignupPlan,
   cancelSignupPlan,
-  loadConversablePlans,
   parkSignupPlan,
   writePlanAudit,
 } from './store';
@@ -50,59 +49,26 @@ export interface PlanTurnDeps {
 }
 
 /**
- * VIL-558 · the day-before plan conversation. Owns the turn when the family has an offer
- * whose open is still ahead and the plan lane is on; null otherwise, and the ordinary
- * sign-up reply runs. A model reads the parent's words ({@link PlanReader}); a yes calls
- * `approveSignupPlan`, a take-back calls `cancelSignupPlan` (or closes the offer when it
- * was never approved). Every claimed turn writes one audit row and a model-written reply.
+ * VIL-558 · the day-before plan conversation, for one plan ask among the family's live asks
+ * (`loadLiveAsks`; the walk over them is `runAuthorizedSignup`). A model reads the parent's
+ * words ({@link PlanReader}); a yes calls `approveSignupPlan`, a take-back calls
+ * `cancelSignupPlan` (or closes the offer when it was never approved). Every claimed turn
+ * writes one audit row and a model-written reply.
  *
- * A family can hold several plans at once. The newest is read first; a message the reader
- * finds is about something else is read against the next one. A bare yes binds the newest
- * ask still waiting on one. Any other plan moves only on words that name it (its program
- * or site): a take-back of a plan other than the newest, or a yes to an ask other than the
- * newest waiting one, that does not name it stops the turn. So does a reading that failed:
- * it is never carried on to the next plan. A stopped turn is unclaimed, logged and named.
+ * `unrelated` hands the message to the next ask, of either lane. A bare yes binds only the
+ * newest ask still waiting on one, a bare take-back only the newest ask; this plan moves
+ * otherwise only on words that name it (its program or site), or the turn stops. So does a
+ * reading that failed: it is never carried on to the next ask. Only the parent Hale asked
+ * may take the plan back, and never from a group seat that may not authorize a sign-up. A
+ * stopped turn is unclaimed, logged and named.
  */
-export async function runPlanTurn(
-  database: Database,
-  input: SignupRunInput,
-  deps: PlanTurnDeps = {},
-): Promise<SignupRunResult | null> {
-  if (!registrationPlanRunEnabled()) return null;
-  const plans = await loadConversablePlans(database, { familyId: input.familyId, now: input.now });
-  const newestAsk = plans.find((plan) => plan.status === 'pending')?.offerId ?? null;
-  let keepOneShotOff = false;
-  for (const [index, plan] of plans.entries()) {
-    const turn = await planTurnFor(database, input, deps, plan, {
-      newest: index === 0,
-      newestAsk: plan.offerId === newestAsk,
-    });
-    if (turn !== 'unrelated') return turn;
-    // A pending plan offer, or a plan waiting on a site pick, is this lane's alone: the
-    // one-shot sign-up must never book it. An approved plan leaves it free to read any
-    // other pending offer.
-    if (plan.status === 'pending' || plan.availability?.kind === 'options_mismatch') {
-      keepOneShotOff = true;
-    }
-  }
-  return keepOneShotOff ? unclaimed() : null;
-}
-
-/** Where a plan stands among the family's: what a message may do to it unnamed. */
-interface PlanPlace {
-  /** The newest plan of any status: a take-back need not name it. */
-  newest: boolean;
-  /** The newest plan still waiting on a yes: a bare yes binds it. */
-  newestAsk: boolean;
-}
-
-async function planTurnFor(
+export async function runPlanAsk(
   database: Database,
   input: SignupRunInput,
   deps: PlanTurnDeps,
   plan: ConversablePlan,
-  place: PlanPlace,
-): Promise<SignupRunResult | null | 'unrelated'> {
+  place: AskPlace,
+): Promise<SignupRunResult | 'unrelated'> {
   if (plan.availability && plan.availability.kind === 'options_mismatch') {
     return runMismatchTurn(database, input, deps, plan);
   }
@@ -118,6 +84,7 @@ async function planTurnFor(
       sessions: plan.sessions,
       approvedPriceCents: plan.approvedPriceCents,
       plan: plan.plan,
+      asksWaiver: planReplyMode(plan.registrationUrl) === 'auto',
     },
   });
   if (!reading) return stopped('plan_unread', plan);
@@ -129,6 +96,9 @@ async function planTurnFor(
 
   if (reading.verdict === 'take_back') {
     if (!place.newest && !reading.named) return stopped('plan_unnamed', plan);
+    if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
+    // The plan signs in and pays with the asked parent's city account: only they call it off.
+    if (plan.parentUserId !== input.parentUserId) return stopped('plan_not_offer_parent', plan);
     if (plan.status === 'pending') {
       await markOffer(database, {
         offerId: plan.offerId,
@@ -148,19 +118,19 @@ async function planTurnFor(
     });
     // Gone between the read and now. Or already paying: the take-back is marked, and the
     // sweep tells the parent what the payment did; this lane does not say it was cancelled.
-    if (cancelled === 'not_planned' || cancelled === 'paying') return null;
+    if (cancelled === 'not_planned' || cancelled === 'paying') {
+      return {
+        claimed: false,
+        outcome: cancelled === 'paying' ? 'plan_cancel_paying' : 'plan_not_planned',
+        reply: null,
+        deliverOnThread: false,
+      };
+    }
     return reply(database, input, deps, plan, 'cancelled', {});
   }
 
   if (!place.newestAsk && !reading.named) return stopped('plan_unnamed', plan);
-  if (deps.declineSeat && (await deps.declineSeat())) {
-    return {
-      claimed: true,
-      outcome: 'group_member_not_authorized',
-      reply: null,
-      deliverOnThread: false,
-    };
-  }
+  if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
   if (!input.inboundChannelMessageId) {
     return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored' });
   }
@@ -287,21 +257,21 @@ async function runMismatchTurn(
   return reply(database, input, deps, plan, 'approved', {});
 }
 
-function unclaimed(): SignupRunResult {
-  return { claimed: false, outcome: 'not_claimed', reply: null, deliverOnThread: false };
+function stopped(
+  outcome: 'plan_unread' | 'plan_unnamed' | 'plan_not_offer_parent',
+  plan: ConversablePlan,
+): SignupRunResult {
+  return stoppedTurn(outcome, { offerId: plan.offerId, status: plan.status });
 }
 
-/**
- * The turn ends here and nothing moves: the reading failed (`plan_unread`), or it would
- * move a plan the parent's words do not name (`plan_unnamed`). Unclaimed, so the one-shot
- * sign-up never reads it and the coach answers; no later plan reads it either.
- */
-function stopped(outcome: 'plan_unread' | 'plan_unnamed', plan: ConversablePlan): SignupRunResult {
-  console.warn(
-    { outcome, offerId: plan.offerId, status: plan.status },
-    'signup plans: turn stopped',
-  );
-  return { claimed: false, outcome, reply: null, deliverOnThread: false };
+/** A sender whose group seat may not authorize a sign-up moves no plan, and hears nothing. */
+function groupSeatDeclined(): SignupRunResult {
+  return {
+    claimed: true,
+    outcome: 'group_member_not_authorized',
+    reply: null,
+    deliverOnThread: false,
+  };
 }
 
 const OUTCOME: Record<Exclude<PlanReplyMoment, 'offer' | 'run_finished'>, string> = {

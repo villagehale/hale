@@ -5,8 +5,8 @@
 // the skill's lane, and the REAL structural check and bindings (`toPlanReading`). An
 // approval moves a family's money at the open, so the answer is exact: the verdict, for an
 // approval the sessions in the parent's order, the maximum and the waiver answer, and
-// `named` where a case sets it. A case whose `expect` is a list passes on any one of them.
-// No judge.
+// `named` where a case sets it. A case whose `expect` is a list passes on any one of them;
+// a null expectation is an unreadable reading (no plan). No judge.
 //
 //   node evals/run-signup-plan-read-eval.mjs --max-usd <cap>   # live, then caches
 //   node evals/run-signup-plan-read-eval.mjs --cached-only      # replay only
@@ -41,6 +41,7 @@ function offerOf(fixture) {
 
 function matches(reading, expected) {
   if (Array.isArray(expected)) return expected.some((one) => matches(reading, one));
+  if (expected === null) return reading === null;
   if (!reading || reading.verdict !== expected.verdict) return false;
   if (expected.named !== undefined && reading.named !== expected.named) return false;
   if (expected.verdict !== 'approve') return true;

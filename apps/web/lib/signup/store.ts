@@ -163,11 +163,50 @@ export async function recordSignupOffer(
   }
 }
 
-/** The family's newest pending ask, or the named one when `offerId` is given. */
+/** A pending ask with the public facts a parent could name it by. */
+export interface PendingSignupOffer extends SignupOffer {
+  activityLabel: string | null;
+  providerHost: string;
+  createdAt: Date;
+}
+
+/** Every pending ask of the family, newest first. Several can be open at once. */
+export async function loadPendingOffers(
+  database: Database,
+  familyId: string,
+): Promise<PendingSignupOffer[]> {
+  const offers = schema.authorizedSignupOffers;
+  const rows = await database
+    .select()
+    .from(offers)
+    .where(and(eq(offers.familyId, familyId), eq(offers.status, 'pending')))
+    .orderBy(desc(offers.createdAt));
+  return rows.flatMap((row) =>
+    row.familyId !== familyId || row.status !== 'pending'
+      ? []
+      : [
+          {
+            id: row.id,
+            familyId: row.familyId,
+            childId: row.childId,
+            parentUserId: row.parentUserId,
+            activityKey: row.activityKey,
+            registrationUrl: row.registrationUrl,
+            sessions: row.sessions,
+            approvedPriceCents: row.approvedPriceCents,
+            activityLabel: row.activityLabel,
+            providerHost: row.providerHost,
+            createdAt: row.createdAt,
+          },
+        ],
+  );
+}
+
+/** The family's pending ask with this id, or null when it is not one. */
 export async function loadPendingOffer(
   database: Database,
   familyId: string,
-  offerId?: string,
+  offerId: string,
 ): Promise<SignupOffer | null> {
   const [row] = await database
     .select({
@@ -186,14 +225,13 @@ export async function loadPendingOffer(
       and(
         eq(schema.authorizedSignupOffers.familyId, familyId),
         eq(schema.authorizedSignupOffers.status, 'pending'),
-        offerId === undefined ? undefined : eq(schema.authorizedSignupOffers.id, offerId),
+        eq(schema.authorizedSignupOffers.id, offerId),
       ),
     )
-    // Several asks can be open at once: the newest is the one a bare yes answers.
-    .orderBy(desc(schema.authorizedSignupOffers.createdAt))
     .limit(1);
-  if (!row || row.familyId !== familyId || row.status !== 'pending') return null;
-  if (offerId !== undefined && row.id !== offerId) return null;
+  if (!row || row.familyId !== familyId || row.status !== 'pending' || row.id !== offerId) {
+    return null;
+  }
   return {
     id: row.id,
     familyId: row.familyId,
