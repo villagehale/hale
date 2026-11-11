@@ -331,7 +331,7 @@ describe('VIL-457 private aside', () => {
     await runPrivateAside(db.database, r, turn());
     expect(r.wire.map((w) => w.body)).toEqual(['Leo has OT at 10 on Saturday']);
     const rows = await db.database
-      .select({ after: schema.auditLog.after })
+      .select({ after: schema.auditLog.after, audience: schema.auditLog.audience })
       .from(schema.auditLog)
       .where(
         and(
@@ -339,7 +339,9 @@ describe('VIL-457 private aside', () => {
           eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT),
         ),
       );
-    expect(rows).toEqual([{ after: { chatKey: linqChatBlindIndex(CHAT), delivered: 'sent' } }]);
+    expect(rows).toEqual([
+      { after: { chatKey: linqChatBlindIndex(CHAT), delivered: 'sent' }, audience: bao.userId },
+    ]);
   });
 
   it("one parent's aside is in their own copy and not in the other parent's", async () => {

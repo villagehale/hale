@@ -1,3 +1,4 @@
+import { captureWebEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import { verifyClaimCode } from '~/lib/auth/claim-by-phone';
 import { authRateLimited } from '~/lib/auth/rate-limit';
 import { db } from '~/lib/db';
@@ -44,6 +45,19 @@ export async function authorizeClaimByPhone(
     console.info({ reason: result.reason }, 'claim-by-phone: claim refused');
     return null;
   }
+
+  // Hashed family id only — never the phone, never the raw uuid. Dark until
+  // NEXT_PUBLIC_POSTHOG_WEB_ENABLED is on. Must not block the session mint.
+  void captureWebEvent('login_code_verified', hashFamilyId(result.familyId), {
+    surface: 'web',
+  }).then(
+    () => undefined,
+    (err: unknown) => {
+      console.warn('analytics: login_code_verified not recorded', {
+        err: err instanceof Error ? err.name : 'unknown',
+      });
+    },
+  );
 
   // The account's OWN identity, never a fresh one. This return value IS the anti-fork
   // property: the jwt callback pins it as `sub`, and resolveFamilyForUser keys on it,

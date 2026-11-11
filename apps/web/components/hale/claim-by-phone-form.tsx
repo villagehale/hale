@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import stage from '~/components/hale/connect/connect.module.css';
 import { DeviceTextLink } from '~/components/hale/device-text-link';
 import styles from '~/components/portal/signin.module.css';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { claimByPhoneAction } from '~/lib/auth/claim-phone-actions';
 import {
   CLAIM_CODE_ERROR,
@@ -51,6 +52,7 @@ export function ClaimByPhoneForm({
   const [tries, setTries] = useState(0);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
+  const capture = useAnalytics();
 
   useEffect(() => {
     if (step !== 'code' || expiresAt === null) return;
@@ -77,6 +79,7 @@ export function ClaimByPhoneForm({
     if (value.length === 0 || busy) return;
     setBusy(true);
     setError(null);
+    capture('login_phone_submitted');
     try {
       const res = await fetch('/api/auth/claim-phone/request', {
         method: 'POST',
@@ -84,15 +87,22 @@ export function ClaimByPhoneForm({
         body: JSON.stringify({ phone: value }),
       });
       if (res.status === 429) {
+        capture('login_failed', { reason: 'rate_limited' });
         setError(CLAIM_RATE_LIMIT);
         return;
       }
       if (!res.ok) {
+        capture('login_failed', { reason: 'invalid_request' });
         setError(CLAIM_NUMBER_ERROR);
         return;
       }
+      // Fired on the same 200 the UI already treats as "a code is on its way".
+      // The HTTP layer collapses unknown/STOP/caregiver into that 200, so this
+      // event is not an account oracle (rule #1).
+      capture('login_code_sent');
       openCodeStep();
     } catch {
+      capture('login_failed', { reason: 'connection_error' });
       setError(CLAIM_CONNECTION_ERROR);
     } finally {
       setBusy(false);
@@ -112,16 +122,20 @@ export function ClaimByPhoneForm({
           const next = tries + 1;
           setTries(next);
           if (claimFailureStep(next) === 'expired') {
+            capture('login_failed', { reason: 'expired' });
             setStep('expired');
             setError(null);
           } else {
+            capture('login_failed', { reason: 'code_rejected' });
             setError(result.message);
           }
         } else {
+          capture('login_failed', { reason: 'code_rejected' });
           setError(result.message);
         }
       }
     } catch {
+      capture('login_failed', { reason: 'connection_error' });
       setError(CLAIM_CONNECTION_ERROR);
     } finally {
       setBusy(false);
@@ -170,7 +184,9 @@ export function ClaimByPhoneForm({
                   autoComplete="tel"
                   spellCheck={false}
                   required
-                  className={styles.input}
+                  className={`${styles.input} ph-mask ph-no-capture`}
+                  data-hale-mask-input=""
+                  data-hale-pii=""
                   placeholder="(555) 555-1234"
                   value={phone}
                   onChange={(e) => setPhone(formatClaimPhone(e.currentTarget.value))}
@@ -194,6 +210,7 @@ export function ClaimByPhoneForm({
                   smsNumber={smsNumber}
                   prefill={PORTAL_INTAKE_PREFILL}
                   source={source}
+                  onClick={() => capture('signup_started', { surface: 'sign_in' })}
                 >
                   Text Hale to start
                 </DeviceTextLink>
@@ -233,7 +250,9 @@ export function ClaimByPhoneForm({
                     autoComplete="one-time-code"
                     maxLength={6}
                     required
-                    className={styles.codeInput}
+                    className={`${styles.codeInput} ph-mask ph-no-capture`}
+                    data-hale-mask-input=""
+                    data-hale-pii=""
                     aria-label="6-digit code"
                     value={code}
                     onChange={(e) => setCode(e.currentTarget.value.replace(/\D/g, '').slice(0, 6))}

@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import { captureProductEvent } from '../analytics/product.js';
 import { db } from '../db.js';
 import { type Tx, recordTransition } from './memory-writer.js';
 
@@ -281,11 +282,11 @@ function placementSkippedAudit(familyId: string, actionId: string, auditAction: 
  * below keep the audit read: their target row is already unique (the reversalHandle),
  * so a doubled UPDATE cannot double anything a parent sees.
  */
-export function addToCalendar(
+export async function addToCalendar(
   input: CalendarPlacementInput,
   database: Database = db(),
 ): Promise<CalendarWriteResult> {
-  return recordTransition<CalendarWriteResult>(async (tx) => {
+  const result = await recordTransition<CalendarWriteResult>(async (tx) => {
     const inserted = await tx
       .insert(schema.familyEvents)
       .values({
@@ -349,6 +350,14 @@ export function addToCalendar(
       },
     };
   }, database);
+  if (result.outcome === 'written') {
+    captureProductEvent({
+      event: 'task_completed',
+      familyId: input.familyId,
+      properties: { type: 'calendar_change', source: 'worker' },
+    });
+  }
+  return result;
 }
 
 /**

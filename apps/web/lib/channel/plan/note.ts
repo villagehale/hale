@@ -1,6 +1,7 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import type { CoachingPlaybook } from '@hale/types';
 import { z } from 'zod';
+import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
@@ -178,17 +179,20 @@ export function createNoteComposer(client: () => AgentClient): NoteComposer {
       for (let attempt = 1; attempt <= MAX_NOTE_ATTEMPTS; attempt += 1) {
         let value: z.infer<typeof noteSchema>;
         try {
-          const result = await forceToolJson({
-            client: resolved,
-            lane: pickLane(skill.meta.task),
-            system: skill.instructions,
-            userMessage: retryNoteMessage(noteUserMessage(grounding), violations),
-            toolName: 'note',
-            toolDescription: 'Return the one message to send.',
-            inputJsonSchema: noteJsonSchema,
-            schema: noteSchema,
-            maxTokens: MAX_TOKENS,
-          });
+          const result = await withLlmContext({ stage: 'plan' }, () =>
+            forceToolJson({
+              client: resolved,
+              lane: pickLane(skill.meta.task),
+              system: skill.instructions,
+              cacheTtl: SPARSE_CACHE_TTL,
+              userMessage: retryNoteMessage(noteUserMessage(grounding), violations),
+              toolName: 'note',
+              toolDescription: 'Return the one message to send.',
+              inputJsonSchema: noteJsonSchema,
+              schema: noteSchema,
+              maxTokens: MAX_TOKENS,
+            }),
+          );
           value = result.value;
         } catch (err) {
           if (modelIsUnreachable(err)) return deferred('model_unreachable', [message(err)]);
