@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HealthPlace } from '~/lib/channel/health-line';
 import {
   type SpokenLineRequest,
@@ -149,7 +149,13 @@ describe('the provider paths are Ontario-only', () => {
   const TEXAS: HealthPlace = { country: 'US', provinceOrState: null };
   const BC: HealthPlace = { country: 'CA', provinceOrState: 'British Columbia' };
   const real = sharedSpokenLineWriter();
-  afterEach(() => setSharedSpokenLineWriter(real));
+  beforeEach(() => {
+    vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
+  });
+  afterEach(() => {
+    setSharedSpokenLineWriter(real);
+    vi.unstubAllEnvs();
+  });
 
   function recording(answer: string): SpokenLineRequest[] {
     const seen: SpokenLineRequest[] = [];

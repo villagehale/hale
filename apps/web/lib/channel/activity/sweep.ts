@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type OutboundGatePorts,
@@ -546,22 +547,23 @@ export async function resolveFollowUpRecipient(
 ): Promise<FollowUpRecipient | null> {
   const [row] = await database
     .select({
+      familyId: schema.channelMessages.familyId,
       parentUserId: schema.channelMessages.parentUserId,
       conversationId: schema.channelMessages.relatedConversationId,
-      language: schema.users.locale,
     })
     .from(schema.channelMessages)
-    .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
     .where(eq(schema.channelMessages.id, channelMessageId))
     .limit(1);
-  // No user row means there is nobody to write to, and no locale means there is no
-  // language to write in. Both are the same outcome the sweep already names: the
-  // recipient no longer resolves. A default language here would be a language nobody stored.
-  if (!row?.parentUserId || row.language.trim() === '') return null;
+  // No parent on the carrying message means there is nobody to write to. The language
+  // is VIL-572's stored proactive language (not `users.locale`, which inbound overwrites).
+  if (!row?.parentUserId) return null;
   return {
     parentUserId: row.parentUserId,
     conversationId: row.conversationId ?? null,
-    language: row.language,
+    language: await readParentLanguage(database, {
+      familyId: row.familyId,
+      parentUserId: row.parentUserId,
+    }),
   };
 }
 

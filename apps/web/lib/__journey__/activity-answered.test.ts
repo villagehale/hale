@@ -47,6 +47,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { FIXTURE_COUNTRY, FIXTURE_FIND_TOWN, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
+import { stubLaunchFlags } from '~/lib/testing/launch-flags';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
 import { isStage } from '~/lib/testing/structured-reply';
@@ -143,16 +144,8 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
   beforeEach(async () => {
     db = await createTestDb();
     database = db.database;
-    vi.stubEnv('F14_ENABLED', 'true');
+    stubLaunchFlags({ F14_ENABLED: 'true' });
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
-    vi.stubEnv('FINDER_SOURCE_BINDING_ENABLED', '');
-    vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
-    vi.stubEnv('HOLDING_LINE_ENABLED', '');
-    vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
-    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
-    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
-    vi.stubEnv('TEAM_SCHEDULE_CHANGES_ENABLED', '');
-    vi.stubEnv('CLAIM_READER_MODE', '');
 
     const [family] = await database
       .insert(schema.families)

@@ -128,6 +128,18 @@ const ROUTES = [
 describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock }) => {
   beforeEach(() => {
     vi.resetModules();
+    // Gate tests pin auth, not every rider. Unset launch flags so an unmocked
+    // sweep cannot reach db().select on an empty stub.
+    vi.stubEnv('F14_ENABLED', '');
+    vi.stubEnv('FOLLOWUP_ASKS_ENABLED', '');
+    vi.stubEnv('VILLAGE_INTROS_ENABLED', '');
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+    vi.stubEnv('COPARENT_DUTY_ASKS_ENABLED', '');
+    vi.stubEnv('ACTIVITY_REVIEWS_ENABLED', '');
+    vi.stubEnv('MID_ACTIVITY_ASK_ENABLED', '');
+    vi.stubEnv('WORKSTREAMS_ENABLED', '');
+    vi.stubEnv('TEAM_SCHEDULE_CHANGES_ENABLED', '');
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     sweepForwardsMock.mockReset().mockResolvedValue({ purged: 0, senders: 0 });

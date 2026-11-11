@@ -198,6 +198,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   'schedule_change_applied',
   /** VIL-662 · the model could not write the parent text. Nothing was sent. */
   'schedule_change_unwritten',
+  /** VIL-662 · a matched change, but no claimed 1:1 chat to tell the driver. */
+  'no_chat',
   /** A quiet-hours hold Hale still owes, and the gate still says quiet hours. No Gmail
    * read and no model call; the debt waits for the next sweep. */
   'hold_waiting',

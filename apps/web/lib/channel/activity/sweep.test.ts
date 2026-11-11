@@ -93,7 +93,7 @@ function harness(
     unbacked?: Awaited<ReturnType<ActivityFollowUpDeps['refuseUnbackedSend']>>;
     /** The thread the promise's own message carried, or null when it carried none. */
     conversationId?: string | null;
-    /** `users.locale` for the parent the promise was sent to. */
+    /** VIL-572 proactive language for the parent the promise was sent to. */
     language?: string;
     /** What the calendar check answers for a watch. Empty calendar by default. */
     calendar?: WatchCalendarOutcome;

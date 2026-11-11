@@ -13,6 +13,13 @@ export default defineConfig({
   test: {
     include: ['lib/**/*.test.ts', 'components/**/*.test.ts', 'app/**/*.test.ts'],
     setupFiles: ['./vitest.setup.ts'],
+    // Langfuse's tracing entry re-exports from @langfuse/core; without inlining,
+    // vi.mock('@langfuse/tracing') never rebinds langfuse.ts imports.
+    server: {
+      deps: {
+        inline: ['@langfuse/tracing', '@langfuse/core', '@langfuse/otel'],
+      },
+    },
     // PGlite + the full migration chain on a cold worker exceeds Vitest's 10s
     // default. createTestDb now clones a per-worker snapshot, but the first
     // boot still has to apply SQL, and CI has failed twice at exactly 10000ms.

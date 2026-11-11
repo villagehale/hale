@@ -17,6 +17,7 @@ import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
 import { scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
+import { stubLaunchFlags } from '~/lib/testing/launch-flags';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
 
@@ -138,14 +139,12 @@ afterAll(async () => {
 
 beforeEach(async () => {
   process.env.APP_ENCRYPTION_KEY = APP_KEY;
-  vi.stubEnv('F14_ENABLED', 'true');
-  vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
-  vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
-  vi.stubEnv('TEAM_SCHEDULE_CHANGES_ENABLED', '');
-  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
-  vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
-  vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
-  vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
+  stubLaunchFlags({
+    F14_ENABLED: 'true',
+    EMAIL_ALERT_ENABLED: 'true',
+    BOOKED_DETECTION_ENABLED: 'true',
+    [GOING_COUNT_ENABLED_ENV]: 'true',
+  });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   // The pglite instance is shared across this file and the count reads ACROSS families, so

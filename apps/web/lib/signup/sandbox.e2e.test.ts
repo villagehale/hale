@@ -1,7 +1,7 @@
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { playwrightSignupBrowser } from './browser';
 import { runAuthorizedSignup } from './run';
@@ -284,6 +284,14 @@ describe('authorized signup sandbox', () => {
   beforeEach(() => {
     posts.length = 0;
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    // Local Playwright mock: Browser Use cloud would skip it. Sandbox runtime
+    // stays on so acquireLocal/playwright can drive the mock forms.
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', '');
+    vi.stubEnv('SIGNUP_SANDBOX_RUNTIME_ENABLED', 'true');
+    vi.stubEnv('SIGNUP_BROWSER_RUNTIME', 'local');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   async function offer(input: {
@@ -446,7 +454,11 @@ describe('authorized signup sandbox', () => {
     const result = await book(seeded);
     expect(result.outcome).toBe('payment');
     expect(result.reply).toContain('outcome=payment');
-    expect(posts.join('\n')).not.toContain('showtime=sat-1100');
+    // Date, then the Continue time-slot page (showtime is a continue, not a charge).
+    // Confirm-tickets is the non-zero submit and must not fire.
+    expect(posts).toHaveLength(2);
+    expect(posts[0]).toContain('visit_date=2026-10-10');
+    expect(posts[1]).toContain('showtime=sat-1100');
     const logged = await trail(seeded.familyId);
     expect(logged).not.toContain('Ada');
     expect(logged).not.toContain('Test Parent');

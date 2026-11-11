@@ -146,6 +146,8 @@ const NOT_IN_EXPORT: Record<string, string> = {
   teen_access_grants: 'unreviewed',
   village_endorsements: 'unreviewed',
   week_plans: 'unreviewed',
+  team_schedule_changes:
+    'matched coach/league change ledger; the applied calendar event is already exported',
 };
 
 function familyTables(): string[] {

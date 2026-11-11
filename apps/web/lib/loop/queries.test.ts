@@ -2,6 +2,20 @@ import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { createFamilyEvent, listFamilyEventsInWindow, readWeekPlan } from './queries.js';
 
+vi.mock('@hale/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@hale/db')>();
+  return {
+    ...actual,
+    householdFamilyEvent: () => ({
+      marker: 'and',
+      conds: [
+        { marker: 'isNull', col: actual.schema.familyEvents.deletedAt },
+        { marker: 'isNull', col: actual.schema.familyEvents.googleEventId },
+      ],
+    }),
+  };
+});
+
 /**
  * The drizzle operators are replaced with inspectable MARKERS (the real module is
  * otherwise preserved) so the fake db can genuinely evaluate a query's where/order

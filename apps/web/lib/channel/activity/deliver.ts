@@ -182,7 +182,7 @@ export interface FollowUpRecipient {
   /** The conversation the promise was made in, so the answer lands where the question was
    * asked. Null when the carrying message was not threaded. */
   conversationId: string | null;
-  /** `users.locale` for this parent, unchanged. The follow-up is written in this language. */
+  /** VIL-572 proactive language for this parent. The follow-up is written in this language. */
   language: string;
 }
 

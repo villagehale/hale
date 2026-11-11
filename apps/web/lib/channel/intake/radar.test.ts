@@ -448,7 +448,6 @@ describe('createRadarComposer', () => {
         async find(query) {
           expect(query.subject).toBe(YEAR_OPEN_SUBJECT);
           expect(query.town).toBe(FIXTURE_CITY);
-          expect(query.town).toBe('Halton Hills, Ontario, Canada');
           expect(query.window).toBe('this year');
           expect(JSON.stringify(query)).not.toContain('Seb');
           expect(JSON.stringify(query)).not.toContain(FIXTURE_FSA);

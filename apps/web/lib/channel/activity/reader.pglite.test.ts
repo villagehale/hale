@@ -289,14 +289,14 @@ afterAll(async () => {
   await db.close();
 });
 
-it('keeps legacy city/region context when country was never recorded, without guessing one', async () => {
+it('does not guess a country for a legacy city/region row that never recorded one', async () => {
   const { familyId } = await seedFamily(db.database);
   await db.database
     .update(schema.families)
     .set({ city: 'New York', province: 'NY', country: null })
     .where(eq(schema.families.id, familyId));
   const reader = bindActivityReader(db.database, productionActivityFamilyReader(), 'every_adult');
-  expect(await reader.place(familyId)).toEqual({ status: 'known', town: 'New York, NY' });
+  expect(await reader.place(familyId)).toEqual({ status: 'unknown', reason: 'no_country' });
 });
 
 it('resolves a US ZIP without sending it to the Finder tool', async () => {

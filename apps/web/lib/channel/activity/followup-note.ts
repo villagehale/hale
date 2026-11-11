@@ -1,6 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -49,8 +50,6 @@ import type { ActivityPick } from './lane';
 export const MAX_FOLLOWUP_ATTEMPTS = 3;
 
 const MAX_TOKENS = 1000;
-
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
 /**
  * Told to the model only when options were held back. It is an instruction, not a
@@ -215,7 +214,10 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
   const payload: Record<string, unknown> = {
     mode: 'followup_text',
     subject: grounding.subject,
-    language: grounding.language,
+    // `en` is the skill's default and the recording key. A stored tag other than
+    // English is a new question (VIL-572) and belongs on the wire; repeating `en`
+    // would miss every follow-up recording made before the field existed.
+    ...(grounding.language !== 'en' ? { language: grounding.language } : {}),
     // The two facts about the SWEEP rather than about a pick, and both are here for the
     // reason `registration` is: a projection that does not carry them is a model that
     // cannot act on them. `page_evidence` is what Hale knows about the pages themselves;
@@ -474,7 +476,7 @@ export function followUpViolations(
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  if (LINK_SHAPE.test(text)) {
+  if (hasLinkShape(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
   if (claimsVerification(text)) {

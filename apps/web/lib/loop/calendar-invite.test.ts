@@ -211,6 +211,7 @@ beforeEach(async () => {
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('DATABASE_URL', 'postgres://pglite');
+  vi.stubEnv('CALENDAR_INVITE_LINK_HASH_ENABLED', '');
 });
 
 afterEach(async () => {

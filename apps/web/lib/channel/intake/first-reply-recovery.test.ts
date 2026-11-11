@@ -163,6 +163,10 @@ describe('firstReplyRecoveryEligible', () => {
 describe('runFirstReplyRecoveryCron', () => {
   beforeEach(() => {
     process.env.APP_ENCRYPTION_KEY = KEY;
+    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', '');
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
+    vi.stubEnv('HOLDING_LINE_ENABLED', '');
+    vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
   });
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = '';

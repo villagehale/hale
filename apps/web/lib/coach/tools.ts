@@ -247,7 +247,6 @@ export function searchVillageTool(
           summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
           venue: pick.sourceName,
           ...(pick.when ? { when: pick.when } : {}),
-          when: pick.when ?? 'Current time could not be verified',
           // VIL-79 · only a pick with a STRUCTURED session gets these; see attachClashes.
           ...(pick.session ? { session: pick.session } : {}),
           // A ref, not the page: the reply cites it and code attaches the URL.

@@ -49,14 +49,14 @@ describe('duty night fact check', () => {
 
   it('blocks a draft the check says claims something the facts do not', async () => {
     const check = vi.fn(async () => ({ supported: false, unsupported: ['booked'] }));
-    forceToolJson.mockResolvedValue({ value: { text: booked } });
+    vi.mocked(forceToolJson).mockResolvedValue({ value: { text: booked } } as never);
     await expect(composeDutyNight(CLIENT, NIGHT, 'fam', { check })).resolves.toBeNull();
     expect(check).toHaveBeenCalledWith(CLIENT, NIGHT, booked, 'fam');
   });
 
   it('sends a draft the check passes', async () => {
     const check = vi.fn(async () => ({ supported: true, unsupported: [] }));
-    forceToolJson.mockResolvedValue({ value: { text: clean } });
+    vi.mocked(forceToolJson).mockResolvedValue({ value: { text: clean } } as never);
     await expect(composeDutyNight(CLIENT, NIGHT, 'fam', { check })).resolves.toBe(clean);
   });
 
@@ -65,29 +65,34 @@ describe('duty night fact check', () => {
       .fn()
       .mockResolvedValueOnce({ supported: false, unsupported: ['booked'] })
       .mockResolvedValueOnce({ supported: true, unsupported: [] });
-    forceToolJson
-      .mockResolvedValueOnce({ value: { text: booked } })
-      .mockResolvedValueOnce({ value: { text: clean } });
+    vi.mocked(forceToolJson)
+      .mockResolvedValueOnce({ value: { text: booked } } as never)
+      .mockResolvedValueOnce({ value: { text: clean } } as never);
     await expect(composeDutyNight(CLIENT, NIGHT, 'fam', { check })).resolves.toBe(clean);
   });
 
   it('fails closed when the check itself fails or contradicts itself', async () => {
-    forceToolJson.mockRejectedValueOnce(new Error('timeout'));
+    vi.mocked(forceToolJson).mockRejectedValueOnce(new Error('timeout'));
     await expect(checkDutyNight(CLIENT, NIGHT, clean, 'fam')).resolves.toMatchObject({
       supported: false,
     });
-    forceToolJson.mockResolvedValueOnce({ value: { supported: true, unsupported: ['booked'] } });
+    vi.mocked(forceToolJson).mockResolvedValueOnce({
+      value: { supported: true, unsupported: ['booked'] },
+    } as never);
     await expect(checkDutyNight(CLIENT, NIGHT, booked, 'fam')).resolves.toMatchObject({
       supported: false,
     });
   });
 
   it('hands the check the facts and the draft', async () => {
-    forceToolJson.mockResolvedValueOnce({ value: { supported: true, unsupported: [] } });
+    vi.mocked(forceToolJson).mockResolvedValueOnce({
+      value: { supported: true, unsupported: [] },
+    } as never);
     await checkDutyNight(CLIENT, NIGHT, clean, 'fam');
-    const call = forceToolJson.mock.calls[0]?.[0];
-    expect(JSON.parse(call.userMessage)).toEqual({ facts: NIGHT, draft: clean });
-    expect(call.toolName).toBe('duty_night_check');
+    const call = vi.mocked(forceToolJson).mock.calls[0]?.[0];
+    expect(call).toBeDefined();
+    expect(JSON.parse(call!.userMessage)).toEqual({ facts: NIGHT, draft: clean });
+    expect(call!.toolName).toBe('duty_night_check');
   });
 });
 

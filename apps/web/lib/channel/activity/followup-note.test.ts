@@ -443,6 +443,10 @@ describe('the payload the composer is handed', () => {
       expect(payload.language).toBe(language);
       expect(JSON.stringify(payload)).not.toMatch(/parent said|raw message/i);
     }
+    // English is the recording default: repeating `en` is a new question.
+    expect(JSON.parse(followUpUserMessage(grounding({ language: 'en' })))).not.toHaveProperty(
+      'language',
+    );
   });
 });
 

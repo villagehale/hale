@@ -112,6 +112,10 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
   'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
     'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent (or the live plan host in a shared chat) before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
+  'apps/web/lib/integrations/team-schedule/apply.ts':
+    'VIL-662 team-schedule parent notice: claims a channel_messages row (template team_schedule:parent) before sendLinqChatMessage / sendResolvingNewChat on the parent 1:1 door (family group excluded) and stamps it sent or failed after',
+  'apps/web/lib/integrations/team-schedule/driver.ts':
+    'VIL-662 team-schedule driver notice: claims a channel_messages row (template team_schedule:driver) before sendLinqChatMessage / sendResolvingNewChat on the driver 1:1 door (family group excluded) and stamps it sent or failed after',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no phone

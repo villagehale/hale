@@ -196,6 +196,21 @@ beforeEach(() => {
   vi.stubEnv('MODEL_READ_SWEEP_ENABLED', '');
   vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
   vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  vi.stubEnv('REGISTRATION_LADDER_ENABLED', '');
+  vi.stubEnv('REGISTRATION_ASSISTED_RUN_ENABLED', '');
+  vi.stubEnv('HOLDING_LINE_ENABLED', '');
+  vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', '');
+  vi.stubEnv('INBOUND_PHOTO_FACTS_ENABLED', '');
+  vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', '');
+  vi.stubEnv('LINQ_STICKERS_ENABLED', '');
+  vi.stubEnv('LINQ_EFFECTS_ENABLED', '');
+  vi.stubEnv('FAMILY_MEMORY_KINDS_ENABLED', '');
+  vi.stubEnv('FOLLOWUP_ASKS_ENABLED', '');
+  vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', '');
+  vi.stubEnv('EMAIL_ALERT_ENABLED', '');
+  vi.stubEnv('SITTING_REMINDER_STALE_RELEASE_ENABLED', '');
+  vi.stubEnv('COPARENT_DUTY_ASKS_ENABLED', '');
+  vi.stubEnv('COPARENT_SPLIT_DUTY_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
@@ -811,6 +826,10 @@ function failingOn(db: Database, table: unknown, actionTaken: string): Database 
 }
 
 describe('a number with an invite in flight finishes its OWN intake', () => {
+  beforeEach(() => {
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+  });
+
   it('closes the invite as it provisions, so their next text is an ordinary turn', async () => {
     const { fake, transport, deps } = harness(NOW, [NOTHING_YET, MIA]);
 
