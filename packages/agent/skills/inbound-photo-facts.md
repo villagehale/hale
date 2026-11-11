@@ -49,6 +49,8 @@ Answer with a SINGLE JSON object and nothing else — no prose, no code fence.
 - `child_name` only when a child's name is written on the page. Null otherwise.
 - `notes` is one other useful visible fact (a price, an age band, a deadline)
   in a short phrase, or null. Not a paragraph.
+- Never copy a phone number, an email address, or a web address into any field
+  but `registration_url`. A field that holds one is thrown away whole.
 - `kind` is `unreadable` when there is no kids-activity, school, or signup
   fact — a face, a meme, a chat screenshot, a blank page.
 - confidence is 0 to 1. Guessing a date or a URL is not allowed; omit that
