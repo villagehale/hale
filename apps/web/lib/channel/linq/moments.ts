@@ -4,13 +4,21 @@ import { and, eq } from 'drizzle-orm';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
+import {
+  type EditableLinqSend,
+  type LinqEditDecider,
+  applyLinqEdit,
+  linqMessageEditEnabled,
+} from './edit';
 import { type LinqStickerDecider, applyLinqSticker, linqStickersEnabled } from './sticker';
 import { applyLinqTapback } from './tapback';
 
 /**
  * The product moment on an iMessage reply: a tapback instead of a throwaway
- * ack, or (VIL-472, flag `LINQ_STICKERS_ENABLED`) a sticker the model chose,
- * peeled onto the parent's message. A miss falls through and the text still
+ * ack, (VIL-479, flag `LINQ_MESSAGE_EDIT_ENABLED`) an edit of a bubble Hale just
+ * sent when the model says the follow-up only corrects it, or (VIL-472, flag
+ * `LINQ_STICKERS_ENABLED`) a sticker the model chose, peeled onto the parent's
+ * message. A miss falls through and the text still
  * goes out. SMS and email never call Linq from here. A year-find poll is not a
  * reply moment.
  */
@@ -30,6 +38,14 @@ export async function considerLinqReply(
     parentUserId: string;
     now: Date;
     fetch?: typeof fetch;
+    /** Bubbles the edit read may replace. Absent: no edit is considered, and that is
+     * logged when the flag is on. */
+    edit?: {
+      decider: LinqEditDecider;
+      candidates: readonly EditableLinqSend[];
+      audience: 'direct' | 'group';
+      conversationId: string;
+    };
     /** What the sticker read needs. Absent: no sticker is considered, and that is logged
      * when the flag is on. */
     sticker?: {
@@ -56,6 +72,34 @@ export async function considerLinqReply(
       providerMessageId: args.route.replyToMessageId,
     });
     return { handled: true, channelMessageId, threadBody: null };
+  }
+
+  if (linqMessageEditEnabled()) {
+    if (!args.edit) {
+      console.info({ reason: 'no_decider' }, 'linq edit: not considered');
+    } else if (args.edit.candidates.length === 0) {
+      console.info({ reason: 'nothing_editable' }, 'linq edit: not considered');
+    } else if (args.route.channel === 'imessage') {
+      const edited = await applyLinqEdit({
+        decider: args.edit.decider,
+        database,
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        conversationId: args.edit.conversationId,
+        chatId: args.route.chatId,
+        now: args.now,
+        read: {
+          audience: args.edit.audience,
+          parentText: args.inboundBody,
+          followUp: args.outboundBody,
+        },
+        candidates: args.edit.candidates,
+        fetch: args.fetch,
+      });
+      if (edited.status === 'edited') {
+        return { handled: true, channelMessageId: edited.channelMessageId, threadBody: null };
+      }
+    }
   }
 
   if (!linqStickersEnabled()) return { handled: false };

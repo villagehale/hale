@@ -32,8 +32,8 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { normalizeForCompare } from './lib/variation.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { normalizeForCompare } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');

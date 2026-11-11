@@ -41,6 +41,8 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/channel/coparent/duty/calendar.ts': 'household',
   'apps/web/lib/channel/coparent/duty/metrics.ts': 'household',
   'apps/web/lib/channel/linq/household-calendar.ts': 'household',
+  // VIL-399: a provider time-change posted into this household's group
+  'apps/web/lib/channel/linq/group-experience/mail-notice.ts': 'household',
   // VIL-457: consented aside slice for one family's own 1:1 aside + group deny list
   'apps/web/lib/channel/linq/multi-family.ts': 'household',
   'apps/web/lib/channel/proactive/snapshot.ts': 'household',
@@ -56,6 +58,10 @@ const DOORS: Record<string, Door> = {
   // the model's answer only closes that parent's watch, nothing is sent (VIL-564)
   'apps/web/lib/channel/activity/calendar-check.ts': 'owner',
   'apps/web/lib/integrations/calendar-mirror.ts': 'writer',
+  // VIL-662: the match reads household events; apply and driver read the one matched event by id.
+  'apps/web/lib/integrations/team-schedule/match.ts': 'household',
+  'apps/web/lib/integrations/team-schedule/apply.ts': 'scoped',
+  'apps/web/lib/integrations/team-schedule/driver.ts': 'scoped',
   'apps/web/lib/integrations/google-calendar-placement.ts': 'writer',
   'apps/worker/src/services/internal-writes.ts': 'writer',
   // applies a provider's own move to a Hale event; refuses mirror rows (googleEventId set)

@@ -75,13 +75,13 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   pageCarriesSchedule,
   preparePage,
   statesAFigure,
   statesNoCost,
 } from './lib/quote-match.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -1096,9 +1096,7 @@ async function main() {
     `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
   );
   console.log(`silent watch:              ${count('silent_watch')}`);
-  console.log(
-    `research log:              ${count('reports_process') + count('process_unjudged')}`,
-  );
+  console.log(`research log:              ${count('reports_process') + count('process_unjudged')}`);
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);
   console.log(

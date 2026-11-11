@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, isNotNull, isNull, lt, lte } from 'drizzle-orm';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
@@ -7,6 +8,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   createOutboundTransport,
   failedSendPatch,
@@ -315,6 +317,7 @@ async function persistPlan(
     .values(values)
     .returning({ id: schema.linqGroupCarpools.id });
   if (!inserted) throw new Error('linq carpool: insert returned no row');
+  noteTaskCompleted({ familyId: input.familyId, type: 'carpool', source: 'group' });
   return inserted.id;
 }
 
@@ -1051,6 +1054,44 @@ export function createCarpoolDriverSend(
   }
 
   return async ({ userId, text }) => {
+    const familyIdForQueue = await familyOfUser(database, userId);
+    if (familyIdForQueue) {
+      const dedupeKey = `linq:carpool_night_before_driver:${familyIdForQueue}:${userId}`;
+      if (await isQueuedForDecider(database, familyIdForQueue, dedupeKey)) {
+        return { sent: false, skipped: 'queued' };
+      }
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId: familyIdForQueue,
+            parentUserId: userId,
+            kind: 'plan_check_in',
+            category: PROACTIVE_CATEGORY.plan_check_in,
+            templateKey: 'linq:carpool_night_before_driver',
+            what: text,
+            why: 'plan_check_in',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey,
+            payload: { auditVerb: 'coach_plan_check_in_sent' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId: familyIdForQueue,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'families',
+          targetId: familyIdForQueue,
+          after: { kind: 'plan_check_in' },
+        });
+        return { sent: false, skipped: 'queued' };
+      }
+    }
     // Devin #975 r3 — everything before the provider call is a definite
     // non-send when it fails, so the caller may release and retry.
     let prepared: { familyId: string; phone: string; chatId: string | null; claimedId: string };

@@ -363,6 +363,16 @@ describe('multi-family zero-setup', () => {
       (row) => row.phoneE164Hash === phoneBlindIndex(JORDAN),
     );
     expect(jordan?.stoppedAt).toEqual(NOW);
+    const stopAudits = await db.database
+      .select({
+        audience: schema.auditLog.audience,
+        action: schema.auditLog.actionTaken,
+      })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_multi_family_member_stopped'));
+    expect(stopAudits).toEqual([
+      { audience: jordan?.userId, action: 'linq_multi_family_member_stopped' },
+    ]);
     const later = await takeMultiFamilyTurn(
       db.database,
       {

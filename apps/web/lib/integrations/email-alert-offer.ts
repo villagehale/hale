@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import {
   calendarInstantsClose,
@@ -528,6 +529,7 @@ async function placeOfferedEvent(
       // never redacted (the alert's own audit row keeps the same rule).
       after: { kind: offer.kind },
     });
+    noteTaskCompleted({ familyId: input.familyId, type: 'email_action', source: 'email' });
   }
 
   // THE BOOKING THIS EMAIL ALSO WROTE, now on the calendar. Two rows from one email, so

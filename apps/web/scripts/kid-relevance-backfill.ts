@@ -83,7 +83,7 @@ try {
     { now: new Date(), deadline: NO_DEADLINE, runId },
     apply
       ? { apply: true }
-      : { apply: false, client: budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS) },
+      : { apply: false, client: budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'classify_event' }) },
   );
   console.info(JSON.stringify(counts, null, 2));
   if (!apply) {

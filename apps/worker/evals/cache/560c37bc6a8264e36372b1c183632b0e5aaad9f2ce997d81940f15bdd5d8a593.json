@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says Ada is not registered, states the $98 total exceeds the $90 max and Hale did not pay, and makes no spot-held claim. However it says the browser may already be closed and tells the parent to register on the link, which is fine. Tone is friendly and French uses tu. Minor issue: it says 'tu peux t'inscrire toi-mรชme sur le lien' which is an ask/next step consistent with facts; no invented facts. Strong score.",
+    "score": 5
+  }
+}

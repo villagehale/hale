@@ -209,7 +209,7 @@ export function readingFromTapback(input: {
 
 export function createCarpoolReader(
   clientOrResolver: (() => ReturnType<typeof budgetedAnthropic>) | CarpoolReader = () =>
-    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
 ): CarpoolReader {
   if (typeof clientOrResolver === 'object') return clientOrResolver;
   const clientOf = clientOrResolver;

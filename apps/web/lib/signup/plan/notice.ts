@@ -10,12 +10,11 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
-import {
-  releasePlanRun,
-  settleBrowserUsePlanPayment,
-} from '../browser-use/plan-engine';
+import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
+import { createProviderNoticeWriter } from './notice-writer';
+import type { PlanPrepDeps } from './prep';
 import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
 import { planLapse } from './store';
 import { planReplyMode } from './towns';
@@ -187,6 +186,31 @@ async function deliverDirect(
     body: input.body,
   });
   return 'sent';
+}
+
+/** Login-ask, account-prep and 30-minute reminder on the same minute cron. */
+export function signupPlanPrepDepsFromEnv(database: Database): PlanPrepDeps {
+  const transport = createOutboundTransport();
+  return {
+    writer: createProviderNoticeWriter(() => resolveReplyClient(undefined)),
+    deliver: async (input) => {
+      const to = await resolveSendablePhone(database, input.parentUserId);
+      if (!to) return false;
+      try {
+        const delivered = await deliverFamilyOutbound(database, {
+          familyId: input.familyId,
+          body: input.body,
+          to,
+          legacy: transport,
+          target: { channel: 'legacy' },
+          shareGroupCap: false,
+        });
+        return delivered.status === 'sent';
+      } catch {
+        return false;
+      }
+    },
+  };
 }
 
 /** Real wiring for the cron. The engine is a named absence without BROWSER_USE_API_KEY. */

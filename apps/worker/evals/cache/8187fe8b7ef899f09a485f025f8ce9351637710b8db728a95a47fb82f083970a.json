@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states the form is filled but not submitted, parent must check, tick waiver, submit and pay within about 15 minutes, and does not claim registration or a held spot. Minor issue: the 'The page shows $98' phrasing is fine, and it mentions a link following implicitly via 'open browser'. One ask only, English, warm tone, no invented facts. Slight nit: it says 'check it, tick the waiver, submit and pay' which is a multi-step ask but a single action request, acceptable.",
+    "score": 5
+  }
+}

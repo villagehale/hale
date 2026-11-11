@@ -25,8 +25,8 @@ async function insertOffer(status: string) {
   const family = await seedFamily(db.database);
   const childId = await seedChild(db.database, family.familyId, 'Ada', 40);
   await db.exec(
-    `insert into authorized_signup_offers (family_id, child_id, parent_user_id, activity_key, registration_url, sessions, status)
-     values ('${family.familyId}', '${childId}', '${family.parentUserId}', 'swim', 'https://register.example-rec.test/x', '[]', '${status}')`,
+    `insert into authorized_signup_offers (family_id, child_id, parent_user_id, activity_key, registration_url, provider_host, sessions, status)
+     values ('${family.familyId}', '${childId}', '${family.parentUserId}', 'swim', 'https://register.example-rec.test/x', 'register.example-rec.test', '[]', '${status}')`,
   );
 }
 
