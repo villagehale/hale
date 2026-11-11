@@ -1,7 +1,7 @@
+import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { schema, type Database } from '@hale/db';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import { recordAgentRun, recordAction } from './memory-writer.js';
+import { recordAction, recordAgentRun } from './memory-writer.js';
 
 /**
  * B8 — agent_runs become real. These tests script the DB transport (injected
@@ -53,6 +53,38 @@ describe('recordAgentRun (B8)', () => {
     expect(id).toBe(RUN_ID);
     expect(inserts).toEqual([schema.agentRuns]);
   });
+
+  it('persists promptCacheHit so the #ops cache line is not 0/0', async () => {
+    let values: Record<string, unknown> | undefined;
+    const inserter = {
+      insert: vi.fn(() => {
+        const chain = builder([{ id: RUN_ID }]);
+        chain.values = vi.fn((row: Record<string, unknown>) => {
+          values = row;
+          return chain;
+        });
+        return chain;
+      }),
+    } as unknown as Database;
+
+    await recordAgentRun(
+      {
+        familyId,
+        eventId,
+        metrics: {
+          ...drafterMetrics,
+          agentName: 'classifier',
+          cacheReadTokens: 400,
+          cacheWriteTokens: 50,
+          promptCacheHit: true,
+        },
+      },
+      inserter,
+    );
+
+    expect(values?.promptCacheHit).toBe(true);
+    expect(values?.cacheReadTokens).toBe(400);
+  });
 });
 
 describe('recordAction threads the drafter run through the action transaction (B8)', () => {
@@ -99,7 +131,7 @@ describe('recordAction threads the drafter run through the action transaction (B
       database,
     );
 
-    expect((database.transaction as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+    expect(database.transaction as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
     // Drafter run row and the action row both inserted; exactly one audit row.
     expect(inserted.filter((t) => t === 'agent_runs')).toHaveLength(1);
     expect(inserted.filter((t) => t === 'actions')).toHaveLength(1);

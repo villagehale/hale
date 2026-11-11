@@ -535,7 +535,7 @@ async function keepOne(
     result.refusedAtSend += 1;
     return;
   }
-  if (outcome.status === 'skipped') return;
+  if (outcome.status === 'skipped' || outcome.status === 'queued') return;
   result.sent += 1;
   if (outcome.emptyHanded) result.sentEmptyHanded += 1;
   if (outcome.watchRecorded === true) result.watching += 1;

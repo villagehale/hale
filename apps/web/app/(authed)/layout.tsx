@@ -56,9 +56,10 @@ export default async function AuthedLayout({ children }: { children: React.React
   // means the account is one no front door produces any more (an old test login, a
   // half-finished web signup). /sign-in is the phone door that can reach a real
   // family, and it renders rather than redirecting, so this cannot become a loop.
-  // The portal identifies as the HASHED family id — the same distinct id the SMS-side
-  // agent events use (hashFamilyId) — so a portal replay joins the family's SMS events
-  // without a user id, email, or phone ever reaching PostHog (rule #1).
+  // The portal identifies as the HASHED family id — HMAC-SHA256 with POSTHOG_ID_SALT
+  // when that secret is set, else the historical unsalted sha256 so SMS-side rows
+  // still join. Computed here on the server; the raw uuid and the phone never ride
+  // in client JS (rule #1).
   let analyticsId: string | null = null;
   if (authEnabled && session?.user?.id) {
     const familyId = await resolveFamilyForUser(session.user.id, db());

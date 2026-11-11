@@ -1,5 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { cachedSystem, laneRequestFields, pickLane, withHistoryBreakpoint } from '@hale/agent';
+import {
+  AGENT_CACHE_TTL,
+  cachedSystem,
+  laneRequestFields,
+  layoutTools,
+  pickLane,
+  withHistoryBreakpoint,
+} from '@hale/agent';
 import {
   REQUIRED_CHECKS,
   type ReviewerToolName,
@@ -7,6 +14,7 @@ import {
   firstUnsatisfiedCheck,
 } from '@hale/tools-contracts';
 import type { ActionType, DraftedAction, ReviewerVerdict, ToolResult } from '@hale/types';
+import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
 import { anthropicClient } from '../anthropic/client.js';
 import { logger } from '../logger.js';
 import { loadPrompt } from '../prompts/loader.js';
@@ -127,13 +135,22 @@ export async function runReviewer(
   input: ReviewerRunInput,
   deps: ReviewerDeps = {},
 ): Promise<ReviewerRunResult> {
+  return withLlmContext({ stage: 'reviewer', ...llmFamilyContext(input.familyId) }, () =>
+    reviewTurns(input, deps),
+  );
+}
+
+async function reviewTurns(
+  input: ReviewerRunInput,
+  deps: ReviewerDeps,
+): Promise<ReviewerRunResult> {
   const client = deps.client ?? anthropicClient('reviewer');
   const invokeTool = deps.invokeTool ?? invokeReviewerTool;
   const getChildNames = deps.loadChildNames ?? loadChildNames;
   // The reviewer's instructions + tool list are the same on every turn of the
   // loop; caching the system block once lets each turn read the stable
   // tools+system prefix instead of reprocessing it.
-  const system = cachedSystem(await loadPrompt('reviewer'));
+  const system = cachedSystem(await loadPrompt('reviewer'), AGENT_CACHE_TTL);
   const lane = laneRequestFields(pickLane('review'));
   const model = lane.model;
   const collected: ToolResult[] = [];
@@ -168,7 +185,7 @@ export async function runReviewer(
     ),
   });
 
-  const tools: Anthropic.Tool[] = [...checkTools(input.draft.actionType), verdictTool];
+  const tools: Anthropic.Tool[] = layoutTools([...checkTools(input.draft.actionType), verdictTool]);
   const messages: Anthropic.MessageParam[] = [
     {
       role: 'user',

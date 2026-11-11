@@ -2,12 +2,12 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNEL_SIGNIN_TTL_MS, consumeChannelSigninToken } from '~/lib/auth/channel-signin';
+import { loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import {

@@ -275,7 +275,7 @@ let cached: Anthropic | undefined;
  */
 export function identityAskClient(): AgentClient {
   // Composes inside an inbound text turn — the SMS-lane budget governs (P1-7).
-  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' });
   return cached;
 }
 

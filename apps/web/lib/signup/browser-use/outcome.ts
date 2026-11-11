@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  SITE_CHOICE_JSON_SCHEMA,
+  SITE_FEES_JSON_SCHEMA,
+  siteChoiceSchema,
+  siteFeesSchema,
+} from '../site-choices';
 
 /**
  * The structured answer a Browser Use signup run must return. The skill
@@ -10,6 +16,7 @@ export const BROWSER_USE_SIGNUP_OUTCOMES = [
   'rush',
   'waitlist',
   'sold_out',
+  'options_mismatch',
   'needs_login',
   'needs_human',
   'error',
@@ -22,6 +29,7 @@ export const BROWSER_USE_SIGNUP_DETAILS = [
   'captcha',
   'verification_code',
   'login_wall',
+  'password_rejected',
   'waiting_room',
   'timed_open',
   'waiver',
@@ -51,6 +59,18 @@ const signupOutput = z.object({
     .catch(null)
     .default(null),
   payment_hosts: z.array(z.string()).max(40).catch([]).default([]),
+  password_rejection_message: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .nullable()
+    .catch(null)
+    .default(null),
+  password_rule: z.string().trim().min(1).max(240).nullable().catch(null).default(null),
+  site_choices: z.array(siteChoiceSchema).max(20).catch([]).default([]),
+  seats_open: z.number().int().nonnegative().nullable().catch(null).default(null),
+  fees: siteFeesSchema.nullable().catch(null).default(null),
 });
 
 export type BrowserUseSignupOutput = z.infer<typeof signupOutput>;
@@ -68,6 +88,11 @@ export const BROWSER_USE_SIGNUP_OUTPUT_SCHEMA: Record<string, unknown> = {
     'opens_at',
     'cart_currency',
     'payment_hosts',
+    'password_rejection_message',
+    'password_rule',
+    'site_choices',
+    'seats_open',
+    'fees',
   ],
   properties: {
     outcome: { type: 'string', enum: [...BROWSER_USE_SIGNUP_OUTCOMES] },
@@ -79,6 +104,11 @@ export const BROWSER_USE_SIGNUP_OUTPUT_SCHEMA: Record<string, unknown> = {
     opens_at: { type: ['string', 'null'] },
     cart_currency: { type: ['string', 'null'] },
     payment_hosts: { type: 'array', items: { type: 'string' } },
+    password_rejection_message: { type: ['string', 'null'] },
+    password_rule: { type: ['string', 'null'] },
+    site_choices: { type: 'array', items: SITE_CHOICE_JSON_SCHEMA },
+    seats_open: { type: ['integer', 'null'], minimum: 0 },
+    fees: { anyOf: [SITE_FEES_JSON_SCHEMA, { type: 'null' }] },
   },
 };
 
@@ -97,6 +127,7 @@ export const BROWSER_USE_PLAN_OUTCOMES = [
   'not_open',
   'waitlist',
   'sold_out',
+  'options_mismatch',
   'needs_login',
   'needs_human',
   'error',
@@ -119,6 +150,18 @@ const planOutput = z.object({
   saved_card_on_file: z.boolean(),
   security_code_required: z.boolean(),
   payment_details_entered: z.boolean(),
+  password_rejection_message: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .nullable()
+    .catch(null)
+    .default(null),
+  password_rule: z.string().trim().min(1).max(240).nullable().catch(null).default(null),
+  site_choices: z.array(siteChoiceSchema).max(20).catch([]).default([]),
+  seats_open: z.number().int().nonnegative().nullable().catch(null).default(null),
+  fees: siteFeesSchema.nullable().catch(null).default(null),
 });
 
 export type BrowserUsePlanOutput = z.infer<typeof planOutput>;
@@ -137,6 +180,11 @@ export const BROWSER_USE_PLAN_OUTPUT_SCHEMA: Record<string, unknown> = {
     'saved_card_on_file',
     'security_code_required',
     'payment_details_entered',
+    'password_rejection_message',
+    'password_rule',
+    'site_choices',
+    'seats_open',
+    'fees',
   ],
   properties: {
     outcome: { type: 'string', enum: [...BROWSER_USE_PLAN_OUTCOMES] },
@@ -148,6 +196,11 @@ export const BROWSER_USE_PLAN_OUTPUT_SCHEMA: Record<string, unknown> = {
     hold_minutes: { type: ['integer', 'null'], minimum: 1 },
     saved_card_on_file: { type: 'boolean' },
     security_code_required: { type: 'boolean' },
+    password_rejection_message: { type: ['string', 'null'] },
+    password_rule: { type: ['string', 'null'] },
+    site_choices: { type: 'array', items: SITE_CHOICE_JSON_SCHEMA },
+    seats_open: { type: ['integer', 'null'], minimum: 0 },
+    fees: { anyOf: [SITE_FEES_JSON_SCHEMA, { type: 'null' }] },
     payment_details_entered: { type: 'boolean' },
   },
 };

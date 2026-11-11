@@ -52,8 +52,8 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
-import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');

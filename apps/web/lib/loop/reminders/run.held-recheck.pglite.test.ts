@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderHealth } from '~/lib/monitoring/provider-health';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { REMINDER_MAX_ATTEMPTS } from './compose';
 import {
   type ChannelSendJob,
   type HeldReminderRecheckDeps,
@@ -12,7 +13,6 @@ import {
   recheckHeldReminders,
   runReminderCron,
 } from './run';
-import { REMINDER_MAX_ATTEMPTS } from './compose';
 import { COMPOSE_HOLD_MAX_ATTEMPTS } from './schedule';
 
 /**

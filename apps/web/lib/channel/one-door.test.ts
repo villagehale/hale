@@ -81,7 +81,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/multi-family.ts':
     'shared-group notices and thread-only replies; sendOnce inserts the channel_messages row (reply, template linq:multi_family_joined, linq:multi_family_left, linq:multi_family_join_needed, linq:multi_family_reply, or linq:multi_family_ask, dedupe key) on the speaking family before sendLinqChatMessage, and audits sms_reply_sent only after the send lands',
   'apps/web/lib/channel/linq/household-calendar.ts':
-    'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
+    'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send. VIL-609 cross-parent clash 1:1: sendCrossParentOneToOne inserts the channel_messages row (template linq:cross_parent_clash, per-parent dedupe) before sendLinqChatMessage / sendResolvingNewChat, never the group, and a refusal stamps the row failed',
   'apps/web/lib/channel/linq/carpool.ts':
     'VIL-445 night-before and one-ask group lines; deliverLinqGroupNotice inserts the channel_messages row (template linq:carpool_ask_driver or linq:carpool_night_before) before sendLinqChatMessage, and a failed compose is group_line_unsent with nothing sent',
   'apps/web/lib/channel/coparent/duty/asks.ts':
@@ -96,6 +96,10 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
+  'apps/web/lib/integrations/team-schedule/apply.ts':
+    'VIL-662 coach schedule change ask: claims a channel_messages row (category email_alert, template team_schedule:parent, dedupe key) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after; a gate hold writes its held row',
+  'apps/web/lib/integrations/team-schedule/driver.ts':
+    'VIL-662 driver heads-up: inserts a channel_messages row (category plan_check_in, template team_schedule:driver) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/calendar-write/send.ts':
     'VIL-454 calendar write notice: claims a channel_messages row (templateKey calendar_write_notice) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/group-plan/send.ts':
@@ -105,7 +109,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/connect/fresh-link.ts':
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
   'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
-    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
+    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent (or the live plan host in a shared chat) before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no phone

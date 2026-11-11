@@ -5,14 +5,16 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
 import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
 import { type CapturedEvent, type EventProperties, PAGEVIEW, buildEvent } from './events';
+import { posthogReplayEnabled, posthogWebEnabled } from './flags';
+import { hasAnalyticsOptOut } from './opt-out';
+import { POSTHOG_PROXY_PATH, posthogUiHost } from './posthog-proxy';
 import { type SessionLike, readFirstTouchSourceCode } from './source-code';
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-const HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
-/** True only when a key is configured — otherwise the whole layer is a no-op. */
+/** True only when a key is configured AND the web flag is on — otherwise a no-op. */
 export function analyticsEnabled(): boolean {
-  return Boolean(KEY);
+  return Boolean(KEY) && posthogWebEnabled();
 }
 
 /**
@@ -32,16 +34,14 @@ export function analyticsEnabled(): boolean {
  *    cross-page funnel (landing → /text → CTA) cannot be stitched into one visitor.
  *    Read the funnel as per-page event counts with `source_code`/`cta_placement`
  *    breakdowns, not as user journeys.
- *  - `autocapture: false` — no clicks, no form interactions, no rageclicks are inferred.
- *    Every event in the catalog is fired by a named call site.
- *  - `disable_session_recording: false` — replay is ON for the marketing site
- *    (2026-08-27, the Google Ads launch): the page is Hale's own copy, the visitor is
- *    anonymous, and watching where paid visitors stall is the one signal the funnel
- *    events cannot carry. Inputs are masked (`session_recording.maskAllInputs`), and
- *    `persistence: 'memory'` is unchanged, so a recording still writes nothing to the
- *    visitor's device and the legal pages' no-cookie claim stays true. The portal
- *    does NOT record (VIL-483, apps/web/lib/analytics/posthog-provider.tsx), so this
- *    landing page is the only place Hale records a session.
+ *  - autocapture ON only for the landing page and /privacy / /terms (url allowlist).
+ *    Named catalog events still fire everywhere else. The copy on those pages is
+ *    Hale's, not a parent's.
+ *  - session recording OFF unless NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED is exactly
+ *    `true` (and the visitor has accepted cookies). Inputs stay masked. Persistence
+ *    is still memory, so a recording writes nothing to the visitor's device.
+ *  - heatmaps ON (project setting must also be on). Surveys stay OFF here — web
+ *    surveys are wired on the logged-in dashboard, never on this site, never SMS.
  *  - `capture_pageview: 'history_change'` + `capture_pageleave: true` — posthog-js
  *    captures the first pageview and every client-side navigation, plus page leaves.
  *    `source_code` and `locale` are REGISTERED as super properties in the `loaded`
@@ -53,18 +53,28 @@ export function analyticsEnabled(): boolean {
  *  - `respect_dnt` + the masking pair, unchanged. `mask_all_text` governs autocapture
  *    element text (off anyway), not replay — replays show the site's own copy.
  */
+/** Landing (`/`, `/fr`, `/zh`) plus /privacy and /terms in every locale. */
+export const POSTHOG_AUTOCAPTURE_URL_ALLOWLIST = [
+  /https?:\/\/[^/]+\/?(\?.*)?$/,
+  /https?:\/\/[^/]+\/(en|fr|zh)\/?(\?.*)?$/,
+  /https?:\/\/[^/]+\/((en|fr|zh)\/)?privacy(?:\/)?(?:\?.*)?$/,
+  /https?:\/\/[^/]+\/((en|fr|zh)\/)?terms(?:\/)?(?:\?.*)?$/,
+];
+
 export const POSTHOG_INIT_CONFIG = {
-  autocapture: false,
-  capture_pageview: 'history_change',
+  autocapture: { url_allowlist: POSTHOG_AUTOCAPTURE_URL_ALLOWLIST },
+  capture_pageview: 'history_change' as const,
   capture_pageleave: true,
+  capture_heatmaps: true,
+  disable_surveys: true,
   capture_performance: { web_vitals: true },
-  disable_session_recording: false,
+  disable_session_recording: !posthogReplayEnabled(),
   session_recording: { maskAllInputs: true },
-  persistence: 'memory',
+  persistence: 'memory' as const,
   respect_dnt: true,
-  mask_all_text: true,
+  mask_all_text: false,
   mask_all_element_attributes: true,
-} as const satisfies Partial<Parameters<PostHog['init']>[1]>;
+} satisfies Partial<Parameters<PostHog['init']>[1]>;
 
 interface Analytics {
   client: PostHog | null;
@@ -111,7 +121,7 @@ export function PostHogProvider({
   const [analytics, setAnalytics] = useState<Analytics>({ client: null, base: {} });
 
   useEffect(() => {
-    if (!KEY) return;
+    if (!KEY || !posthogWebEnabled()) return;
     let active = true;
     const sourceCode = readFirstTouchSourceCode(window.location.search, sessionStorageOrNull());
     // An untagged visit has no source, and that stays ABSENT rather than becoming a
@@ -119,20 +129,28 @@ export function PostHogProvider({
     const base: EventProperties = { locale, ...(sourceCode ? { source_code: sourceCode } : {}) };
 
     const start = () => {
-      if (!active || readConsent() !== 'granted') return;
+      if (!active || readConsent() !== 'granted' || hasAnalyticsOptOut()) return;
       void import('posthog-js').then(({ default: posthog }) => {
         if (!active || readConsent() !== 'granted') return;
         if (!posthog.__loaded) {
           posthog.init(KEY, {
-            api_host: HOST ?? 'https://us.i.posthog.com',
+            api_host: POSTHOG_PROXY_PATH,
+            ui_host: posthogUiHost(),
             ...POSTHOG_INIT_CONFIG,
             // Runs before posthog-js captures its initial pageview (see the config note).
-            loaded: (ph) => ph.register(buildEvent(PAGEVIEW, base).properties),
+            loaded: (ph) => {
+              ph.register(buildEvent(PAGEVIEW, base).properties);
+              if (hasAnalyticsOptOut()) ph.opt_out_capturing();
+            },
           });
         } else {
           // A locale switch re-runs this effect on an already-loaded client: restamp the
           // super properties. The switch is a URL change, so history_change counts it.
           posthog.register(buildEvent(PAGEVIEW, base).properties);
+        }
+        if (hasAnalyticsOptOut()) {
+          posthog.opt_out_capturing();
+          return;
         }
         setAnalytics({ client: posthog, base });
       });

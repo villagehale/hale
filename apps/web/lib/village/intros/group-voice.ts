@@ -171,7 +171,7 @@ export function createIntroGroupVoice(client: () => AgentClient): IntroGroupVoic
 let cached: Anthropic | undefined;
 
 export function introGroupVoiceClient(): AgentClient {
-  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'group' });
   return cached;
 }
 

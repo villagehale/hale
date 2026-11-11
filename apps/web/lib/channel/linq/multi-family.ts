@@ -1,5 +1,6 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { type SQL, and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { noteGroupChatMemberAdded } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -17,6 +18,7 @@ import { type FamilyAvailability, composeCommonTime, familyClock } from './commo
 import {
   type CommonTimePlanPorts,
   type CommonTimeProposal,
+  chatAlreadyProposedFromBusy,
   latestCommonTimeProposal,
   placePickedTime,
 } from './common-time-plan';
@@ -199,6 +201,7 @@ async function audit(
     targetId: string;
     after?: Record<string, unknown>;
     occurredAt?: Date;
+    audience?: string | null;
   },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
@@ -209,6 +212,7 @@ async function audit(
     targetId: input.targetId,
     after: input.after,
     ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
+    ...(input.audience ? { audience: input.audience } : {}),
   });
 }
 
@@ -478,6 +482,11 @@ export async function joinFamilyToSharedGroup(
     phone: input.phone,
     role: role === 'co_parent' ? 'co_parent' : 'parent',
     now: input.now,
+  });
+  noteGroupChatMemberAdded({
+    familyId: input.familyId,
+    chatId: input.chatId,
+    database,
   });
   return { outcome: 'joined', notice: 'already_sent' };
 }
@@ -1216,8 +1225,15 @@ async function proposeCommonTime(
     return null;
   }
   const families = loaded.map((entry) => ({ ...entry.family, timeZone: entry.timeZone ?? anchor }));
+  const usedBusy = families.some((family) => family.busy !== null);
+  const firstFromBusy =
+    usedBusy &&
+    !(await chatAlreadyProposedFromBusy(database, {
+      chatId: input.chatId,
+      familyIds: households,
+    }));
   const composed = await composeCommonTime(
-    { families, blocked: input.ruledOut, now: input.now },
+    { families, blocked: input.ruledOut, now: input.now, firstFromBusy },
     acceptReplyLanguage(input.language),
     input.ports.commonTimeWriter ?? speakLine,
   );
@@ -1648,6 +1664,7 @@ export async function takeMultiFamilyTurn(
       familyId,
       actor: userId,
       actionTaken: 'linq_multi_family_member_stopped',
+      audience: userId,
       targetTable: 'linq_shared_group_people',
       targetId: me.id,
       after: { only: 'this_member', freeBusyWithdrawn },
@@ -1666,6 +1683,26 @@ export async function takeMultiFamilyTurn(
       ports: wired,
     });
     return { handled: true, outcome: 'member_stopped', count: 'intake', notice };
+  }
+
+  if (intent === 'withdraw_calendar' && commonTimeOn && channel) {
+    const freeBusyWithdrawn = await withdrawFreeBusyConsent(database, {
+      familyId: channel.familyId,
+      userIds: [channel.userId],
+      chatId: input.chatId,
+      now: input.now,
+      interpretation:
+        'this parent asked Hale to stop using their calendar busy times in this shared group, and to keep writing here',
+    });
+    await audit(database, {
+      familyId,
+      actor: userId,
+      actionTaken: 'linq_multi_family_calendar_withdrawn',
+      targetTable: 'linq_shared_group_people',
+      targetId: me.id,
+      after: { only: 'this_member', freeBusyWithdrawn },
+    });
+    return { handled: true, outcome: 'calendar_withdrawn', count: 'intake' };
   }
 
   if (intent === 'leave' && channel) {
