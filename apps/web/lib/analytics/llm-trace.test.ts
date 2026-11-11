@@ -202,6 +202,26 @@ describe('content capture behind POSTHOG_LLM_CONTENT_ENABLED', () => {
     expect(wire).not.toContain('416');
     expect(wire).not.toContain('Maple');
   });
+
+  it('omitContent keeps $ai_input off even when content capture is on', async () => {
+    vi.stubEnv('POSTHOG_LLM_CONTENT_ENABLED', 'true');
+    const client = fakeAnthropic();
+    const ph = fakePosthog();
+    const traced = traceAnthropic(client, { stage: 'notice' }, ph.client);
+    const secret = 'SECRET_EMAIL_BODY_7f3a';
+    await withLlmContext({ stage: 'notice', omitContent: true }, () =>
+      traced.messages.create({
+        model: 'claude-x',
+        system: secret,
+        messages: [{ role: 'user', content: secret }],
+      } as never),
+    );
+    await vi.waitFor(() => expect(ph.capture).toHaveBeenCalledTimes(1));
+    const sent = ph.capture.mock.calls[0]?.[0] as { properties: Record<string, unknown> };
+    expect(sent.properties).not.toHaveProperty('$ai_input');
+    expect(sent.properties).not.toHaveProperty('$ai_output_choices');
+    expect(JSON.stringify(sent)).not.toContain(secret);
+  });
 });
 
 describe('llmFamilyContext', () => {

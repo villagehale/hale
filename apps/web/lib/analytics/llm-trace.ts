@@ -64,7 +64,7 @@ function report(
         usage: (result?.usage as never) ?? null,
         stopReason: result?.stop_reason ?? null,
         error,
-        contentEnabled: llmContentCaptureEnabled(),
+        contentEnabled: llmContentCaptureEnabled() && !ctx.omitContent,
         request: request ?? null,
         response: result,
       }),

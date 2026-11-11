@@ -13,7 +13,6 @@ import {
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
@@ -24,6 +23,7 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { emailAlertAnchorIndex } from '~/lib/crypto/blind-index';
@@ -52,7 +52,9 @@ import {
   recordActivityBooking,
   senderHost,
 } from './booking';
+import { emailAlertBodyEnabled } from './email-alert-body-flag';
 import {
+  EMAIL_ALERT_NOTICE_BODY_MAX_CHARS,
   type EmailAlertNotice,
   type EmailAlertNoticeFacts,
   emailAlertNoticeFacts,
@@ -87,9 +89,11 @@ import {
  * E2 sentinel can tell a cancelled swim class from a newsletter but had no production
  * caller at all. This module is the join, and it is deliberately the only thing between
  * them — the classifier's verdict decides whether the email holds a dated change, the
- * notice writer (email-alert-notice.ts) decides from facts whether it is about THIS
- * family's children and clear, and writes every word if so, and the outbound chokepoint
- * decides whether Hale may speak right now. No sentence is assembled here.
+ * notice writer (email-alert-notice.ts) decides from facts — and, when
+ * EMAIL_ALERT_BODY_ENABLED, from a second Gmail fetch of that one message's body, fenced
+ * as untrusted, used for that compose, then dropped — whether it is about THIS family's
+ * children and clear, and writes every word if so, and the outbound chokepoint decides
+ * whether Hale may speak right now. No sentence is assembled here.
  *
  * WHAT IT MAY NOT DO, and the reasons are not stylistic:
  *   - Barton's rule (2026-10-12): in the parent's 1:1 chat Hale may say what the email
@@ -600,9 +604,18 @@ export interface EmailAlertPorts {
   familyChildren(): Promise<readonly FamilyChildRef[]>;
   /** The parent's one proactive language (`readParentLanguage`): the notice is written in it. */
   parentLanguage(parentUserId: string, now: Date): Promise<string>;
+  /** A second Gmail fetch of this message's body, held only for the notice compose
+   * then dropped (VIL-619). Unset, or EMAIL_ALERT_BODY_ENABLED off, keeps the facts-only
+   * writer. The classifier's own fetch is a different call and already gone. */
+  readAlertBody?(messageId: string): Promise<string>;
   /** The notice writer: one model call that decides and writes, or sends nothing. Its
-   * quality is the eval's job (rule #8); a port here, like `classify`. */
-  writeNotice(facts: EmailAlertNoticeFacts, familyId: string): Promise<EmailAlertNotice>;
+   * quality is the eval's job (rule #8); a port here, like `classify`. `body` is this
+   * message's text for this compose only, or null when the flag is off. */
+  writeNotice(
+    facts: EmailAlertNoticeFacts,
+    familyId: string,
+    body?: string | null,
+  ): Promise<EmailAlertNotice>;
   gate(request: ProactiveSendRequest): Promise<ProactiveSendVerdict>;
   resolvePhone(database: Database, parentUserId: string): Promise<string | null>;
   transport: ChannelTransport;
@@ -856,7 +869,29 @@ export async function alertParentForEmail(
   });
   // ABOVE THE GATE: an email the writer will not text about leaves no hold receipt for a
   // text that was never going to exist.
-  const notice = await ports.writeNotice(facts, familyId);
+  // VIL-433 · a second Gmail fetch, not the classifier's: that body is already gone.
+  // Teen and private mail stay facts-only. Fetch failure is facts-only, not silence.
+  // The string lives until writeNotice returns, then this frame drops it.
+  let body: string | null = null;
+  if (
+    emailAlertBodyEnabled() &&
+    ports.readAlertBody &&
+    !extraction.teenContent &&
+    !teenAttributed
+  ) {
+    try {
+      const fetched = await ports.readAlertBody(messageId);
+      if (fetched.trim() !== '') {
+        body = fetched.slice(0, EMAIL_ALERT_NOTICE_BODY_MAX_CHARS);
+      }
+    } catch (err) {
+      console.warn(
+        { familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
+        'email alert: body unread, writing from facts',
+      );
+    }
+  }
+  const notice = await ports.writeNotice(facts, familyId, body);
   if (!notice.send) {
     console.info({ familyId, outcome: notice.why }, 'email alert: nothing sent');
     return { alert: NOT_SENT[notice.why], booking: null, going: null };

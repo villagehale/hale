@@ -191,6 +191,10 @@
     "file": "duty-night.md",
     "sha256": "85c230a970e5de8e50c154eb671fce7c058a1ec0e66bd0b55f4602d72db5607a"
   },
+  "email-alert-notice-body.md": {
+    "file": "email-alert-notice-body.md",
+    "sha256": "27e3cdc3b09da2b3bd6437db54cac9137b805c372500787a2817555bac0abb0f"
+  },
   "email-alert-notice.md": {
     "file": "email-alert-notice.md",
     "sha256": "ddc24c7f0be41323e5a9c21590e32a23c146b11cbace24896660bbb0e9900236"
