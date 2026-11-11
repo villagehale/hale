@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The co-parent departure news must be sent now (it is evening, outside quiet hours); the Saturday market find is dropped because Saturday is an all-day family visit and no free window fits it.",
+    "action": "send_now",
+    "item_ids": [
+      "departed"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

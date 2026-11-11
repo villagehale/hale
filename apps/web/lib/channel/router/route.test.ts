@@ -5978,7 +5978,9 @@ describe('the reply row, written to a real database', () => {
           const answered = await text(parent, 'Maplewood', OWN_CHAT, {
             slow,
             holdingLine: fakeHoldingLine("I'm on it."),
-            holdingLineAfterMs: HOLDING_AFTER_MS,
+            // With no slow call, a deadline no real turn reaches: the control must not
+            // depend on how fast this machine runs the turn.
+            holdingLineAfterMs: slow === null ? 60_000 : HOLDING_AFTER_MS,
           });
 
           expect(answered.said).toEqual(said);

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Pas de souci du tout, on laisse ça de côté. Tu peux me dire combien d'enfants tu as et leurs âges ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 1464
+}

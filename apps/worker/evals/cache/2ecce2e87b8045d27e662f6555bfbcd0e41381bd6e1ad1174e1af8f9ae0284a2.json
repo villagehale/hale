@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgwWcEeByGhkpZPgWkCYc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Very common at 5. Try a calm, boring \"walk him back\" routine tonight. When he shows up, take him straight back to his own bed with a hug, a short \"you're safe, it's sleep time,\" and no chat or negotiating. Do it the same way every time, even if it takes a few rounds. A small reward chart for staying in his bed can help him keep it up."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1517,
+      "cache_read_input_tokens": 23382,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1517,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 116,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1935
+}
