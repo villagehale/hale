@@ -22,6 +22,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
@@ -125,7 +126,8 @@ export type DutyDelivery =
         | 'ask_budget'
         | 'model_unsent';
     }
-  | { status: 'not_sent'; reason: string };
+  | { status: 'not_sent'; reason: string }
+  | { status: 'queued' };
 
 export interface DutySweepResult {
   enabled: boolean;
@@ -1109,6 +1111,39 @@ export async function deliverDutyGroupLine(
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
   if (await dedupeActive(input.dedupeKey, database))
     return { status: 'skipped', reason: 'deduped' };
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { status: 'queued' };
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        kind: 'duty_ask',
+        category: 'duty_ask',
+        templateKey: input.templateKey,
+        what: input.text,
+        why: 'duty_ask',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: 'duty_ask' },
+    });
+    return { status: 'queued' };
+  }
   const body = withOptOut(input.text, verdict.optOut);
   if (!input.composed && body.includes('TODO-Design')) {
     return { status: 'skipped', reason: 'placeholder' };

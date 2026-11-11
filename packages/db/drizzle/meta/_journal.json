@@ -1478,6 +1478,13 @@
       "when": 1794365221000,
       "tag": "0227_audit_log_audience",
       "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1794365222000,
+      "tag": "0228_proactive_candidates_payload",
+      "breakpoints": true
     }
   ]
 }

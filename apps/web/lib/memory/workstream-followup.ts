@@ -19,6 +19,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { isGsm7 } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -852,6 +853,8 @@ export interface WorkstreamFollowupResult {
     compose_failed: number;
     deferred: number;
   };
+  /** VIL-612 · live cadence queued the composed check-in for the hourly decider. */
+  queued: number;
   failed: number;
 }
 
@@ -882,6 +885,7 @@ function emptyResult(enabled: boolean): WorkstreamFollowupResult {
       compose_failed: 0,
       deferred: 0,
     },
+    queued: 0,
     failed: 0,
   };
 }
@@ -1339,6 +1343,42 @@ export async function runWorkstreamFollowupSweep(
       if (!composed.body) {
         await stamp(database, row.id, now);
         result.skipped.nothing_to_say += 1;
+        continue;
+      }
+      if (await isQueuedForDecider(database, row.familyId, dedupeKey)) {
+        result.queued += 1;
+        continue;
+      }
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId: row.familyId,
+            parentUserId,
+            kind: 'followup',
+            category: 'followup',
+            templateKey: 'workstream:followup',
+            what: composed.body,
+            why: 'followup',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey,
+            payload: { auditVerb: 'followup_activity_asked' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId: row.familyId,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'family_workstreams',
+          targetId: row.id,
+          after: { kind: 'followup' },
+        });
+        result.queued += 1;
         continue;
       }
       const to = await phoneFor(database, parentUserId);
