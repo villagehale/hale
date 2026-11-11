@@ -8,13 +8,13 @@ const LOGIN_LINK_KINDS = ['login_ask', 'account_prep', 'password_rejected'] as c
 
 /**
  * What the card and its page say the login is for: the session and the open in the
- * parent's own zone. Never a credential and never a child's name — the link preview is
- * fetched by whoever renders it.
+ * parent's own zone, or no open once it will have passed while the card is live. Never a
+ * credential and never a child's name — the link preview is fetched by whoever renders it.
  */
 const loginLinkPurposeSchema = z.object({
   kind: z.enum(LOGIN_LINK_KINDS),
   sessionLabel: z.string().nullable(),
-  opensAt: z.object({ local: z.string(), timeZone: z.string() }),
+  opensAt: z.object({ local: z.string(), timeZone: z.string() }).nullable(),
 });
 
 export type LoginLinkPurpose = z.infer<typeof loginLinkPurposeSchema>;

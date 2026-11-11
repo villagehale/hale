@@ -11,6 +11,8 @@ export const LOGIN_PAGE_COPY = {
   goneBody: 'Ask Hale for a fresh one.',
   heading: (host: string) => `Hale needs your login for ${host}`,
   opens: (local: string) => `opens ${local}`,
+  finishing: (session: string | null) =>
+    session ? `to finish signing up for ${session}` : 'to finish signing up',
   username: 'Username',
   password: 'Password',
   totp: 'Authenticator setup (optional)',
@@ -29,6 +31,7 @@ export const LOGIN_PAGE_COPY = {
 /** The line under the heading and in the card preview: the session and the open. */
 export function loginPurposeLine(purpose: LoginLinkPurpose | null): string | null {
   if (!purpose) return null;
+  if (!purpose.opensAt) return LOGIN_PAGE_COPY.finishing(purpose.sessionLabel);
   const opens = LOGIN_PAGE_COPY.opens(purpose.opensAt.local);
   return purpose.sessionLabel ? `${purpose.sessionLabel} · ${opens}` : opens;
 }

@@ -19,6 +19,7 @@ import {
 } from '../credentials/flag';
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
 import { saveProviderCredentials } from '../credentials/store';
+import { loginPurposeLine } from '../login-link/page-copy';
 import { lookupLoginLink } from '../login-link/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import type { PlanNoticePart } from './bubbles';
@@ -1224,7 +1225,7 @@ describe('parked password rejection and mismatched options', () => {
         },
         deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
           bodies.push(...input.parts.map((part) => (part.type === 'link' ? part.url : part.body)));
-          return true;
+          return 'sent' as const;
         },
       },
     };
@@ -1371,16 +1372,21 @@ describe('parked password rejection and mismatched options', () => {
       notices.bodies[1] ?? '',
     );
     expect(notices.bodies[2]).toBe('second bubble');
-    // The fresh card says what it is for: the first choice, and the open in the parent's zone.
-    expect(await lookupLoginLink(db.database, fresh?.[1] ?? '', NOW)).toMatchObject({
+    // The fresh card says what it is for: the first choice. The open is two minutes away and
+    // the card lives 30, so it never says "opens 7:00 a.m." after 7:00 a.m.
+    const looked = await lookupLoginLink(db.database, fresh?.[1] ?? '', NOW);
+    expect(looked).toMatchObject({
       ok: true,
       providerHost: AUTO_HOST,
       purpose: {
         kind: 'password_rejected',
         sessionLabel: 'Preschool Swim Sat 9:00',
-        opensAt: { local: 'Tuesday, December 1, 2026 at 7:00 a.m.', timeZone: 'America/Toronto' },
+        opensAt: null,
       },
     });
+    expect(loginPurposeLine(looked.ok ? looked.purpose : null)).toBe(
+      'to finish signing up for Preschool Swim Sat 9:00',
+    );
   });
 
   it('runs with saved credentials when there is no cookie session', async () => {
