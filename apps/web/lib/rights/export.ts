@@ -181,6 +181,16 @@ export interface FamilyExportDocument {
     revokedAt: string | null;
   }[];
   /**
+   * VIL-399 — this household's own yes to being counted in "who else is going".
+   * Whether they said yes, and whether they took it back. No other household,
+   * no class, and no child: those are not columns, and the read is scoped to
+   * this family so another household's yes cannot appear here.
+   */
+  goingCountOptIns: {
+    createdAt: string;
+    revokedAt: string | null;
+  }[];
+  /**
    * VIL-353 · the evening check-in: how often this household is asked how the day went,
    * and what THIS parent wrote back.
    *
@@ -679,6 +689,19 @@ export async function assembleFamilyExport(
     revokedAt: row.revokedAt?.toISOString() ?? null,
   }));
 
+  const goingCountRows = await database
+    .select({
+      createdAt: schema.goingCountOptIns.createdAt,
+      revokedAt: schema.goingCountOptIns.revokedAt,
+    })
+    .from(schema.goingCountOptIns)
+    .where(eq(schema.goingCountOptIns.familyId, familyId))
+    .orderBy(schema.goingCountOptIns.createdAt);
+  const goingCountOptIns = goingCountRows.map((row) => ({
+    createdAt: row.createdAt.toISOString(),
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+  }));
+
   const memoryDigests = digestRows.flatMap((row) => {
     const grain = digestGrain(row.grain);
     if (grain === null) return [];
@@ -740,6 +763,7 @@ export async function assembleFamilyExport(
     authorizedSignups,
     signupFieldConsents,
     sameActivityOptIns,
+    goingCountOptIns,
     eveningCheckIn,
     activityReviews,
     trips,
