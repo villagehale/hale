@@ -217,7 +217,7 @@ jobs:
       # this, eval:memory-writeback dies on apps/web/lib/testing/pglite.ts importing
       # @hale/db/dist/index.js. Same package set as eval-sweep.yml.
       - name: Build workspace packages
-        run: pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
+        run: pnpm --filter @hale/flags --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
 
       - name: Classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:classifier
