@@ -283,7 +283,9 @@ async function familyGroupTurn(database: Database, ctx: HandlerContext): Promise
 
 export function connectorLinkHandler(
   log: Pick<Console, 'error'> = console,
-  saidLine: SaidLineWriter = createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+  saidLine: SaidLineWriter = createSaidLineWriter(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+  ),
 ): DeterministicHandler {
   return {
     name: 'connector_link',
@@ -440,10 +442,12 @@ export function connectorLinkHandler(
  */
 export function connectorDisconnectHandler(
   log: Pick<Console, 'error'> = console,
-  saidLine: SaidLineWriter = createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+  saidLine: SaidLineWriter = createSaidLineWriter(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+  ),
   google: GoogleDisconnectPorts = defaultGoogleDisconnectPorts(),
   reader: DisconnectReader = createDisconnectReader(() =>
-    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'inbound_screen' }),
   ),
 ): DeterministicHandler {
   return {

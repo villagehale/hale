@@ -66,7 +66,8 @@ export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undef
   return {
     async compose(input, options) {
       const skill = await loadCronSkill(input.skill);
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client =
+        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const result = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),

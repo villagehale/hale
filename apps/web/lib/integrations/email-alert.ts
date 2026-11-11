@@ -13,6 +13,7 @@ import {
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
@@ -152,6 +153,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   /** The notice writer failed or every draft was refused. There is no fallback. */
   'notice_unwritten',
   'already_sent',
+  /** VIL-612 · live cadence queued the composed notice for the hourly decider. */
+  'queued',
   'dark',
   'no_parent_user',
   'seeding_run',
@@ -625,6 +628,8 @@ export async function alertParentForEmail(
   // calls have already been paid for.
   if (await dedupeActive(dedupeKey, database))
     return { alert: 'already_sent', booking: null, going: null };
+  if (await isQueuedForDecider(database, familyId, dedupeKey))
+    return { alert: 'queued', booking: null, going: null };
 
   // Beside the classifier call, so no caller can hand it the parent's own mail.
   const side = mailboxSide(input.labelIds);
@@ -874,6 +879,68 @@ export async function alertParentForEmail(
     now,
   });
 
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId,
+        parentUserId,
+        kind: 'email_alert',
+        category: 'email_alert',
+        templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+        what: notice.text,
+        why: 'email_alert',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey,
+        payload: {
+          auditVerb: 'email_alert_sent',
+          emailAlert: {
+            occasionKey,
+            anchorKeys,
+            receivedAt: receivedAt.toISOString(),
+            integrationId,
+            messageId,
+            offer:
+              offer === null
+                ? null
+                : {
+                    kind: offer.kind,
+                    title: offer.title,
+                    startsAt: offer.startsAt.toISOString(),
+                    location: offer.location,
+                  },
+            booking:
+              draft === null || !draft.ok
+                ? null
+                : {
+                    providerHost: draft.draft.providerHost,
+                    title: draft.draft.title,
+                    firstSessionAt: draft.draft.firstSessionAt.toISOString(),
+                    location: draft.draft.location,
+                    address: draft.draft.address,
+                    eventId: draft.draft.eventId,
+                    sessionKey: draft.draft.sessionKey,
+                  },
+          },
+        },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { kind: 'email_alert' },
+    });
+    return { alert: 'queued', booking: null, going: counted ? goingOutcome(counted) : null };
+  }
+
   // CLAIM FIRST, by the inserts rather than by a read a concurrent sweep can race. The two
   // reads above are the cost guards; these are the correctness ones: the message's key on
   // the alert row, then the occasion's, in one transaction. A sweep that loses the
@@ -1024,6 +1091,7 @@ export async function alertParentForEmail(
     familyId,
     actor: 'system',
     actionTaken: 'email_alert_sent',
+    audience: parentUserId,
     targetTable: 'channel_messages',
     targetId: claimed.id,
     // Enums and flags only. Not the title, not the sender, not the subject: an audit row

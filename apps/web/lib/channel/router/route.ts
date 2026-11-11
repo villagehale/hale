@@ -2,6 +2,7 @@ import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
+import { noteMessage, noteSendFailed, noteTurnFailed } from '~/lib/analytics/product-hooks';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
@@ -75,10 +76,12 @@ import {
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
   productionVoiceReplyDeps,
   sendReplyAsVoiceMemo,
+  voiceMemoTextOnly,
 } from '~/lib/channel/linq/voice-reply';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
@@ -2591,6 +2594,20 @@ async function runAgentTurn(
         reason: disposition.reason,
         familyId: args.job.family_id,
       });
+      noteTurnFailed({
+        familyId: args.job.family_id,
+        reason: disposition.reason,
+        chatId: args.turn.groupChatId,
+      });
+      if (err instanceof LinqSendError) {
+        noteSendFailed({
+          familyId: args.job.family_id,
+          channel: args.turn.groupChatId ? 'imessage' : 'sms',
+          isGroup: args.job.in_group,
+          chatId: args.turn.groupChatId,
+          reason: err.code,
+        });
+      }
       if (pageThisFailure) {
         // The deferral row carries the class. Page #ops in this request; the
         // five-minute sweep posts it if this call never lands. Never throws,
@@ -2634,6 +2651,22 @@ async function runAgentTurn(
       reason: disposition.reason,
       familyId: args.job.family_id,
     });
+    if (disposition.reply === null) {
+      noteTurnFailed({
+        familyId: args.job.family_id,
+        reason: disposition.reason,
+        chatId: args.turn.groupChatId,
+      });
+    }
+    if (err instanceof LinqSendError) {
+      noteSendFailed({
+        familyId: args.job.family_id,
+        channel: args.turn.groupChatId ? 'imessage' : 'sms',
+        isGroup: args.job.in_group,
+        chatId: args.turn.groupChatId,
+        reason: err.code,
+      });
+    }
     return done(deps, args.job, {
       status: disposition.outcome,
       handler: null,
@@ -3396,6 +3429,16 @@ async function sendReply(
     // The form only, never the words (rule #1): this reply went as a voice memo.
     ...(voiced ? { after: { form: 'voice_memo' } } : {}),
   });
+  noteMessage({
+    direction: 'out',
+    familyId: args.job.family_id,
+    channel: carriedBy,
+    isGroup: args.job.in_group,
+    chatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
+    mediaKind: voiced ? 'audio' : 'none',
+    latencyMs: Math.max(0, deps.now().getTime() - new Date(args.job.received_at).getTime()),
+    database: deps.database,
+  });
 
   if (args.conversationId) {
     await appendMessage(args.conversationId, 'assistant', args.body, deps.database, {
@@ -3423,6 +3466,7 @@ async function voiceMemoFor(
     body: string;
     job: ChannelMessageReceivedJob;
     voiceMemo?: boolean;
+    templateKey?: string | null;
   },
 ): Promise<ReplySent | null> {
   if (!args.voiceMemo) return null;
@@ -3431,7 +3475,7 @@ async function voiceMemoFor(
     text: args.body,
     modelChoseVoice: true,
     isGroup: args.job.in_group !== false,
-    textOnly: false,
+    textOnly: voiceMemoTextOnly({ templateKey: args.templateKey }),
     chatId: route.channel === 'imessage' ? route.chatId : null,
     address: route.to,
   };

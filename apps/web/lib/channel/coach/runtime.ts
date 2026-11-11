@@ -17,6 +17,7 @@ import type { FactReader } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
+import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
@@ -602,281 +603,294 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const groupScoped = turn.audience === 'group';
       const turnContext = groupScoped ? groupScopedContext(context) : context;
 
-      return traceAgentRun(
-        {
-          name: CHANNEL_AGENT_NAME,
-          sessionId: turn.conversationId,
-          userId: turn.parentUserId,
-          tags: [CHANNEL_AGENT_NAME, familyContext.planTier].filter(Boolean) as string[],
-          metadata: { familyId: turn.familyId },
-        },
-        async (trace) => {
-          try {
-            const startedAt = Date.now();
-            // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
-            // reused set would spend this text's budget on the last one's.
-            const builtTools = ports.buildTools(
-              turn,
-              (actionId) => draftedActionIds.push(actionId),
-              (offer) => {
-                planOffer = offer;
-              },
-              (share) => {
-                referral = share;
-              },
-              (promise) => {
-                activityPromise = promise;
-              },
-              (watch) => {
-                spotWatch = watch;
-              },
-              offeredThisTurn,
-              (notice) => {
-                if (gmailNotice?.status === 'unsent') return;
-                gmailNotice = notice;
-              },
-              (undo) => {
-                undos.push(undo);
-              },
-              familyCountryOf(familyContext.location.country),
-            );
-            // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
-            // are busy-only, on every group turn. VIL-615: once read_email returns text,
-            // only reads run for the rest of the turn.
-            const { tools, emailRead } = taintTurnOnEmailRead([
-              ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
-              ...(cardsLit
-                ? [
-                    shareExperienceCardTool({
-                      links: turnLinks,
-                      onCard: (card) => {
-                        experienceCard = card;
-                      },
-                    }),
-                  ]
-                : []),
-              ...(voiceLit
-                ? [
-                    replyAsVoiceMemoTool({
-                      onChoose: () => {
-                        voiceChosen = true;
-                      },
-                    }),
-                  ]
-                : []),
-              ...(leaveLit
-                ? [
-                    leaveGroupChatTool({
-                      memberWords: turn.body,
-                      onLeave: (intent) => {
-                        groupLeave = intent;
-                      },
-                      ...(ports.groupLeaveCheck
-                        ? {
-                            check: async () => {
-                              const chatId = turn.groupChatId;
-                              if (!chatId)
-                                return { ok: false as const, reason: 'not_group' as const };
-                              const g = await ports.groupLeaveCheck!(chatId);
-                              if (g.status === 'eligible') return { ok: true as const };
-                              if (g.status === 'failed')
-                                return { ok: false as const, reason: 'unavailable' as const };
-                              return {
-                                ok: false as const,
-                                reason:
-                                  g.reason === 'no_explicit_ask'
-                                    ? ('unavailable' as const)
-                                    : g.reason,
-                              };
-                            },
-                          }
-                        : {}),
-                    }),
-                  ]
-                : []),
-              ...(darkNow.length > 0
-                ? [
-                    noteCapabilityDeclinedTool({
-                      dark: darkNow,
-                      onDeclined: (capability) => declined.push(capability),
-                    }),
-                  ]
-                : []),
-              ...(owedCorrections.length > 0
-                ? [
-                    noteCapabilityCorrectionTool({
-                      owed: owedCorrections.map((owed) => owed.capability),
-                      onCorrected: (capability) => corrected.push(capability),
-                    }),
-                  ]
-                : []),
-              ...(emailLit && emailReader
-                ? [
-                    readEmailTool((gmailMessageId) =>
-                      emailReader.read({
-                        familyId: turn.familyId,
-                        parentUserId: turn.parentUserId,
-                        conversationId: turn.conversationId,
-                        gmailMessageId,
+      return withLlmContext({ stage: 'coach', ...llmFamilyContext(turn.familyId) }, () =>
+        traceAgentRun(
+          {
+            name: CHANNEL_AGENT_NAME,
+            sessionId: turn.conversationId,
+            userId: turn.parentUserId,
+            tags: [CHANNEL_AGENT_NAME, familyContext.planTier].filter(Boolean) as string[],
+            metadata: { familyId: turn.familyId },
+          },
+          async (trace) => {
+            try {
+              const startedAt = Date.now();
+              // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
+              // reused set would spend this text's budget on the last one's.
+              const builtTools = ports.buildTools(
+                turn,
+                (actionId) => draftedActionIds.push(actionId),
+                (offer) => {
+                  planOffer = offer;
+                },
+                (share) => {
+                  referral = share;
+                },
+                (promise) => {
+                  activityPromise = promise;
+                },
+                (watch) => {
+                  spotWatch = watch;
+                },
+                offeredThisTurn,
+                (notice) => {
+                  if (gmailNotice?.status === 'unsent') return;
+                  gmailNotice = notice;
+                },
+                (undo) => {
+                  undos.push(undo);
+                },
+                familyCountryOf(familyContext.location.country),
+              );
+              // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
+              // are busy-only, on every group turn. VIL-615: once read_email returns text,
+              // only reads run for the rest of the turn.
+              const { tools, emailRead } = taintTurnOnEmailRead([
+                ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
+                ...(cardsLit
+                  ? [
+                      shareExperienceCardTool({
+                        links: turnLinks,
+                        onCard: (card) => {
+                          experienceCard = card;
+                        },
                       }),
-                    ),
-                  ]
-                : []),
-            ]);
-            // A tool that throws, a provider that times out, a step that runs long: the
-            // loop can break anywhere, and by then the drafts it made are already rows.
-            // Re-thrown rather than handled — the router owns what a parent is told.
-            const result = await ports
-              .runAgent({
-                skill: coachSkill,
-                context: turnContext,
-                tools,
-                client: ports.client(),
-                maxSteps: MAX_STEPS,
-                maxTokens: MAX_TOKENS,
-                toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
-                guardDeps: ports.guardDeps,
-                ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
-              })
-              .catch((err: unknown) => {
-                throw failed(
-                  err instanceof Error ? err.message : 'channel coach: agent loop failed',
-                  err,
-                );
+                    ]
+                  : []),
+                ...(voiceLit
+                  ? [
+                      replyAsVoiceMemoTool({
+                        onChoose: () => {
+                          voiceChosen = true;
+                        },
+                      }),
+                    ]
+                  : []),
+                ...(leaveLit
+                  ? [
+                      leaveGroupChatTool({
+                        memberWords: turn.body,
+                        onLeave: (intent) => {
+                          groupLeave = intent;
+                        },
+                        ...(ports.groupLeaveCheck
+                          ? {
+                              check: async () => {
+                                const chatId = turn.groupChatId;
+                                if (!chatId)
+                                  return { ok: false as const, reason: 'not_group' as const };
+                                const g = await ports.groupLeaveCheck!(chatId);
+                                if (g.status === 'eligible') return { ok: true as const };
+                                if (g.status === 'failed')
+                                  return { ok: false as const, reason: 'unavailable' as const };
+                                return {
+                                  ok: false as const,
+                                  reason:
+                                    g.reason === 'no_explicit_ask'
+                                      ? ('unavailable' as const)
+                                      : g.reason,
+                                };
+                              },
+                            }
+                          : {}),
+                      }),
+                    ]
+                  : []),
+                ...(darkNow.length > 0
+                  ? [
+                      noteCapabilityDeclinedTool({
+                        dark: darkNow,
+                        onDeclined: (capability) => declined.push(capability),
+                      }),
+                    ]
+                  : []),
+                ...(owedCorrections.length > 0
+                  ? [
+                      noteCapabilityCorrectionTool({
+                        owed: owedCorrections.map((owed) => owed.capability),
+                        onCorrected: (capability) => corrected.push(capability),
+                      }),
+                    ]
+                  : []),
+                ...(emailLit && emailReader
+                  ? [
+                      readEmailTool((gmailMessageId) =>
+                        emailReader.read({
+                          familyId: turn.familyId,
+                          parentUserId: turn.parentUserId,
+                          conversationId: turn.conversationId,
+                          gmailMessageId,
+                        }),
+                      ),
+                    ]
+                  : []),
+              ]);
+              // A tool that throws, a provider that times out, a step that runs long: the
+              // loop can break anywhere, and by then the drafts it made are already rows.
+              // Re-thrown rather than handled — the router owns what a parent is told.
+              const prefix = loadedSkill.instructions;
+              const extraText =
+                coachSkill.instructions === prefix
+                  ? ''
+                  : coachSkill.instructions.startsWith(`${prefix}\n\n`)
+                    ? coachSkill.instructions.slice(prefix.length + 2)
+                    : '';
+              const systemExtras = extraText.length > 0 ? [extraText] : undefined;
+              const skillForAgent =
+                systemExtras !== undefined ? { ...coachSkill, instructions: prefix } : coachSkill;
+              const result = await ports
+                .runAgent({
+                  skill: skillForAgent,
+                  ...(systemExtras ? { systemExtras } : {}),
+                  context: turnContext,
+                  tools,
+                  client: ports.client(),
+                  maxSteps: MAX_STEPS,
+                  maxTokens: MAX_TOKENS,
+                  toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
+                  guardDeps: ports.guardDeps,
+                  ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
+                })
+                .catch((err: unknown) => {
+                  throw failed(
+                    err instanceof Error ? err.message : 'channel coach: agent loop failed',
+                    err,
+                  );
+                });
+
+              const modelUsed = pickModel(coachSkill.meta.task);
+              trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
+                model: modelUsed,
+                usage: result.usage,
               });
 
-            const modelUsed = pickModel(coachSkill.meta.task);
-            trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
-              model: modelUsed,
-              usage: result.usage,
-            });
+              const record = (status: 'completed' | 'failed'): ChannelRunRecord => ({
+                familyId: turn.familyId,
+                agentName: CHANNEL_AGENT_NAME,
+                status,
+                latencyMs: Date.now() - startedAt,
+                promptTokens: result.usage.promptTokens,
+                completionTokens: result.usage.completionTokens,
+                costUsd: agentRunCostUsd(modelUsed, result.usage),
+                promptCacheHit: result.usage.cacheReadTokens > 0,
+                cacheReadTokens: result.usage.cacheReadTokens,
+                cacheWriteTokens: result.usage.cacheCreationTokens,
+                langfuseTraceId: trace.traceId,
+              });
 
-            const record = (status: 'completed' | 'failed'): ChannelRunRecord => ({
-              familyId: turn.familyId,
-              agentName: CHANNEL_AGENT_NAME,
-              status,
-              latencyMs: Date.now() - startedAt,
-              promptTokens: result.usage.promptTokens,
-              completionTokens: result.usage.completionTokens,
-              costUsd: agentRunCostUsd(modelUsed, result.usage),
-              promptCacheHit: result.usage.cacheReadTokens > 0,
-              cacheReadTokens: result.usage.cacheReadTokens,
-              cacheWriteTokens: result.usage.cacheCreationTokens,
-              langfuseTraceId: trace.traceId,
-            });
-
-            if (gmailNotice?.status === 'unsent') {
-              await ports.recordRun(record('failed'));
-              throw failed(
-                'channel coach: gmail draft notice was not sent',
-                new GmailDraftNoticeUnsent(),
-              );
-            }
-
-            if (result.answer === null && gmailNotice?.status !== 'ready') {
-              await ports.recordRun(record('failed'));
-              throw failed(
-                result.hitMaxSteps
-                  ? 'channel coach: agent hit maxSteps without an answer'
-                  : result.truncated
-                    ? // The ceiling failed, not the model and not the context — a
-                      // distinct event from "said nothing for its own reasons", and the
-                      // only one of the three a lane-config change can fix (rule #11).
-                      `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
-                    : 'channel coach: agent returned no answer',
-              );
-            }
-
-            const share = referral as ReferralShare | null;
-            const offer = planOffer as PlanOffer | null;
-            // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
-            // A count is the least important thing in any message that also carries one of
-            // those — and a turn that offered nothing has nothing to count about.
-            const nearby =
-              offer === null && share === null
-                ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
-                : null;
-            const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
-            const spoken =
-              gmailNotice !== null && gmailNotice.status === 'ready'
-                ? gmailNotice.text
-                : result.answer;
-            if (!spoken) {
-              await ports.recordRun(record('failed'));
-              throw failed(
-                'channel coach: gmail draft notice was not sent',
-                new GmailDraftNoticeUnsent(),
-              );
-            }
-            // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
-            // turn whose tools handed over a find (any language). It does not edit the
-            // draft. withhold, or a judge that failed, sends nothing. It reads the
-            // draft with teen names already redacted, as the parent would (rule #1).
-            const handedOverFind =
-              offeredThisTurn.read().length > 0 || offeredThisTurn.links().length > 0;
-            if (!noticeReady && (findTurn || handedOverFind)) {
-              const gate = await ports.judgeFindReply(redactTeenNames(spoken, children, now));
-              if (gate.verdict !== 'send') {
-                console.error(
-                  {
-                    reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
-                  },
-                  'channel coach: find reply withheld - nothing sent',
-                );
+              if (gmailNotice?.status === 'unsent') {
                 await ports.recordRun(record('failed'));
-                // A failed turn, not a deliberate silence (Devin #983): the router's
-                // failed-turn path keeps the drafts receipt and the failed-turn ledger.
-                // The withheld draft itself is never sent.
                 throw failed(
-                  gate.verdict === 'withhold'
-                    ? 'channel coach: find reply withheld (find_reasoning)'
-                    : `channel coach: find reply judge failed (${gate.reason})`,
+                  'channel coach: gmail draft notice was not sent',
+                  new GmailDraftNoticeUnsent(),
                 );
               }
-            }
-            // VIL-434: the model's answer goes out whole. Length is the model's judgment
-            // (the skill, or a rewrite the model chooses). Code does not cut it, and it
-            // does not call a shorten pass because a sentence ran past two segments.
-            const reply = toSmsReply(spoken, {
-              children,
-              now,
-              ...(noticeReady
-                ? {}
-                : {
-                    planOffer: offer?.sentence,
-                    referral: share ? referralBlock(share) : undefined,
-                    activityLinks: turnLinks(),
-                    nearby: nearby ?? undefined,
-                  }),
-            });
-            await ports.recordRun(record('completed'));
-            const card = experienceCard as ExperienceCardIntent | null;
-            const capabilityNotes: CapabilityNotes | null =
-              declined.length > 0 || corrected.length > 0 ? { declined, corrected } : null;
-            return {
-              reply,
-              planOffer,
-              activityPromise,
-              spotWatch,
-              capabilityNotes,
-              // The title passes the same age-derived teen floor as the answer (rule #1).
-              experienceCard:
-                card && !noticeReady
-                  ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+
+              if (result.answer === null && gmailNotice?.status !== 'ready') {
+                await ports.recordRun(record('failed'));
+                throw failed(
+                  result.hitMaxSteps
+                    ? 'channel coach: agent hit maxSteps without an answer'
+                    : result.truncated
+                      ? // The ceiling failed, not the model and not the context — a
+                        // distinct event from "said nothing for its own reasons", and the
+                        // only one of the three a lane-config change can fix (rule #11).
+                        `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
+                      : 'channel coach: agent returned no answer',
+                );
+              }
+
+              const share = referral as ReferralShare | null;
+              const offer = planOffer as PlanOffer | null;
+              // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
+              // A count is the least important thing in any message that also carries one of
+              // those — and a turn that offered nothing has nothing to count about.
+              const nearby =
+                offer === null && share === null
+                  ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
+                  : null;
+              const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
+              const spoken =
+                gmailNotice !== null && gmailNotice.status === 'ready'
+                  ? gmailNotice.text
+                  : result.answer;
+              if (!spoken) {
+                await ports.recordRun(record('failed'));
+                throw failed(
+                  'channel coach: gmail draft notice was not sent',
+                  new GmailDraftNoticeUnsent(),
+                );
+              }
+              // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
+              // turn whose tools handed over a find (any language). It does not edit the
+              // draft. withhold, or a judge that failed, sends nothing. It reads the
+              // draft with teen names already redacted, as the parent would (rule #1).
+              const handedOverFind =
+                offeredThisTurn.read().length > 0 || offeredThisTurn.links().length > 0;
+              if (!noticeReady && (findTurn || handedOverFind)) {
+                const gate = await ports.judgeFindReply(redactTeenNames(spoken, children, now));
+                if (gate.verdict !== 'send') {
+                  console.error(
+                    {
+                      reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                    },
+                    'channel coach: find reply withheld - nothing sent',
+                  );
+                  await ports.recordRun(record('failed'));
+                  // A failed turn, not a deliberate silence (Devin #983): the router's
+                  // failed-turn path keeps the drafts receipt and the failed-turn ledger.
+                  // The withheld draft itself is never sent.
+                  throw failed(
+                    gate.verdict === 'withhold'
+                      ? 'channel coach: find reply withheld (find_reasoning)'
+                      : `channel coach: find reply judge failed (${gate.reason})`,
+                  );
+                }
+              }
+              // VIL-434: the model's answer goes out whole. Length is the model's judgment
+              // (the skill, or a rewrite the model chooses). Code does not cut it, and it
+              // does not call a shorten pass because a sentence ran past two segments.
+              const reply = toSmsReply(spoken, {
+                children,
+                now,
+                ...(noticeReady
+                  ? {}
+                  : {
+                      planOffer: offer?.sentence,
+                      referral: share ? referralBlock(share) : undefined,
+                      activityLinks: turnLinks(),
+                      nearby: nearby ?? undefined,
+                    }),
+              });
+              await ports.recordRun(record('completed'));
+              const card = experienceCard as ExperienceCardIntent | null;
+              const capabilityNotes: CapabilityNotes | null =
+                declined.length > 0 || corrected.length > 0 ? { declined, corrected } : null;
+              return {
+                reply,
+                planOffer,
+                activityPromise,
+                spotWatch,
+                capabilityNotes,
+                // The title passes the same age-derived teen floor as the answer (rule #1).
+                experienceCard:
+                  card && !noticeReady
+                    ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+                    : null,
+                groupLeave: groupLeave
+                  ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
                   : null,
-              groupLeave: groupLeave
-                ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
-                : null,
-              // A Gmail draft notice is a receipt to read, so it stays text.
-              voiceMemo: voiceChosen && !noticeReady,
-              draftedActionIds,
-              emailRead: emailRead(),
-            };
-          } catch (err) {
-            await undoAll();
-            throw err;
-          }
-        },
+                // A Gmail draft notice is a receipt to read, so it stays text.
+                voiceMemo: voiceChosen && !noticeReady,
+                draftedActionIds,
+                emailRead: emailRead(),
+              };
+            } catch (err) {
+              await undoAll();
+              throw err;
+            }
+          },
+        ),
       );
     },
   };

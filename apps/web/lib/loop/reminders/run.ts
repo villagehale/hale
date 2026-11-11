@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -1145,6 +1146,7 @@ async function fireDueReminders(
         await deps.markStatus(db, r.reminderId, 'sent', null);
         if (isLateFire(r.fireAt, now)) firedLate += 1;
       }
+      noteTaskCompleted({ familyId: group.familyId, type: 'reminder', source: 'cron' });
       fired += batch.eventRefs.length;
       // Coarse telemetry (buildEvent drops any PII key): counts + enum only.
       await deps.capture('reminder_sent', parentUserId, {

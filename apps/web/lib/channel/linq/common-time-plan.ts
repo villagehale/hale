@@ -265,7 +265,7 @@ export function productionCommonTimePlanPorts(
   database: Database,
   sendOneToOne: SendOneToOne,
 ): CommonTimePlanPorts {
-  const client = () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  const client = () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'plan' });
   return {
     reader: createGroupPlanAttendanceReader(client),
     invites: createCalendarInviteSender(database, {
