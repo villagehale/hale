@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNull, notLike, or } from 'drizzle-orm';
 import { CHANNEL_SMS_NOTE_KEY_LIKE, isChannelGroupNoteKey } from '~/lib/coach/note-key';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
+import { teenNameSharedMatcherEnabled } from '~/lib/privacy/teen-name';
 import type { ExportTeenGate } from './export-memory';
 import { accessExportRound2Enabled } from './export-round-2';
 
@@ -124,7 +125,13 @@ export async function loadHouseholdExport(
   const calendarEvents = eventRows.map((row) => {
     const withheld = teen(
       [row.childId],
-      [row.title, row.location ?? '', row.notes?.parking ?? '', row.notes?.bring ?? ''],
+      [
+        row.title,
+        row.location ?? '',
+        row.notes?.parking ?? '',
+        row.notes?.bring ?? '',
+        ...(teenNameSharedMatcherEnabled() ? [row.dutyOwnerLabel ?? ''] : []),
+      ],
     );
     const generic = round2 && row.sensitive && !withheld;
     const hideDetail = withheld !== null || generic;
