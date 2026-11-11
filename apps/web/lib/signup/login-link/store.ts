@@ -83,3 +83,35 @@ export async function consumeLoginLink(
     .returning({ id: schema.providerLoginLinks.id });
   return Boolean(row);
 }
+
+/** A rejected password replaces the old code: every open link for this host is spent. */
+export async function invalidateOpenLoginLinks(
+  database: Database,
+  input: { familyId: string; providerHost: string; now: Date },
+): Promise<number> {
+  const rows = await database
+    .update(schema.providerLoginLinks)
+    .set({ consumedAt: input.now, browserHandleCiphertext: null })
+    .where(
+      and(
+        eq(schema.providerLoginLinks.familyId, input.familyId),
+        eq(schema.providerLoginLinks.providerHost, signupProviderHost(input.providerHost)),
+        isNull(schema.providerLoginLinks.consumedAt),
+      ),
+    )
+    .returning({ id: schema.providerLoginLinks.id });
+  return rows.length;
+}
+
+/** Invalidate any open code for this host, then mint a fresh one. */
+export async function mintFreshLoginLink(
+  database: Database,
+  input: Parameters<typeof mintLoginLink>[1],
+): Promise<{ url: string; expiresAt: Date; id: string }> {
+  await invalidateOpenLoginLinks(database, {
+    familyId: input.familyId,
+    providerHost: input.providerHost,
+    now: input.now,
+  });
+  return mintLoginLink(database, input);
+}

@@ -1,6 +1,9 @@
 import type { ShareableSignupField } from '../consent';
+import { credentialFactAliases, credentialSecretBindings } from '../credentials/bindings';
+import { providerAccountCreateEnabled } from '../credentials/flag';
 import { LINK_SPEND_CEILING_CENTS, LinkApiError, type LinkCard } from '../link/client';
 import type { SignupPaymentWallet } from '../link/wallet';
+import type { SiteChoice, SiteFees } from '../site-choices';
 import type { SignupIdentity } from '../types';
 import {
   type BrowserUseApi,
@@ -124,6 +127,11 @@ export interface BrowserUseSignupInput {
    * without one. See `browserUseProxyFor`.
    */
   proxyCountryCode?: string | null;
+  /** Decrypted only for this run. Never logged. Absent when the flag is off. */
+  credentials?: { username: string; password: string; totp: string | null } | null;
+  accountCreate?: boolean;
+  joinWaitlist?: boolean;
+  askedStart?: string | null;
 }
 
 /** The agent's outcomes plus the two that only the payment step reaches. */
@@ -158,6 +166,11 @@ export interface BrowserUseSignupResult {
   sessionCostUsd: string | null;
   /** The run's browser, so a later step can stop it. Never a credential. */
   browserId: string | null;
+  passwordRejectionMessage?: string | null;
+  passwordRule?: string | null;
+  siteChoices?: SiteChoice[];
+  seatsOpen?: number | null;
+  fees?: SiteFees | null;
 }
 
 export type BrowserUseConfirmationResult =
@@ -207,7 +220,15 @@ export function failure(
 export function signupFacts(
   input: Pick<
     BrowserUseSignupInput,
-    'fieldsAllowed' | 'identity' | 'session' | 'registrationUrl' | 'approvedPriceCents'
+    | 'fieldsAllowed'
+    | 'identity'
+    | 'session'
+    | 'registrationUrl'
+    | 'approvedPriceCents'
+    | 'credentials'
+    | 'accountCreate'
+    | 'joinWaitlist'
+    | 'askedStart'
   >,
 ): Record<string, unknown> {
   const grant = new Set<string>(input.fieldsAllowed);
@@ -237,7 +258,23 @@ export function signupFacts(
       email: pick('parent_email', identity.parentEmail),
       postal_code: pick('postal_code', identity.postalCode),
     },
+    credentials: input.credentials ? credentialFactAliases(Boolean(input.credentials.totp)) : null,
+    account_create: input.accountCreate === true && providerAccountCreateEnabled(),
+    join_waitlist: input.joinWaitlist === true,
+    asked_start: input.askedStart ?? null,
   };
+}
+
+export function secretBindingsFor(
+  input: Pick<BrowserUseSignupInput, 'registrationUrl' | 'credentials'>,
+) {
+  if (!input.credentials) return undefined;
+  return credentialSecretBindings({
+    host: new URL(input.registrationUrl).hostname,
+    username: input.credentials.username,
+    password: input.credentials.password,
+    totp: input.credentials.totp,
+  });
 }
 
 export function taskWithFacts(skillBody: string, facts: Record<string, unknown>): string {
@@ -449,6 +486,7 @@ async function driveSignup(
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
       maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+      ...(secretBindingsFor(input) ? { secretBindings: secretBindingsFor(input) } : {}),
     });
     runId = run.id;
     sessionId = run.sessionId;
@@ -503,6 +541,11 @@ async function driveSignup(
       ...failure(output.outcome, output.detail, ids),
       liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
       cartTotalCents: output.cart_total_cents,
+      passwordRejectionMessage: output.password_rejection_message,
+      passwordRule: output.password_rule,
+      siteChoices: output.site_choices,
+      seatsOpen: output.seats_open,
+      fees: output.fees,
     };
   } catch (error) {
     if (runId) await deps.api.cancelRun(runId).catch(() => undefined);

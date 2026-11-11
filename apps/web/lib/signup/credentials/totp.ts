@@ -45,11 +45,11 @@ export function totpCode(secret: string, at: Date = new Date(), stepSeconds = 30
   buf.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
   buf.writeUInt32BE(counter >>> 0, 4);
   const hmac = createHmac('sha1', base32ToBytes(secret)).update(buf).digest();
-  const offset = hmac[hmac.length - 1]! & 0x0f;
+  const offset = (hmac.at(-1) ?? 0) & 0x0f;
   const bin =
-    ((hmac[offset]! & 0x7f) << 24) |
-    (hmac[offset + 1]! << 16) |
-    (hmac[offset + 2]! << 8) |
-    hmac[offset + 3]!;
+    (((hmac[offset] ?? 0) & 0x7f) << 24) |
+    ((hmac[offset + 1] ?? 0) << 16) |
+    ((hmac[offset + 2] ?? 0) << 8) |
+    (hmac[offset + 3] ?? 0);
   return String(bin % 1_000_000).padStart(6, '0');
 }

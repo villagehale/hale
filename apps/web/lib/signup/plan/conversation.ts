@@ -4,9 +4,11 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { signupProviderHost } from '../consent';
 import type { SignupRunInput, SignupRunResult } from '../run';
+import { siteChoiceSchema } from '../site-choices';
 import { loadSignupIdentity, markOffer } from '../store';
 import type { SignupSession } from '../types';
 import { registrationPlanRunEnabled } from './flag';
+import { type MismatchReader, createMismatchReader } from './mismatch-reader';
 import { hasPlanNotice, recordPlanNotice } from './prep';
 import { type PlanReader, type PlanReading, createPlanReader } from './reader';
 import {
@@ -14,6 +16,7 @@ import {
   approveSignupPlan,
   cancelSignupPlan,
   loadConversablePlan,
+  parkSignupPlan,
   writePlanAudit,
 } from './store';
 import { planReplyMode } from './towns';
@@ -32,6 +35,16 @@ export interface PlanTurnDeps {
   planReader?: PlanReader;
   /** Writes the reply. Undefined uses the reply model. */
   planWriter?: PlanReplyWriter;
+  /** Reads a pick after the site's options did not match. Undefined uses the reply model. */
+  mismatchReader?: MismatchReader;
+  /** Sends the provider email from the parent's Gmail after they say yes. */
+  sendProviderEmail?: (input: {
+    familyId: string;
+    actorUserId: string;
+    to: string;
+    subject: string;
+    body: string;
+  }) => Promise<void>;
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
 }
@@ -51,6 +64,9 @@ export async function runPlanTurn(
   if (!registrationPlanRunEnabled()) return null;
   const plan = await loadConversablePlan(database, { familyId: input.familyId, now: input.now });
   if (!plan) return null;
+  if (plan.availability && plan.availability.kind === 'options_mismatch') {
+    return runMismatchTurn(database, input, deps, plan);
+  }
   const reader = deps.planReader ?? createPlanReader(() => resolveReplyClient(undefined));
   const reading: PlanReading | null = await reader.read({
     text: input.body,
@@ -147,6 +163,7 @@ export async function runPlanTurn(
     maxPriceCents: reading.maxPriceCents,
     opensAt: plan.opensAt,
     waiverAccepted: reading.waiverAccepted,
+    alreadyOpen: plan.alreadyOpen,
     now: input.now,
   });
   if (!approved.ok) {
@@ -157,6 +174,76 @@ export async function runPlanTurn(
     maxPriceCents: reading.maxPriceCents,
     waiverAccepted: reading.waiverAccepted,
   });
+}
+
+async function runMismatchTurn(
+  database: Database,
+  input: SignupRunInput,
+  deps: PlanTurnDeps,
+  plan: ConversablePlan,
+): Promise<SignupRunResult> {
+  const rawChoices = plan.availability?.choices;
+  const parsed = Array.isArray(rawChoices)
+    ? rawChoices.flatMap((row) => {
+        const item = siteChoiceSchema.safeParse(row);
+        return item.success ? [item.data] : [];
+      })
+    : [];
+  const askedStart =
+    typeof plan.availability?.askedStart === 'string' ? plan.availability.askedStart : null;
+  const reader = deps.mismatchReader ?? createMismatchReader(() => resolveReplyClient(undefined));
+  const reading = await reader.read({ text: input.body, askedStart, choices: parsed });
+  if (!reading || reading.verdict === 'unrelated') return unclaimed();
+  if (reading.verdict === 'unclear') {
+    return reply(database, input, deps, plan, 'clarify', { question: reading.question });
+  }
+  if (reading.verdict === 'waitlist') {
+    await parkSignupPlan(database, {
+      offerId: plan.offerId,
+      familyId: input.familyId,
+      availability: { kind: 'join_waitlist', askedStart, choices: parsed },
+      now: input.now,
+    });
+    return reply(database, input, deps, plan, 'approved', {});
+  }
+  if (reading.verdict === 'option') {
+    const choice = parsed.find((item) => item.id === reading.choiceId);
+    await parkSignupPlan(database, {
+      offerId: plan.offerId,
+      familyId: input.familyId,
+      availability: { kind: 'take_option', choice, askedStart, choices: parsed },
+      now: input.now,
+    });
+    return reply(database, input, deps, plan, 'approved', {});
+  }
+  const to = parsed
+    .map((item) => item.provider_email)
+    .find((email): email is string => Boolean(email));
+  if (!to || !deps.sendProviderEmail) {
+    return reply(database, input, deps, plan, 'clarify', {
+      question: 'Hale does not have an email address for this provider on the page.',
+    });
+  }
+  await deps.sendProviderEmail({
+    familyId: input.familyId,
+    actorUserId: input.parentUserId,
+    to,
+    subject: askedStart ? `Start date ${askedStart}` : 'Start date',
+    body: [
+      askedStart
+        ? `The parent asked for a ${askedStart} start.`
+        : 'The parent asked for a later start.',
+      `The site currently offers: ${parsed.map((item) => item.label).join('; ')}.`,
+      'Could you add the start they asked for?',
+    ].join(' '),
+  });
+  await parkSignupPlan(database, {
+    offerId: plan.offerId,
+    familyId: input.familyId,
+    availability: { kind: 'emailed', askedStart, choices: parsed },
+    now: input.now,
+  });
+  return reply(database, input, deps, plan, 'approved', {});
 }
 
 function unclaimed(): SignupRunResult {

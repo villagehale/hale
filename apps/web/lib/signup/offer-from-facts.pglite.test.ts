@@ -377,6 +377,49 @@ describe('offerSignupFromFacts (production caller)', () => {
     expect(process.env.BROWSER_USE_SIGNUP_PAYMENT_ENABLED ?? '').toBe('');
   });
 
+  it('an already-open program is offered as a register-now plan', async () => {
+    const seeded = await family();
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    const past = new Date(NOW.getTime() - 60 * 60_000);
+    const planFacts: PlanReplyFacts[] = [];
+    const result = await offerSignupFromFacts(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        childId: seeded.childId,
+        now: NOW,
+        planOpensAt: past,
+        facts: {
+          source: 'chat',
+          evidence: 'Winter swim is open now',
+          registrationUrl: HREF,
+          sessions: [SESSION],
+          approvedPriceCents: null,
+          language: null,
+        },
+      },
+      {
+        writer: echoOfferWriter(),
+        autoHosts: [new URL(HREF).hostname],
+        planWriter: {
+          write: async (facts) => {
+            planFacts.push(facts);
+            return 'Plan text from the model.';
+          },
+        },
+      },
+    );
+    if (!result.ok) throw new Error(result.reason);
+    expect(planFacts[0]?.moment).toBe('offer');
+    const [row] = await db.database
+      .select()
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.id, result.offerId));
+    expect(row?.planAlreadyOpen).toBe(true);
+    expect(row?.planOpensAt?.toISOString()).toBe(NOW.toISOString());
+  });
+
   it('is the production caller: offer-copy is not imported', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./offer-from-facts.ts', import.meta.url)),

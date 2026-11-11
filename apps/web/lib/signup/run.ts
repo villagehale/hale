@@ -80,6 +80,8 @@ export interface SignupRunDeps {
   /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
   planReader?: PlanTurnDeps['planReader'];
   planWriter?: PlanTurnDeps['planWriter'];
+  mismatchReader?: PlanTurnDeps['mismatchReader'];
+  sendProviderEmail?: PlanTurnDeps['sendProviderEmail'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
@@ -111,6 +113,8 @@ export interface SignupRunResult {
   claimed: boolean;
   outcome: string;
   reply: string | null;
+  /** Separate Linq sends, one bubble each. When set, the handler sends these instead of `reply`. */
+  replies?: string[];
   deliverOnThread: boolean;
   /**
    * Set on the Browser Use path. Hale's AI writes the parent message from it;
@@ -174,7 +178,17 @@ export async function runAuthorizedSignup(
   const planTurn = await runPlanTurn(database, input, {
     planReader: deps.planReader,
     planWriter: deps.planWriter,
+    mismatchReader: deps.mismatchReader,
     declineSeat: deps.declineSeat,
+    sendProviderEmail:
+      deps.sendProviderEmail ??
+      (async (payload) => {
+        const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
+        await createGmailEmailSender(database)(
+          { to: payload.to, subject: payload.subject, body: payload.body },
+          { familyId: payload.familyId, actorUserId: payload.actorUserId },
+        );
+      }),
   });
   if (planTurn) return planTurn;
 

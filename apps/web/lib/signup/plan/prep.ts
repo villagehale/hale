@@ -2,6 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, gt } from 'drizzle-orm';
 import { signupProviderHost } from '../consent';
 import { mintLoginLink } from '../login-link/store';
+import type { SiteChoice, SiteFees } from '../site-choices';
+import { asBubbles, withLinkBubbles } from './bubbles';
 import { writePlanAudit } from './store';
 
 /** Reminder fires 30 minutes before the open (6:30 for a 7:00 open). */
@@ -10,23 +12,41 @@ export const PRE_OPEN_LEAD_MS = 30 * 60_000;
 export const PLAN_PREP_KINDS = ['login_ask', 'account_prep', 'pre_open'] as const;
 export type PlanPrepKind = (typeof PLAN_PREP_KINDS)[number];
 
+export type PlanNoticeKind =
+  | PlanPrepKind
+  | 'password_rejected'
+  | 'options_mismatch'
+  | 'seats'
+  | 'receipt'
+  | 'waitlist'
+  | 'ask_dob';
+
 export interface PlanPrepFacts {
-  kind: PlanPrepKind;
+  kind: PlanNoticeKind;
   childFirstName: string | null;
   opensAt: { local: string; timeZone: string };
   host: string;
   language: string | null;
+  loginStale?: boolean;
+  passwordRejectionMessage?: string | null;
+  passwordRule?: string | null;
+  siteChoices?: readonly SiteChoice[] | null;
+  askedStart?: string | null;
+  sessionLabel?: string | null;
+  fees?: SiteFees | null;
+  confirmed?: boolean;
+  joined?: boolean;
 }
 
 export interface PlanPrepWriter {
-  write(facts: PlanPrepFacts): Promise<string | null>;
+  write(facts: PlanPrepFacts): Promise<string | readonly string[] | null>;
 }
 
 export type PlanPrepDeliver = (input: {
   familyId: string;
   parentUserId: string;
   offerId: string;
-  kind: PlanPrepKind;
+  kind: PlanNoticeKind;
   body: string;
 }) => Promise<boolean>;
 
@@ -134,12 +154,12 @@ export async function runDueSignupPlanPrep(
       host,
       language: null,
     };
-    const text = await deps.writer.write(facts);
-    if (!text) {
+    const written = asBubbles(await deps.writer.write(facts));
+    if (!written) {
       notices.push({ offerId: offer.id, kind, sent: false });
       continue;
     }
-    let body = text;
+    let bubbles = written;
     if (kind === 'login_ask' || kind === 'account_prep') {
       const minted = await mintLoginLink(database, {
         familyId: offer.familyId,
@@ -149,15 +169,22 @@ export async function runDueSignupPlanPrep(
         purpose: { host, kind, childFirstName: child?.name ?? null },
         now: sweep.now,
       });
-      body = `${text}\n${minted.url}`;
+      bubbles = withLinkBubbles(written, minted.url);
     }
-    const delivered = await deps.deliver({
-      familyId: offer.familyId,
-      parentUserId: offer.parentUserId,
-      offerId: offer.id,
-      kind,
-      body,
-    });
+    let delivered = true;
+    for (const body of bubbles) {
+      const ok = await deps.deliver({
+        familyId: offer.familyId,
+        parentUserId: offer.parentUserId,
+        offerId: offer.id,
+        kind,
+        body,
+      });
+      if (!ok) {
+        delivered = false;
+        break;
+      }
+    }
     if (!delivered) {
       notices.push({ offerId: offer.id, kind, sent: false });
       continue;
@@ -178,6 +205,44 @@ export async function runDueSignupPlanPrep(
     notices.push({ offerId: offer.id, kind, sent: true });
   }
   return { notices };
+}
+
+/** One event-driven notice (rejected password, mismatched options). Each bubble is its own send. */
+export async function sendSignupPlanNotice(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    offerId: string;
+    providerHost: string;
+    kind: PlanNoticeKind;
+    facts: PlanPrepFacts;
+    link?: string | null;
+    linkAfter?: number;
+    now: Date;
+  },
+  deps: PlanPrepDeps,
+): Promise<boolean> {
+  const written = asBubbles(await deps.writer.write(input.facts));
+  if (!written) return false;
+  const bubbles = withLinkBubbles(written, input.link ?? null, input.linkAfter ?? 0);
+  for (const body of bubbles) {
+    const ok = await deps.deliver({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      offerId: input.offerId,
+      kind: input.kind,
+      body,
+    });
+    if (!ok) return false;
+  }
+  await writePlanAudit(database, {
+    familyId: input.familyId,
+    actor: input.parentUserId,
+    offerId: input.offerId,
+    after: { step: `plan_${input.kind}`, host: input.providerHost },
+  });
+  return true;
 }
 
 /** Planned offers whose 30-minute reminder is due, for tests. */

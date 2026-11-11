@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { recordSignupOffer } from '../store';
 import { hashLoginCode, loginLinkUrl, newLoginCode } from './code';
-import { consumeLoginLink, lookupLoginLink, mintLoginLink } from './store';
+import { consumeLoginLink, lookupLoginLink, mintFreshLoginLink, mintLoginLink } from './store';
 
 const NOW = new Date('2026-12-01T12:00:00.000Z');
 const URL = 'https://haltonhills.perfectmind.com/Clients/x';
@@ -88,5 +88,31 @@ describe('provider login links', () => {
       reason: 'unknown',
     });
     expect(loginLinkUrl('AbCdef1234')).not.toContain('login.');
+  });
+
+  it('a fresh code replaces every open one for that host', async () => {
+    const f = await family();
+    const first = await mintLoginLink(db.database, {
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      offerId: f.offerId,
+      providerHost: 'haltonhills.perfectmind.com',
+      now: NOW,
+    });
+    const firstCode = first.url.split('/').pop() as string;
+    const fresh = await mintFreshLoginLink(db.database, {
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      offerId: f.offerId,
+      providerHost: 'haltonhills.perfectmind.com',
+      now: NOW,
+    });
+    expect(fresh.url).not.toBe(first.url);
+    expect(await lookupLoginLink(db.database, firstCode, NOW)).toEqual({
+      ok: false,
+      reason: 'used',
+    });
+    const freshCode = fresh.url.split('/').pop() as string;
+    expect(await lookupLoginLink(db.database, freshCode, NOW)).toMatchObject({ ok: true });
   });
 });

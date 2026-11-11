@@ -49,7 +49,7 @@
   },
   "browser-use-plan-signup.md": {
     "file": "browser-use-plan-signup.md",
-    "sha256": "23d60bc84ec685643a8d9da6b75f91c039f4e725c3528520f569db92fe289bc9"
+    "sha256": "4e7d24c03a383e5e686a4f037b727e2770ad7df59dfac12b2b35cb1f485048d2"
   },
   "browser-use-saved-card-payment.md": {
     "file": "browser-use-saved-card-payment.md",
@@ -57,7 +57,7 @@
   },
   "browser-use-signup.md": {
     "file": "browser-use-signup.md",
-    "sha256": "850b1a16363873cb8d547f4ab7703cf1798019af805ef84f4dcf711f3965aa1d"
+    "sha256": "1a505f89e7fc6bdc5f2aeb40eff563c1298703fbe0ab4d9b358dff81ca29fec3"
   },
   "browser-use-watch.md": {
     "file": "browser-use-watch.md",
@@ -519,13 +519,17 @@
     "file": "signup-consent.md",
     "sha256": "bc79b1b933727995410c255587ac10f38f928f8030545686cbb628f4f247349f"
   },
+  "signup-mismatch-read.md": {
+    "file": "signup-mismatch-read.md",
+    "sha256": "df74523aaa7f24c3004a763ac825bd95ade672dec18c9257455def1883d99ba5"
+  },
   "signup-offer.md": {
     "file": "signup-offer.md",
     "sha256": "e2e870f2d2e42df1668815156e15d1052c164436383ad1e299c938b04b69b820"
   },
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
-    "sha256": "bb4a0fd28f4c8c74f2ff97fdd98a1434c5125d0c8e9e138f73386ca87539b404"
+    "sha256": "5b7e0f91b9c2044b460195355ce8c2284a392df13c7e8df0a15fc7af653f6b0e"
   },
   "signup-plan-read.md": {
     "file": "signup-plan-read.md",
@@ -533,15 +537,15 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "8732c26e2e21aaea6d8ebb6305e2ed7da508a3f9884a8103b580f71fc09a7dc7"
+    "sha256": "c85561bd79fbccd37ec765335f5f6a49f276458f30faa0fb80d6eba9158ea80c"
   },
   "signup-provider-notice.md": {
     "file": "signup-provider-notice.md",
-    "sha256": "fbbef08fe6d26d60d2ec999e9b868eaaea5ed66dad980ff7bb530bd6cd53a575"
+    "sha256": "de1763f1edba93581cbe4a2f87ff32bee1a8d7a66644534839f08d9d4f13e056"
   },
   "signup-registration-voice.md": {
     "file": "signup-registration-voice.md",
-    "sha256": "c07126cd6ba4cdcaf1bed02d9fe2be09bb992633de785026e6bda395ea1d71d0"
+    "sha256": "44ee483328f8d37ce93dc066d751b743523076c0f7e098b71ed4c4e773ecef52"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",

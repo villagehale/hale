@@ -232,6 +232,36 @@ describe('browser use signup engine', () => {
     expect(JSON.stringify(body.outputSchema)).toContain('reached_checkout');
   });
 
+  it('passes credential aliases and secretBindings, never the secret in the task', async () => {
+    vi.stubEnv('PROVIDER_ACCOUNT_CREATE_ENABLED', 'true');
+    try {
+      const { deps, requests } = setup(happyRoutes());
+      await runBrowserUseSignup(
+        input({
+          credentials: { username: 'ada', password: 's3cret-city', totp: '123456' },
+          accountCreate: true,
+        }),
+        deps,
+      );
+      const run = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/runs');
+      const body = run?.body as Record<string, unknown>;
+      const bindings = body.secretBindings as { alias: string }[];
+      expect(bindings.map((item) => item.alias).sort()).toEqual([
+        'provider_password',
+        'provider_totp',
+        'provider_username',
+      ]);
+      const task = String(body.task);
+      expect(task).toContain('provider_username');
+      expect(task).toContain('provider_password');
+      expect(task).not.toContain('s3cret-city');
+      expect(task).not.toContain('123456');
+      expect(task).toContain('"account_create": true');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('reuses a profile already seeded from this session', async () => {
     const { deps, requests, seeded } = setup(happyRoutes());
     const base = input();

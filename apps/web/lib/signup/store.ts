@@ -22,6 +22,8 @@ export async function recordSignupOffer(
     approvedPriceCents: number | null;
     /** VIL-558 · when registration opens, for an offer Hale can carry out as a plan. */
     planOpensAt?: Date | null;
+    /** Program is already open: Hale registers now, not at a future open. */
+    planAlreadyOpen?: boolean;
     now: Date;
   },
 ): Promise<RecordOfferResult> {
@@ -60,6 +62,7 @@ export async function recordSignupOffer(
       sessions: sessions.filter((session): session is SignupSession => session !== null),
       approvedPriceCents: input.approvedPriceCents,
       planOpensAt: input.planOpensAt ?? null,
+      planAlreadyOpen: input.planAlreadyOpen === true,
       status: 'pending',
       createdAt: input.now,
       updatedAt: input.now,

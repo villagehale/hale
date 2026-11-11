@@ -16,6 +16,7 @@ import {
   ensureProfile,
   failure,
   parentTakesOverLiveView,
+  secretBindingsFor,
   settleBrowser,
   signupFacts,
   stopAndReadCost,
@@ -97,6 +98,10 @@ export interface BrowserUsePlanInput
     | 'providerSession'
     | 'onProfileCreated'
     | 'proxyCountryCode'
+    | 'credentials'
+    | 'accountCreate'
+    | 'joinWaitlist'
+    | 'askedStart'
   > {
   /**
    * `auto`: Hale pays with the saved card at the open. `assisted`: Hale only fills, and the
@@ -261,6 +266,7 @@ async function drivePlan(
         keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
         agentmail: false,
         maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+        ...(secretBindingsFor(input) ? { secretBindings: secretBindingsFor(input) } : {}),
       });
       runId = run.id;
       tracker.runId = run.id;
@@ -310,6 +316,11 @@ async function drivePlan(
         ...stop(output.outcome, output.detail),
         liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
         cartTotalCents: output.cart_total_cents,
+        passwordRejectionMessage: output.password_rejection_message,
+        passwordRule: output.password_rule,
+        siteChoices: output.site_choices,
+        seatsOpen: output.seats_open,
+        fees: output.fees,
       };
     }
     const choiceIndex = output.choice_index;

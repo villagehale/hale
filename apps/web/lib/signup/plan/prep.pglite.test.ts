@@ -11,6 +11,7 @@ import {
   plannedOfferDueForPrep,
   preOpenDueAt,
   runDueSignupPlanPrep,
+  sendSignupPlanNotice,
 } from './prep';
 import { approveSignupPlan } from './store';
 
@@ -110,16 +111,16 @@ describe('plan prep before the open', () => {
     const first = fakes();
     const login = await runDueSignupPlanPrep(db.database, { now: NOW }, first.deps);
     expect(login.notices).toEqual([{ offerId: family.offerId, kind: 'login_ask', sent: true }]);
-    expect(first.bodies[0]).toMatch(/https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}/);
-    expect(first.bodies[0]).toContain('text for login_ask');
+    expect(first.bodies[0]).toBe('text for login_ask');
+    expect(first.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
 
     const second = fakes();
     const account = await runDueSignupPlanPrep(db.database, { now: NOW }, second.deps);
     expect(account.notices).toEqual([
       { offerId: family.offerId, kind: 'account_prep', sent: true },
     ]);
-    expect(second.bodies[0]).toMatch(/https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}/);
-    expect(second.bodies[0]).toContain('text for account_prep');
+    expect(second.bodies[0]).toBe('text for account_prep');
+    expect(second.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
 
     const tooSoon = fakes();
     const waiting = await runDueSignupPlanPrep(db.database, { now: NOW }, tooSoon.deps);
@@ -155,5 +156,50 @@ describe('plan prep before the open', () => {
       .from(schema.providerLoginNotices)
       .where(eq(schema.providerLoginNotices.offerId, family.offerId));
     expect(notices).toEqual([]);
+  });
+
+  it('sends each bubble and puts a fresh login link after the first on a rejected password', async () => {
+    const family = await planned();
+    const bodies: string[] = [];
+    const sent = await sendSignupPlanNotice(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        offerId: family.offerId,
+        providerHost: 'haltonhills.perfectmind.com',
+        kind: 'password_rejected',
+        facts: {
+          kind: 'password_rejected',
+          childFirstName: 'Ada',
+          opensAt: { local: '7:00', timeZone: 'UTC' },
+          host: 'haltonhills.perfectmind.com',
+          language: 'en',
+          passwordRejectionMessage: 'Password must include a number',
+          passwordRule: '8 characters and a number',
+        },
+        link: 'https://app.villagehale.com/l/AbCdef1234',
+        linkAfter: 0,
+        now: NOW,
+      },
+      {
+        writer: {
+          write: async () => [
+            'They did not take that password.',
+            'Their rule is eight and a number.',
+          ],
+        },
+        deliver: async (input) => {
+          bodies.push(input.body);
+          return true;
+        },
+      },
+    );
+    expect(sent).toBe(true);
+    expect(bodies).toEqual([
+      'They did not take that password.',
+      'https://app.villagehale.com/l/AbCdef1234',
+      'Their rule is eight and a number.',
+    ]);
   });
 });
