@@ -15,6 +15,7 @@ import {
 import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
   type FirstTouchPersisted,
+  INTAKE_SESSION_LIFETIME_MS,
   type TranscriptEntry,
   appendTranscript,
   decodeIntakeForRecovery,
@@ -90,7 +91,7 @@ const MAX_FIRST_REPLY_CANDIDATES_PER_TICK = 500;
  * opener reads as Hale texting first rather than answering, and the next-morning
  * Still here (sitting-reminder.ts) is the one later touch. An open founder question.
  */
-export const FIRST_REPLY_RECOVERY_WINDOW_MS = 24 * 3_600_000;
+export const FIRST_REPLY_RECOVERY_WINDOW_MS = INTAKE_SESSION_LIFETIME_MS;
 
 /**
  * How long a session must have been quiet before the sweep speaks on it. A turn still
