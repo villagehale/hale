@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states login blocked registration, no spot or payment, and the parent can register in the open browser within ~15 minutes; no hint of a held spot or retry. Minor issue: it says 'Ada 的游泳课报名已经开放' which is fine, and it does not claim registration. Uses the facts only, one clear message, warm and short; slight ding for the 'Hale 没能登录' phrasing being fine but the message is longer than needed.",
+    "score": 5
+  }
+}

@@ -1,6 +1,6 @@
 {
   "value": {
-    "reply": "Pas de problème, tu n'es pas obligé. Est-ce que tu peux me donner juste les trois premiers caractères de ton code postal? Ça me suffit pour trouver ce qui est près de chez toi. Ou alors, on peut passer à tes enfants: tu as combien d'enfants?",
+    "reply": "Pas de souci, tu n'es pas obligé. Est-ce que tu peux me dire les trois premiers caractères de ton code postal à la place? Ça me suffit pour trouver ce qui se passe près de chez toi.",
     "asks": true,
     "parentQuestion": false,
     "connectorsOffered": [],
@@ -8,8 +8,7 @@
     "claimsSaved": false,
     "placeAsk": "coarse",
     "placeDeclined": false,
-    "stopAsking": false,
     "language": "fr"
   },
-  "latencyMs": 1638
+  "latencyMs": 1535
 }
