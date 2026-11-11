@@ -192,7 +192,7 @@ let shared: LinqEditDecider | null = null;
 export function sharedLinqEditDecider(): LinqEditDecider {
   shared ??= createLinqEditDecider(async () => {
     const { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } = await import('~/lib/pipeline/client');
-    return budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+    return budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'reply_intent' });
   });
   return shared;
 }
