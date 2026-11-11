@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { normalizeToken } from '~/lib/channel/normalize-token';
 import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { writeFact } from '~/lib/memory/facts';
@@ -321,6 +322,13 @@ export async function recordRegistrationOutcome(
       validFrom: input.now,
     });
   });
+  if (input.outcome === 'registered') {
+    noteTaskCompleted({
+      familyId: input.familyId,
+      type: 'registration',
+      source: 'parent_report',
+    });
+  }
 }
 
 /** The instant a sequence's registration morning actually ran on, as SQL: the bound

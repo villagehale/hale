@@ -25,6 +25,8 @@
  * The connector sweep hands this pass the envelopes it already fetched.
  */
 
+import { isEnabled } from '@hale/flags';
+
 export const BOOKED_DETECTION_ENABLED_ENV = 'BOOKED_DETECTION_ENABLED';
 export const BOOKED_DETECTION_ALLOWLIST_ENV = 'BOOKED_DETECTION_FAMILY_ALLOWLIST';
 
@@ -35,7 +37,7 @@ export const BOOKED_DETECTION_ALLOWLIST_ENV = 'BOOKED_DETECTION_FAMILY_ALLOWLIST
  * comparison fails closed on exactly that shape.
  */
 export function bookedDetectionEnabled(): boolean {
-  return process.env[BOOKED_DETECTION_ENABLED_ENV] === 'true';
+  return isEnabled('booked-detection');
 }
 
 /** The comma-separated family ids allowed through while the flag is off. */
@@ -49,7 +51,7 @@ export function bookedDetectionAllowlist(): Set<string> {
 }
 
 export function bookedDetectionEnabledFor(familyId: string): boolean {
-  return bookedDetectionEnabled() || bookedDetectionAllowlist().has(familyId);
+  return isEnabled('booked-detection', familyId);
 }
 
 /**
@@ -65,7 +67,7 @@ export function bookedDetectionEnabledFor(familyId: string): boolean {
 export const BOOKED_DETECTION_BACKFILL_ENABLED_ENV = 'BOOKED_DETECTION_BACKFILL_ENABLED';
 
 export function bookedDetectionBackfillEnabled(): boolean {
-  return process.env[BOOKED_DETECTION_BACKFILL_ENABLED_ENV] === 'true';
+  return isEnabled('booked-detection-backfill');
 }
 
 /**

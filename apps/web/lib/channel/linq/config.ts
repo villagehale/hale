@@ -13,6 +13,8 @@
  * read as configured.
  */
 
+import { isEnabled } from '@hale/flags';
+
 function trimmed(name: string): string | null {
   const value = (process.env[name] ?? '').trim();
   return value.length > 0 ? value : null;
@@ -60,7 +62,7 @@ export function linqPhoneOutboundConfigured(): boolean {
  * This tree does not set the flag. Ops turns LINQ_POLLS on after the poll PR ships.
  */
 export function linqPollsEnabled(): boolean {
-  return trimmed('LINQ_POLLS') === 'on';
+  return isEnabled('linq-polls');
 }
 
 /**
@@ -69,7 +71,7 @@ export function linqPollsEnabled(): boolean {
  * Unset, empty, and `on` all enable it. SMS never reads this flag.
  */
 export function linqGroupCoparentEnabled(): boolean {
-  return trimmed('LINQ_GROUP_COPARENT') !== 'off';
+  return isEnabled('linq-group-coparent');
 }
 
 /**
@@ -77,7 +79,7 @@ export function linqGroupCoparentEnabled(): boolean {
  * Unset, empty, `on`, and `false` stay dark. Default off.
  */
 export function linqGroupMembersEnabled(): boolean {
-  return trimmed('LINQ_GROUP_MEMBERS_ENABLED') === 'true';
+  return isEnabled('linq-group-members');
 }
 
 /**
@@ -87,7 +89,7 @@ export function linqGroupMembersEnabled(): boolean {
  * seat.
  */
 export function linqMultiFamilyGroupsEnabled(): boolean {
-  return trimmed('LINQ_MULTI_FAMILY_GROUPS_ENABLED') === 'true';
+  return isEnabled('linq-multi-family-groups');
 }
 
 /**
@@ -96,7 +98,7 @@ export function linqMultiFamilyGroupsEnabled(): boolean {
  * off. Off means no roster step runs and the door answers as it did before.
  */
 export function linqGroupOnboardingV2Enabled(): boolean {
-  return trimmed('LINQ_GROUP_ONBOARDING_V2_ENABLED') === 'true';
+  return isEnabled('linq-group-onboarding-v2');
 }
 
 /**
@@ -104,7 +106,7 @@ export function linqGroupOnboardingV2Enabled(): boolean {
  * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */
 export function linqGroupCarpoolEnabled(): boolean {
-  return trimmed('LINQ_GROUP_CARPOOL_ENABLED') === 'true';
+  return isEnabled('linq-group-carpool');
 }
 
 /**
@@ -114,7 +116,7 @@ export function linqGroupCarpoolEnabled(): boolean {
  * Default off: off plans and sends exactly what it did before.
  */
 export function linqGroupConflictAlertsEnabled(): boolean {
-  return trimmed('LINQ_GROUP_CONFLICT_ALERTS_ENABLED') === 'true';
+  return isEnabled('linq-group-conflict-alerts');
 }
 
 /**
@@ -122,7 +124,7 @@ export function linqGroupConflictAlertsEnabled(): boolean {
  * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */
 export function linqGroupPlanRsvpEnabled(): boolean {
-  return trimmed('LINQ_GROUP_PLAN_RSVP_ENABLED') === 'true';
+  return isEnabled('linq-group-plan-rsvp');
 }
 
 /**
@@ -146,7 +148,7 @@ export function linqGroupPlanRsvpCalendarEnabled(): boolean {
  * dark. Default off. The native poll card additionally needs LINQ_POLLS.
  */
 export function linqGroupPollsEnabled(): boolean {
-  return trimmed('LINQ_GROUP_POLLS_ENABLED') === 'true';
+  return isEnabled('linq-group-polls');
 }
 
 /**
@@ -156,7 +158,7 @@ export function linqGroupPollsEnabled(): boolean {
  * inbound audio as a `file` and never calls the capability or voice-memo endpoints.
  */
 export function linqVoiceMemosEnabled(): boolean {
-  return trimmed('LINQ_VOICE_MEMOS_ENABLED') === 'true';
+  return isEnabled('linq-voice-memos');
 }
 
 /**
@@ -166,7 +168,7 @@ export function linqVoiceMemosEnabled(): boolean {
  * exactly as before (a `file`).
  */
 export function linqExperiencesEnabled(): boolean {
-  return trimmed('LINQ_EXPERIENCES_ENABLED') === 'true';
+  return isEnabled('linq-experiences');
 }
 
 /**
@@ -175,7 +177,7 @@ export function linqExperiencesEnabled(): boolean {
  * Hale never calls Linq's leave endpoint.
  */
 export function linqGroupLeaveEnabled(): boolean {
-  return trimmed('LINQ_GROUP_LEAVE_ENABLED') === 'true';
+  return isEnabled('linq-group-leave');
 }
 
 /**
@@ -184,19 +186,30 @@ export function linqGroupLeaveEnabled(): boolean {
  * the ask is an ordinary shared-group answer and no family's calendar is read.
  */
 export function linqGroupCommonTimeEnabled(): boolean {
-  return trimmed('LINQ_GROUP_COMMON_TIME_ENABLED') === 'true';
+  return isEnabled('linq-group-common-time');
 }
 
 /**
- * VIL-475 — iMessage @mentions in Linq group chats. On only when the value is
- * exactly `true` and `VERCEL_ENV` is exactly `preview`. Unset, empty, `on`,
- * `false`, and any other environment — including production — stay dark.
- * Default off. Setting the flag in production cannot turn it on.
+ * VIL-475 — iMessage @mentions in Linq group chats. On when the value is exactly
+ * `true` (trimmed). Unset, empty, `on`, and `false` stay dark. Default off.
+ * Production may light it the same way as any other environment.
  *
  * On, inbound `mentions` become facts for the group-turn reader, and a group
  * reply may carry one outbound `mention` when the model names a seated member.
  * Off leaves today's parse unused and every send without a mention field.
  */
 export function linqGroupMentionsEnabled(): boolean {
-  return trimmed('LINQ_GROUP_MENTIONS_ENABLED') === 'true' && process.env.VERCEL_ENV === 'preview';
+  return isEnabled('linq-group-mentions');
+}
+
+export const LINQ_APP_CLIP_PAY_ENABLED_ENV = 'LINQ_APP_CLIP_PAY_ENABLED';
+
+/**
+ * App Clip payment. ENV-ONLY and OFF unless exactly `true`.
+ * Not a PostHog flag — nothing in PostHog may turn a payment on.
+ */
+export function linqAppClipPayEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[LINQ_APP_CLIP_PAY_ENABLED_ENV] === 'true';
 }

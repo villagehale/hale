@@ -1,4 +1,5 @@
 import { pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
@@ -84,11 +85,12 @@ function lineUsable(line: string, input: GroupLineInput): boolean {
 }
 
 export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undefined {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return undefined;
   return {
     async compose(input, options) {
       const skill = await loadCronSkill(input.skill);
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client =
+        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const result = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),

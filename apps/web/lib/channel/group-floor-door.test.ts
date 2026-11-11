@@ -62,6 +62,10 @@ const GROUP_FLOOR_MODULES: Record<string, string> = {
 };
 
 const DIRECT_ONLY: Record<string, string> = {
+  'apps/web/lib/integrations/team-schedule/apply.ts':
+    'the parent 1:1 door from resolveMessagingDoor with the family group excluded',
+  'apps/web/lib/integrations/team-schedule/driver.ts':
+    'the driver 1:1 door from resolveMessagingDoor with the family group excluded',
   'apps/web/lib/channel/calendar-write/send.ts':
     'the parent 1:1 door from resolveMessagingDoor with the family group excluded',
   'apps/web/lib/channel/connect/connected-notice.ts':

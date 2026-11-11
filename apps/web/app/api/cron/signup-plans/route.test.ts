@@ -2,14 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMock = vi.fn();
 const sweepMock = vi.fn();
+const prepMock = vi.fn();
 const depsMock = vi.fn();
+const prepDepsMock = vi.fn();
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
 vi.mock('~/lib/cron/heartbeat', () => ({ stampCronHeartbeat: vi.fn() }));
 vi.mock('~/lib/signup/plan/run', () => ({
   runDueSignupPlans: (...a: unknown[]) => sweepMock(...a),
 }));
+vi.mock('~/lib/signup/plan/prep', () => ({
+  runDueSignupPlanPrep: (...a: unknown[]) => prepMock(...a),
+}));
 vi.mock('~/lib/signup/plan/notice', () => ({
   signupPlanDepsFromEnv: (...a: unknown[]) => depsMock(...a),
+  signupPlanPrepDepsFromEnv: (...a: unknown[]) => prepDepsMock(...a),
 }));
 
 import { GET } from './route';
@@ -25,7 +31,9 @@ describe('/api/cron/signup-plans', () => {
     vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', '');
     dbMock.mockReset();
     sweepMock.mockReset();
+    prepMock.mockReset();
     depsMock.mockReset();
+    prepDepsMock.mockReset();
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -45,6 +53,7 @@ describe('/api/cron/signup-plans', () => {
       expect(await res.json()).toEqual({ ok: true, skipped: 'flag_off' });
     }
     expect(sweepMock).not.toHaveBeenCalled();
+    expect(prepMock).not.toHaveBeenCalled();
     expect(depsMock).not.toHaveBeenCalled();
   });
 
@@ -54,10 +63,20 @@ describe('/api/cron/signup-plans', () => {
     const wiring = { runner: null, notifyParent: vi.fn() };
     dbMock.mockReturnValue(database);
     depsMock.mockReturnValue(wiring);
+    const prepWiring = { writer: { write: vi.fn() }, deliver: vi.fn() };
     sweepMock.mockResolvedValue({ skipped: 'not_configured', plans: [] });
+    prepMock.mockResolvedValue({ notices: [] });
+    prepDepsMock.mockReturnValue(prepWiring);
     const res = await GET(req('Bearer cron-fixture'));
-    expect(await res.json()).toEqual({ ok: true, skipped: 'not_configured', plans: [] });
+    expect(await res.json()).toEqual({
+      ok: true,
+      skipped: 'not_configured',
+      plans: [],
+      prep: { notices: [] },
+    });
     expect(depsMock).toHaveBeenCalledWith(database);
+    expect(prepDepsMock).toHaveBeenCalledWith(database);
+    expect(prepMock).toHaveBeenCalledWith(database, { now: expect.any(Date) }, prepWiring);
     expect(sweepMock).toHaveBeenCalledWith(database, { now: expect.any(Date) }, wiring);
   });
 });

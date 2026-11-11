@@ -112,6 +112,7 @@ const NOT_IN_EXPORT: Record<string, string> = {
   family_interest_settings: 'unreviewed',
   family_invites: 'unreviewed',
   family_link_wallets: 'unreviewed',
+  family_provider_data_keys: 'wrapped DEKs; not family content',
   family_plans: 'unreviewed',
   family_upgrade_offers: 'unreviewed',
   family_watch_subscriptions: 'unreviewed',
@@ -140,10 +141,15 @@ const NOT_IN_EXPORT: Record<string, string> = {
   party_invites: 'unreviewed',
   pending_disambiguations: 'unreviewed',
   proactive_candidates: 'unreviewed',
+  provider_login_links: 'hashed login tokens; never exported',
+  provider_login_notices: 'send ledger of kind and host; body is never stored',
+  provider_signup_credentials: 'encrypted city credentials; never exported',
   provider_signup_sessions: 'unreviewed',
   sms_intake_sessions: 'unreviewed',
   social_spots: 'unreviewed',
   teen_access_grants: 'unreviewed',
+  team_schedule_changes:
+    'VIL-662 pointer from a Gmail id to the calendar move it proposed; the event and action are exported',
   village_endorsements: 'unreviewed',
   week_plans: 'unreviewed',
 };

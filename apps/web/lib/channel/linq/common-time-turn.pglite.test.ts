@@ -1,11 +1,11 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import type { SpokenLineRequest } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { departCoParent } from '~/lib/channel/coparent/depart';
 import { freeBusyScope } from './free-busy-consent';
 import { takeMultiFamilyTurn, unseatMultiFamilyMember } from './multi-family';
 import type { ListChatHandles } from './roster';

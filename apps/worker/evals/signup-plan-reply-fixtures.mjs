@@ -46,8 +46,8 @@ const RUN = {
   holdMinutes: null,
 };
 
-const TWO_PLACES =
-  'Tells the parent that if they also queue on their own phone or computer the family holds two places in line.';
+const KAT_SHORT =
+  'One or two short sentences. One ask at a time. Never invents a price, time, or limit that is not in the facts.';
 const NO_LINK = 'Contains no link (Hale adds any link after the text).';
 const NO_SPOT =
   'Never says or hints that the child is registered, has a spot, or that a spot is held or reserved.';
@@ -57,12 +57,12 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
   {
     id: 'offer-en',
     facts: { ...BASE, moment: 'offer' },
-    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m.; lists both sessions; asks which ones in order of preference, the most they will pay, and whether Hale may tick the town's activity waiver; says Hale pays only with the card already saved on their city account, up to their maximum. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m. Asks which sessions they want, in order — that one ask only, not the max and not the waiver in the same text. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'offer-fr',
     facts: { ...BASE, moment: 'offer', language: 'fr' },
-    watchFor: `In French with tu. Offers the plan: opens Tuesday December 1 at 7 p.m.; both sessions; asks for the order, the maximum and the waiver answer; pays only with the saved card up to the maximum. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `In French with tu. Offers the plan: opens Tuesday December 1 at 7 p.m. Asks which sessions they want, in order — one ask only. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'approved-en',
@@ -73,7 +73,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       maxPriceCents: 11000,
       waiverAccepted: true,
     },
-    watchFor: `Confirms the plan: Sunday first, then Saturday; at most $110; Hale will tick the waiver; Hale joins at the open on Tuesday December 1 at 7 p.m. and will say how it went. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `Confirms Hale will join at the open. One or two short sentences. Does not recap the sessions, the maximum, or the waiver. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'approved-zh',
@@ -85,7 +85,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       waiverAccepted: false,
       language: 'zh',
     },
-    watchFor: `In Chinese. Confirms the plan: only Saturday; at most $98; Hale will NOT tick the waiver (so a waiver at checkout stops for the parent); joins at the open. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `In Chinese. Confirms Hale will join at the open. One or two short sentences. No recap. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'cancelled-en',
@@ -198,7 +198,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
   {
     id: 'offer-assisted-en',
     facts: { ...BASE, mode: 'assisted', moment: 'offer' },
-    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m.; lists both sessions; asks which ones in order of preference and the most they will pay. Says Hale will get in line at the open and fill in the registration, then text the open browser so the parent checks it, submits and pays themselves, soon after the open. Does NOT ask about a waiver and never says Hale pays or uses a saved card. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m. Asks which sessions they want, in order — one ask only. Never says Hale pays. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'approved-assisted-fr',
@@ -211,7 +211,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       maxPriceCents: 11000,
       waiverAccepted: false,
     },
-    watchFor: `In French with tu. Confirms the plan: Sunday first, then Saturday; at most $110; Hale joins at the open on Tuesday December 1 at 7 p.m., fills in the registration and texts the open browser for the parent to submit and pay. Never says Hale pays or ticks the waiver. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `In French with tu. Confirms Hale will join at the open. One or two short sentences. No recap. Never says Hale pays. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'finished-ready-en',
@@ -257,10 +257,16 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
 /** Texts that break the spec. Every one must be caught (code gate or judge). */
 export const SIGNUP_PLAN_REPLY_BROKEN = [
   {
-    id: 'offer-no-two-places',
+    id: 'offer-three-asks',
     fixtureId: 'offer-en',
-    text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Which do you want first, what is the most you will pay, and can I tick the waiver? I only pay with the card saved on your city account.',
-    breaks: 'leaves out the two-places note',
+    text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Which do you want first, what is the most you will pay, and can I tick the waiver?',
+    breaks: 'asks for a ranked list, the max and the waiver all at once',
+  },
+  {
+    id: 'offer-invented-max',
+    fixtureId: 'offer-en',
+    text: 'Swim opens Tuesday at 7 p.m. The most I can spend is $86.22. Which day first?',
+    breaks: 'invents a $86.22 max that is not in the facts',
   },
   {
     id: 'cart-claimed-as-spot',

@@ -96,6 +96,10 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
+  'apps/web/lib/integrations/team-schedule/apply.ts':
+    'VIL-662 coach schedule change ask: claims a channel_messages row (category email_alert, template team_schedule:parent, dedupe key) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after; a gate hold writes its held row',
+  'apps/web/lib/integrations/team-schedule/driver.ts':
+    'VIL-662 driver heads-up: inserts a channel_messages row (category plan_check_in, template team_schedule:driver) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/calendar-write/send.ts':
     'VIL-454 calendar write notice: claims a channel_messages row (templateKey calendar_write_notice) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/group-plan/send.ts':
