@@ -200,6 +200,7 @@ async function audit(
     targetId: string;
     after?: Record<string, unknown>;
     occurredAt?: Date;
+    audience?: string | null;
   },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
@@ -210,6 +211,7 @@ async function audit(
     targetId: input.targetId,
     after: input.after,
     ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
+    ...(input.audience ? { audience: input.audience } : {}),
   });
 }
 
@@ -1654,6 +1656,7 @@ export async function takeMultiFamilyTurn(
       familyId,
       actor: userId,
       actionTaken: 'linq_multi_family_member_stopped',
+      audience: userId,
       targetTable: 'linq_shared_group_people',
       targetId: me.id,
       after: { only: 'this_member', freeBusyWithdrawn },

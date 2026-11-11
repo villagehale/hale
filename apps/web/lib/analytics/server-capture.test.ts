@@ -1,9 +1,12 @@
+import { createHash, createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetPosthogClientsForTests } from './posthog-node';
 import { decodeBatch, ours } from './posthog-wire.testkit';
 import {
   captureInboundRouted,
   captureServerEvent,
+  captureWebEvent,
+  hashFamilyId,
   resetAnalyticsAbsenceLogForTests,
 } from './server-capture';
 
@@ -101,6 +104,57 @@ describe('captureServerEvent', () => {
       vi.fn(async () => new Response(null, { status: 200 })),
     );
     await expect(captureServerEvent('signup_completed', DISTINCT_ID)).resolves.toBe('sent');
+  });
+});
+
+describe('captureWebEvent', () => {
+  it('stays dark while NEXT_PUBLIC_POSTHOG_WEB_ENABLED is unset, even with a key', async () => {
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_WEB_ENABLED', '');
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      captureWebEvent('login_code_verified', DISTINCT_ID, { surface: 'web' }),
+    ).resolves.toBe('not_configured');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends once the web flag is exactly true', async () => {
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_WEB_ENABLED', 'true');
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      captureWebEvent('signup_completed', DISTINCT_ID, { surface: 'sms' }),
+    ).resolves.toBe('sent');
+    const body = sentEvent(fetchMock.mock.calls[0]?.[1]);
+    expect(body.event).toBe('signup_completed');
+    expect(body.properties).toEqual({ surface: 'sms' });
+  });
+});
+
+describe('hashFamilyId', () => {
+  const family = '44444444-4444-4444-8444-444444444444';
+
+  it('is unsalted sha256 truncated to 16 hex when POSTHOG_ID_SALT is unset', () => {
+    vi.stubEnv('POSTHOG_ID_SALT', '');
+    const digest = hashFamilyId(family);
+    expect(digest).toBe(createHash('sha256').update(family).digest('hex').slice(0, 16));
+    expect(digest).not.toBe(family);
+  });
+
+  it('is HMAC-SHA256 with the salt when set, and never the raw id', () => {
+    vi.stubEnv('POSTHOG_ID_SALT', 'launch-salt');
+    const digest = hashFamilyId(family);
+    expect(digest).toBe(
+      createHmac('sha256', 'launch-salt').update(family).digest('hex').slice(0, 16),
+    );
+    expect(digest).not.toBe(createHash('sha256').update(family).digest('hex').slice(0, 16));
+    expect(digest).not.toContain(family);
   });
 });
 

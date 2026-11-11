@@ -126,7 +126,7 @@ export function pipelineClient(): AgentClient {
 /** The client for {@link ACTIVITY_CLIENT_OPTIONS}, process-cached for the same reason
  * the others are. */
 export function activityClient(): AgentClient {
-  cachedActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS);
+  cachedActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS, { stage: 'activity' });
   return cachedActivity;
 }
 

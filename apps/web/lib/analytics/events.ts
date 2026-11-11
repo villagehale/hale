@@ -28,6 +28,15 @@
  */
 export type AnalyticsEvent =
   | 'signup_completed'
+  // Web phone-code door (apps/web /sign-in). Never a phone number, never a code.
+  // login_failed.reason is a closed category the UI already knows
+  // (rate_limited / invalid_request / connection_error / code_rejected / expired)
+  // — never no_claimable_account / not_a_parent, which would be an account oracle.
+  | 'login_phone_submitted'
+  | 'login_code_sent'
+  | 'login_code_verified'
+  | 'login_failed'
+  | 'signup_started'
   | 'first_activity_added'
   | 'first_ask'
   | 'first_invite'

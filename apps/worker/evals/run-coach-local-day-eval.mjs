@@ -237,17 +237,24 @@ async function main() {
     const localNow = familyLocalNow(new Date(fixture.now), fixture.timeZone);
     const localDay = localDayContext(localNow, fixture.forecast);
     const transcript = [{ role: 'user', content: fixture.text }];
-    const skill = augmentCoachSkillForLocalDay(
+    const composed = augmentCoachSkillForLocalDay(
       augmentCoachSkillForFindPrivate(
         base,
         nearbyFindTurn(fixture.text, transcript) ? findPrivate : null,
       ),
       localDaySkill,
     );
+    const extraText = composed.instructions.startsWith(`${base.instructions}\n\n`)
+      ? composed.instructions.slice(base.instructions.length + 2)
+      : '';
+    const skill = extraText
+      ? { ...composed, instructions: base.instructions }
+      : composed;
     let reply = fixture.broken;
     if (!broken) {
       const run = await agent.runAgent({
         skill,
+        ...(extraText ? { systemExtras: [extraText] } : {}),
         context: contextFor(fixture, localDay),
         tools: toolsFor(
           agent,

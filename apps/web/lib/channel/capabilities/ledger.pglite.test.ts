@@ -82,11 +82,19 @@ describe('recordCapabilityNotes', () => {
       }),
     ]);
     const audits = await db.database
-      .select({ action: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .select({
+        action: schema.auditLog.actionTaken,
+        audience: schema.auditLog.audience,
+        after: schema.auditLog.after,
+      })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.targetTable, 'capability_denials'));
     expect(audits).toEqual([
-      { action: 'capability_denial_recorded', after: { capability: 'spot_watch' } },
+      {
+        action: 'capability_denial_recorded',
+        audience: family.parentUserId,
+        after: { capability: 'spot_watch' },
+      },
     ]);
   });
 

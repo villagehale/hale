@@ -57,6 +57,15 @@ export type IntakeState =
    * that claimed otherwise would read as a household that finished intake. */
   | 'superseded';
 
+/**
+ * How long a silent intake session is still this number's conversation.
+ * First-reply recovery stops owing a reply past this (a later opener would be
+ * Hale texting first). Pre-signup erasure uses the same bound as the lower
+ * edge of the inferred window, measured before the channel's first
+ * verification, and does not add a second duration (VIL-649).
+ */
+export const INTAKE_SESSION_LIFETIME_MS = 24 * 3_600_000;
+
 /** One later job. The year-find turn already sent the next ask. The Linq card, when it shares, left on the first outbound. */
 export type IntakeLadderStep = 'turtle' | 'name' | 'name_reply' | 'calendar' | 'gmail' | 'coparent';
 
@@ -828,7 +837,7 @@ export async function saveSession(
       }),
       ...(patch.followUpCount === undefined ? {} : { followUpCount: patch.followUpCount }),
       ...(patch.clarifyCount === undefined ? {} : { clarifyCount: patch.clarifyCount }),
-      ...(patch.familyId ? { familyId: patch.familyId } : {}),
+      ...(patch.familyId ? { familyId: patch.familyId, becameFamilyId: patch.familyId } : {}),
       ...(patch.userId ? { userId: patch.userId } : {}),
       ...(patch.lastProviderId ? { lastProviderId: patch.lastProviderId } : {}),
       ...(patch.closedAt ? { closedAt: patch.closedAt } : {}),

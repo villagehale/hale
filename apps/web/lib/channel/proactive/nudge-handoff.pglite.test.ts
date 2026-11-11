@@ -21,17 +21,20 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type ProactiveReviewDeps, runProactiveReview } from './review';
 
 /**
- * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
- * live path here is tested as it will run then; `routing.complete = false` is today's
- * table, where a requested live runs as shadow.
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING).
+ * `routing.complete = false` is a table that still has an unrouted class, where a
+ * requested live runs as shadow.
  */
 const routing = vi.hoisted(() => ({ complete: true }));
 vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
   return {
     ...actual,
-    proactiveCadence: () =>
-      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+    proactiveCadence: () => {
+      const requested = actual.requestedCadence();
+      if (!routing.complete && requested === 'live') return 'shadow';
+      return requested;
+    },
   };
 });
 
