@@ -81,7 +81,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/multi-family.ts':
     'shared-group notices and thread-only replies; sendOnce inserts the channel_messages row (reply, template linq:multi_family_joined, linq:multi_family_left, linq:multi_family_join_needed, linq:multi_family_reply, or linq:multi_family_ask, dedupe key) on the speaking family before sendLinqChatMessage, and audits sms_reply_sent only after the send lands',
   'apps/web/lib/channel/linq/household-calendar.ts':
-    'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
+    'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send. VIL-609 cross-parent clash 1:1: sendCrossParentOneToOne inserts the channel_messages row (template linq:cross_parent_clash, per-parent dedupe) before sendLinqChatMessage / sendResolvingNewChat, never the group, and a refusal stamps the row failed',
   'apps/web/lib/channel/linq/carpool.ts':
     'VIL-445 night-before and one-ask group lines; deliverLinqGroupNotice inserts the channel_messages row (template linq:carpool_ask_driver or linq:carpool_night_before) before sendLinqChatMessage, and a failed compose is group_line_unsent with nothing sent',
   'apps/web/lib/channel/coparent/duty/asks.ts':
