@@ -10,6 +10,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   PROACTIVE_CATEGORY,
   type ProactiveHoldReason,
@@ -58,7 +59,13 @@ import {
 
 export const CALENDAR_WRITE_NOTICE_TEMPLATE_KEY = 'calendar_write_notice';
 
-export type NoticeSendOutcome = 'sent' | 'no_send_target' | 'no_chat' | 'send_failed' | 'errored';
+export type NoticeSendOutcome =
+  | 'sent'
+  | 'queued'
+  | 'no_send_target'
+  | 'no_chat'
+  | 'send_failed'
+  | 'errored';
 
 export interface CalendarWriteNoticePorts {
   enabled(): boolean;
@@ -236,6 +243,40 @@ export function productionCalendarWriteNoticePorts(
         input,
       ),
     async send(familyId, parentUserId, text, optOut) {
+      const now = new Date();
+      const dedupeKey = `calendar_write_notice:${familyId}:${parentUserId}:${now.toISOString()}`;
+      if (await isQueuedForDecider(database, familyId, dedupeKey)) return 'queued';
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId,
+            parentUserId,
+            kind: 'calendar_alert',
+            category: PROACTIVE_CATEGORY.calendar_alert,
+            templateKey: CALENDAR_WRITE_NOTICE_TEMPLATE_KEY,
+            what: text,
+            why: 'calendar_alert',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey,
+            payload: { auditVerb: 'calendar_alert_sent' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'families',
+          targetId: familyId,
+          after: { kind: 'calendar_alert' },
+        });
+        return 'queued';
+      }
       const body = withOptOut(text, optOut);
       const phone = await resolveSendablePhone(database, parentUserId);
       if (!phone) return 'no_send_target';
@@ -245,7 +286,6 @@ export function productionCalendarWriteNoticePorts(
       const chatId = door.channel === 'imessage' ? door.chatId : null;
       if (door.channel === 'imessage' && !chatId) return 'no_chat';
       const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
-      const now = new Date();
       const [claimed] = await database
         .insert(schema.channelMessages)
         .values({

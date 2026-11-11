@@ -154,7 +154,9 @@ export async function saveConnection(
             actionTaken: 'integration_google_revoke_cancelled',
             // About one adult's account, so History and the family copy leave it out,
             // and it names no other household.
-            ...(row.userId === null ? {} : { targetTable: 'users', targetId: row.userId }),
+            ...(row.userId === null
+              ? {}
+              : { audience: row.userId, targetTable: 'users', targetId: row.userId }),
             after: {
               provider: row.provider,
               integrationId: row.id,
