@@ -36,6 +36,14 @@ export function inboundPhotoFactsEnabled(): boolean {
   return isEnabled('inbound-photo-facts');
 }
 
+/**
+ * The facts a turn carries, and what they were read from. `document` when a PDF rode the
+ * read: its text layer can hold words the parent never saw on the page.
+ */
+export interface TurnPhotoFacts extends PhotoFacts {
+  readFrom: 'image' | 'document';
+}
+
 export interface ReadPhotoFactsInput extends PhotoFactsMessage {
   blocks: readonly Anthropic.ContentBlockParam[];
 }
@@ -46,12 +54,18 @@ function readableBlocks(
   return blocks.filter((block) => block.type === 'image' || block.type === 'document');
 }
 
-/** A registration URL Hale already saw on this turn's photo, for offer_signup. */
+/**
+ * The registration URL this turn's facts add to the links offer_signup and the watch
+ * tools treat as seen. A photo is what the parent is looking at. A PDF's URL counts only
+ * when the parent typed it too.
+ */
 export function photoFactSignupLinks(
-  facts: PhotoFacts | null | undefined,
+  facts: TurnPhotoFacts | undefined,
+  parentWords: string,
 ): { title: string; url: string }[] {
   const url = facts?.registrationUrl;
   if (!url) return [];
+  if (facts.readFrom === 'document' && !parentWords.includes(url)) return [];
   return [{ title: facts.title ?? url, url }];
 }
 

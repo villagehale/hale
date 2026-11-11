@@ -1,8 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type RegisteredTool, type RunAgentArgs, type Skill, invokeTool } from '@hale/agent';
+import Anthropic from '@anthropic-ai/sdk';
+import {
+  type RegisteredTool,
+  type RunAgentArgs,
+  type Skill,
+  defineTool,
+  invokeTool,
+} from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
   type ChannelTurn,
@@ -1310,10 +1318,10 @@ describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
       },
     });
     await channelCoachRuntime(p).respond(photoTurn(), []);
-    expect(seen[0]?.context.photoFacts).toEqual(FLYER);
+    expect(seen[0]?.context.photoFacts).toEqual({ ...FLYER, readFrom: 'image' });
     expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
     expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
-    expect(toolsTurns[0]?.photoFacts).toEqual(FLYER);
+    expect(toolsTurns[0]?.photoFacts).toEqual({ ...FLYER, readFrom: 'image' });
   });
 
   it('lit: a group turn reads nothing new and keeps its bytes', async () => {
@@ -1358,6 +1366,122 @@ describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
     expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
     expect(seen[0]?.context).not.toHaveProperty('photoFacts');
     expect(reply).toBe('Got the flyer.');
+  });
+
+  const pdf = Buffer.from('%PDF-1.7\n%%EOF\n');
+
+  function pdfTurn() {
+    return {
+      ...turn('can you read this form'),
+      inboundMedia: [
+        { kind: 'image' as const, url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+        { kind: 'file' as const, url: 'https://cdn.example/form.pdf', mime: 'application/pdf' },
+      ],
+    };
+  }
+
+  function pdfPorts(overrides: Partial<ChannelCoachPorts> = {}) {
+    return ports({
+      photoFactsEnabled: () => true,
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+          undefined,
+          undefined,
+          { documents: true, documentFetch: async () => new Response(pdf, { status: 200 }) },
+        ),
+      ...overrides,
+    });
+  }
+
+  /** What the API answers for a PDF it will not read: the whole request, refused. */
+  const pdfRefused = () =>
+    Anthropic.APIError.generate(
+      400,
+      {
+        type: 'error',
+        error: { type: 'invalid_request_error', message: 'The PDF specified was not valid.' },
+      },
+      undefined,
+      {},
+    );
+
+  function refusesPdfs(onCall: (args: RunAgentArgs) => Promise<void> = async () => {}) {
+    const calls: Array<{
+      attachments?: Array<{ type: string }>;
+      context: Record<string, unknown>;
+    }> = [];
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      calls.push({
+        attachments: args.attachments as Array<{ type: string }> | undefined,
+        context: args.context as Record<string, unknown>,
+      });
+      await onCall(args);
+      if (args.attachments?.some((block) => block.type === 'document')) throw pdfRefused();
+      return answering('The flyer says Tuesdays; the form would not open.')(args);
+    };
+    return { calls, runAgent };
+  }
+
+  it("lit: facts read beside a PDF are the document's", async () => {
+    const toolsTurns: ChannelTurn[] = [];
+    const p = pdfPorts({
+      readPhotoFacts: async () => FLYER,
+      buildTools: (incoming) => {
+        toolsTurns.push(incoming);
+        return [];
+      },
+    });
+    await channelCoachRuntime(p).respond(pdfTurn(), []);
+    expect(toolsTurns[0]?.photoFacts).toEqual({ ...FLYER, readFrom: 'document' });
+  });
+
+  it('lit: a PDF the API refuses becomes an unwatched file, and the coach still answers', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { calls, runAgent } = refusesPdfs();
+    const p = pdfPorts({
+      readPhotoFacts: async () => {
+        throw pdfRefused();
+      },
+      runAgent,
+    });
+    const { reply } = await channelCoachRuntime(p).respond(pdfTurn(), []);
+    expect(reply).toBe('The flyer says Tuesdays; the form would not open.');
+    expect(calls.map((call) => call.attachments?.map((block) => block.type))).toEqual([
+      ['image', 'document'],
+      ['image'],
+    ]);
+    expect(calls[0]?.context).not.toHaveProperty('arrivedMedia');
+    expect(calls[1]?.context.arrivedMedia).toEqual([{ kind: 'file' }]);
+    expect(info).toHaveBeenCalledWith(
+      { reason: 'provider_refused', count: 1 },
+      'channel coach: inbound document unread',
+    );
+    info.mockRestore();
+  });
+
+  it('lit: a refusal after a tool has acted is not retried', async () => {
+    const noted = defineTool({
+      name: 'note_it',
+      description: 'test tool',
+      inputSchema: z.object({}),
+      monetary: false,
+      touchesChildContent: false,
+      handler: async () => ({ noted: true }),
+    });
+    const { calls, runAgent } = refusesPdfs(async (args) => {
+      await invokeTool(noted, {}, args.toolContext, args.guardDeps);
+    });
+    const p = pdfPorts({
+      readPhotoFacts: async () => null,
+      buildTools: () => [noted],
+      runAgent,
+    });
+    await expect(channelCoachRuntime(p).respond(pdfTurn(), [])).rejects.toBeInstanceOf(
+      ChannelTurnFailed,
+    );
+    expect(calls).toHaveLength(1);
   });
 });
 

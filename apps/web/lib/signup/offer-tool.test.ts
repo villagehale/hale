@@ -66,6 +66,5 @@ describe('offer_signup tool guards', () => {
     );
     expect(runtime).toContain('signupOfferToolEnabled');
     expect(runtime).toContain('signupOffer:');
-    expect(runtime).toContain('photoFactSignupLinks');
   });
 });

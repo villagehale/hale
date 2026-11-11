@@ -127,7 +127,8 @@ describe('validateInboundPhotoFacts', () => {
       whenText: 'Tuesdays 4:30',
       registrationUrl: 'https://harbor-rec.example/register',
     });
-    expect(photoFactSignupLinks(facts)).toEqual([
+    if (!facts) throw new Error('fixture: the page kept no facts');
+    expect(photoFactSignupLinks({ ...facts, readFrom: 'image' }, 'sign us up')).toEqual([
       {
         title: 'https://harbor-rec.example/register',
         url: 'https://harbor-rec.example/register',
@@ -152,15 +153,16 @@ describe('validateInboundPhotoFacts', () => {
 });
 
 describe('photoFactSignupLinks', () => {
-  it('hands offer_signup only a URL Hale already saw', () => {
+  it('hands the tools a photo URL, and nothing when the read kept none', () => {
     const facts = validateInboundPhotoFacts(FLYER);
-    expect(photoFactSignupLinks(facts)).toEqual([
+    if (!facts) throw new Error('fixture: the flyer kept no facts');
+    expect(photoFactSignupLinks({ ...facts, readFrom: 'image' }, 'sign us up')).toEqual([
       { title: 'Fall swim', url: 'https://harbor-rec.example/register' },
     ]);
-    expect(photoFactSignupLinks(null)).toEqual([]);
     expect(
-      photoFactSignupLinks(validateInboundPhotoFacts({ ...FLYER, registration_url: null })),
+      photoFactSignupLinks({ ...facts, registrationUrl: null, readFrom: 'image' }, 'sign us up'),
     ).toEqual([]);
+    expect(photoFactSignupLinks(undefined, 'sign us up')).toEqual([]);
   });
 });
 

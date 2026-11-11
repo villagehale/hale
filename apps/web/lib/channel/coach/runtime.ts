@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import Anthropic from '@anthropic-ai/sdk';
 import {
   type AgentClient,
   type GuardDeps,
@@ -44,6 +44,7 @@ import {
 import {
   type PhotoFacts,
   type ReadPhotoFactsInput,
+  type TurnPhotoFacts,
   augmentCoachSkillForPhotoFacts,
   extractInboundPhotoFacts,
   inboundPhotoFactsEnabled,
@@ -794,18 +795,50 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 systemExtras !== undefined
                   ? { ...skillForTurn, instructions: prefix }
                   : skillForTurn;
-              const result = await ports
-                .runAgent({
+              // Every tool call writes its audit row before its handler runs, so a write
+              // here means a tool has acted this turn and the loop must not run again.
+              let toolActed = false;
+              const guardDeps: GuardDeps = {
+                ...ports.guardDeps,
+                writeAudit: async (entry) => {
+                  toolActed = true;
+                  await ports.guardDeps.writeAudit(entry);
+                },
+              };
+              const runCoach = (attachments: Anthropic.ContentBlockParam[], context: object) =>
+                ports.runAgent({
                   skill: skillForAgent,
                   ...(systemExtras ? { systemExtras } : {}),
-                  context: turnContext,
+                  context,
                   tools,
                   client: ports.client(),
                   maxSteps: MAX_STEPS,
                   maxTokens: MAX_TOKENS,
                   toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
-                  guardDeps: ports.guardDeps,
-                  ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
+                  guardDeps,
+                  ...(attachments.length > 0 ? { attachments } : {}),
+                });
+              const result = await runCoach(media.blocks, turnContext)
+                .catch((err: unknown) => {
+                  // A file can open `%PDF-` and still be a PDF the API will not read
+                  // (encrypted, damaged, past its page limit). It refuses the whole request,
+                  // on the first call, since the document rides the first message. The turn
+                  // goes on without it, and the coach is told a file came that it could not
+                  // open.
+                  if (toolActed || !documentRefused(err, media.blocks)) throw err;
+                  const kept = media.blocks.filter((block) => block.type !== 'document');
+                  const refused = media.blocks.length - kept.length;
+                  console.info(
+                    { reason: 'provider_refused', count: refused },
+                    'channel coach: inbound document unread',
+                  );
+                  return runCoach(kept, {
+                    ...turnContext,
+                    arrivedMedia: [
+                      ...media.unwatched,
+                      ...Array.from({ length: refused }, () => ({ kind: 'file' as const })),
+                    ],
+                  });
                 })
                 .catch((err: unknown) => {
                   throw failed(
@@ -1176,7 +1209,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
                 ...offered
                   .read()
                   .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
-                ...photoFactSignupLinks(turn.photoFacts),
+                ...photoFactSignupLinks(turn.photoFacts, turn.body),
               ],
             }
           : null,
@@ -1192,7 +1225,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
                 ...offered
                   .read()
                   .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
-                ...photoFactSignupLinks(turn.photoFacts),
+                ...photoFactSignupLinks(turn.photoFacts, turn.body),
               ],
             }
           : null,
@@ -1240,7 +1273,7 @@ async function photoFactsForTurn(
   blocks: Anthropic.ContentBlockParam[],
   now: Date,
   timeZone: string | null,
-): Promise<PhotoFacts | null> {
+): Promise<TurnPhotoFacts | null> {
   // A 1:1 turn only: registration is never group content (VIL-439), and a group turn
   // keeps the image it already sees and the prompt bytes it already has.
   const lit = turn.audience === 'direct' && (ports.photoFactsEnabled?.() ?? false);
@@ -1250,12 +1283,16 @@ async function photoFactsForTurn(
     return null;
   }
   try {
-    return await ports.readPhotoFacts({
+    const facts = await ports.readPhotoFacts({
       blocks,
       parentWords: turn.body,
       now,
       timeZone,
     });
+    if (!facts) return null;
+    // Facts read beside a PDF may be the PDF's, so they are the document's.
+    const readFrom = blocks.some((block) => block.type === 'document') ? 'document' : 'image';
+    return { ...facts, readFrom };
   } catch (err) {
     console.info(
       { reason: 'extract_failed', err: err instanceof Error ? err.name : 'unknown' },
@@ -1263,6 +1300,15 @@ async function photoFactsForTurn(
     );
     return null;
   }
+}
+
+/** The API refused a request that carried a document: a 400, not an outage. */
+function documentRefused(err: unknown, blocks: readonly Anthropic.ContentBlockParam[]): boolean {
+  return (
+    blocks.some((block) => block.type === 'document') &&
+    err instanceof Anthropic.APIError &&
+    err.status === 400
+  );
 }
 
 async function mediaForTurn(

@@ -2,7 +2,7 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { CapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
-import type { PhotoFacts } from '~/lib/channel/inbound-photo-facts';
+import type { TurnPhotoFacts } from '~/lib/channel/inbound-photo-facts';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 
@@ -80,7 +80,7 @@ export interface ChannelTurn {
    * INBOUND_PHOTO_FACTS_ENABLED is lit. Absent on a text-only turn, a group turn, and
    * when the extract found nothing.
    */
-  photoFacts?: PhotoFacts;
+  photoFacts?: TurnPhotoFacts;
 }
 
 /**
