@@ -25,6 +25,7 @@ async function languageRows(familyId: string) {
   return database
     .select({
       actor: schema.auditLog.actor,
+      audience: schema.auditLog.audience,
       before: schema.auditLog.before,
       after: schema.auditLog.after,
     })
@@ -68,6 +69,7 @@ describe('observeParentLanguage and readParentLanguage', () => {
     expect(await languageRows(family.familyId)).toEqual([
       {
         actor: family.parentUserId,
+        audience: family.parentUserId,
         before: { language: 'en' },
         after: { language: 'zh', why: 'sustained' },
       },

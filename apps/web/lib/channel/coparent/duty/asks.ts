@@ -28,6 +28,7 @@ import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
+import { teenNameIn } from '~/lib/privacy/teen-name';
 import {
   type CadenceLine,
   type CadencePlan,
@@ -581,7 +582,7 @@ async function buildOccasions(
       (row) =>
         row.familyId === familyId &&
         row.standing !== 'invited' &&
-        !(row.childName !== null && home.teenNames.includes(row.childName)),
+        !(row.childName !== null && teenNameIn(row.childName, home.teenNames)),
     ),
     home.childNames,
     home.teenNames,

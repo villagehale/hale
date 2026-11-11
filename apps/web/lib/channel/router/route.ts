@@ -79,6 +79,7 @@ import {
   type VoiceReplyOutcome,
   productionVoiceReplyDeps,
   sendReplyAsVoiceMemo,
+  voiceMemoTextOnly,
 } from '~/lib/channel/linq/voice-reply';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
@@ -3423,6 +3424,7 @@ async function voiceMemoFor(
     body: string;
     job: ChannelMessageReceivedJob;
     voiceMemo?: boolean;
+    templateKey?: string | null;
   },
 ): Promise<ReplySent | null> {
   if (!args.voiceMemo) return null;
@@ -3431,7 +3433,7 @@ async function voiceMemoFor(
     text: args.body,
     modelChoseVoice: true,
     isGroup: args.job.in_group !== false,
-    textOnly: false,
+    textOnly: voiceMemoTextOnly({ templateKey: args.templateKey }),
     chatId: route.channel === 'imessage' ? route.chatId : null,
     address: route.to,
   };
