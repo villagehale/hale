@@ -140,8 +140,9 @@ export function namesAPerson(text: string, householdNames: readonly string[]): b
 function gateFreeText(
   raw: string,
   householdNames: readonly string[],
+  familyToday?: string,
 ): { ok: true; value: string } | { ok: false; refusal: 'empty' | 'too_long' | 'names_a_person' } {
-  const value = scrubResidualPii(raw).replace(/\s+/g, ' ').trim();
+  const value = scrubResidualPii(raw, familyToday).replace(/\s+/g, ' ').trim();
   if (value === '') return { ok: false, refusal: 'empty' };
   if (value.length > MAX_QUERY_FIELD_CHARS) return { ok: false, refusal: 'too_long' };
   if (namesAPerson(value, householdNames)) return { ok: false, refusal: 'names_a_person' };
@@ -166,7 +167,10 @@ export function deidentifyActivityQuery(input: {
   /** From the family's own clock, never the model (see {@link ActivityQuery.today}). */
   today?: string | null;
 }): ActivityDeidResult {
-  const subject = deidentifyActivitySubject(input.subject, input.householdNames);
+  // A day on or after this one is not a date of birth, so the day a find is for crosses
+  // whole (scrubResidualPii). With no family clock every date is scrubbed.
+  const familyToday = input.today ? /^\d{4}-\d{2}-\d{2}/.exec(input.today)?.[0] : undefined;
+  const subject = deidentifyActivitySubject(input.subject, input.householdNames, familyToday);
   if (!subject.ok) return subject;
 
   // An ABSENT window is legal and a REFUSED one is not — different outcomes, kept apart
@@ -175,7 +179,7 @@ export function deidentifyActivityQuery(input: {
   const rawWindow = input.window?.trim() ?? '';
   let window: string | null = null;
   if (rawWindow !== '') {
-    const gated = gateFreeText(rawWindow, input.householdNames);
+    const gated = gateFreeText(rawWindow, input.householdNames, familyToday);
     if (!gated.ok && gated.refusal === 'too_long') return { ok: false, refusal: 'window_too_long' };
     if (!gated.ok && gated.refusal === 'names_a_person') {
       return { ok: false, refusal: 'names_a_person' };
@@ -205,10 +209,11 @@ export function deidentifyActivityQuery(input: {
 export function deidentifyActivitySubject(
   raw: string,
   householdNames: readonly string[],
+  familyToday?: string,
 ):
   | { ok: true; value: string }
   | { ok: false; refusal: 'empty_subject' | 'subject_too_long' | 'names_a_person' } {
-  const subject = gateFreeText(raw, householdNames);
+  const subject = gateFreeText(raw, householdNames, familyToday);
   if (subject.ok) return subject;
   if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
   if (subject.refusal === 'too_long') return { ok: false, refusal: 'subject_too_long' };

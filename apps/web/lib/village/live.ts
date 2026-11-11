@@ -156,6 +156,8 @@ export async function findFamilyActivities(
     area?: string;
     areaReader?: NamedAreaReader;
     now?: Date;
+    /** Today on the family's clock, `YYYY-MM-DD (Weekday)`, so a day in the window crosses. */
+    today?: string | null;
     finder?: ActivityFinder;
     excludePreviouslyOffered?: boolean;
   } = {},
@@ -201,6 +203,7 @@ export async function findFamilyActivities(
     town,
     stage: deriveStage(youngest.dateOfBirth, now),
     householdNames,
+    today: options.today,
   });
   if (!query.ok) return { picks: [], reason: query.refusal };
   // A stored city is coarse context, not a postal code or precise home address.

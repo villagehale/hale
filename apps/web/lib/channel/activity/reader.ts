@@ -125,27 +125,33 @@ export function bindActivityReader(
   };
 }
 
+/**
+ * Today on the family's own clock (VIL-435), `YYYY-MM-DD (Weekday)`, so a find for "today"
+ * is checked against the day it is where they live. Null when the zone is unknown. A failed
+ * read is logged by fault class and leaves the day out; the find still runs.
+ */
+export async function readFamilyToday(
+  database: Database,
+  familyId: string,
+  now = new Date(),
+): Promise<string | null> {
+  try {
+    const zone = await knownHouseholdTimezone(database, familyId);
+    if (!zone) return null;
+    const local = familyLocalNow(now, zone);
+    return `${local.date} (${local.weekday})`;
+  } catch (err) {
+    console.error(
+      { fault: err instanceof Error ? err.name : typeof err },
+      'activity reader: family day unavailable',
+    );
+    return null;
+  }
+}
+
 export function productionActivityFamilyReader(): ActivityFamilyReader {
   return {
-    /**
-     * Today on the family's own clock (VIL-435), so a find for "today" is checked against
-     * the day it is where they live. A failed read is logged by fault class and leaves
-     * the day out; the find still runs.
-     */
-    today: async (database, familyId) => {
-      try {
-        const zone = await knownHouseholdTimezone(database, familyId);
-        if (!zone) return null;
-        const local = familyLocalNow(new Date(), zone);
-        return `${local.date} (${local.weekday})`;
-      } catch (err) {
-        console.error(
-          { fault: err instanceof Error ? err.name : typeof err },
-          'activity reader: family day unavailable',
-        );
-        return null;
-      }
-    },
+    today: (database, familyId) => readFamilyToday(database, familyId),
     /**
      * Where the family is now, as a search may be told it (place.ts), or why it cannot
      * be. A postal area that covers two towns is not guessed: the find does not run.

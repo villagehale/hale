@@ -196,6 +196,42 @@ describe('the window is held to the same ceiling as the subject', () => {
   });
 });
 
+/**
+ * THE DAY A FIND IS FOR IS NOT A DATE OF BIRTH. A child's date of birth is never after
+ * today (a future one is refused when it is written), so once the gate holds today on the
+ * family's clock, a date on or after it crosses whole. A date before it may be a date of
+ * birth and is still scrubbed, and with no clock every date is.
+ */
+describe('the day a find is for crosses, a date of birth does not', () => {
+  const today = '2026-08-09 (Sunday)';
+  const subject = 'things to do';
+
+  it('keeps a window that names today or a later day, byte for byte', () => {
+    for (const window of ['today Sunday 2026-08-09', 'Saturday 2026-08-15', 'August 15, 2026']) {
+      expect(deidentifyActivityQuery({ ...base, subject, window, today })).toMatchObject({
+        ok: true,
+        query: { window, today },
+      });
+    }
+  });
+
+  it('POSITIVE CONTROL - still scrubs a date before today, which can be a date of birth', () => {
+    expect(
+      deidentifyActivityQuery({ ...base, subject, window: 'born 2024-03-15', today }),
+    ).toMatchObject({ ok: true, query: { window: 'born [redacted]' } });
+    // July 9 one way round, September 7 the other: one reading is a past day, so it goes.
+    expect(
+      deidentifyActivityQuery({ ...base, subject, window: 'DOB 07/09/2026', today }),
+    ).toMatchObject({ ok: true, query: { window: 'DOB [redacted]' } });
+  });
+
+  it('POSITIVE CONTROL - with no family clock, every date is scrubbed', () => {
+    expect(
+      deidentifyActivityQuery({ ...base, subject, window: 'today Sunday 2026-08-09' }),
+    ).toMatchObject({ ok: true, query: { window: 'today Sunday [redacted]' } });
+  });
+});
+
 describe('the shape of what may be sent', () => {
   it('refuses an empty subject and one past the ceiling', () => {
     expect(deidentifyActivityQuery({ ...base, subject: '   ' })).toEqual({

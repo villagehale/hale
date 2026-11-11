@@ -1,6 +1,8 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { ACTIVITY_REVIEWS_SURFACE_ENV } from '~/lib/reviews/aggregate';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -244,5 +246,41 @@ describe('a venue three families near you did not rate', () => {
       'Riverdale storytime',
     ]);
     expect(result.standingOption).toBeNull();
+  });
+});
+
+/**
+ * THE DAY A SEARCH IS FOR REACHES THE SEARCH. `search_village` hands the de-identifier
+ * today on the family's own clock, so a day the coach worked out crosses whole while a
+ * date before today, which can be a date of birth, is still scrubbed. Without that clock
+ * the window "Saturday 2030-07-13" crossed as "Saturday [redacted]".
+ */
+describe('the day a find is for', () => {
+  it("crosses with the family's today, and a date before today does not", async () => {
+    const { familyId, parentUserId } = await seedFamily('asker');
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, parentUserId));
+    await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Private child', dateOfBirth: '2023-01-01' });
+    const searched: ActivityQuery[] = [];
+    const finder: ActivityFinder = {
+      find: async (query) => {
+        searched.push(query);
+        return { found: true, picks: [] };
+      },
+    };
+
+    await invokeTool(
+      searchVillageTool(db.database, undefined, finder),
+      { query: 'things to do', window: `Saturday ${EVENT_DATE}, not 2020-01-15` },
+      { familyId, actor: 'user-1' },
+      { writeAudit: async () => {} },
+    );
+
+    expect(searched[0]?.window).toBe(`Saturday ${EVENT_DATE}, not [redacted]`);
+    expect(searched[0]?.today).toMatch(/^\d{4}-\d{2}-\d{2} \([A-Z][a-z]+day\)$/);
   });
 });

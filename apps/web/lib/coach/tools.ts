@@ -7,6 +7,7 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
+import { readFamilyToday } from '~/lib/channel/activity/reader';
 import { linkRef } from '~/lib/channel/coach/activity-links';
 import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
 import type { NamedAreaReader } from '~/lib/channel/named-area';
@@ -207,6 +208,7 @@ export function searchVillageTool(
         areaReader,
         finder: radarRead,
         now,
+        today: await readFamilyToday(database, ctx.familyId, now),
       });
       const query = searched;
       const picks =
