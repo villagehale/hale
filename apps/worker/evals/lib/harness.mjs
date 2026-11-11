@@ -27,6 +27,8 @@ import {
   readCapUsd,
   readLedger,
 } from '../../../web/lib/testing/spend-cap.mjs';
+import { reportEvalGeneration, wrapEvalAnthropic } from './eval-llm-trace.mjs';
+export { reportEvalGeneration, wrapEvalAnthropic };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 import { GENERAL_REFERENCE_TEXTS, renderReferenceTexts } from './judge-references.mjs';
@@ -201,16 +203,70 @@ export async function cachePut(key, value) {
 
 // --- cost accumulator -------------------------------------------------------
 
+const LIVE_COSTS = [];
+
 export function makeCost() {
-  return { liveCalls: 0, byModel: {} };
+  const cost = { liveCalls: 0, byModel: {}, bySite: {} };
+  LIVE_COSTS.push(cost);
+  return cost;
 }
 
-export function noteUsage(cost, model, usage) {
+export function cacheHitRate(usage) {
+  const read = usage?.cache_read_input_tokens ?? 0;
+  const create = usage?.cache_creation_input_tokens ?? 0;
+  const input = usage?.input_tokens ?? 0;
+  const denom = read + create + input;
+  return denom === 0 ? null : read / denom;
+}
+
+export function noteUsage(cost, model, usage, site) {
   cost.liveCalls += 1;
-  if (!cost.byModel[model]) cost.byModel[model] = { input: 0, output: 0 };
+  if (!cost.byModel[model]) {
+    cost.byModel[model] = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, freshInput: 0 };
+  }
   const bucket = cost.byModel[model];
-  bucket.input += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+  const fresh = usage.input_tokens ?? 0;
+  const create = usage.cache_creation_input_tokens ?? 0;
+  const read = usage.cache_read_input_tokens ?? 0;
+  bucket.input += fresh + create;
   bucket.output += usage.output_tokens;
+  bucket.freshInput += fresh;
+  bucket.cacheRead += read;
+  bucket.cacheCreation += create;
+  if (!cost.bySite) cost.bySite = {};
+  const siteKey = site ?? model;
+  if (!cost.bySite[siteKey]) {
+    cost.bySite[siteKey] = { cacheRead: 0, cacheCreation: 0, freshInput: 0 };
+  }
+  const siteBucket = cost.bySite[siteKey];
+  siteBucket.freshInput += fresh;
+  siteBucket.cacheRead += read;
+  siteBucket.cacheCreation += create;
+}
+
+export function formatCacheHitRates(cost) {
+  const sites = cost?.bySite ?? {};
+  const lines = [];
+  for (const [site, b] of Object.entries(sites)) {
+    const denom = b.cacheRead + b.cacheCreation + b.freshInput;
+    const rate = denom === 0 ? null : b.cacheRead / denom;
+    lines.push(
+      `cache hit | site=${site} read=${b.cacheRead} create=${b.cacheCreation} input=${b.freshInput} rate=${rate === null ? 'n/a' : rate.toFixed(4)}`,
+    );
+  }
+  return lines;
+}
+
+if (!globalThis.__haleCacheHitExit) {
+  globalThis.__haleCacheHitExit = true;
+  process.on('exit', () => {
+    const seen = new Set();
+    for (const cost of LIVE_COSTS) {
+      if (seen.has(cost) || !cost.liveCalls) continue;
+      seen.add(cost);
+      for (const line of formatCacheHitRates(cost)) console.info(line);
+    }
+  });
 }
 
 /** Per-MTok list rates for the spend cap. An unpriced model refuses the call. */
@@ -348,11 +404,14 @@ export function lazyAnthropic(tag = 'eval') {
   return () => {
     if (isDryRun()) return dryClient(tag);
     requireSpendGuard(tag);
-    client ??= new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
-      fetch: globalThis.fetch,
-    });
+    client ??= wrapEvalAnthropic(
+      new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
+        fetch: globalThis.fetch,
+      }),
+      { suite: tag, stage: 'unattributed' },
+    );
     return capSdkClient(client, { rates: priceRates, tag });
   };
 }
@@ -367,10 +426,13 @@ export function evalSubjectClient(getCurrentClient) {
   requireSpendGuard('gateway');
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('Set AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY');
-  gatewayAnthropic ??= new Anthropic({
-    apiKey,
-    baseURL: 'https://ai-gateway.vercel.sh',
-  });
+  gatewayAnthropic ??= wrapEvalAnthropic(
+    new Anthropic({
+      apiKey,
+      baseURL: 'https://ai-gateway.vercel.sh',
+    }),
+    { suite: 'gateway', stage: 'unattributed' },
+  );
   return capSdkClient(gatewayAnthropic, { rates: gatewayRates, tag: 'gateway' });
 }
 
@@ -455,6 +517,8 @@ export async function liveStructuredCall({
   client,
   lane,
   system,
+  systemExtras,
+  cacheTtl,
   userMessage,
   toolName,
   toolDescription,
@@ -466,6 +530,8 @@ export async function liveStructuredCall({
     client,
     lane,
     system,
+    ...(systemExtras?.length ? { systemExtras } : {}),
+    ...(cacheTtl ? { cacheTtl } : {}),
     userMessage,
     toolName,
     toolDescription,
@@ -486,6 +552,8 @@ async function replayThroughGuard(opts, value) {
   const request = agent.structuredRequest({
     lane: opts.lane,
     system: opts.system,
+    ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
+    ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
     userMessage: opts.userMessage,
     toolName: opts.toolName,
     toolDescription: opts.toolDescription ?? 'Return the result.',
@@ -521,6 +589,8 @@ export async function cachedToolCall(opts) {
   const canonical = JSON.stringify({
     model,
     system,
+    ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
+    ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
     userMessage,
     toolName,
     toolSchema,
@@ -539,6 +609,13 @@ export async function cachedToolCall(opts) {
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
     if (opts.lane) await replayThroughGuard({ ...opts, maxTokens }, cached.value);
+    reportEvalGeneration({
+      suite: tag,
+      caseName: tag,
+      model,
+      latencyMs: cached.latencyMs,
+      cached: true,
+    });
     return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
   }
 
@@ -570,6 +647,8 @@ export async function cachedToolCall(opts) {
       client: getClient(),
       lane: opts.lane,
       system,
+      ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
+      ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
       userMessage,
       toolName,
       toolDescription: opts.toolDescription ?? 'Return the result.',
@@ -608,7 +687,7 @@ export async function cachedToolCall(opts) {
     usage = response.usage;
   }
   const latencyMs = Date.now() - startedAt;
-  noteUsage(cost, model, usage);
+  noteUsage(cost, model, usage, tag);
   await cachePut(key, { value, latencyMs });
   noteLatency(model, latencyMs);
   if (Array.isArray(cost.latencies)) cost.latencies.push(latencyMs);
@@ -728,6 +807,8 @@ export async function dryToolCallPlanEntry(opts, plan) {
       lane: opts.lane,
       maxTokens,
       system,
+      ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
+      ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
       userMessage,
       toolName,
       toolDescription: opts.toolDescription ?? 'Return the result.',
@@ -807,6 +888,14 @@ export async function cachedTextCall(opts) {
   if (cached) {
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
+    reportEvalGeneration({
+      suite: tag,
+      caseName: tag,
+      model,
+      latencyMs: cached.latencyMs,
+      usage: cached.inputTokens != null ? { input_tokens: cached.inputTokens } : undefined,
+      cached: true,
+    });
     return {
       text: cached.text,
       latencyMs: cached.latencyMs,
@@ -850,7 +939,7 @@ export async function cachedTextCall(opts) {
       `${tag}: the model returned no text (stop_reason ${response.stop_reason}) - nothing cached`,
     );
   }
-  noteUsage(cost, model, response.usage);
+  noteUsage(cost, model, response.usage, tag);
   const inputTokens =
     response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
   await cachePut(key, { text, latencyMs, inputTokens });
@@ -967,6 +1056,13 @@ async function gatewayCall(opts, tool) {
   if (cached) {
     noteLatency(opts.model, cached.latencyMs);
     if (Array.isArray(opts.cost.latencies)) opts.cost.latencies.push(cached.latencyMs);
+    reportEvalGeneration({
+      suite: opts.tag,
+      caseName: opts.tag,
+      model: opts.model,
+      latencyMs: cached.latencyMs,
+      cached: true,
+    });
     return { ...cached, cached: true };
   }
   if (opts.cachedOnly) failCachedMiss(opts.tag, key);
@@ -993,7 +1089,7 @@ async function gatewayCall(opts, tool) {
     input_tokens: body.usage?.prompt_tokens ?? body.usage?.input_tokens ?? 0,
     output_tokens: body.usage?.completion_tokens ?? body.usage?.output_tokens ?? 0,
   };
-  noteUsage(opts.cost, opts.model, usage);
+  noteUsage(opts.cost, opts.model, usage, opts.tag);
   const latencyMs = Math.round(performance.now() - startedAt);
   noteLatency(opts.model, latencyMs);
   if (Array.isArray(opts.cost.latencies)) opts.cost.latencies.push(latencyMs);
@@ -1228,7 +1324,15 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     );
     const cached = await cacheGet(key);
     const hit = cached && isVerdict(cached.parsed);
-    if (hit && !isDryRun()) return cached.parsed;
+    if (hit && !isDryRun()) {
+      reportEvalGeneration({
+        suite: tagPrefix,
+        caseName: sampleTag,
+        model,
+        cached: true,
+      });
+      return cached.parsed;
+    }
     if (isDryRun()) {
       // No network: price the request the live guard would see, with an offline count.
       const agent = await loadAgent();
@@ -1288,7 +1392,7 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
           `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
         );
       }
-      if (!response.capBooked) noteUsage(cost, model, response.usage);
+      if (!response.capBooked) noteUsage(cost, model, response.usage, sampleTag);
       logCall(sampleTag, response.usage);
       await cachePut(key, { parsed: toolUse.input });
       return toolUse.input;
@@ -1345,7 +1449,7 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     if (!isVerdict(result.value)) {
       throw new Error(`judge (${sampleTag}) returned no score; nothing cached`);
     }
-    noteUsage(cost, model, result.usage);
+    noteUsage(cost, model, result.usage, sampleTag);
     logCall(sampleTag, result.usage);
     await cachePut(key, { parsed: result.value });
     return result.value;

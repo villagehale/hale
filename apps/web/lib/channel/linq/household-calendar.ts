@@ -4,6 +4,7 @@ import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import {
@@ -1795,7 +1796,7 @@ async function sendGroupNotice(
     now: Date;
     fetch?: typeof fetch;
   },
-): Promise<'sent' | 'already_sent' | 'held' | 'not_sent'> {
+): Promise<'sent' | 'already_sent' | 'held' | 'not_sent' | 'queued'> {
   if (await dedupeActive(input.notice.dedupeKey, database)) return 'already_sent';
   const verdict = await assertProactiveSendAllowed(
     {
@@ -1812,6 +1813,43 @@ async function sendGroupNotice(
       'household calendar: group notice held',
     );
     return 'held';
+  }
+  if (await isQueuedForDecider(database, input.familyId, input.notice.dedupeKey)) {
+    return 'queued';
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.notice.recipientUserId,
+        kind: input.notice.gateKind,
+        category: input.notice.category,
+        templateKey: `linq:group_${input.notice.kind}`,
+        what: input.notice.text,
+        why: input.notice.gateKind,
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.notice.dedupeKey,
+        payload: {
+          auditVerb:
+            input.notice.kind === 'followup' ? 'followup_activity_asked' : 'calendar_alert_sent',
+        },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: input.notice.gateKind },
+    });
+    return 'queued';
   }
   const body = withOptOut(input.notice.text, verdict.optOut);
   const [claimed] = await database

@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { deriveStage } from '@hale/types';
+import { deriveStage, namesAny } from '@hale/types';
 import {
   type SQL,
   and,
@@ -465,30 +465,7 @@ export async function teenRoster(
   return { ids: teens.map((row) => row.id), names: teens.map((row) => row.name) };
 }
 
-function fold(text: string): string {
-  return text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Whether `text` names any of `names` as a whole word, ignoring case and accents. Each
- * part of a name counts on its own ("Ana Sofia" is named by "Sofia"). Over-matching a
- * common word only withholds more, which is the safe direction for rule #1.
- */
-function namesAny(text: string, names: readonly string[]): boolean {
-  const haystack = fold(text);
-  for (const name of names) {
-    for (const part of fold(name).split(/[^\p{L}\p{N}]+/u)) {
-      if (part.length < 2) continue;
-      const word = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(part)}($|[^\\p{L}\\p{N}])`, 'u');
-      if (word.test(haystack)) return true;
-    }
-  }
-  return false;
-}
+export { namesAny };
 
 /** Every string value and object key in `value`, at any depth. */
 function stringLeaves(value: unknown): string[] {
@@ -501,10 +478,11 @@ function stringLeaves(value: unknown): string[] {
 }
 
 /**
- * Whether any string in `value` (a value, an object key, at any depth) names one of
- * `names`. The one teen-name check: it never reads JSON text, where a newline is
- * written `\n` and the escape's letter touches the name and hides it from the
- * whole-word match (VIL-618).
+ * Whether any string in `value` (a value, an object key, at any depth) names
+ * one of `names`. The one teen-name check: it never reads JSON text, where a
+ * newline is written `\n` and the escape's letter touches the name and hides
+ * it from the whole-word match (VIL-618). For memory facts, object keys are
+ * scanned too, so a fact filed under a child's name is still a hit (VIL-634).
  */
 export function namesAnyIn(value: unknown, names: readonly string[]): boolean {
   return names.length > 0 && stringLeaves(value).some((text) => namesAny(text, names));

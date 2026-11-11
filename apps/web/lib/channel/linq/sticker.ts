@@ -126,7 +126,9 @@ export function createLinqStickerDecider(
 let shared: LinqStickerDecider | null = null;
 
 export function sharedLinqStickerDecider(): LinqStickerDecider {
-  shared ??= createLinqStickerDecider(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createLinqStickerDecider(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import { type SQL, and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -796,6 +797,14 @@ export async function sendClaimedGroupLine(
       targetId: claimed.id,
       after: { templateKey: input.templateKey },
     });
+    noteMessage({
+      direction: 'out',
+      familyId: input.familyId,
+      channel: 'imessage',
+      isGroup: true,
+      chatId: input.chatId,
+      database,
+    });
     return 'sent';
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
@@ -803,6 +812,13 @@ export async function sendClaimedGroupLine(
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
+    noteSendFailed({
+      familyId: input.familyId,
+      channel: 'imessage',
+      isGroup: true,
+      chatId: input.chatId,
+      reason: code,
+    });
     return 'not_sent';
   }
 }

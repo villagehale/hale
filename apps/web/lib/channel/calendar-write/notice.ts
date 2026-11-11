@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import type {
   GoogleCalendarOp,
   GoogleCalendarSyncReport,
@@ -162,6 +162,7 @@ export async function composeCalendarWriteNotice(
         client,
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
+        cacheTtl: SPARSE_CACHE_TTL,
         userMessage: calendarWriteNoticeUserMessage(input),
         toolName: 'calendar_write_notice',
         toolDescription: 'The one text Hale sends the parent.',
