@@ -68,6 +68,11 @@ export const authorizedSignupOffers = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     /** Opaque public activity id. Not a sentence and not a child name. */
     activityKey: text('activity_key').notNull(),
+    /**
+     * The program's public name as the page or the parent gave it ("Little Kickers").
+     * Lets a later message about another activity read as about another one. Never a child.
+     */
+    activityLabel: text('activity_label'),
     registrationUrl: text('registration_url').notNull(),
     sessions: jsonb('sessions').$type<AuthorizedSignupSession[]>().notNull(),
     /** The only price the parent has approved, in cents. Null means none. */

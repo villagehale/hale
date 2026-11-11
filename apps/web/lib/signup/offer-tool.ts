@@ -9,6 +9,8 @@ import {
   sessionsFromModel,
 } from './offer-from-facts';
 import { SIGNUP_OFFER_SOURCES, type SignupOfferWriter } from './offer-writer';
+import { registrationPlanRunEnabled } from './plan/flag';
+import type { PlanReplyWriter } from './plan/writer';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -36,6 +38,8 @@ export interface SignupOfferToolPorts {
   /** Pages a search or extract put in front of the parent this turn. */
   linksThisTurn: () => readonly { title: string; url: string }[];
   writer?: SignupOfferWriter;
+  /** The day-before plan's writer. Undefined uses the reply model. */
+  planWriter?: PlanReplyWriter;
 }
 
 const sessionSchema = z.object({
@@ -81,9 +85,10 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
   return defineTool({
     name: OFFER_SIGNUP_TOOL,
     description:
-      "Call when Hale saw a real registration — from an email, a calendar, a flyer, or this chat — and you are offering to try signing a child up. `child` is the child's first name as this family knows them. `registrationUrl` must be a page already in this turn (the parent's words, or a link a tool returned). `evidence` is what Hale saw; for chat it must be a quote from the parent's message. `opensAt` is when registration opens, as an ISO 8601 time with its UTC offset, only when the page or message states it; otherwise null. After `recorded`, send the returned `text` as your message. Do not invent a different offer.",
+      "Call when Hale saw a real registration — from an email, a calendar, a flyer, or this chat — and you are offering to try signing a child up. `child` is the child's first name as this family knows them. `activity` is the program's name as the page or the parent gives it. `registrationUrl` must be a page already in this turn (the parent's words, or a link a tool returned). `evidence` is what Hale saw; for chat it must be a quote from the parent's message. `opensAt` is when registration opens, as an ISO 8601 time with its UTC offset, only when the page or message states it; otherwise null. This becomes the family's one open sign-up ask: `closed` lists any earlier ask it replaced. After `recorded`, send the returned `text` as your message. Do not invent a different offer.",
     inputSchema: z.object({
       child: z.string().min(1).max(80),
+      activity: z.string().min(1).max(120),
       source: z.enum(SIGNUP_OFFER_SOURCES),
       registrationUrl: z.string().min(1).max(2048),
       evidence: z.string().min(1).max(1600),
@@ -128,6 +133,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
           childId: matches[0].id,
           now: ports.now,
           planOpensAt: planOpensAtFromModel(input.opensAt ?? null),
+          activityLabel: input.activity.replace(/\s+/g, ' ').trim(),
           facts: {
             source: input.source,
             evidence: input.evidence,
@@ -137,19 +143,40 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
             language: null,
           },
         },
-        { writer: ports.writer },
+        { writer: ports.writer, planWriter: ports.planWriter },
       );
       if (!result.ok) return { recorded: false as const, reason: result.reason };
-      return { recorded: true as const, offerId: result.offerId, text: result.text };
+      return {
+        recorded: true as const,
+        offerId: result.offerId,
+        text: result.text,
+        closed: result.closed.map((prior) => ({
+          activity: prior.activityLabel,
+          host: prior.providerHost,
+          sessions: prior.sessionLabels,
+        })),
+      };
     },
   });
 }
 
-export function augmentCoachSkillForSignupOffer(skill: Skill, enabled: boolean): Skill {
-  if (!enabled || skill.meta.tools.includes(OFFER_SIGNUP_TOOL)) return skill;
+/**
+ * Lists the verb while the signup flag is on. `atOpen` is the coach-signup-offer addendum,
+ * handed in only while the plan lane is lit ({@link signupAtOpenEnabled}): it is what tells
+ * the coach the capability table's no to enrolling is not the whole truth for this family.
+ */
+export function augmentCoachSkillForSignupOffer(
+  skill: Skill,
+  enabled: boolean,
+  atOpen: Skill | null,
+): Skill {
+  if (!enabled) return skill;
+  const listed = skill.meta.tools.includes(OFFER_SIGNUP_TOOL);
+  if (listed && !atOpen) return skill;
   return {
     ...skill,
-    meta: { ...skill.meta, tools: [...skill.meta.tools, OFFER_SIGNUP_TOOL] },
+    meta: listed ? skill.meta : { ...skill.meta, tools: [...skill.meta.tools, OFFER_SIGNUP_TOOL] },
+    instructions: atOpen ? `${skill.instructions}\n\n${atOpen.instructions}` : skill.instructions,
   };
 }
 
@@ -157,4 +184,11 @@ export function signupOfferToolEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return authorizedSignupEnabled(env);
+}
+
+/** The plan lane: Hale can register at the open. Read from the readers the plan run reads. */
+export function signupAtOpenEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return authorizedSignupEnabled(env) && registrationPlanRunEnabled(env);
 }

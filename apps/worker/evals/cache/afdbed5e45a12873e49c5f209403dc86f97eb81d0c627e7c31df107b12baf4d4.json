@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Clear go-ahead: Sunday first, Saturday backup, max $120, waiver allowed",
+    "reason": "Clear go-ahead with ordered sessions, price cap, and waiver consent",
     "verdict": "approve",
     "choiceIds": [
       "sun-1000",
@@ -10,5 +10,5 @@
     "waiverAccepted": true,
     "question": null
   },
-  "latencyMs": 1415
+  "latencyMs": 1463
 }

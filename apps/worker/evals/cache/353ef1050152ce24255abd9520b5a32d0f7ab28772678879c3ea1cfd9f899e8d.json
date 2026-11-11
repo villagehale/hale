@@ -1,11 +1,11 @@
 {
   "value": {
-    "reason": "Parent cancels the approved plan because they're away",
-    "verdict": "take_back",
+    "reason": "Question about pickup time, not about this plan",
+    "verdict": "unrelated",
     "choiceIds": [],
     "maxPriceCents": null,
     "waiverAccepted": false,
     "question": null
   },
-  "latencyMs": 1283
+  "latencyMs": 2052
 }

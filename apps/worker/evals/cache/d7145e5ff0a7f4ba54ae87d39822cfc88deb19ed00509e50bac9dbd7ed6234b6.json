@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Clear go-ahead for Saturday session; price from session; waiver not mentioned",
+    "reason": "Clear go-ahead for Saturday session; price from session",
     "verdict": "approve",
     "choiceIds": [
       "sat-0900"
@@ -9,5 +9,5 @@
     "waiverAccepted": false,
     "question": null
   },
-  "latencyMs": 1887
+  "latencyMs": 1269
 }

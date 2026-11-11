@@ -1,11 +1,11 @@
 {
   "value": {
-    "reason": "Message is about pickup time, not this plan",
+    "reason": "Yes is for a different program (Little Kickers), not Preschool Swim",
     "verdict": "unrelated",
     "choiceIds": [],
     "maxPriceCents": null,
     "waiverAccepted": false,
     "question": null
   },
-  "latencyMs": 1258
+  "latencyMs": 1925
 }

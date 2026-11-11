@@ -36,6 +36,7 @@ describe('offer_signup coach verb', () => {
       tool,
       {
         child: 'Ada',
+        activity: 'Parent and Tot Swim',
         source: 'chat',
         registrationUrl: URL,
         evidence: 'parent and tot swim Tuesday 4:30',
@@ -64,6 +65,73 @@ describe('offer_signup coach verb', () => {
     expect(rows).toEqual([{ status: 'pending' }]);
   });
 
+  it('a new ask tells the coach which earlier ask it closed', async () => {
+    const seeded = await seedFamily(db.database);
+    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+    const gymUrl = 'https://gym.example-rec.test/register/tots';
+    const kickersUrl = 'https://kickers.example-sport.test/register/sat';
+    const offer = (url: string, activity: string, label: string, at: Date) =>
+      invokeTool(
+        offerSignupTool({
+          database: db.database,
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          now: at,
+          parentWords: `${activity} ${label} ${url}`,
+          linksThisTurn: () => [],
+          writer: echoOfferWriter(),
+        }),
+        {
+          child: 'Ada',
+          activity,
+          source: 'chat',
+          registrationUrl: url,
+          evidence: `${activity} ${label}`,
+          sessions: [
+            {
+              id: 'sat-session',
+              label,
+              startsAt: '2027-01-09T15:15:00.000Z',
+              endsAt: '2027-01-09T16:00:00.000Z',
+              full: false,
+              priceCents: 12000,
+            },
+          ],
+          approvedPriceCents: null,
+        },
+        { familyId: seeded.familyId, actor: seeded.parentUserId },
+        { writeAudit: async () => {} },
+      ) as Promise<{ recorded: boolean; closed?: unknown[] }>;
+
+    const first = await offer(gymUrl, 'Gymnastics Tots', 'Sat 10:15', NOW);
+    expect(first).toMatchObject({ recorded: true, closed: [] });
+    const second = await offer(
+      kickersUrl,
+      'Little Kickers',
+      'Sat 9:30',
+      new Date(NOW.getTime() + 60_000),
+    );
+    expect(second).toMatchObject({
+      recorded: true,
+      closed: [
+        { activity: 'Gymnastics Tots', host: 'gym.example-rec.test', sessions: ['Sat 10:15'] },
+      ],
+    });
+    const rows = await db.database
+      .select({
+        label: schema.authorizedSignupOffers.activityLabel,
+        status: schema.authorizedSignupOffers.status,
+      })
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { label: 'Gymnastics Tots', status: 'handed_back' },
+        { label: 'Little Kickers', status: 'pending' },
+      ]),
+    );
+  });
+
   it('refuses a URL the turn never saw', async () => {
     const seeded = await seedFamily(db.database);
     await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
@@ -80,6 +148,7 @@ describe('offer_signup coach verb', () => {
       tool,
       {
         child: 'Ada',
+        activity: 'Parent and Tot Swim',
         source: 'email',
         registrationUrl: URL,
         evidence: 'swim',

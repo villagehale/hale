@@ -104,7 +104,11 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
-import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/signup/offer-tool';
+import {
+  augmentCoachSkillForSignupOffer,
+  signupAtOpenEnabled,
+  signupOfferToolEnabled,
+} from '~/lib/signup/offer-tool';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -982,6 +986,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             browserUseWatchEnabled(),
           ),
           signupOfferToolEnabled(),
+          signupAtOpenEnabled() ? await loadCronSkill('coach-signup-offer') : null,
         ),
         (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),

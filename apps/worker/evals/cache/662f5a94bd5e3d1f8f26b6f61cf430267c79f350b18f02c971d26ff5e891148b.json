@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reason": "Parent declines and will register herself",
+    "verdict": "take_back",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1421
+}

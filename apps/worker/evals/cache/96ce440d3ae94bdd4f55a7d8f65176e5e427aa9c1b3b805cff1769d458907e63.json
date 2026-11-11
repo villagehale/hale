@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011Cgwkc3a4Uk79w12cwciAV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "体操那个先取消了。\n\nAda 的活动12月1日(周二)早上7点开始报名,目前看到的场次是周六9:30。你想报哪些场次?按优先顺序告诉我。如果你也在自己的手机或电脑上排队,我们家就会在队伍里占两个位置。\nhttps://kickers.example-sport.test/register/little-kickers-sat-0930"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1492,
+      "cache_read_input_tokens": 21532,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1492,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 131,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

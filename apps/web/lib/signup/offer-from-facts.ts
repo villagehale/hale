@@ -18,7 +18,7 @@ import {
   planOpensAtLocal,
   planReplyBody,
 } from './plan/writer';
-import { recordSignupOffer } from './store';
+import { type ClosedSignupOffer, recordSignupOffer } from './store';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -36,13 +36,11 @@ export type OfferSignupReason =
   | 'url_refused'
   | 'child_missing'
   | 'unwritten'
-  | 'not_stored'
-  | 'offer_exists'
   | 'activity_key'
   | 'sessions';
 
 export type OfferSignupResult =
-  | { ok: true; offerId: string; text: string }
+  | { ok: true; offerId: string; text: string; closed: ClosedSignupOffer[] }
   | { ok: false; reason: OfferSignupReason };
 
 export interface OfferSignupInput {
@@ -53,6 +51,8 @@ export interface OfferSignupInput {
   facts: Omit<SignupOfferFacts, 'childFirstName'> & { childFirstName?: string | null };
   /** VIL-558 · when registration opens, as Hale saw it. Null when it did not say. */
   planOpensAt?: Date | null;
+  /** The program's public name as the page or the parent gave it. */
+  activityLabel?: string | null;
 }
 
 export interface OfferSignupDeps {
@@ -139,6 +139,7 @@ export async function offerSignupFromFacts(
     childId: input.childId,
     parentUserId: input.parentUserId,
     activityKey: activityKeyFor(allowed.href),
+    activityLabel: input.activityLabel ?? null,
     registrationUrl: allowed.href,
     sessions: [...input.facts.sessions],
     approvedPriceCents: input.facts.approvedPriceCents,
@@ -157,7 +158,7 @@ export async function offerSignupFromFacts(
     sessionCount: input.facts.sessions.length,
     plan: planOpensAt !== null,
   });
-  return { ok: true, offerId: stored.id, text };
+  return { ok: true, offerId: stored.id, text, closed: stored.closed };
 }
 
 async function writeOffer(

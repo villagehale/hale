@@ -19,6 +19,10 @@ import { MAX_PLAN_CHOICES } from './store';
 
 export interface PlanReadOffer {
   status: 'pending' | 'planned';
+  /** The program's public name, or null for an offer recorded before names were kept. */
+  activity: string | null;
+  /** The registration site's host. */
+  host: string;
   opensAt: Date;
   sessions: readonly SignupSession[];
   approvedPriceCents: number | null;
@@ -75,6 +79,8 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
   return JSON.stringify({
     offer: {
       status: input.offer.status,
+      activity: input.offer.activity === null ? null : withoutLinks(input.offer.activity),
+      host: input.offer.host,
       opensAt: input.offer.opensAt.toISOString(),
       approvedPriceCents: input.offer.approvedPriceCents,
       sessions: input.offer.sessions.map((session) => ({

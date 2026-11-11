@@ -1,11 +1,11 @@
 {
   "value": {
-    "reason": "Planned status; parent only acknowledges, no change or cancellation",
+    "reason": "Asks about a different activity (soccer); does not cancel swim plan",
     "verdict": "unrelated",
     "choiceIds": [],
     "maxPriceCents": null,
     "waiverAccepted": false,
     "question": null
   },
-  "latencyMs": 1303
+  "latencyMs": 1428
 }

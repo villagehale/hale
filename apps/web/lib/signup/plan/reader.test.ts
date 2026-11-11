@@ -3,6 +3,8 @@ import { type PlanReadOffer, signupPlanReadUserMessage, toPlanReading } from './
 
 const OFFER: PlanReadOffer = {
   status: 'pending',
+  activity: 'Preschool Swim',
+  host: 'register.example-rec.test',
   opensAt: new Date('2026-12-01T12:00:00.000Z'),
   approvedPriceCents: null,
   plan: null,
@@ -96,5 +98,21 @@ describe('toPlanReading', () => {
     ]);
     expect(message.offer.opensAt).toBe('2026-12-01T12:00:00.000Z');
     expect(Object.keys(message.offer)).not.toContain('childId');
+  });
+
+  it('the model sees which program and host the offer is for, without links', () => {
+    const message = JSON.parse(
+      signupPlanReadUserMessage({
+        text: 'yes',
+        offer: { ...OFFER, activity: 'Little Kickers https://evil.app/x' },
+      }),
+    );
+    expect(message.offer.host).toBe('register.example-rec.test');
+    expect(message.offer.activity).toBe('Little Kickers');
+    // A row from before activity labels reads as unnamed, not as a guess.
+    const unnamed = JSON.parse(
+      signupPlanReadUserMessage({ text: 'yes', offer: { ...OFFER, activity: null } }),
+    );
+    expect(unnamed.offer.activity).toBeNull();
   });
 });

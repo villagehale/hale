@@ -15,7 +15,7 @@ import {
   type ConversablePlan,
   approveSignupPlan,
   cancelSignupPlan,
-  loadConversablePlan,
+  loadConversablePlans,
   parkSignupPlan,
   writePlanAudit,
 } from './store';
@@ -55,6 +55,10 @@ export interface PlanTurnDeps {
  * sign-up reply runs. A model reads the parent's words ({@link PlanReader}); a yes calls
  * `approveSignupPlan`, a take-back calls `cancelSignupPlan` (or closes the offer when it
  * was never approved). Every claimed turn writes one audit row and a model-written reply.
+ *
+ * The newest ask is read first, so a bare yes answers the last thing Hale asked. A message
+ * the reader finds is about something else is read against the family's next plan, so a
+ * take-back naming an older plan still reaches it.
  */
 export async function runPlanTurn(
   database: Database,
@@ -62,8 +66,27 @@ export async function runPlanTurn(
   deps: PlanTurnDeps = {},
 ): Promise<SignupRunResult | null> {
   if (!registrationPlanRunEnabled()) return null;
-  const plan = await loadConversablePlan(database, { familyId: input.familyId, now: input.now });
-  if (!plan) return null;
+  const plans = await loadConversablePlans(database, { familyId: input.familyId, now: input.now });
+  let keepOneShotOff = false;
+  for (const plan of plans) {
+    const turn = await planTurnFor(database, input, deps, plan);
+    if (turn !== 'unrelated') return turn;
+    // A pending plan offer, or a plan waiting on a site pick, is this lane's alone: the
+    // one-shot sign-up must never book it. An approved plan leaves it free to read any
+    // other pending offer.
+    if (plan.status === 'pending' || plan.availability?.kind === 'options_mismatch') {
+      keepOneShotOff = true;
+    }
+  }
+  return keepOneShotOff ? unclaimed() : null;
+}
+
+async function planTurnFor(
+  database: Database,
+  input: SignupRunInput,
+  deps: PlanTurnDeps,
+  plan: ConversablePlan,
+): Promise<SignupRunResult | null | 'unrelated'> {
   if (plan.availability && plan.availability.kind === 'options_mismatch') {
     return runMismatchTurn(database, input, deps, plan);
   }
@@ -73,17 +96,15 @@ export async function runPlanTurn(
     offer: {
       // A running plan is the approved plan to its reader: it can only be taken back.
       status: plan.status === 'running' ? 'planned' : plan.status,
+      activity: plan.activityLabel,
+      host: plan.providerHost,
       opensAt: plan.opensAt,
       sessions: plan.sessions,
       approvedPriceCents: plan.approvedPriceCents,
       plan: plan.plan,
     },
   });
-  // A planned offer leaves the ordinary reply free to read any other pending offer. A
-  // pending plan offer is this lane's alone: the one-shot sign-up must never book it.
-  if (!reading || reading.verdict === 'unrelated') {
-    return plan.status === 'pending' ? unclaimed() : null;
-  }
+  if (!reading || reading.verdict === 'unrelated') return 'unrelated';
 
   if (reading.verdict === 'unclear') {
     return reply(database, input, deps, plan, 'clarify', { question: reading.question });
@@ -181,7 +202,7 @@ async function runMismatchTurn(
   input: SignupRunInput,
   deps: PlanTurnDeps,
   plan: ConversablePlan,
-): Promise<SignupRunResult> {
+): Promise<SignupRunResult | 'unrelated'> {
   const rawChoices = plan.availability?.choices;
   const parsed = Array.isArray(rawChoices)
     ? rawChoices.flatMap((row) => {
@@ -193,7 +214,7 @@ async function runMismatchTurn(
     typeof plan.availability?.askedStart === 'string' ? plan.availability.askedStart : null;
   const reader = deps.mismatchReader ?? createMismatchReader(() => resolveReplyClient(undefined));
   const reading = await reader.read({ text: input.body, askedStart, choices: parsed });
-  if (!reading || reading.verdict === 'unrelated') return unclaimed();
+  if (!reading || reading.verdict === 'unrelated') return 'unrelated';
   if (reading.verdict === 'unclear') {
     return reply(database, input, deps, plan, 'clarify', { question: reading.question });
   }

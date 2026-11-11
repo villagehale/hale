@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { redactSignupAudit } from './audit';
 import { signupProviderHost } from './consent';
 import { normalizeSession } from './forms/details';
 import type { BusyInterval, SignupIdentity, SignupOffer, SignupSession } from './types';
@@ -8,7 +9,17 @@ import { registrationUrlAllowed } from './url';
 
 const KEY = /^[a-z0-9][a-z0-9._:-]{0,79}$/i;
 
-export type RecordOfferResult = { ok: true; id: string } | { ok: false; reason: string };
+/** A pending ask a newer one closed. The program's public facts, never a person. */
+export interface ClosedSignupOffer {
+  offerId: string;
+  activityLabel: string | null;
+  providerHost: string;
+  sessionLabels: string[];
+}
+
+export type RecordOfferResult =
+  | { ok: true; id: string; closed: ClosedSignupOffer[] }
+  | { ok: false; reason: string };
 
 export async function recordSignupOffer(
   database: Database,
@@ -17,6 +28,8 @@ export async function recordSignupOffer(
     childId: string;
     parentUserId: string;
     activityKey: string;
+    /** The program's public name as the page or the parent gave it. */
+    activityLabel?: string | null;
     registrationUrl: string;
     sessions: SignupSession[];
     approvedPriceCents: number | null;
@@ -48,34 +61,72 @@ export async function recordSignupOffer(
     .where(and(eq(schema.children.id, input.childId), eq(schema.children.familyId, input.familyId)))
     .limit(1);
   if (!child) return { ok: false, reason: 'child_missing' };
-  const pending = await loadPendingOffer(database, input.familyId, providerHost);
-  if (pending) return { ok: false, reason: 'offer_exists' };
-  const [row] = await database
-    .insert(schema.authorizedSignupOffers)
-    .values({
-      familyId: input.familyId,
-      childId: input.childId,
-      parentUserId: input.parentUserId,
-      activityKey: input.activityKey,
-      registrationUrl: allowed.href,
-      providerHost,
-      sessions: sessions.filter((session): session is SignupSession => session !== null),
-      approvedPriceCents: input.approvedPriceCents,
-      planOpensAt: input.planOpensAt ?? null,
-      planAlreadyOpen: input.planAlreadyOpen === true,
-      status: 'pending',
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .returning({ id: schema.authorizedSignupOffers.id });
-  if (!row) return { ok: false, reason: 'not_stored' };
-  return { ok: true, id: row.id };
+  const offers = schema.authorizedSignupOffers;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    // One live ask per family: whatever still waits on a yes is closed before the new ask
+    // exists, so a later yes has one ask to answer. A planned or running offer is the
+    // parent's commitment, not an ask, and only their own take-back ends it.
+    const closed = await tx
+      .update(offers)
+      .set({ status: 'handed_back', updatedAt: input.now })
+      .where(and(eq(offers.familyId, input.familyId), eq(offers.status, 'pending')))
+      .returning({
+        id: offers.id,
+        activityLabel: offers.activityLabel,
+        providerHost: offers.providerHost,
+        sessions: offers.sessions,
+      });
+    const [row] = await tx
+      .insert(offers)
+      .values({
+        familyId: input.familyId,
+        childId: input.childId,
+        parentUserId: input.parentUserId,
+        activityKey: input.activityKey,
+        activityLabel: input.activityLabel ?? null,
+        registrationUrl: allowed.href,
+        providerHost,
+        sessions: sessions.filter((session): session is SignupSession => session !== null),
+        approvedPriceCents: input.approvedPriceCents,
+        planOpensAt: input.planOpensAt ?? null,
+        planAlreadyOpen: input.planAlreadyOpen === true,
+        status: 'pending',
+        createdAt: input.now,
+        updatedAt: input.now,
+      })
+      .returning({ id: offers.id });
+    if (!row) throw new Error('signup offer insert returned no row');
+    for (const prior of closed) {
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: 'authorized_signup_step',
+        targetTable: 'authorized_signup_offers',
+        targetId: prior.id,
+        after: redactSignupAudit({
+          step: 'offer_superseded',
+          host: prior.providerHost,
+          supersededBy: row.id,
+        }),
+      });
+    }
+    return {
+      ok: true as const,
+      id: row.id,
+      closed: closed.map((prior) => ({
+        offerId: prior.id,
+        activityLabel: prior.activityLabel,
+        providerHost: prior.providerHost,
+        sessionLabels: prior.sessions.map((session) => session.label),
+      })),
+    };
+  });
 }
 
 export async function loadPendingOffer(
   database: Database,
   familyId: string,
-  providerHost?: string,
 ): Promise<SignupOffer | null> {
   const [row] = await database
     .select({
@@ -94,9 +145,10 @@ export async function loadPendingOffer(
       and(
         eq(schema.authorizedSignupOffers.familyId, familyId),
         eq(schema.authorizedSignupOffers.status, 'pending'),
-        ...(providerHost ? [eq(schema.authorizedSignupOffers.providerHost, providerHost)] : []),
       ),
     )
+    // The newest ask is the one a yes answers (rows from before one-live-ask may overlap).
+    .orderBy(desc(schema.authorizedSignupOffers.createdAt))
     .limit(1);
   if (!row || row.familyId !== familyId || row.status !== 'pending') return null;
   return {

@@ -159,6 +159,10 @@
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
   },
+  "coach-signup-offer.md": {
+    "file": "coach-signup-offer.md",
+    "sha256": "c6bb0e78793abb6a57b9cdb84336cc087d00023376f54ad8069e2c6a58bfb1a2"
+  },
   "coach-voice-memo.md": {
     "file": "coach-voice-memo.md",
     "sha256": "d78ae65ffd6044bd50e7c22fc644b999dac26e689e4b451d2ebea832c1e004c9"
@@ -589,7 +593,7 @@
   },
   "signup-plan-read.md": {
     "file": "signup-plan-read.md",
-    "sha256": "e5753bb73887410aa6781c4a32d4fcd6dc5c7711b8edbc00b09f43da923dc428"
+    "sha256": "50cdae649f54d610f75d6648ce5c12bb9a3b1276c8c689b0b52306f821ce6a0e"
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",

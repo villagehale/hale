@@ -1,0 +1,60 @@
+{
+  "response": {
+    "id": "msg_011CgwkbN4me9LXwFoW28XpX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_011i3pKjRNTS1wx4hrqBCi7v",
+        "name": "offer_signup",
+        "input": {
+          "child": "Ada",
+          "activity": "Little Kickers",
+          "source": "chat",
+          "registrationUrl": "https://kickers.example-sport.test/register/little-kickers-sat-0930",
+          "evidence": "换 Little Kickers 吧，周六9:30那个班，12月1号早上7点开放报名",
+          "sessions": [
+            {
+              "id": "sat-0930",
+              "label": "周六9:30",
+              "startsAt": "2026-12-01T07:00:00-05:00",
+              "endsAt": "2026-12-01T07:00:00-05:00",
+              "full": false,
+              "priceCents": null
+            }
+          ],
+          "approvedPriceCents": null,
+          "opensAt": "2026-12-01T07:00:00-05:00"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 493,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21532,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 778,
+      "output_tokens_details": {
+        "thinking_tokens": 402
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

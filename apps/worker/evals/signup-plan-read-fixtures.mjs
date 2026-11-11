@@ -3,7 +3,8 @@
 // Expectations come from the SPEC (packages/agent/skills/signup-plan-read.md): an explicit
 // go-ahead with the sessions in the parent's order and a maximum price is `approve`; a no
 // or a stop is `take_back`, before or after approval; a hedge or a change is `unclear`;
-// anything else is `unrelated`. Scored exactly, with no judge. Invented values only.
+// anything else is `unrelated`, and so is a message about another program that does not
+// turn this one down. Scored exactly, with no judge. Invented values only.
 
 const OPENS = '2026-12-01T12:00:00.000Z';
 const SAT = {
@@ -25,6 +26,8 @@ const SUN = {
 
 const PENDING = {
   status: 'pending',
+  activity: 'Preschool Swim',
+  host: 'register.example-rec.test',
   opensAt: OPENS,
   sessions: [SAT, SUN],
   approvedPriceCents: null,
@@ -151,6 +154,35 @@ export const SIGNUP_PLAN_READ_FIXTURES = [
     id: 'unrelated',
     offer: PENDING,
     text: 'What time is pickup on Friday?',
+    expect: { verdict: 'unrelated' },
+  },
+  {
+    id: 'yes-to-another-program',
+    offer: PENDING,
+    text: 'Yes, sign her up for the Little Kickers Saturday class',
+    expect: { verdict: 'unrelated' },
+  },
+  {
+    id: 'drops-this-for-another-zh',
+    offer: PENDING,
+    text: '游泳那个不要了，换成 Little Kickers 吧',
+    expect: { verdict: 'take_back' },
+  },
+  {
+    id: 'yes-naming-this-program',
+    offer: PENDING,
+    text: 'Yes to the swim one, Saturday please',
+    expect: {
+      verdict: 'approve',
+      choiceIds: ['sat-0900'],
+      maxPriceCents: 9800,
+      waiverAccepted: false,
+    },
+  },
+  {
+    id: 'planned-ask-about-another-program',
+    offer: PLANNED,
+    text: 'Can you look at soccer for her too?',
     expect: { verdict: 'unrelated' },
   },
 ];

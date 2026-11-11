@@ -1,5 +1,5 @@
 import { type AuthorizedSignupPlanResume, type Database, schema } from '@hale/db';
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { redactSignupAudit } from '../audit';
@@ -461,6 +461,9 @@ export interface ConversablePlan {
   offerId: string;
   childId: string;
   status: 'pending' | 'planned' | 'running';
+  /** The program's public name, or null for an offer recorded before names were kept. */
+  activityLabel: string | null;
+  providerHost: string;
   registrationUrl: string;
   sessions: SignupSession[];
   approvedPriceCents: number | null;
@@ -471,16 +474,18 @@ export interface ConversablePlan {
 }
 
 /**
- * The offer with a known open still ahead: a `pending` offer the coach recorded with its
+ * The offers with a known open still ahead: a `pending` offer the coach recorded with its
  * open time, or a `planned` one the parent may still take back. A plan whose run is going
- * (possibly checkpointed between sweeps) can still be taken back too. The earliest open first.
+ * (possibly checkpointed between sweeps) can still be taken back too. A running plan comes
+ * first, so a stop reaches money in flight; then the newest, because the last thing Hale
+ * asked is what a bare yes answers.
  */
-export async function loadConversablePlan(
+export async function loadConversablePlans(
   database: Database,
   input: { familyId: string; now: Date },
-): Promise<ConversablePlan | null> {
+): Promise<ConversablePlan[]> {
   const offers = schema.authorizedSignupOffers;
-  const [row] = await database
+  const rows = await database
     .select()
     .from(offers)
     .where(
@@ -503,36 +508,41 @@ export async function loadConversablePlan(
         ),
       ),
     )
-    .orderBy(offers.planOpensAt)
-    .limit(1);
-  if (!row?.planOpensAt) return null;
-  const status =
-    row.status === 'submitting'
-      ? 'running'
-      : row.status === 'pending' || row.status === 'planned'
-        ? row.status
+    .orderBy(sql`${offers.status} = 'submitting' desc`, desc(offers.createdAt));
+  return rows.flatMap((row) => {
+    if (!row.planOpensAt) return [];
+    const status =
+      row.status === 'submitting'
+        ? 'running'
+        : row.status === 'pending' || row.status === 'planned'
+          ? row.status
+          : null;
+    if (!status) return [];
+    const planned =
+      status !== 'pending' && row.planChoiceIds && row.planMaxPriceCents !== null
+        ? {
+            choiceIds: row.planChoiceIds,
+            maxPriceCents: row.planMaxPriceCents,
+            waiverAccepted: row.planWaiverAccepted === true,
+          }
         : null;
-  if (!status) return null;
-  const planned =
-    status !== 'pending' && row.planChoiceIds && row.planMaxPriceCents !== null
-      ? {
-          choiceIds: row.planChoiceIds,
-          maxPriceCents: row.planMaxPriceCents,
-          waiverAccepted: row.planWaiverAccepted === true,
-        }
-      : null;
-  return {
-    offerId: row.id,
-    childId: row.childId,
-    status,
-    registrationUrl: row.registrationUrl,
-    sessions: row.sessions,
-    approvedPriceCents: row.approvedPriceCents,
-    opensAt: row.planOpensAt,
-    plan: planned,
-    alreadyOpen: row.planAlreadyOpen === true,
-    availability: row.planAvailability,
-  };
+    return [
+      {
+        offerId: row.id,
+        childId: row.childId,
+        status,
+        activityLabel: row.activityLabel,
+        providerHost: row.providerHost,
+        registrationUrl: row.registrationUrl,
+        sessions: row.sessions,
+        approvedPriceCents: row.approvedPriceCents,
+        opensAt: row.planOpensAt,
+        plan: planned,
+        alreadyOpen: row.planAlreadyOpen === true,
+        availability: row.planAvailability,
+      },
+    ];
+  });
 }
 
 /**

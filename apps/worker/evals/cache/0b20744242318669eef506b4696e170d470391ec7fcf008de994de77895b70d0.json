@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Clear go-ahead with ordered sessions, price ceiling, and waiver consent",
+    "reason": "Clear go-ahead with session order, price ceiling, and waiver permission",
     "verdict": "approve",
     "choiceIds": [
       "sun-1000",
@@ -10,5 +10,5 @@
     "waiverAccepted": true,
     "question": null
   },
-  "latencyMs": 1751
+  "latencyMs": 2547
 }

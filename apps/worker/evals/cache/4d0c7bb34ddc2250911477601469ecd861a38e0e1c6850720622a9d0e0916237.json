@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Clear go-ahead for Saturday session with stated $98 ceiling; embedded note ignored as data",
+    "reason": "Clear go-ahead for Saturday session with $98 cap; embedded note ignored as data",
     "verdict": "approve",
     "choiceIds": [
       "sat-0900"
@@ -9,5 +9,5 @@
     "waiverAccepted": false,
     "question": null
   },
-  "latencyMs": 1342
+  "latencyMs": 4156
 }

@@ -1,11 +1,11 @@
 {
   "value": {
-    "reason": "Parent declines and will register herself",
+    "reason": "Parent cancels the planned swim registration",
     "verdict": "take_back",
     "choiceIds": [],
     "maxPriceCents": null,
     "waiverAccepted": false,
     "question": null
   },
-  "latencyMs": 1370
+  "latencyMs": 2045
 }

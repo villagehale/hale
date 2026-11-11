@@ -12,6 +12,8 @@ Registration for one activity opens at a set time. Hale can join the open for th
 `offer` is what the parent is answering:
 
 - `status`: `pending` when Hale offered the plan and is waiting, `planned` when the parent already approved it and the open has not come yet.
+- `activity`: the program the plan is for, as the page or the parent named it. Null when Hale did not keep a name.
+- `host`: the registration site the plan is for.
 - `opensAt`: when registration opens.
 - `sessions`: the sessions Hale saw, each with an `id`, a `label`, times, whether it is full, and the price in cents when one was stated.
 - `approvedPriceCents`: a price the parent already accepted, or null.
@@ -26,9 +28,9 @@ Approving lets Hale spend the parent's money tomorrow without asking again. Only
 - `reason`: a few words for the trace. Do not repeat the parent's message.
 - `verdict`:
   - `approve`: only when `status` is `pending`. The parent clearly tells Hale to go ahead with the plan, and you can tell which sessions they want and the most they will pay. The wording and the language do not matter.
-  - `take_back`: the parent says not to do it, to stop, to cancel, that they will register themselves, or that they changed their mind. This works for `pending` and for `planned`.
+  - `take_back`: the parent says not to do it, to stop, to cancel, that they will register themselves, or that they changed their mind. This works for `pending` and for `planned`. Dropping this program for a different one in the same message is a take-back of this one too.
   - `unclear`: the message is about this plan but does not settle it. A hedge, a question about the plan, a session that does not match any of `sessions`, or a yes where you cannot tell the sessions or the price. When `status` is `planned` and the parent asks to change the plan, that is `unclear` too: an approved plan cannot be edited, so ask whether Hale should take this plan back so they can set a new one.
-  - `unrelated`: the message is about something else entirely. When `status` is `planned` and the parent only says the plan is still fine, that is `unrelated`.
+  - `unrelated`: the message is about something else entirely. A message about a different program or a different site than `activity` and `host`, which does not turn this one down, is `unrelated` too, even when it says yes: a yes to another program is never a yes to this plan. When `status` is `planned` and the parent only says the plan is still fine, that is `unrelated`.
 - `choiceIds`: for `approve`, the ids of the sessions the parent wants, best first, taken from `sessions`. One id when they want just one. Never invent an id. An empty list for every other verdict.
 - `maxPriceCents`: for `approve`, the most the parent will pay, in cents. Use the ceiling they name. When they name none but say yes to sessions whose prices are stated in `sessions`, use the highest price among the sessions they chose. When they name none and no chosen session has a price, the verdict is `unclear`. Null for every other verdict.
 - `waiverAccepted`: true only when the parent clearly says Hale may tick or accept the town's activity waiver. False when they say no, or say nothing about it.
