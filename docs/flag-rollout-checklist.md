@@ -70,6 +70,12 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `GOOGLE_PUSH_SYNC_ENABLED` | `apps/web/lib/integrations/google-push-flag.ts:14` | `true` | OFF | `false` | Noah |
 | `GOOGLE_WRITE_SCOPES_ENABLED` | `apps/web/lib/integrations/google-write-flag.ts:23` (the allowlist at :29 arms listed users) | `true` | OFF | unset, or anything except `true` | Noah |
 | `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | `apps/web/lib/channel/coach/no-group-relay.ts:19` | `true` | OFF | `false` | Sloane |
+| `GROUP_BRING_LIST_ENABLED` | `apps/web/lib/channel/lists/flag.ts:10` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:133` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
+| `GROUP_LINK_CARDS_ENABLED` | `apps/web/lib/channel/linq/config.ts:124` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_MAIL_NOTICE_ENABLED` | `apps/web/lib/channel/linq/config.ts:150` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:116` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_PRIVATE_QUESTION_ENABLED` | `apps/web/lib/channel/linq/config.ts:142` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `apps/web/lib/pipeline/classify.ts:166` (`parseModelMode`, `apps/web/lib/pipeline/model-mode.ts:1-5`: trim, unset means `current`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INBOUND_SCREEN_MODEL_MODE` | `apps/web/lib/channel/off-domain/screen.ts:279` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
 | `HALE_INTAKE_EXTRACT_MODEL_MODE` | `apps/web/lib/channel/intake/extract.ts:164` (`parseModelMode`) | `candidate` | `current` | `current` | Eugene |
@@ -81,7 +87,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `INTEREST_PASSPORT_DEMO` | `apps/web/lib/passport/demo.ts:26` (also needs `INTEREST_PASSPORT_ENABLED` to be `true`) | `true` | OFF | unset | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `apps/web/lib/passport/flag.ts:12` | `true` | OFF | `false` | Noah |
 | `LINQ_GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:107` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
-| `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:117` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
+| `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:165` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
 | `LINQ_GROUP_COPARENT` | `apps/web/lib/channel/linq/config.ts:72` (trimmed, `!== 'off'`) | unset (anything except `off`) | ON | `off` | Noah |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `apps/web/lib/channel/linq/config.ts:80` | `true` (trimmed) | OFF | `false` | Noah |
 | `LINQ_GROUP_MENTIONS_ENABLED` | `apps/web/lib/channel/linq/config.ts:195` | `true` (trimmed) | OFF | empty, or `false` | Noah |
@@ -210,6 +216,10 @@ Dependencies, as the code reads them:
 - Light `LINQ_GROUP_TURN_AI_ENABLED` with `LINQ_GROUP_ONBOARDING_V2_ENABLED`: the turn reader is the only group turn path, and dark means silent in the group (`apps/web/lib/channel/linq/group-turn-reader.ts:13-17`).
 - `LINQ_GROUP_REMINDERS_ENABLED` reads only a turn the AI turn reader judged Hale's, in a v2 group: it needs `LINQ_GROUP_TURN_AI_ENABLED` and `LINQ_GROUP_ONBOARDING_V2_ENABLED`.
 - `LINQ_GROUP_POLLS_ENABLED`: the native card also needs `LINQ_POLLS`.
+- `GROUP_POLLS_ENABLED`: the native RSVP/time card also needs `LINQ_POLLS`. Off, Hale asks in model-written plain text and tallies replies. Needs migration `0231_linq_group_experience`.
+- `GROUP_CARPOOL_ENABLED` arms the same path as `LINQ_GROUP_CARPOOL_ENABLED`.
+- `GROUP_BRING_LIST_ENABLED` arms the same path as `GROUP_SHARED_LISTS_ENABLED`.
+- `GROUP_MAIL_NOTICE_ENABLED` posts into the household group after a provider time-change; it does not replace the 1:1 email alert.
 - `INTEREST_PASSPORT_DEMO` needs `INTEREST_PASSPORT_ENABLED`; a Calendar stamp needs `CALENDAR_ALERT_ENABLED`.
 - `AUTHORIZED_SIGNUP_ENABLED` is its own gate: `BROWSER_USE_SIGNUP_ENABLED` and `SIGNUP_SANDBOX_RUNTIME_ENABLED` do not turn signup on (`apps/web/lib/signup/browser-use/flag.ts:9-11`). `SIGNUP_BROWSER_RUNTIME` is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`.
 - `MEMORY_DIGEST_APPLY` also needs `MEMORY_DIGEST_FAMILY_ALLOWLIST`.
@@ -247,6 +257,12 @@ Code is merged for every row.
 | `FIRST_TOUCH_LADDER_ENABLED` | A new parent is asked for a place, then shown a week find, before the older hello. | First-session `channel_messages` with status `failed`. | empty, or `off` | Sloane |
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |
 | `GOING_COUNT_ENABLED` | A sweep may count how many others are going. | A count that does not match the booking rows. | `false` | Noah |
+| `GROUP_BRING_LIST_ENABLED` | A group bring-list (who brings which snack) uses the existing shared-list path. | A list write while the flag is off. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_CARPOOL_ENABLED` | Who is driving, using the existing carpool path. | A carpool ask while both this flag and `LINQ_GROUP_CARPOOL_ENABLED` are off. | empty, or `false` | unassigned |
+| `GROUP_LINK_CARDS_ENABLED` | A posted https link in a group: Hale says the public facts, then registration continues in each family's 1:1. Needs migration `0231_linq_group_experience`. | A login or payment in the multi-family group. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_MAIL_NOTICE_ENABLED` | A Gmail provider time-change is posted into the household group. No login. | A time-change in a multi-family group, or a login. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_POLLS_ENABLED` | Yes/no/maybe RSVP and time polls in a Linq group. Native cards also need `LINQ_POLLS`; otherwise Hale asks in model-written plain text. Needs migration `0231_linq_group_experience`. | A poll started while the flag is off, or a fallback Yes/No/Maybe template. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_PRIVATE_QUESTION_ENABLED` | A private question (allergy, DOB, address, login, payment) leaves the group for that family's 1:1. | The allergy or another family's calendar spoken in the group. | empty, or `false` | Noah (copy: Sloane) |
 | `GOOGLE_PUSH_SYNC_ENABLED` | Gmail and Calendar can sync from push, not only the 15-minute poll. | Log lines `google push: skipped, flag_off` after the flip, and webhook failures. | `false` | Noah |
 | `GROUP_1TO1_NO_GROUP_RELAY_ENABLED` | The 1:1 coach never offers, nor agrees, to tell the group for a family. Hale has no path from a 1:1 reply into the group. Dark leaves the coach skill bytes unchanged. The model writes the reply. The private aside already never offers. | A 1:1 reply that offers to tell the group, or promises a group post after the parent asked for one. | `false` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` uses Sonnet 5.5 for event classification. Unset stays on Sonnet 5. | Classify errors and fallback count in the web logs. | `current` | Eugene |

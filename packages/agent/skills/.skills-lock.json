@@ -279,6 +279,14 @@
     "file": "group-conflict-alert.md",
     "sha256": "9e212ec16cc0150bed2fe1ae102c5e396e023d092a122fff70c0db21be539a69"
   },
+  "group-experience-read.md": {
+    "file": "group-experience-read.md",
+    "sha256": "73641ff51a4302d66ed707be8b1f910d41ec5c119a2bbfff71f1d1025e56e31d"
+  },
+  "group-experience-voice.md": {
+    "file": "group-experience-voice.md",
+    "sha256": "fe8caaaf6895d8ff9afa467a0aa493009c59b402e306aca6a2ab62ae93a4054e"
+  },
   "group-mention-read.md": {
     "file": "group-mention-read.md",
     "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
