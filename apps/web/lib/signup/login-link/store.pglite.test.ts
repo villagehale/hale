@@ -4,10 +4,20 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { recordSignupOffer } from '../store';
 import { hashLoginCode, loginLinkUrl, newLoginCode } from './code';
-import { consumeLoginLink, lookupLoginLink, mintFreshLoginLink, mintLoginLink } from './store';
+import {
+  type LoginLinkPurpose,
+  consumeLoginLink,
+  lookupLoginLink,
+  mintFreshLoginLink,
+} from './store';
 
 const NOW = new Date('2026-12-01T12:00:00.000Z');
 const URL = 'https://haltonhills.perfectmind.com/Clients/x';
+const PURPOSE: LoginLinkPurpose = {
+  kind: 'login_ask',
+  sessionLabel: 'Preschool Swim Sat 9:00',
+  opensAt: { local: 'Tuesday, December 1, 2026 at 7:00 a.m.', timeZone: 'America/Toronto' },
+};
 
 let db: TestDb;
 
@@ -47,11 +57,12 @@ async function family() {
 describe('provider login links', () => {
   it('mints a hashed single-use 30-minute code bound to parent and host', async () => {
     const f = await family();
-    const minted = await mintLoginLink(db.database, {
+    const minted = await mintFreshLoginLink(db.database, {
       familyId: f.familyId,
       parentUserId: f.parentUserId,
       offerId: f.offerId,
       providerHost: 'haltonhills.perfectmind.com',
+      purpose: PURPOSE,
       now: NOW,
     });
     expect(minted.url).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
@@ -68,7 +79,11 @@ describe('provider login links', () => {
     expect(row?.consumedAt).toBeNull();
 
     const live = await lookupLoginLink(db.database, code, NOW);
-    expect(live.ok).toBe(true);
+    expect(live).toMatchObject({
+      ok: true,
+      providerHost: 'haltonhills.perfectmind.com',
+      purpose: PURPOSE,
+    });
 
     const expired = await lookupLoginLink(db.database, code, new Date(NOW.getTime() + 31 * 60_000));
     expect(expired).toEqual({ ok: false, reason: 'expired' });
@@ -92,11 +107,12 @@ describe('provider login links', () => {
 
   it('a fresh code replaces every open one for that host', async () => {
     const f = await family();
-    const first = await mintLoginLink(db.database, {
+    const first = await mintFreshLoginLink(db.database, {
       familyId: f.familyId,
       parentUserId: f.parentUserId,
       offerId: f.offerId,
       providerHost: 'haltonhills.perfectmind.com',
+      purpose: PURPOSE,
       now: NOW,
     });
     const firstCode = first.url.split('/').pop() as string;
@@ -105,6 +121,7 @@ describe('provider login links', () => {
       parentUserId: f.parentUserId,
       offerId: f.offerId,
       providerHost: 'haltonhills.perfectmind.com',
+      purpose: { ...PURPOSE, kind: 'password_rejected' },
       now: NOW,
     });
     expect(fresh.url).not.toBe(first.url);
