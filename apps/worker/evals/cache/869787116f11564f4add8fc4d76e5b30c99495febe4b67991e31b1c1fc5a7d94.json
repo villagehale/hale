@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment reading as a reply to an unseen schedule question; default in_domain",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1076
+}

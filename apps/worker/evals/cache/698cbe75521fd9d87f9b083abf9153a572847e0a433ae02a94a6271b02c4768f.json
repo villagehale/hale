@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks for indoor activity ideas for Saturday, a family plan rather than a weather fact",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1962
+}

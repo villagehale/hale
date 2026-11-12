@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is a single bubble answering the parent's request, stays in English, asks at most one question which is in the last bubble, gives the drafted time on the family's Toronto clock, and does not name the teen child. It is well-formed and meets the rubric.",
+    "score": 5
+  }
+}

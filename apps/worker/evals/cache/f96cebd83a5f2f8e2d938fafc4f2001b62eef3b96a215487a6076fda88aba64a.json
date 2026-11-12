@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "meta complaint about Hale's own messaging, a reply to something Hale said; defaults to in_domain",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1030
+}
