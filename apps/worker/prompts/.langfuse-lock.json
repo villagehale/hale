@@ -69,6 +69,11 @@
     "version": null,
     "sha256": "27cea18015ddf86912a654ec57b02449f94ec644b414675bc439ad94a4eb37a8"
   },
+  "judges/coach-bubbles": {
+    "name": "judges/coach-bubbles",
+    "version": null,
+    "sha256": "e06b5aab2385ee388555601acfc651e8274006975ce0c34fee44b5670348e16a"
+  },
   "judges/coach-capability-correction": {
     "name": "judges/coach-capability-correction",
     "version": null,

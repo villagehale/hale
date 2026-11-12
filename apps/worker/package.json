@@ -96,6 +96,7 @@
     "eval:coach-local-day": "node evals/run-coach-local-day-eval.mjs --cached-only",
     "eval:coach-capability-correction": "node evals/run-coach-capability-correction-eval.mjs --cached-only",
     "eval:coach-voice-memo": "node evals/run-coach-voice-memo-eval.mjs --cached-only",
+    "eval:coach-bubbles": "node evals/run-coach-bubbles-eval.mjs --cached-only",
     "eval:inbound-photo-facts": "node evals/run-inbound-photo-facts-eval.mjs --cached-only",
     "eval:experience-card": "VIL_500_CARD_EVAL=1 node evals/run-coach-channel-eval.mjs --cached-only --only=experience-card-one-venue,experience-card-compare",
     "eval:proactive-decider": "node evals/run-proactive-decider-eval.mjs --cached-only",
