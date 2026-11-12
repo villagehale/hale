@@ -13,7 +13,7 @@
 //
 //   node evals/run-signup-plan-reply-eval.mjs --max-usd <cap>   # live, then caches
 //   node evals/run-signup-plan-reply-eval.mjs --cached-only      # replay only
-//   node evals/run-signup-plan-reply-eval.mjs --broken           # calibration: must catch all
+//   node evals/run-signup-plan-reply-eval.mjs --broken           # calibration: catch every broken text, pass the control
 //   node evals/run-signup-plan-reply-eval.mjs --dry              # price, no client
 
 import { join } from 'node:path';
@@ -50,11 +50,27 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const JUDGE_SYSTEM = judgePrompt('signup-plan-reply');
 const ALSO_QUEUEING_MEANS =
   'If the parent also queues on their own phone or computer, the family holds two places in line.';
+const ALSO_QUEUEING_ALLOWED =
+  'facts.alsoQueueing is given, so the text may also say that in a few words: that note is part of this text, never a tangent.';
 
 function fixtureFor(id) {
   const fixture = SIGNUP_PLAN_REPLY_FIXTURES.find((item) => item.id === id);
   if (!fixture) throw new Error(`signup-plan-reply: no fixture ${id}`);
   return fixture;
+}
+
+/**
+ * What the judge reads, for a recorded text and a calibration text alike: the facts the
+ * writer read, so the two-places note is neither invented nor off the watchFor.
+ */
+function judgeInput(writer, fixture, text) {
+  const seen = JSON.parse(writer.planReplyUserMessage(fixture.facts, null)).facts;
+  if (!seen.alsoQueueing) return { facts: seen, text, watchFor: fixture.watchFor };
+  return {
+    facts: { ...seen, alsoQueueing: ALSO_QUEUEING_MEANS },
+    text,
+    watchFor: `${fixture.watchFor} ${ALSO_QUEUEING_ALLOWED}`,
+  };
 }
 
 async function main() {
@@ -86,21 +102,22 @@ async function main() {
     let caught = true;
     for (const item of SIGNUP_PLAN_REPLY_BROKEN) {
       const fixture = fixtureFor(item.fixtureId);
+      const mustPass = item.expect === 'pass';
       const violations = writer.planReplyViolations(item.text);
-      if (violations.length > 0) {
-        console.info(`CAUGHT  ${item.id.padEnd(30)} code gate (${violations.join('; ')})`);
+      if (violations.length > 0 && !item.judgeOnly) {
+        if (mustPass) caught = false;
+        console.info(
+          `${mustPass ? 'REFUSED' : 'CAUGHT'}  ${item.id.padEnd(30)} code gate (${violations.join('; ')})`,
+        );
         continue;
       }
-      const verdict = await judge(`broken:${item.id}`, {
-        facts: fixture.facts,
-        text: item.text,
-        watchFor: fixture.watchFor,
-      });
+      const verdict = await judge(`broken:${item.id}`, judgeInput(writer, fixture, item.text));
       if (dry) continue;
       const failed = verdict.score < JUDGE_MIN;
-      if (!failed) caught = false;
+      if (failed === mustPass) caught = false;
+      const label = mustPass ? (failed ? 'REFUSED' : 'PASSED') : failed ? 'CAUGHT' : 'MISSED';
       console.info(
-        `${failed ? 'CAUGHT' : 'MISSED'}  ${item.id.padEnd(30)} judge:${verdict.score} (${verdict.reason}) breaks: ${item.breaks}`,
+        `${label}  ${item.id.padEnd(30)} judge:${verdict.score} (${verdict.reason}) ${mustPass ? `allows: ${item.allows}` : `breaks: ${item.breaks}`}`,
       );
     }
     if (dry) {
@@ -144,13 +161,7 @@ async function main() {
     const failures = [];
     if (text === null) failures.push(`unsendable after retry: ${violation}`);
     else {
-      // The judge reads the facts the writer read, so the two-places note is not "invented".
-      const seen = JSON.parse(writer.planReplyUserMessage(fixture.facts, null)).facts;
-      const verdict = await judge(fixture.id, {
-        facts: seen.alsoQueueing ? { ...seen, alsoQueueing: ALSO_QUEUEING_MEANS } : seen,
-        text,
-        watchFor: fixture.watchFor,
-      });
+      const verdict = await judge(fixture.id, judgeInput(writer, fixture, text));
       if (!dry && verdict.score < JUDGE_MIN) {
         failures.push(`judge:${verdict.score} (${verdict.reason})`);
       }
