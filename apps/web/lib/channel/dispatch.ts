@@ -2,6 +2,8 @@ import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
+import { sendAfterBubbleGap } from '~/lib/channel/linq/bubble-gap';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
@@ -410,10 +412,17 @@ async function dispatchTexts(
       super('channel refused');
     }
   }
+  const paced = coachBubblesEnabled(msg.familyId);
   const outcome = await sendTexts<Sent>({
     texts,
     setKey: legKey,
     alreadySent: (key) => ports.activeDedupe(key),
+    // VIL-682 K5 · lit, a text that follows one which landed in an iMessage chat waits the
+    // bubble gap. The pipe is only known once a text has gone, so SMS is never paced.
+    pace: (send, previous) =>
+      paced && previous.transport === 'imessage' && previous.providerChatId
+        ? sendAfterBubbleGap({ chatId: previous.providerChatId, log: console }, send)
+        : send(),
     send: async (text, index) => {
       // By position, not by text: two identical texts must not both carry the bold.
       const bolded = index === boldAt ? rendered.bold : undefined;

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
@@ -826,6 +827,72 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       { text: 'see you there', bold: undefined },
       { text: SAME, bold: undefined },
     ]);
+  });
+
+  /** A channel whose texts land in one Linq chat on `transport`, stamped with the clock. */
+  function stampedChannel(transport: 'imessage' | 'sms') {
+    const sends: Array<[number, string]> = [];
+    return {
+      sends,
+      channel: {
+        kind: 'sms' as const,
+        async send(input: { userId: string; rendered: RenderedContent }) {
+          sends.push([Date.now(), input.rendered.text]);
+          return {
+            status: 'sent' as const,
+            providerMessageId: `m-${sends.length}`,
+            transport,
+            providerChatId: 'chat-1',
+          };
+        },
+      },
+    };
+  }
+
+  describe('VIL-682 K5 · paced between bubbles', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    });
+
+    it('lit, a set that went as iMessage waits about two seconds before each later text', async () => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const im = stampedChannel('imessage');
+      const { ports, ledger } = makePorts({ renderer: multiRenderer, channels: { sms: im.channel } });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(im.sends).toEqual([
+        [start, TEXTS[0]],
+        [start + 2_000, TEXTS[1]],
+        [start + 4_000, TEXTS[2]],
+      ]);
+      expect(ledger.map((r) => r.dedupeKey)).toEqual([
+        'reminder:k:sms:0',
+        'reminder:k:sms:1',
+        'reminder:k:sms:2',
+      ]);
+    });
+
+    it.each([
+      ['dark, on iMessage', 'false', 'imessage'],
+      ['lit, but the set went as SMS', 'true', 'sms'],
+    ] as const)('%s: the texts go back to back', async (_label, flag, transport) => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
+      const ch = stampedChannel(transport);
+      const { ports } = makePorts({ renderer: multiRenderer, channels: { sms: ch.channel } });
+      const start = Date.now();
+
+      const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+
+      expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(ch.sends).toEqual(TEXTS.map((text) => [start, text]));
+    });
   });
 });
 

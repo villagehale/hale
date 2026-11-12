@@ -51,6 +51,7 @@ import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-re
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
+import { sendAfterBubbleGap } from '~/lib/channel/linq/bubble-gap';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
@@ -739,6 +740,8 @@ export interface ChannelRouterDeps {
   callTimeoutMs?: number;
   /** How long a turn waits before its holding line. Tests shorten it. */
   holdingLineAfterMs?: number;
+  /** Test seam. Production uses BUBBLE_GAP_MS (linq/bubble-gap.ts). */
+  bubbleGapMs?: number;
   /**
    * After the reply is on its way, ask the model whether this turn opened,
    * moved, or closed a workstream (VIL-419). Optional so a router assembled
@@ -1250,6 +1253,11 @@ async function routeChannelMessageInner(
     }, LINQ_TYPING_SHOW_DELAY_MS);
     if (typeof typingDelay.unref === 'function') typingDelay.unref();
   }
+  // A 1:1 iMessage turn lit for bubbles (COACH_BUBBLES). Its several messages, the coach's
+  // bubbles or a handler's ordered sends, arrive paced (linq/bubble-gap.ts).
+  const bubblesLit = !inGroup && takesBubbles(route, job) && coachBubblesEnabled(job.family_id);
+  const pacedChat = bubblesLit && route.channel === 'imessage' ? route.chatId : null;
+  let handlerSent = false;
   const turn: HandlerContext = {
     familyId: job.family_id,
     parentUserId: job.parent_user_id,
@@ -1258,10 +1266,22 @@ async function routeChannelMessageInner(
     ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
     ...(burst.kind === 'anchor' ? { burstSize: burst.members.length } : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
-    // has no way to reach any other one. stopTyping clears whatever the wait put up.
+    // has no way to reach any other one. stopTyping clears whatever the wait put up. On a
+    // lit turn each message after the handler's first (the plan a "yes" composes) waits
+    // the bubble gap.
     send: async (body: string) => {
       await stopTyping();
-      return deps.transport.send({ route, body: await withPassport(body) });
+      const folded = await withPassport(body);
+      const go = () => deps.transport.send({ route, body: folded });
+      const sent =
+        handlerSent && pacedChat
+          ? await sendAfterBubbleGap(
+              { chatId: pacedChat, log: deps.log, gapMs: deps.bubbleGapMs },
+              go,
+            )
+          : await go();
+      handlerSent = true;
+      return sent;
     },
     now,
     resolved: null,
@@ -1903,7 +1923,7 @@ async function routeChannelMessageInner(
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
-      replyBubbles: !inGroup && takesBubbles(route, job) && coachBubblesEnabled(job.family_id),
+      replyBubbles: bubblesLit,
       cardRoute: inGroup ? null : route,
       groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
     });
@@ -3843,6 +3863,9 @@ export class ReplySetIncomplete extends Error {
  * A voice memo the model chose says the whole answer once. Refused, the bubbles go as
  * texts.
  *
+ * Each bubble after the first waits the bubble gap with typing up, out of what is left of
+ * the turn (linq/bubble-gap.ts). Only a lit turn reaches here, so the gap is dark with it.
+ *
  * A failure before any bubble went is today's failure: rethrown, nothing claimed. A
  * failure after one went, whether a send, a receipt write or a ledger read, claims the
  * turn and throws {@link ReplySetIncomplete}. Returns the last bubble's ledger id, which
@@ -3946,6 +3969,7 @@ async function sendReplySet(
   else assertTurnLive();
 
   const route = args.route;
+  const pacedChat = route.channel === 'imessage' ? route.chatId : null;
   let claimed = false;
   const outcome = await sendTexts<{
     providerMessageId: string | null;
@@ -3954,6 +3978,12 @@ async function sendReplySet(
   }>({
     texts: args.bodies,
     setKey: args.setKey,
+    ...(pacedChat
+      ? {
+          pace: (send) =>
+            sendAfterBubbleGap({ chatId: pacedChat, log: deps.log, gapMs: deps.bubbleGapMs }, send),
+        }
+      : {}),
     alreadySent: async (key) => {
       const found = await onRecord(key);
       if (found) bubblesSent = keys.indexOf(key) + 1;

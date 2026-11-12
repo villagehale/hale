@@ -21,6 +21,7 @@ import {
   handleKnownNumberInbound,
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
@@ -40,6 +41,7 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { sendAfterBubbleGap } from '~/lib/channel/linq/bubble-gap';
 import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
@@ -860,12 +862,20 @@ async function sendMapBubbles(
   transcript: TranscriptEntry[],
 ): Promise<'delivered' | 'send_failed'> {
   const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  // VIL-682 K5 · lit, on an iMessage chat each bubble after the first waits the bubble gap.
+  const familyId = ctx.session.familyId;
+  const chatId = ctx.pipe.channel === 'imessage' ? ctx.pipe.chatId : null;
+  const pacedChat = chatId && familyId && coachBubblesEnabled(familyId) ? chatId : null;
   for (const [index, bubble] of toSend.entries()) {
     let landed = false;
     let err: string | null = null;
     try {
-      landed =
-        (await sendAndRecord(database, ctx, bubble, deps, transcript)).channelMessageId != null;
+      const send = () => sendAndRecord(database, ctx, bubble, deps, transcript);
+      const sent =
+        index > 0 && pacedChat
+          ? await sendAfterBubbleGap({ chatId: pacedChat, log: console }, send)
+          : await send();
+      landed = sent.channelMessageId != null;
     } catch (caught) {
       err = caught instanceof Error ? caught.name : 'unknown';
     }

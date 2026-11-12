@@ -5,6 +5,7 @@
  * already use; what is under test is the code's handling of that output.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeCollected } from './extract';
@@ -309,5 +310,53 @@ describe('Devin #982 finding 2: stopAsking paired with a question', () => {
     const { turn, open } = await answerLater(h);
     expect(open).not.toBeNull();
     expect(turn.some((body) => body.includes('?'))).toBe(true);
+  });
+});
+
+describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Run the turn on the fake clock, stepping it until the turn settles. */
+  async function onFakeClock<T>(work: Promise<T>): Promise<T> {
+    let settled = false;
+    void work.finally(() => {
+      settled = true;
+    });
+    while (!settled) await vi.advanceTimersByTimeAsync(100);
+    return work;
+  }
+
+  /** Milliseconds between the swim bubble and the storytime bubble of the map. */
+  async function mapGap(flag: 'true' | 'false'): Promise<number> {
+    vi.useFakeTimers();
+    vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
+    const { fake, transport, deps } = harness();
+    const sentAt = new Map<string, number>();
+    const send = transport.send.bind(transport);
+    transport.send = async (input) => {
+      sentAt.set(input.body, Date.now());
+      return send(input);
+    };
+    const first = await onFakeClock(
+      handleInboundSms(
+        fake.db,
+        transport.inbound(PHONE, 'Ada is 4, H0H 0H0', { transport: 'imessage', chatId: 'chat-1' }),
+        deps,
+      ),
+    );
+    expect(first).toMatchObject({ status: 'provisioned' });
+    const at = (needle: string) =>
+      [...sentAt].find(([body]) => body.includes(needle))?.[1] ?? Number.NaN;
+    return at('branch library') - at('rec centre');
+  }
+
+  it('lit: the next map bubble waits about two seconds', async () => {
+    expect(await mapGap('true')).toBe(BUBBLE_GAP_MS);
+  });
+
+  it('dark: the map bubbles go back to back', async () => {
+    expect(await mapGap('false')).toBe(0);
   });
 });
