@@ -5,6 +5,10 @@ import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import {
+  NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
+  nextDayCheckbackDedupeKey,
+} from '~/lib/channel/next-day-checkback/claim';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
@@ -142,6 +146,7 @@ interface Harness {
   snapshots: FamilySnapshot[];
   composed: number;
   written: ToolCandidate[][];
+  rechecked: string[];
 }
 
 function harness(
@@ -155,6 +160,7 @@ function harness(
     snapshots: [],
     composed: 0,
     written: [],
+    rechecked: [],
   };
   state.deps = {
     client: null,
@@ -176,6 +182,10 @@ function harness(
     outboundTarget: async () => ({ channel: 'legacy' }),
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
+    recheckOpenAsk: async (_db, item) => {
+      state.rechecked.push(item.dedupeKey);
+      return { verdict: 'owed' };
+    },
     ...over,
   };
   return state;
@@ -2897,5 +2907,129 @@ describe('classes the decider sends for their own sweeps', () => {
     expect(await candidate(id)).toMatchObject({ status: 'sent' });
     const [sent] = await audits('email_alert_sent');
     expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
+  });
+});
+
+describe('the next-day check-back', () => {
+  const ANCHOR = new Date('2026-10-08T01:40:00.000Z');
+
+  async function waitingAsk(): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.familyWorkstreams)
+      .values({
+        familyId,
+        title: 'Fall swim registration',
+        status: 'waiting_on_parent',
+        nextStep: 'Pick a session',
+        createdFrom: 'seed',
+        updatedFrom: 'seed',
+        createdAt: ANCHOR,
+        updatedAt: ANCHOR,
+        expiresAt: new Date(ANCHOR.getTime() + 14 * 86_400_000),
+      })
+      .returning({ id: schema.familyWorkstreams.id });
+    return row?.id as string;
+  }
+
+  async function enqueueCheckback(workstreamId: string): Promise<string> {
+    return enqueue(nextDayCheckbackDedupeKey(workstreamId), {
+      kind: 'next_day_checkback',
+      category: 'followup',
+      templateKey: NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
+      what: 'Fall swim registration: Pick a session',
+      why: `next_day_checkback asked=${ANCHOR.toISOString()}`,
+      sourceUrl: null,
+      worthlessAfter: new Date('2026-10-09T12:00:00.000Z'),
+      payload: {
+        nextDayCheckback: { workstreamId, anchorAt: ANCHOR.toISOString(), subjectChildId: null },
+      },
+    });
+  }
+
+  it('is decided and sent while the cadence flag is unset, and marks the ask followed up', async () => {
+    const workstreamId = await waitingAsk();
+    const id = await enqueueCheckback(workstreamId);
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'off', families: 1, sent: 1 });
+    expect(h.rechecked).toEqual([nextDayCheckbackDedupeKey(workstreamId)]);
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [ledger] = await db.database
+      .select()
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.templateKey, NEXT_DAY_CHECKBACK_TEMPLATE_KEY));
+    expect(ledger).toMatchObject({
+      direction: 'out',
+      category: 'followup',
+      dedupeKey: nextDayCheckbackDedupeKey(workstreamId),
+      parentUserId,
+    });
+    const [ask] = await db.database
+      .select({ lastFollowedUpAt: schema.familyWorkstreams.lastFollowedUpAt })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, workstreamId));
+    expect(ask?.lastFollowedUpAt).toEqual(THURSDAY_EVENING);
+  });
+
+  it('drops a closed ask by its name before the writer, and sends nothing', async () => {
+    const id = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll, {
+      recheckOpenAsk: async () => ({ verdict: 'closed', reason: 'finished_elsewhere' }),
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ sent: 0, dropped: 1 });
+    expect(h.composed).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'dropped', reason: 'finished_elsewhere' });
+    const [skipped] = await audits('proactive_cadence_skipped');
+    expect(skipped?.after).toMatchObject({ reason: 'finished_elsewhere', itemIds: [id] });
+  });
+
+  it('holds an ask it could not re-check, with no clock, and sends nothing', async () => {
+    const id = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll, {
+      recheckOpenAsk: async () => ({ verdict: 'unchecked', reason: 'recheck_failed' }),
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ sent: 0, held: 1 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(await candidate(id)).toMatchObject({
+      status: 'held',
+      reason: 'recheck_failed',
+      holdUntil: null,
+    });
+  });
+
+  it('still sends the rest of a batch whose check-back closed', async () => {
+    const checkIn = await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'swim',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const checkback = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll, {
+      recheckOpenAsk: async () => ({ verdict: 'closed', reason: 'parent_returned' }),
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ sent: 1 });
+    expect(h.written).toHaveLength(1);
+    expect(h.written[0]?.map((item) => item.id)).toEqual([checkIn]);
+    expect(await candidate(checkIn)).toMatchObject({ status: 'sent' });
+    expect(await candidate(checkback)).toMatchObject({
+      status: 'dropped',
+      reason: 'parent_returned',
+    });
   });
 });

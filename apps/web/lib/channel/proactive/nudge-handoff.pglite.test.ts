@@ -276,6 +276,7 @@ describe('the nudge hand-off', () => {
       outboundTarget: async () => ({ channel: 'legacy' }),
       threadMessage: threadProactiveMessage,
       fulfillCommitment,
+      recheckOpenAsk: async () => ({ verdict: 'owed' }),
     };
     const summary = await runProactiveReview(db.database, review, MONDAY);
 
