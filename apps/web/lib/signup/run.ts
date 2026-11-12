@@ -96,6 +96,7 @@ export interface SignupRunDeps {
   planReader?: PlanTurnDeps['planReader'];
   planWriter?: PlanTurnDeps['planWriter'];
   mismatchReader?: PlanTurnDeps['mismatchReader'];
+  providerEmail?: PlanTurnDeps['providerEmail'];
   sendProviderEmail?: PlanTurnDeps['sendProviderEmail'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
@@ -200,6 +201,7 @@ export async function runAuthorizedSignup(
     planReader: deps.planReader,
     planWriter: deps.planWriter,
     mismatchReader: deps.mismatchReader,
+    providerEmail: deps.providerEmail,
     declineSeat: deps.declineSeat,
     sendProviderEmail:
       deps.sendProviderEmail ??

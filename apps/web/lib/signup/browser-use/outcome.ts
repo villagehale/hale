@@ -126,6 +126,8 @@ export const BROWSER_USE_PLAN_OUTCOMES = [
   'reached_checkout',
   'not_open',
   'waitlist',
+  /** Asked to join a waitlist (`join_waitlist`), and the page shows the child on it. */
+  'waitlist_joined',
   'sold_out',
   'options_mismatch',
   'needs_login',

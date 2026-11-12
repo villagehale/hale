@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada's spot is held, but run.confirmed is false and the site only has the session in a cart awaiting the security code, so claiming a held spot violates the rules. It also omits the cart and the roughly 9-minute window, and the warm tone is fine otherwise.",
+    "score": 1
+  }
+}

@@ -9,6 +9,8 @@ import { planReplyText, planReplyViolations } from './writer';
 export const SIGNUP_PROVIDER_NOTICE_SKILL = 'signup-provider-notice';
 export const SIGNUP_PROVIDER_NOTICE_TOOL = 'signup_provider_notice';
 export const SIGNUP_PROVIDER_NOTICE_MAX_TOKENS = 800;
+export const SIGNUP_PROVIDER_NOTICE_TOOL_DESCRIPTION =
+  'Write the short registration bubbles the parent sees.';
 export const signupProviderNoticeSchema = z
   .object({
     bubbles: z.array(z.string()).min(1).optional(),
@@ -26,6 +28,19 @@ export const SIGNUP_PROVIDER_NOTICE_TOOL_SCHEMA = {
   required: ['bubbles'],
   additionalProperties: false,
 } as const;
+
+/** The user turn: the notice's facts. */
+export function providerNoticeUserMessage(facts: PlanPrepFacts): string {
+  return JSON.stringify({ facts });
+}
+
+/** The bubbles as sent, or null when any would carry a link. */
+export function providerNoticeBubbles(raw: string | readonly string[] | null): string[] | null {
+  const bubbles = asBubbles(raw);
+  if (!bubbles) return null;
+  const sent = bubbles.map(planReplyText);
+  return sent.some((text) => planReplyViolations(text).length > 0) ? null : sent;
+}
 
 export function createProviderNoticeWriter(
   client: () => AgentClient | null | Promise<AgentClient | null>,
@@ -50,18 +65,14 @@ export function createProviderNoticeWriter(
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
-          userMessage: JSON.stringify({ facts }),
+          userMessage: providerNoticeUserMessage(facts),
           toolName: SIGNUP_PROVIDER_NOTICE_TOOL,
-          toolDescription: 'Write the short registration bubbles the parent sees.',
+          toolDescription: SIGNUP_PROVIDER_NOTICE_TOOL_DESCRIPTION,
           inputJsonSchema: SIGNUP_PROVIDER_NOTICE_TOOL_SCHEMA,
           schema: signupProviderNoticeSchema,
           maxTokens: SIGNUP_PROVIDER_NOTICE_MAX_TOKENS,
         });
-        const bubbles = asBubbles(value.bubbles ?? value.text ?? null);
-        if (!bubbles) return null;
-        const sent = bubbles.map(planReplyText);
-        if (sent.some((text) => planReplyViolations(text).length > 0)) return null;
-        return sent;
+        return providerNoticeBubbles(value.bubbles ?? value.text ?? null);
       } catch {
         return null;
       }

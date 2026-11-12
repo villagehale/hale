@@ -521,6 +521,20 @@ jobs:
       - name: Signup plan reply calibration (cached-only)
         run: pnpm --filter @hale/worker eval:signup-plan-reply:broken
 
+      # A site whose options do not match: the parent's pick (exact), the mismatch notice and
+      # the provider email Hale leaves as a Gmail draft (judge).
+      - name: Signup mismatch read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-mismatch-read
+
+      - name: Signup provider notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-provider-notice
+
+      - name: Signup provider email eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-provider-email
+
+      - name: Signup provider email calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-provider-email:broken
+
       - name: Rec-morning read eval (cached-only)
         run: pnpm --filter @hale/worker eval:rec-morning-read
 

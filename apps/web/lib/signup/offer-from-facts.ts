@@ -10,7 +10,7 @@ import {
   createSignupOfferWriter,
 } from './offer-writer';
 import { parentTimeZone, replySessions } from './plan/conversation';
-import { registrationPlanRunEnabled } from './plan/flag';
+import { registrationMismatchPlanEnabled, registrationPlanRunEnabled } from './plan/flag';
 import { planModeFor } from './plan/towns';
 import {
   type PlanReplyWriter,
@@ -110,11 +110,14 @@ export async function offerSignupFromFacts(
 
   const host = new URL(allowed.href).hostname;
   const mode = planModeFor(host, deps.autoHosts);
+  // Lit, every registration Hale can run goes through the plan lane, where a site whose
+  // options do not match is handled: one whose page states no open is a plan opening now.
+  const everyPlan = mode !== 'parent' && registrationMismatchPlanEnabled(input.familyId);
   const alreadyOpen =
     registrationPlanRunEnabled() &&
     mode !== 'parent' &&
-    input.planOpensAt != null &&
-    input.planOpensAt.getTime() <= input.now.getTime();
+    ((everyPlan && input.planOpensAt == null) ||
+      (input.planOpensAt != null && input.planOpensAt.getTime() <= input.now.getTime()));
   const planOpensAt = alreadyOpen
     ? input.now
     : input.planOpensAt &&
@@ -130,6 +133,7 @@ export async function offerSignupFromFacts(
           opensAt: planOpensAt,
           childName: input.facts.childFirstName ?? child.name,
           registrationUrl: allowed.href,
+          ...(everyPlan && alreadyOpen ? { alreadyOpen: true as const } : {}),
         })
       : await writeOffer(input, deps, { childName: child.name, registrationUrl: allowed.href });
   if (!text) {
@@ -193,7 +197,13 @@ async function writePlanOffer(
   database: Database,
   input: OfferSignupInput,
   deps: OfferSignupDeps,
-  known: { mode: 'auto' | 'assisted'; opensAt: Date; childName: string; registrationUrl: string },
+  known: {
+    mode: 'auto' | 'assisted';
+    opensAt: Date;
+    childName: string;
+    registrationUrl: string;
+    alreadyOpen?: true;
+  },
 ): Promise<string | null> {
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
   const text = await writer.write({
@@ -213,6 +223,7 @@ async function writePlanOffer(
         familyId: input.familyId,
         parentUserId: input.parentUserId,
       })),
+    ...(known.alreadyOpen ? { alreadyOpen: known.alreadyOpen } : {}),
   });
   return text ? planReplyBody(text, known.registrationUrl) : null;
 }

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent said \"let's do the 28th then\", which matches the Nov 28 start (id nov-28), a real non-waitlist choice. No other choice fits the 28th.",
+    "verdict": "option",
+    "choiceId": "nov-28",
+    "question": null
+  },
+  "latencyMs": 3063
+}

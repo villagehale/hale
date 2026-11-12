@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { ProviderEmailBlocked } from './provider-email';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -23,7 +24,12 @@ export type PlanReplyMoment =
   | 'declined'
   | 'clarify'
   | 'refused'
-  | 'run_finished';
+  | 'run_finished'
+  /** The site's options did not match, and the parent picked: */
+  | 'join_waitlist'
+  | 'take_option'
+  | 'emailed'
+  | 'email_unavailable';
 
 export interface PlanReplySession {
   label: string;
@@ -43,6 +49,15 @@ export interface PlanRunFacts {
   holdMinutes: number | null;
 }
 
+/** The site's own option the parent picked, as the page showed it. */
+export interface PlanReplySiteChoice {
+  label: string;
+  startsAt: string | null;
+  priceCents: number | null;
+  billingNote: string | null;
+  waitlist: boolean;
+}
+
 export interface PlanReplyFacts {
   moment: PlanReplyMoment;
   /**
@@ -59,6 +74,14 @@ export interface PlanReplyFacts {
   refusal: string | null;
   run: PlanRunFacts | null;
   language: string | null;
+  /** Registration is open now: the plan names no open time. Absent otherwise. */
+  alreadyOpen?: true;
+  /** For `join_waitlist` and `take_option`: the site's option they picked. */
+  siteChoice?: PlanReplySiteChoice;
+  /** For `email_unavailable`: every option the site showed, to offer again. */
+  siteChoices?: readonly PlanReplySiteChoice[];
+  /** For `email_unavailable`: why Hale could not write the provider email. */
+  emailBlocked?: ProviderEmailBlocked;
 }
 
 export interface PlanReplyWriter {
@@ -97,6 +120,10 @@ function moneyCentsIn(text: string): number[] {
   return out;
 }
 
+function siteChoicesOf(facts: PlanReplyFacts): PlanReplySiteChoice[] {
+  return [...(facts.siteChoice ? [facts.siteChoice] : []), ...(facts.siteChoices ?? [])];
+}
+
 function knownCents(facts: PlanReplyFacts): Set<number> {
   const known = new Set<number>();
   const add = (value: number | null | undefined) => {
@@ -107,6 +134,10 @@ function knownCents(facts: PlanReplyFacts): Set<number> {
   for (const session of facts.sessions) add(session.priceCents);
   add(facts.run?.cartTotalCents);
   add(facts.run?.amountChargedCents);
+  for (const choice of siteChoicesOf(facts)) {
+    add(choice.priceCents);
+    for (const cents of moneyCentsIn(choice.billingNote ?? '')) add(cents);
+  }
   return known;
 }
 
@@ -149,7 +180,11 @@ function clocksIn(text: string): number[] {
 }
 
 function knownClocks(facts: PlanReplyFacts): Set<number> {
-  const blobs = [facts.opensAt.local, ...facts.sessions.map((session) => session.label)];
+  const blobs = [
+    facts.opensAt.local,
+    ...facts.sessions.map((session) => session.label),
+    ...siteChoicesOf(facts).flatMap((choice) => [choice.label, choice.billingNote ?? '']),
+  ];
   const known = new Set<number>();
   for (const blob of blobs) {
     for (const value of clocksIn(blob)) known.add(value);
@@ -212,6 +247,16 @@ function linkFree(facts: PlanReplyFacts): PlanReplyFacts {
             sessionLabel:
               facts.run.sessionLabel === null ? null : withoutLinks(facts.run.sessionLabel),
           },
+    ...(facts.siteChoice ? { siteChoice: linkFreeChoice(facts.siteChoice) } : {}),
+    ...(facts.siteChoices ? { siteChoices: facts.siteChoices.map(linkFreeChoice) } : {}),
+  };
+}
+
+function linkFreeChoice(choice: PlanReplySiteChoice): PlanReplySiteChoice {
+  return {
+    ...choice,
+    label: withoutLinks(choice.label),
+    billingNote: choice.billingNote === null ? null : withoutLinks(choice.billingNote),
   };
 }
 
@@ -219,7 +264,11 @@ function linkFree(facts: PlanReplyFacts): PlanReplyFacts {
 export function planReplyUserMessage(facts: PlanReplyFacts, violation: string | null): string {
   const clean = linkFree(facts);
   return JSON.stringify({
-    facts: QUEUE_MOMENTS.has(clean.moment) ? { ...clean, alsoQueueing: true } : clean,
+    // A site already open has no line to hold a place in.
+    facts:
+      QUEUE_MOMENTS.has(clean.moment) && !clean.alreadyOpen
+        ? { ...clean, alsoQueueing: true }
+        : clean,
     violation,
   });
 }

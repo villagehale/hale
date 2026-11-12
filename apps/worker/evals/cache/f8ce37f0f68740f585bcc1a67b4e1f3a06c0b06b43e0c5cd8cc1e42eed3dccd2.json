@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says Hale is registering Ada for the Nov 21 start now, states the billing note about December being billed while away, and says nothing is paid yet. It does not say registered or booked, is in Chinese, is two short sentences, and has no invented facts. The $120 price matches siteChoice priceCents, and it avoids the forbidden claims. Minor concern: 'Hale 现在就帮 Ada 报名' is close to implying completion, but it is framed as in progress, so the score stays high.",
+    "score": 5
+  }
+}

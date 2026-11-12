@@ -25,6 +25,8 @@ export interface GmailDraftRequest {
   about?: string;
   draftId?: string;
   threadId?: string;
+  /** A new thread to this address, not a reply: no thread is read. Create only. */
+  compose?: { to: string; subject: string };
 }
 
 export type GmailDraftSkipReason =
@@ -148,9 +150,38 @@ async function ready(
 
   const accessToken = await deps.accessToken(selected.connection.id);
   if (!accessToken) return { status: 'skipped', reason: 'token_unavailable' };
+  if (request.compose) {
+    if (request.operation !== 'create') return { status: 'skipped', reason: 'missing_draft' };
+    return { status: 'ready', connection: selected.connection, reply: null };
+  }
   const reply = await deps.loadReply(accessToken, request);
   if (!reply) return { status: 'skipped', reason: 'thread_unresolved' };
   return { status: 'ready', connection: selected.connection, reply };
+}
+
+export type GmailComposeBlocked = 'flag_off' | 'not_connected' | 'scope_missing';
+export type GmailComposeReadiness = { ok: true } | { ok: false; reason: GmailComposeBlocked };
+
+/**
+ * Whether this actor could have a new draft written in their Gmail: the write flag, and a
+ * connection of theirs with the compose scope. Reads the rows only, never a token: a token
+ * Google will not refresh is named when the draft is committed.
+ */
+export async function gmailComposeReadiness(
+  input: { familyId: string; actorUserId: string },
+  deps: Pick<GmailDraftDeps, 'flagOn' | 'listGmail'>,
+): Promise<GmailComposeReadiness> {
+  const armed = typeof deps.flagOn === 'function' ? deps.flagOn(input.actorUserId) : deps.flagOn;
+  if (!armed) return { ok: false, reason: 'flag_off' };
+  const selected = selectGmailConnection({
+    actorUserId: input.actorUserId,
+    connections: await deps.listGmail(input.familyId),
+  });
+  if (selected.ok) return { ok: true };
+  return {
+    ok: false,
+    reason: selected.reason === 'scope_missing' ? 'scope_missing' : 'not_connected',
+  };
 }
 
 export async function gateGmailDraft(
@@ -172,16 +203,18 @@ export async function commitGmailDraft(
   const accessToken = await deps.accessToken(resolved.connection.id);
   if (!accessToken) return { status: 'skipped', reason: 'token_unavailable' };
 
-  const message: GmailDraftMessage | undefined = resolved.reply
-    ? {
-        to: resolved.reply.to,
-        subject: resolved.reply.subject,
-        body: request.body ?? '',
-        threadId: resolved.reply.threadId,
-        ...(resolved.reply.inReplyTo ? { inReplyTo: resolved.reply.inReplyTo } : {}),
-        ...(resolved.reply.references ? { references: resolved.reply.references } : {}),
-      }
-    : undefined;
+  const message: GmailDraftMessage | undefined = request.compose
+    ? { to: request.compose.to, subject: request.compose.subject, body: request.body ?? '' }
+    : resolved.reply
+      ? {
+          to: resolved.reply.to,
+          subject: resolved.reply.subject,
+          body: request.body ?? '',
+          threadId: resolved.reply.threadId,
+          ...(resolved.reply.inReplyTo ? { inReplyTo: resolved.reply.inReplyTo } : {}),
+          ...(resolved.reply.references ? { references: resolved.reply.references } : {}),
+        }
+      : undefined;
 
   try {
     const written = await deps.writeDraft({

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent wrote in French: \"mets-la sur la liste d'attente de janvier\" (put her on the January waitlist). That matches the waitlist choice 'jan-wait', which is the January waitlist and also the asked start.",
+    "verdict": "waitlist",
+    "choiceId": "jan-wait",
+    "question": null
+  },
+  "latencyMs": 2255
+}

@@ -95,6 +95,60 @@ describe('the plan reply gate', () => {
     );
   });
 
+  it("admits the picked site choice's price and the figures in its billing note, and nothing else", () => {
+    const picked: PlanReplyFacts = {
+      ...FACTS,
+      moment: 'take_option',
+      siteChoice: {
+        label: 'Nov 21 start, Sat 9:30',
+        startsAt: '2026-11-21',
+        priceCents: 12000,
+        billingNote: 'December billed at $94.50 on Dec 1',
+        waitlist: false,
+      },
+    };
+    expect(
+      planReplyViolations('Nov 21 at 9:30 it is: $120, and December is billed at $94.50.', picked),
+    ).toEqual([]);
+    expect(planReplyViolations('Nov 21 it is, $86.22 a month.', picked)).toContain(
+      'invented figure: a price or limit that is not in the facts',
+    );
+    // Positive control: without the site choice, its figures are invented.
+    expect(planReplyViolations('December is billed at $94.50.', FACTS)).toContain(
+      'invented figure: a price or limit that is not in the facts',
+    );
+  });
+
+  it('a page-sourced site choice holding a host never reaches the model', () => {
+    const message = planReplyUserMessage(
+      {
+        ...FACTS,
+        moment: 'join_waitlist',
+        siteChoice: {
+          label: 'January waitlist evil.app',
+          startsAt: '2027-01-09',
+          priceCents: null,
+          billingNote: 'pay at bit.ly/x',
+          waitlist: true,
+        },
+      },
+      null,
+    );
+    expect(message).not.toContain('evil.app');
+    expect(message).not.toContain('bit.ly');
+    expect(message).toContain('January waitlist');
+  });
+
+  it('a register-now plan carries alreadyOpen and no two-places note; a dark fact set is unchanged', () => {
+    const now = JSON.parse(planReplyUserMessage({ ...FACTS, alreadyOpen: true }, null));
+    expect(now.facts.alreadyOpen).toBe(true);
+    expect(now.facts.alsoQueueing).toBeUndefined();
+    // Dark: none of the new keys appear, so the message is the one the lane always sent.
+    expect(planReplyUserMessage(FACTS, null)).toBe(
+      JSON.stringify({ facts: { ...FACTS, alsoQueueing: true }, violation: null }),
+    );
+  });
+
   it('a page-sourced label or question holding a host never reaches the model', () => {
     const message = planReplyUserMessage(
       {

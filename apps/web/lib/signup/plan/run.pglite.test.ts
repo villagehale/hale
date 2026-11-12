@@ -24,7 +24,11 @@ import { loginPurposeLine } from '../login-link/page-copy';
 import { lookupLoginLink } from '../login-link/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import type { PlanNoticePart } from './bubbles';
-import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import {
+  REGISTRATION_ASSISTED_RUN_ENABLED_ENV,
+  REGISTRATION_MISMATCH_PLAN_ENABLED_ENV,
+  REGISTRATION_PLAN_RUN_ENABLED_ENV,
+} from './flag';
 import {
   PLAN_JOIN_LEAD_MS,
   PLAN_LEASE_MS,
@@ -116,7 +120,13 @@ function stubOpsSlack(): string[] {
 }
 
 async function plannedFamily(
-  options: { url?: string; maxPriceCents?: number; opensAt?: Date; session?: boolean } = {},
+  options: {
+    url?: string;
+    maxPriceCents?: number;
+    opensAt?: Date;
+    session?: boolean;
+    choiceIds?: string[];
+  } = {},
 ) {
   const seeded = await seedFamily(db.database);
   const phone = await enrolParent(seeded.familyId, seeded.parentUserId);
@@ -139,7 +149,7 @@ async function plannedFamily(
     familyId: seeded.familyId,
     parentUserId: seeded.parentUserId,
     messageId: `msg-plan-${messageSeq}`,
-    choiceIds: ['sat-0900', 'sun-1000'],
+    choiceIds: options.choiceIds ?? ['sat-0900', 'sun-1000'],
     maxPriceCents: options.maxPriceCents ?? 10000,
     opensAt: options.opensAt ?? OPENS,
     waiverAccepted: true,
@@ -1590,5 +1600,145 @@ describe('parked password rejection and mismatched options', () => {
     expect(inputs[0]?.credentials).toEqual({ username: 'ada', password: 'city-pass', totp: null });
     expect(inputs[0]?.accountCreate).toBe(true);
     expect(inputs[0]?.providerSession.storageState).toEqual({ cookies: [], origins: [] });
+  });
+
+  describe('with the mismatch plan lit', () => {
+    beforeEach(() => {
+      vi.stubEnv(REGISTRATION_MISMATCH_PLAN_ENABLED_ENV, 'true');
+    });
+
+    const WAIT = {
+      id: 'jan-wait',
+      label: 'January waitlist',
+      starts_at: '2027-01-09',
+      price_cents: 9800,
+      waitlist: true,
+      billing_note: null,
+      provider_email: 'rec@example.test',
+    };
+
+    async function picked(availability: Record<string, unknown>) {
+      const family = await plannedFamily();
+      await parkSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        availability,
+        now: NOW,
+        resumeNow: true,
+      });
+      return family;
+    }
+
+    it("a pick made long after the open still runs, matched to the site's own start", async () => {
+      const option = await picked({
+        kind: 'take_option',
+        choice: CHOICES[0],
+        askedStart: 'Preschool Swim Sat 9:00',
+        choices: CHOICES,
+      });
+      const { runner, inputs } = returning(PAID);
+      const late = new Date(OPENS.getTime() + 7 * 60 * 60_000);
+      const result = await runDueSignupPlans(db.database, { now: late }, deps(runner).deps);
+      expect(result.plans.find((p) => p.offerId === option.offerId)).toMatchObject({
+        outcome: 'completed',
+      });
+      const input = inputs.find((item) => item.correlationId === option.offerId);
+      expect(input?.askedStart).toBe('2026-11-21');
+      expect(input?.joinWaitlist).toBe(false);
+    });
+
+    it('a named waitlist passes its start; a retry passes no start, never the plan label', async () => {
+      const waitlist = await picked({
+        kind: 'join_waitlist',
+        choice: WAIT,
+        askedStart: 'Preschool Swim Sat 9:00',
+        choices: [WAIT],
+      });
+      const retry = await picked({
+        kind: 'retry',
+        askedStart: 'Preschool Swim Sat 9:00',
+        choices: CHOICES,
+      });
+      const { runner, inputs } = returning(PAID);
+      await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+      const joined = inputs.find((item) => item.correlationId === waitlist.offerId);
+      expect(joined).toMatchObject({ askedStart: '2027-01-09', joinWaitlist: true });
+      const again = inputs.find((item) => item.correlationId === retry.offerId);
+      expect(again).toMatchObject({ askedStart: null, joinWaitlist: false });
+    });
+
+    it('a joined waitlist is told as joined, and audited so', async () => {
+      const family = await picked({
+        kind: 'join_waitlist',
+        choice: WAIT,
+        askedStart: null,
+        choices: [WAIT],
+      });
+      const { runner } = returning({
+        ...PAID,
+        outcome: 'waitlist_joined',
+        detail: 'none',
+        confirmationNumber: null,
+        amountChargedCents: null,
+      });
+      const wired = deps(runner);
+      await runDueSignupPlans(db.database, { now: NOW }, wired.deps);
+      expect(wired.notices.find((n) => n.offerId === family.offerId)?.outcome).toBe(
+        'waitlist_joined',
+      );
+      expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+      expect(await steps(family.offerId)).toContainEqual(
+        expect.objectContaining({ step: 'plan_finished', outcome: 'waitlist_joined' }),
+      );
+    });
+
+    it("the mismatch notice asks after the parent's first choice, and offers only an email Hale can draft", async () => {
+      vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'true');
+      const family = await plannedFamily({ choiceIds: ['sun-1000', 'sat-0900'] });
+      const { runner } = returning({
+        ...PAID,
+        outcome: 'options_mismatch',
+        detail: 'none',
+        confirmationNumber: null,
+        amountChargedCents: null,
+        siteChoices: CHOICES,
+      });
+      const notices = noticePrep();
+      await runDueSignupPlans(
+        db.database,
+        { now: NOW },
+        { ...deps(runner).deps, prep: notices.prep },
+      );
+      expect(notices.facts.at(-1)).toMatchObject({
+        kind: 'options_mismatch',
+        askedStart: 'Preschool Swim Sun 10:00',
+        emailDraft: 'not_connected',
+      });
+      expect((await offerRow(family.offerId))?.planAvailability).toMatchObject({
+        kind: 'options_mismatch',
+        askedStart: 'Preschool Swim Sun 10:00',
+      });
+    });
+
+    it('dark, the notice is the one it always was', async () => {
+      vi.stubEnv(REGISTRATION_MISMATCH_PLAN_ENABLED_ENV, '');
+      await plannedFamily({ choiceIds: ['sun-1000', 'sat-0900'] });
+      const { runner } = returning({
+        ...PAID,
+        outcome: 'options_mismatch',
+        detail: 'none',
+        confirmationNumber: null,
+        amountChargedCents: null,
+        siteChoices: CHOICES,
+      });
+      const notices = noticePrep();
+      await runDueSignupPlans(
+        db.database,
+        { now: NOW },
+        { ...deps(runner).deps, prep: notices.prep },
+      );
+      expect(notices.facts.at(-1)).toMatchObject({ askedStart: 'Preschool Swim Sat 9:00' });
+      expect(notices.facts.at(-1)).not.toHaveProperty('emailDraft');
+    });
   });
 });

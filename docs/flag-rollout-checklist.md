@@ -117,6 +117,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `REGISTRATION_LADDER_ENABLED` | `apps/web/lib/channel/lanes.ts:22` (compared at :26) | `true` | OFF | unset | Barton |
 | `REGISTRATION_ASSISTED_RUN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:22` | `true` | OFF | empty, or `false` | Barton |
 | `REGISTRATION_PLAN_RUN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:10` | `true` | OFF | empty, or `false` | Barton |
+| `REGISTRATION_MISMATCH_PLAN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:30` (`isEnabled('registration-mismatch-plan', familyId)`, only with `REGISTRATION_PLAN_RUN_ENABLED`; `REGISTRATION_MISMATCH_PLAN_FAMILY_ALLOWLIST` arms families) | `true` | OFF | unset | Barton |
 | `SAME_ACTIVITY_MEET_ENABLED` | `apps/web/lib/channel/same-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
 | `SIGNUP_BROWSER_RUNTIME` | `apps/web/lib/signup/runtime/acquire.ts:80` (`local`, `vercel_sandbox` or `browserbase`, exact, at :81) | `local`, `vercel_sandbox`, or `browserbase` | no runtime chosen | unset | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `apps/web/lib/signup/runtime/flag.ts:19` | `true` | OFF | `false` | Noah |

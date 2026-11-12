@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent asked Hale to email the provider to ask about a January start, which is the start they originally wanted. This matches the email verdict. They did not pick a listed option or the waitlist.",
+    "verdict": "email",
+    "choiceId": null,
+    "question": null
+  },
+  "latencyMs": 2338
+}

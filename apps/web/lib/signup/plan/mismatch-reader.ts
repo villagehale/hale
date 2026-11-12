@@ -8,22 +8,31 @@ import type { SiteChoice } from '../site-choices';
 export const SIGNUP_MISMATCH_READ_SKILL = 'signup-mismatch-read';
 export const SIGNUP_MISMATCH_READ_TOOL = 'signup_mismatch_read';
 export const SIGNUP_MISMATCH_READ_MAX_TOKENS = 1024;
+export const SIGNUP_MISMATCH_READ_TOOL_DESCRIPTION =
+  'Decide which site option the parent picked, if any.';
 
-const VERDICTS = ['waitlist', 'option', 'email', 'unclear', 'unrelated'] as const;
+const VERDICTS = ['waitlist', 'option', 'email', 'retry', 'unclear', 'unrelated'] as const;
 
 export type MismatchReading =
-  | { verdict: 'waitlist' }
+  /** `choiceId`: the site's waitlist choice they named, or null. */
+  | { verdict: 'waitlist'; choiceId: string | null }
   | { verdict: 'option'; choiceId: string }
   | { verdict: 'email' }
+  /** The provider fixed it: try what they asked for again. */
+  | { verdict: 'retry' }
   | { verdict: 'unclear'; question: string }
   | { verdict: 'unrelated' };
 
+export interface MismatchReadInput {
+  text: string;
+  askedStart: string | null;
+  choices: readonly SiteChoice[];
+  /** True once Hale drafted the provider email: their words may relay its answer. */
+  emailed?: true;
+}
+
 export interface MismatchReader {
-  read(input: {
-    text: string;
-    askedStart: string | null;
-    choices: readonly SiteChoice[];
-  }): Promise<MismatchReading | null>;
+  read(input: MismatchReadInput): Promise<MismatchReading | null>;
 }
 
 export const signupMismatchReadSchema = z
@@ -51,8 +60,17 @@ export function toMismatchReading(
   raw: z.infer<typeof signupMismatchReadSchema>,
   choices: readonly SiteChoice[],
 ): MismatchReading | null {
-  if (raw.verdict === 'waitlist') return { verdict: 'waitlist' };
+  if (raw.verdict === 'waitlist') {
+    const id = raw.choiceId?.trim() ?? '';
+    const waitlists = choices.filter((choice) => choice.waitlist);
+    // A named waitlist choice, or the page's only one.
+    const named =
+      waitlists.find((choice) => choice.id === id) ??
+      (waitlists.length === 1 ? waitlists[0] : undefined);
+    return { verdict: 'waitlist', choiceId: named ? named.id : null };
+  }
   if (raw.verdict === 'email') return { verdict: 'email' };
+  if (raw.verdict === 'retry') return { verdict: 'retry' };
   if (raw.verdict === 'unrelated') return { verdict: 'unrelated' };
   if (raw.verdict === 'option') {
     const id = raw.choiceId?.trim() ?? '';
@@ -65,12 +83,9 @@ export function toMismatchReading(
   return { verdict: 'unclear', question };
 }
 
-export function signupMismatchReadUserMessage(input: {
-  text: string;
-  askedStart: string | null;
-  choices: readonly SiteChoice[];
-}): string {
+export function signupMismatchReadUserMessage(input: MismatchReadInput): string {
   return JSON.stringify({
+    ...(input.emailed ? { emailed: true } : {}),
     askedStart: input.askedStart,
     choices: input.choices.map((choice) => ({
       ...choice,
@@ -107,7 +122,7 @@ export function createMismatchReader(
           system: skill.instructions,
           userMessage: signupMismatchReadUserMessage(input),
           toolName: SIGNUP_MISMATCH_READ_TOOL,
-          toolDescription: 'Decide which site option the parent picked, if any.',
+          toolDescription: SIGNUP_MISMATCH_READ_TOOL_DESCRIPTION,
           inputJsonSchema: SIGNUP_MISMATCH_READ_TOOL_SCHEMA,
           schema: signupMismatchReadSchema,
           maxTokens: SIGNUP_MISMATCH_READ_MAX_TOKENS,

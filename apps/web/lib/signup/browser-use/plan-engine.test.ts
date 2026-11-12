@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SignupIdentity } from '../types';
 import { browserUseApi } from './client';
 import type { BrowserUseEngineDeps } from './engine';
+import { parsePlanOutput } from './outcome';
 import {
   type BrowserUsePlanInput,
   type PlanEngineStep,
@@ -901,5 +902,14 @@ describe('plan facts', () => {
     // Positive control: with the slot granted, the label goes.
     const granted = planFacts(plan().input) as { choices: Record<string, unknown>[] };
     expect(granted.choices[0]?.label).toBe('Preschool Swim Sat 9:00');
+  });
+});
+
+describe('plan output', () => {
+  it('reads a waitlist the run joined as its own outcome, and nothing invented', () => {
+    expect(
+      parsePlanOutput({ ...CHECKOUT, outcome: 'waitlist_joined', choice_index: null }),
+    ).toMatchObject({ outcome: 'waitlist_joined' });
+    expect(parsePlanOutput({ ...CHECKOUT, outcome: 'joined', choice_index: null })).toBeNull();
   });
 });

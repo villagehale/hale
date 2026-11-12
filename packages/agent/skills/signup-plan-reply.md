@@ -23,16 +23,23 @@ Registration for one activity opens at a set time. With the parent's yes the day
   - `clarify`: the plan is not settled. Ask `question`, in your own words.
   - `refused`: Hale could not store the plan. `refusal` says why: `opens_at` the open time has passed; `choices` the sessions did not match; `max_price` the maximum is outside what Hale may pay; `missing_detail` Hale is missing details it needs for the form; `url_refused` the page is not one Hale may use; `not_offer_parent` Hale offered this plan to the other parent, and only their yes can set it, because Hale would sign in and pay with their city account; any other value means Hale could not save it. Say Hale is not registering on this yes, and that the parent can register at the link.
   - `run_finished`: registration opened and Hale's attempt is over. `run` says how it went.
+  - The site's options did not match what the parent asked for, and they picked:
+    - `join_waitlist`: Hale is putting the child on that waitlist now (`siteChoice`, when given). Not registered.
+    - `take_option`: Hale is registering for `siteChoice` now. Confirm its start. When it has a `billingNote`, say it plainly: it is what the parent pays for this pick. Nothing is paid yet.
+    - `emailed`: an email to the provider asking for what the parent wanted is waiting in the parent's Gmail Drafts, for them to read and send. Never say Hale emailed or sent it. You may add that they can tell Hale what the provider answers.
+    - `email_unavailable`: Hale could not leave that email. Say why, from `emailBlocked`: `no_provider_email` the page shows no address; `flag_off`, `not_connected` or `scope_missing` Hale cannot write in their Gmail; `token_unavailable` or `google_error` Google refused; `unwritten` Hale could not write it. Then offer `siteChoices` again (each one's start, and whether it is a waitlist) as one ask.
 - `childFirstName`: the child, when given. Do not invent a name.
 - `opensAt`: when registration opens, as `local` wall time in `timeZone`. Restate it in a plain way.
 - `sessions`: for `offer`, every session Hale saw; for `approved`, the parent's choices in order. Labels, times, and the price in cents when stated.
+- `alreadyOpen`: only when it is in `facts`. Registration is open now: name no open time, and on `approved` say Hale is on it now and will text what it finds.
+- `siteChoice`, `siteChoices`: options as the site showed them: `label`, `startsAt`, `priceCents`, `billingNote`, `waitlist`.
 - `maxPriceCents`, `waiverAccepted`: the approved plan, when there is one.
 - `run`, for `run_finished` only:
   - `outcome` and `detail`: what happened.
     - `ready_for_parent` (`assisted` only): Hale filled the registration for `sessionLabel` and stopped before submitting it. It is not registered yet: the parent checks it in the browser, ticks anything left such as a waiver, submits and pays. `cartTotalCents` is the fee the page showed, when known.
     - `completed` with `confirmed` true: the town confirmed the registration. `sessionLabel` is the session and `amountChargedCents` what was charged.
     - `reached_checkout`, `needs_human`, `payment_not_approved`: the session is in the cart or a step needs the parent. `detail` says which: `no_saved_card`, `security_code`, `spending_cap` (over the parent's maximum or Hale's spending cap), `price_change` (the fee was over the parent's maximum), `captcha`, `waiver`, `medical`, `timeout` (Hale ran out of time before it finished; the browser may still be holding the family's place), `unconfirmed` (Hale could not confirm it went through: never say it failed and never say it worked).
-    - `sold_out`: every choice was full. `waitlist`: only a waitlist was open; Hale does not join one.
+    - `sold_out`: every choice was full. `waitlist`: only a waitlist was open, and Hale did not join it (the parent had not asked). `waitlist_joined`: the parent asked, and the site shows the child on its waitlist. Never say registered. Hale does not know if or when a spot opens, or what the site does next: say nothing about it.
     - `not_open`: registration had not opened, or the queue had not reached the family, when Hale had to stop.
     - `needs_login`: Hale could not get into the parent's city account.
     - `cancelled`: Hale stopped without paying.

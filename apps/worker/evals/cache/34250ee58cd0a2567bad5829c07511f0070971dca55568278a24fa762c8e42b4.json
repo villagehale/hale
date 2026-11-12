@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent asked to be put on the waitlist for January, which matches the asked start and the 'jan-wait' waitlist choice. They named the January waitlist, so choiceId is that choice's id.",
+    "verdict": "waitlist",
+    "choiceId": "jan-wait",
+    "question": null
+  },
+  "latencyMs": 1951
+}

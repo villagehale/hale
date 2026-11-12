@@ -20,6 +20,7 @@ import {
 } from '../store';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
+import { registrationMismatchPlanEnabled } from './flag';
 
 /** A parent ranks a few sessions, not a catalogue. */
 export const MAX_PLAN_CHOICES = 5;
@@ -154,7 +155,8 @@ export async function approveSignupPlan(
 /**
  * Put a running plan back to `planned` with what the site showed, so Hale waits
  * on the parent instead of handing the offer back. Used for a rejected password
- * and for options that do not match what they asked for.
+ * and for options that do not match what they asked for. `resumeNow` parks the parent's
+ * pick for the next sweep: the site was already seen open, so its run is a register-now.
  */
 export async function parkSignupPlan(
   database: Database,
@@ -163,6 +165,7 @@ export async function parkSignupPlan(
     familyId: string;
     availability: Record<string, unknown>;
     now: Date;
+    resumeNow?: true;
   },
 ): Promise<boolean> {
   const offers = schema.authorizedSignupOffers;
@@ -174,6 +177,7 @@ export async function parkSignupPlan(
       planLeaseUntil: null,
       planAvailability: input.availability,
       planAvailabilityAt: input.now,
+      ...(input.resumeNow ? { planAlreadyOpen: true } : {}),
       updatedAt: input.now,
     })
     .where(
@@ -268,7 +272,7 @@ export async function claimDuePlan(
           and o.plan_opens_at <= ${dueBy}::timestamptz
           and (
             o.plan_availability is null
-            or o.plan_availability->>'kind' in ('join_waitlist', 'take_option')
+            or o.plan_availability->>'kind' in ('join_waitlist', 'take_option', 'retry')
           )
           and not exists (
             select 1 from authorized_signup_offers busy
@@ -494,6 +498,10 @@ export async function loadConversablePlans(
   input: { familyId: string; now: Date },
 ): Promise<ConversablePlan[]> {
   const offers = schema.authorizedSignupOffers;
+  // Lit, a plan whose provider email Hale drafted still waits on the parent's words too.
+  const parked = registrationMismatchPlanEnabled(input.familyId)
+    ? sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected', 'emailed')`
+    : sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected')`;
   const rows = await database
     .select()
     .from(offers)
@@ -503,11 +511,7 @@ export async function loadConversablePlans(
         or(
           and(
             inArray(offers.status, ['pending', 'planned']),
-            or(
-              gt(offers.planOpensAt, input.now),
-              eq(offers.planAlreadyOpen, true),
-              sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected')`,
-            ),
+            or(gt(offers.planOpensAt, input.now), eq(offers.planAlreadyOpen, true), parked),
           ),
           and(
             eq(offers.status, 'submitting'),

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says Ada is registered and all set, but run.confirmed is false and the outcome is waitlist_joined; it should say Ada is on the waitlist. Claiming registration is a critical factual error.",
+    "score": 1
+  }
+}

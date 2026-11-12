@@ -428,6 +428,80 @@ describe('offerSignupFromFacts (production caller)', () => {
     expect(row?.planOpensAt?.toISOString()).toBe(NOW.toISOString());
   });
 
+  it('lit, an offer with no open time is a register-now plan the plan writer offers as open now', async () => {
+    const seeded = await family();
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    const planFacts: PlanReplyFacts[] = [];
+    const writer = echoOfferWriter();
+    const run = (planOpensAt: Date | null) =>
+      offerSignupFromFacts(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          childId: seeded.childId,
+          now: NOW,
+          planOpensAt,
+          facts: {
+            source: 'chat',
+            evidence: 'Winter swim registration',
+            registrationUrl: HREF,
+            sessions: [SESSION],
+            approvedPriceCents: null,
+            language: null,
+          },
+        },
+        {
+          writer,
+          autoHosts: [new URL(HREF).hostname],
+          planWriter: {
+            write: async (facts) => {
+              planFacts.push(facts);
+              return 'Plan text from the model.';
+            },
+          },
+        },
+      );
+    const handBack = (offerId: string) =>
+      db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ status: 'handed_back' })
+        .where(eq(schema.authorizedSignupOffers.id, offerId));
+    const stored = async (offerId: string) => {
+      const [row] = await db.database
+        .select()
+        .from(schema.authorizedSignupOffers)
+        .where(eq(schema.authorizedSignupOffers.id, offerId));
+      return row;
+    };
+
+    // Dark: no open time is the one-shot offer, and an open in the past names nothing new.
+    const dark = await run(null);
+    if (!dark.ok) throw new Error(dark.reason);
+    expect(writer.facts).toHaveLength(1);
+    expect((await stored(dark.offerId))?.planOpensAt).toBeNull();
+    await handBack(dark.offerId);
+    const darkPast = await run(new Date(NOW.getTime() - 60 * 60_000));
+    if (!darkPast.ok) throw new Error(darkPast.reason);
+    expect(planFacts.at(-1)).not.toHaveProperty('alreadyOpen');
+    await handBack(darkPast.offerId);
+
+    vi.stubEnv('REGISTRATION_MISMATCH_PLAN_FAMILY_ALLOWLIST', seeded.familyId);
+    const lit = await run(null);
+    if (!lit.ok) throw new Error(lit.reason);
+    expect(writer.facts).toHaveLength(1);
+    expect(planFacts.at(-1)).toMatchObject({ moment: 'offer', alreadyOpen: true });
+    const row = await stored(lit.offerId);
+    expect(row?.planAlreadyOpen).toBe(true);
+    expect(row?.planOpensAt?.toISOString()).toBe(NOW.toISOString());
+    await handBack(lit.offerId);
+    // A future open stays a day-before plan, lit or not.
+    const ahead = await run(new Date(NOW.getTime() + 20 * 60 * 60_000));
+    if (!ahead.ok) throw new Error(ahead.reason);
+    expect(planFacts.at(-1)).not.toHaveProperty('alreadyOpen');
+    expect((await stored(ahead.offerId))?.planAlreadyOpen).toBe(false);
+  });
+
   it('is the production caller: offer-copy is not imported', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./offer-from-facts.ts', import.meta.url)),

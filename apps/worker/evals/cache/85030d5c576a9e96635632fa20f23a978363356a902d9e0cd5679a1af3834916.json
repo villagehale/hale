@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent wrote in Chinese: \"帮我写邮件问问他们\" (\"help me write an email to ask them\"). They want Hale to email the provider to ask about the January start they originally wanted, rather than picking Nov 21, Nov 28 or the January waitlist. Emailed is not set, so this is a request to send the email, not a relay of the provider's answer.",
+    "verdict": "email",
+    "choiceId": null,
+    "question": null
+  },
+  "latencyMs": 2570
+}

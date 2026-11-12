@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent asked for a December 5 start, but none of the choices has that date. The available starts are Nov 21, Nov 28 and the January waitlist, so I can't tell which one they mean.",
+    "verdict": "unclear",
+    "choiceId": null,
+    "question": "I don't see a December 5 start. Would you like Nov 21, Nov 28, or the January waitlist instead?"
+  },
+  "latencyMs": 3318
+}

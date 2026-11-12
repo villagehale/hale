@@ -135,6 +135,10 @@ export const FLAGS = [
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),
   exact('registration-ladder', 'REGISTRATION_LADDER_ENABLED'),
   exact('registration-plan-run', 'REGISTRATION_PLAN_RUN_ENABLED'),
+  exact('registration-mismatch-plan', 'REGISTRATION_MISMATCH_PLAN_ENABLED', {
+    allowlistEnv: 'REGISTRATION_MISMATCH_PLAN_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
   exact('same-activity-meet', 'SAME_ACTIVITY_MEET_ENABLED'),
   exact('signup-sandbox-runtime', 'SIGNUP_SANDBOX_RUNTIME_ENABLED'),
   exact('travel-brief', 'TRAVEL_BRIEF_ENABLED', {

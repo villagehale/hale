@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles are in Chinese, say the site lacks the requested start, name the Nov 21 start with its billing note and the January waitlist, avoid picking for the parent, end on one open question, and do not offer an email (emailDraft is not_connected). Prices match the facts ($120 and $98). Minor issue: the Nov 21 choice's price is stated but the waitlist entry is described without a billing note, which is correct since billing_note is null for waitlist. Overall faithful.",
+    "score": 5
+  }
+}

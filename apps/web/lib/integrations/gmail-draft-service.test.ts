@@ -7,6 +7,7 @@ import {
   type GmailDraftRequest,
   commitGmailDraft,
   gateGmailDraft,
+  gmailComposeReadiness,
   replyContextFromMessage,
   replySubject,
   replyToAddress,
@@ -184,5 +185,49 @@ describe('Gmail draft service', () => {
       expect(code, file).not.toContain('messages/send');
       expect(code, file).not.toContain('drafts/send');
     }
+  });
+
+  it('writes a new-thread draft to the compose address, and never reads a thread to reply to', async () => {
+    const loadReply = vi.fn(async () => null);
+    const writeDraft = vi.fn(async () => ({ draftId: 'draft-new' }));
+    const report = await commitGmailDraft(
+      request({
+        about: undefined,
+        body: 'Could he start in January instead?',
+        compose: { to: 'office@rec.example', subject: 'January start' },
+      }),
+      deps({ loadReply, writeDraft }),
+    );
+    expect(report).toEqual({ status: 'drafted', draftId: 'draft-new', operation: 'create' });
+    expect(loadReply).not.toHaveBeenCalled();
+    expect(writeDraft).toHaveBeenCalledWith({
+      accessToken: 'tok',
+      operation: 'create',
+      message: {
+        to: 'office@rec.example',
+        subject: 'January start',
+        body: 'Could he start in January instead?',
+      },
+    });
+  });
+
+  it('names why a compose draft cannot be written, and never refreshes a token to say so', async () => {
+    const accessToken = vi.fn(async () => 'tok');
+    const scoped = [{ id: 'int-a', userId: 'user-a', scopes: [READONLY], draftIds: [] }];
+    const theirs = [{ id: 'int-b', userId: 'user-b', scopes: [GMAIL_COMPOSE_SCOPE], draftIds: [] }];
+    const input = { familyId: 'fam', actorUserId: 'user-a' };
+    expect(await gmailComposeReadiness(input, deps({ flagOn: false, accessToken }))).toEqual({
+      ok: false,
+      reason: 'flag_off',
+    });
+    expect(
+      await gmailComposeReadiness(input, deps({ listGmail: async () => theirs, accessToken })),
+    ).toEqual({ ok: false, reason: 'not_connected' });
+    expect(
+      await gmailComposeReadiness(input, deps({ listGmail: async () => scoped, accessToken })),
+    ).toEqual({ ok: false, reason: 'scope_missing' });
+    // Positive control: a compose-scoped connection of this actor's is ready.
+    expect(await gmailComposeReadiness(input, deps({ accessToken }))).toEqual({ ok: true });
+    expect(accessToken).not.toHaveBeenCalled();
   });
 });

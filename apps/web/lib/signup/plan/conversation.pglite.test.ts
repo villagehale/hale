@@ -25,7 +25,9 @@ import {
   recordSignupOffer,
 } from '../store';
 import { echoOutcomeWriter } from '../test-models';
-import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import { GMAIL_COMPOSE_SCOPE } from '~/lib/integrations/google-write-flag';
+import { productionGmailDraftDeps } from '~/lib/integrations/gmail-draft-service';
+import { REGISTRATION_MISMATCH_PLAN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   type MismatchReader,
   type MismatchReading,
@@ -35,7 +37,12 @@ import {
 import { createPlanPrepDeliver } from './notice';
 import { recordPlanNotice, runDueSignupPlanPrep } from './prep';
 import { type PlanReader, type PlanReading, toPlanReading } from './reader';
-import { approveSignupPlan, parkSignupPlan } from './store';
+import {
+  type ProviderEmailFacts,
+  type ProviderEmailWriter,
+  createProviderEmailDrafter,
+} from './provider-email';
+import { approveSignupPlan, claimDuePlan, parkSignupPlan } from './store';
 import type { PlanReplyFacts, PlanReplyWriter } from './writer';
 
 // Invented hosts and details only. The read and the reply are model calls with their own
@@ -2302,7 +2309,7 @@ describe('when the site options do not match', () => {
   it('parks a waitlist pick and does not invent an option', async () => {
     const f = await mismatched();
     const mismatchReader: MismatchReader = {
-      read: vi.fn(async () => ({ verdict: 'waitlist' as const })),
+      read: vi.fn(async () => ({ verdict: 'waitlist' as const, choiceId: null })),
     };
     const { planReader, planWriter } = fakes(APPROVE);
     const result = await runAuthorizedSignup(db.database, turn(f, 'join the waitlist'), {
@@ -2391,7 +2398,7 @@ describe('when the site options do not match', () => {
     const picks = [
       { verdict: 'email' as const },
       { verdict: 'option' as const, choiceId: 'nov-21' },
-      { verdict: 'waitlist' as const },
+      { verdict: 'waitlist' as const, choiceId: null },
     ];
     for (const pick of picks) {
       const mismatchReader: MismatchReader = { read: vi.fn(async () => pick) };
@@ -2450,7 +2457,7 @@ describe('when the site options do not match', () => {
     const picks: MismatchReading[] = [
       { verdict: 'email' },
       { verdict: 'option', choiceId: 'nov-21' },
-      { verdict: 'waitlist' },
+      { verdict: 'waitlist', choiceId: null },
     ];
     for (const pick of picks) {
       const result = await runAuthorizedSignup(db.database, turn(f, 'go with that'), deps(pick));
@@ -2565,5 +2572,392 @@ describe('when the site options do not match', () => {
     expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'join_waitlist' });
     expect((await offer(kickers.id)).status).toBe('pending');
     expect(sendProviderEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('when the site options do not match, with the mismatch plan lit', () => {
+  const CHOICES = [
+    {
+      id: 'nov-21',
+      label: 'Nov 21',
+      starts_at: '2026-11-21',
+      price_cents: 12000,
+      waitlist: false,
+      billing_note: 'billed December',
+      provider_email: 'rec@example.test',
+    },
+    {
+      id: 'jan-wait',
+      label: 'January waitlist',
+      starts_at: '2027-01-09',
+      price_cents: 9800,
+      waitlist: true,
+      billing_note: null,
+      provider_email: 'rec@example.test',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.stubEnv(REGISTRATION_MISMATCH_PLAN_ENABLED_ENV, 'true');
+  });
+
+  async function mismatched(choices: readonly Record<string, unknown>[] = CHOICES) {
+    const f = await family();
+    await approveSignupPlan(db.database, {
+      offerId: f.offerId,
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      messageId: 'msg-mismatch',
+      choiceIds: ['sat-0900'],
+      maxPriceCents: 10500,
+      opensAt: OPENS,
+      waiverAccepted: true,
+      now: NOW,
+    });
+    await parkSignupPlan(db.database, {
+      offerId: f.offerId,
+      familyId: f.familyId,
+      availability: { kind: 'options_mismatch', askedStart: 'Preschool Swim Sat 9:00', choices },
+      now: NOW,
+    });
+    return f;
+  }
+
+  function reads(reading: MismatchReading): MismatchReader {
+    return { read: vi.fn(async () => reading) };
+  }
+
+  async function gmailConnected(f: { familyId: string; parentUserId: string }) {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'true');
+    await db.database.insert(schema.integrations).values({
+      familyId: f.familyId,
+      userId: f.parentUserId,
+      provider: 'gmail',
+      scopes: [GMAIL_COMPOSE_SCOPE],
+      status: 'active',
+    });
+  }
+
+  /** The production drafter, with a recorder at the Google boundary and a stipulated email. */
+  function drafter(draft: { subject: string; body: string } | null = DRAFT) {
+    const drafts: { operation: string; message?: Record<string, unknown> }[] = [];
+    const facts: ProviderEmailFacts[] = [];
+    const writer: ProviderEmailWriter = {
+      write: vi.fn(async (seen: ProviderEmailFacts) => {
+        facts.push(seen);
+        return draft;
+      }),
+    };
+    const providerEmail = createProviderEmailDrafter({
+      gmail: {
+        ...productionGmailDraftDeps(db.database),
+        accessToken: async () => 'tok',
+        writeDraft: async (args) => {
+          drafts.push({ operation: args.operation, message: args.message as never });
+          return { draftId: `draft-${drafts.length}` };
+        },
+      },
+      writer,
+    });
+    return { providerEmail, drafts, facts, writer };
+  }
+  const DRAFT = { subject: 'A January start?', body: 'Could Ada start in January instead?' };
+
+  async function pickAudits(offerId: string) {
+    const rows = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetId, offerId));
+    return rows
+      .map((row) => row.after as Record<string, unknown>)
+      .filter((after) => after.step === 'plan_mismatch_pick');
+  }
+
+  it('a waitlist pick replies join_waitlist with that choice, parks it, and runs as already open', async () => {
+    const f = await mismatched();
+    const { planWriter, written } = fakes(APPROVE);
+    const result = await runAuthorizedSignup(db.database, turn(f, 'wait for January'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'waitlist', choiceId: 'jan-wait' }),
+    });
+    expect(result.outcome).toBe('plan_waitlist_chosen');
+    expect(written.at(-1)).toMatchObject({
+      moment: 'join_waitlist',
+      siteChoice: { label: 'January waitlist', startsAt: '2027-01-09', waitlist: true },
+    });
+    const row = await offer(f.offerId);
+    expect(row.planAvailability).toMatchObject({
+      kind: 'join_waitlist',
+      choice: expect.objectContaining({ id: 'jan-wait' }),
+    });
+    expect(row.planAlreadyOpen).toBe(true);
+    expect(await pickAudits(f.offerId)).toEqual([
+      expect.objectContaining({ verdict: 'waitlist', choiceId: 'jan-wait' }),
+    ]);
+  });
+
+  it("an option pick replies take_option with the site's billing note; an option that is a waitlist joins it", async () => {
+    const f = await mismatched();
+    const { planWriter, written } = fakes(APPROVE);
+    const result = await runAuthorizedSignup(db.database, turn(f, 'take Nov 21'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'option', choiceId: 'nov-21' }),
+    });
+    expect(result.outcome).toBe('plan_option_chosen');
+    expect(written.at(-1)).toMatchObject({
+      moment: 'take_option',
+      siteChoice: { label: 'Nov 21', billingNote: 'billed December', priceCents: 12000 },
+    });
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({
+      kind: 'take_option',
+      choice: expect.objectContaining({ id: 'nov-21' }),
+    });
+
+    const g = await mismatched();
+    const waits = fakes(APPROVE);
+    const joined = await runAuthorizedSignup(db.database, turn(g, 'the January one'), {
+      planWriter: waits.planWriter,
+      mismatchReader: reads({ verdict: 'option', choiceId: 'jan-wait' }),
+    });
+    expect(joined.outcome).toBe('plan_waitlist_chosen');
+    expect(waits.written.at(-1)?.moment).toBe('join_waitlist');
+    expect((await offer(g.offerId)).planAvailability).toMatchObject({ kind: 'join_waitlist' });
+  });
+
+  it('an email pick with no Gmail connected is claimed and says why, parks nothing, and never throws', async () => {
+    const f = await mismatched();
+    const { planWriter, written } = fakes(APPROVE);
+    const email = drafter();
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'true');
+    const result = await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'email' }),
+      providerEmail: email.providerEmail,
+    });
+    expect(result).toMatchObject({ claimed: true, outcome: 'plan_email_unavailable' });
+    expect(written.at(-1)).toMatchObject({
+      moment: 'email_unavailable',
+      emailBlocked: 'not_connected',
+    });
+    expect(email.writer.write).not.toHaveBeenCalled();
+    expect(email.drafts).toEqual([]);
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
+    expect(await pickAudits(f.offerId)).toEqual([
+      expect.objectContaining({ verdict: 'email', drafted: false, blocked: 'not_connected' }),
+    ]);
+  });
+
+  it('an email pick with Gmail connected leaves ONE new-thread draft to the page address and says so', async () => {
+    const f = await mismatched();
+    await gmailConnected(f);
+    const { planWriter, written } = fakes(APPROVE);
+    const email = drafter();
+    const result = await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'email' }),
+      providerEmail: email.providerEmail,
+    });
+    expect(result).toMatchObject({ claimed: true, outcome: 'plan_email_drafted' });
+    expect(written.at(-1)?.moment).toBe('emailed');
+    expect(email.drafts).toEqual([
+      {
+        operation: 'create',
+        message: { to: 'rec@example.test', subject: DRAFT.subject, body: DRAFT.body },
+      },
+    ]);
+    // The model never sees the page's address.
+    expect(JSON.stringify(email.facts)).not.toContain('@');
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({
+      kind: 'emailed',
+      draftId: 'draft-1',
+    });
+    expect(await pickAudits(f.offerId)).toEqual([
+      expect.objectContaining({ verdict: 'email', drafted: true }),
+    ]);
+    const blobs = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, f.familyId));
+    expect(blobs.length).toBeGreaterThan(0);
+    expect(JSON.stringify(blobs)).not.toContain('@');
+
+    // Asked again: no second draft, and the reply says it is waiting in Drafts.
+    const again = await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'email' }),
+      providerEmail: email.providerEmail,
+    });
+    expect(again.outcome).toBe('plan_email_drafted');
+    expect(email.drafts).toHaveLength(1);
+  });
+
+  it('the email reply is written before the draft: no reply, no draft', async () => {
+    const f = await mismatched();
+    await gmailConnected(f);
+    const { planWriter } = fakes(APPROVE);
+    vi.mocked(planWriter.write).mockResolvedValue(null);
+    const email = drafter();
+    const result = await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'email' }),
+      providerEmail: email.providerEmail,
+    });
+    expect(result).toMatchObject({ claimed: true, unsent: 'reply_unwritten', reply: null });
+    expect(email.drafts).toEqual([]);
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
+  });
+
+  it('a page with no provider address says so, and no email is written', async () => {
+    const f = await mismatched(CHOICES.map(({ provider_email: _, ...choice }) => choice));
+    await gmailConnected(f);
+    const { planWriter, written } = fakes(APPROVE);
+    const email = drafter();
+    const result = await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'email' }),
+      providerEmail: email.providerEmail,
+    });
+    expect(result.outcome).toBe('plan_email_unavailable');
+    expect(written.at(-1)).toMatchObject({ emailBlocked: 'no_provider_email' });
+    expect(email.writer.write).not.toHaveBeenCalled();
+    expect(email.drafts).toEqual([]);
+  });
+
+  it('an emailed plan is an ask again: a retry parks it for the sweep, which claims it', async () => {
+    const f = await mismatched();
+    await gmailConnected(f);
+    const { planWriter, written } = fakes(APPROVE);
+    const email = drafter();
+    const sent = await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'email' }),
+      providerEmail: email.providerEmail,
+    });
+    await replySent(sent);
+    const mismatchReader = reads({ verdict: 'retry' });
+    const retried = await runAuthorizedSignup(db.database, turn(f, 'they said January works now'), {
+      planWriter,
+      mismatchReader,
+      providerEmail: email.providerEmail,
+    });
+    expect(retried.outcome).toBe('plan_approved');
+    expect(mismatchReader.read).toHaveBeenCalledWith(expect.objectContaining({ emailed: true }));
+    expect(written.at(-1)).toMatchObject({ moment: 'approved', alreadyOpen: true });
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'retry' });
+    // The run found the mismatch at the open, so the sweep after it is past the open. Other
+    // tests' plans share this database and may be due first.
+    const claimed = [];
+    for (let i = 0; i < 100; i += 1) {
+      const plan = await claimDuePlan(db.database, {
+        now: new Date(OPENS.getTime() + 60_000),
+        leadMs: 0,
+        leaseMs: 60_000,
+      });
+      if (!plan || plan === 'contended') break;
+      claimed.push(plan);
+    }
+    expect(claimed.find((plan) => plan.offerId === f.offerId)).toMatchObject({
+      alreadyOpen: true,
+      availability: expect.objectContaining({ kind: 'retry' }),
+    });
+  });
+
+  it('a pick with no stored inbound message is refused, and nothing is parked', async () => {
+    const f = await mismatched();
+    const { planWriter, written } = fakes(APPROVE);
+    const result = await runAuthorizedSignup(
+      db.database,
+      { ...turn(f, 'take Nov 21'), inboundChannelMessageId: null },
+      { planWriter, mismatchReader: reads({ verdict: 'option', choiceId: 'nov-21' }) },
+    );
+    expect(result.outcome).toBe('plan_refused');
+    expect(written.at(-1)).toMatchObject({ moment: 'refused', refusal: 'not_stored' });
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
+  });
+
+  it('a group seat that may not authorize a sign-up picks nothing and drafts nothing', async () => {
+    const f = await mismatched();
+    await gmailConnected(f);
+    const { planWriter, written } = fakes(APPROVE);
+    const email = drafter();
+    for (const pick of [
+      { verdict: 'email' as const },
+      { verdict: 'retry' as const },
+      { verdict: 'waitlist' as const, choiceId: null },
+    ]) {
+      const result = await runAuthorizedSignup(db.database, turn(f, 'go with that'), {
+        planWriter,
+        mismatchReader: reads(pick),
+        providerEmail: email.providerEmail,
+        declineSeat: async () => true,
+      });
+      expect(result.outcome).toBe('group_member_not_authorized');
+    }
+    expect(written).toEqual([]);
+    expect(email.drafts).toEqual([]);
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
+  });
+
+  it("a register-now plan's yes is confirmed as open now; dark, the same yes names nothing new", async () => {
+    const seeded = await seedFamily(db.database);
+    const childId = await seedChild(db.database, seeded.familyId, 'Ada', 40, undefined, NOW);
+    const recorded = await recordSignupOffer(db.database, {
+      familyId: seeded.familyId,
+      childId,
+      parentUserId: seeded.parentUserId,
+      activityKey: 'swim-now',
+      activityLabel: 'Preschool Swim',
+      registrationUrl: URL,
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      planOpensAt: NOW,
+      planAlreadyOpen: true,
+      now: new Date(NOW.getTime() - 60_000),
+    });
+    if (!recorded.ok) throw new Error(recorded.reason);
+    await texted(seeded.familyId, recorded.id);
+    const lit = fakes(APPROVE);
+    const result = await runAuthorizedSignup(db.database, turn(seeded, 'sunday then saturday'), {
+      planReader: lit.planReader,
+      planWriter: lit.planWriter,
+    });
+    expect(result.outcome).toBe('plan_approved');
+    expect(lit.written.at(-1)).toMatchObject({ moment: 'approved', alreadyOpen: true });
+
+    vi.stubEnv(REGISTRATION_MISMATCH_PLAN_ENABLED_ENV, '');
+    const f = await family();
+    const dark = fakes(APPROVE);
+    await runAuthorizedSignup(db.database, turn(f, 'sunday then saturday'), dark);
+    expect(dark.written.at(-1)?.moment).toBe('approved');
+    expect(dark.written.at(-1)).not.toHaveProperty('alreadyOpen');
+  });
+
+  it('dark, the same picks behave as before: approved replies, and a retry reading moves nothing', async () => {
+    vi.stubEnv(REGISTRATION_MISMATCH_PLAN_ENABLED_ENV, '');
+    const f = await mismatched();
+    const { planWriter, written } = fakes(APPROVE);
+    const waited = await runAuthorizedSignup(db.database, turn(f, 'wait for January'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'waitlist', choiceId: 'jan-wait' }),
+    });
+    expect(waited.outcome).toBe('plan_approved');
+    expect(written.at(-1)?.moment).toBe('approved');
+    expect(written.at(-1)).not.toHaveProperty('siteChoice');
+    const row = await offer(f.offerId);
+    expect(row.planAvailability).toEqual({
+      kind: 'join_waitlist',
+      askedStart: 'Preschool Swim Sat 9:00',
+      choices: CHOICES,
+    });
+    expect(row.planAlreadyOpen).toBe(false);
+    expect(await pickAudits(f.offerId)).toEqual([]);
+
+    const g = await mismatched();
+    const retried = await runAuthorizedSignup(db.database, turn(g, 'try again'), {
+      planWriter,
+      mismatchReader: reads({ verdict: 'retry' }),
+    });
+    expect(retried).toMatchObject({ claimed: false, outcome: 'plan_unread' });
+    expect((await offer(g.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
   });
 });

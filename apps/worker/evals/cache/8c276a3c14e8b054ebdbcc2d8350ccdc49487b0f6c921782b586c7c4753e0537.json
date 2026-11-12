@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says Ada is on the waitlist and explicitly not registered, matching run.outcome waitlist_joined with confirmed false. Uses only given facts (session name, full status), no link, no promise to retry, one simple message in English, warm and plain. Minor issue: 'Registration opened' is accurate but the message does not name the open time, which is fine. Nothing invented.",
+    "score": 5
+  }
+}

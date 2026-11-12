@@ -63,7 +63,9 @@ export type PlanEngineOutcome =
   | 'not_open'
   | 'cancelled'
   /** Assisted mode: the registration is filled on the live browser for the parent to submit. */
-  | 'ready_for_parent';
+  | 'ready_for_parent'
+  /** The parent asked Hale to join a waitlist, and the page shows the child on it. */
+  | 'waitlist_joined';
 
 /**
  * Where a plan's run stands when a sweep ends before the run does. A town's queue can

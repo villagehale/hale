@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French with tu, states the correct opening time and sessions/prices from facts, asks one question about session choice and order, and does not claim registration or a spot. However it asks two things (which sessions and in what order is arguably one ask) and adds an unrequested remark about queueing on their own phone/computer; the note about two places in line is in facts (alsoQueueing), so it is grounded, but it is extra content beyond the plan. Also it is slightly longer than two short sentences and includes a second clause that is not part of the offer. Mostly compliant, minor deductions.",
+    "score": 4
+  }
+}

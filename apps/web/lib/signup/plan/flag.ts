@@ -16,6 +16,25 @@ export function registrationPlanRunEnabled(
 }
 
 /**
+ * Every Browser Use registration through the plan lane, and a site whose options do not match
+ * always handled: a register-now offer is a plan opening now, each pick of the parent's gets
+ * its own reply, and "email them" is a Gmail draft the parent sends. Off unless
+ * REGISTRATION_MISMATCH_PLAN_ENABLED is exactly `true`, or the family is on
+ * REGISTRATION_MISMATCH_PLAN_FAMILY_ALLOWLIST, and only with the plan lane's own switch on as
+ * well. Off, the lane routes and replies exactly as before.
+ */
+export const REGISTRATION_MISMATCH_PLAN_ENABLED_ENV = 'REGISTRATION_MISMATCH_PLAN_ENABLED';
+export const REGISTRATION_MISMATCH_PLAN_FAMILY_ALLOWLIST_ENV =
+  'REGISTRATION_MISMATCH_PLAN_FAMILY_ALLOWLIST';
+
+export function registrationMismatchPlanEnabled(
+  familyId: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return registrationPlanRunEnabled(env) && isEnabled('registration-mismatch-plan', familyId, env);
+}
+
+/**
  * VIL-558 step 6 · the assisted mode's own switch, for ActiveNet towns: Hale joins the open,
  * fills the registration and hands the parent the live browser to submit and pay. Off unless
  * REGISTRATION_ASSISTED_RUN_ENABLED is exactly `true`. It only adds hosts to the plan lane, so

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent wrote \"等一月吧\" (\"let's wait for January\"). They originally asked for a January start, and the only January choice is the waitlist one, \"jan-wait\". So they want to join the January waitlist.",
+    "verdict": "waitlist",
+    "choiceId": "jan-wait",
+    "question": null
+  },
+  "latencyMs": 3199
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent wrote in French, \"on prend le 21 novembre\" (we'll take November 21). That matches the choice with id nov-21, a real non-waitlist start.",
+    "verdict": "option",
+    "choiceId": "nov-21",
+    "question": null
+  },
+  "latencyMs": 2239
+}

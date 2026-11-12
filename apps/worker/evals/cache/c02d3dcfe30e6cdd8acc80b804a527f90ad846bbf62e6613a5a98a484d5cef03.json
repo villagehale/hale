@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "Hale already emailed the provider, and the parent relays the provider's reply that January is now open and tells Hale to go ahead. That means the original January request should be tried again.",
+    "verdict": "retry",
+    "choiceId": null,
+    "question": null
+  },
+  "latencyMs": 2387
+}

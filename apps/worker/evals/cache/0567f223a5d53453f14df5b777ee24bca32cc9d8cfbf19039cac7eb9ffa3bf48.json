@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states open time, both sessions and prices from facts, asks one question (which sessions, in order), does not claim registration or a held spot, and no link or invented details. Minor issue: it is three sentences-ish and includes an extra note about queueing on other devices, which was not requested in the watchFor, slightly beyond one or two short sentences and not a plan recap but a tangent. Still largely compliant.",
+    "score": 4
+  }
+}

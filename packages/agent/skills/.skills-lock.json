@@ -57,7 +57,7 @@
   },
   "browser-use-plan-signup.md": {
     "file": "browser-use-plan-signup.md",
-    "sha256": "4e7d24c03a383e5e686a4f037b727e2770ad7df59dfac12b2b35cb1f485048d2"
+    "sha256": "dd4fb843d7be4071a6756f9a6590583a3e73e3279a00ab04c95b48174f318080"
   },
   "browser-use-saved-card-payment.md": {
     "file": "browser-use-saved-card-payment.md",
@@ -617,7 +617,7 @@
   },
   "signup-mismatch-read.md": {
     "file": "signup-mismatch-read.md",
-    "sha256": "df74523aaa7f24c3004a763ac825bd95ade672dec18c9257455def1883d99ba5"
+    "sha256": "348885acca7812047aaaf93cdc44e3ffb8125be45da4305246249171d40f7f94"
   },
   "signup-offer-supersede.md": {
     "file": "signup-offer-supersede.md",
@@ -637,11 +637,15 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "aefa2380258d108f0f425dfe640acf2fdeca286ab340cc6cc4ef375b8601e0fb"
+    "sha256": "925a4c20aeb24b6ef6a43d209ed8ce349bd05dd41568739198e6ac8331cad6a9"
+  },
+  "signup-provider-email.md": {
+    "file": "signup-provider-email.md",
+    "sha256": "ca945d4ffba6f584cebe2256cca41b6eff8dde9959830dca47c71b183df896f4"
   },
   "signup-provider-notice.md": {
     "file": "signup-provider-notice.md",
-    "sha256": "de1763f1edba93581cbe4a2f87ff32bee1a8d7a66644534839f08d9d4f13e056"
+    "sha256": "d45499b24e998f12290339f717c57211df65cd06dd240ca15ef613eb4dbac375"
   },
   "signup-registration-voice.md": {
     "file": "signup-registration-voice.md",

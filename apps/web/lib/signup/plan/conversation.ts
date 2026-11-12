@@ -11,11 +11,17 @@ import {
 import { signupProviderHost } from '../consent';
 import { namesFacts } from '../parent-quote';
 import type { SignupRunInput, SignupRunResult } from '../run';
-import { siteChoiceSchema } from '../site-choices';
+import { type SiteChoice, siteChoiceSchema } from '../site-choices';
 import { askStamp, loadSignupIdentity, markOffer } from '../store';
 import type { SignupSession } from '../types';
-import { type MismatchReader, createMismatchReader } from './mismatch-reader';
+import { registrationMismatchPlanEnabled } from './flag';
+import { type MismatchReader, type MismatchReading, createMismatchReader } from './mismatch-reader';
 import { hasPlanNotice, recordPlanNotice } from './prep';
+import {
+  type ProviderEmailBlocked,
+  type ProviderEmailDrafter,
+  productionProviderEmailDrafter,
+} from './provider-email';
 import {
   type PlanNaming,
   type PlanReader,
@@ -35,6 +41,7 @@ import {
   type PlanReplyFacts,
   type PlanReplyMoment,
   type PlanReplySession,
+  type PlanReplySiteChoice,
   type PlanReplyWriter,
   createPlanReplyWriter,
   planOpensAtLocal,
@@ -48,7 +55,12 @@ export interface PlanTurnDeps {
   planWriter?: PlanReplyWriter;
   /** Reads a pick after the site's options did not match. Undefined uses the reply model. */
   mismatchReader?: MismatchReader;
-  /** Sends the provider email from the parent's Gmail after they say yes. */
+  /**
+   * Lit (`registration-mismatch-plan`): leaves the provider email as a draft in the parent's
+   * Gmail. Undefined uses the reply model and the parent's Gmail connection.
+   */
+  providerEmail?: ProviderEmailDrafter;
+  /** Dark only: sends the provider email from the parent's Gmail after they say yes. */
   sendProviderEmail?: (input: {
     familyId: string;
     actorUserId: string;
@@ -97,7 +109,11 @@ export async function runPlanAsk(
   plan: ConversablePlan,
   place: AskPlace,
 ): Promise<SignupRunResult | 'unrelated'> {
-  if (plan.availability && plan.availability.kind === 'options_mismatch') {
+  const parkedKind = plan.availability?.kind;
+  if (
+    parkedKind === 'options_mismatch' ||
+    (parkedKind === 'emailed' && registrationMismatchPlanEnabled(input.familyId))
+  ) {
     return runMismatchTurn(database, input, deps, plan, place);
   }
   const reader = deps.planReader ?? createPlanReader(() => resolveReplyClient(undefined));
@@ -246,9 +262,18 @@ async function runMismatchTurn(
     : [];
   const askedStart =
     typeof plan.availability?.askedStart === 'string' ? plan.availability.askedStart : null;
+  const lit = registrationMismatchPlanEnabled(input.familyId);
+  const emailed = plan.availability?.kind === 'emailed';
   const reader = deps.mismatchReader ?? createMismatchReader(() => resolveReplyClient(undefined));
-  const reading = await reader.read({ text: input.body, askedStart, choices: parsed });
+  const reading = await reader.read({
+    text: input.body,
+    askedStart,
+    choices: parsed,
+    ...(emailed ? { emailed: true as const } : {}),
+  });
   if (!reading) return stopped('plan_unread', plan);
+  // Dark, the lane has no retry: a reading it cannot act on is one that failed.
+  if (!lit && reading.verdict === 'retry') return stopped('plan_unread', plan);
   if (reading.verdict === 'unrelated') return 'unrelated';
   const named = namesFacts(input.body, {
     activity: untrustedActivityLabel(plan.activityLabel),
@@ -266,6 +291,14 @@ async function runMismatchTurn(
   if (!place.newest) {
     return reply(database, input, deps, plan, 'clarify', {
       question: PICK_ASK_BACK_QUESTION,
+      boundBy,
+    });
+  }
+  if (lit) {
+    return runMismatchPick(database, input, deps, plan, {
+      reading,
+      choices: parsed,
+      askedStart,
       boundBy,
     });
   }
@@ -319,6 +352,156 @@ async function runMismatchTurn(
   return reply(database, input, deps, plan, 'approved', { boundBy });
 }
 
+type MismatchPick = Exclude<MismatchReading, { verdict: 'unclear' } | { verdict: 'unrelated' }>;
+
+/**
+ * Lit (`registration-mismatch-plan`) · the parent's pick, bound to their newest ask by
+ * `runMismatchTurn`. Each pick writes one audit row of its own and gets its own reply:
+ *
+ * - a waitlist (or an option the site marks as one) and a site option are parked for the next
+ *   sweep as a register-now run, since the site was already seen open;
+ * - `retry` (the provider fixed it) parks the original plan the same way;
+ * - `email` writes the provider email, tells the parent, then leaves it as a DRAFT in their
+ *   Gmail for them to send. Any reason Hale cannot (no address on the page, no Gmail
+ *   connected, Google said no) is said in the model's words, and the other picks stay open.
+ */
+async function runMismatchPick(
+  database: Database,
+  input: SignupRunInput,
+  deps: PlanTurnDeps,
+  plan: ConversablePlan,
+  read: {
+    reading: MismatchPick;
+    choices: SiteChoice[];
+    askedStart: string | null;
+    boundBy: PlanBinding;
+  },
+): Promise<SignupRunResult> {
+  const { reading, choices, askedStart, boundBy } = read;
+  const messageId = input.inboundChannelMessageId;
+  if (!messageId) {
+    return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
+  }
+  const choice =
+    reading.verdict === 'waitlist' || reading.verdict === 'option'
+      ? (choices.find((item) => item.id === reading.choiceId) ?? null)
+      : null;
+  if (reading.verdict === 'option' && !choice) return stopped('plan_unread', plan);
+  // `blocked`, never a key the audit redaction drops (anything named like an email).
+  const picked = (after: { drafted?: boolean; blocked?: ProviderEmailBlocked } = {}) =>
+    writePlanAudit(database, {
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      offerId: plan.offerId,
+      after: {
+        step: 'plan_mismatch_pick',
+        verdict: reading.verdict,
+        choiceId: choice?.id ?? null,
+        messageId,
+        host: plan.providerHost,
+        ...after,
+      },
+    });
+  const park = (availability: Record<string, unknown>) =>
+    parkSignupPlan(database, {
+      offerId: plan.offerId,
+      familyId: input.familyId,
+      availability,
+      now: input.now,
+      resumeNow: true,
+    });
+
+  if (reading.verdict === 'waitlist' || (reading.verdict === 'option' && choice?.waitlist)) {
+    await park({ kind: 'join_waitlist', choice, askedStart, choices });
+    await picked();
+    return reply(database, input, deps, plan, 'join_waitlist', {
+      boundBy,
+      ...(choice ? { siteChoice: replySiteChoice(choice) } : {}),
+    });
+  }
+  if (reading.verdict === 'option' && choice) {
+    await park({ kind: 'take_option', choice, askedStart, choices });
+    await picked();
+    return reply(database, input, deps, plan, 'take_option', {
+      boundBy,
+      siteChoice: replySiteChoice(choice),
+    });
+  }
+  if (reading.verdict === 'retry') {
+    await park({ kind: 'retry', askedStart, choices });
+    await picked();
+    return reply(database, input, deps, plan, 'approved', { boundBy, alreadyOpen: true });
+  }
+
+  // Asked again once the draft exists: it is still in their Drafts, and no second one is written.
+  if (plan.availability?.kind === 'emailed') {
+    await picked({ drafted: false });
+    return reply(database, input, deps, plan, 'emailed', { boundBy });
+  }
+  const unavailable = async (reason: ProviderEmailBlocked) => {
+    await picked({ drafted: false, blocked: reason });
+    return reply(database, input, deps, plan, 'email_unavailable', {
+      boundBy,
+      emailBlocked: reason,
+      siteChoices: choices.map(replySiteChoice),
+    });
+  };
+  const to = choices.map((item) => item.provider_email).find((email) => Boolean(email)) ?? null;
+  const drafter = deps.providerEmail ?? productionProviderEmailDrafter(database);
+  const ready = await drafter.readiness({
+    familyId: input.familyId,
+    actorUserId: input.parentUserId,
+    to,
+  });
+  if (!ready.ok) return unavailable(ready.reason);
+  if (!to) return unavailable('no_provider_email');
+  const draft = await drafter.write({
+    childFirstName: await childFirstName(database, {
+      familyId: input.familyId,
+      childId: plan.childId,
+    }),
+    activity: plan.activityLabel,
+    askedStart,
+    siteChoices: choices.map((item) => ({
+      label: item.label,
+      startsAt: item.starts_at,
+      waitlist: item.waitlist,
+    })),
+  });
+  if (!draft) return unavailable('unwritten');
+  // The parent is told before the draft exists: no draft is ever one nobody was told about.
+  const told = await writeReply(database, input, deps, plan, 'emailed', {});
+  if (told.text === null) {
+    return replied(database, input, plan, 'emailed', { boundBy }, told.text);
+  }
+  const committed = await drafter.commit({
+    familyId: input.familyId,
+    actorUserId: input.parentUserId,
+    to,
+    subject: draft.subject,
+    body: draft.body,
+  });
+  if (committed.status === 'blocked') return unavailable(committed.reason);
+  await parkSignupPlan(database, {
+    offerId: plan.offerId,
+    familyId: input.familyId,
+    availability: { kind: 'emailed', draftId: committed.draftId, askedStart, choices },
+    now: input.now,
+  });
+  await picked({ drafted: true });
+  return replied(database, input, plan, 'emailed', { boundBy }, told.text);
+}
+
+function replySiteChoice(choice: SiteChoice): PlanReplySiteChoice {
+  return {
+    label: choice.label,
+    startsAt: choice.starts_at,
+    priceCents: choice.price_cents,
+    billingNote: choice.billing_note,
+    waitlist: choice.waitlist,
+  };
+}
+
 function stopped(outcome: 'plan_unread' | 'plan_unnamed', plan: ConversablePlan): SignupRunResult {
   return stoppedTurn(outcome, { offerId: plan.offerId, status: plan.status });
 }
@@ -339,6 +522,10 @@ const OUTCOME: Record<Exclude<PlanReplyMoment, 'offer' | 'run_finished'>, string
   declined: 'plan_declined',
   clarify: 'plan_clarify',
   refused: 'plan_refused',
+  join_waitlist: 'plan_waitlist_chosen',
+  take_option: 'plan_option_chosen',
+  emailed: 'plan_email_drafted',
+  email_unavailable: 'plan_email_unavailable',
 };
 
 export function replySessions(sessions: readonly SignupSession[]): PlanReplySession[] {
@@ -373,21 +560,42 @@ export async function childFirstName(
   return child?.name ?? null;
 }
 
+type ReplyMoment = Exclude<PlanReplyMoment, 'offer' | 'run_finished'>;
+
+interface ReplyExtra {
+  question?: string;
+  refusal?: string;
+  choiceIds?: readonly string[];
+  maxPriceCents?: number;
+  waiverAccepted?: boolean;
+  boundBy?: PlanBinding;
+  alreadyOpen?: true;
+  siteChoice?: PlanReplySiteChoice;
+  siteChoices?: readonly PlanReplySiteChoice[];
+  emailBlocked?: ProviderEmailBlocked;
+}
+
 async function reply(
   database: Database,
   input: SignupRunInput,
   deps: PlanTurnDeps,
   plan: ConversablePlan,
-  moment: Exclude<PlanReplyMoment, 'offer' | 'run_finished'>,
-  extra: {
-    question?: string;
-    refusal?: string;
-    choiceIds?: readonly string[];
-    maxPriceCents?: number;
-    waiverAccepted?: boolean;
-    boundBy?: PlanBinding;
-  },
+  moment: ReplyMoment,
+  extra: ReplyExtra,
 ): Promise<SignupRunResult> {
+  const { text } = await writeReply(database, input, deps, plan, moment, extra);
+  return replied(database, input, plan, moment, extra, text);
+}
+
+/** The model's text for this moment, or null: nothing is said yet. */
+async function writeReply(
+  database: Database,
+  input: SignupRunInput,
+  deps: PlanTurnDeps,
+  plan: ConversablePlan,
+  moment: ReplyMoment,
+  extra: ReplyExtra,
+): Promise<{ text: string | null }> {
   const choices = extra.choiceIds
     ? extra.choiceIds.flatMap((id) => plan.sessions.filter((s) => s.id === id))
     : plan.sessions;
@@ -409,9 +617,27 @@ async function reply(
       familyId: input.familyId,
       parentUserId: input.parentUserId,
     }),
+    // Lit, a plan registering now names no open time.
+    ...(extra.alreadyOpen || (plan.alreadyOpen && registrationMismatchPlanEnabled(input.familyId))
+      ? { alreadyOpen: true as const }
+      : {}),
+    ...(extra.siteChoice ? { siteChoice: extra.siteChoice } : {}),
+    ...(extra.siteChoices ? { siteChoices: extra.siteChoices } : {}),
+    ...(extra.emailBlocked ? { emailBlocked: extra.emailBlocked } : {}),
   };
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
-  const text = await writer.write(facts);
+  return { text: await writer.write(facts) };
+}
+
+/** One audit row for the reply, and the turn's result: the text, or why nothing is sent. */
+async function replied(
+  database: Database,
+  input: SignupRunInput,
+  plan: ConversablePlan,
+  moment: ReplyMoment,
+  extra: ReplyExtra,
+  text: string | null,
+): Promise<SignupRunResult> {
   const outcome = OUTCOME[moment];
   await writePlanAudit(database, {
     familyId: input.familyId,

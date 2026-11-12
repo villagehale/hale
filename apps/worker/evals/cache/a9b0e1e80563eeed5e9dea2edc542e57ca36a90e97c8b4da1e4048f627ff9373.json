@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Body asks for a January start instead of Nov 21, which matches the parent's request and the site's labels in English. However it states a $140 January fee that is not in the facts, which the rules treat as a fabricated price. It also does not name the Nov 28 option, though that is minor. The fabricated fee is a clear fact violation, so the score is low.",
+    "score": 2
+  }
+}

@@ -377,7 +377,17 @@
   "judges/signup-plan-reply": {
     "name": "judges/signup-plan-reply",
     "version": null,
-    "sha256": "1f3df67267abb90c71687b7f47b44cefc02751d597e86e66cdfab63f1c13d112"
+    "sha256": "fe0d9593f5dbaf9ddb080809e128dc9bf24ccdc767aef72761cf96bc03f78f1f"
+  },
+  "judges/signup-provider-email": {
+    "name": "judges/signup-provider-email",
+    "version": null,
+    "sha256": "9a2335b19971292b886479fece17fdb05dffc5e1710ca7385b6357521fd6ebf8"
+  },
+  "judges/signup-provider-notice": {
+    "name": "judges/signup-provider-notice",
+    "version": null,
+    "sha256": "c75ac92717824da1905a47d12d85b8323c526381754e5362be11caabb711b312"
   },
   "judges/spot-open-voice": {
     "name": "judges/spot-open-voice",

@@ -34,14 +34,16 @@ import {
 } from '../store';
 import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
-import { registrationPlanRunEnabled } from './flag';
+import { registrationMismatchPlanEnabled, registrationPlanRunEnabled } from './flag';
 import { signupPlanPrepDepsFromEnv } from './notice';
 import {
   type PlanNoticeKind,
   type PlanPrepDeps,
+  type PlanPrepFacts,
   firstChoiceLabel,
   sendSignupPlanNotice,
 } from './prep';
+import { productionProviderEmailDrafter } from './provider-email';
 import {
   type ClaimedPlan,
   claimDuePlan,
@@ -524,8 +526,10 @@ async function runOnePlan(
 
 function askedStartFromAvailability(availability: Record<string, unknown> | null): string | null {
   if (!availability) return null;
+  // The provider fixed it: the run looks for the plan's own choices again.
+  if (availability.kind === 'retry') return null;
   if (
-    availability.kind === 'take_option' &&
+    (availability.kind === 'take_option' || availability.kind === 'join_waitlist') &&
     availability.choice &&
     typeof availability.choice === 'object'
   ) {
@@ -533,6 +537,20 @@ function askedStartFromAvailability(availability: Record<string, unknown> | null
     if (typeof starts === 'string' && starts.trim()) return starts;
   }
   return typeof availability.askedStart === 'string' ? availability.askedStart : null;
+}
+
+/** Whether the mismatch notice may offer the provider email: only one Hale can draft. */
+async function emailDraftFor(
+  database: Database,
+  plan: ClaimedPlan,
+  choices: NonNullable<BrowserUsePlanResult['siteChoices']>,
+): Promise<NonNullable<PlanPrepFacts['emailDraft']>> {
+  const ready = await productionProviderEmailDrafter(database).readiness({
+    familyId: plan.familyId,
+    actorUserId: plan.parentUserId,
+    to: choices.map((choice) => choice.provider_email).find((email) => Boolean(email)) ?? null,
+  });
+  return ready.ok ? 'ready' : ready.reason;
 }
 
 async function parkAndTell(
@@ -544,6 +562,11 @@ async function parkAndTell(
   deps: PlanRunDeps,
 ): Promise<PlanRunSummary> {
   const passwordRejected = result.detail === 'password_rejected';
+  const lit = registrationMismatchPlanEnabled(plan.familyId);
+  // Lit, what the parent asked for is their first choice, as they ranked it.
+  const askedStart = lit
+    ? firstChoiceLabel(plan.sessions, plan.choiceIds)
+    : (plan.sessions[0]?.label ?? null);
   if (passwordRejected) {
     await markCredentialsStale(database, {
       familyId: plan.familyId,
@@ -578,7 +601,7 @@ async function parkAndTell(
       : {
           kind: 'options_mismatch',
           choices: result.siteChoices ?? [],
-          askedStart: plan.sessions[0]?.label ?? null,
+          askedStart,
         },
     now,
   });
@@ -591,7 +614,7 @@ async function parkAndTell(
     });
   }
   const kind: PlanNoticeKind = passwordRejected ? 'password_rejected' : 'options_mismatch';
-  const facts = {
+  const facts: PlanPrepFacts = {
     kind,
     childFirstName: await childFirstName(database, {
       familyId: plan.familyId,
@@ -606,7 +629,10 @@ async function parkAndTell(
     passwordRejectionMessage: result.passwordRejectionMessage ?? null,
     passwordRule: result.passwordRule ?? null,
     siteChoices: result.siteChoices ?? [],
-    askedStart: plan.sessions[0]?.label ?? null,
+    askedStart,
+    ...(lit && !passwordRejected
+      ? { emailDraft: await emailDraftFor(database, plan, result.siteChoices ?? []) }
+      : {}),
   };
   const sent = await sendSignupPlanNotice(
     database,

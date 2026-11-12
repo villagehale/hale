@@ -29,7 +29,8 @@ The facts for this plan are in the JSON block at the end, under "This registrati
 - Never type a password, a one-time code or a security answer by hand. If `credentials` lists aliases, type only those aliases into the matching fields (Browser Use fills the secret). Never write the secret itself.
 - Create an account only when `account_create` is true, and only with those aliases. If the site rejects the password, stop with `needs_login` and detail `password_rejected`. Copy the site's rejection message and the password rule shown on the page into `password_rejection_message` and `password_rule`, exactly as shown. Do not invent a rule.
 - Never accept a medical form, allergy form or photo release. Stop with `needs_human` instead.
-- Never add more than one session or more than one child. Never join a waitlist unless `join_waitlist` is true, in which case join only the named choice.
+- Never add more than one session or more than one child. Never join a waitlist unless `join_waitlist` is true. Then join only the waitlist for the session starting at `asked_start` (or, when it is null, the rank 1 choice), and once the page shows the child on that waitlist, stop with `waitlist_joined`. If the waitlist goes through a cart, stop at checkout as for any session.
+- When `asked_start` is set, the parent already picked the site's own session starting then: match that start instead of the dates in `choices`. It is not a mismatch.
 - Never submit, select, or pay for a start, session, or price the parent did not ask for. If the site's real options do not include what they asked for, stop with `options_mismatch` and fill `site_choices` from the page. Do not pick for them.
 - Read the live seat count, and read it again immediately before adding to the cart. If it is then 0, do not add it.
 - Include the session price and any admin or membership fee the page shows, plus when they bill, in the fee fields. Copy the numbers from the page.
@@ -42,6 +43,7 @@ The facts for this plan are in the JSON block at the end, under "This registrati
   - `reached_checkout` — one choice is in the cart and you stopped on the payment page.
   - `not_open` — registration still had not opened, or your turn in the queue had not come, when you had to stop.
   - `waitlist` — every choice is full and the site only offers a waitlist.
+  - `waitlist_joined` — `join_waitlist` was true and the page shows the child on that waitlist.
   - `sold_out` — every choice is full or closed with no waitlist.
   - `options_mismatch` — the site's real starts or sessions are not what the parent asked for. Nothing was submitted.
   - `needs_login` — the site will not let you continue without a password, code or security answer. Use detail `password_rejected` when an account-create password was refused.

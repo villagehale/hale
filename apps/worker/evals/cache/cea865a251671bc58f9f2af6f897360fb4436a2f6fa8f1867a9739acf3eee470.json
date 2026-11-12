@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the session is in the cart, not registered, names the security code blocker, and points to the open browser for about 9 minutes without claiming a spot or future retry. Minor issue: it does not explicitly say the parent must enter the code themselves, though it implies it, and 'at $98' is supported by cartTotalCents. Tone is plain and warm, single ask implied, English matches.",
+    "score": 4
+  }
+}

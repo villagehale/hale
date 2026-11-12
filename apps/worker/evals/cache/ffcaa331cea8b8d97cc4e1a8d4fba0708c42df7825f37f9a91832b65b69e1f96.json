@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in Chinese, says Hale is registering Ada for the Nov 21 start now, but omits the required billing note that December is billed while the parent is away, so it fails the take_option requirement.",
+    "score": 2
+  }
+}

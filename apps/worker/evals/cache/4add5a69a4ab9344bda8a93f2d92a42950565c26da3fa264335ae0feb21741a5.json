@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says Hale will register and pay with the saved card, but mode is assisted where Hale never pays; it also asks for sessions and max together (two asks), and says the family holds two places in line, a false spot-holding hint.",
+    "score": 1
+  }
+}

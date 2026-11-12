@@ -53,6 +53,22 @@ const NO_SPOT =
   'Never says or hints that the child is registered, has a spot, or that a spot is held or reserved.';
 const NO_RETRY = 'No promise that Hale will try again, keep watching or follow up.';
 
+// The site's own options, after they did not match what the parent asked for.
+const NOV_21 = {
+  label: 'Nov 21 start',
+  startsAt: '2026-11-21',
+  priceCents: 12000,
+  billingNote: 'December is billed while you are away',
+  waitlist: false,
+};
+const JAN_WAIT = {
+  label: 'January waitlist',
+  startsAt: '2027-01-09',
+  priceCents: 9800,
+  billingNote: null,
+  waitlist: true,
+};
+
 export const SIGNUP_PLAN_REPLY_FIXTURES = [
   {
     id: 'offer-en',
@@ -252,6 +268,80 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
     },
     watchFor: `In Chinese. Says the town's site asked for a sign-in, so Hale could not fill in the registration; the parent can sign in and register in the open browser at the link that follows, within about 15 minutes. ${NO_SPOT} ${NO_RETRY}`,
   },
+  {
+    id: 'offer-already-open-en',
+    facts: { ...BASE, moment: 'offer', alreadyOpen: true },
+    watchFor: `Registration is open now: offers to register Ada now and names no open time or day. Asks which sessions they want, in order — one ask only. ${KAT_SHORT} ${NO_SPOT}`,
+  },
+  {
+    id: 'approved-already-open-zh',
+    facts: {
+      ...BASE,
+      moment: 'approved',
+      language: 'zh',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      waiverAccepted: true,
+      alreadyOpen: true,
+    },
+    watchFor: `In Chinese. Registration is open now: says Hale is on it now and will text what it finds. Names no open time. Does not recap the sessions, the maximum, or the waiver. ${KAT_SHORT} ${NO_SPOT}`,
+  },
+  {
+    id: 'join-waitlist-zh',
+    facts: { ...BASE, moment: 'join_waitlist', language: 'zh', siteChoice: JAN_WAIT },
+    watchFor: `In Chinese. Says Hale is putting Ada on the January waitlist now. Never says registered or a spot. ${KAT_SHORT}`,
+  },
+  {
+    id: 'take-option-zh',
+    facts: { ...BASE, moment: 'take_option', language: 'zh', siteChoice: NOV_21 },
+    watchFor: `In Chinese. Says Hale is registering Ada for the Nov 21 start now, and says plainly that December is billed while they are away (the billing note). Nothing is paid yet; never says registered. ${KAT_SHORT}`,
+  },
+  {
+    id: 'emailed-en',
+    facts: { ...BASE, moment: 'emailed' },
+    watchFor: `Says an email asking the provider for what they wanted is waiting in their Gmail Drafts for them to read and send. Never says Hale emailed or sent it. May add that they can tell Hale what the provider answers. ${KAT_SHORT} ${NO_SPOT}`,
+  },
+  {
+    id: 'email-unavailable-not-connected-zh',
+    facts: {
+      ...BASE,
+      moment: 'email_unavailable',
+      language: 'zh',
+      emailBlocked: 'not_connected',
+      siteChoices: [NOV_21, JAN_WAIT],
+    },
+    watchFor: `In Chinese. Says Hale can't write the email because it cannot write in their Gmail. Then offers the Nov 21 start or the January waitlist again, as one ask. No pointer to an app or settings page. ${KAT_SHORT} ${NO_SPOT}`,
+  },
+  {
+    id: 'email-unavailable-no-address-en',
+    facts: {
+      ...BASE,
+      moment: 'email_unavailable',
+      emailBlocked: 'no_provider_email',
+      siteChoices: [NOV_21, JAN_WAIT],
+    },
+    watchFor: `Says the provider's page shows no email address, so Hale can't write to them. Then offers the Nov 21 start or the January waitlist again, as one ask. ${KAT_SHORT} ${NO_SPOT}`,
+  },
+  {
+    id: 'finished-waitlist-joined-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SAT],
+      run: { ...RUN, outcome: 'waitlist_joined', sessionLabel: null, cartTotalCents: null },
+    },
+    watchFor: `Says Ada is on the waitlist the parent asked for. Never says registered or a spot. ${NO_LINK} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-waitlist-not-joined-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SAT, SUN],
+      run: { ...RUN, outcome: 'waitlist', sessionLabel: null, cartTotalCents: null },
+    },
+    watchFor: `Says only a waitlist was open and Hale did not join it. Never says Ada is on the waitlist, registered or has a spot. ${NO_RETRY}`,
+  },
 ];
 
 /** Texts that break the spec. Every one must be caught (code gate or judge). */
@@ -291,6 +381,24 @@ export const SIGNUP_PLAN_REPLY_BROKEN = [
     fixtureId: 'offer-assisted-en',
     text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Tell me which first and your max, and I will register and pay with the card saved on your city account. If you also queue on your phone, the family holds two places in line.',
     breaks: 'says Hale pays on an assisted town',
+  },
+  {
+    id: 'emailed-claims-sent',
+    fixtureId: 'emailed-en',
+    text: "I emailed the swim office from your Gmail asking for January. I'll let you know what they say.",
+    breaks: 'says Hale emailed it when it is a draft the parent sends',
+  },
+  {
+    id: 'waitlist-joined-claims-registered',
+    fixtureId: 'finished-waitlist-joined-en',
+    text: "Ada's registered for swim! You're all set.",
+    breaks: 'says registered when the child is only on the waitlist',
+  },
+  {
+    id: 'take-option-hides-billing',
+    fixtureId: 'take-option-zh',
+    text: '好的，我现在帮 Ada 报 11月21日开始的那期。',
+    breaks: 'leaves out that December is billed while they are away',
   },
   {
     id: 'carries-link',

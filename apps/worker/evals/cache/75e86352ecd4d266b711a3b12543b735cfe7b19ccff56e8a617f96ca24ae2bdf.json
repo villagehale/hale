@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent wrote \"就11/21吧\" (\"just go with 11/21\"), which matches the Nov 21 start choice (id nov-21). It is a clear pick of a real, non-waitlist option.",
+    "verdict": "option",
+    "choiceId": "nov-21",
+    "question": null
+  },
+  "latencyMs": 2414
+}

@@ -7,6 +7,7 @@ import { hasOpenLoginLink, mintFreshLoginLink } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
 import type { SignupSession } from '../types';
 import { type PlanNoticePart, asBubbles, withLinkBubbles } from './bubbles';
+import type { ProviderEmailBlocked } from './provider-email';
 import { parentTimeZone } from './conversation';
 import { writePlanAudit } from './store';
 import { planOpensAtLocal } from './writer';
@@ -43,6 +44,11 @@ export interface PlanPrepFacts {
   fees?: SiteFees | null;
   confirmed?: boolean;
   joined?: boolean;
+  /**
+   * Lit (`registration-mismatch-plan`), on `options_mismatch`: `ready` when Hale could leave
+   * an email to the provider in the parent's Gmail, otherwise why it could not.
+   */
+  emailDraft?: 'ready' | ProviderEmailBlocked;
 }
 
 export interface PlanPrepWriter {

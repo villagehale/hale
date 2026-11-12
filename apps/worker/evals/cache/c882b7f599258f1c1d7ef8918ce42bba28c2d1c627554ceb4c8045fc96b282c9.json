@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent is asking what time soccer is on Saturday. That is a schedule question that doesn't pick any of the start options, the January waitlist, or an email to the provider, so it is unrelated to the signup mismatch.",
+    "verdict": "unrelated",
+    "choiceId": null,
+    "question": null
+  },
+  "latencyMs": 3419
+}

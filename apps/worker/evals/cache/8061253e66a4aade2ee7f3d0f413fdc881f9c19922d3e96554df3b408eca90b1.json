@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The email to the provider was already drafted, and the parent's text (Chinese: \"They said January is OK now, try again\") passes on the provider's answer that January is now available. That means Hale should retry the original January request.",
+    "verdict": "retry",
+    "choiceId": null,
+    "question": null
+  },
+  "latencyMs": 1951
+}

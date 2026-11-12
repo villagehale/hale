@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text asks three things at once (which session first, maximum price, and waiver), violating the one-ask-at-a-time rule. It also omits the explicit opening-day framing (the day before) and the wording is otherwise accurate: the times, sessions, and no invented values are correct, and it does not claim a spot is held.",
+    "score": 2
+  }
+}

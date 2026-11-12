@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The parent replied \"好\" (\"OK/good\"), a bare agreement that doesn't say which of the three choices they want: Nov 21, Nov 28, or the January waitlist. Hale hasn't drafted an email (emailed is not set), so it can't be read as passing on a provider reply. A single short question can settle it.",
+    "verdict": "unclear",
+    "choiceId": null,
+    "question": "Would you like me to join the January waitlist, or sign you up for the Nov 21 or Nov 28 start?"
+  },
+  "latencyMs": 2884
+}

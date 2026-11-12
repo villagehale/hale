@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says Hale could not log into the city account, so nothing was registered or paid, and it doesn't claim a spot. However, it asks the parent to log in and tell Hale, then promises Hale will try again, which watchFor explicitly forbids. It also doesn't mention the registration page that follows.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states both sessions were full, nothing registered or charged, with no promise to retry and no hint a spot may open. Minor issue: it names 'Registration for Ada's Preschool Swim opened' which is fine, and it does not mention a link follows, but watchFor only requires the page follows which is added by code. Facts and tone are accurate and plain.",
+    "score": 5
+  }
+}

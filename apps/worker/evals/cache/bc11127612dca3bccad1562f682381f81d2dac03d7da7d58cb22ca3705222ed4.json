@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text invents a max of $86.22 not in the facts (maxPriceCents is null), and it asks for the max in the same text as the session ordering, breaking the one-ask rule. It does correctly state the open time and does not claim registration.",
+    "score": 2
+  }
+}
