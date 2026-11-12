@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The Saturday market find has no fitting window: Saturday is an all-day family visit and there are no free windows, so it is dropped even though it is Thursday evening.",
+    "reason": "The Saturday market find does not fit: Saturday is an all-day family visit and there are no free windows, so it is dropped even though it is Thursday evening.",
     "action": "drop",
     "item_ids": [
       "market"

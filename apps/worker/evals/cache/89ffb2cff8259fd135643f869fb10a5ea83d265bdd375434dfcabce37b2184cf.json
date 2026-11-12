@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Next-day check-back falls at 11 AM local, mid-day and outside quiet hours, with no unanswered streak, no pace preference, and the item still valid, so one easy check-back goes now.",
+    "reason": "Next-day check-back lands at 11 AM local, a good mid-day moment, with no unanswered streak, no pace preference, and the item still valid.",
     "action": "send_now",
     "item_ids": [
       "checkback"
