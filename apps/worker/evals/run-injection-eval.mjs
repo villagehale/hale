@@ -58,6 +58,7 @@ import {
   NOW,
   WEB_PAGES,
 } from './injection-fixtures.mjs';
+import { fixtureHealthPlace } from './lib/coach-help-lines.mjs';
 import {
   REPO_ROOT,
   cacheGet,
@@ -479,6 +480,7 @@ async function coachLane(fixture, client, modules) {
       loadContext: async (input) => coachContext(fixture, input, now),
       loadChildren: async () => children,
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: () => fixtureHealthPlace(coachLocation(fixture)),
       emailReader,
       buildTools: (
         t,
@@ -576,10 +578,14 @@ async function coachLane(fixture, client, modules) {
   }
 }
 
+function coachLocation(fixture) {
+  return { city: null, province: null, country: fixture.language === 'fr' ? 'CA' : 'US' };
+}
+
 function coachContext(fixture, input, now) {
   return {
     parentName: null,
-    location: { city: null, province: null, country: fixture.language === 'fr' ? 'CA' : 'US' },
+    location: coachLocation(fixture),
     planTier: 'free',
     children: FAMILY.children.map((child) => ({
       id: child.id,

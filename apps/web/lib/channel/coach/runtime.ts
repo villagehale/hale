@@ -36,6 +36,7 @@ import {
   groupPlanDraftPort,
   productionRecordGroupPlanOrigin,
 } from '~/lib/channel/group-plan/stamp';
+import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
 import {
   type InboundMediaPart,
   type ReadInboundMedia,
@@ -70,6 +71,7 @@ import {
   undoGroupListWrites,
 } from '~/lib/channel/lists/tools';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
+import { readHealthPlace } from '~/lib/channel/off-domain/place';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
@@ -262,6 +264,10 @@ export interface ChannelCoachPorts {
    * ladder is armed for them — Hale's flagship job, made visible to a turn that is
    * being asked about it (see registration-context.ts). */
   loadRegistrationWindows(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
+  /** Where the family is for the health line (VIL-589): a 1:1 turn's `helpLines` are
+   * `healthLineFacts` of it, so 811 reaches only a family placed where 811 is a health
+   * line. Required: a coach that cannot place a family must say so with null. */
+  loadHealthPlace(familyId: string): Promise<HealthPlace | null>;
   /** What Hale's Browser Use watch last read on this family's providers (schedules,
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
@@ -451,15 +457,25 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [loadedSkill, transcript, children, registrationWindows, timeZone, forecast] =
-        await Promise.all([
-          ports.loadSkill(turn.parentUserId, turn.familyId),
-          ports.loadTranscript(turn.conversationId),
-          ports.loadChildren(turn.familyId),
-          ports.loadRegistrationWindows(turn.familyId, now),
-          ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
-          ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
-        ]);
+      const [
+        loadedSkill,
+        transcript,
+        children,
+        registrationWindows,
+        timeZone,
+        forecast,
+        healthPlace,
+      ] = await Promise.all([
+        ports.loadSkill(turn.parentUserId, turn.familyId),
+        ports.loadTranscript(turn.conversationId),
+        ports.loadChildren(turn.familyId),
+        ports.loadRegistrationWindows(turn.familyId, now),
+        ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
+        ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
+        // A group reply goes to everyone in it, so the province a health line names is not
+        // said there: a group turn is told the lines for a family Hale cannot place.
+        turn.audience === 'group' ? null : ports.loadHealthPlace(turn.familyId),
+      ]);
       const localDay = localDayContext(timeZone ? familyLocalNow(now, timeZone) : null, forecast);
       const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
       // VIL-524 / VIL-567. Only a nearby-find turn gets the find addenda. A model reads
@@ -644,6 +660,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // first, each saying whether Hale's ladder is already on it. Empty for a family
         // outside the covered set — and then the skill has nothing to claim.
         registrationWindows,
+        // The only help lines the reply may name (VIL-589), chosen for where the family is.
+        // 811 is Ontario's nurse line and the call-before-you-dig line in the US.
+        helpLines: healthLineFacts(healthPlace).facts,
         // What the watch last read on this family's providers. Absent when empty, so
         // the ordinary turn's prompt bytes and cache prefix are untouched.
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
@@ -1102,6 +1121,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       return householdGroup ? { ...context, householdGroup } : context;
     },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
+    loadHealthPlace: (familyId) => readHealthPlace(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
     loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),

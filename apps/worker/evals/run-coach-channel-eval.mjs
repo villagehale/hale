@@ -165,6 +165,7 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
@@ -1181,9 +1182,9 @@ function buildFixtureTools(
  * months" would otherwise read as two invented numbers. What the model was HANDED is
  * what grounds it.
  */
-function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
-  // Canada, as every fixture's context says (channelContext `location.country`).
-  const real = frameworkGuidanceTool('CA');
+function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding, country) {
+  // The fixture's own country, as its context says (channelContext `location.country`).
+  const real = frameworkGuidanceTool(country);
   return {
     ...real,
     handler: async (input) => {
@@ -1213,8 +1214,9 @@ function recordingSwitchOffTool(turnOffAutonomyTool, calls, parentWords) {
 /**
  * @param compact  the REAL `compactTranscript` (see CONTEXT_SRC)
  * @param severed  drop the thread entirely — the continuity fixtures' positive control
+ * @param helpLines  the fixture row's help lines, as the runtime hands them (VIL-589)
  */
-function channelContext(fixture, compact, severed = false) {
+function channelContext(fixture, compact, severed, helpLines) {
   const children = childrenFor(fixture);
   // Each child's REAL age and REAL stage, not a stand-in. The corpus used to hand every
   // non-teen `stage: 'child', ageMonths: 60`, which cost nothing while every fixture was
@@ -1245,7 +1247,7 @@ function channelContext(fixture, compact, severed = false) {
     compacted.transcriptSummary === null ? { transcript: compacted.transcript } : compacted;
   return {
     parentName: CONTEXT_PARENT_NAME,
-    location: { city: cityFor(fixture), province: 'ON', country: 'CA' },
+    location: locationFor(fixture),
     planTier: 'free',
     children: injected,
     focusedChild: null,
@@ -1283,6 +1285,8 @@ function channelContext(fixture, compact, severed = false) {
     // them over. Empty for every fixture that is not about one, which is also the
     // production shape for a family outside the covered set.
     registrationWindows: fixture.registrationWindows ?? [],
+    // The only help lines a reply may name, chosen for where the family is (VIL-589).
+    helpLines,
     // VIL-679: texts the parent sent back to back, answered as one turn — the runtime adds
     // this only on a burst, so every other fixture keeps the context it was recorded with.
     ...(fixture.arrivedTogether ? { arrivedTogether: fixture.arrivedTogether } : {}),
@@ -1523,7 +1527,13 @@ function returnedVillage(fixture, calls) {
  * the corpus itself.
  */
 function cityFor(fixture) {
-  return fixture.city ?? CONTEXT_CITY;
+  return fixture.location?.city ?? fixture.city ?? CONTEXT_CITY;
+}
+
+/** The family row's place: Ontario for the standing corpus, a fixture's own `location`
+ * where the answer turns on the country (VIL-589: 811 is a dig line in the US). */
+function locationFor(fixture) {
+  return fixture.location ?? { city: cityFor(fixture), province: 'ON', country: 'CA' };
 }
 
 /**
@@ -2186,7 +2196,12 @@ async function main() {
     // Built ONCE per turn, and read by both the run and the judge — a judge handed a
     // different thread from the model's is the half-blind grading this harness has
     // already paid for once (see the `knows` comment below).
-    const turnContext = channelContext(fixture, compact, severed);
+    const turnContext = channelContext(
+      fixture,
+      compact,
+      severed,
+      await coachHelpLines(locationFor(fixture)),
+    );
 
     if (broken) {
       // PER FIXTURE where one declares its own stand-in, for the reason the finder
@@ -2212,7 +2227,12 @@ async function main() {
             ? { deidentify, namedArea, family: searchFamilyFor(fixture) }
             : undefined,
         ),
-        recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
+        recordingFrameworkTool(
+          frameworkGuidanceTool,
+          calls,
+          guidance,
+          locationFor(fixture).country,
+        ),
         ...(fixture.autonomy
           ? [recordingSwitchOffTool(turnOffAutonomyTool, calls, fixture.text)]
           : []),
@@ -2445,6 +2465,8 @@ async function main() {
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
               registrationWindows: fixture.registrationWindows ?? [],
+              // The help lines the model was handed for where this family is (VIL-589).
+              helpLines: turnContext.helpLines,
               // The family facts the model was handed, `seenIn` included. `undefined`
               // off the fixtures that hold none, so every committed verdict's key stays.
               memoryFacts: fixture.memoryFacts,

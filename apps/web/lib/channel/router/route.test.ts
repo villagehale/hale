@@ -2086,6 +2086,7 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
         }) as never,
       loadChildren: async () => [],
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       buildTools: (_turn, onDraft) => {
         for (const id of input.draftIds ?? []) onDraft(id);
         return [] as RegisteredTool[];

@@ -152,6 +152,16 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(find.description).not.toContain('even when the radar already has a find');
   });
 
+  /** VIL-589. The runtime fills `helpLines` for where the family is; 811 is a dig line in the US. */
+  it('gives the help lines from the context key the runtime fills, never a number of its own', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('give BOTH lines in `helpLines`');
+    expect(prose).toContain('Never a number it does not carry');
+    expect(prose).not.toContain('Call 811');
+    expect(prose).not.toContain('811 any time');
+  });
+
   it('tells the coach the reply is the class plus the marker, without a phrase ban list (VIL-501)', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
     const prose = skill.instructions.replace(/\s+/g, ' ');

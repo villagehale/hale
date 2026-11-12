@@ -41,6 +41,7 @@ import {
   summarizeJudgePlan,
   totalUsd,
 } from './lib/harness.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -210,10 +211,12 @@ const GROUP_LISTS_REFERENCE_TEXTS = [
   },
 ];
 
-function contextFor(fixture) {
+const LOCATION = { city: 'Springfield', province: 'IL', country: 'US' };
+
+function contextFor(fixture, helpLines) {
   return {
     parentName: fixture.sender.split(' ')[0],
-    location: { city: 'Springfield', province: 'IL', country: 'US' },
+    location: LOCATION,
     planTier: 'free',
     children: fixture.children,
     focusedChild: null,
@@ -243,6 +246,7 @@ function contextFor(fixture) {
     standingQuestions: [],
     audience: 'group',
     registrationWindows: [],
+    helpLines,
   };
 }
 
@@ -496,7 +500,7 @@ async function main() {
         ]);
         const run = await agent.runAgent({
           skill,
-          context: groupScopedContext(contextFor(fixture)),
+          context: groupScopedContext(contextFor(fixture, await coachHelpLines(LOCATION, 'group'))),
           tools,
           client: cachedAgentClient(
             `group-lists:${fixture.id}`,
@@ -541,7 +545,9 @@ async function main() {
           before,
           after,
           members: fixture.members,
-          children: groupScopedContext(contextFor(fixture)).children.map((c) => c.name),
+          children: groupScopedContext(
+            contextFor(fixture, await coachHelpLines(LOCATION, 'group')),
+          ).children.map((c) => c.name),
         },
         secrets: fixture.secrets,
         watchFor: fixture.watchFor,

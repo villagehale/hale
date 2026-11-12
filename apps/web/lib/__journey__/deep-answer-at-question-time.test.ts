@@ -537,6 +537,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         },
       }),
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       loadTranscript: async () => [],
       loadContext: async (input) => ({
         parentName: null,
