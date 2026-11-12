@@ -91,6 +91,13 @@ export interface OutboundMessage {
    * correct downgrade because the words are identical either way.
    */
   decorations?: readonly LinqTextDecoration[];
+  /**
+   * A later answer to an ask: send into this existing iMessage chat, threaded under this
+   * message (the parent's ask), while it is still `to`'s 1:1 on the Hale line; otherwise
+   * to `to`, unthreaded. Text only. A transport with no threads (Preview capture) sends
+   * to `to`, which for a 1:1 is the same chat, unthreaded.
+   */
+  replyIn?: { chatId: string; messageId: string };
 }
 
 /** The native iMessage location-request card. SMS transports do not implement it. */

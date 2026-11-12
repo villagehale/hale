@@ -105,6 +105,7 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -165,6 +166,7 @@ import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
+import { type InboundBurst, mergeBurstContext } from './burst';
 import {
   type ChannelCoachRuntime,
   type ChannelTurn,
@@ -192,6 +194,7 @@ import {
   type HoldingLineComposer,
   armHoldingLine,
   holdingLineNotArmed,
+  holdingLineRead,
 } from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
@@ -509,6 +512,9 @@ export interface ChannelRouterDeps {
    * twice and thread others nine times, and "we didn't wire the ledger" is not a state
    * this router may be in. */
   turns: InboundTurnLedger;
+  /** Which back-to-back texts this turn reads together (burst.ts). Non-nullable (rule
+   * #11): dark is the plan's own `flag_off`, never an absent planner. */
+  burst: InboundBurst;
   /** The words a broken turn gets, composed (apology.ts). Non-nullable (rule #11) and
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
@@ -556,7 +562,7 @@ export interface ChannelRouterDeps {
    * SEND THE DEEP PASS AFTER IT — the question-time half of the promise.
    *
    * The row above says Hale owes this family a find; this puts the research on a queue
-   * the drain runs within the minute, so a parent who named a place gets the dated answer
+   * the drain runs within the minute, so the parent gets the dated answer
    * in about four minutes rather than in a day (activity/deep-queue.ts).
    *
    * Non-nullable (rule #11), and its absence is IN the outcome: `not_enqueued` with a
@@ -566,7 +572,7 @@ export interface ChannelRouterDeps {
    * exists for. A silent no-op would look exactly like a subject nobody thought worth
    * researching.
    */
-  dispatchDeepResearch(payload: DeepResearchPayload): Promise<DeepDispatchOutcome>;
+  dispatchDeepResearch(payload: DeepResearchPayload, askedBy: string): Promise<DeepDispatchOutcome>;
   /**
    * What the parent's own message settled, written down before anything reads state
    * (VIL-294 — lib/channel/stated-state.ts).
@@ -820,6 +826,9 @@ export type RouterStatus =
   /** This text already has Hale's answer, and the queue handed it back anyway. The turn
    * stops before anything is threaded, spent or sent (turn-ledger.ts). */
   | 'already_answered'
+  /** An earlier text's turn read this one with it (burst.ts) and answers both. Nothing
+   * threaded, counted or sent here. */
+  | 'folded'
   /** The turn broke because the provider was unreachable AND the text named an
    * emergency: the fixed safety line went out with no model in the loop (smoke-alarm.ts).
    * A distinct status from `agent_failed` because it is the one outcome where a failed
@@ -969,10 +978,27 @@ async function routeChannelMessageInner(
       lane: null,
     });
   }
+  if (stage === 'folded') {
+    return done(deps, job, { status: 'folded', handler: null, conversationId: null, lane: null });
+  }
   const redriven = stage === 'deferred';
 
-  const context = await deps.loadContext(deps.database, job);
-  if (!context) {
+  // BACK-TO-BACK TEXTS (burst.ts). Before any gate reads a word, so every gate below reads
+  // the whole burst: a STOP or a crisis in the second text cannot slip past one.
+  const burst = await deps.burst.plan(job, redriven ? 'deferred' : 'fresh');
+  deps.log.info(
+    {
+      channelMessageId: job.channel_message_id,
+      burstSize: burst.kind === 'anchor' ? burst.members.length : 1,
+      settleWaitMs: burst.waitedMs,
+      pickupMs: now.getTime() - Date.parse(job.received_at),
+      ...(burst.kind === 'anchor' ? { readOutcome: burst.read } : { why: burst.why }),
+    },
+    'channel router: burst',
+  );
+
+  const loaded = await deps.loadContext(deps.database, job);
+  if (!loaded) {
     return done(deps, job, {
       status: 'unknown_message',
       handler: null,
@@ -980,6 +1006,7 @@ async function routeChannelMessageInner(
       lane: null,
     });
   }
+  const context = burst.kind === 'anchor' ? mergeBurstContext(loaded, burst) : loaded;
 
   if (context.reply) {
     const originChatId = context.reply.channel === 'imessage' ? context.reply.chatId : null;
@@ -1007,6 +1034,12 @@ async function routeChannelMessageInner(
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       channelMessageId: job.channel_message_id,
+      folded:
+        burst.kind === 'anchor'
+          ? burst.members
+              .map((member) => member.channelMessageId)
+              .filter((id) => id !== job.channel_message_id)
+          : [],
     });
     if (claim === 'already_answered') {
       // The DB refused the claim: another attempt at this same turn answered first, so
@@ -1105,13 +1138,23 @@ async function routeChannelMessageInner(
   if (!redriven) {
     // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
     // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
-    const inboundProviderId =
-      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
-    await appendMessage(conversationId, 'user', context.body, deps.database, {
-      childId: null,
-      topic: null,
-      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
-    });
+    // A burst threads each text as its own row with its own id, never the joined body.
+    const texts =
+      burst.kind === 'anchor'
+        ? burst.members.map((member) => ({
+            body: member.body,
+            providerMessageId: member.providerMessageId,
+          }))
+        : [{ body: context.body, providerMessageId: job.provider_message_id }];
+    const editable = linqMessageEditEnabled() && route.channel === 'imessage';
+    for (const text of texts) {
+      const inboundProviderId = editable ? text.providerMessageId : null;
+      await appendMessage(conversationId, 'user', text.body, deps.database, {
+        childId: null,
+        topic: null,
+        ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+      });
+    }
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -1213,6 +1256,7 @@ async function routeChannelMessageInner(
     conversationId,
     body: context.body,
     ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
+    ...(burst.kind === 'anchor' ? { burstSize: burst.members.length } : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
     // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {
@@ -1631,20 +1675,31 @@ async function routeChannelMessageInner(
   // opt-out or a flood-held turn never has one, however slow its database. Once per text:
   // a re-driven turn already had its chance. Not in a group thread, which other families read. The group
   // bit is the door's own, not `context.inGroup`, which stays false while group onboarding
-  // v2 is dark however many people are in the chat.
+  // v2 is dark however many people are in the chat. 1:1 iMessage only.
+  //
+  // What the screen read is kept for the line, which reads it when it is DUE: it is
+  // written in this text's language, and withheld when the screen filed the text as a
+  // crisis or a medical symptom, or has not read it yet (holding-line.ts holdingLineRead).
+  let screened: LaneReading | null = null;
   const holdingSkip = redriven
     ? 're_driven'
     : job.in_group === undefined
       ? 'group_unknown'
       : job.in_group
         ? 'group_thread'
-        : null;
+        : route.channel !== 'imessage'
+          ? 'sms'
+          : null;
   if (holdingSkip) {
     holding = holdingLineNotArmed(holdingSkip, deps.log);
   } else {
     holding = armHoldingLine({
-      afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
-      language: await familySpeechLanguage(deps.database, job.family_id),
+      // The settle already spent part of the parent's wait, so the line comes no later
+      // from their side than it would have without one.
+      afterMs: Math.max(0, (deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS) - burst.waitedMs),
+      familyId: job.family_id,
+      read: () =>
+        holdingLineRead(screened, () => familySpeechLanguage(deps.database, job.family_id)),
       composer: deps.holdingLine,
       log: deps.log,
       send: async (line) => {
@@ -1722,6 +1777,9 @@ async function routeChannelMessageInner(
             channel: route.channel,
             providerChatId: route.channel === 'imessage' ? route.chatId : null,
             inGroup: job.in_group,
+          },
+          onScreened: (reading) => {
+            screened = reading;
           },
         }),
         OFF_DOMAIN_BUDGET_MS,
@@ -2249,7 +2307,9 @@ function isOutsiderWeMayAnswer(role: FamilyRole | null): boolean {
  * stop sending the thing, which deterministic code then went on sending. An agent must
  * not be wired to break its own promises, so the wiring is what was removed. The real fix
  * for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts) and the
- * unbounded model call, not a message about waiting.
+ * unbounded model call, not a message about waiting. The one line that may come first is
+ * the composed holding line (holding-line.ts), dark unless lit, and only on a 1:1 iMessage
+ * turn still unanswered past HOLDING_LINE_AFTER_MS.
  */
 /**
  * After the coach's sentence has gone out, ask the model whether it offered to add
@@ -2428,7 +2488,7 @@ async function runAgentTurn(
         // kept either way and the only thing at stake is how fast (deep-queue.ts).
         const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
           familyId: args.turn.familyId,
-          subject: activityPromise.subject,
+          parentUserId: args.turn.parentUserId,
           recorded,
         });
         deps.log.info(

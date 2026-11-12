@@ -106,6 +106,7 @@ describe('one parent, two doors, one conversation', () => {
       coach: coach(reply),
       smokeAlarm: auditSmokeAlarmClaim(db.database),
       turns: auditTurnLedger(db.database),
+      burst: { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },

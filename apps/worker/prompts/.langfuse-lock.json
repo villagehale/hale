@@ -89,6 +89,11 @@
     "version": null,
     "sha256": "27f6ea878596f2a38ea420a2698f91051e809f1277110c1c15a7ad9662abe922"
   },
+  "judges/coach-find-day": {
+    "name": "judges/coach-find-day",
+    "version": null,
+    "sha256": "40e44c6104908f1e09f94aa7be12a3060f505c1acf32b404c068e8e633ac52f1"
+  },
   "judges/coach-local-day": {
     "name": "judges/coach-local-day",
     "version": null,

@@ -1,0 +1,83 @@
+{
+  "request": {
+    "model": "claude-haiku-5-5",
+    "thinking": {
+      "type": "adaptive"
+    },
+    "max_tokens": 128,
+    "system": [
+      {
+        "type": "text",
+        "text": "# Is this turn a nearby-find? (VIL-567)\n\nHale is about to answer one inbound text. You read whether that text is a nearby-find:\nthey want activities, classes, or what is on around them. You do not write a reply.\n\nThe text may be in any language and any script. Read what it means. There is no list of\nwords to match, no English keyword, and no translation table.\n\n## What a nearby-find is\n\nThey are asking Hale to look for something to do, a class, a drop-in, or what is on\nnearby. A request with no day in it can still be one. So can a follow-up that is still\nabout that search — naming one of the finds, asking for another, narrowing the day or\nthe area — while they have not moved on.\n\n`prior` is earlier texts from this parent in this thread, oldest first. If the current\ntext is still answering a nearby-find they asked a moment ago, this turn is one too.\n\n## What it is not\n\nChanging their own calendar is not a nearby-find: a move, a cancel, a reschedule, or a\nreminder, even when the sentence also names a weekend or asks you to find the event you\nare moving.\n\nReading their own calendar is not a nearby-find. They want what Hale already holds for\nthem, not a search.\n\nA question about a person, a plan Hale already offered, signup, or anything else that\nis not looking for what is on around them is not a nearby-find.\n\n## What you return\n\nCall `find_turn` once.\n\n- `intent` is `find` or `not_find`.\n- `find` only when this turn is a nearby-find as above.\n- `not_find` for a calendar change, a calendar read, or anything else.\n- When unsure, `not_find`. A wrong `find` would search when they meant to edit.\n- `reason` is a few words for the trace. Do not repeat the parent's message.",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"text\":\"what does it say? anything I have to sign?\",\"prior\":[]}"
+      }
+    ],
+    "output_config": {
+      "effort": "medium",
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "intent": {
+              "type": "string",
+              "enum": [
+                "find",
+                "not_find"
+              ],
+              "description": "find only when this turn is a nearby-find ask or a follow-up to one."
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "claude-haiku-5-5",
+    "id": "msg_011CgwfTiLsUeXQMJGHHYKcV",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"intent\":\"not_find\",\"reason\":\"asks what a document says and whether to sign; not a search for nearby activities\"}"
+      }
+    ],
+    "container": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 31,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 817,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 40,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "diagnostics": null
+  }
+}

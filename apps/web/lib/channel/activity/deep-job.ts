@@ -51,7 +51,11 @@ import { defaultActivityFollowUpDeps, resolveFollowUpRecipient } from './sweep';
  *
  *   HELD IS NOT FAILED. Quiet hours at 22:10 hold the send, and the promise waits for the
  *   sweep at 08:00 — the outbound chokepoint's floor is not something this lane's speed
- *   buys its way past.
+ *   buys its way past. The gate is read again after the lane, which runs for minutes: a
+ *   job that started at 20:58 must not text at 21:01.
+ *
+ *   NOT THE HOURLY DECIDER. The answer goes out on the `immediate` cadence lane: it is the
+ *   second half of a reply to a parent's own question, not a proactive text to batch.
  */
 
 export type DeepJobOutcome =
@@ -94,6 +98,8 @@ export interface DeepJobDeps {
   /** The nine steps between picks and a phone, shared with the sweep. */
   delivery: FollowUpDelivery;
   cancelPromise: typeof cancelActivityPromise;
+  /** The time after the lane: the send's own clock, a few minutes past the job's start. */
+  clock: () => Date;
 }
 
 /**
@@ -140,25 +146,29 @@ export async function runDeepResearchJob(
     return { status: 'left_open', reason: 'unsendable' };
   }
 
-  const verdict = await assertProactiveSendAllowed(
-    {
-      familyId: commitment.familyId,
-      parentUserId: recipient.parentUserId,
-      kind: 'activity_followup',
-      now,
-    },
-    deps.buildGate(database),
-  );
-  if (!verdict.allowed) {
+  const gate = async (at: Date) => {
+    const verdict = await assertProactiveSendAllowed(
+      {
+        familyId: commitment.familyId,
+        parentUserId: recipient.parentUserId,
+        kind: 'activity_followup',
+        now: at,
+      },
+      deps.buildGate(database),
+    );
+    if (verdict.allowed) return verdict;
     // A family with no live channel can never be come back to, so the promise is VOIDED
     // with a reason rather than left to sit open forever. Every other hold is temporary,
     // and the hourly sweep is what tries again — the same split the sweep itself makes.
     if (verdict.reason === 'not_enrolled') {
-      await deps.cancelPromise(database, { familyId: commitment.familyId, now });
-      return { status: 'cancelled' };
+      await deps.cancelPromise(database, { familyId: commitment.familyId, now: at });
+      return { status: 'cancelled' } as const;
     }
-    return { status: 'held', reason: verdict.reason };
-  }
+    return { status: 'held', reason: verdict.reason } as const;
+  };
+
+  const verdict = await gate(now);
+  if (!('allowed' in verdict)) return verdict;
 
   // THE SAME KEY THE SWEEP WOULD USE. Two things can now answer one promise, and this is
   // what stops both doing it: whichever gets there first claims the key, and the other
@@ -221,6 +231,11 @@ export async function runDeepResearchJob(
     return { status: 'left_open', reason: 'all_refuted' };
   }
 
+  // The floor, opt-out, enrolment and watch consent, read again on the send's own clock.
+  const sendAt = deps.clock();
+  const atSend = await gate(sendAt);
+  if (!('allowed' in atSend)) return atSend;
+
   const outcome = await deliverFollowUp(
     database,
     deps.delivery,
@@ -231,7 +246,7 @@ export async function runDeepResearchJob(
       subject,
       recipient,
       dedupeKey,
-      optOut: verdict.optOut,
+      optOut: atSend.optOut,
       // The text carries the best one or two. The rest stay in the chat until the parent asks.
       ...textSlots(run.result.slots),
       // READ OFF THE PAGES BY THE LANE (deep-lane.ts), not recomputed here from counts:
@@ -240,8 +255,9 @@ export async function runDeepResearchJob(
       pageEvidence: run.result.pageVerdict,
       evidence: run.evidence,
       heardFacts: commitment.heardFacts,
+      lane: 'immediate',
     },
-    now,
+    sendAt,
   );
   if (outcome.status === 'deferred') return { status: 'left_open', reason: 'deferred' };
   if (outcome.status === 'refused_at_send') {
@@ -276,6 +292,7 @@ export function defaultDeepJobDeps(): DeepJobDeps {
     lane: defaultDeepLaneDeps(),
     delivery: sweep,
     cancelPromise: cancelActivityPromise,
+    clock: () => new Date(),
   };
 }
 

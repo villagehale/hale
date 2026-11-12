@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { ACTIVITY_HELD_TOPIC } from '~/lib/channel/activity/venue-pages';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
+import { AUDIT_LOG_AUDIENCE_ENABLED_ENV } from '~/lib/privacy/audit-audience';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
 import { ACCESS_EXPORT_ROUND_2_ENABLED_ENV } from './export-round-2';
@@ -635,5 +636,62 @@ describe('access export round 2 on the requester thread and bookings', () => {
     });
     expect(doc.activityBookings.map((row) => row.title)).toEqual([TEEN_REDACTED_PLACEHOLDER]);
     expect(JSON.stringify(doc.activityBookings)).not.toContain('Tamsin');
+  });
+});
+
+describe("one adult's deep-pass dispatch in a right-to-access copy", () => {
+  const DISPATCHED = 'Hale started a closer look at an activity question';
+  const ANSWERED = 'Hale came back to you about an activity search';
+
+  async function seedDispatch() {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Ana + Sam', provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const anaId = await seedParent(familyId, 'ana', 'primary_parent');
+    const samId = await seedParent(familyId, 'sam', 'co_parent');
+    await db.database.insert(schema.auditLog).values([
+      {
+        familyId,
+        actor: 'system',
+        actionTaken: 'activity_deep_dispatched',
+        targetTable: 'agent_commitments',
+        targetId: '33333333-3333-4333-8333-333333333333',
+        after: { status: 'enqueued' },
+        audience: anaId,
+        occurredAt: new Date('2026-11-10T15:00:00.000Z'),
+      },
+      {
+        familyId,
+        actor: 'system',
+        actionTaken: 'activity_followup_sent',
+        targetTable: 'agent_commitments',
+        targetId: '33333333-3333-4333-8333-333333333333',
+        occurredAt: new Date('2026-11-10T15:04:00.000Z'),
+      },
+    ]);
+    const summaries = async (actorUserId: string) =>
+      (await assembleFamilyExport(db.database, familyId, { actorUserId })).trail.map(
+        (row) => row.summary,
+      );
+    return { anaId, samId, summaries };
+  }
+
+  it('is never in the family-wide copy another parent seat gets (audience read unlit)', async () => {
+    const { samId, summaries } = await seedDispatch();
+    const sams = await summaries(samId);
+    // Positive control: the family-visible answer the dispatch led to is in the copy.
+    expect(sams).toContain(ANSWERED);
+    expect(sams).not.toContain(DISPATCHED);
+  });
+
+  it("is in the asking parent's own copy and nobody else's once the audience read is lit", async () => {
+    vi.stubEnv(AUDIT_LOG_AUDIENCE_ENABLED_ENV, 'true');
+    const { anaId, samId, summaries } = await seedDispatch();
+    expect(await summaries(anaId)).toEqual(expect.arrayContaining([DISPATCHED, ANSWERED]));
+    const sams = await summaries(samId);
+    expect(sams).toContain(ANSWERED);
+    expect(sams).not.toContain(DISPATCHED);
   });
 });

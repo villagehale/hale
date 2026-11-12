@@ -2,11 +2,13 @@
 //
 // The subject is the REAL agent loop (`runAgent`) over the REAL coach skill, composed the
 // way runtime.ts composes a 1:1 nearby-find turn: coach-channel-sms + coach-nearby-find +
-// coach-home-place, then coach-find-private when `nearbyFindTurn` says so, then the
-// coach-local-day addendum through the REAL `augmentCoachSkillForLocalDay`. The day facts come from the
-// REAL `familyLocalNow` and `localDayContext`, and `find_activities` is the REAL tool
-// over a fixture finder (the live web search is not what this suite grades). A judge
-// reads each reply against the case's rubric, by meaning; nothing here matches words.
+// coach-home-place, then coach-find-private and coach-find-day (every case here is a
+// nearby-find turn; production gates those addenda with the coach-find-turn model read,
+// graded in find-turn-eval.mjs), then the coach-local-day addendum through the REAL
+// `augmentCoachSkillForLocalDay`. The day facts come from the REAL `familyLocalNow` and
+// `localDayContext`, and `find_activities` is the REAL tool over a fixture finder (the
+// live web search is not what this suite grades). A judge reads each reply against the
+// case's rubric, by meaning; nothing here matches words.
 //
 //   node evals/run-coach-local-day-eval.mjs --max-usd 1.5   # live, then caches
 //   node evals/run-coach-local-day-eval.mjs --broken        # calibration: must FAIL
@@ -201,9 +203,7 @@ async function main() {
     join(COACH, 'local-day.ts'),
   );
   const { familyLocalNow } = await importTs(join(COACH, 'local-now.ts'));
-  const { augmentCoachSkillForFindPrivate, nearbyFindTurn } = await importTs(
-    join(COACH, 'find-private.ts'),
-  );
+  const { augmentCoachSkillForFindPrivate } = await importTs(join(COACH, 'find-private.ts'));
   const { findActivitiesTool } = await importTs(
     join(WEB_ROOT, 'lib', 'channel', 'activity', 'tools.ts'),
   );
@@ -211,6 +211,7 @@ async function main() {
   const nearby = await agent.loadSkill(join(SKILLS, 'coach-nearby-find.md'));
   const homePlace = await agent.loadSkill(join(SKILLS, 'coach-home-place.md'));
   const findPrivate = await agent.loadSkill(join(SKILLS, 'coach-find-private.md'));
+  const findDay = await agent.loadSkill(join(SKILLS, 'coach-find-day.md'));
   const localDaySkill = await agent.loadSkill(join(SKILLS, 'coach-local-day.md'));
   // Production appends nearby-find then home-place on every channel turn (VIL-542).
   const base = {
@@ -241,12 +242,8 @@ async function main() {
     const failures = [];
     const localNow = familyLocalNow(new Date(fixture.now), fixture.timeZone);
     const localDay = localDayContext(localNow, fixture.forecast);
-    const transcript = [{ role: 'user', content: fixture.text }];
     const composed = augmentCoachSkillForLocalDay(
-      augmentCoachSkillForFindPrivate(
-        base,
-        nearbyFindTurn(fixture.text, transcript) ? findPrivate : null,
-      ),
+      augmentCoachSkillForFindPrivate(augmentCoachSkillForFindPrivate(base, findPrivate), findDay),
       localDaySkill,
     );
     const extraText = composed.instructions.startsWith(`${base.instructions}\n\n`)

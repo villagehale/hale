@@ -8,6 +8,7 @@ import type { DueCommitment } from '~/lib/commitments/ledger';
 import type { DeepResult } from './deep';
 import type { DeepSlot } from './deep';
 import { type DeepJobDeps, runDeepResearchJob } from './deep-job';
+import { deliverFollowUp, noEvidence } from './deliver';
 
 /**
  * THE QUESTION-TIME JOB, and the one property every case is a variation on:
@@ -133,6 +134,7 @@ afterEach(() => {
   delete process.env[F14_ENABLED_ENV];
   delete process.env[F14_ALLOWLIST_ENV];
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 interface Harness {
@@ -171,6 +173,7 @@ function harness(
       parentUserId: PARENT,
       conversationId: 'conv-1',
       language: 'en-CA',
+      thread: null,
     }),
     reader: {
       place: async () => ({ status: 'known', town: 'Halton Hills' }),
@@ -230,10 +233,109 @@ function harness(
       cancelled.push(input);
       return { status: 'closed' as const, commitmentIds: [COMMITMENT] };
     },
+    clock: () => NOW,
   };
 
   return { deps, transport, fulfilled, cancelled, threaded, audited, watched, composed };
 }
+
+/** Enough of a database for the cadence queue: nothing is queued yet, and what is
+ * written is kept so a test can see whether a candidate row went in. */
+function cadenceDatabase(): Database & { inserted: unknown[] } {
+  const inserted: unknown[] = [];
+  const chain = { from: () => chain, where: () => chain, limit: async () => [] };
+  return {
+    inserted,
+    select: () => chain,
+    insert: (table: unknown) => ({
+      values: (values: unknown) => {
+        inserted.push({ table, values });
+        return { onConflictDoNothing: async () => undefined };
+      },
+    }),
+  } as unknown as Database & { inserted: unknown[] };
+}
+
+/**
+ * MINUTES, NOT AN HOUR. A parent asked; the answer is the second half of that reply. With
+ * the cadence live, every proactive kind waits for the hourly decider, but this one is
+ * not proactive in that sense and must not wait.
+ */
+describe('the question-time answer and the hourly decider', () => {
+  it('never queues for the decider, even with the cadence live', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const h = harness();
+    const db = cadenceDatabase();
+
+    const outcome = await runDeepResearchJob(db, PAYLOAD, h.deps, NOW);
+
+    expect(outcome.status).toBe('sent');
+    expect(h.transport.sent).toHaveLength(1);
+    expect(db.inserted).toEqual([]);
+  });
+
+  it("positive control: the hourly sweep's own delivery still queues under live", async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const h = harness();
+    const db = cadenceDatabase();
+
+    const outcome = await deliverFollowUp(
+      db,
+      h.deps.delivery,
+      {
+        commitmentId: COMMITMENT,
+        familyId: FAMILY,
+        subjectChildId: null,
+        subject: OPEN.topic as string,
+        recipient: { parentUserId: PARENT, conversationId: 'conv-1', language: 'en', thread: null },
+        dedupeKey: `activity_followup:${COMMITMENT}`,
+        optOut: 'short',
+        picks: [SLOT],
+        held: [],
+        pageEvidence: 'page_has_schedule',
+        evidence: noEvidence(),
+        heardFacts: null,
+        lane: 'candidate',
+      },
+      NOW,
+    );
+
+    expect(outcome).toEqual({ status: 'queued' });
+    expect(h.transport.sent).toEqual([]);
+    expect(db.inserted.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * THE FLOOR, READ AGAIN AFTER THE LANE. The research runs for about three minutes, and a
+ * gate read before it is three minutes stale by the send: a job started at 20:58 would
+ * text at 21:01, inside quiet hours. Toronto in August is UTC-4.
+ */
+describe('the quiet floor after the lane', () => {
+  const STARTED = new Date('2026-08-25T00:58:00.000Z'); // 20:58 Toronto
+
+  it('holds a send whose lane ran into quiet hours, and leaves the promise open', async () => {
+    const h = harness();
+    const deps = { ...h.deps, clock: () => new Date('2026-08-25T01:02:00.000Z') }; // 21:02
+
+    const outcome = await runDeepResearchJob(database, PAYLOAD, deps, STARTED);
+
+    expect(outcome).toEqual({ status: 'held', reason: 'quiet_hours' });
+    expect(h.transport.sent).toEqual([]);
+    expect(h.fulfilled).toEqual([]);
+    expect(h.cancelled).toEqual([]);
+  });
+
+  it('positive control: a lane that finishes before the floor still sends', async () => {
+    const h = harness();
+    const deps = { ...h.deps, clock: () => new Date('2026-08-25T00:59:30.000Z') }; // 20:59
+
+    const outcome = await runDeepResearchJob(database, PAYLOAD, deps, STARTED);
+
+    expect(outcome.status).toBe('sent');
+    expect(h.transport.sent).toHaveLength(1);
+  });
+});
 
 describe('runDeepResearchJob', () => {
   it('sends the second message and closes the promise when the pages backed the facts', async () => {
