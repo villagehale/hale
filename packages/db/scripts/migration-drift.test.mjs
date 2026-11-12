@@ -70,6 +70,7 @@ describe('catalog history cutover', () => {
       '0235_authorized_signup_last_asked',
       '0236_authorized_signup_ask_seq',
       '0237_authorized_signup_ask_order_uncertain',
+      '0238_channel_messages_opt_out_unread',
     ]);
   });
 });

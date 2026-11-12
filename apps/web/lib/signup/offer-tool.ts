@@ -2,6 +2,7 @@ import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { signupProviderHost } from './consent';
@@ -38,6 +39,9 @@ import { registrationUrlAllowed } from './url';
  * The program name an ask is stored under is what later names it in the parent's words, so
  * it is never only the model's: see {@link storedActivityLabel}.
  *
+ * A text the door's opt-out read could not read may be a stop: on that turn, and while an
+ * earlier text of the parent's is held unread, the tool creates and closes nothing.
+ *
  * A sender whose group seat may not authorize a sign-up creates and closes nothing. A
  * family may hold several asks at once; an earlier ask of this parent closes only when a
  * model reading of their words this turn says this one replaces it, in words of theirs that
@@ -61,6 +65,8 @@ export interface SignupOfferToolPorts {
   now: Date;
   /** The parent's message this turn, verbatim. */
   parentWords: string;
+  /** The door could not read this turn's text as a stop or not (`ChannelTurn.optOutUnread`). */
+  optOutUnread: boolean;
   /** Pages a search or extract put in front of the parent this turn. */
   linksThisTurn: () => readonly { title: string; url: string }[];
   writer?: SignupOfferWriter;
@@ -180,6 +186,13 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
     handler: async (input, ctx) => {
       if (ctx.familyId !== ports.familyId) {
         throw new Error("That family is not this turn's family.");
+      }
+      if (ports.optOutUnread || (await isParentHeld(ports.database, ports.parentUserId))) {
+        console.warn(
+          { outcome: 'signup_opt_out_unread', thisText: ports.optOutUnread },
+          'offer_signup: a text of theirs may be an unread stop - nothing recorded or closed',
+        );
+        return { recorded: false as const, reason: 'opt_out_unread' };
       }
       if (
         await declinePrivilegedGroupSeat(ports.database, {

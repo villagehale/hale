@@ -18,6 +18,7 @@ import { type ChannelTransport, FakeTransport } from '~/lib/channel/intake/trans
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import { type InboundBurst, createInboundBurst } from '~/lib/channel/router/burst';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { FakeReplyTransport, type ReplySent } from '~/lib/channel/router/reply-route';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
@@ -37,7 +38,7 @@ import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
 import { authorizedSignupHandler } from '../handler';
 import { recordSignupOffer } from '../store';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
-import { createPlanPrepDeliver } from './notice';
+import { createPlanNotifier, createPlanPrepDeliver } from './notice';
 import { type PlanPrepDeps, recordPlanNotice, runDueSignupPlanPrep } from './prep';
 import type { PlanReader, PlanReading } from './reader';
 import type { PlanReplyWriter } from './writer';
@@ -196,6 +197,7 @@ function deps(
     transport: FakeReplyTransport;
     planReader?: PlanReader;
     coachOffer?: CoachOffer;
+    burst?: InboundBurst;
   },
 ): ChannelRouterDeps {
   return {
@@ -224,7 +226,7 @@ function deps(
     },
     smokeAlarm: auditSmokeAlarmClaim(db.database),
     turns: auditTurnLedger(db.database),
-    burst: { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
+    burst: options.burst ?? { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
@@ -321,6 +323,7 @@ async function offerIdFor(f: Household, program: Program) {
 }
 
 const minutes = (n: number) => new Date(NOW.getTime() + n * 60_000);
+const seconds = (n: number) => new Date(NOW.getTime() + n * 1_000);
 
 /**
  * Two approved plans, each offered by a coach turn and approved by the parent's bare yes,
@@ -766,6 +769,49 @@ describe('a text about an ask whose mark cannot be written before its send', () 
     await marksWork();
     expect(wire).toEqual([]);
   });
+
+  it("a plan's outcome notice: nothing is sent, and its key is left free for a later call to send it", async () => {
+    const f = await household();
+    const { swimId } = await twoApprovedPlans(f);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const wire: string[] = [];
+    const notify = createPlanNotifier(db.database, {
+      writer: { write: async () => 'Swim is booked.' },
+      transport: {
+        async send(input) {
+          wire.push(input.body);
+          return { providerMessageId: `notice-${f.familyId}-${wire.length}` };
+        },
+      },
+      now: () => NOW,
+    });
+    const notice = {
+      offerId: swimId,
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      outcome: 'completed' as const,
+      detail: 'none' as const,
+      choiceIndex: 0,
+      cartTotalCents: 9800,
+      amountChargedCents: 9800,
+      confirmationNumber: 'C-1',
+      liveViewUrl: null,
+      holdExpiresAt: null,
+    };
+
+    await failMarks();
+    const unmarked = await notify(notice);
+    await marksWork();
+    expect(unmarked).toBe('failed');
+    expect(wire).toEqual([]);
+
+    // Nothing went, so nothing may read as sent: the next call sends it, once.
+    expect(await notify(notice)).toBe('sent');
+    expect(wire).toEqual(['Swim is booked.']);
+    expect(await notify(notice)).toBe('sent');
+    expect(wire).toEqual(['Swim is booked.']);
+  });
 });
 
 /**
@@ -820,11 +866,12 @@ describe('a bare stop from a parent with a planned sign-up', () => {
     });
   }
 
-  async function textsTheDoor(
+  /** The signed webhook and the intake machine only: what the door confirmed and queued. */
+  async function throughTheDoor(
     f: Household,
     text: string,
     at: Date,
-    options: { planReader: PlanReader; optOutReader?: OptOutReader },
+    options: { optOutReader?: OptOutReader },
   ) {
     const jobs: ChannelMessageReceivedJob[] = [];
     const intakeTransport = new FakeTransport();
@@ -854,19 +901,72 @@ describe('a bare stop from a parent with a planned sign-up', () => {
       sendGroupText: async () => ({ providerMessageId: 'unused' }),
     } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
     const response = await handleLinqInboundRequest(webhook(f, text, at), door);
-    const routerSaid: string[] = [];
-    for (const job of jobs) {
-      const transport = new FakeReplyTransport();
-      await routeChannelMessage(deps(at, { transport, planReader: options.planReader }), job);
-      routerSaid.push(...transport.bodies());
-    }
     return {
       outcome: ((await response.json()) as { outcome?: string }).outcome,
-      handedOff: jobs.length,
+      jobs,
       confirmed: intakeTransport.bodies(),
-      routerSaid,
     };
   }
+
+  /** Each queued job through the router, in order; what the router sent. */
+  async function routed(
+    jobs: readonly ChannelMessageReceivedJob[],
+    at: Date,
+    options: { planReader: PlanReader; burst?: InboundBurst },
+  ) {
+    const said: string[] = [];
+    for (const job of jobs) {
+      const transport = new FakeReplyTransport();
+      await routeChannelMessage(deps(at, { transport, ...options }), job);
+      said.push(...transport.bodies());
+    }
+    return said;
+  }
+
+  async function textsTheDoor(
+    f: Household,
+    text: string,
+    at: Date,
+    options: { planReader: PlanReader; optOutReader?: OptOutReader },
+  ) {
+    const door = await throughTheDoor(f, text, at, options);
+    return {
+      outcome: door.outcome,
+      jobs: door.jobs,
+      handedOff: door.jobs.length,
+      confirmed: door.confirmed,
+      routerSaid: await routed(door.jobs, at, options),
+    };
+  }
+
+  /** The door's write of the hold row fails, as a database refusing one insert would. */
+  async function failHoldWrites() {
+    await db.database.execute(
+      sql.raw(`create or replace function test_fail_hold() returns trigger as $$
+        begin raise exception 'test: the hold write fails'; end $$ language plpgsql`),
+    );
+    await db.database.execute(
+      sql`create trigger test_fail_hold before insert on opt_out_held_messages for each row execute function test_fail_hold()`,
+    );
+  }
+  async function allowHoldWrites() {
+    await db.database.execute(sql`drop trigger if exists test_fail_hold on opt_out_held_messages`);
+  }
+
+  /** A burst planner that is on and reads every settled text as one ask. */
+  function foldingBurst(): InboundBurst {
+    return createInboundBurst(db.database, {
+      enabled: () => true,
+      reader: {
+        read: async (input) => ({ status: 'read', groups: [input.messages.map((m) => m.ref)] }),
+      },
+      // The rows' created_at is the database clock: a minute on, the texts have settled.
+      now: () => new Date(Date.now() + 60_000),
+      sleep: async () => {},
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+  }
+  const unreadable: OptOutReader = { read: async () => null };
 
   async function revokedAt(f: Household) {
     const [row] = await db.database
@@ -938,6 +1038,78 @@ describe('a bare stop from a parent with a planned sign-up', () => {
     expect(await cancelAudits(f)).toEqual([]);
     expect(turn.routerSaid).not.toContain('reply for cancelled');
     await db.database.delete(schema.optOutHeldMessages);
+  });
+
+  it('a stop the opt-out read could not read takes no plan back when its hold could not be written', async () => {
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await failHoldWrites();
+    const turn = await textsTheDoor(f, 'STOP!!', minutes(1), {
+      planReader: takesBack,
+      optOutReader: unreadable,
+    }).finally(allowHoldWrites);
+
+    // No row says this parent is held: only the turn itself can say the read failed.
+    expect(await db.database.select().from(schema.optOutHeldMessages)).toEqual([]);
+    expect(turn.handedOff).toBe(1);
+    for (const offerId of [swimId, kickersId]) {
+      const row = await offerRow(offerId);
+      expect(row.status).toBe('planned');
+      expect(row.planCancelRequestedAt).toBeNull();
+    }
+    expect(await cancelAudits(f)).toEqual([]);
+    expect(turn.routerSaid).not.toContain('reply for cancelled');
+    expect(turn.jobs[0]?.opt_out_unread).toBe(true);
+  });
+
+  it('two texts read as one turn take no plan back when the read could not read one of them', async () => {
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await failHoldWrites();
+    const first = await throughTheDoor(f, 'no', minutes(1), {});
+    const second = await throughTheDoor(f, 'STOP!!', seconds(65), {
+      optOutReader: unreadable,
+    }).finally(allowHoldWrites);
+    // The first text was read, so its own job says nothing is unread; the second's does.
+    expect(first.jobs.map((job) => job.opt_out_unread)).toEqual([false]);
+    expect(second.jobs.map((job) => job.opt_out_unread)).toEqual([true]);
+
+    const said = await routed([...first.jobs, ...second.jobs], minutes(2), {
+      planReader: takesBack,
+      burst: foldingBurst(),
+    });
+
+    for (const offerId of [swimId, kickersId]) {
+      const row = await offerRow(offerId);
+      expect(row.status).toBe('planned');
+      expect(row.planCancelRequestedAt).toBeNull();
+    }
+    expect(await cancelAudits(f)).toEqual([]);
+    expect(said).not.toContain('reply for cancelled');
+  });
+
+  it('positive control: two texts both read, read as one turn, take the newest plan back', async () => {
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+
+    const first = await throughTheDoor(f, 'no', minutes(1), {});
+    const second = await throughTheDoor(f, 'not that one', seconds(65), {});
+    const said = await routed([...first.jobs, ...second.jobs], minutes(2), {
+      planReader: takesBack,
+      burst: foldingBurst(),
+    });
+
+    // One turn answered both texts: one reply, and the second job stopped as folded.
+    expect(said).toEqual(['reply for cancelled']);
+    expect((await offerRow(kickersId)).status).toBe('handed_back');
+    expect((await offerRow(swimId)).status).toBe('planned');
+    expect(await cancelAudits(f)).toHaveLength(1);
   });
 
   it('positive control: a bare no through the same door reaches the router and takes the newest plan back', async () => {

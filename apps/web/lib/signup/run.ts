@@ -83,6 +83,8 @@ export interface SignupRunInput {
   /** True when this turn is already inside a thread the parent opened. */
   existingThread: boolean;
   now: Date;
+  /** The door's opt-out read could not read this text (`ChannelTurn.optOutUnread`). */
+  optOutUnread?: boolean;
 }
 
 export interface SignupRunDeps {
@@ -218,11 +220,19 @@ export async function runAuthorizedSignup(
     now: input.now,
   });
   // A stop is the opt-out's, read at the door before any turn reaches here. A text of theirs
-  // the opt-out read could not read may be one (opt-out-hold.ts), so until it is read it
-  // moves none of their asks.
-  if (asks.length > 0 && (await isParentHeld(database, input.parentUserId))) {
+  // the opt-out read could not read may be one, so until it is read it moves none of their
+  // asks: this text, as the turn carries it (the door's hold row may not have been written),
+  // or an earlier one still held (opt-out-hold.ts).
+  if (
+    asks.length > 0 &&
+    (input.optOutUnread === true || (await isParentHeld(database, input.parentUserId)))
+  ) {
     console.warn(
-      { outcome: 'signup_opt_out_unread', asks: asks.length },
+      {
+        outcome: 'signup_opt_out_unread',
+        asks: asks.length,
+        thisText: input.optOutUnread === true,
+      },
       'signup asks: a text of theirs may be an unread stop - no ask moves',
     );
     return { ...UNCLAIMED, outcome: 'opt_out_unread' };

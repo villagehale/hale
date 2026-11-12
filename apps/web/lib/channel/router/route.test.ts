@@ -2440,6 +2440,7 @@ describe('back-to-back texts read as one turn', () => {
       body: '$600 budget for a fall program',
       media: [],
       createdAt: NOW,
+      optOutUnread: false,
     },
     {
       channelMessageId: '33333333-3333-4333-8333-000000000002',
@@ -2447,6 +2448,7 @@ describe('back-to-back texts read as one turn', () => {
       body: '$900',
       media: [photo],
       createdAt: NOW,
+      optOutUnread: false,
     },
   ];
   const anchorPlan = (
@@ -2535,6 +2537,41 @@ describe('back-to-back texts read as one turn', () => {
       ['$600 budget for a fall program', 'SM1'],
       ['$900', 'SM2'],
     ]);
+  });
+
+  it('a text the door could not read marks the whole turn: from its own job, or from a folded text', async () => {
+    const lone = capturingCoach();
+    await routeChannelMessage(
+      harness({ burst: fakeBurst({ kind: 'lone', waitedMs: 0, why: 'alone' }), coach: lone.coach })
+        .deps,
+      job({ opt_out_unread: true }),
+    );
+    expect(lone.turns[0]?.optOutUnread).toBe(true);
+
+    const unreadLater: BurstMember[] = [
+      members[0] as BurstMember,
+      { ...(members[1] as BurstMember), optOutUnread: true },
+    ];
+    const folded = capturingCoach();
+    await routeChannelMessage(
+      harness({
+        burst: fakeBurst(anchorPlan({ members: unreadLater, replyTo: unreadLater[1] })),
+        coach: folded.coach,
+        context: { reply: IMESSAGE },
+      }).deps,
+      job({ opt_out_unread: false }),
+    );
+    expect(folded.turns[0]?.optOutUnread).toBe(true);
+
+    // Positive control: every text read, nothing marked.
+    const read = capturingCoach();
+    await routeChannelMessage(
+      harness({ burst: fakeBurst(anchorPlan()), coach: read.coach, context: { reply: IMESSAGE } })
+        .deps,
+      job({ opt_out_unread: false }),
+    );
+    expect(read.turns).toHaveLength(1);
+    expect(read.turns[0]).not.toHaveProperty('optOutUnread');
   });
 
   it('a lone text keeps today’s turn: one thread row, no burst size for the coach', async () => {
@@ -6622,6 +6659,8 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS audience uuid');
       // And the inbound service (0233), which drizzle names on every ledger row.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS provider_service text');
+      // And the door's unread opt-out read (0238), which drizzle names on every ledger row.
+      await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS opt_out_unread boolean');
     });
 
     afterAll(async () => {

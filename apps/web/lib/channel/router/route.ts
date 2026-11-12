@@ -1268,6 +1268,11 @@ async function routeChannelMessageInner(
     body: context.body,
     ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
     ...(burst.kind === 'anchor' ? { burstSize: burst.members.length } : {}),
+    // The job says it for its own text; a folded text's row says it for that text.
+    ...(job.opt_out_unread === true ||
+    (burst.kind === 'anchor' && burst.members.some((member) => member.optOutUnread))
+      ? { optOutUnread: true as const }
+      : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
     // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {

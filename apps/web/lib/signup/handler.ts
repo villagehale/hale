@@ -38,6 +38,7 @@ export function authorizedSignupHandler(
           inboundChannelMessageId: ctx.inboundChannelMessageId,
           existingThread: true,
           now: ctx.now,
+          optOutUnread: ctx.optOutUnread === true,
         },
         {
           ...deps,

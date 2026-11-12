@@ -2,6 +2,9 @@ import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { holdSender, releaseHeldMessage } from '~/lib/channel/intake/opt-out-hold';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { type RecordedSignupOffer, offerSignupTool } from './offer-tool';
 import {
@@ -35,6 +38,7 @@ describe('offer_signup coach verb', () => {
       parentUserId: seeded.parentUserId,
       now: NOW,
       parentWords: `Ada's rec email has parent and tot swim Tuesday 4:30 at ${URL}`,
+      optOutUnread: false,
       linksThisTurn: () => [],
       writer,
       onRecorded: (offer) => recorded.push(offer),
@@ -102,6 +106,7 @@ describe('offer_signup coach verb', () => {
     at: Date,
     reader: SignupSupersedeReader,
     words = `${activity} ${label} ${url}`,
+    optOutUnread = false,
   ) {
     return invokeTool(
       offerSignupTool({
@@ -110,6 +115,7 @@ describe('offer_signup coach verb', () => {
         parentUserId: f.parentUserId,
         now: at,
         parentWords: words,
+        optOutUnread,
         linksThisTurn: () => [],
         writer: echoOfferWriter(),
         supersedeReader: reader,
@@ -220,6 +226,77 @@ describe('offer_signup coach verb', () => {
         { label: 'Little Kickers', status: 'pending' },
       ]),
     );
+  });
+
+  it('records and closes nothing on a turn whose text the opt-out read could not read', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const seeded = await seedFamily(db.database);
+    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+    await ask(seeded, GYM_URL, 'Gymnastics Tots', 'Sat 10:15', NOW, supersedeReader(null));
+    const reader = supersedeReader('Gymnastics Tots');
+    const later = new Date(NOW.getTime() + 60_000);
+
+    const unread = await ask(
+      seeded,
+      KICKERS_URL,
+      'Little Kickers',
+      'Sat 9:30',
+      later,
+      reader,
+      undefined,
+      true,
+    );
+
+    expect(unread).toEqual({ recorded: false, reason: 'opt_out_unread' });
+    expect(reader.read).not.toHaveBeenCalled();
+    expect(await asks(seeded.familyId)).toEqual([{ label: 'Gymnastics Tots', status: 'pending' }]);
+
+    // Positive control: the same words on a turn the read could read switch the ask.
+    const read = await ask(seeded, KICKERS_URL, 'Little Kickers', 'Sat 9:30', later, reader);
+    expect(read).toMatchObject({ recorded: true });
+    expect(await asks(seeded.familyId)).toEqual(
+      expect.arrayContaining([
+        { label: 'Gymnastics Tots', status: 'handed_back' },
+        { label: 'Little Kickers', status: 'pending' },
+      ]),
+    );
+  });
+
+  it('records and closes nothing while an earlier text of the parent is held unread', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    const phone = '+14165550188';
+    const seeded = await seedFamily(db.database);
+    await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+    await db.database.insert(schema.parentChannels).values({
+      familyId: seeded.familyId,
+      userId: seeded.parentUserId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      verifiedAt: NOW,
+    });
+    await ask(seeded, GYM_URL, 'Gymnastics Tots', 'Sat 10:15', NOW, supersedeReader(null));
+    await holdSender(db.database, {
+      phoneHash: phoneBlindIndex(phone),
+      providerMessageId: `held-${seeded.familyId}`,
+      now: NOW,
+    });
+    const reader = supersedeReader('Gymnastics Tots');
+    const later = new Date(NOW.getTime() + 60_000);
+
+    const held = await ask(seeded, KICKERS_URL, 'Little Kickers', 'Sat 9:30', later, reader);
+
+    expect(held).toEqual({ recorded: false, reason: 'opt_out_unread' });
+    expect(await asks(seeded.familyId)).toEqual([{ label: 'Gymnastics Tots', status: 'pending' }]);
+    // Once that text is read, the hold goes and the same words switch the ask.
+    await releaseHeldMessage(db.database, `held-${seeded.familyId}`);
+    expect(
+      await ask(seeded, KICKERS_URL, 'Little Kickers', 'Sat 9:30', later, reader),
+    ).toMatchObject({
+      recorded: true,
+    });
+    vi.unstubAllEnvs();
   });
 
   it('an earlier ask the parent dropped in words that do not name it stays open beside the new one, and the coach is told', async () => {
@@ -389,6 +466,7 @@ describe('offer_signup coach verb', () => {
       parentUserId: seeded.parentUserId,
       now: NOW,
       parentWords: 'can you sign Ada up for swim',
+      optOutUnread: false,
       linksThisTurn: () => [],
       writer: echoOfferWriter(),
       onRecorded: () => {},
@@ -435,6 +513,7 @@ describe('offer_signup coach verb', () => {
           parentUserId: seeded.parentUserId,
           now: NOW,
           parentWords: input.words,
+          optOutUnread: false,
           linksThisTurn: () => input.links,
           writer: echoOfferWriter(),
           onRecorded: () => {},

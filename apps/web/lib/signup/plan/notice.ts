@@ -163,7 +163,15 @@ async function deliverDirect(
     parentUserId: notice.parentUserId,
     offerIds: [notice.offerId],
   });
-  if (keep instanceof AskOrderUnmarked) return failed(keep.message);
+  if (keep instanceof AskOrderUnmarked) {
+    // The transport was never called. A failed row under this key would make every later
+    // call answer 'sent' above, so the claim is let go and a later call can send it.
+    await database
+      .delete(messages)
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+    console.warn({ offerId: notice.offerId, code: keep.message }, 'signup plans: notice failed');
+    return 'failed';
+  }
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
     delivered = await deliverFamilyOutbound(database, {

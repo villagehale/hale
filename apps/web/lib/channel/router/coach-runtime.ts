@@ -95,6 +95,13 @@ export interface ChannelTurn {
    * Absent unless two or more, so a lone turn keeps its prompt bytes and cache keys.
    */
   burstSize?: number;
+  /**
+   * The door's opt-out read could not read this turn's text, or one of the texts it reads
+   * as one, so it may be a stop (inbound-route.ts). Decided in code (route.ts), never by
+   * the model. No sign-up ask moves on such a turn, whether or not a hold row stands for
+   * the number. Absent on every other turn.
+   */
+  optOutUnread?: true;
 }
 
 /**

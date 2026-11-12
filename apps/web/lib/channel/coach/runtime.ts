@@ -1276,6 +1276,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               parentUserId: turn.parentUserId,
               now: turn.now,
               parentWords: turn.body,
+              optOutUnread: turn.optOutUnread === true,
               linksThisTurn: () => [
                 ...offered.links(),
                 ...offered
