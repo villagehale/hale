@@ -431,6 +431,10 @@
     "file": "linq-edit.md",
     "sha256": "04b96842d607bb4835d35798807cf49d787cd3625e89bcffc93c79aec89fced5"
   },
+  "linq-effect.md": {
+    "file": "linq-effect.md",
+    "sha256": "2ae86641c1a1b32e9ec7f4249b15a2f63a8c0c72c6306ce86218ac815a10eae4"
+  },
   "linq-sticker.md": {
     "file": "linq-sticker.md",
     "sha256": "058703a76f47c7021790ae4e2c8248b065c00937a439943af13f35df4121602d"
