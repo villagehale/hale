@@ -23,6 +23,7 @@ import { loadProviderSession, recordBrowserUseProfile } from '../browser-use/vau
 import { signupProviderHost, typedOutsideGrant } from '../consent';
 import { providerAccountCreateEnabled, providerCredentialsEnabled } from '../credentials/flag';
 import { loadCredentialsForRun, markCredentialsStale } from '../credentials/store';
+import { loginLinkExpiresAt } from '../login-link/code';
 import { mintFreshLoginLink } from '../login-link/store';
 import { BROWSER_USE_REGISTRATION_RESERVE_USD, signupSpendingCap } from '../run';
 import {
@@ -35,7 +36,12 @@ import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
 import { registrationPlanRunEnabled } from './flag';
 import { signupPlanPrepDepsFromEnv } from './notice';
-import { type PlanNoticeKind, type PlanPrepDeps, sendSignupPlanNotice } from './prep';
+import {
+  type PlanNoticeKind,
+  type PlanPrepDeps,
+  firstChoiceLabel,
+  sendSignupPlanNotice,
+} from './prep';
 import {
   type ClaimedPlan,
   claimDuePlan,
@@ -545,12 +551,22 @@ async function parkAndTell(
       now,
     });
   }
+  // The card names the open only while it is still ahead for the card's whole life; the
+  // run has usually reached the open by now, so the card is for finishing the session.
   const minted = passwordRejected
     ? await mintFreshLoginLink(database, {
         familyId: plan.familyId,
         parentUserId: plan.parentUserId,
         offerId: plan.offerId,
         providerHost: host ?? new URL(plan.registrationUrl).hostname,
+        purpose: {
+          kind: 'password_rejected',
+          sessionLabel: firstChoiceLabel(plan.sessions, plan.choiceIds),
+          opensAt:
+            plan.opensAt.getTime() > loginLinkExpiresAt(now).getTime()
+              ? planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId))
+              : null,
+        },
         now,
       })
     : null;
