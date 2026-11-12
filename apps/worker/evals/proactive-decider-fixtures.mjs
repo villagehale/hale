@@ -277,4 +277,22 @@ export const PROACTIVE_DECIDER_FIXTURES = [
     expect: { action: 'send_now', includes: ['checkback'], frequency: null },
     snapshot: snapshot({ now: THURSDAY_MIDDAY, candidates: [candidate(CHECKBACK)] }),
   },
+  {
+    // VIL-684 · their own city's winter registration opens Tuesday morning: the one tell
+    // may go now or wait for a better moment before then, but never be thrown away.
+    id: 'registration-opening',
+    expect: { actionIn: ['send_now', 'hold'], includes: ['opening'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_MIDDAY,
+      candidates: [
+        candidate({
+          id: 'opening',
+          kind: 'registration_opening',
+          why: 'registration_opening read=2026-10-08T14:38:00.000Z',
+          sourceUrl: 'https://rec.example.test/winter-registration',
+          worthlessAfter: '2026-10-13T11:30:00.000Z',
+        }),
+      ],
+    }),
+  },
 ];

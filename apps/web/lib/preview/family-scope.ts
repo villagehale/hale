@@ -97,6 +97,9 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own
     'memory-digest': 'skip',
     'ops-daily': 'skip',
     'registration-verify': 'skip',
+    // Live searches and city page reads on the deploy's model key, and tells queued for
+    // real families: never on Preview.
+    'city-registration': 'skip',
     'watched-spots': 'skip',
     'failure-page': 'skip',
     unanswered: 'skip',

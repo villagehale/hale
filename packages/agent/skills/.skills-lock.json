@@ -571,6 +571,10 @@
     "file": "registration-note.md",
     "sha256": "cff18881826efd412bbfcf53b1f79956a55abd29297288468ae6e7175bb89117"
   },
+  "registration-page-search.md": {
+    "file": "registration-page-search.md",
+    "sha256": "44b087615dd030d08c812fba71604ef7056c4515744c4e0c1aaaee85fd97f2ef"
+  },
   "registration-text-check.md": {
     "file": "registration-text-check.md",
     "sha256": "b67b3163f17eaa4565af70be192ff65eb92cb7aa8b953615ff32502789a3ce9d"

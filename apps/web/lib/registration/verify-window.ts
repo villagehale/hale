@@ -900,10 +900,7 @@ export const EXTRACTION_JSON_SCHEMA = {
 
 /** The user-message payload. Exported so the eval sends the model byte-identical
  * input to what production sends (the eval imports it). */
-export function extractionInput(
-  window: Pick<StoredWindow, 'municipality' | 'programDomain' | 'cycleLabel'>,
-  pageText: string,
-): string {
+export function extractionInput(window: CycleIdentity, pageText: string): string {
   return JSON.stringify({
     municipality: window.municipality,
     program_domain: window.programDomain,
@@ -913,8 +910,13 @@ export function extractionInput(
 }
 
 /** What identifies the cycle to read — all the model is told about the stored row.
- * Deliberately NOT the dates: a model shown the answer cannot be a check on it. */
-export type CycleIdentity = Pick<StoredWindow, 'municipality' | 'programDomain' | 'cycleLabel'>;
+ * Deliberately NOT the dates: a model shown the answer cannot be a check on it. The
+ * municipality is any town's name, not only a catalog id: a family's own city is read
+ * off its own page (VIL-684), and the skill never treats the name as evidence. */
+export type CycleIdentity = { municipality: string } & Pick<
+  StoredWindow,
+  'programDomain' | 'cycleLabel'
+>;
 
 export interface ExtractDeps {
   client: AgentClient;
