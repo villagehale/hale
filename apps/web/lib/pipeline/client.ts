@@ -34,6 +34,14 @@ export const CLAIM_READ_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as c
 export const OPT_OUT_RECOVERY_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
 
 /**
+ * Options for the iMessage effect read (VIL-473): a call made after the reply is written
+ * and before it goes out, for a flourish the reply does not need. One request gets 12s
+ * and no retry, so a slow read cannot eat the turn; a read that runs out sends the reply
+ * plain.
+ */
+export const LINQ_EFFECT_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
+
+/**
  * Options for the activity lane's WEB-GROUNDED call — the one model request on the SMS
  * path that goes out to the open web before it answers.
  *
