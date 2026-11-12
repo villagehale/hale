@@ -117,6 +117,7 @@ import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/s
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
+import { augmentCoachSkillForBubbles } from './bubbles';
 import { draftOriginForTurn, productionChannelDraftPort } from './draft';
 import {
   type ExperienceCardIntent,
@@ -160,7 +161,7 @@ import {
   productionRegistrationContextPorts,
 } from './registration-context';
 import { redactTeenNames } from './reply';
-import { type ReplyChild, toSmsReply } from './reply';
+import { type ReplyChild, joinReplyBubbles, toSmsBubbles, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
   buildChannelCoachTools,
@@ -646,9 +647,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         { stage: 'coach', ...llmFamilyContext(turn.familyId) },
         () => photoFactsForTurn(turn, ports, media.blocks, now, timeZone),
       );
-      const skillForTurn = photoFacts
-        ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
-        : coachSkill;
+      // A 1:1 turn the router lit for several bubbles gets their addendum, last. Every
+      // other turn keeps the skill object it already had, and its recordings their keys.
+      const bubblesLit = turn.replyBubbles === true && turn.audience === 'direct';
+      const skillForTurn = augmentCoachSkillForBubbles(
+        photoFacts
+          ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
+          : coachSkill,
+        bubblesLit ? await loadCronSkill('coach-bubbles') : null,
+      );
       if (photoFacts) {
         Object.assign(context, { photoFacts });
       }
@@ -939,7 +946,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // VIL-434: the model's answer goes out whole. Length is the model's judgment
               // (the skill, or a rewrite the model chooses). Code does not cut it, and it
               // does not call a shorten pass because a sentence ran past two segments.
-              const reply = toSmsReply(spoken, {
+              const smsArgs = {
                 children,
                 now,
                 ...(noticeReady
@@ -950,7 +957,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                       activityLinks: turnLinks(),
                       nearby: nearby ?? undefined,
                     }),
-              });
+              };
+              // A lit turn's reply breaks between bubbles and nowhere else. A Gmail draft
+              // notice is a receipt to read, so it is one bubble.
+              const reply = bubblesLit
+                ? joinReplyBubbles(toSmsBubbles(spoken, { ...smsArgs, bubbles: !noticeReady }))
+                : toSmsReply(spoken, smsArgs);
               await ports.recordRun(record('completed'));
               const card = experienceCard as ExperienceCardIntent | null;
               const capabilityNotes: CapabilityNotes | null =

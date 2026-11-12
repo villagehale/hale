@@ -107,6 +107,10 @@
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
+  "coach-bubbles.md": {
+    "file": "coach-bubbles.md",
+    "sha256": "5e02aa2fba57b95e90db63717b977d59076b68f5338a81583f67312e328437b3"
+  },
   "coach-capability-correction.md": {
     "file": "coach-capability-correction.md",
     "sha256": "13170b75a276e27731b8434f30e5952c22ca802901be6d01b70f65e50ce02176"

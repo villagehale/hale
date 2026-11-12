@@ -25,6 +25,7 @@ export function createReplyTransport(deps: {
     body: string;
     replyToMessageId: string | null;
     mention?: string;
+    sendKey?: string;
   }) => Promise<{ providerMessageId: string }>;
   /**
    * VIL-475 — pick one seated handle for this group reply, or undefined.
@@ -39,15 +40,17 @@ export function createReplyTransport(deps: {
       body: string;
       replyToMessageId: string | null;
       mention?: string;
+      sendKey?: string;
     }) =>
       sendLinqChatMessage({
         chatId: input.chatId,
         text: input.body,
         replyTo: input.replyToMessageId ? { messageId: input.replyToMessageId } : undefined,
         ...(input.mention ? { mention: input.mention } : {}),
+        ...(input.sendKey ? { sendKey: input.sendKey } : {}),
       }));
   return {
-    async send({ route, body }): Promise<ReplySent> {
+    async send({ route, body, sendKey }): Promise<ReplySent> {
       switch (route.channel) {
         case 'sms': {
           const sent = await sendResolvingNewChat(deps.phone, { to: route.to, body });
@@ -67,6 +70,7 @@ export function createReplyTransport(deps: {
             body,
             replyToMessageId: route.replyToMessageId,
             ...(mention ? { mention } : {}),
+            ...(sendKey ? { sendKey } : {}),
           });
           return { providerMessageId: sent.providerMessageId, channel: 'imessage' };
         }

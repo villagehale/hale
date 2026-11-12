@@ -61,16 +61,18 @@ export interface ReplySent {
  * as one they did (rule #11).
  */
 export interface ReplyTransport {
-  send(input: { route: ReplyRoute; body: string }): Promise<ReplySent>;
+  /** `sendKey` names this send to the provider (Linq's idempotency key), so a resend under
+   * the same key is dropped. Absent: the provider mints one. */
+  send(input: { route: ReplyRoute; body: string; sendKey?: string }): Promise<ReplySent>;
 }
 
 /** Records every send with the route it went out on — the assertion surface for "was
  * this answered on the channel the parent used". */
 export class FakeReplyTransport implements ReplyTransport {
-  readonly sent: Array<{ route: ReplyRoute; body: string }> = [];
+  readonly sent: Array<{ route: ReplyRoute; body: string; sendKey?: string }> = [];
   private counter = 0;
 
-  async send(input: { route: ReplyRoute; body: string }): Promise<ReplySent> {
+  async send(input: { route: ReplyRoute; body: string; sendKey?: string }): Promise<ReplySent> {
     this.sent.push(input);
     this.counter += 1;
     return { providerMessageId: `fake-out-${this.counter}`, channel: input.route.channel };

@@ -100,6 +100,7 @@ import {
 } from './route';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
+import { TURN_ANSWERED_ACTION, auditTurnLedger } from './wiring';
 
 // The live search is on by default in production. These tests describe the kill switch
 // (dark) unless a test lights it, so each starts dark.
@@ -7863,5 +7864,481 @@ describe('capability notes ride out with the reply', () => {
     ]);
     expect(noted).toEqual([]);
     expect(JSON.stringify(h.logs)).toContain('capability_notes_cut');
+  });
+});
+
+/**
+ * ONE ANSWER, SEVERAL SHORT BUBBLES (Barton 2026-11-11). On a 1:1 iMessage chat with
+ * COACH_BUBBLES lit for the family, the coach's reply carries a line break between
+ * bubbles (coach/reply.ts) and the router sends each one, in order, as its own message.
+ * What happens once per ANSWER (the moment read, the claim, the mirror, the post-send
+ * writes) still happens once; what a delivered message leaves behind (a ledger row with
+ * its own dedupe key, an audit row, a thread row) happens once per bubble.
+ */
+describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
+  const ID = job().channel_message_id;
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+  };
+  const UNTHREADED: ReplyRoute = { ...IMESSAGE, replyToMessageId: null };
+  const THREE = 'Swim is Saturday at 10.\nBring a towel.\nWant me to add it to your calendar?';
+  const OFFER = { sentence: 'Want the full plan for his nights?', topic: 'sleep' } as never;
+  const PROMISE: ActivityPromise = { subject: 'toddler swim nearby', childId: null };
+
+  /** A coach that records the turn it was handed and answers with `result`. */
+  function seeingCoach(
+    result: Partial<ChannelTurnResult> & { reply: string },
+  ): ChannelCoachRuntime & { turns: ChannelTurn[] } {
+    const coach = {
+      turns: [] as ChannelTurn[],
+      async respond(turn: ChannelTurn) {
+        coach.turns.push(turn);
+        return { planOffer: null, activityPromise: null, spotWatch: null, ...result };
+      },
+    };
+    return coach;
+  }
+
+  function bubbleTurn(
+    result: Partial<ChannelTurnResult> & { reply: string } = { reply: THREE },
+    options: Parameters<typeof harness>[0] = {},
+  ) {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const coach = seeingCoach(result);
+    const h = harness({
+      coach,
+      context: { body: 'what is on saturday', reply: IMESSAGE },
+      ...options,
+    });
+    return { h, coach };
+  }
+
+  const outRows = (fake: FakeDb) => ledgerRows(fake).filter((row) => row.direction === 'out');
+
+  afterEach(() => {
+    effectDecide.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('sends each bubble in order, threads only the first, and keys one ledger row per bubble', async () => {
+    const { h, coach } = bubbleTurn();
+    const claimedAtSend: number[] = [];
+    const send = h.transport.send.bind(h.transport);
+    h.transport.send = async (input) => {
+      claimedAtSend.push(h.turns.answered.length);
+      return send(input);
+    };
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(coach.turns[0]?.replyBubbles).toBe(true);
+    expect(h.transport.sent).toEqual([
+      { route: IMESSAGE, body: 'Swim is Saturday at 10.', sendKey: `turn-reply:${ID}:0` },
+      { route: UNTHREADED, body: 'Bring a towel.', sendKey: `turn-reply:${ID}:1` },
+      {
+        route: UNTHREADED,
+        body: 'Want me to add it to your calendar?',
+        sendKey: `turn-reply:${ID}:2`,
+      },
+    ]);
+    // Claimed once, after the first bubble went and before the second.
+    expect(claimedAtSend).toEqual([0, 1, 1]);
+    expect(h.turns.answered).toEqual([ID]);
+    const out = outRows(h.fake);
+    expect(out.map((row) => [row.dedupeKey, row.providerMessageId, row.body])).toEqual([
+      [`turn-reply:${ID}:0`, 'fake-out-1', null],
+      [`turn-reply:${ID}:1`, 'fake-out-2', null],
+      [`turn-reply:${ID}:2`, 'fake-out-3', null],
+    ]);
+    expect(
+      auditRows(h.fake)
+        .filter((row) => row.actionTaken === 'sms_reply_sent')
+        .map((row) => row.targetId),
+    ).toEqual(out.map((row) => row.id));
+    expect(
+      messageRows(h.fake)
+        .filter((row) => row.role === 'assistant')
+        .map((row) => row.content),
+    ).toEqual(['Swim is Saturday at 10.', 'Bring a towel.', 'Want me to add it to your calendar?']);
+  });
+
+  it('dark: the turn is not lit and a line break in the reply is not split', async () => {
+    const coach = seeingCoach({ reply: 'Swim is Saturday at 10.\nhttps://pool.example/swim' });
+    const h = harness({ coach, context: { body: 'what is on saturday', reply: IMESSAGE } });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]).not.toHaveProperty('replyBubbles');
+    expect(h.transport.sent).toEqual([
+      { route: IMESSAGE, body: 'Swim is Saturday at 10.\nhttps://pool.example/swim' },
+    ]);
+    expect(outRows(h.fake)[0]?.dedupeKey).toBeUndefined();
+  });
+
+  it('lit, an SMS route is not lit for bubbles and sends one text', async () => {
+    const { h, coach } = bubbleTurn(
+      { reply: 'Swim is Saturday at 10.' },
+      { context: { body: 'what is on saturday', reply: SMS_ROUTE } },
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]).not.toHaveProperty('replyBubbles');
+    expect(h.transport.bodies()).toEqual(['Swim is Saturday at 10.']);
+  });
+
+  it('lit, a group turn is not lit for bubbles', async () => {
+    const { h, coach } = bubbleTurn(
+      { reply: 'Swim is Saturday at 10.' },
+      { context: { body: 'hale what is on saturday', reply: IMESSAGE, inGroup: true } },
+    );
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(coach.turns[0]).not.toHaveProperty('replyBubbles');
+    expect(h.transport.bodies()).toEqual(['Swim is Saturday at 10.']);
+  });
+
+  it('writes what the answer promised against the LAST bubble', async () => {
+    const offers: Array<string | null> = [];
+    const promises: Array<string | null> = [];
+    const { h } = bubbleTurn(
+      { reply: THREE, planOffer: OFFER, activityPromise: PROMISE },
+      {
+        recordPlanOffer: async (_db, input) => {
+          offers.push(input.channelMessageId);
+          return { status: 'recorded' };
+        },
+        recordActivityPromise: async (_db, input) => {
+          promises.push(input.channelMessageId);
+          return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+        },
+      },
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    const last = outRows(h.fake)[2]?.id;
+    expect(last).toEqual(expect.any(String));
+    expect(offers).toEqual([last]);
+    expect(promises).toEqual([last]);
+  });
+
+  it('stops after a bubble fails: what went is on record and claimed, nothing is re-sent', async () => {
+    const offers: Array<string | null> = [];
+    const { h } = bubbleTurn(
+      { reply: THREE, planOffer: OFFER },
+      {
+        recordPlanOffer: async (_db, input) => {
+          offers.push(input.channelMessageId);
+          return { status: 'recorded' };
+        },
+      },
+    );
+    const send = h.transport.send.bind(h.transport);
+    let calls = 0;
+    h.transport.send = async (input) => {
+      calls += 1;
+      if (calls === 2) throw new Error('linq refused');
+      return send(input);
+    };
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual(['Swim is Saturday at 10.']);
+    expect(outRows(h.fake).map((row) => row.dedupeKey)).toEqual([`turn-reply:${ID}:0`]);
+    expect(h.turns.answered).toEqual([ID]);
+    expect(h.turns.failed).toEqual([{ channelMessageId: ID, reason: 'broke_after_answering' }]);
+    expect(offers).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain(
+      '{"outcome":"reply_set_incomplete","bubblesSent":1,"bubbles":3}',
+    );
+
+    // The re-drive stops at the door: the turn is claimed.
+    const again = await routeChannelMessage(h.deps, job());
+    expect(again.status).toBe('already_answered');
+    expect(calls).toBe(2);
+  });
+
+  it('a first bubble that fails is the failure it always was: nothing claimed by it', async () => {
+    const { h } = bubbleTurn();
+    const send = h.transport.send.bind(h.transport);
+    let calls = 0;
+    h.transport.send = async (input) => {
+      calls += 1;
+      if (calls === 1) throw new Error('linq refused');
+      return send(input);
+    };
+
+    await routeChannelMessage(h.deps, job());
+
+    // The composed apology went in its place, as for any send that failed.
+    expect(h.transport.bodies()).toEqual([APOLOGY]);
+    expect(h.turns.failed).toEqual([{ channelMessageId: ID, reason: 'apology_sent' }]);
+    expect(JSON.stringify(h.logs)).not.toContain('reply_set_incomplete');
+  });
+
+  it('skips a bubble already on record under its key and sends the rest', async () => {
+    const { h } = bubbleTurn();
+    await h.fake.db.insert(schema.channelMessages).values({
+      familyId: FAMILY,
+      parentUserId: PARENT,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      dedupeKey: `turn-reply:${ID}:0`,
+      status: 'sent',
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Bring a towel.', 'Want me to add it to your calendar?']);
+    expect(outRows(h.fake).map((row) => row.dedupeKey)).toEqual([
+      `turn-reply:${ID}:0`,
+      `turn-reply:${ID}:1`,
+      `turn-reply:${ID}:2`,
+    ]);
+  });
+
+  it('an iMessage effect rides the first bubble, read against the whole answer', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+    const posted: string[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (new URL(url).pathname.endsWith('/messages')) posted.push(String(init?.body));
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+    const { h } = bubbleTurn();
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(effectDecide).toHaveBeenCalledTimes(1);
+    expect(effectDecide.mock.calls[0]?.[0]).toMatchObject({ reply: THREE });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('Swim is Saturday at 10.');
+    expect(posted[0]).not.toContain('Bring a towel.');
+    expect(h.transport.sent).toEqual([
+      { route: UNTHREADED, body: 'Bring a towel.', sendKey: `turn-reply:${ID}:1` },
+      {
+        route: UNTHREADED,
+        body: 'Want me to add it to your calendar?',
+        sendKey: `turn-reply:${ID}:2`,
+      },
+    ]);
+    expect(outRows(h.fake).map((row) => [row.templateKey, row.providerMessageId])).toEqual([
+      ['linq:effect', 'effect-out'],
+      [null, 'fake-out-1'],
+      [null, 'fake-out-2'],
+    ]);
+  });
+
+  it('a sticker the model chose never stands in for an answer of several bubbles', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+    stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: false });
+    const peeled: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (new URL(url).pathname.endsWith('/reactions')) peeled.push(url);
+      return new Response(null, { status: 204 });
+    });
+    const { h } = bubbleTurn();
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(stickerDecide).toHaveBeenCalledTimes(1);
+    expect(stickerDecide.mock.calls[0]?.[0]).toMatchObject({ reply: THREE });
+    expect(peeled).toHaveLength(1);
+    expect(h.transport.bodies()).toEqual(THREE.split('\n'));
+    stickerDecide.mockReset();
+  });
+
+  it('a cut sentence leaves the bubbles around it whole', async () => {
+    const { h } = bubbleTurn({
+      reply: 'Swim is Saturday at 10.\nThursday swim is booked at 5:15.\nBring a towel.',
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Swim is Saturday at 10.', 'Bring a towel.']);
+  });
+
+  it('a voice memo the model chose says the whole answer once', async () => {
+    const spoken: string[] = [];
+    const { h } = bubbleTurn({ reply: THREE, voiceMemo: true });
+    h.deps.sendVoiceReply = async (input) => {
+      spoken.push(input.text);
+      return { sent: 'voice', providerMessageId: 'memo-1' } as never;
+    };
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(spoken).toEqual([
+      'Swim is Saturday at 10. Bring a towel. Want me to add it to your calendar?',
+    ]);
+    expect(h.transport.sent).toEqual([]);
+    expect(outRows(h.fake).map((row) => [row.dedupeKey, row.providerMessageId])).toEqual([
+      [`turn-reply:${ID}:0`, 'memo-1'],
+    ]);
+  });
+
+  it('the experience card takes its page out of the bubbles and goes once, after them', async () => {
+    const cards: string[] = [];
+    const { h } = bubbleTurn({
+      reply: 'Riverdale pool has lane swim.\nGo early https://pool.example/lanes',
+      experienceCard: { url: 'https://pool.example/lanes', title: 'Riverdale pool' },
+    });
+    h.deps.sendExperienceCard = async (input) => {
+      cards.push(`${input.card.url} after ${h.transport.sent.length}`);
+      return { status: 'sent' } as never;
+    };
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Riverdale pool has lane swim.', 'Go early']);
+    expect(cards).toEqual(['https://pool.example/lanes after 2']);
+  });
+});
+
+/**
+ * The same set through the real database and the production turn ledger: what a lit turn
+ * leaves behind is one row per bubble with its own key, one answered claim, and one
+ * thread row per bubble. The held-venue fold reads the real thread, so it runs here too.
+ */
+describe('several bubbles through the production ledger and database', () => {
+  let db: TestDb;
+  const IMESSAGE = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-bubbles',
+    replyToMessageId: 'in-1',
+  } satisfies ReplyRoute;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function text(parent: { familyId: string; parentUserId: string }, reply: string) {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const h = harness({
+      coach: fakeCoach(reply),
+      context: { body: 'what is on saturday', reply: IMESSAGE },
+    });
+    h.deps.database = db.database;
+    h.deps.turns = auditTurnLedger(db.database);
+    const clock = new Date();
+    h.deps.now = () => clock;
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...parent,
+        channel: 'imessage',
+        providerChatId: IMESSAGE.chatId,
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        body: 'what is on saturday',
+      })
+      .returning({ id: schema.channelMessages.id });
+    const inboundId = inbound?.id as string;
+    const result = await routeChannelMessage(
+      h.deps,
+      job({
+        family_id: parent.familyId,
+        parent_user_id: parent.parentUserId,
+        channel_message_id: inboundId,
+      }),
+    );
+    return { result, inboundId, said: h.transport.bodies() };
+  }
+
+  it('writes one keyed row and one thread row per bubble, and one answered claim', async () => {
+    const parent = await seedFamily(db.database);
+
+    const { result, inboundId, said } = await text(
+      parent,
+      'Swim is Saturday at 10.\nBring a towel.',
+    );
+
+    expect(result.status).toBe('agent_replied');
+    expect(said).toEqual(['Swim is Saturday at 10.', 'Bring a towel.']);
+    const out = await db.database
+      .select({ dedupeKey: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, parent.familyId),
+          eq(schema.channelMessages.direction, 'out'),
+        ),
+      );
+    expect(out.map((row) => row.dedupeKey).sort()).toEqual([
+      `turn-reply:${inboundId}:0`,
+      `turn-reply:${inboundId}:1`,
+    ]);
+    const claims = await db.database
+      .select({ targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, parent.familyId),
+          eq(schema.auditLog.actionTaken, TURN_ANSWERED_ACTION),
+        ),
+      );
+    expect(claims).toEqual([{ targetId: inboundId }]);
+    const thread = await db.database
+      .select({ content: schema.messages.content })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+      .where(
+        and(
+          eq(schema.conversations.familyId, parent.familyId),
+          eq(schema.messages.role, 'assistant'),
+        ),
+      );
+    expect(thread.map((row) => row.content).sort()).toEqual([
+      'Bring a towel.',
+      'Swim is Saturday at 10.',
+    ]);
+  });
+
+  it('appends a venue page the answer named to the last bubble, by one read', async () => {
+    const parent = await seedFamily(db.database);
+    await text(parent, 'Swim is Saturday at 10.\nBring a towel.');
+    const [conversation] = await db.database
+      .select({ id: schema.conversations.id })
+      .from(schema.conversations)
+      .where(eq(schema.conversations.familyId, parent.familyId));
+    await db.database.insert(schema.messages).values({
+      conversationId: conversation?.id as string,
+      role: 'assistant',
+      topic: 'activity_held',
+      content: JSON.stringify({
+        unsent_activity_options: [
+          { name: 'Riverdale Pool', source_url: 'https://www.toronto.ca/riverdale-pool' },
+        ],
+      }),
+    });
+
+    const { said } = await text(parent, 'Riverdale Pool has lane swim.\nWant to go Saturday?');
+
+    expect(said).toEqual([
+      'Riverdale Pool has lane swim.',
+      'Want to go Saturday?\nhttps://www.toronto.ca/riverdale-pool',
+    ]);
   });
 });
