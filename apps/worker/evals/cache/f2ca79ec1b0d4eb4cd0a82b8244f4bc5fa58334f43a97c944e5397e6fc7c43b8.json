@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles are in Chinese and state the login need, host and opening time from facts. Card title is English ('Login for register.example-rec.test') and description is English ('Preschool Swim Sat 9:00, opens 7:00 a.m.'), violating facts.language zh. Card otherwise names host, session and open time correctly and does not name Ada or give a price.",
+    "score": 2
+  }
+}

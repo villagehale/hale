@@ -1,0 +1,14 @@
+{
+  "value": {
+    "bubbles": [
+      "Pour inscrire Ada à Preschool Swim Sat 9:00, j'ai besoin que tu sauvegardes ta connexion au site.",
+      "Les inscriptions ouvrent le mardi 1 décembre 2026 à 7 h 00 (heure de Toronto).",
+      "Voici le lien pour la sauvegarder."
+    ],
+    "card": {
+      "title": "Connexion à register.example-rec.test",
+      "description": "Pour inscrire à Preschool Swim Sat 9:00. Les inscriptions ouvrent le mardi 1 décembre 2026 à 7 h 00 (heure de Toronto)."
+    }
+  },
+  "latencyMs": 2110
+}

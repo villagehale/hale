@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles are in Chinese, name both siteChoices with correct prices, include the Nov 21 billing_note, label the January option as a waitlist, end with one open question, pick nothing, offer no email (emailDraft is not_connected), and include no card or link. Fully matches facts and watchFor.",
+    "score": 5
+  }
+}

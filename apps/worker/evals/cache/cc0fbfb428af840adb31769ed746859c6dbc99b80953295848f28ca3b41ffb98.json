@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles and card are in Spanish, the site rule matches facts, and the card names the host without an opening time or child name. However the card description 'abre el martes' gives an opening day not in facts.loginCard (opensAt is null), which violates the no-time rule.",
+    "score": 2
+  }
+}

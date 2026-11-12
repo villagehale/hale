@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts and bubbles match: session, open time with timezone, and no invented details. Card is correctly null since loginCard is null. Language is English throughout. Bubbles avoid links, prices, and claims of registration. Minor note: the bubbles say Hale will be ready for Ada, which is consistent with the watchFor reminder.",
+    "score": 5
+  }
+}

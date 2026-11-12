@@ -576,22 +576,14 @@ async function parkAndTell(
   }
   // The card names the open only while it is still ahead for the card's whole life; the
   // run has usually reached the open by now, so the card is for finishing the session.
-  const minted = passwordRejected
-    ? await mintFreshLoginLink(database, {
-        familyId: plan.familyId,
-        parentUserId: plan.parentUserId,
-        offerId: plan.offerId,
-        providerHost: host ?? new URL(plan.registrationUrl).hostname,
-        purpose: {
-          kind: 'password_rejected',
-          sessionLabel: firstChoiceLabel(plan.sessions, plan.choiceIds),
-          opensAt:
-            plan.opensAt.getTime() > loginLinkExpiresAt(now).getTime()
-              ? planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId))
-              : null,
-        },
-        now,
-      })
+  const loginCard = passwordRejected
+    ? {
+        sessionLabel: firstChoiceLabel(plan.sessions, plan.choiceIds),
+        opensAt:
+          plan.opensAt.getTime() > loginLinkExpiresAt(now).getTime()
+            ? planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId))
+            : null,
+      }
     : null;
   await parkSignupPlan(database, {
     offerId: plan.offerId,
@@ -630,6 +622,7 @@ async function parkAndTell(
     passwordRule: result.passwordRule ?? null,
     siteChoices: result.siteChoices ?? [],
     askedStart,
+    loginCard,
     ...(lit && !passwordRejected
       ? { emailDraft: await emailDraftFor(database, plan, result.siteChoices ?? []) }
       : {}),
@@ -643,7 +636,17 @@ async function parkAndTell(
       providerHost: host ?? new URL(plan.registrationUrl).hostname,
       kind,
       facts,
-      link: minted?.url ?? null,
+      mintLink: loginCard
+        ? (card) =>
+            mintFreshLoginLink(database, {
+              familyId: plan.familyId,
+              parentUserId: plan.parentUserId,
+              offerId: plan.offerId,
+              providerHost: host ?? new URL(plan.registrationUrl).hostname,
+              purpose: { kind: 'password_rejected', ...loginCard, card },
+              now,
+            })
+        : undefined,
       linkAfter: 0,
       now,
     },

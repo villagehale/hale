@@ -206,6 +206,12 @@ export async function sendTexts<R = ResolvedOutbound>(input: {
   deliverableNow?: () => boolean | Promise<boolean>;
   /** A thrown error that should be rethrown for a queue retry. Default: none. */
   isTransient?: (err: unknown) => boolean;
+  /**
+   * Wraps the send of each text that follows one this call sent, and gets that text's
+   * result: the pause between bubbles (linq/bubble-gap.ts). Absent: each text goes as
+   * soon as the one before it is recorded.
+   */
+  pace?: (send: () => Promise<R>, previous: R) => Promise<R>;
 }): Promise<SendTextsOutcome<R>> {
   const texts = input.texts.map((t) => t.trim());
   if (texts.length === 0 || texts.some((t) => t === '')) {
@@ -224,9 +230,13 @@ export async function sendTexts<R = ResolvedOutbound>(input: {
       alreadySent.push(index);
       continue;
     }
+    const previous = sent.at(-1);
     let result: R;
     try {
-      result = await send(text, index);
+      result =
+        previous && input.pace
+          ? await input.pace(() => send(text, index), previous.result)
+          : await send(text, index);
     } catch (error) {
       if (input.isTransient?.(error)) throw error;
       return { status: 'failed', failedAt: index, error, sent, alreadySent };

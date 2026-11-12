@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles are in English, state the mismatch, name both choices with prices, include the Nov 21 billing note, and end on one open question without picking. No card is correct since loginCard is null. No email is offered, which is acceptable since emailDraft is absent and offering is optional. No invented facts, no link, no child name in a card, no privacy issues.",
+    "score": 5
+  }
+}

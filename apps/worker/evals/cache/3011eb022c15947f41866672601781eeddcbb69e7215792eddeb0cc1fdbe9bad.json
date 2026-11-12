@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles are in Spanish, state the rejection, quote the site message, give the 8-character-and-number rule, and say a link follows without including one. The card title names register.example-rec.test and the card text is in Spanish. However the card description says the registration opens before the link expires or has already opened, which claims a status not supported by facts when opensAt is null, and the bubble quotes the English site message, which is acceptable. The card description's claim about opening is a fact-claim not grounded in the facts, so the score is reduced.",
+    "score": 3
+  }
+}

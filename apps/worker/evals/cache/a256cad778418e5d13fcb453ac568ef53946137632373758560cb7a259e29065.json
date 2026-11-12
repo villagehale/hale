@@ -1,0 +1,14 @@
+{
+  "value": {
+    "bubbles": [
+      "要帮 Ada 报名,得先登录这个网站。",
+      "报名在 2026年12月1日(星期二)早上 7:00 开始(多伦多时间)。",
+      "点下面的链接,把登录信息存好,我就能在开放的那一刻帮你抢位。"
+    ],
+    "card": {
+      "title": "登录 register.example-rec.test",
+      "description": "Preschool Swim Sat 9:00 · 报名开始:2026年12月1日(星期二)早上 7:00"
+    }
+  },
+  "latencyMs": 2607
+}
