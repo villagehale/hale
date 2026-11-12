@@ -494,6 +494,8 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         },
       },
       client,
+      // Every turn here is an activity ask or a follow-up to one, as the model read would say.
+      readFindTurn: async () => ({ findTurn: true }),
       judgeFindReply: findReplyNotJudged,
       runAgent: scriptedRunAgent(steps, write),
       recordRun: async () => {},

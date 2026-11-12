@@ -48,6 +48,7 @@ export const PROACTIVE_ROUTING: Record<
   calendar_alert: 'decider',
   evening_check_in: 'decider',
   mid_activity_ask: 'decider',
+  next_day_checkback: 'decider',
   co_parent_departed: 'decider',
   travel_brief: 'decider',
   duty_ask: 'decider',
