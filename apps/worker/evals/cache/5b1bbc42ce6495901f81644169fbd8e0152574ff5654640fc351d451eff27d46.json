@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Reply plainly says it won't text again, in English matching the user's language. It explains how to come back (texting back). Short, warm enough, asks nothing and sells nothing. No readLate field was provided, so no lateness check applies."
+  }
+}
