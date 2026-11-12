@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the Sunday 10:00 session is in the cart, nothing was charged, and the browser stays open ~8 min for the parent to finish; it avoids claiming a spot or registration and promises no retry. Minor issue: it writes 98 $ with the amount, which matches cartTotalCents 9800 and is fine, and it asks no question. Tone and language are correct (French, tu). Very faithful to facts and watchFor.",
+    "score": 5
+  }
+}
