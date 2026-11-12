@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles and card are in Spanish and follow facts; card names the host, omits opening time as opensAt is null, and does not name the child. However, the bubble quotes the English site message 'Password must include a number' rather than translating it, and the card description says 'Guarda aquí tu acceso a la ciudad' which is vague but not invented facts. Minor language mixing and an unclear card description keep it from a perfect score.",
+    "score": 4
+  }
+}

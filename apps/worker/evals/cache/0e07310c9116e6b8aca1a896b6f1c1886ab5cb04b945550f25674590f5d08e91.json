@@ -1,0 +1,15 @@
+{
+  "value": {
+    "bubbles": [
+      "El sitio no aceptó esa contraseña.",
+      "Dice: \"Password must include a number\".",
+      "Su regla es 8 caracteres y un número.",
+      "Aquí va un enlace nuevo para guardar el login."
+    ],
+    "card": {
+      "title": "Inicio de sesión en register.example-rec.test",
+      "description": "Para Preschool Swim Sat 9:00. Guarda aquí tu acceso a la ciudad."
+    }
+  },
+  "latencyMs": 1943
+}

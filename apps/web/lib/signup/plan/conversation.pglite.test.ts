@@ -1110,7 +1110,7 @@ describe('which ask a message answers', () => {
       db.database,
       { now: NOW },
       {
-        writer: { write: async (facts) => `text for ${facts.kind}` },
+        writer: { write: async (facts) => ({ bubbles: [`text for ${facts.kind}`], card: null }) },
         deliver: createPlanPrepDeliver(db.database, {
           transport: prepTransport(phone).transport,
           fetch: noNetwork,
@@ -1171,7 +1171,7 @@ describe('which ask a message answers', () => {
       db.database,
       { now: NOW },
       {
-        writer: { write: async (facts) => `text for ${facts.kind}` },
+        writer: { write: async (facts) => ({ bubbles: [`text for ${facts.kind}`], card: null }) },
         deliver: createPlanPrepDeliver(db.database, { transport, fetch: noNetwork }),
       },
     );

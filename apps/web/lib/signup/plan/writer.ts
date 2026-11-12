@@ -86,7 +86,7 @@ const MONEY =
 const CLOCK =
   /\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b|\b(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b|\b(\d{1,2})(a\.?m\.?|p\.?m\.?)\b|\b(\d{1,2})h(\d{2})\b/gi;
 
-function moneyCentsIn(text: string): number[] {
+export function moneyCentsIn(text: string): number[] {
   const out: number[] = [];
   for (const match of text.matchAll(MONEY)) {
     const dollars = Number(match[1] ?? match[3] ?? match[5]);
@@ -122,7 +122,7 @@ function clockMinutes(hour: number, minute: number, mer: string | undefined): nu
   return h * 60 + minute;
 }
 
-function clocksIn(text: string): number[] {
+export function clocksIn(text: string): number[] {
   const out: number[] = [];
   for (const match of text.matchAll(CLOCK)) {
     if (match[1] !== undefined) {

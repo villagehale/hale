@@ -521,6 +521,13 @@ jobs:
       - name: Signup plan reply calibration (cached-only)
         run: pnpm --filter @hale/worker eval:signup-plan-reply:broken
 
+      # VIL-682 K2: the registration notices and their login card's words (judge).
+      - name: Signup provider notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-provider-notice
+
+      - name: Signup provider notice calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-provider-notice:broken
+
       - name: Rec-morning read eval (cached-only)
         run: pnpm --filter @hale/worker eval:rec-morning-read
 
