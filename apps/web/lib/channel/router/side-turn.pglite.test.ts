@@ -11,6 +11,8 @@ import {
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
+import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { writeChannelMessage } from '~/lib/channel/intake/machine';
 import {
@@ -29,18 +31,39 @@ import {
 } from '~/lib/cron/drain';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { defaultHealthReplyDeps } from '~/lib/health/reply';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import { familyMemoryKindsHandler } from '~/lib/memory/handler';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { defaultPrepareReplyDeps } from '~/lib/registration/sequence/prepare-reply';
+import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { BURST_QUIET_MS, type BurstPlan, createInboundBurst } from './burst';
 import type { ChannelTurn } from './coach-runtime';
 import { runTurn, turnDeadlineSignal } from './deadline';
 import { createDisambiguationStore } from './disambiguation';
 import type { FloodLineComposer } from './flood-line';
 import { FakeReplyTransport, type ReplyTransport } from './reply-route';
-import { type ChannelRouterDeps, type RouterStatus, routeChannelMessage } from './route';
 import {
+  connectorDisconnectHandler,
+  connectorLinkHandler,
+  coParentNumberHandler,
+  healthReplyHandler,
+  nameCaptureHandler,
+  sequenceReplyHandler,
+  villageIntroHandler,
+} from './handlers';
+import {
+  type ChannelRouterDeps,
+  type DeterministicHandler,
+  type RouterStatus,
+  TurnDeferred,
+  routeChannelMessage,
+} from './route';
+import {
+  SIDE_TURN_CLAIM_LEASE_MS,
   SIDE_TURN_TEMPLATE_KEY,
   type SideReply,
   type SideTurnOutcome,
@@ -51,8 +74,13 @@ import {
 } from './side-turn';
 import { darkSideTurn } from './side-turn.fixture';
 import type { SideTurnFamily, SideTurnInput, SideTurnReading } from './side-turn-reader';
-import type { InboundTurnLedger } from './turn-ledger';
-import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
+import { type InboundTurnLedger, TURN_CLAIMED_AHEAD_ACTION } from './turn-ledger';
+import {
+  auditSmokeAlarmClaim,
+  auditTurnLedger,
+  defaultHandlers,
+  loadInboundContext,
+} from './wiring';
 
 /**
  * A text that lands while the parent's turn is still running (VIL-679 phase 2).
@@ -631,6 +659,10 @@ interface Case {
   /** Another claim already holds the text. */
   claimHeld?: true;
   transportFails?: true;
+  /** The claim cannot be given back after the send failed. */
+  releaseFails?: true;
+  /** A deterministic handler's own matcher takes the text. */
+  handlerTakes?: true;
 }
 
 const ANSWER: SideTurnReading = { status: 'read', verdict: 'answer', reply: 'Swim is at 4:30.' };
@@ -679,6 +711,8 @@ const CASES = {
   timeout: { reading: 'never' },
   turn_over: { reading: ANSWER, abortDuringRead: true },
   send_failed: { reading: ANSWER, transportFails: true },
+  release_failed: { reading: ANSWER, transportFails: true, releaseFails: true },
+  handler_takes: { reading: ANSWER, handlerTakes: true },
 } satisfies Record<CaseKey, Case>;
 
 describe('every side turn ends answered or queued behind, never neither and never both', () => {
@@ -707,7 +741,7 @@ describe('every side turn ends answered or queued behind, never neither and neve
       if (setup.abortDuringRead) controller.abort();
       return setup.reading ?? ANSWER;
     });
-    const deps = routerDeps(transport, {
+    const base = routerDeps(transport, {
       sideTurn: { reader, budgetMs: 200 },
       offDomain: scriptedLane(() => setup.lane ?? IN_DOMAIN),
       ...(setup.limiter ? { limiter: setup.limiter } : {}),
@@ -727,6 +761,20 @@ describe('every side turn ends answered or queued behind, never neither and neve
         return real;
       },
     });
+    const deps: ChannelRouterDeps = {
+      ...base,
+      ...(setup.releaseFails
+        ? {
+            turns: {
+              ...base.turns,
+              releaseAhead: async () => {
+                throw new Error('UNSAFE_TRANSACTION');
+              },
+            },
+          }
+        : {}),
+      ...(setup.handlerTakes ? { handlers: [takingHandler()] } : {}),
+    };
     const send = async (reply: SideReply): Promise<string> => {
       if (setup.transportFails) throw new Error('provider refused');
       await deps.transport.send({ route: reply.route, body: reply.body });
@@ -780,6 +828,13 @@ describe('every side turn ends answered or queued behind, never neither and neve
       expect(transport.sent).toEqual([]);
       expect(claims).toHaveLength(1);
       expect(threaded).toEqual([]);
+    } else if (outcome.why === 'release_failed') {
+      // Claimed and threaded, unsent, and the claim could not be given back: it is held
+      // until its lease lapses, and then its own turn answers it (the lease tests below).
+      expect(transport.sent).toEqual([]);
+      expect(claims).toHaveLength(1);
+      expect(threaded).toHaveLength(1);
+      expect(await stageOf(fam, quick.id)).toBe('held');
     } else if (outcome.why === 'send_failed') {
       // Claimed, threaded and counted, then unsent: the claim given back as deferred, so
       // its own turn answers it without threading or counting it twice.
@@ -794,6 +849,8 @@ describe('every side turn ends answered or queued behind, never neither and neve
       expect(threaded).toEqual([]);
       expect(await stageOf(fam, quick.id)).toBe('fresh');
     }
+    // A handler's text never reaches the side read at all.
+    if (setup.handlerTakes) expect(reader.calls).toEqual([]);
   });
 });
 
@@ -953,15 +1010,40 @@ const SIDE_ANSWER = 'Swim is Thursday at 4:30.';
 const RUNNING_ANSWER = 'Two Saturday art classes for her.';
 const OWN_ANSWER = 'Swim is at 4:30 on Thursday.';
 
+/** The side claim's lease passing, without waiting it out: its row is dated past it. */
+async function leaseLapses(channelMessageId: string): Promise<void> {
+  await db.database
+    .update(schema.auditLog)
+    .set({ occurredAt: new Date(Date.now() - SIDE_TURN_CLAIM_LEASE_MS - 1_000) })
+    .where(
+      and(
+        eq(schema.auditLog.targetId, channelMessageId),
+        eq(schema.auditLog.actionTaken, TURN_CLAIMED_AHEAD_ACTION),
+      ),
+    );
+}
+
+/** One run of a text's own job: its status, or the reason it went back to the queue. */
+async function ownJob(deps: ChannelRouterDeps, job: ChannelMessageReceivedJob): Promise<string> {
+  try {
+    return (await routeChannelMessage(deps, job)).status;
+  } catch (err) {
+    if (err instanceof TurnDeferred) return `deferred:${err.reason}`;
+    throw err;
+  }
+}
+
 /**
- * A quick question behind a running turn, answered beside it, then its own job. What
- * each failure costs is read off the parent's phone (`sent`) and the thread.
+ * A quick question behind a running turn, answered beside it, then its own job, and with
+ * `leaseLapses` that job once more after the side claim's lease. What each failure costs
+ * is read off the parent's phone (`sent`) and the thread.
  */
 async function quickBehind(
   name: string,
   wrap: {
     transport?: (fake: FakeReplyTransport) => ReplyTransport;
     turns?: (turns: InboundTurnLedger, quick: () => string | undefined) => InboundTurnLedger;
+    leaseLapses?: boolean;
   },
 ) {
   const fam = await seedParent(name);
@@ -985,30 +1067,157 @@ async function quickBehind(
 
   await routeChannelMessage(deps, running.job);
   const before = await stageOf(fam, quick?.id ?? '');
-  const own = await routeChannelMessage(deps, quick?.job as ChannelMessageReceivedJob);
+  const own = await ownJob(deps, quick?.job as ChannelMessageReceivedJob);
+  let lapsed: string | undefined;
+  if (wrap.leaseLapses) {
+    await leaseLapses(quick?.id ?? '');
+    lapsed = await ownJob(deps, quick?.job as ChannelMessageReceivedJob);
+  }
 
   return {
     settled: settledLines(logged)[0]?.fields,
+    logged: logged.map((entry) => entry.line),
     before,
-    own: own.status,
+    own,
+    lapsed,
     sent: fake.bodies(),
     threaded: (await threadRows(fam)).filter((row) => row.content === QUICK).length,
   };
 }
 
 describe('claimed before it is sent: a side reply is answered once, never twice, never zero times', () => {
-  it('the reply went and its answered row did not: its own job still stops at GATE 0', async () => {
-    const run = await quickBehind('Side Row Fails', {
-      turns: (turns, quick) => failingFor(turns, /^recordAnswered/, quick),
-    });
+  it('answered beside the turn: its own job stops at GATE 0, inside the lease and past it', async () => {
+    const run = await quickBehind('Side Answered Lease', { leaseLapses: true });
 
     expect(run.settled).toMatchObject({ outcome: 'answered', by: 'side_read' });
     expect(run).toMatchObject({
       before: 'answered',
       own: 'already_answered',
+      lapsed: 'already_answered',
       sent: [SIDE_ANSWER, RUNNING_ANSWER],
       threaded: 1,
     });
+  });
+
+  it('the reply went and its answered row did not: nothing more inside the lease; past it, answered again', async () => {
+    // The one place a side reply can be answered twice, and the same place a turn's own
+    // send-then-claim can: a write lost after the send (turn-ledger.ts claimAhead).
+    const run = await quickBehind('Side Row Fails', {
+      turns: (turns, quick) => failingFor(turns, /^recordAnswered/, quick),
+      leaseLapses: true,
+    });
+
+    expect(run.settled).toMatchObject({ outcome: 'answered', by: 'side_read' });
+    expect(run).toMatchObject({
+      before: 'held',
+      own: 'deferred:side_claim_held',
+      lapsed: 'agent_replied',
+      sent: [SIDE_ANSWER, RUNNING_ANSWER, OWN_ANSWER],
+      threaded: 1,
+    });
+  });
+
+  it('its send failed and its claim could not be given back: #ops is paged, and its own job answers once the lease lapses', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let refused = 0;
+    const run = await quickBehind('Side Release Fails', {
+      transport: (fake) => ({
+        async send(input) {
+          if (input.body === SIDE_ANSWER) throw new Error('provider refused');
+          return fake.send(input);
+        },
+      }),
+      // The side turn's own release fails; the one its own job makes past the lease lands.
+      turns: (turns, quick) =>
+        new Proxy(turns, {
+          get(target, prop, receiver) {
+            const value: unknown = Reflect.get(target, prop, receiver);
+            if (prop !== 'releaseAhead' || typeof value !== 'function') return value;
+            return async (input: { channelMessageId: string }) => {
+              if (input.channelMessageId === quick() && refused === 0) {
+                refused += 1;
+                throw new Error('UNSAFE_TRANSACTION');
+              }
+              return value.call(target, input);
+            };
+          },
+        }),
+      leaseLapses: true,
+    });
+
+    expect(run.settled).toMatchObject({ outcome: 'queued', why: 'release_failed' });
+    expect(
+      errors.mock.calls.some((call) =>
+        String(call[1]).includes('URGENT: side_turn_claim_unreleased'),
+      ),
+    ).toBe(true);
+    // The claim is held, so no line says the text simply waits its turn.
+    expect(run.logged.filter((line) => line.includes('waits its turn'))).toEqual([]);
+    expect(run).toMatchObject({
+      before: 'held',
+      own: 'deferred:side_claim_held',
+      lapsed: 'agent_replied',
+      sent: [RUNNING_ANSWER, OWN_ANSWER],
+      threaded: 1,
+    });
+    errors.mockRestore();
+  });
+
+  it('the side turn died between its claim and its send: inside the lease its own job sends nothing; past it, it answers once', async () => {
+    const fam = await seedParent('Side Claim Orphaned');
+    const running = await text(fam, 'can you find a saturday art class for Ada', 20_000);
+    const quick = await text(fam, QUICK, QUIET);
+    await resolveOrCreateNoteConversation(
+      fam.familyId,
+      channelSmsNoteKey(fam.parentUserId),
+      db.database,
+    );
+    const transport = new FakeReplyTransport();
+    const deps = routerDeps(transport, {
+      sideTurn: {
+        reader: scriptedReader(() => ({ status: 'read', verdict: 'answer', reply: SIDE_ANSWER })),
+      },
+      coach: async () => OWN_ANSWER,
+    });
+    // The claim is in and the process dies: the send never comes back, and nothing after
+    // it runs.
+    let sending = false;
+    void runTurn(new AbortController().signal, () =>
+      runSideTurn(
+        deps,
+        {
+          running: running.job,
+          candidate: {
+            channelMessageId: quick.id,
+            providerMessageId: quick.providerId,
+            body: QUICK,
+            media: [],
+            createdAt: new Date(quick.job.received_at),
+            optOutUnread: false,
+          },
+          workingOn: ['can you find a saturday art class for Ada'],
+        },
+        () => {
+          sending = true;
+          return new Promise<string>(() => {});
+        },
+      ),
+    );
+    await waitFor(() => sending, 'the claim');
+
+    expect(await stageOf(fam, quick.id)).toBe('held');
+    expect(await ownJob(deps, quick.job)).toBe('deferred:side_claim_held');
+    expect(transport.bodies()).toEqual([]);
+
+    await leaseLapses(quick.id);
+    expect(await stageOf(fam, quick.id)).toBe('lapsed');
+    expect(await ownJob(deps, quick.job)).toBe('agent_replied');
+    // Redelivered once more: answered, and nothing goes.
+    expect(await ownJob(deps, quick.job)).toBe('already_answered');
+    expect(transport.bodies()).toEqual([OWN_ANSWER]);
+    expect(transport.sent[0]?.route).toMatchObject({ replyToMessageId: quick.providerId });
+    expect((await threadRows(fam)).filter((row) => row.content === QUICK)).toHaveLength(1);
+    expect(await stageOf(fam, quick.id)).toBe('answered');
   });
 
   it('its claim could not be written: nothing goes beside the turn, and its own job answers once', async () => {
@@ -1042,6 +1251,239 @@ describe('claimed before it is sent: a side reply is answered once, never twice,
       sent: [RUNNING_ANSWER, OWN_ANSWER],
       threaded: 1,
     });
+  });
+});
+
+/** A handler that takes any text, and must never run beside a turn. */
+function takingHandler(): DeterministicHandler {
+  return {
+    name: 'takes_everything',
+    async detects() {
+      return true;
+    },
+    async handle() {
+      throw new Error('a handler ran beside a running turn');
+    },
+  };
+}
+
+/** The quick question, read on its own beside a running turn, as the watch would. */
+async function sideTurnOn(
+  deps: ChannelRouterDeps,
+  fam: Family,
+  body: string,
+  send?: (reply: SideReply) => Promise<string>,
+) {
+  const running = await text(fam, 'can you find a saturday art class for Ada', 20_000);
+  const quick = await text(fam, body, QUIET);
+  await resolveOrCreateNoteConversation(
+    fam.familyId,
+    channelSmsNoteKey(fam.parentUserId),
+    db.database,
+  );
+  const outcome = await runTurn(new AbortController().signal, () =>
+    runSideTurn(
+      deps,
+      {
+        running: running.job,
+        candidate: {
+          channelMessageId: quick.id,
+          providerMessageId: quick.providerId,
+          body,
+          media: [],
+          createdAt: new Date(quick.job.received_at),
+          optOutUnread: false,
+        },
+        workingOn: ['can you find a saturday art class for Ada'],
+      },
+      send ??
+        (async (reply) => {
+          await deps.transport.send({ route: reply.route, body: reply.body });
+          await reply.claim();
+          return 'out-row';
+        }),
+    ),
+  );
+  return { outcome, quick };
+}
+
+describe('a reply that went, then a receipt after it threw', () => {
+  it('is answered: its claim is kept, never given back, and its own job stops at GATE 0', async () => {
+    const fam = await seedParent('Side Receipt Fails');
+    const transport = new FakeReplyTransport();
+    const deps = routerDeps(transport, {
+      sideTurn: { reader: scriptedReader(() => ANSWER) },
+    });
+    const { outcome, quick } = await sideTurnOn(deps, fam, QUICK, async (reply) => {
+      await deps.transport.send({ route: reply.route, body: reply.body });
+      await reply.claim();
+      throw new Error('receipt write failed');
+    });
+
+    expect(outcome).toEqual({ kind: 'answered', by: 'side_read' });
+    const ledger = await db.database
+      .select({ action: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetId, quick.id));
+    expect(ledger.map((row) => row.action).sort()).toEqual([
+      'sms_turn_answered',
+      TURN_CLAIMED_AHEAD_ACTION,
+    ]);
+    const claims = await db.database
+      .select({ id: schema.channelTurnAnswerClaims.id })
+      .from(schema.channelTurnAnswerClaims)
+      .where(eq(schema.channelTurnAnswerClaims.channelMessageId, quick.id));
+    expect(claims).toHaveLength(1);
+    expect(await ownJob(deps, quick.job)).toBe('already_answered');
+    expect(transport.bodies()).toEqual(['Swim is at 4:30.']);
+  });
+});
+
+describe('a crisis whose reply could not be written', () => {
+  it('pages #ops from the side turn at once, as GATE 4 does, and leaves the text for its own turn', async () => {
+    const paged: unknown[] = [];
+    const recorded: unknown[] = [];
+    const crisisPager = {
+      async record(alert: unknown) {
+        recorded.push(alert);
+      },
+      async page(alert: unknown) {
+        paged.push(alert);
+        return 'paged' as const;
+      },
+    };
+    const unwritten = (moment: 'emergency' | 'could_not_answer'): OffDomainVerdict => ({
+      status: 'unwritten',
+      moment,
+      reason: 'model_failed',
+      lane: 'safety_critical',
+      category: 'emergency',
+    });
+    const fam = await seedParent('Side Crisis Unwritten');
+    const transport = new FakeReplyTransport();
+    const deps: ChannelRouterDeps = {
+      ...routerDeps(transport, {
+        sideTurn: { reader: scriptedReader(() => ANSWER) },
+        offDomain: scriptedLane(() => unwritten('emergency')),
+      }),
+      crisisPager,
+    };
+    const { outcome, quick } = await sideTurnOn(deps, fam, 'my son is not breathing');
+
+    expect(outcome).toEqual({ kind: 'queued', why: 'moment_unwritten' });
+    expect(paged).toEqual([
+      {
+        kind: 'emergency',
+        where: 'side turn moment',
+        reason: 'model_failed',
+        writes: 2,
+        inboundId: quick.providerId,
+        familyId: fam.familyId,
+        parentUserId: fam.parentUserId,
+      },
+    ]);
+    expect(recorded).toEqual(paged);
+    expect(transport.bodies()).toEqual([]);
+    expect(await stageOf(fam, quick.id)).toBe('fresh');
+
+    // Positive control: a moment that is not a crisis goes back and pages nobody.
+    const plain: ChannelRouterDeps = {
+      ...routerDeps(transport, {
+        sideTurn: { reader: scriptedReader(() => ANSWER) },
+        offDomain: scriptedLane(() => unwritten('could_not_answer')),
+      }),
+      crisisPager,
+    };
+    const second = await sideTurnOn(plain, fam, 'what is the capital of peru?');
+    expect(second.outcome).toEqual({ kind: 'queued', why: 'moment_unwritten' });
+    expect(paged).toHaveLength(1);
+  });
+});
+
+describe('a text a deterministic handler takes is handed back before the side read', () => {
+  const consent = (verdict: 'yes' | 'no' | 'neither'): ConsentReader => ({
+    read: async () => ({ verdict, target: verdict === 'neither' ? 'none' : 'discoverability' }),
+  });
+  const never = async (): Promise<never> => {
+    throw new Error('a handler acted beside a running turn');
+  };
+  // Each handler as production builds it, and a text its own matcher takes.
+  const TAKEN: Array<[string, () => DeterministicHandler, string]> = [
+    [
+      'village intro, a revocation',
+      () => villageIntroHandler(defaultVillageIntroReplyDeps(consent('no'))),
+      'please stop introducing us to other families',
+    ],
+    ['connector link', () => connectorLinkHandler(), 'connect my google calendar'],
+    ['connector disconnect', () => connectorDisconnectHandler(), 'disconnect my calendar'],
+    [
+      'family memory kinds',
+      () => familyMemoryKindsHandler({ FAMILY_MEMORY_KINDS_ENABLED: 'true' }),
+      "forget that Ada's teacher is Ms. Okafor",
+    ],
+    ['health', () => healthReplyHandler(defaultHealthReplyDeps()), 'done'],
+    ['co-parent number', () => coParentNumberHandler({ sendSms: never }), '416-555-0199'],
+    [
+      'registration check-in',
+      () => sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
+      'we got in',
+    ],
+    [
+      'name capture',
+      () => nameCaptureHandler({ ...defaultNameCaptureDeps(), askOpen: async () => true }),
+      'Sam',
+    ],
+  ];
+
+  it.each(TAKEN)('%s', async (label, build, body) => {
+    const fam = await seedParent(`Side Handler ${label}`);
+    const transport = new FakeReplyTransport();
+    const reader = scriptedReader(() => ANSWER);
+    const deps: ChannelRouterDeps = {
+      ...routerDeps(transport, { sideTurn: { reader } }),
+      handlers: [build()],
+    };
+    const { outcome, quick } = await sideTurnOn(deps, fam, body);
+
+    expect(outcome).toEqual({ kind: 'queued', why: 'handler_takes' });
+    expect(reader.calls).toEqual([]);
+    expect(transport.bodies()).toEqual([]);
+    expect(await stageOf(fam, quick.id)).toBe('fresh');
+  });
+
+  it('positive control: with the production chain in front of it, a quick question is still answered beside the turn', async () => {
+    const fam = await seedParent('Side Handler Control');
+    const transport = new FakeReplyTransport();
+    const reader = scriptedReader(() => ANSWER);
+    const deps: ChannelRouterDeps = {
+      ...routerDeps(transport, { sideTurn: { reader } }),
+      handlers: defaultHandlers({ consent: consent('neither') }),
+    };
+    const { outcome } = await sideTurnOn(deps, fam, QUICK);
+
+    expect(outcome).toEqual({ kind: 'answered', by: 'side_read' });
+    expect(reader.calls).toHaveLength(1);
+  });
+
+  it('the production chain: every default handler declines a quick question and takes a disconnect', async () => {
+    const fam = await seedParent('Side Default Chain');
+    const ctx = {
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      now: new Date(),
+      openQuestions: async () => [],
+      inboundChannelMessageId: null,
+    };
+    const chain = defaultHandlers({ consent: consent('neither') });
+    const takes = async (body: string) => {
+      const names: string[] = [];
+      for (const handler of chain) {
+        if (await handler.detects(db.database, { ...ctx, body })) names.push(handler.name);
+      }
+      return names;
+    };
+    expect(await takes(QUICK)).toEqual([]);
+    expect(await takes('disconnect my calendar')).toEqual(['connector_disconnect']);
   });
 });
 

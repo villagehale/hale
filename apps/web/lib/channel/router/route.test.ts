@@ -178,6 +178,9 @@ function claimingHandler(
   const handler = {
     name,
     calls: 0,
+    async detects() {
+      return true;
+    },
     async handle() {
       handler.calls += 1;
       return { claimed: true as const, outcome: `${name}_claimed`, reply };
@@ -192,6 +195,9 @@ function passingHandler(name: string): DeterministicHandler & { calls: number; b
     name,
     calls: 0,
     bodies: [] as string[],
+    async detects() {
+      return false;
+    },
     async handle(_db: unknown, ctx: { body: string }) {
       handler.calls += 1;
       handler.bodies.push(ctx.body);
@@ -2860,6 +2866,7 @@ describe('a receipt sent as several bubbles', () => {
     const after: string[] = [];
     const handler: DeterministicHandler = {
       name: 'two_bubbles',
+      detects: async () => true,
       handle: async () => ({
         claimed: true,
         outcome: 'asked',
@@ -3569,6 +3576,7 @@ describe('natural reply resolution', () => {
     const resolver = fakeResolver({ status: 'unresolved', reason: 'no_target' });
     const claiming: DeterministicHandler = {
       name: 'claims_everything',
+      detects: async () => true,
       handle: async () => ({ claimed: true, outcome: 'ok', reply: 'Filed.' }),
     };
     const h = harness({
@@ -3625,6 +3633,7 @@ describe('natural reply resolution', () => {
     let otherCalls = 0;
     const other: DeterministicHandler = {
       name: 'not_the_owner',
+      detects: async () => false,
       handle: async () => {
         otherCalls += 1;
         return { claimed: false };
@@ -3781,6 +3790,7 @@ describe('natural reply resolution', () => {
     const coach = fakeCoach();
     const declining: DeterministicHandler = {
       name: 'owner_approval',
+      detects: async () => false,
       resolves: new Set(['approval']),
       handle: async () => ({ claimed: false }),
     };
@@ -4452,6 +4462,7 @@ describe('what the parent stated is written before anything reads it', () => {
     // the same words would supersede a fact that was just written.
     const claimer: DeterministicHandler = {
       name: 'claimer',
+      detects: async () => true,
       handle: async () => ({ claimed: true, outcome: 'recorded_done', reply: 'Filed.' }),
     };
     const { h, order } = statefulHarness({ handlers: [claimer], body: 'done' });
@@ -5259,6 +5270,7 @@ describe('the weekday-care answer', () => {
     const coach = fakeCoach();
     const offerHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
     };
@@ -5330,6 +5342,7 @@ describe('the weekday-care answer', () => {
     };
     const offerHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
     };
@@ -5356,6 +5369,7 @@ describe('the weekday-care answer', () => {
 
     const yesHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'added', reply: null }),
     };
@@ -6276,6 +6290,7 @@ describe('a slow answer gets one holding line first', () => {
     const holding = fakeHoldingLine("I'm on it.");
     const slowPlan: DeterministicHandler = {
       name: 'plan',
+      detects: async () => true,
       handle: async (_db, turn) => {
         await new Promise((resolve) => setTimeout(resolve, 120));
         await turn.send('the plan, part one');
@@ -6299,6 +6314,7 @@ describe('a slow answer gets one holding line first', () => {
     const holding = fakeHoldingLine("I'm on it.");
     const slowOptOut: DeterministicHandler = {
       name: 'sms_opt_out',
+      detects: async () => true,
       handle: async () => {
         await new Promise((resolve) => setTimeout(resolve, 120));
         return { claimed: true, outcome: 'opted_out', reply: 'opted out' };
@@ -7623,6 +7639,9 @@ describe('VIL-463 group scope', () => {
   function askerOnlyHandler(onlyToAsker: boolean): DeterministicHandler {
     return {
       name: 'asker_only',
+      async detects() {
+        return true;
+      },
       async handle() {
         return {
           claimed: true as const,

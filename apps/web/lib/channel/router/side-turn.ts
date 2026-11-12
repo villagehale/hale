@@ -6,6 +6,7 @@ import { plainText, redactTeenNames } from '~/lib/channel/coach/reply';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { linqMessageEditEnabled } from '~/lib/channel/linq/edit';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
+import { SEND_TIMEOUT_MS } from '~/lib/channel/linq/transport';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import type { ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
@@ -14,7 +15,7 @@ import { isParentRole } from '~/lib/channel/role-scope';
 import { loadAgentContext } from '~/lib/coach/context';
 import { appendMessage, loadTranscript, resolveNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import { noteCrisisReplySent } from '~/lib/monitoring/failure-page';
+import { noteCrisisReplySent, pageOps } from '~/lib/monitoring/failure-page';
 import {
   BURST_MAX_MEMBERS,
   BURST_QUIET_MS,
@@ -28,6 +29,7 @@ import type { ReplyRoute } from './reply-route';
 import type { ChannelRouterDeps } from './route';
 import type { SideTurnFamily, SideTurnReader } from './side-turn-reader';
 import { type AnswerClaimOutcome, SIDE_TURN_TEMPLATE_KEY } from './turn-ledger';
+import { pageUnwrittenCrisis } from './unwritten-moment';
 
 /**
  * A QUICK QUESTION WHILE THE LAST ANSWER IS STILL COMING (phase 2 of back-to-back texts).
@@ -45,6 +47,9 @@ import { type AnswerClaimOutcome, SIDE_TURN_TEMPLATE_KEY } from './turn-ledger';
  *
  *   the door's opt-out reader   before the text is queued at all (inbound-route.ts), so a
  *                               STOP never reaches a turn of any kind;
+ *   the handlers' place         every deterministic handler's own matcher, run without
+ *                               acting: a text one would take goes back to it, so a
+ *                               "forget" or a disconnect is done, never only answered;
  *   the resolver's place        the side read hands back anything that answers or decides
  *                               something Hale asked, needs a change, or is about the
  *                               running turn;
@@ -59,10 +64,12 @@ import { type AnswerClaimOutcome, SIDE_TURN_TEMPLATE_KEY } from './turn-ledger';
  *
  * NEVER DROPPED, NEVER TWICE. Every side turn ends in exactly one
  * {@link SideTurnOutcome}. The answer claim, the arbiter the text's own job reads at
- * GATE 0, is taken BEFORE the reply is sent, with the parent's row in the thread, so
- * nothing written after the send can let that job answer the text again. Answered: the
- * reply went under the claim. Queued: nothing went, and that job answers the text after
- * the running turn as it always has, with the claim given back when it had been taken.
+ * GATE 0, is taken BEFORE the reply is sent, with the parent's row in the thread.
+ * Answered: the reply went under the claim, and its answered row stops that job. Queued:
+ * nothing went, and that job answers the text after the running turn as it always has,
+ * with the claim given back when it had been taken. The claim is a lease
+ * ({@link SIDE_TURN_CLAIM_LEASE_MS}): one this turn could neither answer nor give back,
+ * because it died or its release failed, lapses, and that job answers the text then.
  *
  * ONE AT A TIME. The running turn holds the parent's key, so it is the only place a side
  * turn can start, and it runs them in sequence. Two or more texts waiting is a burst, and
@@ -91,6 +98,18 @@ export { SIDE_TURN_TEMPLATE_KEY };
 /** The deferred-row reason for a side reply that was threaded and then not sent. DATA. */
 export const SIDE_TURN_UNSENT = 'side_turn_unsent';
 
+/** The deferred-row reason for a side claim whose lease lapsed with no answer. DATA. */
+export const SIDE_TURN_LAPSED = 'side_turn_lapsed';
+
+/**
+ * How long a side reply's claim holds with no answered row behind it (turn-ledger.ts
+ * `held`, then `lapsed`). Longer than the claim can stay unanswered while its side turn
+ * lives: between the claim and its answered row is one reply's send, at most two Linq
+ * calls (threaded, then plain when the thread is refused) of two attempts each, every
+ * attempt bounded by SEND_TIMEOUT_MS, and one more for the writes on either side.
+ */
+export const SIDE_TURN_CLAIM_LEASE_MS = 5 * SEND_TIMEOUT_MS;
+
 const SIDE_TURN_TIMEOUT = 'side_turn_timeout';
 
 /** Why a text was left for its own turn. Each one is that turn's to answer, as today. */
@@ -103,6 +122,9 @@ export type SideTurnQueuedWhy =
   /** A photo, a video or a file is the full turn's to read. */
   | 'has_media'
   | 'no_thread'
+  /** A deterministic handler's own matcher takes it: that handler acts on it in its own
+   * turn (GATE 2b). */
+  | 'handler_takes'
   /** The side read said it belongs to its own turn. */
   | 'handed_back'
   | 'reader_unavailable'
@@ -119,7 +141,10 @@ export type SideTurnQueuedWhy =
   | 'turn_over'
   /** Claimed and threaded, and the send failed: the claim is given back as a deferred
    * row, so its own turn answers it without threading or counting it again. */
-  | 'send_failed';
+  | 'send_failed'
+  /** Claimed and threaded, the send failed, and the claim could not be given back. #ops
+   * is paged; its own turn answers it once the claim's lease lapses. */
+  | 'release_failed';
 
 export type SideTurnOutcome =
   | { kind: 'answered'; by: 'side_read' | 'off_domain' | 'flood_line' }
@@ -240,13 +265,14 @@ export function watchSideTurns(
       );
     }
   })().catch((err: unknown) => {
-    // The running turn never fails for a side turn. The text waits its turn.
+    // The running turn never fails for a side turn. What became of the text, waiting its
+    // turn, answered, or held until its claim lapses, is the ledger's to say.
     deps.log.error(
       {
         runningId: running.channel_message_id,
         err: err instanceof Error ? err.name : 'unknown',
       },
-      'side turn: watch stopped on an error — the text waits its turn',
+      'side turn: watch stopped on an error',
     );
   });
 
@@ -343,6 +369,19 @@ async function decide(
     }),
   ]);
 
+  // GATE 2b's place, before any model reads the text: what a handler would take is its.
+  const detect = {
+    familyId: job.family_id,
+    parentUserId: job.parent_user_id,
+    body: input.text,
+    now,
+    openQuestions: async () => questions,
+    inboundChannelMessageId: job.channel_message_id,
+  };
+  for (const handler of deps.handlers) {
+    if (await handler.detects(deps.database, detect)) return queued('handler_takes');
+  }
+
   // The resolver's place: anything that answers, decides or changes goes back.
   const reading = await deps.sideTurn.reader.read({
     text: input.text,
@@ -389,6 +428,8 @@ async function decide(
       { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
       'side turn: moment reply unwritten — the text goes back to its own turn',
     );
+    // A crisis pages now, as GATE 4's does, not when the running turn ends.
+    await pageUnwrittenCrisis(deps, job, verdict, 'side turn moment');
     return queued('moment_unwritten');
   }
   const language =
@@ -467,7 +508,7 @@ async function commit(
   const providerMessageId = linqMessageEditEnabled() ? input.candidate.providerMessageId : null;
   let claim: AnswerClaimOutcome;
   try {
-    claim = await deps.turns.claimAhead({ channelMessageId: job.channel_message_id }, (tx) =>
+    claim = await deps.turns.claimAhead(text, (tx) =>
       appendMessage(input.conversationId, 'user', input.candidate.body, tx, {
         childId: null,
         topic: null,
@@ -512,10 +553,19 @@ async function commit(
         await deps.turns.releaseAhead({ ...text, reason: SIDE_TURN_UNSENT });
       } catch (releaseErr) {
         deps.log.error(
-          { channelMessageId: job.channel_message_id, err: code },
-          'side turn: not sent, and its claim was not given back — the text is unanswered',
+          {
+            channelMessageId: job.channel_message_id,
+            err: code,
+            release: releaseErr instanceof Error ? releaseErr.name : 'unknown',
+          },
+          'side turn: not sent, and its claim was not given back — its own turn answers it once the claim lapses',
         );
-        throw releaseErr;
+        await pageOps(deps.database, {
+          site: 'side_turn_claim_unreleased',
+          facts: {},
+          ref: job.channel_message_id,
+        });
+        return queued('release_failed');
       }
       deps.log.warn(
         { channelMessageId: job.channel_message_id, err: code },

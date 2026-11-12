@@ -41,10 +41,16 @@ export type TurnStage =
   | 'fresh'
   /** Attempted and handed back to the queue: threaded, counted, unanswered. */
   | 'deferred'
-  /** Answered, or its answer claimed by a side reply about to go ({@link
-   * InboundTurnLedger.claimAhead}). Whatever else happens, this text does not get a
-   * second reply. */
+  /** Answered. Whatever else happens, this text does not get a second reply. */
   | 'answered'
+  /** A side reply's claim is held for it, inside its lease ({@link
+   * InboundTurnLedger.claimAhead}): the side turn that took it may still be sending, so
+   * this attempt does nothing and goes back to the queue. */
+  | 'held'
+  /** A side reply's claim, past its lease with no answer and nothing given back: that
+   * reply never went (its turn died, or its send failed and the claim could not be given
+   * back). The claim is given back and the text answered once, as a re-drive. */
+  | 'lapsed'
   /** Read as part of an earlier text's turn (burst.ts). That turn threads it, counts it
    * and answers it; this text's own job has nothing left to do. Wins over `answered`: a
    * folded text's answered row is the anchor's answer, not one its own job gave. */
@@ -68,6 +74,10 @@ export const TURN_FAILED_ACTION = 'sms_turn_failed';
 
 /** A text read into an earlier text's turn. `after: { into, read }` names that turn. */
 export const TURN_FOLDED_ACTION = 'sms_turn_folded';
+
+/** A side reply's claim on a text, taken before the reply is sent (side-turn.ts). Its time
+ * starts the claim's lease. */
+export const TURN_CLAIMED_AHEAD_ACTION = 'sms_turn_claimed_ahead';
 
 /**
  * The ledger name on a reply sent beside a running turn (side-turn.ts,
@@ -171,18 +181,22 @@ export interface InboundTurnLedger {
   }): Promise<AnswerClaimOutcome>;
   /**
    * A SIDE TURN'S CLAIM (side-turn.ts), taken BEFORE its reply is sent, the way a fold's
-   * is taken before the turn that answers it starts (burst.ts). The arbiter row and
-   * whatever `alongside` writes (the parent's row in the thread) commit in one
-   * transaction. From then the text's own job reads `answered` at GATE 0 whatever the
-   * writes after the send do, so a reply that went cannot be answered twice.
-   * 'already_answered' writes nothing, and nothing may be sent.
+   * is taken before the turn that answers it starts (burst.ts). The arbiter row, its
+   * {@link TURN_CLAIMED_AHEAD_ACTION} row and whatever `alongside` writes (the parent's
+   * row in the thread) commit in one transaction. 'already_answered' writes nothing, and
+   * nothing may be sent.
    *
-   * The reverse of {@link recordAnswered}'s order, and safe here for a reason that does
-   * not hold there: the side turn knows whether its send went, and gives the claim back
-   * when it did not ({@link releaseAhead}).
+   * A LEASE, not an answer. The side turn knows whether its send went: it writes the
+   * answered row ({@link recordAnsweredAhead}) or gives the claim back ({@link
+   * releaseAhead}). Until one of them lands the text's own job reads `held` and goes back
+   * to the queue; past the lease (SIDE_TURN_CLAIM_LEASE_MS) it reads `lapsed` and answers
+   * the text. So a side turn that dies between its claim and its send, or whose release is
+   * lost, never leaves a text unanswered. The price is this ledger's usual one: an answered
+   * row lost after a reply went answers the text again, as a crash after
+   * {@link recordAnswered}'s send would.
    */
   claimAhead(
-    input: { channelMessageId: string },
+    input: { familyId: string; parentUserId: string; channelMessageId: string },
     alongside: (tx: Database) => Promise<unknown>,
   ): Promise<AnswerClaimOutcome>;
   /** The reply a {@link claimAhead} was taken for went: the answered row, which every
@@ -193,9 +207,9 @@ export interface InboundTurnLedger {
     channelMessageId: string;
   }): Promise<void>;
   /**
-   * The reply a {@link claimAhead} was taken for did not go. The claim is deleted and a
-   * deferred row written, in one transaction, so the text's own job reads `deferred` and
-   * answers it once, without threading or counting it again.
+   * The reply a {@link claimAhead} was taken for did not go, or its lease lapsed. The
+   * claim is deleted and a deferred row written, in one transaction, so the text's own
+   * job reads `deferred` and answers it once, without threading or counting it again.
    */
   releaseAhead(input: {
     familyId: string;

@@ -125,12 +125,13 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
-import { productionSideTurnFamily } from './side-turn';
+import { SIDE_TURN_CLAIM_LEASE_MS, productionSideTurnFamily } from './side-turn';
 import { createSideTurnReader } from './side-turn-reader';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import {
   type InboundTurnLedger,
   TURN_ANSWERED_ACTION,
+  TURN_CLAIMED_AHEAD_ACTION,
   TURN_DEFERRED_ACTION,
   TURN_FAILED_ACTION,
   TURN_FOLDED_ACTION,
@@ -681,6 +682,13 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
           .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId })
           .returning({ id: schema.channelTurnAnswerClaims.id });
         if (claimed.length === 0) return 'already_answered';
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          actionTaken: TURN_CLAIMED_AHEAD_ACTION,
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: input.channelMessageId,
+        });
         await alongside(tx as unknown as Database);
         return 'claimed';
       }),
@@ -707,35 +715,37 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
           after: { reason: input.reason },
         });
       }),
-    // The claim is read beside the rows: a side reply's claim is taken before it is sent,
-    // with no answered row yet, and a claim held is an answer owned.
+    // A side reply's claim row is read beside the others (claimAhead): taken before its
+    // reply is sent, with no answered row yet, it is held until its lease lapses. Given
+    // back, it has a deferred row after it.
     stageOf: async ({ familyId, channelMessageId }) => {
-      const [rows, claims] = await Promise.all([
-        database
-          .select({ actionTaken: schema.auditLog.actionTaken })
-          .from(schema.auditLog)
-          .where(
-            and(
-              eq(schema.auditLog.familyId, familyId),
-              gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
-              eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
-              eq(schema.auditLog.targetId, channelMessageId),
-              inArray(schema.auditLog.actionTaken, [
-                TURN_ANSWERED_ACTION,
-                TURN_DEFERRED_ACTION,
-                TURN_FOLDED_ACTION,
-              ]),
-            ),
+      const rows = await database
+        .select({
+          actionTaken: schema.auditLog.actionTaken,
+          occurredAt: schema.auditLog.occurredAt,
+        })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
+            eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
+            eq(schema.auditLog.targetId, channelMessageId),
+            inArray(schema.auditLog.actionTaken, [
+              TURN_ANSWERED_ACTION,
+              TURN_DEFERRED_ACTION,
+              TURN_FOLDED_ACTION,
+              TURN_CLAIMED_AHEAD_ACTION,
+            ]),
           ),
-        database
-          .select({ id: schema.channelTurnAnswerClaims.id })
-          .from(schema.channelTurnAnswerClaims)
-          .where(eq(schema.channelTurnAnswerClaims.channelMessageId, channelMessageId))
-          .limit(1),
-      ]);
+        );
       if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
-      if (claims.length > 0 || rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) {
-        return 'answered';
+      if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
+      const ahead = rows.find((row) => row.actionTaken === TURN_CLAIMED_AHEAD_ACTION);
+      if (ahead && !rows.some((row) => row.actionTaken === TURN_DEFERRED_ACTION)) {
+        return Date.now() - ahead.occurredAt.getTime() < SIDE_TURN_CLAIM_LEASE_MS
+          ? 'held'
+          : 'lapsed';
       }
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
