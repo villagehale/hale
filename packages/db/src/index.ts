@@ -33,6 +33,11 @@ export type {
   NewRegistrationWindow,
 } from './schema/registration-windows.js';
 export type {
+  CityRegistrationReading,
+  CityRegistrationReadingStatus,
+  NewCityRegistrationReading,
+} from './schema/city-registration-readings.js';
+export type {
   GtaRegion,
   SocialCategory,
   SocialPlatform,

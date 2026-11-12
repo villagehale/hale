@@ -1,0 +1,25 @@
+{
+  "value": {
+    "cycle_on_page": "winter activities and march break camp",
+    "evidence": "Early registration for winter activities and march break camp begins on Tuesday, December 1, at 7 a.m. for eligible residents of all ages.",
+    "year_evidence": null,
+    "time_zone_evidence": "City of Toronto",
+    "time_zone": "America/Toronto",
+    "eligibility_evidence": "The page attaches a resident label to the opening: \"for eligible residents of all ages\". It prints no general or non-resident opening date.",
+    "preview": null,
+    "resident_open": {
+      "quote": "Tuesday, December 1",
+      "date_text": "Tuesday, December 1",
+      "time_text": null,
+      "date": null,
+      "time": null
+    },
+    "general_open": null,
+    "unclassified_open": null,
+    "note": "The page says early registration for \"winter activities\" begins Tuesday, December 1, at 7 a.m., but it never states a year for the winter cycle. The only years printed are \"Fall 2026\" and the page's modified date, which are not tied to winter. It also does not name North York specifically. It lists all participating free centres. The general registration date is not printed.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.65
+  },
+  "latencyMs": 8913
+}

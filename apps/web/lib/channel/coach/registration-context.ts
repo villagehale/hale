@@ -5,7 +5,11 @@ import { f14EnabledFor } from '~/lib/channel/f14';
 import { readWindows } from '~/lib/channel/intake/radar';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { formatWhenPhrase } from '~/lib/format/datetime';
-import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
+import { ownCityRegistrationContext } from '~/lib/registration/city/context';
+import {
+  type RegistrationMatch,
+  matchRegistrationWindows,
+} from '~/lib/registration/match-registration-windows';
 import { PROGRAM_DOMAIN_LABEL } from '~/lib/registration/sequence/shortlist';
 
 /**
@@ -67,14 +71,36 @@ export interface RegistrationContextPorts {
   childAgesMonths(familyId: string, now: Date): Promise<number[]>;
   windows(areaCoarse: string): Promise<RegistrationWindow[]>;
   watching(familyId: string): boolean;
+  /**
+   * VIL-684 · the family's own city's opening, read off that city's official page and
+   * cached per city. Asked only when no hand-verified window matches the family, so one
+   * season is never two sources.
+   */
+  ownCity(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
+}
+
+/** The hand-verified windows this family can still act on. Empty with no area on file. */
+export async function matchHandWindows(
+  ports: Pick<RegistrationContextPorts, 'areaCoarse' | 'childAgesMonths' | 'windows'>,
+  familyId: string,
+  now: Date,
+): Promise<RegistrationMatch[]> {
+  const areaCoarse = await ports.areaCoarse(familyId);
+  if (areaCoarse === null) return [];
+  const [childrenAgesMonths, windows] = await Promise.all([
+    ports.childAgesMonths(familyId, now),
+    ports.windows(areaCoarse),
+  ]);
+  return matchRegistrationWindows({ windows, postal: areaCoarse, childrenAgesMonths, now });
 }
 
 /**
  * The municipal registration windows this family can still act on, soonest first.
  *
  * Empty is the common and correct answer: no area on file, an FSA outside the covered
- * set, no child in any published band, or every window already open. Nothing here
- * invents a date to fill that.
+ * set, no child in any published band, or every window already open, and no verified
+ * opening on the family's own city's page either. Nothing here invents a date to fill
+ * that.
  */
 export async function loadRegistrationWindows(
   ports: RegistrationContextPorts,
@@ -82,38 +108,29 @@ export async function loadRegistrationWindows(
   timeZone: string,
   now: Date,
 ): Promise<RegistrationWindowContext[]> {
-  const areaCoarse = await ports.areaCoarse(familyId);
-  if (areaCoarse === null) return [];
-
-  const [childrenAgesMonths, windows] = await Promise.all([
-    ports.childAgesMonths(familyId, now),
-    ports.windows(areaCoarse),
-  ]);
+  const matches = await matchHandWindows(ports, familyId, now);
+  if (matches.length === 0) return ports.ownCity(familyId, now);
 
   const watching = ports.watching(familyId);
-  return matchRegistrationWindows({ windows, postal: areaCoarse, childrenAgesMonths, now }).map(
-    (match) => {
-      const generalOpens =
-        match.generalOpenAt.getTime() === match.opensForFamilyAt.getTime()
-          ? null
-          : formatWhenPhrase(match.generalOpenAt, timeZone, now);
-      return {
-        town: townLabel(match.window.municipality),
-        programs: [
-          ...new Set(
-            match.cycleWindows.map(
-              (w) => `${w.cycleLabel} ${PROGRAM_DOMAIN_LABEL[w.programDomain]}`,
-            ),
-          ),
-        ].join(', '),
-        opensFor: formatWhenPhrase(match.opensForFamilyAt, timeZone, now),
-        residentsFirst: match.isResidentWindow && generalOpens !== null,
-        generalOpens,
-        ageApproximate: match.ageApproximate,
-        watching,
-      };
-    },
-  );
+  return matches.map((match) => {
+    const generalOpens =
+      match.generalOpenAt.getTime() === match.opensForFamilyAt.getTime()
+        ? null
+        : formatWhenPhrase(match.generalOpenAt, timeZone, now);
+    return {
+      town: townLabel(match.window.municipality),
+      programs: [
+        ...new Set(
+          match.cycleWindows.map((w) => `${w.cycleLabel} ${PROGRAM_DOMAIN_LABEL[w.programDomain]}`),
+        ),
+      ].join(', '),
+      opensFor: formatWhenPhrase(match.opensForFamilyAt, timeZone, now),
+      residentsFirst: match.isResidentWindow && generalOpens !== null,
+      generalOpens,
+      ageApproximate: match.ageApproximate,
+      watching,
+    };
+  });
 }
 
 /** The live wiring: the family's own FSA and children, the seeded window table, and the
@@ -138,5 +155,16 @@ export function productionRegistrationContextPorts(database: Database): Registra
     },
     windows: (areaCoarse) => readWindows(database, areaCoarse),
     watching: (familyId) => f14EnabledFor(familyId),
+    // Optional data, like the provider watch: a failed read leaves the city out rather
+    // than failing the parent's turn, and the coach then has no date for their town. The
+    // line names the fault class only.
+    ownCity: (familyId, now) =>
+      ownCityRegistrationContext(database, familyId, now).catch((err: unknown) => {
+        console.error(
+          { fault: err instanceof Error ? err.name : typeof err },
+          'coach: own-city registration context unavailable',
+        );
+        return [];
+      }),
   };
 }

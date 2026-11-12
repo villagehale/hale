@@ -115,6 +115,12 @@ export type ProactiveSendKind =
    */
   | 'next_day_checkback'
   /**
+   * VIL-684 · when winter registration opens in the family's own city, read off that
+   * city's official page, written by the decider's writer. Decider-only: no sweep sends
+   * it. The bound is the city's opening date, held by a once-ever dedupe key per parent.
+   */
+  | 'registration_opening'
+  /**
    * The co-parent left, and the parent who STAYED is told once (VIL-355 follow-up).
    *
    * Unprompted by construction — the departing parent acted, the staying one did not —
@@ -268,6 +274,8 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   mid_activity_ask: false,
   // A nudge about something they started yesterday is worth as much after breakfast.
   next_day_checkback: false,
+  // A registration date days away is worth as much at 08:00 as at 23:00.
+  registration_opening: false,
   // Nothing here is worth less at 08:00. The seat is already gone, the week is already
   // theirs, and waking somebody at 23:00 to tell them their co-parent left is the
   // cruellest hour this message could pick.
@@ -378,6 +386,8 @@ export const PROACTIVE_CATEGORY: Record<
   mid_activity_ask: 'activity_followup',
   // Hale following up on a thread it is in the middle of.
   next_day_checkback: 'followup',
+  // The same "Hale noticed something" family as the registration nudge.
+  registration_opening: 'nudge',
   co_parent_departed: 'co_parent_departed',
   travel_brief: 'travel_brief',
   duty_ask: 'duty_ask',

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Registration opening is fresh, time-sensitive and still valid until Oct 13; it is not a calendar-fit find, the parent has replied to the last send with no unanswered streak, and 11 AM Thursday is outside quiet hours, so send now.",
+    "action": "send_now",
+    "item_ids": [
+      "opening"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

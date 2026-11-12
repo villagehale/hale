@@ -87,4 +87,20 @@ export const PROACTIVE_WRITER_FIXTURES = [
     cadenceNote: null,
     expect: { names: ['swim'], urls: [] },
   },
+  {
+    // VIL-684 · when winter registration opens in their own city, read off its own page.
+    id: 'registration-opening',
+    items: [
+      {
+        id: 'opening',
+        what: 'Elm Falls Winter 2027 recreation programs registration opens Dec 1, 6:30 a.m.; everyone else Dec 2, 6:30 a.m.',
+        why: 'registration_opening read=2026-11-12T20:00:00.000Z',
+        sourceUrl: 'https://rec.example.test/winter-registration',
+        worthlessAfter: '2026-12-01T11:30:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['dec 1', 'registration'], urls: [] },
+  },
 ];

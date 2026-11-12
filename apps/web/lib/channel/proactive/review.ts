@@ -480,13 +480,14 @@ async function loadOpenItems(
 
 /**
  * Kinds with no sweep of their own left to send them: the evening check-in, the VIL-393
- * mid-activity ask and the VIL-681 next-day check-back. They are reviewed live even while
- * the cadence flag is off.
+ * mid-activity ask, the VIL-681 next-day check-back and the VIL-684 own-city
+ * registration opening. They are reviewed live even while the cadence flag is off.
  */
 const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
   'evening_check_in',
   'mid_activity_ask',
   'next_day_checkback',
+  'registration_opening',
 ];
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {

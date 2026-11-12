@@ -31,9 +31,21 @@ function ports(overrides: Partial<RegistrationContextPorts> = {}): RegistrationC
     childAgesMonths: async () => [17],
     windows: async () => [haltonHillsFall()],
     watching: () => true,
+    ownCity: async () => [],
     ...overrides,
   };
 }
+
+/** The family's own city's opening, as the own-city port hands it over (VIL-684). */
+const OWN_CITY = {
+  town: 'Greater Sudbury',
+  programs: 'Winter 2027 recreation programs',
+  opensFor: 'Dec 16, 8:00 a.m.',
+  residentsFirst: false,
+  generalOpens: null,
+  ageApproximate: false,
+  watching: true,
+};
 
 describe('the coach registration context', () => {
   it('gives the family their OWN date, with the general one named as the later alternative', async () => {
@@ -93,5 +105,47 @@ describe('the coach registration context', () => {
       new Date('2026-09-02T12:00:00Z'),
     );
     expect(afterOpen).toEqual([]);
+  });
+
+  it("falls to the family's own city when no hand-verified window is theirs", async () => {
+    const asked: string[] = [];
+    const ownCity = async (familyId: string) => {
+      asked.push(familyId);
+      return [OWN_CITY];
+    };
+
+    const outside = await loadRegistrationWindows(
+      ports({ areaCoarse: async () => 'P3A', ownCity }),
+      'fam-1',
+      TZ,
+      NOW,
+    );
+    expect(outside).toEqual([OWN_CITY]);
+    // A stored city with no postal area still reaches its own city's page.
+    const noArea = await loadRegistrationWindows(
+      ports({ areaCoarse: async () => null, ownCity }),
+      'fam-2',
+      TZ,
+      NOW,
+    );
+    expect(noArea).toEqual([OWN_CITY]);
+    expect(asked).toEqual(['fam-1', 'fam-2']);
+  });
+
+  it('never asks the own city for a family the hand radar already covers', async () => {
+    let asked = false;
+    const windows = await loadRegistrationWindows(
+      ports({
+        ownCity: async () => {
+          asked = true;
+          return [OWN_CITY];
+        },
+      }),
+      'fam-1',
+      TZ,
+      NOW,
+    );
+    expect(windows.map((window) => window.town)).toEqual(['Halton Hills']);
+    expect(asked).toBe(false);
   });
 });
