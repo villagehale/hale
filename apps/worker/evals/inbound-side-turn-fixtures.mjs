@@ -124,4 +124,22 @@ export const INBOUND_SIDE_TURN_FIXTURES = [
     { text: 'thanks!' },
     { expect: 'hand_back' },
   ),
+  fixture(
+    'forget-memory',
+    'It asks Hale to forget what it remembers: a change, done in its own turn.',
+    { text: "forget that Ada's teacher is Ms. Okafor" },
+    { expect: 'hand_back' },
+  ),
+  fixture(
+    'disconnect-calendar',
+    'It asks Hale to disconnect the calendar: a change, done in its own turn.',
+    { text: 'disconnect my calendar' },
+    { expect: 'hand_back' },
+  ),
+  fixture(
+    'stop-reminders',
+    'It asks Hale to stop the reminders: a change, done in its own turn.',
+    { text: 'stop the reminders' },
+    { expect: 'hand_back' },
+  ),
 ];
