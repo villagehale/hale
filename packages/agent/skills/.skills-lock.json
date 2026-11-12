@@ -43,6 +43,10 @@
     "file": "browser-use-assisted-signup.md",
     "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
   },
+  "browser-use-checkout-review.md": {
+    "file": "browser-use-checkout-review.md",
+    "sha256": "59b270c2df1a578c6fb8413816bda6e4f8241d64f17447a6a6b0c0d7247c2acc"
+  },
   "browser-use-confirmation.md": {
     "file": "browser-use-confirmation.md",
     "sha256": "346a0f5250505a31aa9c5327a35e7699ef84c30319583eea044f80ecdb12cce8"
@@ -57,7 +61,7 @@
   },
   "browser-use-saved-card-payment.md": {
     "file": "browser-use-saved-card-payment.md",
-    "sha256": "944d6bd3e553ce9b099121120529b5444cbd804bb8fe3bf7b763e81887d7b846"
+    "sha256": "7b6302f30c364555dae0e491fbf33cdab8adc8f8390fd05b9206081db2c47b3a"
   },
   "browser-use-signup.md": {
     "file": "browser-use-signup.md",
