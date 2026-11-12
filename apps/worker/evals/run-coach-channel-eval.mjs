@@ -113,7 +113,7 @@ import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
 import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
-import { gatedSearchVillageHandler } from './coach-channel-search-village.mjs';
+import { gatedSearchVillageHandler, searchedWindow } from './coach-channel-search-village.mjs';
 import {
   COACH_CHANNEL_FIXTURES,
   FIND_DAY_JUDGE_SYSTEM,
@@ -196,6 +196,8 @@ const DEIDENTIFY_SRC = join(
   'activity',
   'deidentify.ts',
 );
+/** The REAL place gate a `search_village` `area` crosses before the search (village/live.ts). */
+const NAMED_AREA_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'named-area.ts');
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 
 // ONE loader for every web module, as the other web-importing evals do. A `tsImport` per
@@ -782,13 +784,13 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
 
 /**
  * VIL-567 · `search_village` as apps/web/lib/coach/tools.ts declares it today: its own
- * description, `query`, `window` and `area`, and its examples. The shared fake below predates the
+ * description, `query`, `window`, `date` and `area`, and its examples. The shared fake below predates the
  * `window` field, and every standing recording is keyed on it, so only a `findTurnPrompt`
- * fixture gets this one. A search with no window searches the whole year in production
- * (village/live.ts), so the fixture's `yearVillage` answers it; a window gets `village`.
+ * fixture gets this one. A search with no window and no date searches the whole year in
+ * production (village/live.ts), so the fixture's `yearVillage` answers it; either gets `village`.
  */
 const SEARCH_VILLAGE_DESCRIPTION =
-  'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.';
+  'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the ask is for one day, pass that day as `date` (YYYY-MM-DD, worked out from `localNow`); a full date written in query or window is removed before the search. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.';
 
 function windowedSearchVillageTool(agent, search, record, village, yearVillage, toolOutputs) {
   return agent.defineTool({
@@ -798,12 +800,14 @@ function windowedSearchVillageTool(agent, search, record, village, yearVillage, 
       query: z.string().optional(),
       window: z.string().optional(),
       area: z.string().min(1).optional(),
+      date: z.string().optional(),
     }),
     inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Kingston' }],
     monetary: false,
     touchesChildContent: false,
     handler: gatedSearchVillageHandler({
       deidentify: search.deidentify,
+      namedArea: search.namedArea,
       family: search.family,
       record,
       village,
@@ -1498,10 +1502,12 @@ function villageFor(fixture) {
   return presentVillage(fixture.village ?? FIXTURE_VILLAGE);
 }
 
-/** What `search_village` handed back this turn: a `findTurnPrompt` fixture answers by window. */
+/** What `search_village` handed back this turn: a `findTurnPrompt` fixture answers by window or date. */
 function returnedVillage(fixture, calls) {
   if (!fixture.findTurnPrompt) return villageFor(fixture);
-  const windowed = calls.some((call) => call.tool === 'search_village' && call.window);
+  const windowed = calls.some(
+    (call) => call.tool === 'search_village' && searchedWindow(call) !== null,
+  );
   return windowed ? villageFor(fixture) : presentVillage(fixture.yearVillage);
 }
 
@@ -2015,6 +2021,7 @@ async function main() {
 
   const agent = await loadAgent();
   const deidentify = await importTs(DEIDENTIFY_SRC);
+  const namedArea = await importTs(NAMED_AREA_SRC);
   ({ spokenFind } = await importTs(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
   ));
@@ -2188,7 +2195,9 @@ async function main() {
           toolOutputs,
           fixture.postalTown ?? null,
           fixture.findTurnPrompt ? presentVillage(fixture.yearVillage) : undefined,
-          fixture.findTurnPrompt ? { deidentify, family: searchFamilyFor(fixture) } : undefined,
+          fixture.findTurnPrompt
+            ? { deidentify, namedArea, family: searchFamilyFor(fixture) }
+            : undefined,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
         ...(fixture.autonomy
@@ -2472,9 +2481,7 @@ async function main() {
         thread: turnContext.transcript,
         today: fixtureLocalNow(fixture),
         dayMeant: fixture.expect.dayJudge.day,
-        searchedWindows: calls
-          .filter((call) => call.tool === 'search_village')
-          .map((call) => call.window ?? null),
+        searchedWindows: calls.filter((call) => call.tool === 'search_village').map(searchedWindow),
         finds: returnedVillage(fixture, calls).candidates.map(
           (c) => `${c.title} at ${c.venue}, ${c.when}`,
         ),
