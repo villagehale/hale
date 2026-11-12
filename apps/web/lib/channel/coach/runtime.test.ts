@@ -945,6 +945,8 @@ describe('the watch a turn started', () => {
         reader: { householdNames: async () => [] },
         watchConsentGranted: async () => true,
         readClassAvailability: {} as never,
+        parentWords: `can you watch this for a spot? ${COURSE_URL}`,
+        linksThisTurn: () => [],
         onWatch: onWatch as never,
       }),
     ];

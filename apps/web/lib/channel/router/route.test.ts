@@ -392,6 +392,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     async recordFailed(input: { channelMessageId: string; reason: string }) {
       ledger.failed.push({ channelMessageId: input.channelMessageId, reason: input.reason });
     },
+    async recordRouted() {},
   };
   return ledger;
 }

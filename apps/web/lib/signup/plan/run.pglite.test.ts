@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import type {
   BrowserUsePlanCheckpoint,
   BrowserUsePlanInput,
@@ -12,7 +13,6 @@ import type {
   PlanPaymentInput,
   PlanResumeToken,
 } from '../browser-use/plan-engine';
-import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import { storeProviderSession } from '../browser-use/vault';
 import {
   PROVIDER_ACCOUNT_CREATE_ENABLED_ENV,
@@ -25,6 +25,7 @@ import { lookupLoginLink } from '../login-link/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import type { PlanPrepFacts } from './prep';
 import {
   PLAN_JOIN_LEAD_MS,
   PLAN_LEASE_MS,
@@ -1387,16 +1388,19 @@ describe('parked password rejection and mismatched options', () => {
   ];
 
   function noticePrep() {
-    const facts: { kind: string }[] = [];
+    const facts: PlanPrepFacts[] = [];
     const bodies: string[] = [];
     return {
       facts,
       bodies,
       prep: {
         writer: {
-          write: async (input: { kind: string }) => {
+          write: async (input: PlanPrepFacts) => {
             facts.push(input);
-            return [`bubble for ${input.kind}`, 'second bubble'];
+            return {
+              bubbles: [`bubble for ${input.kind}`, 'second bubble'],
+              card: input.loginCard ? { title: 'Nouveau lien', description: 'Natation' } : null,
+            };
           },
         },
         deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
@@ -1558,7 +1562,13 @@ describe('parked password rejection and mismatched options', () => {
         kind: 'password_rejected',
         sessionLabel: 'Preschool Swim Sat 9:00',
         opensAt: null,
+        card: { title: 'Nouveau lien', description: 'Natation' },
       },
+    });
+    // The writer wrote the preview from the card's own facts, so it never names a passed open.
+    expect(notices.facts[0]?.loginCard).toEqual({
+      sessionLabel: 'Preschool Swim Sat 9:00',
+      opensAt: null,
     });
     expect(loginPurposeLine(looked.ok ? looked.purpose : null)).toBe(
       'to finish signing up for Preschool Swim Sat 9:00',
