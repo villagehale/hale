@@ -1,4 +1,3 @@
-import { recMorningReturnLine } from '~/lib/channel/rec-morning/copy';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { townLabel } from './radar-voice';
 
@@ -47,7 +46,7 @@ export function isAdultLearnAsk(body: string): boolean {
 
 /**
  * Mid-signup / first-text: the locked kids-only door plus Hale's outstanding ask.
- * Cold start appends {@link recMorningReturnLine}'s COLD_START ask. Null when the
+ * Cold start appends {@link the intake return line}'s COLD_START ask. Null when the
  * parent's text was not an adult-learn ask.
  */
 export function adultLearnIntakeReply(input: {
@@ -57,9 +56,7 @@ export function adultLearnIntakeReply(input: {
   postal: string | null;
 }): string | null {
   if (!isAdultLearnAsk(input.parentWords)) return null;
-  const joined = [adultLearnDoor(sessionCity(input.postal)), recMorningReturnLine(input.pendingAsk)]
-    .filter((part) => part.length > 0)
-    .join(' ');
+  const joined = adultLearnDoor(sessionCity(input.postal));
   if (joined.length > INTAKE_MAX_REPLY_CHARS) {
     throw new Error(
       `adult-learn intake reply is ${joined.length} chars, cap is ${INTAKE_MAX_REPLY_CHARS}`,

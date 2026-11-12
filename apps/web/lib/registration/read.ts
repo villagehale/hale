@@ -16,6 +16,7 @@ import {
   readCourseRegistration,
   registrationAnchor,
 } from './live-reading';
+import { dayKeyIn } from '~/lib/plan/spine';
 import { resolveFamilyOpen } from './match-registration-windows';
 import {
   type RegistrationPageFetch,
@@ -222,6 +223,35 @@ export function registrationDate(
     reading.dates.find((date) => date.kind === 'general_open') ??
     null
   );
+}
+
+/** An unlabelled opening the model left unclassified — not evidence a family may act. */
+export function unclassifiedRegistrationDate(
+  reading: LiveRegistrationReading,
+): LiveRegistrationDate | null {
+  return reading.status === 'verified'
+    ? (reading.dates.find((date) => date.kind === 'unclassified_open') ?? null)
+    : null;
+}
+
+/** Clock facts for a composer: calendar day, published time or none, source zone. */
+export function registrationWhen(
+  reading: LiveRegistrationReading,
+  date: LiveRegistrationDate,
+): { date: string; time: string | null; timeZone: string } | null {
+  if (reading.status !== 'verified') return null;
+  return { date: date.date, time: date.time, timeZone: reading.timeZone };
+}
+
+export function registrationHasOpened(
+  reading: LiveRegistrationReading,
+  date: LiveRegistrationDate,
+  now: Date,
+): boolean {
+  if (reading.status !== 'verified') return false;
+  return date.time === null
+    ? date.date < dayKeyIn(now, reading.timeZone)
+    : registrationAnchor(reading, date) <= now;
 }
 
 export type LiveRegistrationWindow = RegistrationWindow & {

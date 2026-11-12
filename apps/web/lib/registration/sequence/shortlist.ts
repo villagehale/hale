@@ -86,6 +86,25 @@ export interface Shortlist {
   ageApproximate: boolean;
 }
 
+export function courseShortlist(sequenceId: string, sourceUrl: string, anchor: Date): Shortlist {
+  return {
+    windowRef: {
+      id: sequenceId,
+      municipality: new URL(sourceUrl).hostname,
+      programDomain: 'rec_program',
+      cycleLabel: 'course',
+    },
+    cyclePhrase: 'course',
+    opensForFamilyAt: anchor,
+    sourceUrl,
+    isResidentWindow: false,
+    residentPriorityDays: null,
+    waitlistResponseHours: null,
+    fitNotes: [],
+    ageApproximate: false,
+  };
+}
+
 /** How each M1 program domain reads to a parent. Reviewed copy, not a prettified
  * enum: "rec_program" is our word for it, "recreation programs" is theirs. Exported
  * for the coach's registration context, which names the same cycles in a texted answer

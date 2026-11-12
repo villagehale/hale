@@ -507,6 +507,11 @@ export const AUDIT_VERBS = [
   'registration_course_bound',
   'registration_readiness_stated',
   'registration_bind_read_throttled',
+  'registration_watch_created',
+  'registration_watch_reused',
+  'registration_watch_read',
+  'registration_watch_refreshed',
+  'registration_reminder_proposed',
   'authorized_signup_step',
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   'watched_spot_armed',
@@ -1904,6 +1909,26 @@ const VERBS: Record<AuditVerb, Verb> = {
   // sentence the parent was texted back.
   registration_bind_read_throttled: {
     sentence: 'Hale held off on reading a course page you sent',
+    family: 'note',
+  },
+  registration_watch_created: {
+    sentence: 'Hale started watching a course page you sent',
+    family: 'note',
+  },
+  registration_watch_reused: {
+    sentence: 'Hale kept watching a course page you already sent',
+    family: 'note',
+  },
+  registration_watch_read: {
+    sentence: 'Hale read a course page it is watching',
+    family: 'note',
+  },
+  registration_watch_refreshed: {
+    sentence: 'Hale updated a registration watch from the course page',
+    family: 'note',
+  },
+  registration_reminder_proposed: {
+    sentence: 'Hale drafted a registration reminder for you to approve',
     family: 'note',
   },
   // One verb for every step of an authorized signup, including a handback, so
