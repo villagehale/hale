@@ -1,8 +1,10 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasGarbledText } from '~/lib/format/garbled-text';
 import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { PlanCharged } from '~/lib/signup/browser-use/plan-engine';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -39,6 +41,8 @@ export interface PlanRunFacts {
   sessionLabel: string | null;
   cartTotalCents: number | null;
   amountChargedCents: number | null;
+  /** What Hale's run charged, from the engine: `nothing`, `unknown`, or the cents read. */
+  charged: PlanCharged;
   liveBrowser: boolean;
   holdMinutes: number | null;
 }
@@ -107,6 +111,7 @@ function knownCents(facts: PlanReplyFacts): Set<number> {
   for (const session of facts.sessions) add(session.priceCents);
   add(facts.run?.cartTotalCents);
   add(facts.run?.amountChargedCents);
+  if (typeof facts.run?.charged === 'object') add(facts.run.charged.cents);
   return known;
 }
 
@@ -163,6 +168,9 @@ export function planReplyViolations(text: string, facts?: PlanReplyFacts): strin
   const tidy = text.trim();
   if (!tidy) out.push('empty');
   if (hasLinkShape(tidy)) out.push('contains a link: Hale adds any link after the text');
+  if (hasGarbledText(tidy)) {
+    out.push('garbled characters: an accented letter came out as two or three other characters');
+  }
   if (facts) {
     const allowedMoney = knownCents(facts);
     if (

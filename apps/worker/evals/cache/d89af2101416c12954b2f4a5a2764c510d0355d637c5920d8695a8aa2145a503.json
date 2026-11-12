@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French with tu, states the opening time and both sessions with correct prices, asks one question, and never claims a spot. Problems: it writes 'decembre' without the accent and 'prescolaire' without the accent, uses 'ecote' missing accent, and the parenthetical about queuing adds a second clause rather than being clearly tied to the one ask. The 'ordre' question is a single ask, so the core is sound. Accent omissions in French are a stated low-score trigger, and the text uses an unaccented 'decembre' explicitly called out, so the score drops to 2.",
+    "score": 2
+  }
+}
