@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { carriesLink } from '~/lib/format/link-shape';
 import { signupProviderHost } from './consent';
 import { authorizedSignupEnabled } from './flag';
 import {
@@ -100,7 +101,7 @@ export function urlSeenThisTurn(
 ): string | null {
   const allowed = registrationUrlAllowed(raw);
   if (!allowed.ok) return null;
-  if (parentWords.includes(allowed.href) || parentWords.includes(raw)) return allowed.href;
+  if (carriesLink(parentWords, allowed.href)) return allowed.href;
   if (links.some((link) => link.url === allowed.href || link.url === raw)) return allowed.href;
   return null;
 }

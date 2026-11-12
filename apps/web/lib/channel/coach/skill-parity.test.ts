@@ -38,6 +38,8 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
         reader: {} as never,
         watchConsentGranted: {} as never,
         readClassAvailability: {} as never,
+        parentWords: '',
+        linksThisTurn: () => [],
       },
       onOffer: () => {},
       onShare: () => {},
@@ -128,6 +130,8 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       reader: {} as never,
       readClassAvailability: {} as never,
       watchConsentGranted: {} as never,
+      parentWords: '',
+      linksThisTurn: () => [],
       onWatch: () => {},
     });
     expect(watch.description).toContain(
