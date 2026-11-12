@@ -124,6 +124,54 @@ export const COACH_REACTION_FIXTURES = [
       'The parent thanks Hale but also asks a question; Hale may not know the answer and must say so in words.',
   },
   {
+    id: 'thanks-which-pool',
+    earlier: ASKED_SWIM,
+    text: 'thanks! which pool was it again?',
+    events: [SWIM],
+    expect: 'not_alone',
+    situation:
+      'The parent thanks Hale and asks again where swim is. The answer is in the thread, and they still need it in words.',
+  },
+  {
+    id: 'thanks-call-pool',
+    earlier: ASKED_SWIM,
+    text: "perfect, thanks! can you call the pool and tell them we'll be 10 min late?",
+    events: [SWIM],
+    expect: 'not_alone',
+    situation:
+      'The parent thanks Hale and asks it to phone the pool. Hale cannot make calls, so it must say so in words; a tapback alone would read as done.',
+  },
+  {
+    id: 'merci-call-fr',
+    earlier: [
+      { role: 'user', content: 'à quelle heure est la natation samedi ?' },
+      { role: 'assistant', content: 'La natation est samedi à 10 h à la piscine communautaire.' },
+    ],
+    text: "merci ! tu peux appeler la piscine pour dire qu'on aura 10 minutes de retard ?",
+    events: [SWIM],
+    expect: 'not_alone',
+    situation:
+      'In French, the parent thanks Hale and asks it to phone the pool. Hale cannot make calls, so it must say so in words.',
+  },
+  {
+    id: 'other-thing',
+    earlier: ASKED_SWIM,
+    text: 'ok thanks! and what about the other thing?',
+    events: [SWIM],
+    expect: 'not_alone',
+    situation:
+      'The parent asks about "the other thing" and nothing in the thread says what that is, so Hale has to ask.',
+  },
+  {
+    id: 'thanks-advice',
+    earlier: ASKED_SWIM,
+    text: 'thanks! should she eat before or after swim?',
+    events: [SWIM],
+    expect: 'not_alone',
+    situation:
+      'The parent thanks Hale and asks an everyday question that needs an answer in words.',
+  },
+  {
     id: 'cancel-reminder',
     earlier: ASKED_SWIM,
     text: 'can you cancel the reminder for it',
