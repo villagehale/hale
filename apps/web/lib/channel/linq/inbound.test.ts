@@ -307,6 +307,7 @@ describe('handleLinqInboundRequest', () => {
         provider_message_id: MESSAGE_ID,
         received_at: NOW.toISOString(),
         in_group: false,
+        opt_out_unread: false,
       },
     ]);
   });

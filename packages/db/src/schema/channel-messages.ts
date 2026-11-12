@@ -216,6 +216,13 @@ export const channelMessages = pgTable(
      * written before the column existed.
      */
     providerService: text('provider_service').$type<LinqServiceValue>(),
+    /**
+     * INBOUND only (migration 0238): the door's opt-out read could not read this text, so
+     * it may be a stop. Written with the row the hand-off needs, so it cannot be lost the
+     * way a separate hold row can: a re-drive and a turn that reads several texts as one
+     * read it here. Null on outbound rows and on rows written before the column existed.
+     */
+    optOutUnread: boolean('opt_out_unread'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
