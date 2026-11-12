@@ -640,13 +640,25 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
           .returning({ id: schema.channelTurnAnswerClaims.id });
         if (claimed.length === 0) return 'already_answered';
 
-        await tx.insert(schema.auditLog).values({
-          familyId: input.familyId,
-          actor: input.parentUserId,
-          actionTaken: TURN_ANSWERED_ACTION,
-          targetTable: TURN_LEDGER_TARGET,
-          targetId: input.channelMessageId,
-        });
+        await tx.insert(schema.auditLog).values([
+          {
+            familyId: input.familyId,
+            actor: input.parentUserId,
+            actionTaken: TURN_ANSWERED_ACTION,
+            targetTable: TURN_LEDGER_TARGET,
+            targetId: input.channelMessageId,
+          },
+          // A folded text is answered by this same reply. Its claim is the fold's, so
+          // only the anchor's claim above arbitrates; `into` names the turn that answered.
+          ...input.folded.map((memberId) => ({
+            familyId: input.familyId,
+            actor: input.parentUserId,
+            actionTaken: TURN_ANSWERED_ACTION,
+            targetTable: TURN_LEDGER_TARGET,
+            targetId: memberId,
+            after: { into: input.channelMessageId },
+          })),
+        ]);
         return 'claimed';
       }),
     stageOf: async ({ familyId, channelMessageId }) => {
@@ -666,8 +678,8 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             ]),
           ),
         );
-      if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
       if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
+      if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
     recordDeferred: async (input) => {

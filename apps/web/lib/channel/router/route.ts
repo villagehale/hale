@@ -1029,6 +1029,12 @@ async function routeChannelMessageInner(
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       channelMessageId: job.channel_message_id,
+      folded:
+        burst.kind === 'anchor'
+          ? burst.members
+              .map((member) => member.channelMessageId)
+              .filter((id) => id !== job.channel_message_id)
+          : [],
     });
     if (claim === 'already_answered') {
       // The DB refused the claim: another attempt at this same turn answered first, so

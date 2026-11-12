@@ -43,7 +43,8 @@ export type TurnStage =
   /** Answered. Whatever else happens, this text does not get a second reply. */
   | 'answered'
   /** Read as part of an earlier text's turn (burst.ts). That turn threads it, counts it
-   * and answers it; this text's own job has nothing left to do. */
+   * and answers it; this text's own job has nothing left to do. Wins over `answered`: a
+   * folded text's answered row is the anchor's answer, not one its own job gave. */
   | 'folded';
 
 /**
@@ -141,6 +142,13 @@ export interface InboundTurnLedger {
     familyId: string;
     parentUserId: string;
     channelMessageId: string;
+    /**
+     * The texts this turn read with the anchor (burst.ts). Each gets its own answered row
+     * in the same transaction as the anchor's claim, so every reader of the answered verb
+     * (the re-drive gate, the unanswered sweep, ops-daily latency) sees them answered
+     * with no fold-aware logic of its own. Empty on a lone text.
+     */
+    folded: readonly string[];
   }): Promise<AnswerClaimOutcome>;
   /** Called before the turn is thrown back to the queue, so the re-drive knows the two
    * consuming steps are already paid for. */

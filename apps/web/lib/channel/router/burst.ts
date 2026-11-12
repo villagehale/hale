@@ -131,7 +131,9 @@ function toMember(row: {
   return {
     channelMessageId: row.channelMessageId,
     providerMessageId: row.providerMessageId,
-    body: row.body ?? '',
+    // At the source, so the reader, the merged body and each threaded row all start
+    // from words that cannot carry a live-view link.
+    body: withoutLiveViewLinks(row.body ?? ''),
     media: inboundMediaFromStored(row.inboundMedia),
     createdAt: row.createdAt,
   };
@@ -253,12 +255,12 @@ export async function foldIntoAnchor(
   return won;
 }
 
-/** The anchor and the texts an earlier attempt folded into it, oldest first. Only the
- * anchor (no fold rows) is returned as an empty list: there is no burst to rebuild. */
-export async function membersFoldedInto(
+/** The ids of the texts folded into an anchor's turn, from the fold rows alone: ids, never
+ * a body, so a dead letter can name them (drain.ts). */
+export async function foldedMemberIds(
   database: Database,
   input: { familyId: string; anchorId: string },
-): Promise<readonly BurstMember[]> {
+): Promise<readonly string[]> {
   const folded = await database
     .select({ targetId: schema.auditLog.targetId })
     .from(schema.auditLog)
@@ -271,7 +273,16 @@ export async function membersFoldedInto(
         sql`${schema.auditLog.after}->>'into' = ${input.anchorId}`,
       ),
     );
-  const ids = folded.flatMap((row) => (row.targetId ? [row.targetId] : []));
+  return folded.flatMap((row) => (row.targetId ? [row.targetId] : []));
+}
+
+/** The anchor and the texts an earlier attempt folded into it, oldest first. Only the
+ * anchor (no fold rows) is returned as an empty list: there is no burst to rebuild. */
+export async function membersFoldedInto(
+  database: Database,
+  input: { familyId: string; anchorId: string },
+): Promise<readonly BurstMember[]> {
+  const ids = await foldedMemberIds(database, input);
   if (ids.length === 0) return [];
   const rows = await database
     .select(memberColumns)
@@ -373,15 +384,14 @@ export async function planBurst(
     return { kind: 'anchor', members, replyTo, waitedMs: 0, read: 'decided_earlier' };
   };
 
-  // A re-drive keeps whatever its first attempt folded, flag or no flag: those texts'
-  // own jobs already stopped at `folded`, so this turn is the only one that answers them.
-  if (stage === 'deferred') {
-    return (await rebuild()) ?? { kind: 'lone', waitedMs: 0, why: 're_driven' };
-  }
-  if (!ports.enabled(job.family_id)) return { kind: 'lone', waitedMs: 0, why: 'flag_off' };
-  // An attempt that crashed after folding left no defer row, so this one is `fresh`.
+  // Whatever an earlier attempt folded is kept, flag or no flag: those texts' own jobs
+  // already stopped at `folded`, so this turn is the only one that answers them. That
+  // holds for a re-drive and for an attempt that crashed after folding and left no defer
+  // row, which comes back `fresh`. Only planning a NEW burst depends on the flag.
   const earlier = await rebuild();
   if (earlier) return earlier;
+  if (stage === 'deferred') return { kind: 'lone', waitedMs: 0, why: 're_driven' };
+  if (!ports.enabled(job.family_id)) return { kind: 'lone', waitedMs: 0, why: 'flag_off' };
 
   const { members, waitedMs } = await settle(database, ports, anchorRef);
   const [anchor] = members;
@@ -441,7 +451,7 @@ export function mergeBurstContext(
   plan: Extract<BurstPlan, { kind: 'anchor' }>,
 ): InboundContext {
   const body = plan.members
-    .map((member) => withoutLiveViewLinks(member.body))
+    .map((member) => member.body)
     .filter((words) => words !== '')
     .join('\n');
   const media = plan.members.flatMap((member) => member.media);

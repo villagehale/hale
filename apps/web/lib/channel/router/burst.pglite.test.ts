@@ -1,10 +1,18 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
+import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
+import {
+  BROWSER_USE_LIVE_VIEW_HOST,
+  LIVE_VIEW_LINK_WITHHELD,
+} from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   BURST_MAX_HOLD_MS,
@@ -13,6 +21,7 @@ import {
   type BurstPorts,
   TURN_FOLDED_ACTION,
   foldIntoAnchor,
+  foldedMemberIds,
   mergeBurstContext,
   pendingBurst,
   planBurst,
@@ -342,6 +351,33 @@ describe('reading and folding', () => {
     expect(logged).not.toContain('private words');
   });
 
+  it('a live-view link never reaches the reader or a member, first read or rebuilt', async () => {
+    const fam = await seedFamily(db.database, 'Live View');
+    const link = `https://${BROWSER_USE_LIVE_VIEW_HOST}/s/abc123?token=xyz`;
+    const m1 = await text(fam, 'can you finish the swim signup', T0);
+    const m2 = await text(fam, `it is stuck here ${link}`, T0 + 500);
+    clock = T0 + 4_000;
+    const reader = scriptedReader(foldAll);
+
+    const plan = anchorOf(await planBurst(db.database, ports(reader), jobFor(fam, m1), 'fresh'));
+    const rebuilt = anchorOf(
+      await planBurst(db.database, ports(scriptedReader(foldAll)), jobFor(fam, m1), 'deferred'),
+    );
+
+    const withheld = `it is stuck here ${LIVE_VIEW_LINK_WITHHELD}`;
+    expect(reader.calls[0]?.messages.map((m) => m.text)).toEqual([
+      'can you finish the swim signup',
+      withheld,
+    ]);
+    expect(plan.members.map((m) => m.body)).toEqual(['can you finish the swim signup', withheld]);
+    expect(rebuilt.members.map((m) => m.body)).toEqual([
+      'can you finish the swim signup',
+      withheld,
+    ]);
+    expect(JSON.stringify([reader.calls, plan, rebuilt])).not.toContain(BROWSER_USE_LIVE_VIEW_HOST);
+    expect(m2).toBe(plan.members[1]?.channelMessageId);
+  });
+
   it('collects at most BURST_MAX_MEMBERS texts; the rest stay fresh', async () => {
     const fam = await seedFamily(db.database, 'Many');
     const ids: string[] = [];
@@ -428,6 +464,100 @@ describe('what counts as this parent’s burst', () => {
     expect(pending.map((m) => m.body)).toEqual(['anchor', 'member']);
     expect(pending.map((m) => m.channelMessageId)).toEqual([anchor, member]);
   });
+
+  it('never collects a 1:1 text the Linq door already answered itself', async () => {
+    const secret = Buffer.alloc(32, 9);
+    const phone = '+14165550177';
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${secret.toString('base64')}`);
+    try {
+      const fam = await seedFamily(db.database, 'Door Answered');
+      await db.database.insert(schema.parentChannels).values({
+        userId: fam.parentUserId,
+        familyId: fam.familyId,
+        kind: 'sms',
+        phoneE164Encrypted: encryptString(phone),
+        phoneE164Hash: phoneBlindIndex(phone),
+        verifiedAt: new Date(),
+      });
+      const anchor = await text(fam, 'find a swim class for Milo', Date.now() - 60_000);
+
+      const sentAt = new Date();
+      const ts = String(Math.floor(sentAt.getTime() / 1000));
+      const raw = JSON.stringify({
+        api_version: 'v3',
+        webhook_version: '2026-02-03',
+        event_type: 'message.received',
+        event_id: 'evt_burst_door',
+        created_at: sentAt.toISOString(),
+        data: {
+          chat: { id: CHAT, is_group: false },
+          id: randomUUID(),
+          direction: 'inbound',
+          sender_handle: { handle: phone, is_me: false },
+          parts: [{ type: 'text', value: LINQ_GROUP_TRIGGER_PHRASE.en }],
+          sent_at: sentAt.toISOString(),
+          service: 'iMessage',
+        },
+      });
+      const mac = createHmac('sha256', secret)
+        .update(`evt_burst_door.${ts}.${raw}`)
+        .digest('base64');
+      const jobs: unknown[] = [];
+      const res = await handleLinqInboundRequest(
+        new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'webhook-id': 'evt_burst_door',
+            'webhook-timestamp': ts,
+            'webhook-signature': `v1,${mac}`,
+          },
+          body: raw,
+        }),
+        {
+          database: db.database,
+          intake: () => {
+            throw new Error('the trigger in a 1:1 is not intake');
+          },
+          enqueue: async (job: unknown) => {
+            jobs.push(job);
+          },
+          log: { info: () => {}, warn: () => {}, error: () => {} },
+          countOutcome: async () => {},
+          now: () => sentAt,
+          markRead: async () => ({ status: 'accepted' }),
+          sendGroupText: async () => ({ providerMessageId: `out-${randomUUID()}` }),
+        } as unknown as Parameters<typeof handleLinqInboundRequest>[1],
+      );
+      await expect(res.json()).resolves.toMatchObject({ outcome: 'group_trigger_in_1to1' });
+      expect(jobs).toEqual([]);
+      const doorRows = await db.database
+        .select({ id: schema.channelMessages.id })
+        .from(schema.channelMessages)
+        .where(
+          and(
+            eq(schema.channelMessages.familyId, fam.familyId),
+            eq(schema.channelMessages.body, LINQ_GROUP_TRIGGER_PHRASE.en),
+          ),
+        );
+      expect(doorRows).toHaveLength(1);
+      const later = await text(fam, 'on saturdays', Date.now() + 1_000);
+
+      const pending = await pendingBurst(
+        db.database,
+        { familyId: fam.familyId, parentUserId: fam.parentUserId, channelMessageId: anchor },
+        BURST_MAX_MEMBERS,
+      );
+
+      // Positive control: a plain text after the door's row is still collected.
+      expect(pending.map((m) => m.channelMessageId)).toEqual([anchor, later]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe('a re-driven anchor', () => {
@@ -468,6 +598,42 @@ describe('a re-driven anchor', () => {
     expect(reader.calls).toHaveLength(0);
   });
 
+  it('a crashed attempt retried with the flag off still rebuilds what it folded', async () => {
+    const fam = await seedFamily(db.database, 'Crashed Dark');
+    const m1 = await text(fam, 'swim thursday at 4', T0);
+    const m2 = await text(fam, 'sorry 5', T0 + 700);
+    clock = T0 + 4_000;
+    anchorOf(
+      await planBurst(db.database, ports(scriptedReader(foldAll)), jobFor(fam, m1), 'fresh'),
+    );
+
+    const reader = scriptedReader(keepApart);
+    const p = ports(reader, { enabled: false });
+    const plan = anchorOf(await planBurst(db.database, p, jobFor(fam, m1), 'fresh'));
+
+    expect(plan.members.map((m) => m.channelMessageId)).toEqual([m1, m2]);
+    expect(plan.read).toBe('decided_earlier');
+    expect(reader.calls).toHaveLength(0);
+    expect(p.sleeps).toEqual([]);
+  });
+
+  it('names the texts folded into an anchor, by id, and only those', async () => {
+    const fam = await seedFamily(db.database, 'Folded Ids');
+    const m1 = await text(fam, 'a', T0);
+    const m2 = await text(fam, 'b', T0 + 300);
+    const m3 = await text(fam, 'c', T0 + 600);
+    clock = T0 + 4_000;
+    const reader = scriptedReader(() => ({ status: 'read', groups: [['m1', 'm3'], ['m2']] }));
+    await planBurst(db.database, ports(reader), jobFor(fam, m1), 'fresh');
+
+    expect(await foldedMemberIds(db.database, { familyId: fam.familyId, anchorId: m1 })).toEqual([
+      m3,
+    ]);
+    expect(await foldedMemberIds(db.database, { familyId: fam.familyId, anchorId: m2 })).toEqual(
+      [],
+    );
+  });
+
   it('a deferred text nothing was folded into goes alone', async () => {
     const fam = await seedFamily(db.database, 'Deferred Lone');
     const m1 = await text(fam, 'a', T0);
@@ -493,21 +659,33 @@ describe('dark, and out of scope', () => {
     },
   ) as Database;
 
-  it('flag off: lone, with no read and no sleep', async () => {
-    const fam = { familyId: randomUUID(), parentUserId: randomUUID() };
-    const p = ports(scriptedReader(foldAll), { enabled: false });
+  it('flag off: two texts in the window stay lone, with no read, no sleep and no fold', async () => {
+    const fam = await seedFamily(db.database, 'Dark Pair');
+    const m1 = await text(fam, 'is swim on thursday', T0);
+    const m2 = await text(fam, 'at 4?', T0 + 500);
+    clock = T0 + 1_000;
+    const reader = scriptedReader(foldAll);
+    const p = ports(reader, { enabled: false });
 
-    const plan = await planBurst(untouchable, p, jobFor(fam, randomUUID()), 'fresh');
+    const plan = await planBurst(db.database, p, jobFor(fam, m1), 'fresh');
 
     expect(plan).toEqual({ kind: 'lone', waitedMs: 0, why: 'flag_off' });
+    expect(reader.calls).toHaveLength(0);
     expect(p.sleeps).toEqual([]);
+    expect(await foldRows(m2)).toEqual([]);
   });
 
-  it('positive control: flag on does read', async () => {
-    const fam = { familyId: randomUUID(), parentUserId: randomUUID() };
-    await expect(
-      planBurst(untouchable, ports(scriptedReader(foldAll)), jobFor(fam, randomUUID()), 'fresh'),
-    ).rejects.toThrow('touched the database');
+  it('positive control: the same pair with the flag on is read and folded', async () => {
+    const fam = await seedFamily(db.database, 'Lit Pair');
+    const m1 = await text(fam, 'is swim on thursday', T0);
+    const m2 = await text(fam, 'at 4?', T0 + 500);
+    clock = T0 + 1_000;
+    const reader = scriptedReader(foldAll);
+
+    anchorOf(await planBurst(db.database, ports(reader), jobFor(fam, m1), 'fresh'));
+
+    expect(reader.calls).toHaveLength(1);
+    expect(await foldRows(m2)).toHaveLength(1);
   });
 
   it.each([
