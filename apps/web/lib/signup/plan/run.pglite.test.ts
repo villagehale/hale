@@ -12,6 +12,7 @@ import type {
   PlanPaymentInput,
   PlanResumeToken,
 } from '../browser-use/plan-engine';
+import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import { storeProviderSession } from '../browser-use/vault';
 import {
   PROVIDER_ACCOUNT_CREATE_ENABLED_ENV,
@@ -19,7 +20,10 @@ import {
 } from '../credentials/flag';
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
 import { saveProviderCredentials } from '../credentials/store';
+import { loginPurposeLine } from '../login-link/page-copy';
+import { lookupLoginLink } from '../login-link/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
+import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   PLAN_JOIN_LEAD_MS,
@@ -95,7 +99,21 @@ beforeEach(async () => {
 });
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
+
+const OPS_WEBHOOK = 'https://hooks.slack.test/ops-fixture';
+
+/** Slack #ops on the real page path: every text the webhook is posted. */
+function stubOpsSlack(): string[] {
+  const posted: string[] = [];
+  vi.stubEnv('OPS_SLACK_WEBHOOK_URL', OPS_WEBHOOK);
+  vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+    if (url === OPS_WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+    return new Response('ok', { status: 200 });
+  });
+  return posted;
+}
 
 async function plannedFamily(
   options: { url?: string; maxPriceCents?: number; opensAt?: Date; session?: boolean } = {},
@@ -437,6 +455,167 @@ describe('carrying out plans at the open', () => {
     const { runner } = engineLike(PAID);
     await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
     expect((await offerRow(family.offerId))?.status).toBe('planned');
+  });
+
+  it.each([
+    ['exactly `true`', 'true', true],
+    ['`true` with a trailing newline', 'true\n', false],
+    ['unset', '', false],
+  ])('the pay step obeys the env-only payment kill switch: %s', async (_name, value, expected) => {
+    vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, value);
+    const family = await plannedFamily();
+    const { runner, inputs } = engineLike(PAID);
+    await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.paymentEnabled).toBe(expected);
+  });
+
+  it('a final total it could not read hands the cart back, audited step by step, and tells the parent', async () => {
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const live = 'https://live.browser-use.com/s/fixture-live-view-token';
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        await input.onStep({ step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 });
+        await input.onStep({
+          step: 'final_total',
+          checkoutTotalCents: 9800,
+          finalTotalCents: null,
+          taxCents: null,
+          feesCents: null,
+          currency: null,
+          detail: 'total_unread',
+          ok: false,
+        });
+        return {
+          ...PAID,
+          outcome: 'needs_human' as const,
+          detail: 'total_unread' as const,
+          liveViewUrl: live,
+          confirmationNumber: null,
+          amountChargedCents: null,
+          sessionCostUsd: null,
+        };
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'needs_human',
+      detail: 'total_unread',
+      notice: 'sent',
+    });
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    const audit = await steps(family.offerId);
+    expect(audit.map((s) => s.step)).toEqual([
+      'plan_approved',
+      'plan_started',
+      'plan_checkout',
+      'plan_final_total',
+      'plan_finished',
+    ]);
+    // Every figure survives the audit redaction; the live view never reaches the row.
+    expect(audit[3]).toEqual({
+      step: 'plan_final_total',
+      checkoutTotalCents: 9800,
+      finalTotalCents: null,
+      taxCents: null,
+      feesCents: null,
+      currency: null,
+      detail: 'total_unread',
+      ok: false,
+      host: AUTO_HOST,
+    });
+    expect(audit.at(-1)).toMatchObject({ detail: 'total_unread', confirmed: false });
+    expect(JSON.stringify(audit)).not.toContain(live);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'total_unread',
+      liveViewUrl: live,
+    });
+    // Nothing was charged here: no one is paged (the placed-order case below pages).
+    expect(posted).toEqual([]);
+  });
+
+  it('a review that says it placed the order pages #ops with the offer, audits a payment of unknown amount, and never tells the parent nothing was charged', async () => {
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const live = 'https://live.browser-use.com/s/fixture-live-view-token';
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        await input.onStep({ step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 });
+        await input.onStep({
+          step: 'final_total',
+          checkoutTotalCents: 9800,
+          finalTotalCents: 9800,
+          taxCents: 0,
+          feesCents: 0,
+          currency: 'cad',
+          detail: 'review_placed_order',
+          ok: false,
+        });
+        await input.onStep({
+          step: 'payment',
+          outcome: 'needs_human',
+          detail: 'review_placed_order',
+          amountChargedCents: null,
+          confirmed: false,
+        });
+        return {
+          ...PAID,
+          outcome: 'needs_human' as const,
+          detail: 'review_placed_order' as const,
+          liveViewUrl: live,
+          confirmationNumber: null,
+          amountChargedCents: null,
+          sessionCostUsd: null,
+        };
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      notice: 'sent',
+    });
+    expect(posted).toEqual([
+      `Hale: ops page. site registration_review_placed_order. ref ${family.offerId}.`,
+    ]);
+    const audit = await steps(family.offerId);
+    expect(audit.map((s) => s.step)).toEqual([
+      'plan_approved',
+      'plan_started',
+      'plan_checkout',
+      'plan_final_total',
+      'plan_payment',
+      'plan_finished',
+    ]);
+    expect(audit[4]).toEqual({
+      step: 'plan_payment',
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      amountChargedCents: null,
+      confirmed: false,
+      host: AUTO_HOST,
+    });
+    expect(audit.at(-1)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      amountChargedCents: null,
+    });
+    expect(JSON.stringify({ audit, posted })).not.toContain(live);
+    // The parent's facts: a charge of unknown amount, the live browser to check it on.
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      amountChargedCents: null,
+      liveViewUrl: live,
+    });
   });
 
   it('runs an ActiveNet host on the generic auto path even with the assisted switch off', async () => {
@@ -1220,9 +1399,9 @@ describe('parked password rejection and mismatched options', () => {
             return [`bubble for ${input.kind}`, 'second bubble'];
           },
         },
-        deliver: async (input: { body: string }) => {
-          bodies.push(input.body);
-          return true;
+        deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
+          bodies.push(...input.parts.map((part) => (part.type === 'link' ? part.url : part.body)));
+          return 'sent' as const;
         },
       },
     };
@@ -1351,6 +1530,10 @@ describe('parked password rejection and mismatched options', () => {
       passwordRejectionMessage: 'Password must include a number',
       passwordRule: '8 characters and a number',
     });
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, family.parentUserId));
     const notices = noticePrep();
     await runDueSignupPlans(
       db.database,
@@ -1361,8 +1544,25 @@ describe('parked password rejection and mismatched options', () => {
     expect(row?.status).toBe('planned');
     expect(row?.planAvailability).toEqual({ kind: 'password_rejected' });
     expect(notices.bodies[0]).toBe('bubble for password_rejected');
-    expect(notices.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
+    const fresh = /^https:\/\/app\.villagehale\.com\/l\/([0-9A-Za-z]{10})$/.exec(
+      notices.bodies[1] ?? '',
+    );
     expect(notices.bodies[2]).toBe('second bubble');
+    // The fresh card says what it is for: the first choice. The open is two minutes away and
+    // the card lives 30, so it never says "opens 7:00 a.m." after 7:00 a.m.
+    const looked = await lookupLoginLink(db.database, fresh?.[1] ?? '', NOW);
+    expect(looked).toMatchObject({
+      ok: true,
+      providerHost: AUTO_HOST,
+      purpose: {
+        kind: 'password_rejected',
+        sessionLabel: 'Preschool Swim Sat 9:00',
+        opensAt: null,
+      },
+    });
+    expect(loginPurposeLine(looked.ok ? looked.purpose : null)).toBe(
+      'to finish signing up for Preschool Swim Sat 9:00',
+    );
   });
 
   it('runs with saved credentials when there is no cookie session', async () => {
