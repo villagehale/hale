@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text is in Chinese, correctly says registration is not confirmed, notes uncertainty about charge without asserting either way, asks parent to check browser and email before paying again, and gives no link. It says the browser stays open about 15 minutes, matching holdMinutes. It does not claim a spot. Minor concern: 'site placed the order' is consistent with run detail; no invented facts found.",
-    "score": 5
-  }
-}

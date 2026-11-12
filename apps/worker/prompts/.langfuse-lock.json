@@ -377,7 +377,7 @@
   "judges/signup-plan-reply": {
     "name": "judges/signup-plan-reply",
     "version": null,
-    "sha256": "409d5dfff2b6606a841cb6b934bf5a93c1fa547995c60f3fdbe5ecd1a2830550"
+    "sha256": "6c3d10e0e312ba575a60ebde3729900dde367150fccb847dd974566e2203f3e2"
   },
   "judges/spot-open-voice": {
     "name": "judges/spot-open-voice",

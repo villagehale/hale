@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text is in French with tu, states the cart item and that nothing was charged (matches run.charged nothing), doesn't claim registration or a held spot (run.confirmed false, text says cart and browser open), and asks the parent to check and finalize themselves. Minor issue: it says the currency was unclear, which matches needs_human/currency_unknown, and it gives the $98 figure matching cartTotalCents 9800. Facts and tone are accurate with a single ask.",
-    "score": 5
-  }
-}

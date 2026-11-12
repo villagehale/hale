@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text accurately states the run failed, Ada is not registered, and charge status is unknown without claiming a charge either way; no spot is claimed, no promise to retry, one clear instruction, English, warm and short. Price $98 matches cartTotalCents and the 15-minute hold matches holdMinutes. Minor nit: it says 'I hit a snag' rather than clearly saying it could not finish at checkout, but it is close enough to the watchFor.",
-    "score": 5
-  }
-}

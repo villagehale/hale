@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly says Hale could not confirm registration, does not claim a spot, states the $98.00 charge matching run.charged.cents 9800, leaves no ask and no promise to retry, and points to the browser for checking. Tone is plain and clear. Minor issue: it says the browser was left open for about 15 minutes, which matches holdMinutes, so it is acceptable.",
-    "score": 5
-  }
-}

@@ -56,7 +56,7 @@ const NO_RETRY = 'No promise that Hale will try again, keep watching or follow u
 const NOTHING_CHARGED =
   'Nothing was charged (run.charged is "nothing"): it may say so, and never says or hints the card was charged.';
 const CHARGE_UNKNOWN =
-  'Hale does not know whether the card was charged (run.charged is "unknown"): it says so plainly, and never says the card was charged or that it was not.';
+  'Hale does not know whether the card was charged or the child registered (run.charged is "unknown"): it says so plainly, never says the card was charged or that it was not, and never says the child is registered or that she is not.';
 
 export const SIGNUP_PLAN_REPLY_FIXTURES = [
   {
@@ -326,7 +326,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
         holdMinutes: 15,
       },
     },
-    watchFor: `Says Hale could not finish at checkout for Sunday 10:00; the parent checks the browser Hale left open at the link that follows. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
+    watchFor: `Says Hale could not finish at checkout for Sunday 10:00; the parent checks the browser Hale left open at the link that follows, and any email from the site, before paying again. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
   },
   {
     id: 'finished-placed-order-zh',
@@ -408,7 +408,8 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
 
 /**
  * Calibration texts. Every one that `breaks` the spec must be caught (code gate or judge);
- * one marked `expect: 'pass'` follows it and must pass.
+ * one marked `judgeOnly` must be caught by the judge itself, though the code gate refuses it
+ * too; one marked `expect: 'pass'` follows it and must pass.
  */
 export const SIGNUP_PLAN_REPLY_BROKEN = [
   {
@@ -483,6 +484,21 @@ export const SIGNUP_PLAN_REPLY_BROKEN = [
     fixtureId: 'finished-payment-off-en',
     text: 'payment_off is set, so I stopped at checkout. Sunday 10:00 is in your cart in the open browser.',
     breaks: 'reason codes and system talk',
+  },
+  {
+    // A recorded draw: UTF-8 read back in windows-1250.
+    id: 'garbled-fr',
+    fixtureId: 'finished-over-max-fr',
+    judgeOnly: true,
+    text: "Ada: le cours Preschool Swim Sat 9:00 est dans le panier, mais le total est de 98 $, au-dessus de ton maximum de 90 $, donc je n'ai pas payĂ©. Rien n'a Ă©tĂ© dĂ©bitĂ©, et le navigateur est restĂ© ouvert, mais il a peut-ĂŞtre dĂ©jĂ  expirĂ©.",
+    breaks: 'garbled accents',
+  },
+  {
+    // A recorded draw.
+    id: 'unaccented-fr',
+    fixtureId: 'offer-fr',
+    text: 'Les inscriptions de natation prescolaire pour Ada ouvrent le mardi 1er decembre a 19 h : samedi 9 h ou dimanche 10 h, 98 $ chacune. Tu veux lesquelles, dans quel ordre ? (Si tu fais la file de ton cote aussi, la famille aura deux places dans la file.)',
+    breaks: 'French with every accent dropped',
   },
   {
     id: 'carries-link',

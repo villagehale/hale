@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text says the card was charged, but run.charged is \"unknown\", so this is a forbidden claim. It also omits that Hale does not know whether the card was charged, and fails to say nothing is confirmed.",
-    "score": 1
-  }
-}

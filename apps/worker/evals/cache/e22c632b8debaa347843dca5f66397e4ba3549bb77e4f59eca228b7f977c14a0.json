@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text correctly says the session is in the cart, nothing is charged, Ada isn't registered, and the parent finishes in the open browser within about 9 minutes. It avoids claiming a spot or promising follow-up, uses one clear next step, and matches the watchFor note on the security code. Minor issue: it does not explicitly say a link follows, but it refers to the browser, which is acceptable.",
-    "score": 5
-  }
-}

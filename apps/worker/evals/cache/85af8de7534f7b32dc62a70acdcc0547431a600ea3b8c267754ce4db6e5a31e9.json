@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text says payment_off is set, which is system talk and a leaked internal flag; it also says the session is in the cart and stopped at checkout without saying nothing was charged, and omits the hold window framing. It correctly avoids claiming registration or a spot and gives no false promises, but the 'payment_off' wording violates the no-system-talk rule and the message lacks the charge clarification and the time limit.",
-    "score": 2
-  }
-}

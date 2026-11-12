@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text is in French with tu, states the correct open time, sessions and 98 $ prices, asks one question, and makes no registration claim. However it has two sentences plus a parenthetical-style second ask about queueing, which is an extra mini-instruction; the alsoQueueing note is mentioned as required, so it's acceptable. Minor concern: the 'deux places' phrasing is a claim the facts support. Overall faithful and compliant, slightly wordy.",
-    "score": 4
-  }
-}

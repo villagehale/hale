@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text accurately says the registration is filled but not submitted, not registered, parent must check, tick waiver, submit and pay within ~15 minutes; no charge claimed; no link in text; one ask; matches facts and watchFor. Minor: waiver mention is conditional ('if there is one') which fits facts since waiverAccepted is null.",
-    "score": 5
-  }
-}

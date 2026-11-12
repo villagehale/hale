@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text says Ada's spot is held, but run.confirmed is false and the site is waiting for a security code, so it claims a spot that is not confirmed. It also omits the time limit and cart framing from watchFor; the tone and brevity are fine.",
-    "score": 1
-  }
-}

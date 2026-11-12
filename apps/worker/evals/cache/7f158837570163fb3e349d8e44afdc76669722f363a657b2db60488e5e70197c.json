@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text says Hale will register and pay with the saved card, but mode is assisted, where Hale never pays or submits. It also asks two things at once (which session first and max), violating one ask at a time, and states 'Tell me which first and your max' as a combined ask. Facts are otherwise accurate and the queue note is included.",
-    "score": 1
-  }
-}

@@ -104,7 +104,7 @@ async function main() {
       const fixture = fixtureFor(item.fixtureId);
       const mustPass = item.expect === 'pass';
       const violations = writer.planReplyViolations(item.text);
-      if (violations.length > 0) {
+      if (violations.length > 0 && !item.judgeOnly) {
         if (mustPass) caught = false;
         console.info(
           `${mustPass ? 'REFUSED' : 'CAUGHT'}  ${item.id.padEnd(30)} code gate (${violations.join('; ')})`,

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly states cart total 98$ over 90$ max, nothing charged, no spot claimed, browser left open with hold possibly expired, no promise to retry, French with tu. Minor: says 'le navigateur est resté ouvert' which is consistent with liveBrowser true; facts match watchFor well.",
-    "score": 5
-  }
-}
