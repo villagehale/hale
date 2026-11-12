@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import type { ReactionPlan } from '~/lib/channel/router/reaction-plan';
+import { REACTED_ALONE, type ReactionPlan } from '~/lib/channel/router/reaction-plan';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
 import {
   type EditableLinqSend,
@@ -44,7 +44,14 @@ import {
 
 export type LinqMoment =
   | { handled: false }
-  | { handled: true; channelMessageId: string; threadBody: string | null }
+  /** A moment stood in for the words, which were not sent. `reactedAlone`: it was the
+   * coach's tapback (VIL-680). */
+  | {
+      handled: true;
+      channelMessageId: string;
+      threadBody: string | null;
+      reactedAlone?: true;
+    }
   /**
    * The reply's own words went out, carrying an effect. Nothing is on the ledger yet:
    * the caller writes the reply's receipts exactly as for a plain send, and never sends
@@ -63,6 +70,18 @@ export class ParentReactionUnsent extends Error {
   constructor(readonly reason: Extract<ParentReactionSend, { status: 'not_sent' }>['reason']) {
     super(`linq reaction: the answer did not land (${reason})`);
     this.name = 'ParentReactionUnsent';
+  }
+}
+
+/**
+ * VIL-680 · the tapback the coach chose as the whole answer landed, and its ledger row did
+ * not. It already answered, so nothing more is sent: the router claims the turn and names
+ * the outcome `reaction_unrecorded`.
+ */
+export class ParentReactionUnrecorded extends Error {
+  constructor(cause: unknown) {
+    super('linq reaction: the answer landed; its ledger row did not', { cause });
+    this.name = 'ParentReactionUnrecorded';
   }
 }
 
@@ -152,9 +171,12 @@ export async function considerLinqReply(
           templateKey: 'linq:tapback',
           actionTaken: 'linq_tapback',
           providerMessageId: args.route.replyToMessageId,
+          ...(alone ? { after: { outcome: REACTED_ALONE } } : {}),
+        }).catch((err: unknown) => {
+          throw alone ? new ParentReactionUnrecorded(err) : err;
         });
         console.info({ alone }, 'linq reaction: sent');
-        if (alone) return { handled: true, channelMessageId, threadBody: null };
+        if (alone) return { handled: true, channelMessageId, threadBody: null, reactedAlone: true };
         reacted = true;
       }
     }
@@ -323,7 +345,12 @@ export async function considerLinqReply(
 async function recordMoment(
   database: Database,
   args: { familyId: string; parentUserId: string; route: ReplyRoute; now: Date },
-  moment: { templateKey: string; actionTaken: string; providerMessageId: string | null },
+  moment: {
+    templateKey: string;
+    actionTaken: string;
+    providerMessageId: string | null;
+    after?: { outcome: typeof REACTED_ALONE };
+  },
 ): Promise<string> {
   const chatId = args.route.channel === 'imessage' ? args.route.chatId : null;
   const [row] = await database
@@ -349,6 +376,7 @@ async function recordMoment(
     actionTaken: moment.actionTaken,
     targetTable: 'channel_messages',
     targetId: id,
+    ...(moment.after ? { after: moment.after } : {}),
   });
   return id;
 }

@@ -209,7 +209,12 @@ describe('considerLinqReply · the reaction step', () => {
       { path: '/api/partner/v3/messages/in-1/reactions', body: { operation: 'add', type: 'love' } },
     ]);
     const [row] = fake.rows(schema.channelMessages);
-    expect(out).toEqual({ handled: true, channelMessageId: row?.id, threadBody: null });
+    expect(out).toEqual({
+      handled: true,
+      channelMessageId: row?.id,
+      threadBody: null,
+      reactedAlone: true,
+    });
     expect(row).toMatchObject({
       templateKey: 'linq:tapback',
       providerMessageId: 'in-1',
@@ -218,7 +223,11 @@ describe('considerLinqReply · the reaction step', () => {
     });
     expect(row?.body ?? null).toBeNull();
     expect(fake.rows(schema.auditLog)).toEqual([
-      expect.objectContaining({ actionTaken: 'linq_tapback', targetId: row?.id }),
+      expect.objectContaining({
+        actionTaken: 'linq_tapback',
+        targetId: row?.id,
+        after: { outcome: 'agent_reacted' },
+      }),
     ]);
   });
 
@@ -233,7 +242,9 @@ describe('considerLinqReply · the reaction step', () => {
     });
     expect(out).toEqual({ handled: false });
     expect(reactionCalls(f)).toHaveLength(1);
-    expect(fake.rows(schema.auditLog).map((r) => r.actionTaken)).toEqual(['linq_tapback']);
+    expect(fake.rows(schema.auditLog).map((r) => [r.actionTaken, r.after])).toEqual([
+      ['linq_tapback', undefined],
+    ]);
   });
 
   it('lit, beside: one reaction per parent bubble, so no sticker is read', async () => {

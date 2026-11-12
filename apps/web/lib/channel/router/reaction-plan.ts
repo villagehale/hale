@@ -12,6 +12,10 @@ import type { ReplyRoute } from './reply-route';
  * keeps its words, and the reaction goes beside them.
  */
 
+/** A turn whose whole answer was the coach's tapback: the router's status and the
+ * tapback audit row's `after.outcome`, so either one counts it. */
+export const REACTED_ALONE = 'agent_reacted';
+
 /** Why there is no reaction on this turn at all. */
 export type NoReaction =
   | 'not_chosen'
