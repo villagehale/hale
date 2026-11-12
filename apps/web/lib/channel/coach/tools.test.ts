@@ -772,6 +772,8 @@ describe('watch_for_opening — registered only when the whole wiring is there',
     reader: {} as never,
     watchConsentGranted: {} as never,
     readClassAvailability: {} as never,
+    parentWords: '',
+    linksThisTurn: () => [],
   };
 
   it('is registered when the ports and the collector are both wired', () => {

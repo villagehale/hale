@@ -130,6 +130,8 @@ describe('capability table ↔ the coach that has to honour it', () => {
         reader: {} as never,
         watchConsentGranted: {} as never,
         readClassAvailability: {} as never,
+        parentWords: '',
+        linksThisTurn: () => [],
       },
       onOffer: () => {},
       onShare: () => {},
