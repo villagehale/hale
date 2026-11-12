@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately says both sessions were full, Ada was not registered and nothing was charged, consistent with run.charged nothing and confirmed false. It does not hint at a future spot, makes no retry promise, has one clear message, no link, and is in English. Minor issue: it doesn't mention the registration page follows, which watchFor asked for, but that is a small omission rather than a factual error.",
+    "score": 4
+  }
+}

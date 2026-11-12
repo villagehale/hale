@@ -897,6 +897,7 @@ describe('a text about an ask whose mark cannot be written before its send', () 
       choiceIndex: 0,
       cartTotalCents: 9800,
       amountChargedCents: 9800,
+      charged: { cents: 9800 },
       confirmationNumber: 'C-1',
       liveViewUrl: null,
       holdExpiresAt: null,

@@ -163,7 +163,8 @@ export const OPT_OUT_HOLD_PAGE_ROUTE = 'ops:opt-out-held';
  */
 export const OPT_OUT_LATE_CRISIS_ROUTE = 'ops:opt-out-crisis-read';
 
-/** VIL-602 · one page per site per hour, for every path that pages #ops outside a sweep. */
+/** VIL-602 · one page per site (or per row, for a per-row site) per hour, for every path that
+ * pages #ops outside a sweep. */
 export const OPS_PAGE_ROUTE = 'ops:page';
 
 /**
@@ -195,6 +196,7 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_unread: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
+  registration_review_unread: {},
   linq_effect_delivery_unknown: {},
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
@@ -212,12 +214,34 @@ type OpsPageFacts<S extends OpsPageSite> = {
     : never;
 };
 
+/**
+ * Sites paged once per row rather than once per hour: each is one family's possible charge,
+ * so a second family's in the same hour pages too. Their `ref` is required.
+ */
+const OPS_PAGE_PER_REF = [
+  'registration_review_placed_order',
+  'registration_review_unread',
+] as const;
+type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
+
 /** A page's facts, from its site's vocabulary: never a body, phone or name. `ref` is the
  * id of the one row ops resolves the page from; anything but a row id travels as
  * `redacted`. */
 export type OpsPage = {
-  [S in OpsPageSite]: { site: S; facts: OpsPageFacts<S>; ref?: string };
+  [S in OpsPageSite]: { site: S; facts: OpsPageFacts<S> } & (S extends OpsPagePerRefSite
+    ? { ref: string }
+    : { ref?: string });
 }[OpsPageSite];
+
+function isPerRefPage(page: OpsPage): page is Extract<OpsPage, { site: OpsPagePerRefSite }> {
+  return (OPS_PAGE_PER_REF as readonly string[]).includes(page.site);
+}
+
+/** The claim's identifier: the site, and for a per-row site its row too. */
+function opsPageClaimKey(page: OpsPage): string {
+  const site = failureCategory(page.site);
+  return isPerRefPage(page) ? `${site}:${uuidOr(page.ref, 'redacted')}` : site;
+}
 
 /** Same vocabulary as CrisisPageOutcome. A page that did not leave is its own outcome,
  * never folded into `paged` (rule #11). */
@@ -2144,7 +2168,7 @@ function takeInProcess(site: string, windowStart: Date): string | null {
 /** A page with no claim row to take: deduped in this process only, per site and hour. */
 async function pageWithoutClaim(page: OpsPage, deps: FailurePageDeps): Promise<OpsPagerOutcome> {
   const post = deps.post ?? ((text: string) => postOpsSlack(text));
-  const key = takeInProcess(failureCategory(page.site), hourWindowStart(deps.now ?? new Date()));
+  const key = takeInProcess(opsPageClaimKey(page), hourWindowStart(deps.now ?? new Date()));
   if (key === null) return 'already_paged';
   const outcome = pagerOutcome(await postAlert(post, OPS_PAGE_ROUTE, composeOpsPageAlert(page)));
   if (outcome !== 'paged') opsPagesWithoutClaim.delete(key);
@@ -2153,9 +2177,9 @@ async function pageWithoutClaim(page: OpsPage, deps: FailurePageDeps): Promise<O
 
 /**
  * VIL-602 · the one way a path pages #ops. A body-free URGENT log, then a claim on
- * `ops:page` for this site and hour, then the post. A second page of the same site in the
- * same hour is `already_paged`; a post that did not leave releases the claim, so the next
- * occurrence tries again. Never throws.
+ * `ops:page` for this site (and row, for a per-row site) and hour, then the post. A second
+ * page of the same claim in the same hour is `already_paged`; a post that did not leave
+ * releases the claim, so the next occurrence tries again. Never throws.
  */
 export async function pageOps(
   database: Database,
@@ -2172,9 +2196,10 @@ export async function pageOps(
   const text = composeOpsPageAlert(page);
   const windowStart = hourWindowStart(now);
   const stamp = claimStamp(now);
+  const key = opsPageClaimKey(page);
   let claimed: boolean;
   try {
-    claimed = await claimInsert(database, OPS_PAGE_ROUTE, site, stamp, windowStart);
+    claimed = await claimInsert(database, OPS_PAGE_ROUTE, key, stamp, windowStart);
   } catch (err) {
     console.error(
       { page: site, err: err instanceof Error ? err.name : 'unknown' },
@@ -2184,7 +2209,7 @@ export async function pageOps(
   }
   if (!claimed) return 'already_paged';
   return pagerOutcome(
-    await deliver(database, OPS_PAGE_ROUTE, site, text, stamp, post, emptyCounts(), windowStart),
+    await deliver(database, OPS_PAGE_ROUTE, key, text, stamp, post, emptyCounts(), windowStart),
   );
 }
 
