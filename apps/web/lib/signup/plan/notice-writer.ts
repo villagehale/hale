@@ -1,6 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasGarbledText } from '~/lib/format/garbled-text';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { LoginCardText } from '../login-link/store';
@@ -72,6 +73,7 @@ export function loginCardViolations(card: LoginCardText, facts: PlanPrepFacts): 
     if (field === 'title' && !text.trim()) out.push('empty title');
     if (text.length > LOGIN_CARD_MAX_CHARS) out.push(`${field}: too long for a card preview`);
     if (hasLinkShape(text.replace(host, ' '))) out.push(`${field}: contains a link`);
+    if (hasGarbledText(text)) out.push(`${field}: garbled characters`);
     if (child?.test(text)) out.push(`${field}: names the child`);
     if (moneyCentsIn(text).length > 0) out.push(`${field}: a price`);
     if (clocksIn(text).some((mins) => !allowedClocks.has(mins))) {
