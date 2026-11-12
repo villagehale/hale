@@ -170,6 +170,7 @@ describe('deliverFollowUp: the thread the answer lands in', () => {
       pageEvidence: 'page_has_schedule',
       evidence: noEvidence(),
       heardFacts: null,
+      askLanguage: null,
       lane: 'immediate',
     };
   }
@@ -193,4 +194,29 @@ describe('deliverFollowUp: the thread the answer lands in', () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]).not.toHaveProperty('replyIn');
   });
+
+  // The watch a follow-up mints keeps answering the same ask, so it carries the ask's
+  // language on its own row: the look a week later is written in it too, while lit.
+  it.each([['zh'], [null]])(
+    "the watch it mints carries the language of the parent's ask (%s)",
+    async (askLanguage) => {
+      const watched: Array<Record<string, unknown>> = [];
+      const deps: FollowUpDelivery = {
+        ...delivery(new FakeTransport()),
+        recordWatch: async (_db, watch) => {
+          watched.push(watch);
+          return { status: 'recorded' as const, commitmentId: 'commit-2' };
+        },
+      };
+      const outcome = await deliverFollowUp(
+        {} as Database,
+        deps,
+        { ...input(null), picks: [pick({ price: null })], askLanguage },
+        NOW,
+      );
+      expect(outcome).toMatchObject({ status: 'sent', watchRecorded: true });
+      expect(watched).toHaveLength(1);
+      expect(watched[0]?.askLanguage).toBe(askLanguage);
+    },
+  );
 });

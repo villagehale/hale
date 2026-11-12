@@ -1,4 +1,5 @@
 import type { schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import {
   type DeepResearchPayload,
   type QueueCreateOptions,
@@ -158,7 +159,10 @@ export interface DeepResearchQueue {
 export type DeepDispatchOutcome =
   | { status: 'enqueued' }
   | { status: 'already_queued' }
-  | { status: 'not_enqueued'; reason: 'not_recorded' | 'queue_unavailable' };
+  | {
+      status: 'not_enqueued';
+      reason: 'not_recorded' | 'followup_now_dark' | 'queue_unavailable';
+    };
 
 export interface DeepDispatchPorts {
   /** A RESOLVER, so a queue that cannot be opened at all is the same counted outcome as
@@ -238,15 +242,17 @@ async function enqueueDeepResearch(
 }
 
 /**
- * EVERY RECORDED PROMISE IS RESEARCHED NOW. The parent was told Hale would come back, so
- * the answer is worth minutes rather than a day, whatever the promise is about. No word
- * in the subject decides it: a keyword test here used to send "indoor swim lessons" and
- * every non-English subject to the 24-hour sweep.
+ * WHILE `deep-followup-now` IS LIT, EVERY RECORDED PROMISE IS RESEARCHED NOW. The parent
+ * was told Hale would come back, so the answer is worth minutes rather than a day, whatever
+ * the promise is about. No word in the subject decides it: a keyword test here used to send
+ * "indoor swim lessons" and every non-English subject to the 24-hour sweep.
  *
  * Its answers are outcomes somebody has to be able to count (rule #11):
  *
  *   NOT RECORDED — the promise itself did not become a row. Nothing to research, and the
  *   ledger writer has already logged the bigger problem.
+ *   FOLLOWUP NOW DARK — the switch is off for this family, so nothing is queued and the
+ *   hourly sweep answers the promise at its due time, as it did before the switch.
  *   QUEUE UNAVAILABLE — the enqueue failed, and the hourly sweep keeps the promise.
  *
  * NOTHING HERE CHANGES WHETHER THE PROMISE IS KEPT. Every branch leaves the ledger row
@@ -264,6 +270,9 @@ export async function dispatchDepthForPromise(
 ): Promise<DeepDispatchOutcome> {
   if (input.recorded.status !== 'recorded') {
     return { status: 'not_enqueued', reason: 'not_recorded' };
+  }
+  if (!isEnabled('deep-followup-now', input.familyId)) {
+    return { status: 'not_enqueued', reason: 'followup_now_dark' };
   }
   return dispatch(
     {

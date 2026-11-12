@@ -241,6 +241,7 @@ export interface FollowUpDelivery {
       /** Everything the parent has now been told on this subject: what they had heard
        * before this message, and what this message said. */
       heardFacts: readonly string[];
+      askLanguage: string | null;
       now: Date;
     },
   ): Promise<ActivityPromiseRecordOutcome>;
@@ -274,8 +275,12 @@ export interface FollowUpDeliveryInput {
   /** What the parent had already been told on this subject before this message — the
    * watch row's `heardFacts`, or null when no follow-up has answered this promise yet. */
   heardFacts: readonly string[] | null;
-  /** `immediate` for the question-time job: the second half of a reply in a live
-   * conversation, which never waits for the hourly decider. `candidate` for the sweep. */
+  /** The promise row's `askLanguage`: the language tag of the parent's ask. Carried onto
+   * the watch this delivery mints, which keeps answering the same ask. */
+  askLanguage: string | null;
+  /** `immediate` for the question-time job while `deep-followup-now` is lit: the second
+   * half of a reply in a live conversation, which never waits for the hourly decider.
+   * `candidate` for the sweep, and for the question-time job while it is dark. */
   lane: CadenceLane;
 }
 
@@ -534,6 +539,7 @@ export async function deliverFollowUp(
     channelMessageId,
     dueInHours: ACTIVITY_WATCH_DUE_HOURS,
     heardFacts: [...new Set([...(input.heardFacts ?? []), ...followUpFacts(input.picks)])].sort(),
+    askLanguage: input.askLanguage,
     now,
   });
   if (recorded.status === 'recorded') {

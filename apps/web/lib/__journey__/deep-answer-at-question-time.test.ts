@@ -143,6 +143,8 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('F14_ENABLED', 'true');
+    // Dark, nothing is queued at question time and this whole arc is the sweep's a day later.
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
 
     const [family] = await database
@@ -658,9 +660,9 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         const { loadOpenCommitmentById } = await import('~/lib/commitments/ledger');
         return loadOpenCommitmentById(db2, id);
       },
-      resolveRecipient: async (db2, channelMessageId) => {
+      resolveRecipient: async (db2, promise) => {
         const { resolveFollowUpRecipient } = await import('~/lib/channel/activity/sweep');
-        return resolveFollowUpRecipient(db2, channelMessageId);
+        return resolveFollowUpRecipient(db2, promise);
       },
       reader: productionActivityFamilyReader(),
       buildGate: () => openGate,
