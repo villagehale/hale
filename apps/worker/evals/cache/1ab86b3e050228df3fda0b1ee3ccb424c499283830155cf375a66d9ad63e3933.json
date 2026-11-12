@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately reflects run state: cart filled, stopped before paying, nothing charged, not registered, browser open ~8 min at the following link. No invented facts, no 'registered' claim, one clear next step. Minor concern: 'I'm not paying for registrations right now' is a system-talk-adjacent explanation but reads naturally and doesn't mention a switch or flag. Otherwise compliant with watchFor and tone.",
+    "score": 4
+  }
+}

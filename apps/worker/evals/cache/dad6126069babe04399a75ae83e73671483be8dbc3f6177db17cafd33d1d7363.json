@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says the card was charged $98, but run.charged is \"nothing\" and nothing was charged; it also fails to say Hale did not pay and omits the 8-minute window accurately. Serious factual error about the charge.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the confirmed session and the $98.00 charge matching run.charged.cents 9800, with run.confirmed true; single short message, no extra asks or promises, plain warm tone in English.",
+    "score": 5
+  }
+}

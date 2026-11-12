@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text falsely states the card wasn't charged, but run.charged is \"unknown\", so this is a violation. It also doesn't say nothing is confirmed or that the parent should check any site email before paying again, as watchFor asks.",
+    "score": 2
+  }
+}

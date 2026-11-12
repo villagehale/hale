@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import type {
   BrowserUsePlanCheckpoint,
   BrowserUsePlanInput,
@@ -12,7 +13,6 @@ import type {
   PlanPaymentInput,
   PlanResumeToken,
 } from '../browser-use/plan-engine';
-import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import { storeProviderSession } from '../browser-use/vault';
 import {
   PROVIDER_ACCOUNT_CREATE_ENABLED_ENV,
@@ -175,6 +175,7 @@ const PAID: BrowserUsePlanResult = {
   costUsd: '0.0500',
   sessionCostUsd: '0.090000',
   browserId: 'browser-1',
+  charged: { cents: 9800 },
 };
 
 /** Reports steps and asks the cap the way the engine does, then returns `result`. */
@@ -189,7 +190,12 @@ function engineLike(result: BrowserUsePlanResult, cartTotalCents = 9800) {
       caps.push(cap);
       await input.onStep({ step: 'spending_cap', amountCents: cartTotalCents, ok: cap.ok });
       if (!cap.ok)
-        return { ...result, outcome: 'needs_human' as const, detail: 'spending_cap' as const };
+        return {
+          ...result,
+          outcome: 'needs_human' as const,
+          detail: 'spending_cap' as const,
+          charged: 'nothing' as const,
+        };
       if (!(await input.stillAuthorized())) {
         return {
           ...result,
@@ -197,6 +203,7 @@ function engineLike(result: BrowserUsePlanResult, cartTotalCents = 9800) {
           detail: 'authorization_lapsed' as const,
           confirmationNumber: null,
           amountChargedCents: null,
+          charged: 'nothing' as const,
         };
       }
       await input.onStep({
@@ -495,6 +502,7 @@ describe('carrying out plans at the open', () => {
           confirmationNumber: null,
           amountChargedCents: null,
           sessionCostUsd: null,
+          charged: 'nothing' as const,
         };
       }),
     };
@@ -532,6 +540,7 @@ describe('carrying out plans at the open', () => {
     expect(JSON.stringify(audit)).not.toContain(live);
     expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
       detail: 'total_unread',
+      charged: 'nothing',
       liveViewUrl: live,
     });
     // Nothing was charged here: no one is paged (the placed-order case below pages).
@@ -571,6 +580,7 @@ describe('carrying out plans at the open', () => {
           confirmationNumber: null,
           amountChargedCents: null,
           sessionCostUsd: null,
+          charged: 'unknown' as const,
         };
       }),
     };
@@ -614,6 +624,7 @@ describe('carrying out plans at the open', () => {
       outcome: 'needs_human',
       detail: 'review_placed_order',
       amountChargedCents: null,
+      charged: 'unknown',
       liveViewUrl: live,
     });
   });
@@ -1095,6 +1106,7 @@ const UNCONFIRMED: BrowserUsePlanResult = {
   confirmationNumber: null,
   amountChargedCents: null,
   runId: null,
+  charged: 'unknown',
 };
 
 const revoke = (family: { parentUserId: string }) =>
@@ -1183,6 +1195,70 @@ describe('a payment already under way when a later sweep picks the plan up', () 
     expect(runner.release).not.toHaveBeenCalled();
     expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
     expect((await offerRow(family.offerId))?.status).toBe('submitting');
+  });
+});
+
+describe('what the parent is told was charged', () => {
+  const threw = (): never => {
+    throw new Error('engine fell over');
+  };
+
+  it('a paid run carries its cents; a hand-back before the engine carries nothing', async () => {
+    const paid = await plannedFamily();
+    const { deps: d, notices } = deps(engineLike(PAID).runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === paid.offerId)).toMatchObject({
+      outcome: 'completed',
+      charged: { cents: 9800 },
+    });
+
+    const noLogin = await plannedFamily({ session: false });
+    const after = deps(engineLike(PAID).runner);
+    await runDueSignupPlans(db.database, { now: NOW }, after.deps);
+    expect(after.notices.find((n) => n.offerId === noLogin.offerId)).toMatchObject({
+      detail: 'no_provider_session',
+      charged: 'nothing',
+    });
+  });
+
+  it('an engine that throws before any payment checkpoint charged nothing', async () => {
+    const family = await plannedFamily();
+    const runner = { ...engineLike(PAID).runner, run: vi.fn(async () => threw()) };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'nothing',
+    });
+  });
+
+  it('an engine that throws once its paying checkpoint is stored may have charged: unknown', async () => {
+    const family = await plannedFamily();
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        expect(await input.onCheckpoint({ ...PAYING, runId: null })).toBe(true);
+        return threw();
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'unknown',
+    });
+  });
+
+  it('a payment an earlier sweep started, read by an engine that throws: unknown', async () => {
+    const family = await payingFamily();
+    const { runner } = settling(PAID);
+    runner.settlePayment.mockImplementation(async () => threw());
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: at(11) }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'unknown',
+    });
   });
 });
 

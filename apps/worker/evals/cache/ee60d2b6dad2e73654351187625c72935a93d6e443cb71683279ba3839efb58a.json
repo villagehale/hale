@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states both sessions were full, nothing registered and nothing charged, matching run.charged 'nothing' and sold_out. It does not hint a spot may open or promise retries. Minor issue: 'the registration page follows' is only in watchFor, not in text, and the text is a single sentence, which is acceptable. Wording is plain and accurate.",
+    "score": 5
+  }
+}

@@ -13,6 +13,7 @@ import {
   type BrowserUsePlanInput,
   type BrowserUsePlanResult,
   CHECKOUT_REVIEW_RUN_MAX_COST_USD,
+  type PlanCharged,
   type PlanEngineDetail,
   type PlanEngineOutcome,
   type PlanPaymentInput,
@@ -98,6 +99,8 @@ export interface PlanOutcomeNotice {
   choiceIndex: number | null;
   cartTotalCents: number | null;
   amountChargedCents: number | null;
+  /** What the run charged, from the engine; `unknown` once a payment may exist and none was read. */
+  charged: PlanCharged;
   confirmationNumber: string | null;
   liveViewUrl: string | null;
   holdExpiresAt: Date | null;
@@ -251,6 +254,9 @@ async function runOnePlan(
   // A run an earlier sweep started already holds its allowance.
   let allowanceHeld = held !== null;
   let engineRan = false;
+  // Once a paying checkpoint stands, a payment run may exist: an engine that throws after it
+  // cannot say nothing was charged.
+  let paymentMayExist = held?.phase === 'paying';
   const end = async (
     result: Omit<PlanOutcomeNotice, 'offerId' | 'familyId' | 'parentUserId'> & {
       costUsd?: string | null;
@@ -333,6 +339,7 @@ async function runOnePlan(
       choiceIndex: null,
       cartTotalCents: null,
       amountChargedCents: null,
+      charged: 'nothing',
       confirmationNumber: null,
       liveViewUrl: null,
       holdExpiresAt: null,
@@ -357,6 +364,7 @@ async function runOnePlan(
         choiceIndex: null,
         cartTotalCents: null,
         amountChargedCents: null,
+        charged: paymentMayExist ? 'unknown' : 'nothing',
         confirmationNumber: null,
         liveViewUrl: null,
         holdExpiresAt: null,
@@ -396,6 +404,7 @@ async function runOnePlan(
       choiceIndex: result.choiceIndex,
       cartTotalCents: result.cartTotalCents,
       amountChargedCents: result.amountChargedCents,
+      charged: result.charged,
       confirmationNumber: result.confirmationNumber,
       liveViewUrl: result.liveViewUrl,
       holdExpiresAt: result.holdExpiresAt,
@@ -511,13 +520,16 @@ async function runOnePlan(
       onStep,
       resume: held,
       waitUntil: sweep.waitUntil,
-      onCheckpoint: (resume) =>
-        savePlanResume(database, {
+      onCheckpoint: async (resume) => {
+        const saved = await savePlanResume(database, {
           offerId: plan.offerId,
           familyId: plan.familyId,
           resume,
           letGo: false,
-        }),
+        });
+        if (saved && resume.phase === 'paying') paymentMayExist = true;
+        return saved;
+      },
     }),
   );
 }

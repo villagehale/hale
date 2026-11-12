@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says Hale will register and pay with the saved card, violating assisted mode where Hale never pays; it also asks for a max and sessions order together (two asks), and adds an unsupported claim about queuing holding two places in line.",
+    "score": 1
+  }
+}

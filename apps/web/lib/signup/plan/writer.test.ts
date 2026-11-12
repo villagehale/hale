@@ -116,6 +116,7 @@ describe('the plan reply gate', () => {
           sessionLabel: 'Swim https://evil.example.test/x Sat',
           cartTotalCents: 9800,
           amountChargedCents: null,
+          charged: 'nothing',
           liveBrowser: true,
           holdMinutes: 10,
         },

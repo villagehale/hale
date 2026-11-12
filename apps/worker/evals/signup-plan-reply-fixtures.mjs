@@ -42,6 +42,7 @@ const RUN = {
   sessionLabel: 'Preschool Swim Sun 10:00',
   cartTotalCents: 9800,
   amountChargedCents: null,
+  charged: 'nothing',
   liveBrowser: false,
   holdMinutes: null,
 };
@@ -52,6 +53,10 @@ const NO_LINK = 'Contains no link (Hale adds any link after the text).';
 const NO_SPOT =
   'Never says or hints that the child is registered, has a spot, or that a spot is held or reserved.';
 const NO_RETRY = 'No promise that Hale will try again, keep watching or follow up.';
+const NOTHING_CHARGED =
+  'Nothing was charged (run.charged is "nothing"): it may say so, and never says or hints the card was charged.';
+const CHARGE_UNKNOWN =
+  'Hale does not know whether the card was charged (run.charged is "unknown"): it says so plainly, and never says the card was charged or that it was not.';
 
 export const SIGNUP_PLAN_REPLY_FIXTURES = [
   {
@@ -119,7 +124,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       moment: 'run_finished',
       sessions: [SUN, SAT],
       maxPriceCents: 11000,
-      run: { ...RUN, confirmed: true, amountChargedCents: 9800 },
+      run: { ...RUN, confirmed: true, amountChargedCents: 9800, charged: { cents: 9800 } },
     },
     watchFor:
       'Says Ada is registered for Preschool Swim Sun 10:00 and $98 was charged. No promise of anything further.',
@@ -194,6 +199,114 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       },
     },
     watchFor: `In Chinese. Says Hale could not get into the parent's city account at the open, so nothing was registered; they can register at the page that follows. ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-price-change-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SAT],
+      maxPriceCents: 10000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'price_change',
+        sessionLabel: 'Preschool Swim Sat 9:00',
+        cartTotalCents: 11074,
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `Says the total on the site's last page, with tax and fees, came to $110.74, over the parent's $100 maximum, so Hale did not pay; Saturday 9:00 is in the cart in a browser Hale left open at the link that follows, for about 8 minutes. ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-total-unread-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'total_unread',
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `Says Hale could not read the final total before paying, so it did not pay; Sunday 10:00 is in the cart in a browser Hale left open at the link that follows, for the parent to check and pay, for about 8 minutes. ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-currency-unknown-fr',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      language: 'fr',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'currency_unknown',
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `In French with tu. Says the site did not show clearly which currency the total was in, so Hale did not pay; Sunday 10:00 is in the cart in a browser Hale left open at the link that follows, for about 8 minutes. ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-payment-off-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'payment_off',
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `Says Hale got Sunday 10:00 into the cart and stopped before paying, because Hale is not paying for registrations right now; the parent pays in the browser Hale left open at the link that follows, within about 8 minutes. No system talk (no switch, flag or setting). ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-placed-order-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'review_placed_order',
+        charged: 'unknown',
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `Says the site placed the order while Hale was checking the final total; nothing is confirmed; the parent checks the browser Hale left open at the link that follows, and any email from the site, before paying again. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-placed-order-zh',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      language: 'zh',
+      sessions: [SUN],
+      maxPriceCents: 9800,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'review_placed_order',
+        charged: 'unknown',
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `In Chinese. Says the site placed the order while Hale was checking the final total; nothing is confirmed; the parent checks the open browser at the link that follows, and any email from the site, before paying again. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
   },
   {
     id: 'offer-assisted-en',
@@ -291,6 +404,30 @@ export const SIGNUP_PLAN_REPLY_BROKEN = [
     fixtureId: 'offer-assisted-en',
     text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Tell me which first and your max, and I will register and pay with the card saved on your city account. If you also queue on your phone, the family holds two places in line.',
     breaks: 'says Hale pays on an assisted town',
+  },
+  {
+    id: 'placed-order-says-not-charged',
+    fixtureId: 'finished-placed-order-en',
+    text: "The site placed the order while I was checking the total, but your card wasn't charged. Have a look in the open browser.",
+    breaks: 'says the card was not charged when nobody knows',
+  },
+  {
+    id: 'placed-order-says-charged',
+    fixtureId: 'finished-placed-order-en',
+    text: 'The site went ahead and placed the order, so your card was charged. Check the open browser for the receipt.',
+    breaks: 'says the card was charged when nobody knows',
+  },
+  {
+    id: 'unread-says-charged',
+    fixtureId: 'finished-total-unread-en',
+    text: "I couldn't read the final total, and your card was charged $98. Finish up in the open browser.",
+    breaks: 'says a charge happened when nothing was charged',
+  },
+  {
+    id: 'payment-off-system-talk',
+    fixtureId: 'finished-payment-off-en',
+    text: 'payment_off is set, so I stopped at checkout. Sunday 10:00 is in your cart in the open browser.',
+    breaks: 'reason codes and system talk',
   },
   {
     id: 'carries-link',

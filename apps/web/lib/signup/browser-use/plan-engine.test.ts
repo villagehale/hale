@@ -687,6 +687,107 @@ describe('the final total, read before the saved card is charged', () => {
   });
 });
 
+describe('what the run charged, as the engine itself knows it', () => {
+  const DECLINED = {
+    outcome: 'declined',
+    detail: 'none',
+    confirmation_number: null,
+    amount_charged_cents: null,
+  };
+  // Every hand-back before the payment run is `nothing`. Once a payment run exists, or the
+  // review placed the order, Hale did not read a charge it can stand behind: `unknown`,
+  // never zero. A read charge is its cents.
+  it.each([
+    ['a confirmed payment', { plan: CHECKOUT, payment: PAID }, {}, 'none', { cents: 9800 }],
+    [
+      'tax over the maximum',
+      {
+        plan: { ...CHECKOUT, cart_total_cents: 18000 },
+        review: { ...REVIEW, total_cents: 20340, tax_cents: 2340 },
+        payment: PAID,
+      },
+      { maxPriceCents: 20000 },
+      'price_change',
+      'nothing',
+    ],
+    [
+      'payments switched off',
+      { plan: CHECKOUT, payment: PAID },
+      { paymentEnabled: false },
+      'payment_off',
+      'nothing',
+    ],
+    [
+      'a final total it could not read',
+      { plan: CHECKOUT, review: { ...REVIEW, total_cents: null }, payment: PAID },
+      {},
+      'total_unread',
+      'nothing',
+    ],
+    [
+      'no currency on the final page',
+      { plan: CHECKOUT, review: { ...REVIEW, currency: null }, payment: PAID },
+      {},
+      'currency_unknown',
+      'nothing',
+    ],
+    [
+      'a review that placed the order',
+      { plan: CHECKOUT, review: { ...REVIEW, order_placed: true }, payment: PAID },
+      {},
+      'review_placed_order',
+      'unknown',
+    ],
+    [
+      'a declined saved card',
+      { plan: CHECKOUT, payment: DECLINED },
+      {},
+      'card_declined',
+      'nothing',
+    ],
+    [
+      'a payment that says it went but not for how much',
+      { plan: CHECKOUT, payment: { ...PAID, amount_charged_cents: null } },
+      {},
+      'charge_unverified',
+      'unknown',
+    ],
+    [
+      'a payment run whose answer cannot be read',
+      { plan: CHECKOUT, payment: { outcome: 'paid' } },
+      {},
+      'unreadable_output',
+      'unknown',
+    ],
+  ] as const)('%s', async (_name, outputs, overrides, detail, charged) => {
+    const { deps } = setup(outputs);
+    const result = await runBrowserUsePlanSignup(plan(overrides).input, deps);
+    expect(result).toMatchObject({ detail, charged });
+  });
+
+  it('a payment whose run id was never written may have charged: unknown', async () => {
+    const { deps } = setup({ plan: CHECKOUT, payment: PAID });
+    const result = await settleBrowserUsePlanPayment(
+      {
+        resume: {
+          phase: 'paying',
+          runId: null,
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          choiceIndex: 1,
+          cartTotalCents: 9800,
+          holdExpiresAt: null,
+          costUsd: '0.0400',
+        },
+        waitUntil: new Date(NOW.getTime() + 60 * MIN),
+        onStep: async () => undefined,
+      },
+      deps,
+    );
+    expect(result).toMatchObject({ detail: 'unconfirmed', charged: 'unknown' });
+  });
+});
+
 describe('a plan run longer than one sweep', () => {
   it('checkpoints at the sweep budget without cancelling, and the next sweep finishes the same run', async () => {
     // The town's queue holds the run for 25 minutes; each sweep may wait 10.

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada is registered and that the spot is done, but run.confirmed is false and the parent still has to submit and pay in the browser. This violates the rule against claiming registration without confirmation. It also omits the amount, the hold window, and the note that a link follows, so it misses watchFor.",
+    "score": 1
+  }
+}

@@ -179,11 +179,21 @@ export interface PlanPaymentInput extends Pick<BrowserUsePlanInput, 'onStep' | '
   resume: PlanPayingToken;
 }
 
+/**
+ * What this run charged, as the engine knows it. `nothing`: the run stopped before any
+ * payment run, or the card was declined. `unknown`: a payment run started, or the review
+ * placed the order, and no charged amount was read; never read as zero. `cents`: the
+ * amount the payment run read.
+ */
+export type PlanCharged = 'nothing' | 'unknown' | { cents: number };
+
 export interface BrowserUsePlanResult extends Omit<BrowserUseSignupResult, 'outcome' | 'detail'> {
   outcome: PlanEngineOutcome;
   detail: PlanEngineDetail;
   /** Index into `choices` of the session in the cart, or null when none was. */
   choiceIndex: number | null;
+  /** Set to `nothing` on every result, and only {@link reportPayment} may say otherwise. */
+  charged: PlanCharged;
 }
 
 /** Only the slots on the consent grant. Every choice label is a `session` slot. */
@@ -219,7 +229,7 @@ function planResult(
   detail: PlanEngineDetail,
   choiceIndex: number | null,
 ): BrowserUsePlanResult {
-  return { ...base, outcome, detail, choiceIndex };
+  return { ...base, outcome, detail, choiceIndex, charged: 'nothing' };
 }
 
 export function runBrowserUsePlanSignup(
@@ -638,10 +648,22 @@ async function resumePayment(
   return awaitPayment(input, deps, tracker, checkout, { ...paying, runId: paying.runId });
 }
 
+/**
+ * The one door for a result where a charge may exist: every payment run's end, a payment
+ * whose run id was never stored, and a review that placed the order. It writes the payment
+ * row and says what was charged.
+ */
 async function reportPayment(
   input: Pick<BrowserUsePlanInput, 'onStep'>,
-  result: BrowserUsePlanResult,
+  reported: BrowserUsePlanResult,
 ): Promise<BrowserUsePlanResult> {
+  const charged: PlanCharged =
+    reported.amountChargedCents !== null
+      ? { cents: reported.amountChargedCents }
+      : reported.detail === 'card_declined'
+        ? 'nothing'
+        : 'unknown';
+  const result = { ...reported, charged };
   await input.onStep({
     step: 'payment',
     outcome: result.outcome,

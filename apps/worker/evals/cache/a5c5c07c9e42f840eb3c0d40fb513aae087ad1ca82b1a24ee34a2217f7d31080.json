@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text invents a maximum of $86.22 when maxPriceCents is null, so it states a limit not in the facts. It also asks two things at once (which day first, plus implicitly the max), and the session ask is reasonable but the spend cap is fabricated.",
+    "score": 1
+  }
+}
