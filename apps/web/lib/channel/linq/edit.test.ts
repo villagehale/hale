@@ -225,7 +225,7 @@ describe('VIL-479 Linq message edit', () => {
       },
     });
     expect(moment.handled).toBe(true);
-    if (!moment.handled) return;
+    if (moment.handled !== true) return;
     expect(moment.threadBody).toBeNull();
     const call = fetchMock.mock.calls[0];
     expect(String(call?.[0])).toContain(`/messages/${MESSAGE}`);
@@ -389,7 +389,7 @@ describe('VIL-479 Linq message edit', () => {
       },
     });
     expect(moment.handled).toBe(true);
-    if (!moment.handled) return;
+    if (moment.handled !== true) return;
     expect(moment.threadBody).toBeNull();
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('PATCH');
@@ -451,7 +451,7 @@ describe('VIL-479 Linq message edit', () => {
       },
     });
     expect(moment.handled).toBe(true);
-    if (!moment.handled) return;
+    if (moment.handled !== true) return;
     expect(moment.threadBody).toBeNull();
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).text).toBe('Swim is at 5.');
   });

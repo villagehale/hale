@@ -56,6 +56,12 @@ import {
   listEditableLinqSends,
   sharedLinqEditDecider,
 } from '~/lib/channel/linq/edit';
+import {
+  LINQ_EFFECT_DELIVERY_UNKNOWN,
+  LINQ_EFFECT_TEMPLATE_KEY,
+  type LinqEffectWithheld,
+  sharedLinqEffectDecider,
+} from '~/lib/channel/linq/effect';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -145,6 +151,7 @@ import {
 import {
   failurePageCrisisPager,
   noteCrisisReplySent,
+  pageOps,
   reportTurnFailures,
 } from '~/lib/monitoring/failure-page';
 import {
@@ -1248,6 +1255,7 @@ async function routeChannelMessageInner(
     onSent?: () => Promise<unknown>,
     threadSource: schema.MessageSource | null = null,
     voiceMemo = false,
+    safetyReply = false,
   ) =>
     sendReply(deps, {
       route,
@@ -1270,6 +1278,18 @@ async function routeChannelMessageInner(
         audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
         parentAttachments: (context.media ?? []).map((part) => part.kind),
       },
+      // A medical answer or a safety reply (a crisis among them) never carries an effect,
+      // so the read is never asked: the lane's own facts about the reply decide, not its
+      // words.
+      effectRead:
+        medicalSource !== null
+          ? { withheld: 'medical_reply' }
+          : safetyReply
+            ? { withheld: 'safety_reply' }
+            : {
+                // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+                audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
+              },
     });
 
   const answerAsker = async (
@@ -1746,6 +1766,9 @@ async function routeChannelMessageInner(
         verdict.crisisReply
           ? () => noteCrisisReplySent(deps.database, job.provider_message_id, deps.now())
           : undefined,
+        null,
+        false,
+        verdict.safetyReply === true,
       );
       return done(deps, job, {
         status: 'deflected',
@@ -3314,6 +3337,9 @@ async function sendReply(
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaPart['kind'][];
     };
+    /** What the VIL-473 effect read sees beside the two bodies, or why this reply is
+     * withheld from it. Absent: no effect. */
+    effectRead?: { audience: 'direct' | 'group' } | { withheld: LinqEffectWithheld };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -3357,6 +3383,15 @@ async function sendReply(
     if (left) throw new ChatLeftError();
   }
   const voiced = await voiceMemoFor(deps, args);
+  // VIL-473: the reply's own words, already sent with an iMessage effect. Like a voice
+  // memo, it is this reply's send: the receipts below are written for it exactly as for
+  // a text, and the text is never sent beside it.
+  let effected: {
+    providerMessageId: string | null;
+    delivery: 'sent' | 'unknown';
+    channel: 'imessage';
+    chatId: string;
+  } | null = null;
   if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     let edit:
       | {
@@ -3400,8 +3435,23 @@ async function sendReply(
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
+        ...(args.effectRead
+          ? {
+              effect:
+                'withheld' in args.effectRead
+                  ? args.effectRead
+                  : { decider: sharedLinqEffectDecider(), ...args.effectRead },
+            }
+          : {}),
       });
-      if (moment.handled) {
+      if (moment.handled === 'effect') {
+        effected = {
+          providerMessageId: moment.providerMessageId,
+          delivery: moment.delivery,
+          channel: 'imessage',
+          chatId: args.route.chatId,
+        };
+      } else if (moment.handled) {
         if (args.claim) await args.claim();
         if (args.conversationId && moment.threadBody) {
           await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
@@ -3420,9 +3470,12 @@ async function sendReply(
         'linq moment: fell through to the text',
       );
     }
-    assertTurnLive();
+    // An effect reply already went out: the deadline cannot unsend it, and it must not
+    // throw away the claim either.
+    if (!effected) assertTurnLive();
   }
-  const sent = voiced ?? (await deps.transport.send({ route: args.route, body: args.body }));
+  const sent =
+    voiced ?? effected ?? (await deps.transport.send({ route: args.route, body: args.body }));
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
   // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,
   // on every turn, while max_pipeline was 0. The outbound channel_messages row
@@ -3457,15 +3510,19 @@ async function sendReply(
       channel: carriedBy,
       direction: 'out',
       category: 'reply',
-      templateKey: args.templateKey ?? null,
+      // A reply with its own key is never sent with an effect (moments.ts).
+      templateKey: effected ? LINQ_EFFECT_TEMPLATE_KEY : (args.templateKey ?? null),
       providerMessageId: sent.providerMessageId,
       // The chat the blue bubble landed in. Later async sends (a connect
       // receipt) read it back so they return to this thread rather than
       // opening a second one, or falling through to SMS.
       providerChatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
       // Accepted by the provider, not yet on a phone — the receipt advances it
-      // (channel/ledger.ts acceptedStatus, delivery-status.ts).
-      status: acceptedStatus(carriedBy),
+      // (channel/ledger.ts acceptedStatus, delivery-status.ts). An effect POST nobody saw
+      // Linq take is not "accepted": it stays queued and named, and ops is paged with it.
+      ...(effected?.delivery === 'unknown'
+        ? { status: 'queued' as const, errorCode: LINQ_EFFECT_DELIVERY_UNKNOWN }
+        : { status: acceptedStatus(carriedBy) }),
       body: null,
       medicalReplySource: args.medicalSource ?? null,
       replySource: args.replySource ?? null,
@@ -3484,9 +3541,28 @@ async function sendReply(
     actionTaken: REPLY_SENT_ACTION[carriedBy],
     targetTable: 'channel_messages',
     targetId: channelMessageId,
-    // The form only, never the words (rule #1): this reply went as a voice memo.
-    ...(voiced ? { after: { form: 'voice_memo' } } : {}),
+    // The form only, never the words (rule #1): this reply went as a voice memo, or
+    // carried an iMessage effect.
+    ...(voiced
+      ? { after: { form: 'voice_memo' } }
+      : effected
+        ? {
+            after:
+              effected.delivery === 'unknown'
+                ? { form: 'effect', delivery: 'unknown' }
+                : { form: 'effect' },
+          }
+        : {}),
   });
+  if (effected?.delivery === 'unknown') {
+    // Nothing settles this row on its own: no receipt names a message id Hale never saw.
+    const page = await pageOps(deps.database, {
+      site: 'linq_effect_delivery_unknown',
+      facts: {},
+      ref: channelMessageId,
+    });
+    deps.log.warn({ page }, 'channel router: effect reply delivery unknown');
+  }
   noteMessage({
     direction: 'out',
     familyId: args.job.family_id,

@@ -437,6 +437,9 @@ jobs:
       - name: Linq sticker eval (cached-only)
         run: pnpm --filter @hale/worker eval:linq-sticker
 
+      - name: Linq effect eval (cached-only)
+        run: pnpm --filter @hale/worker eval:linq-effect
+
       # VIL-479: linq-edit decision cache recorded. A miss fails CI.
       - name: Linq edit eval (cached-only)
         run: pnpm --filter @hale/worker eval:linq-edit

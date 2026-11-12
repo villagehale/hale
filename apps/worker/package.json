@@ -114,6 +114,7 @@
     "eval:signup-plan-reply": "node evals/run-signup-plan-reply-eval.mjs --cached-only",
     "eval:signup-plan-reply:broken": "node evals/run-signup-plan-reply-eval.mjs --broken --cached-only",
     "eval:linq-sticker": "node evals/linq-sticker-eval.mjs --cached-only",
+    "eval:linq-effect": "node evals/linq-effect-eval.mjs --cached-only",
     "eval:linq-edit": "node evals/run-linq-edit-eval.mjs --cached-only",
     "eval:linq-edit:dry": "node evals/run-linq-edit-eval.mjs --dry",
     "eval:area-read": "node evals/area-read-eval.mjs --cached-only",

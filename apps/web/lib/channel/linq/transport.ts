@@ -407,6 +407,8 @@ export async function sendLinqParts(input: {
   chatId: string;
   parts: readonly LinqOutboundPart[];
   replyTo?: LinqReplyTarget;
+  /** iMessage only; Linq ignores this on SMS and RCS. */
+  effect?: LinqMessageEffect;
   /** The caller's identity for this one send (see `linqSendKey`). */
   sendKey?: string;
   fetch?: typeof fetch;
@@ -421,6 +423,9 @@ export async function sendLinqParts(input: {
       message_id: input.replyTo.messageId,
       ...(input.replyTo.partIndex !== undefined ? { part_index: input.replyTo.partIndex } : {}),
     };
+  }
+  if (input.effect) {
+    message.effect = { type: input.effect.type, name: input.effect.name };
   }
   const armed = cadenceArmed();
   if (armed) message.idempotency_key = linqSendKey(input.sendKey);
@@ -505,6 +510,7 @@ export async function sendLinqChatMessage(input: {
   /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
   decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
+  effect?: LinqMessageEffect;
   /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
   mention?: string;
   /** The caller's identity for this one send (see `linqSendKey`). */
@@ -529,6 +535,7 @@ export async function sendLinqChatMessage(input: {
         },
       ],
       replyTo,
+      effect: input.effect,
       sendKey,
       fetch: input.fetch,
     });
@@ -1268,36 +1275,48 @@ export const LINQ_BUBBLE_EFFECTS = ['slam', 'loud', 'gentle', 'invisible'] as co
 
 export type LinqScreenEffect = (typeof LINQ_SCREEN_EFFECTS)[number];
 export type LinqBubbleEffect = (typeof LINQ_BUBBLE_EFFECTS)[number];
+export type LinqMessageEffect =
+  | { type: 'screen'; name: LinqScreenEffect }
+  | { type: 'bubble'; name: LinqBubbleEffect };
+
+const SCREEN_EFFECTS: ReadonlySet<string> = new Set(LINQ_SCREEN_EFFECTS);
+const BUBBLE_EFFECTS: ReadonlySet<string> = new Set(LINQ_BUBBLE_EFFECTS);
+
+/** True when `value` is a screen or bubble effect Linq will accept. */
+export function isLinqMessageEffect(value: unknown): value is LinqMessageEffect {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as { type?: unknown; name?: unknown };
+  if (typeof record.name !== 'string') return false;
+  if (record.type === 'screen') return SCREEN_EFFECTS.has(record.name);
+  if (record.type === 'bubble') return BUBBLE_EFFECTS.has(record.name);
+  return false;
+}
 
 /**
- * Send one text with an iMessage effect. Helper only — no product moment calls
- * this. Confetti and invisible ink stay off the kids-year path until Design
- * names a moment.
+ * Send one text with an iMessage effect (VIL-473). The product moment is
+ * `applyLinqEffect`: the model chooses the effect, this helper posts it.
+ * Cadence and a refused `replyTo` follow {@link sendLinqChatMessage}.
  *
  * https://docs.linqapp.com/guides/messaging/message-effects/
  */
 export async function sendLinqEffect(input: {
   chatId: string;
   text: string;
-  effect: { type: 'screen'; name: LinqScreenEffect } | { type: 'bubble'; name: LinqBubbleEffect };
+  effect: LinqMessageEffect;
+  replyTo?: LinqReplyTarget;
+  /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
+  mention?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   if (!input.text.trim()) throw new LinqSendError('invalid_parts', 400, true);
-  const result = await linqRequest({
-    method: 'POST',
-    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
-    body: {
-      message: {
-        parts: [{ type: 'text', value: input.text }],
-        effect: { type: input.effect.type, name: input.effect.name },
-      },
-    },
+  return sendLinqChatMessage({
+    chatId: input.chatId,
+    text: input.text,
+    replyTo: input.replyTo,
+    effect: input.effect,
+    ...(input.mention ? { mention: input.mention } : {}),
     fetch: input.fetch,
   });
-  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
-  const providerMessageId = readLinqMessageId(result.payload);
-  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
-  return { providerMessageId };
 }
 
 const URL_IN_TEXT = /https?:\/\//i;
