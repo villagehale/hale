@@ -1429,13 +1429,23 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
       // A later answer goes into the ask's own chat, under the message given, but only
       // while that chat is still this parent's 1:1 on this line — found the way a link
       // send finds its chat, by Hale's line and the parent's number now. A number or a
-      // line that moved since the ask, or no 1:1 at all, sends as any other text below,
-      // unthreaded, and says why. A thread target Linq refuses is resent plain in that
-      // same chat (sendLinqChatMessage).
+      // line that moved since the ask, no 1:1 at all, or a lookup Linq failed or refused,
+      // sends as any other text below, unthreaded, and says why. A thread target Linq
+      // refuses is resent plain in that same chat (sendLinqChatMessage).
       if (replyIn) {
         if (mediaUrls) throw new LinqSendError('invalid_parts', 400, true);
-        const current = await findLinqDirectChat({ from, to, fetch: deps.fetch });
-        if (current === replyIn.chatId) {
+        const current = await findLinqDirectChat({ from, to, fetch: deps.fetch }).catch(
+          (err: unknown) => {
+            if (!(err instanceof LinqSendError)) throw err;
+            return err;
+          },
+        );
+        if (current instanceof LinqSendError) {
+          console.warn(
+            { reason: 'lookup_failed', code: current.code },
+            "linq: could not read this parent's 1:1 on this line - sending unthreaded",
+          );
+        } else if (current === replyIn.chatId) {
           const sent = await sendLinqChatMessage({
             chatId: replyIn.chatId,
             text: body,
@@ -1448,11 +1458,12 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
             transport: 'imessage' as const,
             chatId: replyIn.chatId,
           };
+        } else {
+          console.warn(
+            { reason: current === null ? 'no_direct_chat' : 'chat_moved' },
+            "linq: the ask's chat is not this parent's 1:1 on this line - sending unthreaded",
+          );
         }
-        console.warn(
-          { reason: current === null ? 'no_direct_chat' : 'chat_moved' },
-          "linq: the ask's chat is not this parent's 1:1 on this line - sending unthreaded",
-        );
       }
 
       const media = mediaUrls ?? [];

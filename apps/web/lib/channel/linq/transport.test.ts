@@ -1012,7 +1012,8 @@ describe('createLinqPhoneTransport', () => {
    * A later answer to an ask goes into the chat the ask was made in, threaded under the
    * message given — but only while that chat is still this parent's 1:1 on this line, read
    * the way a link send finds its chat (GET /chats by Hale's line and the parent's number).
-   * A chat that moved, or none at all, sends as any other text does: unthreaded, to `to`.
+   * A chat that moved, none at all, or a lookup that failed, sends as any other text does:
+   * unthreaded, to `to`.
    */
   describe("replyIn: a later answer, in the ask's thread", () => {
     function linq(stored: string | null, posted: unknown[] = []) {
@@ -1101,6 +1102,61 @@ describe('createLinqPhoneTransport', () => {
       expect(JSON.stringify(posted)).not.toContain('reply_to');
       expect(warn).toHaveBeenCalledWith({ reason: 'chat_moved' }, expect.any(String));
     });
+
+    it.each([
+      ['throws', 'network', () => Promise.reject(new TypeError('fetch failed'))],
+      [
+        'is refused',
+        '503',
+        () =>
+          Promise.resolve(
+            Response.json({ error: { status: 503, code: 503, message: 'down' } }, { status: 503 }),
+          ),
+      ],
+    ])(
+      'a 1:1 lookup that %s still delivers the answer, once, unthreaded, and names why',
+      async (_, code, lookup) => {
+        vi.stubEnv('LINQ_API_KEY', API_KEY);
+        vi.stubEnv('LINQ_FROM_E164', FROM);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const posted: Array<{ href: string; body: unknown }> = [];
+        const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+          const href = String(url);
+          if (href.includes('/chats?')) return lookup();
+          posted.push({ href, body: JSON.parse(String(init?.body)) });
+          return Response.json(
+            { chat: { id: 'chat-now', message: { id: 'msg-new-chat' } } },
+            { status: 201 },
+          );
+        });
+        const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+        const sent = await transport.send({
+          to: TO,
+          body: 'Tiny Gym runs Sundays 9:30.',
+          replyIn: { chatId: 'c1', messageId: 'm1' },
+        });
+
+        expect(sent).toEqual({
+          providerMessageId: 'msg-new-chat',
+          transport: 'imessage',
+          chatId: 'chat-now',
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(posted).toEqual([
+          {
+            href: 'https://api.linqapp.com/api/partner/v3/chats',
+            body: {
+              from: FROM,
+              to: [TO],
+              message: { parts: [{ type: 'text', value: 'Tiny Gym runs Sundays 9:30.' }] },
+            },
+          },
+        ]);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith({ reason: 'lookup_failed', code }, expect.any(String));
+      },
+    );
 
     it('a parent with no 1:1 on this line gets a link answer refused as any link send is', async () => {
       vi.stubEnv('LINQ_API_KEY', API_KEY);
