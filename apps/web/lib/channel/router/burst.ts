@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, notExists, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { type InboundMediaPart, inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { resolveNoteConversation } from '~/lib/coach/conversation';
@@ -172,6 +173,7 @@ export async function pendingBurst(
   if (!row || row.familyId !== anchor.familyId) return [];
 
   const lookback = new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS);
+  const anchorRow = alias(schema.channelMessages, 'anchor');
   const newer = await database
     .select(memberColumns)
     .from(schema.channelMessages)
@@ -180,7 +182,16 @@ export async function pendingBurst(
         // Leads with the cap index's columns (parent_user_id, category, created_at).
         eq(schema.channelMessages.parentUserId, anchor.parentUserId),
         eq(schema.channelMessages.category, 'reply'),
-        gt(schema.channelMessages.createdAt, row.createdAt),
+        // Against the anchor's stored time, never `row.createdAt`: created_at keeps
+        // microseconds and a JS Date keeps milliseconds, so a time read back and sent
+        // again matched the anchor itself, and every lone text folded into itself.
+        gt(
+          schema.channelMessages.createdAt,
+          database
+            .select({ createdAt: anchorRow.createdAt })
+            .from(anchorRow)
+            .where(eq(anchorRow.id, anchor.channelMessageId)),
+        ),
         eq(schema.channelMessages.familyId, anchor.familyId),
         eq(schema.channelMessages.direction, 'in'),
         eq(schema.channelMessages.channel, row.channel),

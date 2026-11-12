@@ -4286,11 +4286,20 @@ async function noteUnanswered(
   }
 }
 
-function done(
+async function done(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
   result: RouterResult,
-): RouterResult {
+): Promise<RouterResult> {
+  // Never thrown: the turn has already done what it did, and a failed job would do it again.
+  try {
+    await deps.turns.recordRouted({ channelMessageId: job.channel_message_id });
+  } catch (err) {
+    deps.log.error(
+      { code: err instanceof Error ? err.name : 'unknown', status: result.status },
+      'channel router: could not claim the routed text, so a later burst may read it again',
+    );
+  }
   deps.log.info(
     {
       channelMessageId: job.channel_message_id,
