@@ -41,8 +41,6 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
-import { matchHealthCheckpoints } from '~/lib/health/match';
-import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { windowPhrase } from '~/lib/registration/sequence/copy';
@@ -1077,38 +1075,14 @@ describe('4c · a withdrawn watch consent holds the next sweep', () => {
 
 // ── stage 5 · health ─────────────────────────────────────────────────────────
 
-describe('5 · the 18-month checkpoints fit Mia, and no text carries them', () => {
-  it('matches both Ontario 18-month rows off the STORED date (the case the DOB bug made impossible)', () => {
-    const children = storedChildren(journey.fake, NUDGE_AT);
-    const matches = matchHealthCheckpoints({
-      children: children.map((child) => ({
-        id: child.id,
-        name: child.name,
-        ageMonths: child.ageMonths,
-        dobPrecision: child.dobPrecision,
-        isTeen: false,
-      })),
-      areaCoarse: AREA,
-      suppressedRefs: new Set<string>(),
-      now: NUDGE_AT,
-    });
-    const ids = matches.map((match) => match.checkpoint.id);
-    expect(ids).toContain('immunization_18_months');
-    expect(ids).toContain('well_baby_18_months');
-    // Both bands are [18, 23] and the matcher never widens the LATE edge, so a child
-    // stored at 24 months could never be shown either one.
-    expect(matches[0]?.kidNames).toContain('Mia');
-  });
-
+describe('5 · no health checkpoint text is sent', () => {
   it('is carried by no text and no trail row in the whole journey', () => {
     const ledger = journey.fake.rows(schema.channelMessages);
     expect(
       ledger.filter((row) => String(row.templateKey ?? '').includes('health_checkpoint')),
     ).toEqual([]);
     expect(
-      ledger.filter((row) =>
-        String(row.dedupeKey ?? '').startsWith(checkpointToldKeyPrefix(journey.familyId)),
-      ),
+      ledger.filter((row) => String(row.dedupeKey ?? '').includes(':health:')),
     ).toEqual([]);
     const kinds = journey.fake
       .rows(schema.auditLog)

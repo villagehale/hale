@@ -18,7 +18,6 @@ import { defaultFreshLinkPorts, textFreshConnectorLink } from '~/lib/channel/con
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
-import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
 import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
@@ -45,7 +44,6 @@ import {
   writeConnectorLinks,
 } from '~/lib/channel/voice/said-line';
 import { readFamilyTimezone, readStoredFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import {
   handleEmailAlertOfferReply,
   resolveEmailAlertOffer,
@@ -645,56 +643,17 @@ export function founderWelcomeHandler(deps: FounderReplyDeps): DeterministicHand
 }
 
 /**
- * M8's health-nudge replies. Two outcomes reach a parent: the paperwork is filed as
- * handled, or a checkup is DRAFTED for their approval — Hale never books (rule #4), and
- * the reply says so rather than implying an appointment exists.
- *
- * M8 shipped this handler with no caller; C1 is its first one, which is why the two
- * acknowledgement lines live in C1's copy rather than M8's.
+ * Hale sends no health checkpoint, vaccine or checkup reminder (Barton, 2026-10-12).
+ * This handler stays in the chain so wiring order does not shift; it claims nothing.
  */
-export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler {
+export function healthReplyHandler(_deps?: unknown): DeterministicHandler {
   return {
     name: 'health',
-    // The OFFER half only. "Done" is the other half of the same sentence and is not a
-    // polarity — filing a checkpoint as handled writes a permanent suppression — so it
-    // stays a word this handler reads for itself and is not a question the resolver may
-    // answer (see the OpenQuestionKind note in open-questions.ts).
-    resolves: new Set<OpenQuestionKind>(['checkup_offer']),
-    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const resolved = ctx.resolved?.kind === 'checkup_offer' ? ctx.resolved : null;
-      if (resolved?.polarity === 'no') return { claimed: false };
-      const outcome = await handleHealthCheckpointReply(
-        database,
-        {
-          familyId: ctx.familyId,
-          parentUserId: ctx.parentUserId,
-          body: ctx.body,
-          now: ctx.now,
-          resolved: resolved?.polarity === 'yes' ? 'booking' : null,
-        },
-        deps,
-      );
-      switch (outcome.status) {
-        case 'recorded_done':
-          return { claimed: true, outcome: outcome.status, reply: null };
-        case 'drafted_for_approval':
-          return {
-            claimed: true,
-            outcome: outcome.status,
-            reply: await writeConsentAsk(deps.ask, { kind: 'checkup_drafted' }),
-            // The offer is closed by the message that told the parent it was taken, never
-            // before it — a turn that drafted and then failed to reply must be re-drivable
-            // against an offer that is still standing (the MEM-10 send-time discipline).
-            afterSend: (channelMessageId) =>
-              deps.fulfillOffer(database, {
-                familyId: ctx.familyId,
-                channelMessageId,
-                now: ctx.now,
-              }),
-          };
-        default:
-          return { claimed: false };
-      }
+    // Hale sends no health checkpoint, vaccine or checkup reminder (Barton, 2026-10-12).
+    // The handler stays in the chain so wiring does not shift; it claims nothing.
+    resolves: new Set<OpenQuestionKind>(),
+    async handle(): Promise<HandlerVerdict> {
+      return { claimed: false };
     },
   };
 }

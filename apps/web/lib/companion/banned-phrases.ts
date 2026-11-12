@@ -1,11 +1,10 @@
 /**
- * VIL-243 · M8 — the framing lint.
+ * Companion content review — the framing lint.
  *
- * Hale has never seen a child's health record and never will (health-data ingestion is
- * out of scope for this feature and every feature after it). That means there is
- * exactly one honest register for health-admin copy — an administrative window and a
- * task — and a large family of sentences that read helpfully but assert something Hale
- * cannot know. This module is the machine-checkable half of that line.
+ * Hale has never seen a child's health record and never will. Companion copy that
+ * judges a child, diagnoses, alarms, or instructs is a miss. This module is the
+ * machine-checkable half of that line, moved here when health-checkpoint reminders
+ * were deleted (Barton, 2026-10-12).
  *
  * The four failures it guards against:
  *

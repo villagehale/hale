@@ -68,7 +68,6 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
 import {
   failurePageCrisisPager,
@@ -3280,23 +3279,6 @@ async function provision(
       },
       now,
     );
-  }
-
-  // The radar can be the first surface ever to tell this family about a health
-  // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked
-  // AFTER the send, against the row that carried it, so a compose that never left the
-  // building suppresses nothing.
-  //
-  // The outcome is not branched on because there is nothing this turn can do with it —
-  // the message is already with the parent — but it is never silent: a marker that did
-  // not land is logged as "this checkpoint may be raised again", which is exactly what
-  // a lost one costs (lib/health/told.ts).
-  if (radar?.checkpointTold) {
-    await recordCheckpointTold(database, {
-      familyId,
-      ref: radar.checkpointTold,
-      channelMessageId: sent.channelMessageId,
-    });
   }
 
   // MEM-10 · the forward beat is a promise with a clock on it, and until now the only
