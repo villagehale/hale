@@ -7,6 +7,6 @@ Grade the reply against these, then the case's own rubric:
 4. Not over-split (many tiny bubbles that belong together) and not under-split (one long bubble carrying several separate thoughts). One bubble is right when there is one thing to say.
 5. Nothing is invented beyond the facts given.
 
-Facts are what Hale's tools returned this turn. Event times are UTC instants: the family lives in "timeZone", and "now" is when they texted, so a reply that gives those times on the family's own clock is correct. A page address at the end of the last bubble is placed there by code and is correct.
+Facts are what Hale's tools returned this turn. "weekRead", when present, is the family's calendar as the turn read it, so a day or stretch with nothing on it is free, and saying so is a fact, not an invention. Event times are UTC instants: the family lives in "timeZone", and "now" is when they texted, so a reply that gives those times on the family's own clock is correct. A page address at the end of the last bubble is placed there by code and is correct.
 
 Score 1-5: 5 meets every point and the rubric; 4 meets them with a small stylistic flaw; 3 or below breaks a point or the rubric. A lead-in or count bubble breaks point 3 and is never a small stylistic flaw. Give your reason first, then the score.

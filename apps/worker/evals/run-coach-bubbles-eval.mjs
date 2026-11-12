@@ -13,8 +13,13 @@
 // tools.
 //
 // Objective: the shape of the set and the tools a case must call (coach-bubbles-grade.mjs).
-// Judge (median of three): the question, the language and the splitting, against each
-// case's rubric. The judge is calibrated both ways first, on hand-written sets.
+// Judge: the question, the language and the splitting, against each case's rubric. The
+// judge is calibrated both ways first, on hand-written sets (median of three each).
+//
+// Each case is drawn three times with one judge call per draw, under the rule in
+// lib/n-of-m.mjs, printed before any draw: a quality case passes on two of three, a
+// `bar: 'safety'` case fails on any failed draw. Every draw is committed; a failed draw is
+// never re-drawn.
 //
 //   node evals/run-coach-bubbles-eval.mjs --max-usd 3    # live, then caches
 //   node evals/run-coach-bubbles-eval.mjs --cached-only  # CI: replay only
@@ -54,6 +59,14 @@ import {
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import {
+  DRAWS,
+  SAMPLING_RULE,
+  drawPassed,
+  drawTag,
+  foldSubjectDraws,
+  samplingBar,
+} from './lib/n-of-m.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -93,6 +106,11 @@ function contextFor(fixture) {
   };
 }
 
+/** What `lookup_week` returns for a case: its events, on the family's clock. */
+function weekFor(fixture) {
+  return { timeZone: COACH_BUBBLES_TIME_ZONE, events: fixture.events ?? [] };
+}
+
 function toolsFor(agent, linkRef, real, fixture, calls, turn, listed) {
   const passthrough = () => z.object({}).passthrough();
   const stub = (name, result) =>
@@ -112,7 +130,7 @@ function toolsFor(agent, linkRef, real, fixture, calls, turn, listed) {
       inputSchema: passthrough(),
       handler: async () => {
         calls.push('lookup_week');
-        turn.week = { timeZone: COACH_BUBBLES_TIME_ZONE, events: fixture.events ?? [] };
+        turn.week = weekFor(fixture);
         return turn.week;
       },
     }),
@@ -295,13 +313,21 @@ async function main() {
   const systemExtras = [composed.instructions.slice(coach.instructions.length + 2)];
 
   const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'coach-bubbles', cachedOnly, getClient, cost, {
-    samples: JUDGE_SAMPLES_MEDIAN,
-  });
+  const calibrationJudge = makeJudge(
+    judgeModel,
+    JUDGE_SYSTEM,
+    'coach-bubbles',
+    cachedOnly,
+    getClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'coach-bubbles', cachedOnly, getClient, cost);
 
   console.log(
     `coach-bubbles eval${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(skill.meta.task)} judge=${judgeModel}`,
   );
+  console.log(SAMPLING_RULE);
   // What the judge may hold the reply to. The week is what `lookup_week` returned, and only
   // when the turn read it: an empty week a turn read is a fact ("nothing else that
   // afternoon"), not an invention.
@@ -322,9 +348,9 @@ async function main() {
   const calibration = [];
   for (const row of COACH_BUBBLES_JUDGE_CALIBRATION) {
     const fixture = byId.get(row.fixture);
-    const verdict = await judge(row.id, {
+    const verdict = await calibrationJudge(row.id, {
       parentText: fixture.text,
-      facts: factsFor(fixture),
+      facts: factsFor(fixture, row.weekRead ? { week: weekFor(fixture), guidance: [] } : undefined),
       rubric: fixture.rubric,
       bubbles: row.bubbles,
     });
@@ -336,8 +362,9 @@ async function main() {
     calibration.push({ row, verdict, failures });
   }
 
-  const results = [];
-  for (const fixture of COACH_BUBBLES_FIXTURES) {
+  /** One draw of one case: what the router would send, its checks and its judge score. */
+  async function drawOnce(fixture, draw) {
+    const tag = drawTag(fixture.id, draw);
     const calls = [];
     const turn = { promises: [], offer: null, guidance: [], week: null };
     const failures = [];
@@ -346,7 +373,7 @@ async function main() {
       systemExtras,
       context: contextFor(fixture),
       tools: toolsFor(agent, linkRef, real, fixture, calls, turn, skill.meta.tools),
-      client: cachedAgentClient(`coach-bubbles:${fixture.id}`, cachedOnly, getClient, cost),
+      client: cachedAgentClient(`coach-bubbles:${tag}`, cachedOnly, getClient, cost),
       maxSteps: MAX_STEPS,
       maxTokens: MAX_TOKENS,
       toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
@@ -377,7 +404,7 @@ async function main() {
         ...bubbleShapeFailures(sent, fixture, { calls, offer: turn.offer?.sentence ?? null }),
       );
     }
-    const verdict = await judge(fixture.id, {
+    const verdict = await judge(tag, {
       parentText: fixture.text,
       facts: factsFor(fixture, turn),
       rubric: fixture.rubric,
@@ -386,7 +413,15 @@ async function main() {
     if (!verdict.dry && verdict.score < JUDGE_MIN) {
       failures.push(`judge:${verdict.score} (${verdict.reason})`);
     }
-    results.push({ fixture, sent, calls, failures });
+    const score = verdict.dry ? null : verdict.score;
+    return { sent, calls, failures, score, passed: drawPassed({ failures, score }, JUDGE_MIN) };
+  }
+
+  const results = [];
+  for (const fixture of COACH_BUBBLES_FIXTURES) {
+    const draws = [];
+    for (let draw = 0; draw < DRAWS; draw += 1) draws.push(await drawOnce(fixture, draw));
+    results.push({ fixture, draws, failures: foldSubjectDraws(fixture, draws) });
   }
 
   for (const c of calibration) {
@@ -397,15 +432,21 @@ async function main() {
   }
   for (const r of results) {
     console.log(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(24)} calls=[${r.calls.join(',')}] bubbles=${JSON.stringify(r.sent)}`,
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(24)} bar=${samplingBar(r.fixture)} judge=${r.draws.map((d) => d.score ?? '-').join('/')}`,
     );
+    r.draws.forEach((d, at) => {
+      console.log(
+        `      reply ${at + 1} ${d.passed ? 'pass' : 'FAIL'} calls=[${d.calls.join(',')}] bubbles=${JSON.stringify(d.sent)}`,
+      );
+      for (const f of d.failures) console.log(`        - ${f}`);
+    });
     for (const f of r.failures) console.log(`      · ${f}`);
   }
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
   if (isDryRun()) {
-    console.log(dryReportLine('coach-bubbles', [judge.plan]));
+    console.log(dryReportLine('coach-bubbles', [calibrationJudge.plan, judge.plan]));
     process.exit(0);
   }
   process.exit([...calibration, ...results].every((r) => r.failures.length === 0) ? 0 : 1);
