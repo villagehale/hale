@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
@@ -85,6 +86,8 @@ import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
+import { createInboundBurst } from './burst';
+import { createBurstReader } from './burst-reader';
 import { createDisambiguationStore } from './disambiguation';
 import { createFloodLine } from './flood-line';
 import {
@@ -123,7 +126,15 @@ import {
   routeChannelMessage,
 } from './route';
 import type { SmokeAlarmClaim } from './smoke-alarm';
-import type { InboundTurnLedger } from './turn-ledger';
+import {
+  type InboundTurnLedger,
+  TURN_ANSWERED_ACTION,
+  TURN_DEFERRED_ACTION,
+  TURN_FAILED_ACTION,
+  TURN_FOLDED_ACTION,
+  TURN_LEDGER_LOOKBACK_MS,
+  TURN_LEDGER_TARGET,
+} from './turn-ledger';
 
 /**
  * VIL-220 · C1 — the production wiring. The one place the router meets real tables, a
@@ -586,40 +597,7 @@ export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
   };
 }
 
-/**
- * The two audit actions the turn ledger reads back. DATA values, like
- * {@link SMOKE_ALARM_ACTION}: they are what a PIPEDA access request renders and what the
- * re-drive gate reads, so they are never renamed with the code.
- */
-export const TURN_ANSWERED_ACTION = 'sms_turn_answered';
-export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
-
-/**
- * The third one, and the one whose absence made the 2026-08-22 turn unreadable. A DATA
- * value like the two above. The re-drive gate does NOT read it: a failed turn that
- * apologised is still answered, and answering twice is the thing the ledger exists to
- * prevent.
- */
-export const TURN_FAILED_ACTION = 'sms_turn_failed';
-
-/** The table both rows point at, named ONCE. The reader's predicate and the writers'
- * values are the same three strings; a fourth copy of any of them is how a gate stops
- * matching the rows it is supposed to find. */
-const TURN_LEDGER_TARGET = 'channel_messages';
-
-/**
- * How far back the stage read looks.
- *
- * The ONLY index on audit_log is (family_id, occurred_at), and this read now runs on
- * every inbound text rather than only on a failed turn during an outage. Bounding the
- * time makes it a range scan over one family's recent rows instead of a filter over
- * their whole history.
- *
- * A week is far past the point where the answer could change: pg-boss exhausts this
- * queue's retries in one to two hours (channel/config.ts), so a turn older than that is
- * not going to be re-driven at all.
- */
-const TURN_LEDGER_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+export { TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION, TURN_FAILED_ACTION, TURN_FOLDED_ACTION };
 
 /**
  * The router's memory of its own attempts, in audit_log — no new table and no migration,
@@ -681,10 +659,15 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
             eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
             eq(schema.auditLog.targetId, channelMessageId),
-            inArray(schema.auditLog.actionTaken, [TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION]),
+            inArray(schema.auditLog.actionTaken, [
+              TURN_ANSWERED_ACTION,
+              TURN_DEFERRED_ACTION,
+              TURN_FOLDED_ACTION,
+            ]),
           ),
         );
       if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
+      if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
     recordDeferred: async (input) => {
@@ -770,6 +753,15 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
     turns: auditTurnLedger(database),
+    // Back-to-back texts read as one turn, on the same lazy client as the screen. Dark
+    // unless INBOUND_BURST_ENABLED or the family allowlist lights it.
+    burst: createInboundBurst(database, {
+      enabled: (familyId) => isEnabled('inbound-burst', familyId),
+      reader: createBurstReader(screenClient),
+      now: () => new Date(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: console,
+    }),
     // The words a broken turn gets, on the same lazy client the screen and the general
     // answer use — one key, one failure story, resolved only by the turn that needs one.
     apology: createTurnApology(screenClient),

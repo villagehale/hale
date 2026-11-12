@@ -383,6 +383,10 @@
     "file": "identity-ask.md",
     "sha256": "f2189a587b149ee815f2ab9572c29d1b72585e6c62de2d100a6b66893f1ca936"
   },
+  "inbound-burst-read.md": {
+    "file": "inbound-burst-read.md",
+    "sha256": "3fb1c76b72017583737dab13da5843f443e1ca2a3281f0a30a38b1bf3a9c2e3c"
+  },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
     "sha256": "e08fada31d807c6841bb0668f487f1687be77bcf468f9584172b34ebd4974f4c"

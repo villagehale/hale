@@ -551,6 +551,7 @@ export const AUDIT_VERBS = [
   'smoke_alarm_fired',
   'sms_reader_timeout',
   'sms_turn_unanswered',
+  'sms_turn_folded',
   // ── the founder's welcome note ──────────────────────────────────────────
   'founder_welcome_offered',
   'founder_welcome_sent',
@@ -2054,6 +2055,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale had no reply to send',
     family: 'problem',
   },
+  // A text read into the turn of the text just before it (router/burst.ts). Internal:
+  // the answer to the earlier text is the row that matters.
+  sms_turn_folded: {
+    sentence: 'Hale read two texts in a row as one message',
+    family: 'note',
+  },
   // Written on the FOUNDER's own trail when a family arrives from one of his posters.
   // 'awaiting' because the note has not been sent — a word from him is what sends it.
   founder_welcome_offered: {
@@ -2262,6 +2269,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'capability_denial_corrected',
   // VIL-635. A rail refusal is one adult's, and names no input.
   'tool_refused',
+  // About one parent's own texts.
+  'sms_turn_folded',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

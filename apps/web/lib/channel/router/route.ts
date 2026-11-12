@@ -162,6 +162,7 @@ import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
+import { type InboundBurst, mergeBurstContext } from './burst';
 import {
   type ChannelCoachRuntime,
   type ChannelTurn,
@@ -506,6 +507,9 @@ export interface ChannelRouterDeps {
    * twice and thread others nine times, and "we didn't wire the ledger" is not a state
    * this router may be in. */
   turns: InboundTurnLedger;
+  /** Which back-to-back texts this turn reads together (burst.ts). Non-nullable (rule
+   * #11): dark is the plan's own `flag_off`, never an absent planner. */
+  burst: InboundBurst;
   /** The words a broken turn gets, composed (apology.ts). Non-nullable (rule #11) and
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
@@ -817,6 +821,9 @@ export type RouterStatus =
   /** This text already has Hale's answer, and the queue handed it back anyway. The turn
    * stops before anything is threaded, spent or sent (turn-ledger.ts). */
   | 'already_answered'
+  /** An earlier text's turn read this one with it (burst.ts) and answers both. Nothing
+   * threaded, counted or sent here. */
+  | 'folded'
   /** The turn broke because the provider was unreachable AND the text named an
    * emergency: the fixed safety line went out with no model in the loop (smoke-alarm.ts).
    * A distinct status from `agent_failed` because it is the one outcome where a failed
@@ -966,10 +973,27 @@ async function routeChannelMessageInner(
       lane: null,
     });
   }
+  if (stage === 'folded') {
+    return done(deps, job, { status: 'folded', handler: null, conversationId: null, lane: null });
+  }
   const redriven = stage === 'deferred';
 
-  const context = await deps.loadContext(deps.database, job);
-  if (!context) {
+  // BACK-TO-BACK TEXTS (burst.ts). Before any gate reads a word, so every gate below reads
+  // the whole burst: a STOP or a crisis in the second text cannot slip past one.
+  const burst = await deps.burst.plan(job, redriven ? 'deferred' : 'fresh');
+  deps.log.info(
+    {
+      channelMessageId: job.channel_message_id,
+      burstSize: burst.kind === 'anchor' ? burst.members.length : 1,
+      settleWaitMs: burst.waitedMs,
+      pickupMs: now.getTime() - Date.parse(job.received_at),
+      ...(burst.kind === 'anchor' ? { readOutcome: burst.read } : { why: burst.why }),
+    },
+    'channel router: burst',
+  );
+
+  const loaded = await deps.loadContext(deps.database, job);
+  if (!loaded) {
     return done(deps, job, {
       status: 'unknown_message',
       handler: null,
@@ -977,6 +1001,7 @@ async function routeChannelMessageInner(
       lane: null,
     });
   }
+  const context = burst.kind === 'anchor' ? mergeBurstContext(loaded, burst) : loaded;
 
   if (context.reply) {
     const originChatId = context.reply.channel === 'imessage' ? context.reply.chatId : null;
@@ -1102,13 +1127,23 @@ async function routeChannelMessageInner(
   if (!redriven) {
     // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
     // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
-    const inboundProviderId =
-      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
-    await appendMessage(conversationId, 'user', context.body, deps.database, {
-      childId: null,
-      topic: null,
-      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
-    });
+    // A burst threads each text as its own row with its own id, never the joined body.
+    const texts =
+      burst.kind === 'anchor'
+        ? burst.members.map((member) => ({
+            body: member.body,
+            providerMessageId: member.providerMessageId,
+          }))
+        : [{ body: context.body, providerMessageId: job.provider_message_id }];
+    const editable = linqMessageEditEnabled() && route.channel === 'imessage';
+    for (const text of texts) {
+      const inboundProviderId = editable ? text.providerMessageId : null;
+      await appendMessage(conversationId, 'user', text.body, deps.database, {
+        childId: null,
+        topic: null,
+        ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+      });
+    }
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -1210,6 +1245,7 @@ async function routeChannelMessageInner(
     conversationId,
     body: context.body,
     ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
+    ...(burst.kind === 'anchor' ? { burstSize: burst.members.length } : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
     // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {
@@ -1604,7 +1640,9 @@ async function routeChannelMessageInner(
     holding = holdingLineNotArmed(holdingSkip, deps.log);
   } else {
     holding = armHoldingLine({
-      afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
+      // The settle already spent part of the parent's wait, so the line comes no later
+      // from their side than it would have without one.
+      afterMs: Math.max(0, (deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS) - burst.waitedMs),
       language: await familySpeechLanguage(deps.database, job.family_id),
       composer: deps.holdingLine,
       log: deps.log,
