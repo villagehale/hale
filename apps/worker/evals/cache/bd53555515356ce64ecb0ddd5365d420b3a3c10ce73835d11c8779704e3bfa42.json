@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "line says answer is coming but gives no time or wait",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1399
+}

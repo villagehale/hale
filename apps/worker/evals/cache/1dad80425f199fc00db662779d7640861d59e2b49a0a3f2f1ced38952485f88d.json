@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "says answer is coming but gives no time or wait, and stays in thread",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1193
+}

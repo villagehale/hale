@@ -179,6 +179,9 @@ function isCoparentAsk(body: string): boolean {
  * already in, or a spot they asked to hear about. Pass `bubbleKind` when the
  * send has a named quiet-hours class. The co-parent ask never leaves into a
  * claimed group. There is no count.
+ *
+ * `replyIn` is a later answer to an ask made in a 1:1 chat: it goes back into that
+ * chat on the legacy transport, threaded, and never to the household group.
  */
 export async function deliverFamilyOutbound(
   database: Database,
@@ -192,10 +195,13 @@ export async function deliverFamilyOutbound(
     shareGroupCap?: boolean;
     bubbleKind?: GroupBubbleKind;
     mediaUrls?: string[];
+    replyIn?: { chatId: string; messageId: string };
     now?: Date;
   },
 ): Promise<FamilyOutboundDelivery> {
-  const target = input.target ?? (await familyOutboundTarget(database, input.familyId));
+  const target: FamilyOutboundTarget = input.replyIn
+    ? { channel: 'legacy' }
+    : (input.target ?? (await familyOutboundTarget(database, input.familyId)));
   if (target.channel === 'group') {
     if (isCoparentAsk(input.body)) {
       console.warn(
@@ -243,6 +249,7 @@ export async function deliverFamilyOutbound(
       to: input.to,
       body: input.body,
       mediaUrls: input.mediaUrls,
+      ...(input.replyIn ? { replyIn: input.replyIn } : {}),
     });
     const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
     return {

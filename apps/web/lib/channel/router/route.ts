@@ -103,6 +103,7 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ClaimEnforceFailure, ClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
@@ -189,6 +190,7 @@ import {
   type HoldingLineComposer,
   armHoldingLine,
   holdingLineNotArmed,
+  holdingLineRead,
 } from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
@@ -553,7 +555,7 @@ export interface ChannelRouterDeps {
    * SEND THE DEEP PASS AFTER IT — the question-time half of the promise.
    *
    * The row above says Hale owes this family a find; this puts the research on a queue
-   * the drain runs within the minute, so a parent who named a place gets the dated answer
+   * the drain runs within the minute, so the parent gets the dated answer
    * in about four minutes rather than in a day (activity/deep-queue.ts).
    *
    * Non-nullable (rule #11), and its absence is IN the outcome: `not_enqueued` with a
@@ -563,7 +565,7 @@ export interface ChannelRouterDeps {
    * exists for. A silent no-op would look exactly like a subject nobody thought worth
    * researching.
    */
-  dispatchDeepResearch(payload: DeepResearchPayload): Promise<DeepDispatchOutcome>;
+  dispatchDeepResearch(payload: DeepResearchPayload, askedBy: string): Promise<DeepDispatchOutcome>;
   /**
    * What the parent's own message settled, written down before anything reads state
    * (VIL-294 — lib/channel/stated-state.ts).
@@ -1592,20 +1594,29 @@ async function routeChannelMessageInner(
   // opt-out or a flood-held turn never has one, however slow its database. Once per text:
   // a re-driven turn already had its chance. Not in a group thread, which other families read. The group
   // bit is the door's own, not `context.inGroup`, which stays false while group onboarding
-  // v2 is dark however many people are in the chat.
+  // v2 is dark however many people are in the chat. 1:1 iMessage only.
+  //
+  // What the screen read is kept for the line, which reads it when it is DUE: it is
+  // written in this text's language, and withheld when the screen filed the text as a
+  // crisis or a medical symptom, or has not read it yet (holding-line.ts holdingLineRead).
+  let screened: LaneReading | null = null;
   const holdingSkip = redriven
     ? 're_driven'
     : job.in_group === undefined
       ? 'group_unknown'
       : job.in_group
         ? 'group_thread'
-        : null;
+        : route.channel !== 'imessage'
+          ? 'sms'
+          : null;
   if (holdingSkip) {
     holding = holdingLineNotArmed(holdingSkip, deps.log);
   } else {
     holding = armHoldingLine({
       afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
-      language: await familySpeechLanguage(deps.database, job.family_id),
+      familyId: job.family_id,
+      read: () =>
+        holdingLineRead(screened, () => familySpeechLanguage(deps.database, job.family_id)),
       composer: deps.holdingLine,
       log: deps.log,
       send: async (line) => {
@@ -1683,6 +1694,9 @@ async function routeChannelMessageInner(
             channel: route.channel,
             providerChatId: route.channel === 'imessage' ? route.chatId : null,
             inGroup: job.in_group,
+          },
+          onScreened: (reading) => {
+            screened = reading;
           },
         }),
         OFF_DOMAIN_BUDGET_MS,
@@ -2204,7 +2218,9 @@ function isOutsiderWeMayAnswer(role: FamilyRole | null): boolean {
  * it would stop sending the thing, which deterministic code then went on sending. An
  * agent must not be wired to break its own promises, so the wiring is what was removed.
  * The real fix for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts)
- * and the unbounded model call, not a message about waiting.
+ * and the unbounded model call, not a message about waiting. The one line that may come
+ * first is the composed holding line (holding-line.ts), dark unless lit, and only on a
+ * 1:1 iMessage turn still unanswered past HOLDING_LINE_AFTER_MS.
  */
 /**
  * After the coach's sentence has gone out, ask the model whether it offered to add
@@ -2495,7 +2511,7 @@ async function runAgentTurn(
       // kept either way and the only thing at stake is how fast (deep-queue.ts).
       const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
         familyId: args.turn.familyId,
-        subject: activityPromise.subject,
+        parentUserId: args.turn.parentUserId,
         recorded,
       });
       deps.log.info(
