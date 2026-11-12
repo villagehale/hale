@@ -383,6 +383,7 @@ export const FIXTURE_COURSE_URL = `https://cityofmarkham.perfectmind.com/Clients
  *   mustCall       tools that must be invoked
  *   mustNotCall    tools that must NOT be invoked - a verb with nothing to run on
  *   mustAsk        the reply must be a question (the clarify path)
+ *   mustNotAsk     the reply must carry no question (a text that asked nothing yet)
  *   mustMention    tokens the reply must carry, derived from the fixture's own facts
  *   forbidden      tokens that would mean a leak or an invention
  *   maxDrafts      the per-turn cognitive cap, where the text asks for more
@@ -1498,6 +1499,15 @@ export const COACH_CHANNEL_FIXTURES = [
     expect: {
       mustCall: ['lookup_week'],
       mustNotDraft: true,
+    },
+  },
+  {
+    id: 'wait-more-coming-alone',
+    text: 'wait, two more coming',
+    note: 'VIL-679. The announcement arrived alone; the texts it promised have not. It asks nothing yet, so the reply is a few words of acknowledgment with no question, and nothing is drafted.',
+    expect: {
+      mustNotDraft: true,
+      mustNotAsk: true,
     },
   },
 ];

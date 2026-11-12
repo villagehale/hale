@@ -8482,6 +8482,30 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(promises).toEqual([last]);
   });
 
+  it('dispatches the deep pass once for a set, as the parent who asked', async () => {
+    const dispatches: Array<{ payload: unknown; askedBy: string }> = [];
+    const { h } = bubbleTurn(
+      { reply: THREE, activityPromise: PROMISE },
+      {
+        recordActivityPromise: async () => ({
+          status: 'recorded' as const,
+          commitmentId: PROMISE_COMMITMENT_ID,
+        }),
+        dispatchDeepResearch: async (payload, askedBy) => {
+          dispatches.push({ payload, askedBy });
+          return { status: 'enqueued' as const };
+        },
+      },
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(3);
+    expect(dispatches).toEqual([
+      { payload: { commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }, askedBy: PARENT },
+    ]);
+  });
+
   /**
    * Any bubble may carry "I'll come back to you" or "I'm watching that page". A set that
    * stops after such a bubble went still writes the promise and the watch, against the

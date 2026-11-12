@@ -1796,6 +1796,9 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
   if (expect.mustAsk && !reply.includes('?')) {
     failures.push('never asks the clarifying question the ambiguity requires');
   }
+  if (expect.mustNotAsk && reply.includes('?')) {
+    failures.push('asks a question where the text asked nothing yet');
+  }
 
   // A drafted change is confirmed in an ordinary sentence. The parent answers in
   // their own words. Telling them which keyword to send is the failure.

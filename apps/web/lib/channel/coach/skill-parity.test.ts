@@ -113,7 +113,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain("who's around this weekend");
     expect(skill.instructions).toContain('The live web only when');
     expect(skill.instructions).toContain('Their own day comes first');
-    expect(skill.instructions).toContain('Do not mention the week');
+    expect(skill.instructions).toContain('it does not open on the week');
+    // coach-find-day owns the day of a bare find; the base skill does not say it has none.
+    expect(skill.instructions).not.toContain('No day and no kind of place');
     expect(skill.instructions).toContain('Then what checked out');
     // A missing course-page link is asked with a question mark, and a statement
     // that you need the link is not an ask. The skill and the watch-tool prompt
