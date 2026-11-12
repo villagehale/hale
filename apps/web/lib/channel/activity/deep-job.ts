@@ -57,8 +57,9 @@ import { defaultActivityFollowUpDeps, resolveFollowUpRecipient } from './sweep';
  *
  *   NOT THE HOURLY DECIDER, while `deep-followup-now` is lit. The answer goes out on the
  *   `immediate` cadence lane: it is the second half of a reply to a parent's own question,
- *   not a proactive text to batch. Dark, it hands off on `candidate` as it did before the
- *   flag, and lands where it did then (the recipient resolver in sweep.ts).
+ *   not a proactive text to batch. Dark, nothing queues this job (deep-queue.ts); one
+ *   queued while lit and drained after the switch went dark hands off on `candidate`, and
+ *   lands where the sweep's answer does (the recipient resolver in sweep.ts).
  */
 
 export type DeepJobOutcome =

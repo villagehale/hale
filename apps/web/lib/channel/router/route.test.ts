@@ -4368,6 +4368,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
   }
 
   it('mints the commitment AND enqueues the deep pass keyed to it', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const promises: unknown[] = [];
     const dispatched: unknown[] = [];
     const askers: unknown[] = [];
@@ -4400,24 +4401,43 @@ describe('a promise worth opening pages for is dispatched at question time', () 
     expect(askers).toEqual([PARENT]);
   });
 
-  // A subject is never read for keywords to decide this: the promise was made, so it is
-  // researched now. These two named no place and no timetable, and used to wait a day.
-  // `deep-followup-now` does not change it either way: dark, the recorded promise is still
-  // the one dispatch condition (the flag decides when and where the answer lands, in
-  // deep-job.ts and the recipient resolver, never whether the research runs).
-  it.each([
-    ['indoor swim lessons', 'dark'],
-    ['幼儿游泳课', 'dark'],
-    ['indoor swim lessons', 'lit'],
-  ])('enqueues the deep pass for every recorded promise (%s, flag %s)', async (subject, flag) => {
-    if (flag === 'lit') vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
+  // A subject is never read for keywords to decide this: lit, the promise was made, so it
+  // is researched now. These two named no place and no timetable, and used to wait a day.
+  it.each([['indoor swim lessons'], ['幼儿游泳课']])(
+    'lit: enqueues the deep pass for every recorded promise (%s)',
+    async (subject) => {
+      vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
+      const dispatched: unknown[] = [];
+      const h = harness({
+        coach: promisingCoach(subject),
+        recordActivityPromise: async () => ({
+          status: 'recorded' as const,
+          commitmentId: PROMISE_COMMITMENT_ID,
+        }),
+        dispatchDeepResearch: async (payload) => {
+          dispatched.push(payload);
+          return { status: 'enqueued' as const };
+        },
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
+      expect(h.logs).toContainEqual([{ dispatch: 'enqueued' }, expect.any(String)]);
+    },
+  );
+
+  // Dark, nothing is queued at question time: the promise is written down and left to the
+  // hourly sweep at its due time, as it was before #1251. The skipped dispatch is counted.
+  it('dark: records the promise, enqueues nothing, and logs why', async () => {
+    const promises: unknown[] = [];
     const dispatched: unknown[] = [];
     const h = harness({
-      coach: promisingCoach(subject),
-      recordActivityPromise: async () => ({
-        status: 'recorded' as const,
-        commitmentId: PROMISE_COMMITMENT_ID,
-      }),
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
       dispatchDeepResearch: async (payload) => {
         dispatched.push(payload);
         return { status: 'enqueued' as const };
@@ -4426,8 +4446,13 @@ describe('a promise worth opening pages for is dispatched at question time', () 
 
     await routeChannelMessage(h.deps, job());
 
-    expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
-    expect(h.logs).toContainEqual([{ dispatch: 'enqueued' }, expect.any(String)]);
+    expect(h.transport.sent).toHaveLength(1);
+    expect(promises).toHaveLength(1);
+    expect(dispatched).toEqual([]);
+    expect(h.logs).toContainEqual([
+      { dispatch: 'not_enqueued', reason: 'followup_now_dark' },
+      expect.any(String),
+    ]);
   });
 
   // The follow-up is written in the language of the ask it answers, and that is the
@@ -4448,6 +4473,36 @@ describe('a promise worth opening pages for is dispatched at question time', () 
           status: 'in_domain',
           fallback: null,
           ...(read === undefined ? {} : { language: read }),
+        }),
+        recordActivityPromise: async (_db, input) => {
+          promises.push(input);
+          return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+        },
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(promises).toHaveLength(1);
+      expect(promises[0]?.askLanguage).toBe(recordedTag);
+    },
+  );
+
+  // VIL-572 · a parent who says "write to me in Chinese" in English has asked for Chinese.
+  // The explicit ask is the language of the follow-up, over the tag the text was written in.
+  it.each([
+    ['en', 'zh', 'zh'],
+    ['zh', 'not a tag', 'zh'],
+  ])(
+    'records an explicit language ask on the promise over the text it came in (%s, asked %s)',
+    async (read, requested, recordedTag) => {
+      const promises: Array<Record<string, unknown>> = [];
+      const h = harness({
+        coach: promisingCoach('indoor swim lessons'),
+        offDomain: fakeLane({
+          status: 'in_domain',
+          fallback: null,
+          language: read,
+          languageRequest: requested,
         }),
         recordActivityPromise: async (_db, input) => {
           promises.push(input);
@@ -4488,6 +4543,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
    * thing that changed for the parent is that their answer now takes a day.
    */
   it('leaves the promise standing and COUNTS the failure when the enqueue cannot happen', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const promises: unknown[] = [];
     const h = harness({
       coach: promisingCoach('Cartwheels Gym Centre fall schedule'),

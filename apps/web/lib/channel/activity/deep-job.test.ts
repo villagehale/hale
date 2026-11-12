@@ -265,8 +265,9 @@ function cadenceDatabase(): Database & { inserted: unknown[] } {
 /**
  * MINUTES, NOT AN HOUR — while `deep-followup-now` is lit. A parent asked; the answer is
  * the second half of that reply. With the cadence live, every proactive kind waits for the
- * hourly decider, but this one is not proactive in that sense and must not wait. Dark, the
- * job hands off on the `candidate` lane exactly as it did before the flag existed.
+ * hourly decider, but this one is not proactive in that sense and must not wait. Dark,
+ * nothing queues the job; one queued while lit and drained after the switch went dark hands
+ * off on the `candidate` lane exactly as it did before the flag existed.
  */
 describe('the question-time answer and the hourly decider', () => {
   it('lit: never queues for the decider, even with the cadence live', async () => {

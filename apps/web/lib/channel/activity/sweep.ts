@@ -557,9 +557,8 @@ export type OwedPromise = Pick<DueCommitment, 'familyId' | 'createdFrom' | 'askL
  *
  * `deep-followup-now` decides the last two, for the deep job and the sweep alike. Lit, a
  * promise made in a 1:1 iMessage chat is answered under the parent's ask there, in the
- * language of that ask. Dark, there is no thread, so the answer goes where it did before
- * the flag (the household group when one is claimed, otherwise the parent's number), in
- * the parent's one proactive language (VIL-572).
+ * language of that ask. Dark, there is no thread, so the family's outbound router picks
+ * the target as it did before the flag, in the parent's one proactive language (VIL-572).
  */
 export async function resolveFollowUpRecipient(
   database: Database,

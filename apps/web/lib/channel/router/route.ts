@@ -556,8 +556,8 @@ export interface ChannelRouterDeps {
       familyId: string;
       promise: ActivityPromise;
       channelMessageId: string | null;
-      /** The language tag the screen read off this text, or null: the follow-up that
-       * keeps the promise may be written in it (activity/sweep.ts). */
+      /** The language the parent asked for in this text, else the screen's tag of it, or
+       * null: the follow-up that keeps the promise may be written in it (activity/sweep.ts). */
       askLanguage: string | null;
       now: Date;
     },
@@ -1910,7 +1910,8 @@ async function routeChannelMessageInner(
       replyBubbles: !inGroup && takesBubbles(route, job) && coachBubblesEnabled(job.family_id),
       cardRoute: inGroup ? null : route,
       groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
-      askLanguage: acceptReplyLanguage(verdict.language),
+      askLanguage:
+        acceptReplyLanguage(verdict.languageRequest) ?? acceptReplyLanguage(verdict.language),
     });
   } finally {
     await stopTyping();
@@ -2410,8 +2411,8 @@ async function runAgentTurn(
     cardRoute?: ReplyRoute | null;
     /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
     groupChatId?: string | null;
-    /** The language tag the screen read off this text, or null when it read none. An
-     * activity promise this turn makes is recorded with it. */
+    /** The language the parent explicitly asked for in this text, else the tag the screen
+     * read off it, else null. An activity promise this turn makes is recorded with it. */
     askLanguage: string | null;
   },
 ): Promise<RouterResult> {
