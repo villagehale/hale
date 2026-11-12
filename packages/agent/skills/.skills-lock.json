@@ -179,6 +179,10 @@
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
   },
+  "coach-reaction.md": {
+    "file": "coach-reaction.md",
+    "sha256": "91573ef6af017d199b27f3aa4f7aaa6263dbf66f7bec14a32800d44800cac47f"
+  },
   "coach-voice-memo.md": {
     "file": "coach-voice-memo.md",
     "sha256": "d78ae65ffd6044bd50e7c22fc644b999dac26e689e4b451d2ebea832c1e004c9"

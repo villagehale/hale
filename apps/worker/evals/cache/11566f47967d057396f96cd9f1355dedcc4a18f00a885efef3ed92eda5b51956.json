@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgyHNBsMuAokfkgrM3Kub",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5QcKEAgTGAI4AUIIdGhpbmtpbmcSDDUvr7tKF9vl2D+xnxoMvONrDvvP26ZT/NrjIjDFglzvRexK+1JsGSVRyNJXcqZDyxN19hCBXDtWpqQlXj67h3CKZLiog0skr8cULYAqggcDuLgUeJGGdg16uA+oAzjSvq6oNOILqlph8mypQ3qesiu86RR1FFfWXAjBGzdJ1AGiG6jNdh19T+dSL/IbwD2bjDB1Ic68xUHJSaTs7uJH4MpYFUYz8L5HdiblEXsn42t7K4Xck1hbzZywvscn5TjfrxdPr1kjUhbjXgP/qMsIKyR5Ave65o4DWZ+fCiAPcADu7Tg7apru6DktYViKi2enCKqAmNYAH4HcwprPNGZ5H9ilgO3kfJb7hQnziHkNJTPzJHngj6JuKLpyjCdE/mGkBz4raFZzNoNDifnVM+HWsM/gjYxvTNGyRUZp9Az5rmHyubOOW3ne0bLve3iKzqXA0aQdODnbjBVkeqJv3741BbWH5hAlLF10nnYGB3705AcVpDIN+DZXm5M+T50P1VX9rbJ9ig6Q8LprAkwK72sNeClKTmrynRPbiwetqdGFiaAyA/T+0E68EGTx/UcZ4rhMRCS6cZnrHIWK0R68IpvHoXF127R/fZAzN473GHvMzSX3Pm31kHG0jzuZ3rGCyLlibyt1JxeCfDUrFh9VT0ftL4AY+Pd9IYTAaLLixT6EmFM0tRvT9NL7EUKOSi0VfUqhyspySvhtQ0DnlXzawsFxbEOivJZna94Q/H5TkbgMMHjju5t3eMQR4l5JB+HqOc57JGFuTztb9nNptsKNMEfv0AvPqDB8wKDrW9sTaTUS2YxtpnMX5exF8cp5CIjbou1R1TCg4s1uyHijItMsM4liOh+YVWIdESpryJaxB3AwBUNR0IIZecx2T9nHZDNtZwoKThImfGfQg3O2IlCxO5AoEW/EX17ZGR1ziQLHCTtRzfSl2aoSiyRj+iAWih2kgPQMcjYaIe0pVvKvSFyMno6oWkDrpaAdJ6YVGmFtOGHdujn8tWoOekx9ZuY6W+v1GVAGb6+jVTwN3pVecfc2jE9lW3W90jlksNZsMs9jfoZ1+q6/aoAEaZ0ToT4cSa3G2iesaEhw2oMIk43U5pWvOe/WxBBNnYWitZsKtTxK58Y4KiZlGesc761v4U+Uj7fHWDxic7ZJSAs018qQaqSJL6+TtRahl3Y1f2RTW/vhzVrzGLOKxdTz+dpGtZHmC+w7yRxn3QGAw7hDsd8mQgCyoSTuDHiMvHfvYSn0ksQsRxpf2dgOFYuz4ITZtE8SNmA0Pah+JrFmfbOZDNWdvxGCWnBkevpjGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017GeDe3Bg5zQ81d5vUxYS9E",
+        "name": "promise_activity_followup",
+        "input": {
+          "topic": "Saturday afternoon activity for a 4 year old in Toronto"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 140,
+      "cache_read_input_tokens": 19787,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 140,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 179,
+      "output_tokens_details": {
+        "thinking_tokens": 104
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

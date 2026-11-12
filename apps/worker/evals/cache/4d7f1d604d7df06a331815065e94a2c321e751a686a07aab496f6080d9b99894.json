@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyHLMEcifYRsM1ccj9Zw",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS4gcKEAgTGAI4AUIIdGhpbmtpbmcSDGG7/XL85GFTJixK5xoMcRnJriA/wMpOB9ciIjD5i0yd7mdRrKNuTy7g0Sz7y8pNBbWTTGEPUpr0bnfcxiTtwlny48QTYSGKVHHykY4q/wYbz027RoqGYP1XOvWwZjk2gO4xvULTQjDIrVk2iKRC9rn5JmefriusfzgFsemMfalg9rFCMEZdJCQ+1XdL5cmhD6XihCpBZBv5iQCRtEyE7fLadLmtp9AjrTzQqlLn16bU9fQJ/DCQ4h9mUhglo1m37+9ykSfs6m8J4wrcUG9scRy0oBcWRL2Zuq9qSAONsMjsaZ4G/S8NkKziKw/sXil19+mmwvq9YWU0evwsYyjNkn6ADGMvgRvXHG7sTQnTPKN5cXJAcgT1Q4k/nSLO/Q/yxr5ugJ44DXFvVgSRSDXABU7hLyziGLtFXKlfxDB1fHGUWco7t5IZy3EgVxLxzZOdi0MQH6w+jvjPi0o4siQPQ8GixeBLUDEOKGiQm286LpZZEjenP3k7S47snaaA9AfedBa9ebTMRtpKErxRI74DAy4e3CFyKUJhoEyUJT5s8iKn+FdY01+m+wA3LHqe7/GQHBccxDgkKRRoFZMDRzeWcNVWCT3rZ/OXRutWOYv5f3AcqnbsvtI2vrP0jZ/+vRsW8pOqG/UXECGiyPOZK75bYXwKDBZq17kMczkfEJmykjvejpGd65jzDSZXaEOi9YidDZMHop5GrTSdhq3qxY+czbJBsa/yHY1pBbmd8TfHVqrdw+gHsbINwQBlfLBe2F3mLfzGfDBKZjpytAjVnAuE+MgEeHEN6jZPDt6tlcqN+MYoPazXaV48zAw1ymSpyxy7vYF8MmnBPVqra8RpfhvFCBErV494LUnhnLHFGwqDTKD/BmOsNHawQnrfMDBmSIxeUgO3ae7QFbqiT2tjsp7ibvR6RXrA3ZzotiClrHMavRIYIOTDfvw0xkLE+b6gPcoL1Ip1MR24jUxwok54ajmtSfSzlGUaZzDqE6UlUH4QU+zTKisR+OcjVMRnq6+g4FGzWimDqT95ooA24QRA0FkQcGAEfyhuQTPeVfXfWvWAssfAEtmPlSe7Cw2JphiJw7kRpBDEU4cUyd60tRU4wtoQr1pokRuxypfrUrsxifhhksxsK5U0a19YMSu9kiIx2BULMtNSArtAXbQDC3B4mVWmdmzN2kGhASDzOaUogp80X7RHR7bJt7JUR5rJzRXe7g9/zYd1+FkxwBKe72G+hGyAuF2CXm2agj5mc76TI47uJhljbjdZE1GLn6ua2ZkBO1jkw8xatqTZGD5XqD/z6Rn9GAE="
+      },
+      {
+        "type": "text",
+        "text": "Nothing on the swim lesson says either way, and I can't phone the pool to ask. Most pools expect you to bring your own, so I'd pack one to be safe."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1781,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1781,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 158,
+      "output_tokens_details": {
+        "thinking_tokens": 103
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

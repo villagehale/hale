@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import type { ReactionPlan } from '~/lib/channel/router/reaction-plan';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
 import {
   type EditableLinqSend,
@@ -21,12 +22,18 @@ import {
 } from './effect';
 import { resolveGroupMention } from './group-mention-reader';
 import { type LinqStickerDecider, applyLinqSticker, linqStickersEnabled } from './sticker';
-import { applyLinqTapback } from './tapback';
+import {
+  type ParentReactionSend,
+  applyLinqTapback,
+  linqReactionsEnabled,
+  reactToParentMessage,
+} from './tapback';
 
 /**
  * The product moment on an iMessage reply: a tapback instead of a throwaway
- * ack, (VIL-479, flag `LINQ_MESSAGE_EDIT_ENABLED`) an edit of a bubble Hale just
- * sent when the model says the follow-up only corrects it, or (VIL-472, flag
+ * ack (VIL-680, flag `LINQ_REACTIONS_ENABLED`: the tapback the coach chose, beside the
+ * words or as the whole answer), (VIL-479, flag `LINQ_MESSAGE_EDIT_ENABLED`) an edit of
+ * a bubble Hale just sent when the model says the follow-up only corrects it, or (VIL-472, flag
  * `LINQ_STICKERS_ENABLED`) a sticker the model chose, peeled onto the parent's
  * message, or (VIL-473, flag `LINQ_EFFECTS_ENABLED`) the reply itself sent with an
  * iMessage effect the model chose. At most one moment per reply: a peeled sticker
@@ -46,6 +53,18 @@ export type LinqMoment =
    */
   | { handled: 'effect'; delivery: 'sent'; providerMessageId: string }
   | { handled: 'effect'; delivery: 'unknown'; providerMessageId: null };
+
+/**
+ * VIL-680 · the tapback the coach chose as the whole answer did not land. Nothing goes in
+ * its place: not the words it stood for, and not another emoji. The router claims the turn
+ * under its own name (route.ts `agent_reaction_unsent`).
+ */
+export class ParentReactionUnsent extends Error {
+  constructor(readonly reason: Extract<ParentReactionSend, { status: 'not_sent' }>['reason']) {
+    super(`linq reaction: the answer did not land (${reason})`);
+    this.name = 'ParentReactionUnsent';
+  }
+}
 
 export async function considerLinqReply(
   database: Database,
@@ -81,6 +100,10 @@ export async function considerLinqReply(
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaKind[];
     };
+    /** VIL-680 · the tapback the coach chose for the parent's message (router/
+     * reaction-plan.ts). Read only while LINQ_REACTIONS_ENABLED is lit for the family.
+     * Absent: no reaction. */
+    reaction?: ReactionPlan;
     /** What the effect read needs, or why this reply is withheld from it. Absent: no
      * effect is considered. Either is logged by name when the flag is on. */
     effect?:
@@ -99,7 +122,43 @@ export async function considerLinqReply(
   if (args.route.channel !== 'imessage') return { handled: false };
   const standalone = args.firstOfSeveral === undefined;
 
-  if (standalone) {
+  let reacted = false;
+  if (linqReactionsEnabled(args.familyId)) {
+    // VIL-680: lit, the coach's own choice is the only reaction, and the word lists are
+    // never read. Alone, the reaction is the answer only for the words it was chosen
+    // against: a fold that added any keeps them, and the reaction goes beside.
+    const plan = args.reaction;
+    if (plan && plan.kind !== 'none') {
+      const alone = plan.kind === 'alone' && standalone && args.outboundBody === plan.standsFor;
+      if (plan.kind === 'alone' && !alone) {
+        console.info(
+          { reason: standalone ? 'words_folded' : 'several_bubbles' },
+          'linq reaction: not alone, the words go too',
+        );
+      }
+      const sent = await reactToParentMessage({
+        route: args.route,
+        reaction: plan.reaction,
+        fetch: args.fetch,
+      });
+      if (sent.status === 'not_sent') {
+        console.warn(
+          { reason: sent.reason, code: sent.code, httpStatus: sent.httpStatus, alone },
+          'linq reaction: not sent',
+        );
+        if (alone) throw new ParentReactionUnsent(sent.reason);
+      } else {
+        const channelMessageId = await recordMoment(database, args, {
+          templateKey: 'linq:tapback',
+          actionTaken: 'linq_tapback',
+          providerMessageId: args.route.replyToMessageId,
+        });
+        console.info({ alone }, 'linq reaction: sent');
+        if (alone) return { handled: true, channelMessageId, threadBody: null };
+        reacted = true;
+      }
+    }
+  } else if (standalone) {
     const tapback = await applyLinqTapback({
       channel: args.route.channel,
       chatId: args.route.chatId,
@@ -150,7 +209,10 @@ export async function considerLinqReply(
 
   if (linqStickersEnabled()) {
     const inboundMessageId = args.route.replyToMessageId;
-    if (!args.sticker || !inboundMessageId) {
+    if (reacted) {
+      // One reaction per parent bubble: the model's tapback is already on it.
+      console.info({ reason: 'reacted' }, 'linq sticker: not considered');
+    } else if (!args.sticker || !inboundMessageId) {
       console.info(
         { reason: args.sticker ? 'no_inbound_message_id' : 'no_decider' },
         'linq sticker: not considered',

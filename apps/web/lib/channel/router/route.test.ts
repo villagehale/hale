@@ -8793,6 +8793,178 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
 });
 
 /**
+ * VIL-680 · THE MODEL CHOOSES THE TAPBACK, behind LINQ_REACTIONS_ENABLED. Dark is today,
+ * word-list tapback included. Lit, on a 1:1 iMessage chat, the coach's choice is the only
+ * reaction: alone it is the whole answer (claimed, ledgered, audited, no words), beside it
+ * goes with the words, and a turn whose tools ran keeps its words whatever the model asked.
+ */
+describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
+  const ID = job().channel_message_id;
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+    service: 'iMessage',
+  };
+  const LOVE_ALONE = { reaction: { type: 'love' as const }, alone: true, otherToolCalls: 0 };
+
+  function seeingCoach(
+    result: Partial<ChannelTurnResult> & { reply: string },
+  ): ChannelCoachRuntime & { turns: ChannelTurn[] } {
+    const coach = {
+      turns: [] as ChannelTurn[],
+      async respond(turn: ChannelTurn) {
+        coach.turns.push(turn);
+        return { planOffer: null, activityPromise: null, spotWatch: null, ...result };
+      },
+    };
+    return coach;
+  }
+
+  /** Every reaction POST, by path and body. Any other Linq call answers 204 too. */
+  function linq(status = 204) {
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    const reactions: Array<{ path: string; body: unknown }> = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith('/reactions'))
+        reactions.push({ path, body: JSON.parse(String(init?.body)) });
+      return status < 300
+        ? new Response(null, { status })
+        : Response.json({ error: { code: 2029 } }, { status });
+    });
+    return reactions;
+  }
+
+  function reactionTurn(
+    result: Partial<ChannelTurnResult> & { reply: string },
+    options: { route?: ReplyRoute; body?: string; lit?: boolean } = {},
+  ) {
+    if (options.lit !== false) vi.stubEnv('LINQ_REACTIONS_ENABLED', 'true');
+    const coach = seeingCoach(result);
+    const h = harness({
+      coach,
+      context: { body: options.body ?? 'thanks so much!', reply: options.route ?? IMESSAGE },
+    });
+    return { h, coach };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("dark: the turn is not lit, and today's word-list tapback still answers a thanks", async () => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime.' }, { body: 'thanks', lit: false });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]).not.toHaveProperty('reactions');
+    expect(reactions).toEqual([
+      { path: '/api/partner/v3/messages/in-1/reactions', body: { operation: 'add', type: 'like' } },
+    ]);
+    expect(h.transport.sent).toEqual([]);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('lit, alone: the reaction is the whole answer - claimed, ledgered, audited, no words', async () => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]?.reactions).toBe(true);
+    expect(reactions).toEqual([
+      { path: '/api/partner/v3/messages/in-1/reactions', body: { operation: 'add', type: 'love' } },
+    ]);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([ID]);
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out.map((row) => [row.templateKey, row.providerMessageId])).toEqual([
+      ['linq:tapback', 'in-1'],
+    ]);
+    expect(auditRows(h.fake).filter((row) => row.actionTaken === 'linq_tapback')).toHaveLength(1);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('lit: a turn whose tools ran keeps its words, and the reaction goes beside them', async () => {
+    const reactions = linq();
+    const { h } = reactionTurn(
+      {
+        reply: 'Done, I stopped watching Saturday swim.',
+        reaction: { ...LOVE_ALONE, otherToolCalls: 1 },
+      },
+      { body: 'stop watching saturday swim' },
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(reactions.map((r) => r.body)).toEqual([{ operation: 'add', type: 'love' }]);
+    expect(h.transport.bodies()).toEqual(['Done, I stopped watching Saturday swim.']);
+  });
+
+  it('lit, alone, refused: nothing is sent at all, and the turn is claimed under its own name', async () => {
+    const reactions = linq(409);
+    const { h } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(reactions).toHaveLength(1);
+    // Not the words, and not an apology for a turn that did not fail.
+    expect(h.transport.sent).toEqual([]);
+    expect(result.status).toBe('agent_reaction_unsent');
+    expect(h.turns.answered).toEqual([ID]);
+    expect(auditRows(h.fake).filter((row) => row.actionTaken === 'linq_tapback')).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('reaction_unsent');
+  });
+
+  it('lit: no reaction chosen means none - the word lists are never read', async () => {
+    const reactions = linq();
+    const { h } = reactionTurn({ reply: 'Anytime.', reaction: null }, { body: 'thanks' });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(reactions).toEqual([]);
+    expect(h.transport.bodies()).toEqual(['Anytime.']);
+  });
+
+  it.each([
+    ['an SMS route', { route: SMS_ROUTE }],
+    [
+      'an iMessage chat Linq relays over SMS',
+      { route: { ...IMESSAGE, service: 'SMS' } as ReplyRoute },
+    ],
+    [
+      'a chat with no parent message to land on',
+      { route: { ...IMESSAGE, replyToMessageId: null } },
+    ],
+  ])('lit, %s is never lit for a reaction', async (_label, options) => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE }, options);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]).not.toHaveProperty('reactions');
+    expect(reactions).toEqual([]);
+    expect(h.transport.bodies()).toEqual(['Anytime!']);
+  });
+
+  it('lit, a group chat is never lit for a reaction', async () => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(coach.turns).toHaveLength(1);
+    expect(coach.turns[0]?.audience).toBe('group');
+    expect(coach.turns[0]).not.toHaveProperty('reactions');
+    expect(reactions).toEqual([]);
+  });
+});
+
+/**
  * The same set through the real database and the production turn ledger: what a lit turn
  * leaves behind is one row per bubble with its own key, one answered claim, and one
  * thread row per bubble. The held-venue fold reads the real thread, so it runs here too.

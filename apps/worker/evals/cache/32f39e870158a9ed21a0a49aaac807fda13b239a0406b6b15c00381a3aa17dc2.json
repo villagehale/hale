@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyHM6HDvN2YuWptHyqka",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrwYKEAgTGAI4AUIIdGhpbmtpbmcSDFd8emJ+zKpoDNCcXhoMYXj7CroajJk3IK7EIjAfmSTFRCvt8MR+F/VQ9HfAVUtebjXCBIwDx6zY56dq2CPI1QE4BclY4vAEFfTJO4gqzAWlc40+bc5rfxnxleMan/s3l+RDaNf/fylpobsJAiLKGyiwiNWyffnpWHLbGx8MpZ74ziI+7IMrEh5Hb1x7tG89Z68k74ElcXy2vnWJaLI95Oq1EmcUu25oBlzddajgYat2Wqfm8LUbikWz01J8+TFK86/KOX20QfAlTTwAxq2TpGoy2UgmCHTmHXIXu5rF1EXJ1xvTGXwuWqddb5qxMtyHyOCDtPmhtYfP1EF8T2EQI5DzhzNpjOu0TLYxKi/ZLjMwl0lKVtdtUlHRjtqfnbbkAi/CAhQvw5FJ0B4ky6yz4WlM/3y+ILwhgu8E8mEu+unBZL63RnY8x+9REitI6+5EhVwEkh/MKEh8tICC2b3wnoTZzX/LsOUAvnBveykSC/ygZbJ17Kud4cj3m7eTuE9I+zDseyW+IvhVaaAzRE7I8xU6XQ1z4o2+OCZZTsg016kxwf4xZi8MLlNFOTmjQmX5zQ8Apm3FQGJV32evqQVozWmxyxmzImD+SJIsqOYoidpy/qLlTzsPGoi3gKKnQ25Sm0MQygAHIHbejgkc+tUIV1tJYCLD1Ij7JTkBr45vrYhx6PXPz1il3Xlhu6i0EiuJYnoVObRJQYxIFCOBzngXRxnC6HGKtyXeDSnKcOg/zfkgyyYsmMysOlWcRdI+6qMyv3u1dgXoEHzmCid+NZgco50/GB/RSXBpzckqoDnz5bZ6jlbW6U8HIMI7f5xTkojCVh9Es8ukxzq1jgnVQUAxGH/uvDaA9NVq70+SOokKTk6uEIL+z89f/dMZhFkeGoKggEHKqfuEKIsK7olGsLWEwNS4QTSlN58GoRC8x9o0NnG7zFmmDoG0LMA4FGTNMFv5dKCvhjoieXZqKb51ImXD8XG/U3wdIVQk999EASY83Bvz+i/SSthqT7WrTlWf5WguYvWm4LoWtZg/8UD5BDq1X7+vczweZeuFD48CqhgB"
+      },
+      {
+        "type": "text",
+        "text": "That isn't something to decide over text. Call 811 any time, and 911 if it is an emergency."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1553,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 101,
+      "output_tokens_details": {
+        "thinking_tokens": 68
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

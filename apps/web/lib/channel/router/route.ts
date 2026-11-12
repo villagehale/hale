@@ -82,7 +82,7 @@ import {
   releaseGroupOnLeave,
 } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
-import { considerLinqReply } from '~/lib/channel/linq/moments';
+import { ParentReactionUnsent, considerLinqReply } from '~/lib/channel/linq/moments';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -197,6 +197,7 @@ import {
   holdingLineRead,
 } from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import { type ReactionPlan, planParentReaction, reactionsLitFor } from './reaction-plan';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
@@ -822,6 +823,9 @@ export type RouterStatus =
   | 'agent_replied'
   /** #973 · the coach wrote nothing; the turn is claimed answered and nothing was sent. */
   | 'agent_silent'
+  /** VIL-680 · the coach chose a tapback as the whole answer and Linq did not take it. The
+   * turn is claimed answered and nothing was sent in its place. */
+  | 'agent_reaction_unsent'
   | 'agent_failed'
   /** This text already has Hale's answer, and the queue handed it back anyway. The turn
    * stops before anything is threaded, spent or sent (turn-ledger.ts). */
@@ -1303,6 +1307,7 @@ async function routeChannelMessageInner(
     threadSource: schema.MessageSource | null = null,
     voiceMemo = false,
     safetyReply = false,
+    reaction?: ReactionPlan,
   ) =>
     sendReply(deps, {
       route,
@@ -1319,6 +1324,7 @@ async function routeChannelMessageInner(
       beforeSend: stopTyping,
       onSent,
       voiceMemo,
+      ...(reaction ? { reaction } : {}),
       inboundBody: context.body,
       stickerRead: {
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
@@ -1893,6 +1899,8 @@ async function routeChannelMessageInner(
               undefined,
               threadSource,
               how?.voiceMemo === true,
+              false,
+              how?.reaction,
             ),
       hasAnswered: () => answered,
       claimSilent: claimAnswer,
@@ -1904,6 +1912,7 @@ async function routeChannelMessageInner(
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
       replyBubbles: !inGroup && takesBubbles(route, job) && coachBubblesEnabled(job.family_id),
+      reactions: !inGroup && reactionsLitFor(route, job),
       cardRoute: inGroup ? null : route,
       groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
     });
@@ -2366,12 +2375,13 @@ async function runAgentTurn(
      * `threadSource` marks the thread row the answer lands in (VIL-616).
      * `voiceMemo` (VIL-495): the model chose to say it; the send gates decide whether it
      * goes as a memo or as this same text. Several `bubbles` are one answer sent as
-     * several messages, and the id handed back is the LAST bubble's.
+     * several messages, and the id handed back is the LAST bubble's. `reaction` (VIL-680):
+     * the tapback the coach chose, planned (reaction-plan.ts).
      */
     answer: (
       bubbles: readonly string[],
       threadSource: schema.MessageSource | null,
-      how?: { voiceMemo: true },
+      how?: { voiceMemo?: true; reaction?: ReactionPlan },
     ) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
@@ -2401,6 +2411,8 @@ async function runAgentTurn(
     audience: ChannelTurn['audience'];
     /** The answer may go out as several bubbles (see ChannelTurn.replyBubbles). */
     replyBubbles?: boolean;
+    /** VIL-680 — the coach may choose a tapback (see ChannelTurn.reactions). */
+    reactions?: boolean;
     /** VIL-497 — the 1:1 route a card may go to; null on a group turn. */
     cardRoute?: ReplyRoute | null;
     /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
@@ -2431,6 +2443,7 @@ async function runAgentTurn(
       emailRead,
       capabilityNotes,
       singleBubble,
+      reaction: chosenReaction,
     } = await composeReconciledReply(deps, args, view);
     // VIL-616: a reply written after reading an email may repeat the sender's words, so
     // its thread row says so and the nightly memory writer leaves it out.
@@ -2461,6 +2474,28 @@ async function runAgentTurn(
     const bubbles = args.replyBubbles && !singleBubble ? splitReplyBubbles(text) : [text];
     if (bubbles.length > 1) {
       deps.log.info({ bubbles: bubbles.length }, 'channel router: the answer goes as bubbles');
+    }
+    // VIL-680: what the tapback the coach chose does, after the claim gate, on facts code
+    // can see. Planned only on a turn lit for reactions.
+    const reaction = args.reactions
+      ? planParentReaction({
+          choice: chosenReaction ?? null,
+          voiceMemo: voiceMemo === true,
+          attempts: attempts.length,
+          mints: mints.length,
+          unplacedAnswer: args.unplacedAnswer !== null,
+          bubbles,
+        })
+      : null;
+    if (reaction) {
+      deps.log.info(
+        {
+          reaction: reaction.kind,
+          ...(reaction.kind === 'none' ? { reason: reaction.reason } : {}),
+          ...(reaction.kind === 'beside' ? { why: reaction.why } : {}),
+        },
+        'channel router: parent reaction planned',
+      );
     }
     // WHAT THE ANSWER OWES: the follow-up it promised, the registration morning and the
     // page it said it was watching. Written AFTER the send, against a message that went
@@ -2534,7 +2569,10 @@ async function runAgentTurn(
     };
     // A card turn stays text: the card rides beside the words (VIL-495 Design lock).
     const channelMessageId = await args
-      .answer(bubbles, threadSource, voiceMemo === true && !card ? { voiceMemo: true } : undefined)
+      .answer(bubbles, threadSource, {
+        ...(voiceMemo === true && !card ? { voiceMemo: true as const } : {}),
+        ...(reaction && reaction.kind !== 'none' ? { reaction } : {}),
+      })
       .catch(async (err: unknown) => {
         if (err instanceof ReplySetIncomplete) {
           if (err.lastSentId !== null) await keepWhatTheAnswerOwes(err.lastSentId);
@@ -2717,6 +2755,21 @@ async function runAgentTurn(
       lane: null,
     });
   } catch (err) {
+    // VIL-680: the tapback was the whole answer and did not land. Nothing goes in its
+    // place, and the turn is claimed so a redelivery never asks the coach again.
+    if (err instanceof ParentReactionUnsent) {
+      deps.log.warn(
+        { outcome: 'reaction_unsent', reason: err.reason },
+        'channel router: the reaction was the answer and did not land - nothing sent',
+      );
+      await args.claimSilent?.();
+      return done(deps, args.job, {
+        status: 'agent_reaction_unsent',
+        handler: null,
+        conversationId: args.conversationId,
+        lane: null,
+      });
+    }
     // The turn deadline already decided this attempt is over. An apology here
     // would be a text the parent did not ask for, sent after the drain moved on.
     if (isTurnTimeout(err) || turnSignalAborted()) throw err;
@@ -2989,6 +3042,7 @@ async function composeReconciledReply(
     audience: ChannelTurn['audience'];
     groupChatId?: string | null;
     replyBubbles?: boolean;
+    reactions?: boolean;
   },
   view: Promise<ReconcileView>,
 ): Promise<
@@ -3018,6 +3072,7 @@ async function composeReconciledReply(
         audience: args.audience,
         ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
         ...(args.replyBubbles ? { replyBubbles: true } : {}),
+        ...(args.reactions ? { reactions: true } : {}),
       },
       rejected,
     );
@@ -3477,6 +3532,9 @@ type SendReplyArgs = {
   /** VIL-495 — the model chose to say this reply as a voice memo. Tried first on a
    * Linq 1:1 chat; every "no" sends the same body as the text below. */
   voiceMemo?: boolean;
+  /** VIL-680 — the tapback the coach chose (reaction-plan.ts), on the coach's answer of a
+   * turn lit for reactions. Absent on every other reply. */
+  reaction?: ReactionPlan;
   /** The parent's words, when this reply is the turn's answer. A tapback or
    * a poll can stand in for the text. Absent on the caregiver line, which
    * keeps its sentence. */
@@ -3566,6 +3624,7 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
         ...(edit ? { edit } : {}),
+        ...(args.reaction ? { reaction: args.reaction } : {}),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
@@ -3598,7 +3657,8 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
     } catch (err) {
       // VIL-479 (Devin BUG_0003): a turn that expired while the edit read ran is over.
       // It must not edit a bubble, and it must not send the follow-up either.
-      if (isTurnTimeout(err)) throw err;
+      // VIL-680: a tapback that was the whole answer and did not land sends no words.
+      if (isTurnTimeout(err) || err instanceof ParentReactionUnsent) throw err;
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',

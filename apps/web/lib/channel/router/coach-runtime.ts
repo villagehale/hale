@@ -1,6 +1,7 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { CapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
+import type { ReactionChoice } from '~/lib/channel/coach/reaction-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { TurnPhotoFacts } from '~/lib/channel/inbound-photo-facts';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -83,6 +84,13 @@ export interface ChannelTurn {
    */
   replyBubbles?: boolean;
   /**
+   * VIL-680 — the router lit this turn for a tapback on the parent's message: a 1:1 chat
+   * Linq said is iMessage, with the parent's message id, while LINQ_REACTIONS_ENABLED is lit
+   * for the family (router/reaction-plan.ts). Decided in code, never by the model. Absent on
+   * every other turn.
+   */
+  reactions?: boolean;
+  /**
    * VIL-413 — facts Hale already read from this turn's photo or PDF. Set by the
    * coach runtime, never by the router, and only on a 1:1 turn while
    * INBOUND_PHOTO_FACTS_ENABLED is lit. Absent on a text-only turn, a group turn, and
@@ -146,6 +154,13 @@ export interface ChannelTurnResult {
    * memo when every send-time gate holds (linq/voice-reply.ts), and as text otherwise.
    */
   voiceMemo?: boolean;
+  /**
+   * VIL-680 — the tapback the model chose for the parent's message, with how many other
+   * tools this turn ran: a turn whose tools ran keeps its words (router/reaction-plan.ts).
+   * Only on a turn lit for reactions (`ChannelTurn.reactions`); null there when the model
+   * chose none.
+   */
+  reaction?: (ReactionChoice & { otherToolCalls: number }) | null;
   /**
    * VIL-581 · the actions this turn's tools drafted, so a turn that breaks AFTER the
    * coach returned (the claim read) can still send the drafts receipt. The production

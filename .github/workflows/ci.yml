@@ -362,6 +362,10 @@ jobs:
       - name: Coach bubbles eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-bubbles
 
+      # The model chooses the tapback (VIL-680). Recorded; a miss fails CI.
+      - name: Coach reaction eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-reaction
+
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
 
