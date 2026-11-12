@@ -43,6 +43,10 @@ export interface InboundMessage {
   /** The service Linq said carried this text when `transport` is `imessage`: a chat on
    * the Linq line can be iMessage, SMS or RCS. Absent when Linq did not say, and on SMS. */
   service?: LinqChatService;
+  /** When the webhook this text came on stops waiting for Hale: Linq's start of the attempt
+   * plus its response timeout. Bubbles intake paces never run past it. Absent when no
+   * webhook waits on the answer. */
+  answerBy?: Date;
   /**
    * Whose hourly inbound budget this text spends. Absent is `sender`: the per-number
    * `sms-inbound` cap, which every caller written before group onboarding v2 means.

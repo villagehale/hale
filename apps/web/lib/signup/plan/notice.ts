@@ -226,7 +226,7 @@ export function createPlanPrepDeliver(
     // Opened at the first part that follows a send, on the chat that send used.
     let gaps: BubbleGaps | null | undefined;
     let sentHere = false;
-    const pace: PrepPace = async (send) => {
+    const pace: PrepPace = async (send, went) => {
       if (sentHere && gaps === undefined) {
         const chatId = carried.channel === 'imessage' ? carried.chatId : null;
         gaps =
@@ -238,7 +238,7 @@ export function createPlanPrepDeliver(
               })
             : null;
       }
-      const out = sentHere && gaps ? await gaps(send) : await send();
+      const out = sentHere && gaps ? await gaps(send, went) : await send();
       sentHere = true;
       return out;
     };
@@ -259,19 +259,21 @@ export function createPlanPrepDeliver(
         carried = sent;
         continue;
       }
-      const link = await pace(() =>
-        sendLinkOnce({
-          transport: deps.transport,
-          to,
-          channel: carried.channel,
-          chatId: carried.chatId,
-          url: part.url,
-          database,
-          familyId: input.familyId,
-          parentUserId: input.parentUserId,
-          now: input.now,
-          fetch: deps.fetch,
-        }),
+      const link = await pace(
+        () =>
+          sendLinkOnce({
+            transport: deps.transport,
+            to,
+            channel: carried.channel,
+            chatId: carried.chatId,
+            url: part.url,
+            database,
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+            now: input.now,
+            fetch: deps.fetch,
+          }),
+        (sent) => sent.status !== 'not_sent',
       );
       if (link.status === 'not_sent') {
         console.warn(
@@ -357,8 +359,9 @@ async function claimPrepText(
   };
 }
 
-/** Wraps each send of one prep notice: the bubble gap before any after the first. */
-type PrepPace = <T>(send: () => Promise<T>) => Promise<T>;
+/** Wraps each send of one prep notice: the bubble gap before any after the first.
+ * `went` says whether the result is a part that went. */
+type PrepPace = <T>(send: () => Promise<T>, went: (result: T) => boolean) => Promise<T>;
 
 async function sendPrepText(
   database: Database,
@@ -391,16 +394,18 @@ async function sendPrepText(
   };
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
-    delivered = await pace(() =>
-      deliverFamilyOutbound(database, {
-        familyId: input.familyId,
-        body: input.body,
-        to: input.to,
-        legacy: transport,
-        target: { channel: 'legacy' },
-        shareGroupCap: false,
-        now: input.now,
-      }),
+    delivered = await pace(
+      () =>
+        deliverFamilyOutbound(database, {
+          familyId: input.familyId,
+          body: input.body,
+          to: input.to,
+          legacy: transport,
+          target: { channel: 'legacy' },
+          shareGroupCap: false,
+          now: input.now,
+        }),
+      (sent) => sent.status === 'sent',
     );
   } catch (err) {
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');

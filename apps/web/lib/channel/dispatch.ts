@@ -3,7 +3,7 @@ import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
-import { type BubbleGaps, bubbleGaps } from '~/lib/channel/linq/bubble-gap';
+import { type BubbleGaps, bubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
 import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
@@ -437,7 +437,7 @@ async function dispatchTexts(
               })
             : null;
       }
-      return gaps ? gaps(send) : send();
+      return gaps ? gaps(send, sentUnlessThrown) : send();
     },
     send: async (text, index) => {
       // By position, not by text: two identical texts must not both carry the bold.

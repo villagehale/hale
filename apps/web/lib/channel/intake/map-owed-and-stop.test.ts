@@ -333,8 +333,12 @@ describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
   async function mapGap(
     flag: 'true' | 'false',
     service: InboundMessage['service'],
+    /** When Linq stops waiting for the webhook, in ms from the turn's start. */
+    answerWithinMs?: number,
   ): Promise<number> {
     vi.useFakeTimers();
+    const answerBy =
+      answerWithinMs === undefined ? {} : { answerBy: new Date(Date.now() + answerWithinMs) };
     vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
     const { fake, transport, deps } = harness();
     const sentAt = new Map<string, number>();
@@ -350,6 +354,7 @@ describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
           transport: 'imessage',
           chatId: 'chat-1',
           ...(service ? { service } : {}),
+          ...answerBy,
         }),
         deps,
       ),
@@ -362,6 +367,16 @@ describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
 
   it('lit: the next map bubble waits about two seconds', async () => {
     expect(await mapGap('true', 'iMessage')).toBe(BUBBLE_GAP_MS);
+  });
+
+  // Inside Linq's webhook: a gap that would end past the moment Linq stops waiting is not
+  // taken, so pacing never turns an answered webhook into a timed-out one.
+  it('lit, with less than a gap left before the webhook deadline: back to back', async () => {
+    expect(await mapGap('true', 'iMessage', BUBBLE_GAP_MS - 1)).toBe(0);
+  });
+
+  it('positive control: lit, with the webhook deadline far off: the gap is taken', async () => {
+    expect(await mapGap('true', 'iMessage', 60_000)).toBe(BUBBLE_GAP_MS);
   });
 
   it('dark: the map bubbles go back to back', async () => {

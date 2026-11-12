@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { BUBBLE_GAP_MS, bubbleGaps } from './linq/bubble-gap';
+import { BUBBLE_GAP_MS, bubbleGaps, sentUnlessThrown } from './linq/bubble-gap';
 import { sendTexts, textDedupeKey } from './outbound-transport';
 
 /** VIL-467 · the shared multi-text sender. Fakes only; no provider is reached. */
@@ -176,7 +176,7 @@ describe('sendTexts paced between bubbles', () => {
         return text;
       },
       record: async () => {},
-      pace: (send) => gaps(send),
+      pace: (send) => gaps(send, sentUnlessThrown),
     });
     await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
 

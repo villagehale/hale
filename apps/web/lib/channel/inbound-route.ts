@@ -273,9 +273,9 @@ function keywordOutcome(
  * parent is dropped, so a role we cannot vouch for is silence rather than disclosure.
  *
  * Idempotent on the provider's message id, and the INSERT is what makes it so. Linq
- * resends when we exceed its 15s budget, so the resend can arrive while this handler is
- * still running: a select-then-insert guard is a guard both deliveries walk straight
- * through. The unique index on `provider_message_id` where `direction = 'in'` decides it
+ * resends past its webhook timeout (LINQ_WEBHOOK_TIMEOUT_MS), so the resend can arrive
+ * while this handler is still running: a select-then-insert guard is a guard both
+ * deliveries walk straight through. The unique index on `provider_message_id` where `direction = 'in'` decides it
  * in the database instead — exactly one request wins the row, and winning the row is what
  * confers the right (and the duty) to enqueue.
  *

@@ -412,6 +412,8 @@ export interface Inbound {
   isGroup?: boolean;
   /** See `InboundMessage.service` (intake/transport.ts): what says the chat is iMessage. */
   service?: LinqChatService;
+  /** See `InboundMessage.answerBy` (intake/transport.ts). */
+  answerBy?: Date;
   /** See `InboundMessage.budget` (intake/transport.ts). Absent is the sender's. */
   budget?: 'sender' | 'chat';
   /** VIL-348 — the provider already answered this keyword itself; see
@@ -791,12 +793,14 @@ interface SendContext {
   now: Date;
   /** The pipe this turn arrived on. Outbound rows and the transcript replay
    * record it, so a later receipt can find the Linq chat. `service` is the one Linq said
-   * carried the text, null when it did not say. */
+   * carried the text, null when it did not say. `answerBy` is when the webhook it came on
+   * stops waiting, null when none waits. */
   pipe: {
     channel: 'sms' | 'imessage';
     chatId: string | null;
     isGroup: boolean;
     service: LinqChatService | null;
+    answerBy: Date | null;
   };
 }
 
@@ -807,9 +811,10 @@ function messagingPipe(inbound: Inbound): SendContext['pipe'] {
       chatId: inbound.chatId ?? null,
       isGroup: inbound.isGroup === true,
       service: inbound.service ?? null,
+      answerBy: inbound.answerBy ?? null,
     };
   }
-  return { channel: 'sms', chatId: null, isGroup: false, service: null };
+  return { channel: 'sms', chatId: null, isGroup: false, service: null, answerBy: null };
 }
 
 /** One in-flight share per session object, so a second bubble in the same turn cannot double-post. */
@@ -873,19 +878,25 @@ async function sendMapBubbles(
 ): Promise<'delivered' | 'send_failed'> {
   const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
   // VIL-682 K5 · lit, on a chat Linq said is iMessage each bubble after the first waits
-  // the bubble gap.
+  // the bubble gap, none past the moment Linq stops waiting for this webhook.
   const familyId = ctx.session.familyId;
   const chatId = ctx.pipe.channel === 'imessage' ? ctx.pipe.chatId : null;
   const gaps =
     chatId && familyId && coachBubblesEnabled(familyId)
-      ? bubbleGaps({ chatId, service: ctx.pipe.service, log: console })
+      ? bubbleGaps({
+          chatId,
+          service: ctx.pipe.service,
+          answerBy: ctx.pipe.answerBy,
+          log: console,
+        })
       : null;
   for (const [index, bubble] of toSend.entries()) {
     let landed = false;
     let err: string | null = null;
     try {
       const send = () => sendAndRecord(database, ctx, bubble, deps, transcript);
-      const sent = index > 0 && gaps ? await gaps(send) : await send();
+      const sent =
+        index > 0 && gaps ? await gaps(send, (out) => out.channelMessageId != null) : await send();
       landed = sent.channelMessageId != null;
     } catch (caught) {
       err = caught instanceof Error ? caught.name : 'unknown';

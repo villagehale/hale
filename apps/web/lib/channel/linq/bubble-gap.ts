@@ -11,14 +11,21 @@ import { type LinqChatService, SEND_TIMEOUT_MS } from './transport';
 export const BUBBLE_GAP_MS = 2_000;
 
 /**
- * The most the gaps may add to one set of bubbles outside a router turn. Intake's activity
- * map goes out inside Linq's webhook (see SEND_TIMEOUT_MS), and a notice holds a drain
- * job: two gaps, then any later bubble of the set goes at once.
+ * The most gaps one set of bubbles may add outside a router turn and outside Linq's
+ * webhook: a notice in the drain. Counted, not timed, so timer slack can never skip one.
+ * Each such pause is the gap itself, so the set adds at most this many gaps' time.
  */
-export const OFF_TURN_GAP_BUDGET_MS = 2 * BUBBLE_GAP_MS;
+export const OFF_TURN_GAPS = 2;
 
-/** Sends one bubble of a set after the gap. The set's first bubble is not passed here. */
-export type BubbleGaps = <T>(send: () => Promise<T>) => Promise<T>;
+/**
+ * Sends one bubble of a set after the gap. The set's first bubble is not passed here.
+ * `went` says whether the result is a bubble that went: a refusal handed back as a value
+ * takes typing down just as a thrown one does.
+ */
+export type BubbleGaps = <T>(send: () => Promise<T>, went: (result: T) => boolean) => Promise<T>;
+
+/** `went` for a send that throws whenever it does not go: anything it returns went. */
+export const sentUnlessThrown = (): boolean => true;
 
 /**
  * The gaps for one set of bubbles on one chat, or null when the chat is not paced.
@@ -27,26 +34,33 @@ export type BubbleGaps = <T>(send: () => Promise<T>) => Promise<T>;
  * RCS chats on the same line and reports them as `imessage`, so the transport cannot say.
  * Null or absent: Linq did not say, which is not a yes.
  *
- * Typing starts first and the gap runs beside that call. The send waits for both, so typing
- * never lands after the bubble it stands for. A send clears typing on its own; a send that
- * throws clears it here, so a set that stops partway does not leave Hale typing. A typing
- * call that fails is logged and the bubble still goes.
+ * Typing starts with the gap. A bubble that goes clears typing on its own; one that does
+ * not, thrown or handed back (`went`), clears it here, so a set that stops partway does
+ * not leave Hale typing. A typing call that fails is logged and the bubble still goes.
  *
- * Inside a router turn the gap comes out of the turn's deadline: with too little left for
- * the pause and the send after it, the bubble goes at once and `deadline_near` is logged.
- * Outside a turn the set spends at most {@link OFF_TURN_GAP_BUDGET_MS}: no pause outlasts
- * what is left of it, even one a slow typing call holds, and once it is spent the bubble
- * goes at once and `gap_budget_spent` is logged.
+ * One bound per set, by where it runs:
+ * - Inside a router turn the gap comes out of the turn's deadline, and the send waits for
+ *   the typing call too. With too little left for the pause and the send after it, the
+ *   bubble goes at once and `deadline_near` is logged.
+ * - Inside Linq's webhook (`answerBy`, intake), a gap that would end at or past the moment
+ *   Linq stops waiting is not taken: the bubble goes at once and `deadline_near` is logged.
+ * - Elsewhere the set takes at most {@link OFF_TURN_GAPS} gaps; after that the bubble goes
+ *   at once and `gap_budget_spent` is logged.
+ * Outside a turn the pause is the gap itself: a typing call Linq has not answered by then
+ * does not hold the bubble.
  */
 export function bubbleGaps(input: {
   chatId: string;
   service: LinqChatService | null | undefined;
   log: Pick<Console, 'info' | 'warn'>;
+  /** When Linq stops waiting for the webhook this set answers. Absent: none waits. */
+  answerBy?: Date | null;
   /** Test seam. Production uses {@link BUBBLE_GAP_MS}. */
   gapMs?: number;
 }): BubbleGaps | null {
   if (input.service !== 'iMessage') return null;
   const gapMs = input.gapMs ?? BUBBLE_GAP_MS;
+  const answerBy = input.answerBy ?? null;
   const log = input.log;
   // `to` is unused: the typing call is the chat id (as in presence.ts).
   const route: ReplyRoute = {
@@ -55,52 +69,50 @@ export function bubbleGaps(input: {
     chatId: input.chatId,
     replyToMessageId: null,
   };
-  let spentMs = 0;
-  return async (send) => {
+  let gapsLeft = OFF_TURN_GAPS;
+  const goNow = <T>(send: () => Promise<T>, fields: Record<string, number | string>) => {
+    log.info(fields, 'bubbles: the next bubble goes without the gap');
+    return send();
+  };
+  return async (send, went) => {
     const turnLeft = turnRemainingMs();
-    // The pause lasts as long as the gap or the typing call, and Linq stops that call at
-    // SEND_TIMEOUT_MS. The bubble's own send can take as long again.
-    if (turnLeft !== undefined && turnLeft < Math.max(gapMs, SEND_TIMEOUT_MS) + SEND_TIMEOUT_MS) {
-      log.info(
-        { outcome: 'deadline_near', remainingMs: turnLeft },
-        'bubbles: the next bubble goes without the gap',
-      );
-      return send();
+    if (turnLeft !== undefined) {
+      // The pause lasts as long as the gap or the typing call, and Linq stops that call at
+      // SEND_TIMEOUT_MS. The bubble's own send can take as long again.
+      if (turnLeft < Math.max(gapMs, SEND_TIMEOUT_MS) + SEND_TIMEOUT_MS) {
+        return goNow(send, { outcome: 'deadline_near', remainingMs: turnLeft });
+      }
+    } else if (answerBy) {
+      const webhookLeft = answerBy.getTime() - Date.now();
+      if (webhookLeft <= gapMs) {
+        return goNow(send, { outcome: 'deadline_near', remainingMs: webhookLeft });
+      }
+    } else if (gapsLeft === 0) {
+      return goNow(send, { outcome: 'gap_budget_spent', gaps: OFF_TURN_GAPS });
+    } else {
+      gapsLeft -= 1;
     }
-    const budgetLeft = turnLeft === undefined ? OFF_TURN_GAP_BUDGET_MS - spentMs : null;
-    if (budgetLeft !== null && budgetLeft < gapMs) {
-      log.info(
-        { outcome: 'gap_budget_spent', spentMs, budgetMs: OFF_TURN_GAP_BUDGET_MS },
-        'bubbles: the next bubble goes without the gap',
-      );
-      return send();
-    }
-    const started = Date.now();
-    const pause = Promise.all([typing(route, 'start', log), sleep(gapMs)]);
-    await (budgetLeft === null ? pause : within(pause, budgetLeft));
-    spentMs += Date.now() - started;
-    try {
-      return await send();
-    } catch (err) {
+    const typed = typing(route, 'start', log);
+    await (turnLeft === undefined ? sleep(gapMs) : Promise.all([typed, sleep(gapMs)]));
+    // A stop never overtakes its own start.
+    const typingDown = async () => {
+      await typed;
       await typing(route, 'stop', log);
+    };
+    let result: Awaited<ReturnType<typeof send>>;
+    try {
+      result = await send();
+    } catch (err) {
+      await typingDown();
       throw err;
     }
+    if (!went(result)) await typingDown();
+    return result;
   };
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Resolves when `work` does or when `ms` passes, whichever is first. */
-function within(work: Promise<unknown>, ms: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return Promise.race([
-    work.then(() => undefined),
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, ms);
-    }),
-  ]).finally(() => clearTimeout(timer));
 }
 
 /** A typing call that cannot stop the bubble or replace the send's own error: the caller

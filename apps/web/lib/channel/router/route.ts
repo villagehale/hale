@@ -51,7 +51,7 @@ import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-re
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
-import { bubbleGaps } from '~/lib/channel/linq/bubble-gap';
+import { bubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
@@ -1281,7 +1281,8 @@ async function routeChannelMessageInner(
       await stopTyping();
       const folded = await withPassport(body);
       const go = () => deps.transport.send({ route, body: folded });
-      const sent = handlerSent && handlerGaps ? await handlerGaps(go) : await go();
+      const sent =
+        handlerSent && handlerGaps ? await handlerGaps(go, sentUnlessThrown) : await go();
       handlerSent = true;
       return sent;
     },
@@ -3988,7 +3989,7 @@ async function sendReplySet(
   }>({
     texts: args.bodies,
     setKey: args.setKey,
-    ...(gaps ? { pace: (send) => gaps(send) } : {}),
+    ...(gaps ? { pace: (send) => gaps(send, sentUnlessThrown) } : {}),
     alreadySent: async (key) => {
       const found = await onRecord(key);
       if (found) bubblesSent = keys.indexOf(key) + 1;

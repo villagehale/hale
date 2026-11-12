@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runTurn, turnDeadlineSignal } from '~/lib/channel/router/deadline';
-import { BUBBLE_GAP_MS, type BubbleGaps, OFF_TURN_GAP_BUDGET_MS, bubbleGaps } from './bubble-gap';
+import {
+  BUBBLE_GAP_MS,
+  type BubbleGaps,
+  OFF_TURN_GAPS,
+  bubbleGaps,
+  sentUnlessThrown,
+} from './bubble-gap';
 import { SEND_TIMEOUT_MS } from './transport';
 
 /**
@@ -35,8 +41,8 @@ function quietLog() {
 }
 
 /** The gaps for an iMessage chat. Throws if they are not paced, which would be the bug. */
-function imessageGaps(log: Pick<Console, 'info' | 'warn'>): BubbleGaps {
-  const gaps = bubbleGaps({ chatId: CHAT, service: 'iMessage', log });
+function imessageGaps(log: Pick<Console, 'info' | 'warn'>, answerBy?: Date): BubbleGaps {
+  const gaps = bubbleGaps({ chatId: CHAT, service: 'iMessage', log, answerBy });
   if (!gaps) throw new Error('an iMessage chat must be paced');
   return gaps;
 }
@@ -73,7 +79,7 @@ describe('bubbleGaps', () => {
     const sent = imessageGaps(log)(async () => {
       sends.push(Date.now());
       return 'out-2';
-    });
+    }, sentUnlessThrown);
 
     await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS - 1);
     expect(sends).toEqual([]);
@@ -104,7 +110,7 @@ describe('bubbleGaps', () => {
       imessageGaps(log)(async () => {
         sends.push(Date.now());
         return 'out-2';
-      }),
+      }, sentUnlessThrown),
     );
 
     expect(sent).toBe('out-2');
@@ -122,7 +128,7 @@ describe('bubbleGaps', () => {
       imessageGaps(log)(async () => {
         sends.push(Date.now());
         return 'out-2';
-      }),
+      }, sentUnlessThrown),
     );
     await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
 
@@ -138,7 +144,7 @@ describe('bubbleGaps', () => {
 
     const sent = imessageGaps(log)(async () => {
       throw refused;
-    });
+    }, sentUnlessThrown);
     const settled = sent.catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
 
@@ -148,15 +154,76 @@ describe('bubbleGaps', () => {
       `DELETE /chats/${CHAT}/typing`,
     ]);
   });
+
+  // A refusal handed back as a value (a permanent Linq refusal, a link that did not go) is
+  // a bubble that did not go too: typing must not stay up with nothing after it.
+  it('a send that returns without going clears typing and hands back its result', async () => {
+    const { log } = quietLog();
+    const refusal = { status: 'not_sent' as const };
+
+    const sent = imessageGaps(log)(
+      async (): Promise<{ status: 'sent' | 'not_sent' }> => refusal,
+      (result) => result.status === 'sent',
+    );
+    await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
+
+    expect(await sent).toBe(refusal);
+    expect(linq.calls.map((call) => call.what)).toEqual([
+      `POST /chats/${CHAT}/typing`,
+      `DELETE /chats/${CHAT}/typing`,
+    ]);
+  });
+
+  it('a typing start Linq answers late is not overtaken by its stop', async () => {
+    const { log } = quietLog();
+    const start = Date.now();
+    const calls: Array<[number, string]> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL, init?: RequestInit) => {
+        calls.push([Date.now() - start, `${init?.method} sent`]);
+        if (init?.method === 'POST') await new Promise((resolve) => setTimeout(resolve, 3_000));
+        calls.push([Date.now() - start, `${init?.method} answered`]);
+        return new Response(null, { status: 204 });
+      }),
+    );
+
+    const sent = imessageGaps(log)(
+      async (): Promise<{ status: 'sent' | 'not_sent' }> => ({ status: 'not_sent' }),
+      (result) => result.status === 'sent',
+    );
+    await vi.advanceTimersByTimeAsync(3_000);
+    await sent;
+
+    expect(calls).toEqual([
+      [0, 'POST sent'],
+      [3_000, 'POST answered'],
+      [3_000, 'DELETE sent'],
+      [3_000, 'DELETE answered'],
+    ]);
+  });
+
+  it('positive control: a send that went leaves typing to the bubble itself', async () => {
+    const { log } = quietLog();
+
+    const sent = imessageGaps(log)(
+      async (): Promise<{ status: 'sent' | 'not_sent' }> => ({ status: 'sent' }),
+      (result) => result.status === 'sent',
+    );
+    await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
+
+    expect(await sent).toEqual({ status: 'sent' });
+    expect(linq.calls.map((call) => call.what)).toEqual([`POST /chats/${CHAT}/typing`]);
+  });
 });
 
 /**
- * Outside a router turn (intake's map inside Linq's webhook, a notice in the drain) no
- * turn deadline bounds the set, so the set's own budget does.
+ * A notice in the drain runs outside any turn and any webhook: the set's own count of gaps
+ * bounds it. The count is planned, not timed, so timer slack can never skip a gap.
  */
-describe('bubbleGaps outside a turn', () => {
-  it('spends at most the budget on one set: then the next bubble goes at once and says why', async () => {
-    expect(OFF_TURN_GAP_BUDGET_MS).toBe(2 * BUBBLE_GAP_MS);
+describe('bubbleGaps outside a turn or a webhook', () => {
+  it('adds at most two gaps to one set: then the next bubble goes at once and says why', async () => {
+    expect(OFF_TURN_GAPS).toBe(2);
     const { lines, log } = quietLog();
     const gaps = imessageGaps(log);
     const start = Date.now();
@@ -165,10 +232,11 @@ describe('bubbleGaps outside a turn', () => {
       sends.push(Date.now());
     };
 
+    // Four bubbles: the first goes before the pacer, so three are paced.
     const set = (async () => {
-      await gaps(send);
-      await gaps(send);
-      await gaps(send);
+      await gaps(send, sentUnlessThrown);
+      await gaps(send, sentUnlessThrown);
+      await gaps(send, sentUnlessThrown);
     })();
     await vi.advanceTimersByTimeAsync(3 * BUBBLE_GAP_MS);
     await set;
@@ -178,7 +246,7 @@ describe('bubbleGaps outside a turn', () => {
     expect(outcomes(lines)).toEqual(['gap_budget_spent']);
   });
 
-  it('a typing call Linq holds does not stretch the pause past the budget', async () => {
+  it('a typing call Linq holds does not stretch the pause past the gap', async () => {
     const { log } = quietLog();
     // Linq never answers the typing call; the client gives up at SEND_TIMEOUT_MS.
     vi.stubGlobal(
@@ -197,15 +265,15 @@ describe('bubbleGaps outside a turn', () => {
 
     const sent = imessageGaps(log)(async () => {
       sends.push(Date.now());
-    });
-    await vi.advanceTimersByTimeAsync(OFF_TURN_GAP_BUDGET_MS);
-    expect(sends).toEqual([start + OFF_TURN_GAP_BUDGET_MS]);
+    }, sentUnlessThrown);
+    await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
+    expect(sends).toEqual([start + BUBBLE_GAP_MS]);
     // Let the held typing call reach its own timeout, so nothing outlives the test.
     await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS);
     await sent;
   });
 
-  it('positive control: inside a turn the set budget does not apply, the turn deadline does', async () => {
+  it('positive control: inside a turn the count does not apply, the turn deadline does', async () => {
     const { lines, log } = quietLog();
     const gaps = imessageGaps(log);
     const start = Date.now();
@@ -215,9 +283,9 @@ describe('bubbleGaps outside a turn', () => {
     };
 
     const set = runTurn(turnDeadlineSignal(60_000), async () => {
-      await gaps(send);
-      await gaps(send);
-      await gaps(send);
+      await gaps(send, sentUnlessThrown);
+      await gaps(send, sentUnlessThrown);
+      await gaps(send, sentUnlessThrown);
     });
     await vi.advanceTimersByTimeAsync(3 * BUBBLE_GAP_MS);
     await set;
@@ -225,4 +293,79 @@ describe('bubbleGaps outside a turn', () => {
     expect(sends).toEqual([start + 2_000, start + 4_000, start + 6_000]);
     expect(outcomes(lines)).toEqual([]);
   });
+});
+
+/**
+ * Intake's map goes out inside Linq's webhook, which Linq stops waiting for at its
+ * response timeout. A gap that would end at or past that moment is not taken.
+ */
+describe('bubbleGaps inside Linq’s webhook', () => {
+  it('a gap that would end past the webhook deadline is skipped, with no typing, and named', async () => {
+    const { lines, log } = quietLog();
+    const start = Date.now();
+    const sends: number[] = [];
+
+    const sent = imessageGaps(log, new Date(start + BUBBLE_GAP_MS - 1))(async () => {
+      sends.push(Date.now());
+    }, sentUnlessThrown);
+    await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
+    await sent;
+
+    expect(sends).toEqual([start]);
+    expect(linq.calls).toEqual([]);
+    expect(outcomes(lines)).toEqual(['deadline_near']);
+  });
+
+  it('positive control: the deadline bounds the set, not the gap count', async () => {
+    const { lines, log } = quietLog();
+    const start = Date.now();
+    const gaps = imessageGaps(log, new Date(start + 7_000));
+    const sends: number[] = [];
+    const send = async () => {
+      sends.push(Date.now());
+    };
+
+    const set = (async () => {
+      for (let i = 0; i < 4; i += 1) await gaps(send, sentUnlessThrown);
+    })();
+    await vi.advanceTimersByTimeAsync(4 * BUBBLE_GAP_MS);
+    await set;
+
+    // Three gaps fit before the deadline (one more than the count would allow); the
+    // fourth would end past it.
+    expect(sends).toEqual([start + 2_000, start + 4_000, start + 6_000, start + 6_000]);
+    expect(outcomes(lines)).toEqual(['deadline_near']);
+  });
+});
+
+/**
+ * The gate on round 2 found that on a real clock only the first gap ever ran: the budget
+ * was measured with Date.now() around a real setTimeout, and timer slack spent it. No fake
+ * timers here.
+ */
+describe('bubbleGaps on a real clock', () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+
+  it(
+    'every gap of a three-bubble set outside a turn runs',
+    async () => {
+      const { lines, log } = quietLog();
+      const gaps = imessageGaps(log);
+      const sends = [Date.now()];
+      const send = async () => {
+        sends.push(Date.now());
+      };
+
+      await gaps(send, sentUnlessThrown);
+      await gaps(send, sentUnlessThrown);
+
+      expect(sends).toHaveLength(3);
+      const between = sends.slice(1).map((at, i) => at - (sends[i] as number));
+      for (const gap of between) expect(gap).toBeGreaterThanOrEqual(1_900);
+      expect(outcomes(lines)).toEqual([]);
+    },
+    3 * BUBBLE_GAP_MS + 5_000,
+  );
 });
