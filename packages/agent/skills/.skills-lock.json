@@ -415,6 +415,10 @@
     "file": "inbound-photo-facts.md",
     "sha256": "725798bfa8e23b6d756745ead0a620d46ec37e3b360015a425e93a1c0c0e33ff"
   },
+  "inbound-side-turn.md": {
+    "file": "inbound-side-turn.md",
+    "sha256": "e3d4612d2dd2e6d8c6a1aba8d29d1d5a50d44a41cea39e9c86f23c90fbbf1fe7"
+  },
   "infer-memory.md": {
     "file": "infer-memory.md",
     "sha256": "19ddfbe362f31e731b996221819939de5a9c88a9fa8fb89f2e4f3939d9e0361e"

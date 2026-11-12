@@ -113,6 +113,7 @@ import {
   TurnDeferred,
   routeChannelMessage,
 } from './route';
+import { darkSideTurn } from './side-turn.fixture';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { TURN_ANSWERED_ACTION, auditTurnLedger, loadInboundContext } from './wiring';
@@ -588,6 +589,7 @@ function harness(
     consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
     burst?: InboundBurst;
+    sideTurn?: ChannelRouterDeps['sideTurn'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -666,6 +668,7 @@ function harness(
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
       burst: options.burst ?? fakeBurst(),
+      sideTurn: options.sideTurn ?? darkSideTurn(),
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       floodLine: options.floodLine ?? fakeFloodLine(),
@@ -2620,6 +2623,36 @@ describe('back-to-back texts read as one turn', () => {
 
       expect(h.transport.bodies()).toEqual(bodies);
     });
+  });
+});
+
+describe('a text behind a running turn (INBOUND_MIDTURN, side-turn.ts)', () => {
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'SM1',
+    service: 'iMessage',
+  };
+
+  it('dark: the turn asks the port once and nothing else is read, slept or sent', async () => {
+    const sideTurn = darkSideTurn();
+    const h = harness({ sideTurn, context: { reply: IMESSAGE } });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(sideTurn.calls).toEqual([`enabled:${job().family_id}`]);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('never watches a group turn, lit or not: the port is not even asked', async () => {
+    const sideTurn = darkSideTurn();
+    const h = harness({ sideTurn, context: { reply: IMESSAGE } });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(sideTurn.calls).toEqual([]);
   });
 });
 

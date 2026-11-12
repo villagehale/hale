@@ -57,6 +57,18 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true' })).toBe(true);
   });
 
+  it('keeps inbound-midturn dark by default, apart from inbound-burst, and arms one family', () => {
+    expect(isEnabled('inbound-midturn', 'fam-a', {})).toBe(false);
+    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_BURST_ENABLED: 'true' })).toBe(false);
+    const env = { INBOUND_MIDTURN_FAMILY_ALLOWLIST: 'fam-a' };
+    expect(isEnabled('inbound-midturn', 'fam-a', env)).toBe(true);
+    expect(isEnabled('inbound-midturn', 'fam-b', env)).toBe(false);
+    expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_MIDTURN_ENABLED: 'true\n' })).toBe(
+      false,
+    );
+    expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_MIDTURN_ENABLED: 'true' })).toBe(true);
+  });
+
   it('does not call the PostHog evaluator', () => {
     let called = 0;
     setFlagEvaluatorForTests(() => {

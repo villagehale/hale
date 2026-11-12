@@ -125,6 +125,8 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
+import { productionSideTurnFamily } from './side-turn';
+import { createSideTurnReader } from './side-turn-reader';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import {
   type InboundTurnLedger,
@@ -778,6 +780,14 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       log: console,
     }),
+    // A text that lands while this parent's turn runs, read beside it, on the same lazy
+    // client. Dark unless INBOUND_MIDTURN_ENABLED or the family allowlist lights it.
+    sideTurn: {
+      enabled: (familyId) => isEnabled('inbound-midturn', familyId),
+      reader: createSideTurnReader(screenClient),
+      family: productionSideTurnFamily(database),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    },
     // The words a broken turn gets, on the same lazy client the screen and the general
     // answer use — one key, one failure story, resolved only by the turn that needs one.
     apology: createTurnApology(screenClient),

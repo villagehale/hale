@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text asks a fact about the family already stated in the thread: Ada's swimming is Thursday at 16:30 at the Y. It stands on its own and needs only words, so Hale can answer now in French.",
+    "verdict": "answer",
+    "reply": "La natation d'Ada est jeudi à 16 h 30 au Y."
+  },
+  "latencyMs": 2939
+}

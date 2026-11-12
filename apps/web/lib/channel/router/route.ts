@@ -199,6 +199,7 @@ import {
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
+import { type SideTurnPorts, type SideTurnWatch, watchSideTurns } from './side-turn';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
 
@@ -515,6 +516,9 @@ export interface ChannelRouterDeps {
   /** Which back-to-back texts this turn reads together (burst.ts). Non-nullable (rule
    * #11): dark is the plan's own `flag_off`, never an absent planner. */
   burst: InboundBurst;
+  /** A text that lands while this turn runs (side-turn.ts). Non-nullable (rule #11): dark
+   * is the port's own `enabled`, never an absent watcher. */
+  sideTurn: SideTurnPorts;
   /** The words a broken turn gets, composed (apology.ts). Non-nullable (rule #11) and
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
@@ -891,7 +895,7 @@ export async function routeChannelMessage(
   const signal = turnDeadlineSignal(deadlineMs);
   const trailed: Promise<unknown>[] = [];
   const turnDeps = detachWorkstream(deps, trailed);
-  const wait: TurnWait = { end: async () => undefined };
+  const wait: TurnWait = { end: async () => undefined, side: null };
   try {
     const result = await runTurnThen(
       signal,
@@ -946,12 +950,16 @@ export async function routeChannelMessage(
     // Every exit, the deadline's included: no bubble left up and no holding line sent
     // after the turn is over.
     await wait.end();
+    // A side turn still in flight ends before this job frees the parent's key, so its text
+    // cannot start its own turn meanwhile.
+    await wait.side?.stop();
   }
 }
 
 /** What covers a parent's wait for one turn, ended however the turn ends. */
 interface TurnWait {
   end: () => Promise<void>;
+  side: SideTurnWatch | null;
 }
 
 async function routeChannelMessageInner(
@@ -995,6 +1003,11 @@ async function routeChannelMessageInner(
       ...(burst.kind === 'anchor' ? { readOutcome: burst.read } : { why: burst.why }),
     },
     'channel router: burst',
+  );
+  // From here a text that lands behind this turn may be answered beside it (side-turn.ts).
+  // Every open question stays open on a side reply.
+  wait.side = watchSideTurns(deps, job, burst, (reply) =>
+    sendReply(deps, { ...reply, openAsks: 'untouched' }),
   );
 
   const loaded = await deps.loadContext(deps.database, job);

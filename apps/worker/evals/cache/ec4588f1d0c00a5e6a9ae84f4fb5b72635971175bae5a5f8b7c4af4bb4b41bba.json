@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text is a worry about a child's health (fever of 39.5), which the instructions say to leave to another reader with an empty reply and an answer verdict.",
+    "verdict": "answer",
+    "reply": ""
+  },
+  "latencyMs": 1766
+}
