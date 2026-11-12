@@ -108,6 +108,7 @@ export const FLAGS = [
   exact('google-push-sync', 'GOOGLE_PUSH_SYNC_ENABLED'),
   exact('google-write-scopes', 'GOOGLE_WRITE_SCOPES_ENABLED'),
   exact('holding-line', 'HOLDING_LINE_ENABLED'),
+  exact('inbound-photo-facts', 'INBOUND_PHOTO_FACTS_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {

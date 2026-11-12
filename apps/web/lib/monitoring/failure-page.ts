@@ -195,6 +195,7 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_unread: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
+  linq_effect_delivery_unknown: {},
 } as const satisfies Record<string, Readonly<Record<string, readonly string[]>>>;
 
 type OpsPageVocabulary = typeof OPS_PAGE_VOCABULARY;

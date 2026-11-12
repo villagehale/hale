@@ -155,6 +155,10 @@
     "file": "coach-no-group-relay.md",
     "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
   },
+  "coach-photo-facts.md": {
+    "file": "coach-photo-facts.md",
+    "sha256": "50cb3d0323f8852c0397103a7dafbe2bc604c543b1d9f2387a625b541095e0a9"
+  },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
     "sha256": "6a2d08cba7a9806e816e433cf7e07efa70754375ef6b241c12d0f365b15a8b8c"
@@ -387,6 +391,10 @@
     "file": "inbound-lane.md",
     "sha256": "e08fada31d807c6841bb0668f487f1687be77bcf468f9584172b34ebd4974f4c"
   },
+  "inbound-photo-facts.md": {
+    "file": "inbound-photo-facts.md",
+    "sha256": "725798bfa8e23b6d756745ead0a620d46ec37e3b360015a425e93a1c0c0e33ff"
+  },
   "infer-memory.md": {
     "file": "infer-memory.md",
     "sha256": "19ddfbe362f31e731b996221819939de5a9c88a9fa8fb89f2e4f3939d9e0361e"
@@ -426,6 +434,10 @@
   "linq-edit.md": {
     "file": "linq-edit.md",
     "sha256": "04b96842d607bb4835d35798807cf49d787cd3625e89bcffc93c79aec89fced5"
+  },
+  "linq-effect.md": {
+    "file": "linq-effect.md",
+    "sha256": "2ae86641c1a1b32e9ec7f4249b15a2f63a8c0c72c6306ce86218ac815a10eae4"
   },
   "linq-sticker.md": {
     "file": "linq-sticker.md",

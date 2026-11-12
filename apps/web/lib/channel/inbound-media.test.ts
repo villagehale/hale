@@ -231,4 +231,86 @@ describe('readInboundMedia', () => {
     expect(read.unwatched).toEqual([{ kind: 'audio' }]);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it('names a PDF instead of fetching it, until documents is on (VIL-413)', async () => {
+    const pdf = Buffer.from('%PDF-1.4\n%%EOF');
+    const imageFetch = vi.fn(async () => new Response(null));
+    const documentFetch = vi.fn<ContactFetch>(async () => new Response(pdf, { status: 200 }));
+    const part = {
+      kind: 'file' as const,
+      url: 'https://cdn.example/form.pdf',
+      mime: 'application/pdf',
+    };
+    const dark = await readInboundMedia(
+      [part],
+      imageFetch as unknown as typeof fetch,
+      undefined,
+      undefined,
+      { documentFetch },
+    );
+    expect(documentFetch).not.toHaveBeenCalled();
+    expect(dark.blocks).toEqual([]);
+    expect(dark.unwatched).toEqual([{ kind: 'file' }]);
+
+    const lit = await readInboundMedia(
+      [part],
+      imageFetch as unknown as typeof fetch,
+      undefined,
+      undefined,
+      { documents: true, documentFetch },
+    );
+    expect(imageFetch).not.toHaveBeenCalled();
+    expect(documentFetch).toHaveBeenCalledTimes(1);
+    expect(documentFetch.mock.calls[0]?.[1]).toMatchObject({ redirect: 'manual' });
+    expect(lit.blocks).toEqual([
+      {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') },
+      },
+    ]);
+    expect(lit.unwatched).toEqual([]);
+  });
+
+  it('lit, refuses a PDF on a private host or a redirect off the public web (SEC_0001)', async () => {
+    const documentFetch = vi.fn<ContactFetch>(async () => {
+      return new Response(null, {
+        status: 302,
+        headers: { location: 'https://169.254.169.254/latest/meta-data' },
+      });
+    });
+    const read = await readInboundMedia(
+      [
+        { kind: 'file', url: 'https://10.0.0.5/form.pdf', mime: 'application/pdf' },
+        { kind: 'file', url: 'https://cdn.example/form.pdf', mime: 'application/pdf' },
+      ],
+      fetch,
+      undefined,
+      undefined,
+      { documents: true, documentFetch },
+    );
+    expect(documentFetch).toHaveBeenCalledTimes(1);
+    expect(documentFetch.mock.calls[0]?.[0]).toBe('https://cdn.example/form.pdf');
+    expect(read.blocks).toEqual([]);
+    expect(read.unwatched).toEqual([{ kind: 'file' }, { kind: 'file' }]);
+  });
+
+  it('lit, a body that only claims to be a PDF stays an unread file', async () => {
+    const documentFetch = vi.fn<ContactFetch>(
+      async () =>
+        new Response('<html>not a pdf</html>', {
+          status: 200,
+          headers: { 'content-type': 'application/pdf' },
+        }),
+    );
+    const read = await readInboundMedia(
+      [{ kind: 'file', url: 'https://cdn.example/form.pdf', mime: 'application/pdf' }],
+      fetch,
+      undefined,
+      undefined,
+      { documents: true, documentFetch },
+    );
+    expect(documentFetch).toHaveBeenCalledTimes(1);
+    expect(read.blocks).toEqual([]);
+    expect(read.unwatched).toEqual([{ kind: 'file' }]);
+  });
 });

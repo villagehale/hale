@@ -12,6 +12,11 @@ vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/linq/sticker')>()),
   sharedLinqStickerDecider: () => ({ decide: stickerDecide }),
 }));
+const effectDecide = vi.hoisted(() => vi.fn());
+vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/effect')>()),
+  sharedLinqEffectDecider: () => ({ decide: effectDecide }),
+}));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
@@ -60,6 +65,7 @@ import {
 } from '~/lib/village/intros/reply';
 import { type ApologyOutcome, type TurnApology, createTurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
+import { DeadlineError } from './deadline';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -5182,6 +5188,477 @@ describe('turn deadline (VIL-400)', () => {
     expect(h.transport.sent).toHaveLength(1);
     expect(h.turns.unanswered).toEqual([expect.objectContaining({ reason: 'gate_timeout' })]);
   });
+
+  it('does not send the reply when an effect read finishes after the deadline', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    effectDecide.mockRejectedValue(new DeadlineError('turn_timeout'));
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'late' } }, { status: 201 });
+    });
+    const h = harness({
+      context: {
+        body: 'we got in for swim',
+        reply: { channel: 'imessage', to: PHONE, chatId: 'chat-1', replyToMessageId: 'in-1' },
+      },
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'turn_timeout',
+    });
+    expect(posts.filter((path) => path.endsWith('/messages'))).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
+    effectDecide.mockReset();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+});
+
+describe('an iMessage effect does not send the reply twice', () => {
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+  };
+
+  function effectTurn(options: Parameters<typeof harness>[0] = {}) {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+    return harness({
+      coach: fakeCoach('You are in for swim.'),
+      context: { body: 'we got in for swim', reply: IMESSAGE },
+      ...options,
+    });
+  }
+
+  afterEach(() => {
+    effectDecide.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('does not post a plain copy when Linq accepts and returns no message id', async () => {
+    const h = effectTurn();
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.example.test/ops');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const posts: unknown[] = [];
+    const pages: string[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (url === 'https://hooks.example.test/ops') {
+        pages.push((JSON.parse(String(init?.body)) as { text: string }).text);
+        return new Response(null, { status: 200 });
+      }
+      if (new URL(url).pathname.endsWith('/messages')) posts.push(JSON.parse(String(init?.body)));
+      return Response.json({}, { status: 201 });
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(posts).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    // Nobody saw Linq take it: the row says so, and ops is paged with that row.
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out).toEqual([
+      expect.objectContaining({
+        templateKey: 'linq:effect',
+        providerMessageId: null,
+        status: 'queued',
+        errorCode: 'delivery_unknown',
+      }),
+    ]);
+    expect(auditRows(h.fake).filter((row) => row.targetId === out[0]?.id)).toEqual([
+      expect.objectContaining({ after: { form: 'effect', delivery: 'unknown' } }),
+    ]);
+    expect(pages).toEqual([
+      `Hale: ops page. site linq_effect_delivery_unknown. ref ${out[0]?.id}.`,
+    ]);
+  });
+
+  it.each([500, 502, 503, 504, 507])(
+    'does not post a plain copy when Linq answers %i, which may already have sent it',
+    async (httpStatus) => {
+      const h = effectTurn();
+      const posts: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path.endsWith('/messages')) posts.push(path);
+        return Response.json({ error: { message: 'upstream' } }, { status: httpStatus });
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_replied');
+      expect(posts).toHaveLength(1);
+      expect(h.transport.sent).toEqual([]);
+      expect(h.turns.answered).toEqual([job().channel_message_id]);
+      expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+        expect.objectContaining({
+          templateKey: 'linq:effect',
+          providerMessageId: null,
+          status: 'queued',
+          errorCode: 'delivery_unknown',
+        }),
+      ]);
+    },
+  );
+
+  /** The lane's own facts about the reply, never its words: a safety moment it marked,
+   * or a medical answer it stamped. */
+  const DEFLECTED: OffDomainVerdict = {
+    status: 'deflected',
+    lane: 'off_domain_general',
+    category: 'weather',
+    reply: 'The forecast for Saturday is sunny.',
+    replySource: 'composed',
+    medicalSource: null,
+    signal: 'recorded',
+    pendingAsk: null,
+  };
+
+  it.each([
+    [
+      'a crisis reply',
+      {
+        ...DEFLECTED,
+        lane: 'safety_critical',
+        category: 'mental-health',
+        reply: 'a written crisis reply',
+        // What the marking lane puts on every crisis reply it wrote.
+        crisisReply: true,
+        safetyReply: true,
+      },
+      'safety_reply',
+    ],
+    [
+      'a medical answer',
+      {
+        ...DEFLECTED,
+        lane: 'safety_critical',
+        category: 'medical-symptom',
+        reply: 'Fevers at this age are usually viral.',
+        replySource: 'web_grounded',
+        medicalSource: 'web_grounded',
+        signal: 'not_applicable',
+      },
+      'medical_reply',
+    ],
+    [
+      'the fixed health line',
+      {
+        ...DEFLECTED,
+        lane: 'safety_critical',
+        category: 'medical-symptom',
+        reply: 'MOMENT_CHILD_HEALTH',
+        replySource: 'fixed',
+        medicalSource: 'fixed',
+        signal: 'not_applicable',
+      },
+      'medical_reply',
+    ],
+  ] satisfies Array<[string, OffDomainVerdict, string]>)(
+    'never asks for an effect on %s, which goes out plain',
+    async (_name, verdict, reason) => {
+      const info = vi.spyOn(console, 'info');
+      const h = effectTurn({ offDomain: fakeLane(verdict) });
+      const posts: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path.endsWith('/messages')) posts.push(path);
+        return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(effectDecide).not.toHaveBeenCalled();
+      expect(posts).toEqual([]);
+      expect(h.transport.bodies()).toEqual([verdict.reply]);
+      // Its own reason, not the bucket for a reply nothing wired a read for.
+      expect(info).toHaveBeenCalledWith({ reason }, 'linq effect: not considered');
+      expect(info).not.toHaveBeenCalledWith(
+        { reason: 'no_decider' },
+        'linq effect: not considered',
+      );
+    },
+  );
+
+  it('asks for an effect on an ordinary answer from the same lane (positive control)', async () => {
+    const h = effectTurn({ offDomain: fakeLane(DEFLECTED) });
+    vi.stubGlobal('fetch', async () =>
+      Response.json({ message: { id: 'effect-out' } }, { status: 201 }),
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(effectDecide).toHaveBeenCalledTimes(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  type MarkingPorts = Parameters<typeof crisisMarkingLane>[1];
+
+  /** Production's marking lane over faked model ports. What it marks comes from the
+   * lane's own reading of the text, never from the reply's words. */
+  function markingLane(
+    database: ChannelRouterDeps['database'],
+    over: Pick<MarkingPorts, 'screen'> & Partial<MarkingPorts>,
+    moments: string[],
+  ): OffDomainLane {
+    return crisisMarkingLane(database, {
+      answer: {
+        compose: async () => {
+          throw new Error('not composed on this path');
+        },
+        continueAsk: async () => ({ status: 'unrelated' }),
+      },
+      moment: {
+        write: async (_text, which) => {
+          moments.push(which);
+          return { status: 'written', reply: 'a written safety reply' };
+        },
+      },
+      today: async () => '2026-10-20',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical text');
+        },
+      },
+      recordUnmetIntent: async () => 'recorded',
+      ...over,
+    });
+  }
+
+  const GENERAL_READING = {
+    lane: 'off_domain_general',
+    category: 'other',
+    fallback: null,
+    language: 'en',
+  } as const;
+
+  it.each([
+    [
+      'the screen read a child hurt, ill or in danger',
+      {
+        screen: {
+          read: async () => ({
+            lane: 'safety_critical',
+            category: 'child-safety',
+            fallback: null,
+            language: 'en',
+          }),
+        },
+      },
+    ],
+    [
+      'the compose read a question about the world as a child in danger',
+      {
+        screen: { read: async () => GENERAL_READING },
+        answer: {
+          compose: async () => ({ status: 'safety', kind: 'child-safety' }),
+          continueAsk: async () => ({ status: 'unrelated' }),
+        },
+      },
+    ],
+    [
+      'the reply to an open question read as a child who is ill',
+      {
+        screen: { read: async () => GENERAL_READING },
+        answer: {
+          compose: async () => {
+            throw new Error('the open question is answered, not a new one');
+          },
+          continueAsk: async () => ({ status: 'safety', kind: 'medical-symptom' }),
+        },
+        pendingAsk: async () => ({
+          status: 'open',
+          ask: { question: 'the weather tomorrow', missing: 'city' },
+        }),
+      },
+    ],
+  ] satisfies Array<[string, Pick<MarkingPorts, 'screen'> & Partial<MarkingPorts>]>)(
+    'never asks for an effect on a safety reply: %s',
+    async (_name, ports) => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      const info = vi.spyOn(console, 'info');
+      const h = effectTurn();
+      const moments: string[] = [];
+      h.deps.offDomain = markingLane(h.deps.database, ports, moments);
+      const posts: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path.endsWith('/messages')) posts.push(path);
+        return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      // The lane wrote a child-health moment, and that alone kept the effect read away.
+      expect(moments).toEqual(['child_health']);
+      expect(effectDecide).not.toHaveBeenCalled();
+      expect(posts).toEqual([]);
+      expect(h.transport.bodies()).toEqual(['a written safety reply']);
+      expect(info).toHaveBeenCalledWith({ reason: 'safety_reply' }, 'linq effect: not considered');
+    },
+  );
+
+  it('asks for an effect on an answer the same marking lane composed (positive control)', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const h = effectTurn();
+    const moments: string[] = [];
+    h.deps.offDomain = markingLane(
+      h.deps.database,
+      {
+        screen: { read: async () => GENERAL_READING },
+        answer: {
+          compose: async () => ({ status: 'composed', reply: 'Sunny all weekend.' }),
+          continueAsk: async () => ({ status: 'unrelated' }),
+        },
+      },
+      moments,
+    );
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith('/messages')) posts.push(path);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(moments).toEqual([]);
+    expect(effectDecide).toHaveBeenCalledTimes(1);
+    expect(posts).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('writes the same receipts as a plain reply: audit, thread source, editable bubble', async () => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    // VIL-616: a reply written after reading an email keeps its mark when it carries an effect.
+    const coach: ChannelCoachRuntime = {
+      async respond() {
+        return {
+          reply: 'You are in for swim.',
+          planOffer: null,
+          activityPromise: null,
+          spotWatch: null,
+          emailRead: true,
+        };
+      },
+    };
+    const h = effectTurn({ coach });
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.example.test/ops');
+    const called: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      called.push(url);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.sent).toEqual([]);
+    // A delivered effect pages nobody (the unknown delivery above does).
+    expect(called).not.toContain('https://hooks.example.test/ops');
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out).toEqual([
+      expect.objectContaining({
+        templateKey: 'linq:effect',
+        providerMessageId: 'effect-out',
+        relatedConversationId: result.conversationId,
+      }),
+    ]);
+    expect(auditRows(h.fake).filter((row) => row.targetId === out[0]?.id)).toEqual([
+      expect.objectContaining({ actionTaken: 'sms_reply_sent', after: { form: 'effect' } }),
+    ]);
+    const assistant = messageRows(h.fake).filter((row) => row.role === 'assistant');
+    expect(assistant.map((row) => [row.content, row.source, row.providerMessageId])).toEqual([
+      ['You are in for swim.', { kind: 'read_email' }, 'effect-out'],
+    ]);
+  });
+
+  it('is a failure after answering when the ledger write fails after Linq accepts', async () => {
+    const h = effectTurn();
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+    const realDb = h.deps.database;
+    const realInsert = realDb.insert.bind(realDb);
+    h.deps.database = new Proxy(realDb, {
+      get(target, prop, receiver) {
+        if (prop !== 'insert') return Reflect.get(target, prop, receiver);
+        return (table: Parameters<typeof realInsert>[0]) => {
+          if (table === schema.auditLog) throw new Error('audit insert failed');
+          return realInsert(table);
+        };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    // Answered once, and the missing record is a named failure, not a clean answer.
+    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(JSON.stringify(h.logs)).toContain('brokeAfterAnswering');
+  });
+
+  it('keeps an effect that went out while the deadline fired, and claims it', async () => {
+    const h = effectTurn({ turnDeadlineMs: 500 });
+    const posts: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal('fetch', async (url: string) => {
+      const path = new URL(url).pathname;
+      posts.push(path);
+      // Only the effect POST is held; the typing stop the turn's exit sends is not.
+      if (path.endsWith('/messages')) await held;
+      return Response.json({ message: { id: 'effect-late' } }, { status: 201 });
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'turn_timeout',
+    });
+    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    release();
+
+    // The words are on the phone: the turn is claimed so the re-drive stops at the door,
+    // and no plain copy follows.
+    await vi.waitFor(() => expect(h.turns.answered).toEqual([job().channel_message_id]));
+    await vi.waitFor(() =>
+      expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+        expect.objectContaining({ templateKey: 'linq:effect', providerMessageId: 'effect-late' }),
+      ]),
+    );
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('still sends the reply plain when Linq refuses the effect', async () => {
+    const h = effectTurn();
+    vi.stubGlobal('fetch', async () => Response.json({ error: { code: 409 } }, { status: 409 }));
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['You are in for swim.']);
+    expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: null }),
+    ]);
+  });
 });
 
 // ── a slow answer: the typing bubble stays up and one holding line goes first ──
@@ -5844,9 +6321,11 @@ describe('the reply row, written to a real database', () => {
       route: ReplyRoute,
       {
         slow = null,
+        now,
         ...options
       }: Parameters<typeof harness>[0] & {
         slow?: 'screen' | 'compose' | null;
+        now?: Date;
       } = {},
     ) {
       const turn = scripted(slow);
@@ -5857,7 +6336,9 @@ describe('the reply row, written to a real database', () => {
       });
       h.deps.database = db.database;
       // The reply rows are stamped by the database's clock, so the turn reads on it too.
-      h.deps.now = () => new Date();
+      // A pinned `now` keeps the wall-clock fact stable (VIL-473).
+      const clock = now ?? new Date();
+      h.deps.now = () => clock;
       const [inbound] = await db.database
         .insert(schema.channelMessages)
         .values({
@@ -6095,6 +6576,131 @@ describe('the reply row, written to a real database', () => {
         expect(next.said).toEqual([]);
         expect(await keptAsks(parent.familyId)).toEqual([]);
         stickerDecide.mockReset();
+      });
+
+      it('a sticker that keeps the reply sends the reply plain, with no effect read', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        vi.stubEnv('VERCEL_ENV', 'preview');
+        stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: true });
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const posted: string[] = [];
+        vi.stubGlobal('fetch', async (url: string) => {
+          posted.push(new URL(url).pathname);
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        effectDecide.mockClear();
+        posted.length = 0;
+
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+
+        // One moment per reply: the sticker peeled, the words go out plain.
+        expect(stickerDecide).toHaveBeenCalled();
+        expect(effectDecide).not.toHaveBeenCalled();
+        expect(posted.filter((path) => path.endsWith('/messages'))).toEqual([]);
+        expect(next.said).toEqual(['You are in for swim.']);
+        stickerDecide.mockReset();
+        effectDecide.mockReset();
+      });
+
+      it('a reply the model chose an iMessage effect for', async () => {
+        // Its own chat: the effect read looks up this chat's earlier effects, and another
+        // test's chat-own rows are not this one's history.
+        const EFFECT_CHAT: ReplyRoute = { ...OWN_CHAT, chatId: 'chat-effect' };
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        vi.stubEnv('VERCEL_ENV', 'preview');
+        effectDecide.mockResolvedValue({ effect: null });
+        const sent: unknown[] = [];
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/messages'))
+            sent.push(JSON.parse(String(init?.body)));
+          return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', EFFECT_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...EFFECT_CHAT, replyToMessageId: 'in-1' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+
+        expect(effectDecide).toHaveBeenCalledWith({
+          audience: 'direct',
+          parentText: 'we got in for swim',
+          reply: 'You are in for swim.',
+          // The stored zone is the users column default, UTC, which means never set:
+          // Hale does not know this parent's clock, so the model is told none.
+          parentLocalTime: null,
+          lastEffectHoursAgo: null,
+        });
+        expect(sent).toEqual([
+          {
+            message: {
+              parts: [{ type: 'text', value: 'You are in for swim.' }],
+              reply_to: { message_id: 'in-1' },
+              effect: { type: 'screen', name: 'confetti' },
+            },
+          },
+        ]);
+        // The words went out through Linq (asserted above), not the harness transport.
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+
+        // No per-chat quota: two and a half hours later the model reads that fact from
+        // send history, and its choice still plays. The parent has a zone by now.
+        await db.database
+          .update(schema.users)
+          .set({ timezone: 'America/Toronto' })
+          .where(eq(schema.users.id, parent.parentUserId));
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/messages'))
+            sent.push(JSON.parse(String(init?.body)));
+          return Response.json({ message: { id: 'effect-out-2' } }, { status: 201 });
+        });
+        await text(
+          parent,
+          'and the waitlist for gym came through too',
+          { ...EFFECT_CHAT, replyToMessageId: 'in-2' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('Gym too. Both are in.'),
+            now: new Date('2026-10-28T18:30:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+        expect(effectDecide).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            parentLocalTime: 'Wednesday 2:30 PM America/Toronto',
+            lastEffectHoursAgo: 2,
+          }),
+        );
+        expect(sent).toHaveLength(2);
+        effectDecide.mockReset();
       });
     });
 
