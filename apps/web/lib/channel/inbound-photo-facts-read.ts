@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { contactsOutside, mayHideContact } from '../format/contact-shape';
 import { registrationUrlAllowed } from '../signup/url';
+import { publicMediaUrl } from './public-url';
 
 /**
  * VIL-413 · the photo-facts read contract: the tool the model is handed, the bounds its
@@ -133,10 +134,11 @@ function seenUrl(raw: string | null): string | null {
   const flat = oneLine(raw);
   if (!flat) return null;
   const allowed = registrationUrlAllowed(flat);
-  // registrationUrlAllowed also admits http on loopback for the local mock form; a
-  // page on a photo never gets that.
-  if (!allowed.ok || !allowed.href.startsWith('https://')) return null;
-  return allowed.href;
+  if (!allowed.ok) return null;
+  // registrationUrlAllowed admits http on loopback for the local mock form and knows
+  // only some private ranges. A page on a photo is a public https name: no IPv6 literal,
+  // no CGNAT, multicast or reserved address, no internal-looking host.
+  return publicMediaUrl(allowed.href);
 }
 
 /**

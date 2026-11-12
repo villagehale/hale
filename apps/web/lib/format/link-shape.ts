@@ -204,6 +204,19 @@ function sameLink(token: string, handed: readonly string[]): boolean {
   }
 }
 
+function readCharacters(text: string): string {
+  return text.normalize('NFKC').replace(/\p{Cf}/gu, '');
+}
+
+/** Where a handed link ends in a scheme token, or null when the token is not one. */
+function handedLinkEnd(token: string, handed: readonly string[]): number | null {
+  const bare = token.replace(CLOSING_PUNCTUATION, '').length;
+  for (let end = token.length; end >= bare; end -= 1) {
+    if (sameLink(token.slice(0, end), handed)) return end;
+  }
+  return null;
+}
+
 /**
  * The text with each handed link set aside, read as a handset reads its characters. A
  * handed link counts only as itself, compared as a parsed URL, and only where all that
@@ -212,14 +225,21 @@ function sameLink(token: string, handed: readonly string[]): boolean {
  * '<link>．app', '<link>@host' and '<link>!@host' are another link.
  */
 function withoutHanded(text: string, handed: readonly string[]): string {
-  const read = text.normalize('NFKC').replace(/\p{Cf}/gu, '');
-  return read.replace(SCHEME_TOKEN, (token) => {
-    const bare = token.replace(CLOSING_PUNCTUATION, '').length;
-    for (let end = token.length; end >= bare; end -= 1) {
-      if (sameLink(token.slice(0, end), handed)) return ` ${token.slice(end)}`;
-    }
-    return token;
+  return readCharacters(text).replace(SCHEME_TOKEN, (token) => {
+    const end = handedLinkEnd(token, handed);
+    return end === null ? token : ` ${token.slice(end)}`;
   });
+}
+
+/**
+ * Whether the text carries this one link whole, by the rule {@link hasLinkBeyond} sets a
+ * handed link aside with. Never a substring: a text that says 'https://x.example/swim'
+ * does not carry 'https://x.example/sw'.
+ */
+export function carriesLink(text: string, link: string): boolean {
+  return [...readCharacters(text).matchAll(SCHEME_TOKEN)].some(
+    ([token]) => handedLinkEnd(token, [link]) !== null,
+  );
 }
 
 /**

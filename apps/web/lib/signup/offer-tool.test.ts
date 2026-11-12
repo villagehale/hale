@@ -34,6 +34,20 @@ describe('offer_signup tool guards', () => {
     expect(urlSeenThisTurn('javascript:alert(1)', 'javascript:alert(1)', [])).toBeNull();
   });
 
+  it('matches the whole URL the parent typed, never a prefix of it', () => {
+    const href = 'https://cityrec.example/swim';
+    // A sentence's own punctuation around the link is not part of it.
+    expect(urlSeenThisTurn(href, `sign Ada up: ${href}.`, [])).toBe(href);
+    expect(urlSeenThisTurn(href, `(it's ${href})`, [])).toBe(href);
+    expect(urlSeenThisTurn(href, `sign Ada up at ${href.replace('cityrec', 'CityRec')}`, [])).toBe(
+      href,
+    );
+    for (const typed of [`${href}-fall`, `${href}?term=fall`, `${href}/level-2`]) {
+      expect(urlSeenThisTurn(href, `sign Ada up at ${typed}`, []), typed).toBeNull();
+    }
+    expect(urlSeenThisTurn('https://cityrec.example/sw', `sign Ada up at ${href}`, [])).toBeNull();
+  });
+
   it('requires chat evidence to be a quote, without a word list', () => {
     expect(quotesParent('the flyer says Tuesday swim at the rec', 'Tuesday swim at the rec')).toBe(
       true,

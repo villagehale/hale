@@ -667,6 +667,12 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
         ]);
         return 'claimed';
       }),
+    recordRouted: async ({ channelMessageId }) => {
+      await database
+        .insert(schema.channelTurnAnswerClaims)
+        .values({ channelMessageId })
+        .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId });
+    },
     claimAhead: async (input, alongside) =>
       database.transaction(async (tx) => {
         const claimed = await tx

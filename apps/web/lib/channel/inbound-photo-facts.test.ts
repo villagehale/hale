@@ -9,6 +9,7 @@ import {
   inboundPhotoFactsEnabled,
   inboundPhotoFactsUserMessage,
   photoFactSignupLinks,
+  photoFactWatchLinks,
   validateInboundPhotoFacts,
 } from './inbound-photo-facts';
 
@@ -111,6 +112,29 @@ describe('validateInboundPhotoFacts', () => {
     }
   });
 
+  it.each([
+    ['https://10.0.0.1/register'],
+    ['https://[::1]/register'],
+    ['https://[fd00::1]/register'],
+    ['https://[::ffff:10.0.0.1]/register'],
+    ['https://100.64.0.1/register'],
+    ['https://224.0.0.1/register'],
+    ['https://255.255.255.255/register'],
+    ['https://169.254.169.254/latest/meta-data'],
+    ['https://2130706433/register'],
+    ['https://metadata.internal/register'],
+    ['http://harbor-rec.example/register'],
+    ['https://user:pass@harbor-rec.example/register'],
+  ])('keeps no URL a server should never be pointed at: %s', (url) => {
+    // Positive control: the same flyer with a public https page keeps it.
+    expect(validateInboundPhotoFacts(FLYER)?.registrationUrl).toBe(
+      'https://harbor-rec.example/register',
+    );
+    expect(validateInboundPhotoFacts({ ...FLYER, registration_url: url })?.registrationUrl).toBe(
+      null,
+    );
+  });
+
   it('drops a page field whole when it carries a way to reach someone (VIL-633)', () => {
     const facts = validateInboundPhotoFacts({
       ...FLYER,
@@ -163,6 +187,40 @@ describe('photoFactSignupLinks', () => {
       photoFactSignupLinks({ ...facts, registrationUrl: null, readFrom: 'image' }, 'sign us up'),
     ).toEqual([]);
     expect(photoFactSignupLinks(undefined, 'sign us up')).toEqual([]);
+  });
+
+  it("takes a PDF's URL only when the parent typed that whole URL", () => {
+    const facts = validateInboundPhotoFacts({
+      ...FLYER,
+      registration_url: 'https://harbor-rec.example/reg',
+    });
+    if (!facts) throw new Error('fixture: the flyer kept no facts');
+    const pdf = { ...facts, readFrom: 'document' as const };
+    expect(photoFactSignupLinks(pdf, 'sign Ada up: https://harbor-rec.example/reg.')).toEqual([
+      { title: 'Fall swim', url: 'https://harbor-rec.example/reg' },
+    ]);
+    expect(photoFactSignupLinks(pdf, 'sign Ada up: https://harbor-rec.example/register')).toEqual(
+      [],
+    );
+  });
+});
+
+describe('photoFactWatchLinks', () => {
+  it("never hands a watch a photo's URL the parent did not type", () => {
+    const facts = validateInboundPhotoFacts(FLYER);
+    if (!facts) throw new Error('fixture: the flyer kept no facts');
+    for (const readFrom of ['image', 'document'] as const) {
+      expect(photoFactWatchLinks({ ...facts, readFrom }, 'watch this one'), readFrom).toEqual([]);
+      expect(
+        photoFactWatchLinks({ ...facts, readFrom }, 'watch https://harbor-rec.example/register-2'),
+        readFrom,
+      ).toEqual([]);
+      // Positive control: the parent typed the whole URL.
+      expect(
+        photoFactWatchLinks({ ...facts, readFrom }, 'watch https://harbor-rec.example/register'),
+        readFrom,
+      ).toEqual([{ title: 'Fall swim', url: 'https://harbor-rec.example/register' }]);
+    }
   });
 });
 

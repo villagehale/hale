@@ -1,11 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { createQueueWithPolicy } from '@hale/tools-contracts';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { resetPosthogClientsForTests } from '~/lib/analytics/posthog-node';
 import { UNANSWERED_ROUTE, sweepUnansweredMessages } from '~/lib/analytics/unanswered';
+import {
+  CANARY_ANSWERED_ACTION,
+  CANARY_BODY,
+  CANARY_CHAT_ID_PREFIX,
+  canaryChannel,
+} from '~/lib/channel/canary/config';
+import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
+import { CANARY_SID_PREFIX } from '~/lib/channel/canary/run';
+import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
+import type { EveningRequestReader } from '~/lib/channel/checkin/request';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
@@ -29,10 +39,12 @@ import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { aggregateOpsDaily } from '~/lib/monitoring/ops-daily';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { createInboundBurst } from './burst';
+import { TURN_FOLDED_ACTION, createInboundBurst } from './burst';
 import type { BurstReaderInput, InboundBurstReader } from './burst-reader';
 import type { ChannelTurn } from './coach-runtime';
 import { createDisambiguationStore } from './disambiguation';
+import { eveningCheckInHandler } from './handlers';
+import type { OpenQuestion } from './open-questions';
 import { FakeReplyTransport } from './reply-route';
 import { type ChannelRouterDeps, type RouterStatus, routeChannelMessage } from './route';
 import { darkSideTurn } from './side-turn.fixture';
@@ -108,6 +120,8 @@ function routerDeps(
     enabled?: () => boolean;
     loadContext?: ChannelRouterDeps['loadContext'];
     coached?: ChannelTurn[];
+    handlers?: ChannelRouterDeps['handlers'];
+    questions?: ChannelRouterDeps['questions'];
   } = {},
 ): ChannelRouterDeps {
   const now = () => new Date();
@@ -116,7 +130,7 @@ function routerDeps(
     database,
     loadContext: options.loadContext ?? loadInboundContext,
     transport,
-    handlers: [],
+    handlers: options.handlers ?? [],
     offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
     coach: {
       async respond(turn) {
@@ -148,7 +162,7 @@ function routerDeps(
       status: 'recorded',
       commitmentId: '77777777-7777-4777-8777-777777777777',
     }),
-    questions: { open: async () => [] },
+    questions: options.questions ?? { open: async () => [] },
     replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
     calendarOffers: calendarOffersIdle,
     weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
@@ -417,6 +431,297 @@ describe('a turn that crashed after folding, retried with the flag off', () => {
     expect(userRows.map((row) => row.content)).toEqual(['swim thursday at 4', 'sorry 5']);
     expect(await answeredRows(db.database, first.channel_message_id)).toHaveLength(1);
     expect(await answeredRows(db.database, second.channel_message_id)).toHaveLength(1);
+  });
+});
+
+/**
+ * Postgres stamps `created_at` to the microsecond in production. pglite's clock ticks in
+ * whole milliseconds and every row above is stamped from a JS Date, so none of them has the
+ * sub-millisecond digits a production row has — the digits a value read back into a JS Date
+ * loses. Restamped to carry them, the way the door's own insert lands in production.
+ */
+async function stampLikeProduction(channelMessageId: string): Promise<void> {
+  await db.client.query(
+    "update channel_messages set created_at = date_trunc('milliseconds', created_at) + interval '417 microseconds' where id = $1",
+    [channelMessageId],
+  );
+}
+
+/** With edits on, Hale's reply is threaded under its provider id, and this file shares one
+ * database: each transport's ids must be ones no earlier test's sends used. */
+class FreshIdTransport extends FakeReplyTransport {
+  private readonly prefix = randomUUID();
+
+  override async send(
+    input: Parameters<FakeReplyTransport['send']>[0],
+  ): ReturnType<FakeReplyTransport['send']> {
+    const sent = await super.send(input);
+    return { ...sent, providerMessageId: `${this.prefix}-${sent.providerMessageId}` };
+  }
+}
+
+/** One canary tick's inbound row as the door writes it (inbound-route.ts), queued on the
+ * parent's key the way the door enqueues it. */
+async function canaryTick(
+  household: { familyId: string; parentUserId: string },
+  agoMs: number,
+): Promise<ChannelMessageReceivedJob> {
+  const at = new Date(Date.now() - agoMs);
+  const sid = `${CANARY_SID_PREFIX}${at.toISOString()}`;
+  const [row] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: household.familyId,
+      parentUserId: household.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: sid,
+      providerChatId: `${CANARY_CHAT_ID_PREFIX}${sid}`,
+      status: 'delivered',
+      body: CANARY_BODY,
+      inGroup: false,
+      sentAt: at,
+      handedOffAt: new Date(),
+      createdAt: at,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (!row) throw new Error('no canary row');
+  await stampLikeProduction(row.id);
+  const job: ChannelMessageReceivedJob = {
+    family_id: household.familyId,
+    parent_user_id: household.parentUserId,
+    channel_message_id: row.id,
+    provider_message_id: sid,
+    received_at: at.toISOString(),
+    in_group: false,
+  };
+  const created = await boss.send(QUEUE, job, {
+    id: row.id,
+    singletonKey: channelSmsNoteKey(household.parentUserId),
+    expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
+  });
+  if (!created) throw new Error('pg-boss created no job');
+  await db.client.query(
+    "update pgboss.job set start_after = now() - interval '1 minute' where id = $1",
+    [created],
+  );
+  return job;
+}
+
+/** The parent's 1:1 thread, oldest first: what the coach re-reads on the next turn. */
+async function threadedTexts(fam: { familyId: string; parentUserId: string }) {
+  const conversationId = await resolveNoteConversation(
+    fam.familyId,
+    channelSmsNoteKey(fam.parentUserId),
+    db.database,
+  );
+  if (!conversationId) return [];
+  const rows = await db.database
+    .select({ content: schema.messages.content })
+    .from(schema.messages)
+    .where(
+      and(eq(schema.messages.conversationId, conversationId), eq(schema.messages.role, 'user')),
+    )
+    .orderBy(asc(schema.messages.createdAt));
+  return rows.map((row) => row.content);
+}
+
+async function foldRows(familyId: string) {
+  return db.database
+    .select({ targetId: schema.auditLog.targetId, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, TURN_FOLDED_ACTION),
+      ),
+    );
+}
+
+describe('the inbound canary, as production ran it on 2026-11-12', () => {
+  afterEach(() => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', '');
+  });
+
+  it('answers the tick after the burst lit: a lone text is never a member of its own burst', async () => {
+    // As production runs: the parent's Linq id rides on their thread row.
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    await seedCanaryHousehold(db.database);
+    const household = await canaryChannel(db.database);
+    if (!household) throw new Error('no canary household');
+    let lit = false;
+    const reader = foldAllReader();
+    const transport = new FreshIdTransport();
+    const deps = routerDeps(transport, reader, {
+      enabled: () => lit,
+      handlers: [inboundCanaryHandler()],
+    });
+    const routed: Array<{ id: string; status: RouterStatus; handler: string | null }> = [];
+    const drain = () =>
+      drainHotQueues(
+        drainDeps(async (job) => {
+          const result = await routeChannelMessage(deps, job as ChannelMessageReceivedJob);
+          routed.push({
+            id: (job as ChannelMessageReceivedJob).channel_message_id,
+            status: result.status,
+            handler: result.handler,
+          });
+        }),
+      );
+
+    // 13:09, before INBOUND_BURST_ENABLED was lit.
+    const earlier = await canaryTick(household, 10 * 60_000 + 6_000);
+    expect(await drain()).toMatchObject({ processed: 1, failed: 0 });
+    // 13:19, the next tick, with it lit.
+    lit = true;
+    const next = await canaryTick(household, 6_000);
+    expect(await drain()).toMatchObject({ processed: 1, failed: 0 });
+
+    expect(routed).toEqual([
+      { id: earlier.channel_message_id, status: 'handled', handler: 'inbound_canary' },
+      { id: next.channel_message_id, status: 'handled', handler: 'inbound_canary' },
+    ]);
+    expect(reader.calls).toEqual([]);
+    expect(await foldRows(household.familyId)).toEqual([]);
+    expect(await threadedTexts(household)).toEqual([CANARY_BODY, CANARY_BODY]);
+    // The far-side artifact the cron's next tick reads (canary/run.ts).
+    const answered = await db.database
+      .select({ targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, household.familyId),
+          eq(schema.auditLog.actionTaken, CANARY_ANSWERED_ACTION),
+        ),
+      );
+    expect(answered.map((row) => row.targetId).sort()).toEqual(
+      [earlier.channel_message_id, next.channel_message_id].sort(),
+    );
+    expect(transport.sent).toEqual([]);
+  });
+});
+
+describe('a lone 1:1 text with the burst lit', () => {
+  afterEach(() => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', '');
+  });
+
+  it.each([
+    ['threaded by its Linq id (iMessage, as production runs)', 'true', '+14165550146'],
+    ['threaded without an id', 'false', '+14165550147'],
+  ])('%s: answered once, its words read once', async (_label, edit, phone) => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', edit);
+    const fam = await seedDirectParent(db.database, `Lone ${phone}`, phone);
+    const [job] = await directTexts(db.database, fam, `chat-lone-${phone}`, [
+      'is swim on tomorrow?',
+    ]);
+    if (!job) throw new Error('no job');
+    await stampLikeProduction(job.channel_message_id);
+    const reader = foldAllReader();
+    const coached: ChannelTurn[] = [];
+    const transport = new FreshIdTransport();
+
+    const result = await routeChannelMessage(routerDeps(transport, reader, { coached }), job);
+
+    expect(result.status).toBe('agent_replied');
+    expect(reader.calls).toEqual([]);
+    expect(coached.map((turn) => turn.body)).toEqual(['is swim on tomorrow?']);
+    expect(transport.bodies()).toHaveLength(1);
+    expect(await threadedTexts(fam)).toEqual(['is swim on tomorrow?']);
+    expect(await foldRows(fam.familyId)).toEqual([]);
+    expect(
+      await auditTurnLedger(db.database).stageOf({
+        familyId: fam.familyId,
+        channelMessageId: job.channel_message_id,
+      }),
+    ).toBe('answered');
+  });
+});
+
+describe('a text a turn already routed is never folded into an older text’s retry', () => {
+  afterEach(() => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', '');
+  });
+
+  const DAY = 'she napped well today';
+
+  it.each([
+    ['a handler that answers for itself (the evening check-in)', 'evening', '+14165550148'],
+    ['the coach, which claims its answer (the control)', 'coach', '+14165550149'],
+  ])('routed by %s', async (_label, by, phone) => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    const fam = await seedDirectParent(db.database, `Routed ${by}`, phone);
+    const chat = `chat-routed-${by}`;
+    const [ask] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: fam.familyId,
+        parentUserId: fam.parentUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'nudge',
+        status: 'sent',
+        providerChatId: chat,
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!ask) throw new Error('no ask');
+    const evening: OpenQuestion = {
+      id: ask.id,
+      kind: 'evening_check_in',
+      description: 'How the day went at home',
+      subject: 'how today went',
+      answerable: { yes: false, no: false },
+      askedAt: new Date(Date.now() - 60 * 60_000),
+      solicited: false,
+    };
+    // The evening reader is a model call; what it reads is the evals' job. Here: the day
+    // note is about the day, the swim question is a request.
+    const eveningReader: EveningRequestReader = {
+      read: async ({ text }) => ({ asks: text !== DAY }),
+    };
+    let crashes = 1;
+    const coached: ChannelTurn[] = [];
+    const transport = new FreshIdTransport();
+    const deps = routerDeps(transport, foldAllReader(), {
+      coached,
+      handlers: [eveningCheckInHandler(eveningReader)],
+      questions: { open: async () => (by === 'evening' ? [evening] : []) },
+      loadContext: async (database, job) => {
+        if (crashes > 0) {
+          crashes -= 1;
+          throw new Error('the function died before the thread');
+        }
+        return loadInboundContext(database, job);
+      },
+    });
+
+    const [older] = await directTexts(db.database, fam, chat, ['is swim on tomorrow?']);
+    if (!older) throw new Error('no older text');
+    await expect(routeChannelMessage(deps, older)).rejects.toThrow('died before the thread');
+    // The older job now waits out its retry backoff, which frees the parent's key: the
+    // newer text's own job takes it (singleton-fetch.ts holds a key only while ACTIVE).
+    const [newer] = await directTexts(db.database, fam, chat, [DAY]);
+    if (!newer) throw new Error('no newer text');
+    const own = await routeChannelMessage(deps, newer);
+    const retried = await routeChannelMessage(deps, older);
+
+    expect(own).toMatchObject(
+      by === 'evening'
+        ? { status: 'handled', handler: 'evening_check_in' }
+        : { status: 'agent_replied' },
+    );
+    expect(retried.status).toBe('agent_replied');
+    expect(coached.at(-1)?.body).toBe('is swim on tomorrow?');
+    expect(transport.bodies()).toHaveLength(by === 'evening' ? 1 : 2);
+    expect(await foldRows(fam.familyId)).toEqual([]);
+    expect(await threadedTexts(fam)).toEqual([DAY, 'is swim on tomorrow?']);
+    expect(
+      await auditTurnLedger(db.database).stageOf({
+        familyId: fam.familyId,
+        channelMessageId: newer.channel_message_id,
+      }),
+    ).toBe(by === 'evening' ? 'fresh' : 'answered');
   });
 });
 
