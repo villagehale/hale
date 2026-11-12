@@ -210,6 +210,73 @@ export function parsePlanOutput(raw: unknown): BrowserUsePlanOutput | null {
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * The answer the checkout review returns (`browser-use-checkout-review`): the saved card
+ * chosen, the last page before "place order" reached, and the total that would be charged
+ * there. Hale's code, not the agent, decides from it whether the card may be used.
+ */
+export const BROWSER_USE_REVIEW_OUTCOMES = ['ready_to_place', 'needs_human', 'error'] as const;
+
+export const BROWSER_USE_REVIEW_DETAILS = [
+  'none',
+  'captcha',
+  'verification_code',
+  'waiver',
+  'medical',
+  'unexpected_field',
+  'no_saved_card',
+  'page_error',
+] as const;
+
+const reviewOutput = z.object({
+  outcome: z.enum(BROWSER_USE_REVIEW_OUTCOMES),
+  detail: z.enum(BROWSER_USE_REVIEW_DETAILS),
+  total_cents: z.number().int().nonnegative().nullable(),
+  currency: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z]{3}$/)
+    .nullable()
+    .catch(null),
+  tax_cents: z.number().int().nonnegative().nullable(),
+  fees_cents: z.number().int().nonnegative().nullable(),
+  saved_card_selected: z.boolean(),
+  order_placed: z.boolean(),
+});
+
+export type BrowserUseReviewOutput = z.infer<typeof reviewOutput>;
+
+export const BROWSER_USE_REVIEW_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'outcome',
+    'detail',
+    'total_cents',
+    'currency',
+    'tax_cents',
+    'fees_cents',
+    'saved_card_selected',
+    'order_placed',
+  ],
+  properties: {
+    outcome: { type: 'string', enum: [...BROWSER_USE_REVIEW_OUTCOMES] },
+    detail: { type: 'string', enum: [...BROWSER_USE_REVIEW_DETAILS] },
+    total_cents: { type: ['integer', 'null'], minimum: 0 },
+    currency: { type: ['string', 'null'] },
+    tax_cents: { type: ['integer', 'null'], minimum: 0 },
+    fees_cents: { type: ['integer', 'null'], minimum: 0 },
+    saved_card_selected: { type: 'boolean' },
+    order_placed: { type: 'boolean' },
+  },
+};
+
+export function parseReviewOutput(raw: unknown): BrowserUseReviewOutput | null {
+  const parsed = reviewOutput.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 export const BROWSER_USE_PAYMENT_OUTCOMES = ['paid', 'declined', 'needs_human', 'error'] as const;
 
 export const BROWSER_USE_PAYMENT_DETAILS = [
