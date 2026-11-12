@@ -95,6 +95,10 @@ export const FLAGS = [
     allowlistEnv: 'COPARENT_DUTY_SENDS_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
   }),
+  exact('deep-followup-now', 'DEEP_FOLLOWUP_NOW_ENABLED', {
+    allowlistEnv: 'DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
   exact('email-alert', 'EMAIL_ALERT_ENABLED'),
   exact('email-alert-body', 'EMAIL_ALERT_BODY_ENABLED'),
   exact('f14', 'F14_ENABLED', {

@@ -57,6 +57,19 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true' })).toBe(true);
   });
 
+  it('keeps deep-followup-now dark by default and arms one allowlisted family', () => {
+    expect(isEnabled('deep-followup-now', 'fam-a', {})).toBe(false);
+    const env = { DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST: 'fam-a' };
+    expect(isEnabled('deep-followup-now', 'fam-a', env)).toBe(true);
+    expect(isEnabled('deep-followup-now', 'fam-b', env)).toBe(false);
+    expect(isEnabled('deep-followup-now', 'fam-b', { DEEP_FOLLOWUP_NOW_ENABLED: 'true\n' })).toBe(
+      false,
+    );
+    expect(isEnabled('deep-followup-now', 'fam-b', { DEEP_FOLLOWUP_NOW_ENABLED: 'true' })).toBe(
+      true,
+    );
+  });
+
   it('does not call the PostHog evaluator', () => {
     let called = 0;
     setFlagEvaluatorForTests(() => {

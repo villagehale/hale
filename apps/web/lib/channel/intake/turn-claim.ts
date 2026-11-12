@@ -5,12 +5,12 @@ import { eq, lt } from 'drizzle-orm';
  * VIL-237 / audit P1-4 — claiming an intake turn, so one inbound text is one turn.
  *
  * The machine's step-4 duplicate check reads `session.lastProviderId` — a value saved
- * only AFTER the turn's model calls and sends — so a Linq 15s-budget resend arriving
- * mid-turn passed it and ran the whole turn again: two welcome texts, doubled extractor
- * spend, and a last-write-wins session clobber (the exact resend race migration 0085's
- * comment records firing in production for the post-intake leg). Pre-provisioning
- * sessions write no channel_messages row, so the 0085 unique index cannot arbitrate the
- * early funnel; this claim is that arbiter's home.
+ * only AFTER the turn's model calls and sends — so a Linq resend past its webhook timeout
+ * (LINQ_WEBHOOK_TIMEOUT_MS) arriving mid-turn passed it and ran the whole turn again: two
+ * welcome texts, doubled extractor spend, and a last-write-wins session clobber (the
+ * exact resend race migration 0085's comment records firing in production for the
+ * post-intake leg). Pre-provisioning sessions write no channel_messages row, so the 0085
+ * unique index cannot arbitrate the early funnel; this claim is that arbiter's home.
  *
  * THE INSERT IS THE CLAIM (relay-claim.ts's rule). Not a select-then-insert, which is
  * two statements with a race between them, and not the in-row lastProviderId, which is

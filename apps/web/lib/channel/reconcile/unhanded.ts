@@ -39,9 +39,9 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 
 /**
  * How long a row must sit unmarked before it counts as abandoned rather than in flight.
- * A request still running holds an unmarked row for its whole life, and the webhook
- * budget is 15s — two minutes is far past any live attempt while still
- * being a delay a parent experiences as slow, not as ignored.
+ * A request still running holds an unmarked row for its whole life, and Linq's webhook
+ * timeout is 10s (LINQ_WEBHOOK_TIMEOUT_MS) — two minutes is far past any live attempt
+ * while still being a delay a parent experiences as slow, not as ignored.
  */
 export const HANDOFF_GRACE_MS = 2 * 60 * 1000;
 
