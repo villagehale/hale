@@ -1541,6 +1541,41 @@
       "when": 1794365231000,
       "tag": "0233_channel_messages_provider_service",
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1794365232000,
+      "tag": "0234_authorized_signup_activity_label",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1794365233000,
+      "tag": "0235_authorized_signup_last_asked",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1794365234000,
+      "tag": "0236_authorized_signup_ask_seq",
+      "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1794365235000,
+      "tag": "0237_authorized_signup_ask_order_uncertain",
+      "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "when": 1794365236000,
+      "tag": "0238_channel_messages_opt_out_unread",
+      "breakpoints": true
     }
   ]
 }

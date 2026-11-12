@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CgwpATavn3iyhEMvGowz9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvwwKEAgTGAI4AUIIdGhpbmtpbmcSDEtgZoxW5hJt2aZcRBoMFqLFd493twYWd1OyIjBXYKzFzXZhKENoH/MTDuv5pgJNtCwDL2KIyzzSI2iYZuDC7chEswxFLODvJNs+p30q3AuUAckFvD4nu46bWDkhGn7f433Fzt/j3wvnYPh9waPWz05mdEBhqmfpgmuQ+QBNvNWEvG6EolSCT2mFcpczR2q6KpbAmqQFnEJdOVXM+pgzeNLn9qa5LZqUP9QAhT4zK3R2nnUwNf2aioyUnTj/uNd3SSdvsAq79Hfs5HAsYATs5lN9wjccDfu9Vw9SpErYlSUGare0Xee8sZkHTYg42EL2yhaKa+6rM/zqUndbnqIdiXuk4TUPAyWgqu5QXR0tLxcnKosiSIhjy0MYUkWXAy61Tt4OqgWdA84fddQDS+vx7+ZsQ8MPvr0WtHCZhX7cLRZ9k6wYNoDFbRHe0TYmiIiX3o8vsL8uiB6Dov6QrVoN5PVA95JTJnr355swE3OSWWCE2lPxE4ZDM0WrCjLvj1wA/7xdHm2o8iCV0cE6JnlW4sts/6RcOTJ55NLIUJyWs8pyLwsillQUxVd3EpwJFEsM6qHD8msOEU23Zvu1x7IERzELiP0ED2o0F5KzvRQFp/lCxCvrrqGpcwG0L1EDV137oIUG7xFdyil6s+cU0yPIPgJ0w4nJrpe5ZERudZcgx/B2ZBWvSN1NzT8advBvgCAichnXuPv8r9c4MK+VFFqIjgGMdhLNxoEVgwuuyuZ2vnjxYvLKkj3EQSOqv7PbW6oxhizhdDLLv9zx8KjyQIfj4ouSlcXbjKlOCVo5Zflw0u2m27urTP/hzRuaVzHz8mTpo8NU6+TZYCME2vphNbfHQOIiumy3i8zQzBHZ/yPnudeUH6XRO6tSfEgnTB4liKUokE02yu1dzJF9g3Q9c4aCQrsHVXOKH8BskSQPzawMJoe263hxfTSzGEG0PNUrTxSiZvC1X0v2q49OZafPYFj6DbeV9ask7SvZPr7RtL6VRMICetUupV0kBThAJkKOnEG9bBDP2LKFkbHdRn9SCZkrYoV3lsUfSbbLoqfm2ewtdUTkuzXkFl/LBgeYT8o/HziqPslI8eaWD5STxX0SL6YLqJNA3hGT0PPdNL/xoIgtCk6zInG4nrtYkml7gx3s5xZgpLy7ea1vynIXiudumTS04Rr4b2FLPQ9ZuzyPvEaqRO9ereFBvXa9KgRquKHtJB7kgnMN2VMyTAPj4JxeUeg7btxACAeANBxrJ1r4Unrx5xsLaXP5/BANvZBlKah3zex6eQ6i6owV2rg4BUx7oDA3obLSW+Gs6p1PMKI2F9rEK1TeEp7FlhUTmMqa0ZyvHv2b1YN1PSAsWyiYmE0DeRhkXpMr7FRBMcbat/RdGeO0t5fLug9RG0W6efHDDdkonV+AO+zCfpLNp6Ot0dLDeaCfLKMSEBR25WF1S26nn9Mg278cqwD+d/8Gm6YtgGG2odEQpMJRsT2nEOZy4FKYIHTzOEij7Ic8XvSvMUzPz3KyzLIywVvyi3wigEfWUyCsPmLhxdCWnHM8ppeZ9kl7mOohK7H/KSiMWT9i/zAomKww5cw7hdyW9okoedOaQN0ZpHB1yvRgoLwamv+zj4hedN4BUDGK1HppoVPm30buwmb/AexVnD2JeYe6d6kGWrf98idAfXtEOoqVYSooIKzgZ4KH9NT2oc5YieHG5tKlLeV309/2mqI/2zVU78B9qWOxnCu79zlGs3SXMWZoLz26/lqza27f3B/Zy2yfSnB4BDJ/x7EgTXxLqiwm+IpStJ7U12xBaI+og6cjcMoTiZSwmBfkYWW1TJwPPAVMPdGGrYJbhuA2e9RJK0JMg/undy0d5PHbhZAxzZ0OUF6y0vA06qIw/lmVqpIHKUVPbL3cvOe0k5DlSZlUZaxc07UF/X91kLtW6MlZ5GZziRkoecKxaZT2LpGQ8Gy1uMNzKNVeoHX5xTQm9BpgjFQMnafcTpOCGJhglbXB8yBKzf4qQb2bOfaUlxks/+pbPTAQgotkwLFV7+LsQojnO2JHzI4r7IZUk+oAsVkLQInt2TYLl2mlblxZB2MLZ0JjJenqY6o2tWWbNhPEvFX1vKCj0YIcKh8YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_013fbGuYX2LWtrr5LHvtzcNK",
+        "name": "find_activities",
+        "input": {
+          "query": "Gymnastics Tots Saturday 10:15 registration https://gym.example-rec.test/register/gymnastics-tots-sat-1015",
+          "url": "https://gym.example-rec.test/register/gymnastics-tots-sat-1015"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 438,
+      "cache_creation_input_tokens": 21624,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 21624
+      },
+      "output_tokens": 532,
+      "output_tokens_details": {
+        "thinking_tokens": 388
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
