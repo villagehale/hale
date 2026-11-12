@@ -97,6 +97,11 @@ export type TurnFailureReason =
   /** The turn texted the parent and then broke on its own bookkeeping. They have their
    * answer; the failure is real and invisible to them. */
   | 'broke_after_answering'
+  /** An answer sent as several bubbles stopped partway: a send, a receipt write or a
+   * ledger read failed after the first bubble went. The parent has the bubbles before it,
+   * the turn is claimed, and the rest is never sent. Not `broke_after_answering`: the
+   * parent does not have the whole answer. */
+  | 'reply_set_incomplete'
   /** It broke after drafting. The receipt is the model's, from the count alone. */
   | 'drafts_receipt'
   /** They plainly answered something, the coach could not run, and Hale asked which. */

@@ -44,6 +44,7 @@ const READ_ONLY_EXPORTS = new Set([
   'readListedDirectChatId',
   'LINQ_MALFORMED_CHAT_PAGE',
   'readLinqChatPage',
+  'linqChatService',
   'localityFromLocationPayload',
   'listLinqWebhookSubscriptions',
   'listLinqChatsPage',

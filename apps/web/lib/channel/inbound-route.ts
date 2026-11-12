@@ -336,6 +336,8 @@ async function handOffToConversation(
       inboundMedia: persistableMedia(inbound.media),
       // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
       inGroup: inbound.isGroup ?? null,
+      // The service Linq said carried it: only a real iMessage chat takes several bubbles.
+      providerService: inbound.service ?? null,
       sentAt: inbound.receivedAt,
     })
     .onConflictDoNothing({

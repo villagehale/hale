@@ -358,6 +358,10 @@ jobs:
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:coach-voice-memo
 
+      # One coach answer as several iMessage bubbles. Recorded; a miss fails CI.
+      - name: Coach bubbles eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-bubbles
+
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
 

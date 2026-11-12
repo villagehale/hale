@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single question with one clear event in Chinese, correct venue, time (Sunday 2 PM Toronto time matches the UTC instant converted), indoor/free/age details all from facts. Point 3 is broken: the second bubble is a whole sentence but carries no new answer content and is not a reply to the parent; it introduces nothing new beyond an unrequested status note about the family's Sunday. Also the family's Sunday schedule is invented as a claim ('目前没有别的安排'), which violates point 5 since no calendar data supporting that was provided. The page address placement at the end is correct. Two issues mean the reply is not clean; the first bubble alone would have been the right answer.",
+    "score": 3
+  }
+}

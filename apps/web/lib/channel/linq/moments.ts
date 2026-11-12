@@ -58,6 +58,14 @@ export async function considerLinqReply(
     parentUserId: string;
     now: Date;
     fetch?: typeof fetch;
+    /**
+     * The reply goes out as several bubbles and this is the first. Every read still sees
+     * the whole reply (`outboundBody`), but nothing stands in for a set: no tapback, no
+     * edit, and a peeled sticker leaves the words to go plain. An effect rides this bubble
+     * alone, under `sendKey`: the key the bubble's own send carries, so the effect and a
+     * plain resend of the same bubble are one send to Linq. Absent: the reply is one bubble.
+     */
+    firstOfSeveral?: { text: string; sendKey: string };
     /** Bubbles the edit read may replace. Absent: no edit is considered, and that is
      * logged when the flag is on. */
     edit?: {
@@ -89,26 +97,31 @@ export async function considerLinqReply(
   },
 ): Promise<LinqMoment> {
   if (args.route.channel !== 'imessage') return { handled: false };
+  const standalone = args.firstOfSeveral === undefined;
 
-  const tapback = await applyLinqTapback({
-    channel: args.route.channel,
-    chatId: args.route.chatId,
-    inboundMessageId: args.route.replyToMessageId,
-    inboundBody: args.inboundBody,
-    outboundBody: args.outboundBody,
-    fetch: args.fetch,
-  });
-  if (tapback.status === 'replaced') {
-    const channelMessageId = await recordMoment(database, args, {
-      templateKey: 'linq:tapback',
-      actionTaken: 'linq_tapback',
-      providerMessageId: args.route.replyToMessageId,
+  if (standalone) {
+    const tapback = await applyLinqTapback({
+      channel: args.route.channel,
+      chatId: args.route.chatId,
+      inboundMessageId: args.route.replyToMessageId,
+      inboundBody: args.inboundBody,
+      outboundBody: args.outboundBody,
+      fetch: args.fetch,
     });
-    return { handled: true, channelMessageId, threadBody: null };
+    if (tapback.status === 'replaced') {
+      const channelMessageId = await recordMoment(database, args, {
+        templateKey: 'linq:tapback',
+        actionTaken: 'linq_tapback',
+        providerMessageId: args.route.replyToMessageId,
+      });
+      return { handled: true, channelMessageId, threadBody: null };
+    }
   }
 
   if (linqMessageEditEnabled()) {
-    if (!args.edit) {
+    if (!standalone) {
+      console.info({ reason: 'several_bubbles' }, 'linq edit: not considered');
+    } else if (!args.edit) {
       console.info({ reason: 'no_decider' }, 'linq edit: not considered');
     } else if (args.edit.candidates.length === 0) {
       console.info({ reason: 'nothing_editable' }, 'linq edit: not considered');
@@ -186,8 +199,9 @@ export async function considerLinqReply(
             actionTaken: 'linq_sticker',
             providerMessageId: inboundMessageId,
           });
-          // One moment per reply: the words, if they still go, go plain.
-          if (sticker.sendReply) return { handled: false };
+          // One moment per reply: the words, if they still go, go plain. A sticker
+          // never stands in for an answer of several bubbles.
+          if (sticker.sendReply || !standalone) return { handled: false };
           return { handled: true, channelMessageId, threadBody: null };
         }
       }
@@ -222,7 +236,9 @@ export async function considerLinqReply(
   const sent = await applyLinqEffect({
     decider: args.effect.decider,
     chatId,
-    text: args.outboundBody,
+    ...(args.firstOfSeveral
+      ? { text: args.firstOfSeveral.text, sendKey: args.firstOfSeveral.sendKey }
+      : { text: args.outboundBody }),
     replyToMessageId: args.route.replyToMessageId,
     read: {
       audience: args.effect.audience,

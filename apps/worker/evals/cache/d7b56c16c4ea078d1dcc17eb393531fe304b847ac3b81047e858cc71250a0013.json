@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgxM1CyTT8GcT4ET7FkSD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSiwgKEAgTGAI4AUIIdGhpbmtpbmcSDLUzADlnzvJ8rcFe6BoMYiKClUQOBdGQi2zQIjBmLDqexLFN9vJ/D68Km6T6vgwIGR03309U7jYBAaZU4vTDulF3JD8XMvB4g6iKS/cqqAeiWadtn9NR8QCuMDmUcNxUa1f6hlDkrxaNaJ/7zoQEQcVK0/JqJYusRf2XvVbWnHIbQ6w4CyXX5UkyJIpG4YNEYjbMCQLyxVci0jSOl6KMEw1+zSNkoPjL9CUPPJpXbL+IfdjGaz4raThxYbuC4S44iN+PjNiWqTxtOI48FYApf6Dz6folAc6UfhOSG5Trh+N0cQzRbL6rs4vgpi+Ihfg1vXUnJ+EErs0yO90TY4tmr18Q44AETfk+vlKdXYbfiVF1KM9XNak99Vur7Omf03ypr9VRF6Xo/f/3O71JpJb4J5ko3iPgvMVXzxdCk7/Kx+D2RD8CJYiRIdx3tYMzHL7Tkzv4uDiIylh9FlfuvQGYmEC6z5AZG/zPpZ21YeC5Kc9c7czk5pLJ/iYJ6UA9kQ0iBlrA3UsDbpF9NljOdl0bjj7QJ5L2cZN724kkWysfIju+vlK9NbHU96LdIoNZdaL0MG91Yw1e6vwhbJoiBmr7nbWgfaSMRz7IdwQk9a2tFodMaEConhPA/Z8pgWqbotMn/EmmxjM66OJlCjbVlJdCquHQlSAP7p2+9zZNIbOIH1tHquZGS8rrj1a6pMqwOorMZfuMgzgPdng7Ff/grRKOg1pdRuygEc9ikC/BhKu5LxvQJ3yNp9OzlSo19R7Si98SEL0rVDMO9yVmXMiLct/GQyWMpAZd32CiA4Ia/xVGovLzGWa9QytfAXkTPzpNTb1VVGjdIMewm+B8hH63xxhVmf7SIHURleMbZlj0T3/en0gT6avX2oXRjl2iEkB2w3f/WDCevWEJjTVLa5V2tMq1YLZMVITTBH+F4UrybsGUd2c1eJfrlasgGwiON5NKwvm376QqMdAn3GDmtTjmL43tzIqXAiqdmsL6aKQtZPlIu9XlaBun/RRguxMLA8EBWIC6FJ2ZFFyH48DWYbojumaVvfiduzn6KgtvdlU6qV9qS1QvAdPRlW2p1nPpf70vtgt9PR4dQd8xKtZXdE1HU9WZXSce+GPohugbzrUvmhIIOXufK/cGMjsFTmZHuLxq3JyF6rYplQC1MjGeapQLi20mc/FuwpAp2aLom4KcZ9vAkmJtwniAo1JqKLChlnGPX/8a9+rW/IYVWlBrqAGsw+AZMu97m+PJR1bBFeRuiFHcWKG7e6KhkACeUxwZr0zeQwEohlaunvnh5tO8hTmmRClerF+tMbzwBkCwk5NOS0nkVXd8u7t/Yyw367Ymmly7OC1iqGjiuJUHGi0YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "宝宝20个月，这两个都合适。\n\nParent and tot swim 在 Wellesley Community Centre 的泳池，周六 9:30，1月9日到3月13日，6到36个月，家长一起下水。[link-fd81ce]\n\nLittle splashers 在 Regent Park Aquatic Centre，周日 10:15，1月10日到3月14日，12到36个月，家长也下水。[link-bf3175]\n\n两个都是12月1日早上7:00开放报名。你们周六还是周日更方便？"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 2129,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2129,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 325,
+      "output_tokens_details": {
+        "thinking_tokens": 150
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

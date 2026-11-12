@@ -1534,6 +1534,13 @@
       "when": 1794365230000,
       "tag": "0232_drop_civic_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1794365231000,
+      "tag": "0233_channel_messages_provider_service",
+      "breakpoints": true
     }
   ]
 }

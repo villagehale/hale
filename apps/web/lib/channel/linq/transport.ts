@@ -1306,6 +1306,8 @@ export async function sendLinqEffect(input: {
   replyTo?: LinqReplyTarget;
   /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
   mention?: string;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   if (!input.text.trim()) throw new LinqSendError('invalid_parts', 400, true);
@@ -1315,6 +1317,7 @@ export async function sendLinqEffect(input: {
     replyTo: input.replyTo,
     effect: input.effect,
     ...(input.mention ? { mention: input.mention } : {}),
+    ...(input.sendKey ? { sendKey: input.sendKey } : {}),
     fetch: input.fetch,
   });
 }
@@ -1349,6 +1352,11 @@ async function findLinqDirectChat(input: {
 export type LinqChatService = 'iMessage' | 'SMS' | 'RCS' | 'other';
 
 const LINQ_CHAT_SERVICES: ReadonlySet<string> = new Set(['iMessage', 'SMS', 'RCS']);
+
+/** A service string Linq sent, or `other` for one this code does not know. */
+export function linqChatService(value: string): LinqChatService {
+  return LINQ_CHAT_SERVICES.has(value) ? (value as LinqChatService) : 'other';
+}
 
 /** One page of the account's chats, reduced to what a count needs. Handles and
  * display names never leave the parser (rule #1). */

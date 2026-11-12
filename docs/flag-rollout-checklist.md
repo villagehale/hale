@@ -46,6 +46,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `BROWSER_USE_WATCH_ENABLED` | `apps/web/lib/signup/browser-use/watch/flag.ts:12` | `true` | OFF | empty, or `false` | Barton |
 | `CALENDAR_ALERT_ENABLED` | `apps/web/lib/channel/lanes.ts:18` (compared at :26) | `true` | OFF | unset | Barton |
 | `CHECK_IN_ANCHOR_ENABLED` | `apps/web/lib/channel/checkin/sweep.ts:97` | `true` | OFF | `false` | Sloane |
+| `COACH_BUBBLES_ENABLED` | `apps/web/lib/channel/coach/bubbles.ts:14` (the allowlist arms families, :11) | `true` | OFF | `false` | Sloane |
 | `COLD_START_INTENT_CLASSIFIER_ENABLED` | none on main (#868) | none | no reader on main | none (no reader) | Eugene |
 | `COLD_START_LADDER_COPY_LOCKED` | none on main (#868) | none | no reader on main | none (no reader) | Sloane |
 | `COLD_START_LADDER_ENABLED` | `apps/web/lib/channel/intake/cold-start/flags.ts:18` (`strictTrue` at :11-13) | `true` | OFF | `false` | Noah |
@@ -147,6 +148,7 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | Allowlist | Global flag it pairs with |
 | --- | --- |
 | `BOOKED_DETECTION_FAMILY_ALLOWLIST` | `BOOKED_DETECTION_ENABLED` |
+| `COACH_BUBBLES_FAMILY_ALLOWLIST` | `COACH_BUBBLES_ENABLED` |
 | `COPARENT_DUTY_ASKS_FAMILY_ALLOWLIST` | `COPARENT_DUTY_ASKS_ENABLED` |
 | `COPARENT_DUTY_SENDS_FAMILY_ALLOWLIST` | `COPARENT_DUTY_SENDS_ENABLED` |
 | `COPARENT_SPLIT_DUTY_FAMILY_ALLOWLIST` | `COPARENT_SPLIT_DUTY_ENABLED` |
@@ -249,6 +251,7 @@ Code is merged for every row.
 | `BOOKED_DETECTION_ENABLED` | A booking confirmation is stored as a held spot. | `activity_booking_recorded` rows, and parent alerts that fire for mail the backfill should have stayed quiet on. | `false` | Noah |
 | `CALENDAR_ALERT_ENABLED` | The 1:1 calendar text and the Linq household calendar notice (lane notes under [Every flag](#every-flag)). | The common checks above. | unset | Barton |
 | `CHECK_IN_ANCHOR_ENABLED` | The evening check-in can name that day's activity. The lane still needs F14. | An evening text that names an activity from a different day. | `false` | Sloane |
+| `COACH_BUBBLES_ENABLED` | On a 1:1 iMessage chat the coach's answer goes out as several short bubbles, in order, the way a friend texts. The model decides how many and what each says (the `coach-bubbles` skill); code only splits where it left a blank line. Groups, SMS, and every other reply keep one text. Each bubble has its own `channel_messages` row keyed `turn-reply:<inbound id>:<i>`, its own `sms_reply_sent` audit row and its own thread row; the turn is claimed once, after the first bubble. An iMessage effect rides the first bubble. A bubble that fails after the first is not re-sent: the turn records `broke_after_answering` and logs `reply_set_incomplete` with the counts. Dark leaves the coach skill bytes unchanged. | `reply_set_incomplete` log lines; the `the answer goes as bubbles` count per turn (over-splitting). Probe: one 1:1 iMessage turn writes one keyed row per bubble and one `sms_turn_answered` row. | `false` | Sloane |
 | `COLD_START_LADDER_ENABLED` | A new parent gets the short ladder (find, name, calendar, email, signup offer) instead of the old hello. | Ladder sends in `channel_messages` for families still on the first session. | `false` | Noah |
 | `COPARENT_DUTY_ASKS_ENABLED` | Duty replies are parsed. This flag does not send. | `coparent duty shadow` log lines, and parse misses against the duty fixtures. | `false` | Noah |
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | A parent can be told the split looks lopsided. | More than one such note to the same family in a month. | `false` | Sloane |

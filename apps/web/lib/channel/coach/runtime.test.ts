@@ -1264,6 +1264,58 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
   });
 });
 
+describe('channelCoachRuntime · several bubbles on a 1:1 iMessage turn', () => {
+  const TWO_THOUGHTS = 'Swim is Saturday at 10.\n\nWant me to add it to your calendar?';
+
+  function seeing(seen: string[]): ChannelCoachPorts['runAgent'] {
+    return async (args) => {
+      seen.push(promptOf(args));
+      return answering(TWO_THOUGHTS)(args);
+    };
+  }
+
+  it('lit: the bubble addendum rides last and the reply breaks between bubbles', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const { reply } = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), replyBubbles: true },
+      [],
+    );
+
+    expect(seen[0]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(reply).toBe('Swim is Saturday at 10.\nWant me to add it to your calendar?');
+  });
+
+  it('dark: the same skill bytes as a turn that never heard of bubbles, and one line', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const dark = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), replyBubbles: false },
+      [],
+    );
+    await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(turn(), []);
+
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[0]).toBe(seen[1]);
+    expect(dark.reply).toBe('Swim is Saturday at 10. Want me to add it to your calendar?');
+  });
+
+  it('a group turn never splits, even when asked to', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const { reply } = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), audience: 'group', replyBubbles: true },
+      [],
+    );
+
+    expect(seen[0]).not.toContain(addendum);
+    expect(reply).not.toContain('\n');
+  });
+});
+
 describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
   const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
   const FLYER = {

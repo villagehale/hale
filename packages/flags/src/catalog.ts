@@ -79,6 +79,10 @@ export const FLAGS = [
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
+  exact('coach-bubbles', 'COACH_BUBBLES_ENABLED', {
+    allowlistEnv: 'COACH_BUBBLES_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
   exact('cold-start-ladder', 'COLD_START_LADDER_ENABLED'),
   exact('coparent-duty-asks', 'COPARENT_DUTY_ASKS_ENABLED', {
     allowlistEnv: 'COPARENT_DUTY_ASKS_FAMILY_ALLOWLIST',
