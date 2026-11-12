@@ -8,9 +8,10 @@
 // REAL post-processor and split (`toSmsBubbles`, `joinReplyBubbles`, `splitReplyBubbles`),
 // so the bubbles graded are the bubbles the router would send, the offer `offer_full_plan`
 // registered appended to the last one as runtime.ts appends it. Calendar and village tools
-// are fixture stubs; `find_activities` is the real definition with a fixture result, and
-// `promise_activity_followup`, `offer_full_plan` and `get_framework_guidance` are the real
-// tools.
+// are fixture stubs, `lookup_week` reading a case's events through the production week
+// window (lib/fixture-week.mjs); `find_activities` is the real definition with a fixture
+// result, and `promise_activity_followup`, `offer_full_plan` and `get_framework_guidance`
+// are the real tools.
 //
 // Objective: the shape of the set and the tools a case must call (coach-bubbles-grade.mjs).
 // Judge: the question, the language and the splitting, against each case's rubric. The
@@ -36,6 +37,7 @@ import {
   COACH_BUBBLES_TIME_ZONE,
 } from './coach-bubbles-fixtures.mjs';
 import { bubbleShapeFailures } from './coach-bubbles-grade.mjs';
+import { fixtureWeek } from './lib/fixture-week.mjs';
 import {
   DRY_SUBJECT_PLAN,
   JUDGE_MIN,
@@ -106,9 +108,14 @@ function contextFor(fixture) {
   };
 }
 
-/** What `lookup_week` returns for a case: its events, on the family's clock. */
-function weekFor(fixture) {
-  return { timeZone: COACH_BUBBLES_TIME_ZONE, events: fixture.events ?? [] };
+/** What `lookup_week` returns for a case: its events in the week asked for, on the family's
+ * clock, and the Monday that week starts on. */
+async function weekFor(fixture, input = {}) {
+  const { weekStart, events } = await fixtureWeek(fixture.events ?? [], input, {
+    now: COACH_BUBBLES_NOW,
+    timeZone: COACH_BUBBLES_TIME_ZONE,
+  });
+  return { weekStart, result: { timeZone: COACH_BUBBLES_TIME_ZONE, events } };
 }
 
 function toolsFor(agent, linkRef, real, fixture, calls, turn, listed) {
@@ -128,10 +135,11 @@ function toolsFor(agent, linkRef, real, fixture, calls, turn, listed) {
       name: 'lookup_week',
       description: "THIS family's week: every calendar item. weekOffset 0 is the current week.",
       inputSchema: passthrough(),
-      handler: async () => {
+      handler: async (input) => {
         calls.push('lookup_week');
-        turn.week = weekFor(fixture);
-        return turn.week;
+        const week = await weekFor(fixture, input);
+        turn.weeks.push(week);
+        return week.result;
       },
     }),
     agent.defineTool({
@@ -330,13 +338,17 @@ async function main() {
   console.log(SAMPLING_RULE);
   // What the judge may hold the reply to. The week is what `lookup_week` returned, and only
   // when the turn read it: an empty week a turn read is a fact ("nothing else that
-  // afternoon"), not an invention.
-  const factsFor = (fixture, turn = { week: null, guidance: [] }) => ({
+  // afternoon"), not an invention. A turn that read more than one week gets each, with
+  // the Monday it starts on, so this week's empty read is not taken for next week's.
+  const factsFor = (fixture, turn = { weeks: [], guidance: [] }) => ({
     now: COACH_BUBBLES_NOW,
     timeZone: COACH_BUBBLES_TIME_ZONE,
     children: fixture.children,
     village: (fixture.village ?? []).map(({ url, ...pick }) => pick),
-    ...(turn.week ? { weekRead: turn.week } : {}),
+    ...(turn.weeks.length === 1 ? { weekRead: turn.weeks[0].result } : {}),
+    ...(turn.weeks.length > 1
+      ? { weekRead: turn.weeks.map(({ weekStart, result }) => ({ weekStart, ...result })) }
+      : {}),
     drafted: fixture.draftedWhen ?? null,
     ...(fixture.web ? { web: fixture.web } : {}),
     ...(turn.guidance.length > 0 ? { guidance: turn.guidance } : {}),
@@ -350,7 +362,10 @@ async function main() {
     const fixture = byId.get(row.fixture);
     const verdict = await calibrationJudge(row.id, {
       parentText: fixture.text,
-      facts: factsFor(fixture, row.weekRead ? { week: weekFor(fixture), guidance: [] } : undefined),
+      facts: factsFor(
+        fixture,
+        row.weekRead ? { weeks: [await weekFor(fixture)], guidance: [] } : undefined,
+      ),
       rubric: fixture.rubric,
       bubbles: row.bubbles,
     });
@@ -366,7 +381,7 @@ async function main() {
   async function drawOnce(fixture, draw) {
     const tag = drawTag(fixture.id, draw);
     const calls = [];
-    const turn = { promises: [], offer: null, guidance: [], week: null };
+    const turn = { promises: [], offer: null, guidance: [], weeks: [] };
     const failures = [];
     const run = await agent.runAgent({
       skill,
