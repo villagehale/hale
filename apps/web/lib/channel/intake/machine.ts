@@ -379,6 +379,12 @@ export type IntakeOutcome =
       // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
       // nothing of it is answered into the group.
       reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake' | 'opted_out';
+      /**
+       * On the hand-off (`no_open_conversation`) only, set by {@link handleInboundSms}: this
+       * turn's opt-out read failed, so the text may be a stop. It rides to the router with
+       * the text, so no ask moves on it whether or not the hold row was written.
+       */
+      optOutUnread?: true;
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -432,6 +438,26 @@ export async function handleInboundSms(
   database: Database,
   inbound: Inbound,
   deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const read = { optOutUnread: false };
+  const outcome = await runIntakeTurn(database, inbound, deps, read);
+  // The hand-off carries a failed opt-out read with the text itself, so the router's guard
+  // never rests on the hold row alone: settleOptOutHold may fail to write it.
+  if (
+    outcome.status === 'ignored' &&
+    outcome.reason === 'no_open_conversation' &&
+    read.optOutUnread
+  ) {
+    return { ...outcome, optOutUnread: true };
+  }
+  return outcome;
+}
+
+async function runIntakeTurn(
+  database: Database,
+  inbound: Inbound,
+  deps: IntakeDeps,
+  read: { optOutUnread: boolean },
 ): Promise<IntakeOutcome> {
   const now = deps.now ?? inbound.receivedAt;
 
@@ -505,6 +531,7 @@ export async function handleInboundSms(
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
     });
+    read.optOutUnread = reading === null;
     await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
       return handleStop(

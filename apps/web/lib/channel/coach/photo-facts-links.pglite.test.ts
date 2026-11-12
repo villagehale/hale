@@ -102,6 +102,7 @@ async function toolsFor(body: string, photoFacts: TurnPhotoFacts) {
     undefined,
     undefined,
     'CA',
+    noop,
   );
   const pick = (name: string) => {
     const tool = tools.find((candidate) => candidate.name === name);
@@ -117,6 +118,7 @@ async function toolsFor(body: string, photoFacts: TurnPhotoFacts) {
         pick('offer_signup'),
         {
           child: 'Ada',
+          activity: 'Fall swim',
           source: 'flyer',
           registrationUrl,
           evidence: 'Fall swim, Tuesdays 4:30 at Harbor Rec',

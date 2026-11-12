@@ -1,8 +1,12 @@
 import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
+import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { carriesLink } from '~/lib/format/link-shape';
+import { signupProviderHost } from './consent';
 import { authorizedSignupEnabled } from './flag';
 import {
   type OfferSignupResult,
@@ -10,6 +14,15 @@ import {
   sessionsFromModel,
 } from './offer-from-facts';
 import { SIGNUP_OFFER_SOURCES, type SignupOfferWriter } from './offer-writer';
+import { foldWords, quotesParent, quotesParentWords } from './parent-quote';
+import { registrationPlanRunEnabled } from './plan/flag';
+import { untrustedActivityLabel } from './plan/reader';
+import type { PlanReplyWriter } from './plan/writer';
+import {
+  type SignupSupersedeReader,
+  type SupersedeAsk,
+  createSignupSupersedeReader,
+} from './supersede-reader';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -23,9 +36,28 @@ import { registrationUrlAllowed } from './url';
  * The URL is never the model's: it must already appear in this turn's parent
  * words or in a page a tool handed over. Chat evidence must be a quote from
  * those words. Nothing here matches keywords.
+ *
+ * The program name an ask is stored under is what later names it in the parent's words, so
+ * it is never only the model's: see {@link storedActivityLabel}.
+ *
+ * A text the door's opt-out read could not read may be a stop: on that turn, and while an
+ * earlier text of the parent's is held unread, the tool creates and closes nothing.
+ *
+ * A sender whose group seat may not authorize a sign-up creates and closes nothing. A
+ * family may hold several asks at once; an earlier ask of this parent closes only when a
+ * model reading of their words this turn says this one replaces it, in words of theirs that
+ * name it (see `toSupersedeReading`), and an unreadable reading records nothing. One the
+ * reading dropped in words that do not name it stays open beside the new ask, and the
+ * result lists it (`keptOpen`).
  */
 
 export const OFFER_SIGNUP_TOOL = 'offer_signup';
+
+/** An offer `offer_signup` recorded this turn, with the text the coach was handed to send. */
+export interface RecordedSignupOffer {
+  offerId: string;
+  text: string;
+}
 
 export interface SignupOfferToolPorts {
   database: Database;
@@ -34,9 +66,21 @@ export interface SignupOfferToolPorts {
   now: Date;
   /** The parent's message this turn, verbatim. */
   parentWords: string;
+  /** The door could not read this turn's text as a stop or not (`ChannelTurn.optOutUnread`). */
+  optOutUnread: boolean;
   /** Pages a search or extract put in front of the parent this turn. */
   linksThisTurn: () => readonly { title: string; url: string }[];
   writer?: SignupOfferWriter;
+  /** The day-before plan's writer. Undefined uses the reply model. */
+  planWriter?: PlanReplyWriter;
+  /** Reads whether this ask replaces an earlier one. Undefined uses the reply model. */
+  supersedeReader?: SignupSupersedeReader;
+  /**
+   * Handed every offer this turn recorded. The router stamps it as asked once the reply that
+   * carries its text went out, so an offer whose text never reached the parent never takes
+   * their bare yes.
+   */
+  onRecorded: (offer: RecordedSignupOffer) => void;
 }
 
 const sessionSchema = z.object({
@@ -48,14 +92,7 @@ const sessionSchema = z.object({
   priceCents: z.number().int().nullable(),
 });
 
-function fold(text: string): string {
-  return text.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-export function quotesParent(parentWords: string, quote: string): boolean {
-  const q = fold(quote);
-  return q.length > 0 && fold(parentWords).includes(q);
-}
+export { quotesParent };
 
 export function urlSeenThisTurn(
   raw: string,
@@ -69,7 +106,59 @@ export function urlSeenThisTurn(
   return null;
 }
 
+/**
+ * The program name an ask is stored, and later named, by. The coach model's `activity` is
+ * kept only when it is whole words the parent wrote this turn or of a page title a tool
+ * handed over this turn. Otherwise the registration page's own title as that tool gave it
+ * stands in, cleaned; with no such page, the ask has no name and is named by its site alone.
+ */
+function storedActivityLabel(input: {
+  activity: string;
+  parentWords: string;
+  links: readonly { title: string; url: string }[];
+  registrationUrl: string;
+  href: string;
+}): string | null {
+  const activity = input.activity.replace(/\s+/g, ' ').trim();
+  const sources = [input.parentWords, ...input.links.map((link) => link.title)];
+  if (sources.some((source) => quotesParentWords(source, activity))) return activity;
+  const page = input.links.find(
+    (link) => link.url === input.href || link.url === input.registrationUrl,
+  );
+  return page ? untrustedActivityLabel(page.title) : null;
+}
+
 const OFFSET_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** This parent's own asks still waiting on a yes, newest first. Never a co-parent's. */
+async function ownPendingAsks(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<SupersedeAsk[]> {
+  const offers = schema.authorizedSignupOffers;
+  const rows = await database
+    .select({
+      id: offers.id,
+      activityLabel: offers.activityLabel,
+      providerHost: offers.providerHost,
+      sessions: offers.sessions,
+    })
+    .from(offers)
+    .where(
+      and(
+        eq(offers.familyId, input.familyId),
+        eq(offers.parentUserId, input.parentUserId),
+        eq(offers.status, 'pending'),
+      ),
+    )
+    .orderBy(desc(offers.createdAt));
+  return rows.map((row) => ({
+    offerId: row.id,
+    activity: row.activityLabel,
+    host: row.providerHost,
+    sessionLabels: row.sessions.map((session) => session.label),
+  }));
+}
 
 /** An open time the model copied with its offset. A time with no zone is not one. */
 export function planOpensAtFromModel(raw: string | null): Date | null {
@@ -82,9 +171,10 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
   return defineTool({
     name: OFFER_SIGNUP_TOOL,
     description:
-      "Call when Hale saw a real registration — from an email, a calendar, a flyer, or this chat — and you are offering to try signing a child up. `child` is the child's first name as this family knows them. `registrationUrl` must be a page already in this turn (the parent's words, or a link a tool returned). `evidence` is what Hale saw; for chat it must be a quote from the parent's message. `opensAt` is when registration opens, as an ISO 8601 time with its UTC offset, only when the page or message states it; otherwise null. After `recorded`, send the returned `text` as your message. Do not invent a different offer.",
+      "Call when Hale saw a real registration — from an email, a calendar, a flyer, or this chat — and you are offering to try signing a child up. `child` is the child's first name as this family knows them. `activity` is the program's name as the page or the parent gives it. `registrationUrl` must be a page already in this turn (the parent's words, or a link a tool returned). `evidence` is what Hale saw; for chat it must be a quote from the parent's message. `opensAt` is when registration opens, as an ISO 8601 time with its UTC offset, only when the page or message states it; otherwise null. A family can have several sign-up asks open at once: `replaced` lists any earlier ask of this parent that their words this turn dropped for this one, and is empty when every earlier ask stays open. After `recorded`, send the returned `text` as your message. Do not invent a different offer.",
     inputSchema: z.object({
       child: z.string().min(1).max(80),
+      activity: z.string().min(1).max(120),
       source: z.enum(SIGNUP_OFFER_SOURCES),
       registrationUrl: z.string().min(1).max(2048),
       evidence: z.string().min(1).max(1600),
@@ -97,6 +187,22 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
     handler: async (input, ctx) => {
       if (ctx.familyId !== ports.familyId) {
         throw new Error("That family is not this turn's family.");
+      }
+      if (ports.optOutUnread || (await isParentHeld(ports.database, ports.parentUserId))) {
+        console.warn(
+          { outcome: 'signup_opt_out_unread', thisText: ports.optOutUnread },
+          'offer_signup: a text of theirs may be an unread stop - nothing recorded or closed',
+        );
+        return { recorded: false as const, reason: 'opt_out_unread' };
+      }
+      if (
+        await declinePrivilegedGroupSeat(ports.database, {
+          familyId: ports.familyId,
+          userId: ports.parentUserId,
+          capability: 'signup',
+        })
+      ) {
+        return { recorded: false as const, reason: 'group_member_not_authorized' };
       }
       const href = urlSeenThisTurn(input.registrationUrl, ports.parentWords, ports.linksThisTurn());
       if (!href) {
@@ -111,14 +217,50 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
       const sessions = sessionsFromModel(input.sessions as SignupSession[]);
       if (!sessions) return { recorded: false as const, reason: 'sessions' };
 
-      const wanted = fold(input.child);
+      const wanted = foldWords(input.child);
       const children = await ports.database
         .select({ id: schema.children.id, name: schema.children.name })
         .from(schema.children)
         .where(eq(schema.children.familyId, ports.familyId));
-      const matches = children.filter((child) => fold(child.name) === wanted);
+      const matches = children.filter((child) => foldWords(child.name) === wanted);
       if (matches.length !== 1 || !matches[0]) {
         return { recorded: false as const, reason: 'child_missing' };
+      }
+
+      const activityLabel = storedActivityLabel({
+        activity: input.activity,
+        parentWords: ports.parentWords,
+        links: ports.linksThisTurn(),
+        registrationUrl: input.registrationUrl,
+        href,
+      });
+      const earlier = await ownPendingAsks(ports.database, {
+        familyId: ports.familyId,
+        parentUserId: ports.parentUserId,
+      });
+      let supersede: string[] = [];
+      let keptOpen: SupersedeAsk[] = [];
+      if (earlier.length > 0) {
+        const reader =
+          ports.supersedeReader ?? createSignupSupersedeReader(() => resolveReplyClient(undefined));
+        const read = await reader.read({
+          text: ports.parentWords,
+          next: { activity: activityLabel, host: signupProviderHost(new URL(href).hostname) },
+          earlier,
+        });
+        // Whether the parent dropped an earlier ask is unknown: record nothing, close nothing.
+        if (read === null) {
+          console.warn({ earlier: earlier.length }, 'offer_signup: supersede unread, not recorded');
+          return { recorded: false as const, reason: 'supersede_unread' };
+        }
+        supersede = read.replaced;
+        keptOpen = earlier.filter((prior) => read.unnamed.includes(prior.offerId));
+        if (keptOpen.length > 0) {
+          console.warn(
+            { keptOpen: keptOpen.length },
+            'offer_signup: an earlier ask dropped in words that do not name it stays open',
+          );
+        }
       }
 
       const result: OfferSignupResult = await offerSignupFromFacts(
@@ -129,6 +271,8 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
           childId: matches[0].id,
           now: ports.now,
           planOpensAt: planOpensAtFromModel(input.opensAt ?? null),
+          activityLabel,
+          supersede,
           facts: {
             source: input.source,
             evidence: input.evidence,
@@ -138,19 +282,51 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
             language: null,
           },
         },
-        { writer: ports.writer },
+        { writer: ports.writer, planWriter: ports.planWriter },
       );
       if (!result.ok) return { recorded: false as const, reason: result.reason };
-      return { recorded: true as const, offerId: result.offerId, text: result.text };
+      ports.onRecorded({ offerId: result.offerId, text: result.text });
+      return {
+        recorded: true as const,
+        offerId: result.offerId,
+        text: result.text,
+        replaced: result.replaced.map((prior) => ({
+          activity: prior.activityLabel,
+          host: prior.providerHost,
+          sessions: prior.sessionLabels,
+        })),
+        // Only when one was: an empty list beside `replaced` gives the coach nothing to say.
+        ...(keptOpen.length > 0
+          ? {
+              keptOpen: keptOpen.map((prior) => ({
+                activity: prior.activity,
+                host: prior.host,
+                sessions: prior.sessionLabels,
+              })),
+            }
+          : {}),
+      };
     },
   });
 }
 
-export function augmentCoachSkillForSignupOffer(skill: Skill, enabled: boolean): Skill {
-  if (!enabled || skill.meta.tools.includes(OFFER_SIGNUP_TOOL)) return skill;
+/**
+ * Lists the verb while the signup flag is on. `atOpen` is the coach-signup-offer addendum,
+ * handed in only while the plan lane is lit ({@link signupAtOpenEnabled}): it is what tells
+ * the coach the capability table's no to enrolling is not the whole truth for this family.
+ */
+export function augmentCoachSkillForSignupOffer(
+  skill: Skill,
+  enabled: boolean,
+  atOpen: Skill | null,
+): Skill {
+  if (!enabled) return skill;
+  const listed = skill.meta.tools.includes(OFFER_SIGNUP_TOOL);
+  if (listed && !atOpen) return skill;
   return {
     ...skill,
-    meta: { ...skill.meta, tools: [...skill.meta.tools, OFFER_SIGNUP_TOOL] },
+    meta: listed ? skill.meta : { ...skill.meta, tools: [...skill.meta.tools, OFFER_SIGNUP_TOOL] },
+    instructions: atOpen ? `${skill.instructions}\n\n${atOpen.instructions}` : skill.instructions,
   };
 }
 
@@ -158,4 +334,11 @@ export function signupOfferToolEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return authorizedSignupEnabled(env);
+}
+
+/** The plan lane: Hale can register at the open. Read from the readers the plan run reads. */
+export function signupAtOpenEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return authorizedSignupEnabled(env) && registrationPlanRunEnabled(env);
 }

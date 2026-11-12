@@ -812,6 +812,19 @@ describe('channel.message.received', () => {
     );
   });
 
+  it("keeps the door's unread opt-out read through contract validation", async () => {
+    const { boss } = makeFakeBoss({
+      [INBOUND]: [{ id: 'i1', data: { ...inbound('SM1'), opt_out_unread: true } }],
+    });
+    const deps = makeDeps(boss);
+
+    await drainHotQueues(deps);
+
+    expect(deps.handlers.channelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider_message_id: 'SM1', opt_out_unread: true }),
+    );
+  });
+
   /**
    * Two texts a second apart. They must be ROUTED in the order they were sent and
    * never concurrently: "move swim to Tuesday" then "actually Wednesday" produces the

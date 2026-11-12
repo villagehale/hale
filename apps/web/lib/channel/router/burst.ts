@@ -64,6 +64,8 @@ export interface BurstMember {
   body: string;
   media: readonly InboundMediaPart[];
   createdAt: Date;
+  /** The door's opt-out read could not read this text (its row's `opt_out_unread`). */
+  optOutUnread: boolean;
 }
 
 /** How the grouping was decided: by the reader, or — when it could not answer — by
@@ -119,6 +121,7 @@ const memberColumns = {
   body: schema.channelMessages.body,
   inboundMedia: schema.channelMessages.inboundMedia,
   createdAt: schema.channelMessages.createdAt,
+  optOutUnread: schema.channelMessages.optOutUnread,
 };
 
 function toMember(row: {
@@ -127,6 +130,7 @@ function toMember(row: {
   body: string | null;
   inboundMedia: unknown;
   createdAt: Date;
+  optOutUnread: boolean | null;
 }): BurstMember {
   return {
     channelMessageId: row.channelMessageId,
@@ -136,6 +140,7 @@ function toMember(row: {
     body: withoutLiveViewLinks(row.body ?? ''),
     media: inboundMediaFromStored(row.inboundMedia),
     createdAt: row.createdAt,
+    optOutUnread: row.optOutUnread === true,
   };
 }
 
