@@ -352,6 +352,9 @@ jobs:
       - name: Proactive writer eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-writer
 
+      - name: Workstream extract eval (cached-only)
+        run: pnpm --filter @hale/worker eval:workstream-extract
+
       - name: Calendar-invite time judge eval (cached-only)
         run: pnpm --filter @hale/worker exec node evals/run-calendar-invite-time-eval.mjs --cached-only
 

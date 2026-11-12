@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Parent said \"Can you text me less?\" and the only candidate is an unrequested saved find, so it is not owed the Thursday evening send even though Saturday is free.",
+    "action": "drop",
+    "item_ids": [
+      "extra-idea"
+    ],
+    "hold_until": null,
+    "frequency_direction": "less",
+    "frequency_note": "Parent texted \"Can you text me less?\""
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "co_parent_departed must be sent now (Thursday 6 PM, outside quiet hours); the Saturday market nudge is dropped because Saturday is an all-day family visit and no free window fits.",
+    "action": "send_now",
+    "item_ids": [
+      "departed"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

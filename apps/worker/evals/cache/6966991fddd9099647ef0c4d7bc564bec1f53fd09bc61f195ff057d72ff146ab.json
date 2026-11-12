@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The other parent left the household on Hale and the remaining parent hasn't been told; co_parent_departed is always sent, and the 3 unanswered texts and empty calendar don't hold it, and 6 PM Thursday is outside quiet hours.",
+    "action": "send_now",
+    "item_ids": [
+      "departed"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}
