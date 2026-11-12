@@ -648,6 +648,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
         // VIL-303: absent unless this parent is owed a correction, for the same reason.
         ...(owedCorrections.length > 0 ? { capabilityCorrections: owedCorrections } : {}),
+        // The last N user rows arrived back to back and this turn answers them together
+        // (router/burst.ts). Absent on a lone text, so its prompt bytes are untouched.
+        ...(turn.burstSize !== undefined && turn.burstSize >= 2
+          ? { arrivedTogether: turn.burstSize }
+          : {}),
       };
       const media = await mediaForTurn(turn, ports);
       if (media.unwatched.length > 0) {

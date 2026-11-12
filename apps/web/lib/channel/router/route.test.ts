@@ -65,6 +65,7 @@ import {
   type VillageIntroReplyDeps,
 } from '~/lib/village/intros/reply';
 import { type ApologyOutcome, type TurnApology, createTurnApology } from './apology';
+import type { BurstMember, BurstPlan, InboundBurst } from './burst';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import { DeadlineError } from './deadline';
 import type {
@@ -329,10 +330,12 @@ function fakeTurnLedger(): InboundTurnLedger & {
   unanswered: { channelMessageId: string; reason: string }[];
   failed: { channelMessageId: string; reason: string }[];
   reads: string[];
+  folded: string[];
 } {
   const ledger = {
     answered: [] as string[],
     deferred: [] as string[],
+    folded: [] as string[],
     deferredReasons: [] as {
       channelMessageId: string;
       reason?: string;
@@ -344,6 +347,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     async stageOf({ channelMessageId }: { channelMessageId: string }): Promise<TurnStage> {
       ledger.reads.push(channelMessageId);
       if (ledger.answered.includes(channelMessageId)) return 'answered';
+      if (ledger.folded.includes(channelMessageId)) return 'folded';
       if (ledger.deferred.includes(channelMessageId)) return 'deferred';
       return 'fresh';
     },
@@ -374,6 +378,23 @@ function fakeTurnLedger(): InboundTurnLedger & {
     },
   };
   return ledger;
+}
+
+/** The burst planner, scripted: a plan per attempt, and what each attempt asked for. The
+ * planner's own reads, claims and settle are burst.pglite.test.ts's; here only what the
+ * router does with a plan is asserted. Lone and dark by default, which is the state every
+ * pre-existing test in this file means. */
+function fakeBurst(
+  plan: BurstPlan = { kind: 'lone', waitedMs: 0, why: 'flag_off' },
+): InboundBurst & { stages: string[] } {
+  const burst = {
+    stages: [] as string[],
+    async plan(_job: ChannelMessageReceivedJob, stage: 'fresh' | 'deferred') {
+      burst.stages.push(stage);
+      return plan;
+    },
+  };
+  return burst;
 }
 
 /** A limiter that only counts. The real fake keeps its window state private, and what
@@ -552,6 +573,7 @@ function harness(
     floodLine?: FloodLineComposer;
     consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
+    burst?: InboundBurst;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -629,6 +651,7 @@ function harness(
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
+      burst: options.burst ?? fakeBurst(),
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       floodLine: options.floodLine ?? fakeFloodLine(),
@@ -2386,6 +2409,206 @@ describe('deferring a turn the provider cannot answer', () => {
  * answer the instant the transport accepts it, and the claim is read before anything
  * else happens.
  */
+describe('back-to-back texts read as one turn', () => {
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'SM1',
+  };
+  const ANCHOR_ID = job().channel_message_id;
+  const photo = { kind: 'image' as const, url: 'https://example.test/p.jpg', mime: 'image/jpeg' };
+  const members: BurstMember[] = [
+    {
+      channelMessageId: ANCHOR_ID,
+      providerMessageId: 'SM1',
+      body: '$600 budget for a fall program',
+      media: [],
+      createdAt: NOW,
+    },
+    {
+      channelMessageId: '33333333-3333-4333-8333-000000000002',
+      providerMessageId: 'SM2',
+      body: '$900',
+      media: [photo],
+      createdAt: NOW,
+    },
+  ];
+  const anchorPlan = (
+    overrides: Partial<Extract<BurstPlan, { kind: 'anchor' }>> = {},
+  ): BurstPlan => ({
+    kind: 'anchor',
+    members,
+    replyTo: members[1] as BurstMember,
+    waitedMs: 0,
+    read: 'read',
+    ...overrides,
+  });
+
+  function capturingCoach(reply = 'Looking within $900.') {
+    const turns: ChannelTurn[] = [];
+    const coach: ChannelCoachRuntime = {
+      async respond(turn) {
+        turns.push(turn);
+        return { reply, planOffer: null, activityPromise: null, spotWatch: null };
+      },
+    };
+    return { coach, turns };
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('a text an earlier turn already read stops at GATE 0: nothing threaded, counted or sent', async () => {
+    const turns = fakeTurnLedger();
+    turns.folded.push(ANCHOR_ID);
+    const limiter = countingLimiter();
+    const burst = fakeBurst(anchorPlan());
+    const { coach, turns: coached } = capturingCoach();
+    const h = harness({ turns, limiter, burst, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('folded');
+    expect(messageRows(h.fake)).toEqual([]);
+    expect(limiter.checks).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+    expect(coached).toEqual([]);
+    expect(burst.stages).toEqual([]);
+  });
+
+  it('positive control: the turn that read them counts the limiter once and answers once', async () => {
+    const limiter = countingLimiter();
+    const h = harness({ limiter, burst: fakeBurst(anchorPlan()), context: { reply: IMESSAGE } });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(limiter.checks).toBe(1);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('every gate and the coach read the whole burst, and the answer threads under the latest text', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    const handler = passingHandler('watcher');
+    const lane = fakeLane(IN_DOMAIN);
+    const { coach, turns } = capturingCoach();
+    const h = harness({
+      burst: fakeBurst(anchorPlan()),
+      handlers: [handler],
+      offDomain: lane,
+      coach,
+      context: { body: '$600 budget for a fall program', reply: IMESSAGE },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(handler.bodies).toEqual(['$600 budget for a fall program\n$900']);
+    expect(lane.seen.map((seen) => seen.text)).toEqual(['$600 budget for a fall program\n$900']);
+    expect(turns[0]?.body).toBe('$600 budget for a fall program\n$900');
+    expect(turns[0]?.inboundMedia).toEqual([photo]);
+    expect(turns[0]?.burstSize).toBe(2);
+    expect(h.transport.sent[0]?.route).toEqual({ ...IMESSAGE, replyToMessageId: 'SM2' });
+    // One thread row per text, in order, each with its own bubble id; never the joined body.
+    expect(
+      messageRows(h.fake)
+        .filter((row) => row.role === 'user')
+        .map((row) => [row.content, row.providerMessageId]),
+    ).toEqual([
+      ['$600 budget for a fall program', 'SM1'],
+      ['$900', 'SM2'],
+    ]);
+  });
+
+  it('a lone text keeps today’s turn: one thread row, no burst size for the coach', async () => {
+    const { coach, turns } = capturingCoach();
+    const burst = fakeBurst({ kind: 'lone', waitedMs: 0, why: 'alone' });
+    const h = harness({ burst, coach });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(burst.stages).toEqual(['fresh']);
+    expect(turns[0]).not.toHaveProperty('burstSize');
+    expect(
+      messageRows(h.fake)
+        .filter((row) => row.role === 'user')
+        .map((row) => row.content),
+    ).toEqual(['anything indoors this weekend?']);
+  });
+
+  it('a re-driven anchor asks for its earlier burst and threads none of it again', async () => {
+    const turns = fakeTurnLedger();
+    turns.deferred.push(ANCHOR_ID);
+    const limiter = countingLimiter();
+    const burst = fakeBurst(anchorPlan({ read: 'decided_earlier' }));
+    const { coach, turns: coached } = capturingCoach();
+    const h = harness({ turns, limiter, burst, coach });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(burst.stages).toEqual(['deferred']);
+    expect(messageRows(h.fake).filter((row) => row.role === 'user')).toEqual([]);
+    expect(limiter.checks).toBe(0);
+    expect(coached[0]?.body).toBe('$600 budget for a fall program\n$900');
+  });
+
+  it('logs the plan with ids and enums only', async () => {
+    const h = harness({ burst: fakeBurst(anchorPlan({ waitedMs: 1_200 })) });
+
+    await routeChannelMessage(h.deps, job());
+
+    const line = h.logs.find((entry) => (entry as unknown[])[1] === 'channel router: burst') as
+      | [Record<string, unknown>, string]
+      | undefined;
+    expect(line?.[0]).toMatchObject({
+      channelMessageId: ANCHOR_ID,
+      burstSize: 2,
+      settleWaitMs: 1_200,
+      readOutcome: 'read',
+    });
+    expect(typeof line?.[0].pickupMs).toBe('number');
+    expect(JSON.stringify(h.logs)).not.toContain('$900');
+  });
+
+  describe('the holding line waits the same from the parent’s side', () => {
+    function slowCoach(ms: number): ChannelCoachRuntime {
+      return {
+        async respond() {
+          await new Promise((resolve) => setTimeout(resolve, ms));
+          return { reply: 'the answer', planOffer: null, activityPromise: null, spotWatch: null };
+        },
+      };
+    }
+
+    beforeEach(() => {
+      vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+    });
+
+    it.each([
+      // base 300ms: a turn that settled 260ms owes the line 40ms in, before a 150ms coach.
+      ['a settled turn arms it for what is left of the wait', 260, ["I'm on it.", 'the answer']],
+      // nothing settled: 300ms is past the 150ms coach, so the answer comes first.
+      ['a turn that settled nothing keeps the whole wait', 0, ['the answer']],
+      // past the base: floored at 0, never negative.
+      ['a settle longer than the wait floors it at 0', 5_000, ["I'm on it.", 'the answer']],
+    ])('%s', async (_name, waitedMs, bodies) => {
+      const h = harness({
+        burst: fakeBurst({ kind: 'lone', waitedMs, why: 'alone' }),
+        coach: slowCoach(150),
+        holdingLine: fakeHoldingLine("I'm on it."),
+        holdingLineAfterMs: 300,
+        context: { reply: IMESSAGE },
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(h.transport.bodies()).toEqual(bodies);
+    });
+  });
+});
+
 describe('a re-driven turn never answers twice', () => {
   it('does nothing at all when this text has already been answered', async () => {
     const turns = fakeTurnLedger();

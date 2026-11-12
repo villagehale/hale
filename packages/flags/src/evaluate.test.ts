@@ -48,6 +48,15 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     expect(isEnabled('f14', undefined, env)).toBe(false);
   });
 
+  it('keeps inbound-burst dark by default and arms one allowlisted family', () => {
+    expect(isEnabled('inbound-burst', 'fam-a', {})).toBe(false);
+    const env = { INBOUND_BURST_FAMILY_ALLOWLIST: 'fam-a' };
+    expect(isEnabled('inbound-burst', 'fam-a', env)).toBe(true);
+    expect(isEnabled('inbound-burst', 'fam-b', env)).toBe(false);
+    expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true\n' })).toBe(false);
+    expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true' })).toBe(true);
+  });
+
   it('does not call the PostHog evaluator', () => {
     let called = 0;
     setFlagEvaluatorForTests(() => {

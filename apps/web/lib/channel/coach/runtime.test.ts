@@ -240,6 +240,31 @@ describe('channelCoachRuntime', () => {
     expect(await run(true, 'group')).not.toContain(addendum);
   });
 
+  it('tells the coach how many texts arrived together, and only on a burst', async () => {
+    const run = async (burstSize?: number) => {
+      const seen: { context: unknown; prompt: string }[] = [];
+      const p = ports({
+        runAgent: async (args) => {
+          seen.push({ context: args.context, prompt: promptOf(args) });
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond(
+        burstSize === undefined ? turn() : { ...turn(), burstSize },
+        [],
+      );
+      return seen[0];
+    };
+    const lone = await run();
+    expect(lone?.context).not.toHaveProperty('arrivedTogether');
+    const burst = await run(2);
+    expect(burst?.context).toMatchObject({ arrivedTogether: 2 });
+    // The fact rides in the context; the system prompt, and its cache prefix, stay put.
+    expect(burst?.prompt).toBe(lone?.prompt);
+    const { arrivedTogether: _dropped, ...rest } = burst?.context as Record<string, unknown>;
+    expect(JSON.stringify(rest)).toBe(JSON.stringify(lone?.context));
+  });
+
   it('asks for the context as the parent who texted (VIL-429)', async () => {
     const p = ports();
     await channelCoachRuntime(p).respond(turn(), []);

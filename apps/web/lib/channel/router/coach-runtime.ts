@@ -81,6 +81,11 @@ export interface ChannelTurn {
    * when the extract found nothing.
    */
   photoFacts?: TurnPhotoFacts;
+  /**
+   * How many texts the parent sent back to back that this turn reads as one (burst.ts).
+   * Absent unless two or more, so a lone turn keeps its prompt bytes and cache keys.
+   */
+  burstSize?: number;
 }
 
 /**

@@ -111,6 +111,10 @@ export const FLAGS = [
     allowlistEnv: 'HOLDING_LINE_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
   }),
+  exact('inbound-burst', 'INBOUND_BURST_ENABLED', {
+    allowlistEnv: 'INBOUND_BURST_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
   exact('inbound-photo-facts', 'INBOUND_PHOTO_FACTS_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
