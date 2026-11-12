@@ -5,6 +5,7 @@ import {
   type BubbleGaps,
   OFF_TURN_GAPS,
   bubbleGaps,
+  readBubbleGaps,
   sentUnlessThrown,
 } from './bubble-gap';
 import { SEND_TIMEOUT_MS } from './transport';
@@ -297,15 +298,20 @@ describe('bubbleGaps outside a turn or a webhook', () => {
 
 /**
  * Intake's map goes out inside Linq's webhook, which Linq stops waiting for at its
- * response timeout. A gap that would end at or past that moment is not taken.
+ * response timeout. A gap is taken only when it and the bubble's own send both fit before
+ * that moment.
  */
 describe('bubbleGaps inside Linq’s webhook', () => {
-  it('a gap that would end past the webhook deadline is skipped, with no typing, and named', async () => {
+  it.each([
+    ['less than the gap', BUBBLE_GAP_MS - 1],
+    ['the gap, with no time for the send after it', BUBBLE_GAP_MS + 1],
+    ['all but a millisecond of the gap and the send', BUBBLE_GAP_MS + SEND_TIMEOUT_MS - 1],
+  ])('with %s left, the gap is skipped, with no typing, and named', async (_label, leftMs) => {
     const { lines, log } = quietLog();
     const start = Date.now();
     const sends: number[] = [];
 
-    const sent = imessageGaps(log, new Date(start + BUBBLE_GAP_MS - 1))(async () => {
+    const sent = imessageGaps(log, new Date(start + leftMs))(async () => {
       sends.push(Date.now());
     }, sentUnlessThrown);
     await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
@@ -319,7 +325,8 @@ describe('bubbleGaps inside Linq’s webhook', () => {
   it('positive control: the deadline bounds the set, not the gap count', async () => {
     const { lines, log } = quietLog();
     const start = Date.now();
-    const gaps = imessageGaps(log, new Date(start + 7_000));
+    // Room for three gaps, the last of them with exactly its send's time after it.
+    const gaps = imessageGaps(log, new Date(start + 3 * BUBBLE_GAP_MS + SEND_TIMEOUT_MS));
     const sends: number[] = [];
     const send = async () => {
       sends.push(Date.now());
@@ -331,10 +338,47 @@ describe('bubbleGaps inside Linq’s webhook', () => {
     await vi.advanceTimersByTimeAsync(4 * BUBBLE_GAP_MS);
     await set;
 
-    // Three gaps fit before the deadline (one more than the count would allow); the
-    // fourth would end past it.
+    // Three gaps fit with their sends before the deadline (one more than the count would
+    // allow); the fourth would leave its send too little time.
     expect(sends).toEqual([start + 2_000, start + 4_000, start + 6_000, start + 6_000]);
     expect(outcomes(lines)).toEqual(['deadline_near']);
+  });
+});
+
+/**
+ * Where a set reads its chat's service from the ledger, that read only decides the pacing:
+ * a read that fails must never stop a send.
+ */
+describe('readBubbleGaps', () => {
+  it('a service read that fails leaves the set unpaced and names it', async () => {
+    const { lines, log } = quietLog();
+    const gaps = await readBubbleGaps({
+      chatId: CHAT,
+      readService: async () => {
+        throw new Error('connection reset');
+      },
+      log,
+    });
+
+    expect(gaps).toBeNull();
+    expect(outcomes(lines)).toEqual(['pacing_read_failed']);
+  });
+
+  it('positive control: a read that says iMessage paces the set, with nothing logged', async () => {
+    const { lines, log } = quietLog();
+    const gaps = await readBubbleGaps({ chatId: CHAT, readService: async () => 'iMessage', log });
+    if (!gaps) throw new Error('an iMessage chat must be paced');
+    const start = Date.now();
+    const sends: number[] = [];
+
+    const sent = gaps(async () => {
+      sends.push(Date.now());
+    }, sentUnlessThrown);
+    await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
+    await sent;
+
+    expect(sends).toEqual([start + BUBBLE_GAP_MS]);
+    expect(outcomes(lines)).toEqual([]);
   });
 });
 

@@ -21,6 +21,11 @@ export const OFF_TURN_GAPS = 2;
  * Sends one bubble of a set after the gap. The set's first bubble is not passed here.
  * `went` says whether the result is a bubble that went: a refusal handed back as a value
  * takes typing down just as a thrown one does.
+ *
+ * `send` is the whole send, with anything that must sit right before its transport call
+ * inside it: a sign-up ask's stamp draws the order number of the text it brackets
+ * (signup/store.ts `askStamp`), so a stamp drawn before the gap would rank this bubble
+ * below a text another sender started during the gap.
  */
 export type BubbleGaps = <T>(send: () => Promise<T>, went: (result: T) => boolean) => Promise<T>;
 
@@ -42,8 +47,10 @@ export const sentUnlessThrown = (): boolean => true;
  * - Inside a router turn the gap comes out of the turn's deadline, and the send waits for
  *   the typing call too. With too little left for the pause and the send after it, the
  *   bubble goes at once and `deadline_near` is logged.
- * - Inside Linq's webhook (`answerBy`, intake), a gap that would end at or past the moment
- *   Linq stops waiting is not taken: the bubble goes at once and `deadline_near` is logged.
+ * - Inside Linq's webhook (`answerBy`, intake), a gap is taken only when it and the
+ *   bubble's own send (SEND_TIMEOUT_MS) both fit before the moment Linq stops waiting.
+ *   Otherwise the bubble goes at once and `deadline_near` is logged. Linq's whole timeout
+ *   (LINQ_WEBHOOK_TIMEOUT_MS) is no more than that, so no gap is taken inside it today.
  * - Elsewhere the set takes at most {@link OFF_TURN_GAPS} gaps; after that the bubble goes
  *   at once and `gap_budget_spent` is logged.
  * Outside a turn the pause is the gap itself: a typing call Linq has not answered by then
@@ -84,7 +91,7 @@ export function bubbleGaps(input: {
       }
     } else if (answerBy) {
       const webhookLeft = answerBy.getTime() - Date.now();
-      if (webhookLeft <= gapMs) {
+      if (webhookLeft < gapMs + SEND_TIMEOUT_MS) {
         return goNow(send, { outcome: 'deadline_near', remainingMs: webhookLeft });
       }
     } else if (gapsLeft === 0) {
@@ -109,6 +116,30 @@ export function bubbleGaps(input: {
     if (!went(result)) await typingDown();
     return result;
   };
+}
+
+/**
+ * {@link bubbleGaps} for a set that reads its chat's service (messaging-door.ts
+ * `chatServiceSaid`). That read only decides the pacing, so one that fails leaves the set
+ * unpaced, logged as `pacing_read_failed`, and never stops a send.
+ */
+export async function readBubbleGaps(
+  input: Omit<Parameters<typeof bubbleGaps>[0], 'service'> & {
+    readService: () => Promise<LinqChatService | null>;
+  },
+): Promise<BubbleGaps | null> {
+  const { readService, ...rest } = input;
+  let service: LinqChatService | null;
+  try {
+    service = await readService();
+  } catch (err) {
+    rest.log.warn(
+      { outcome: 'pacing_read_failed', err: err instanceof Error ? err.name : 'unknown' },
+      'bubbles: the chat service read failed - this set goes unpaced',
+    );
+    return null;
+  }
+  return bubbleGaps({ ...rest, service });
 }
 
 function sleep(ms: number): Promise<void> {

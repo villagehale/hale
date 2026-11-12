@@ -914,6 +914,35 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
       expect(ch.sends).toEqual(TEXTS.map((text) => [start, text]));
     });
+
+    // The read only decides the pacing: one that fails costs the gaps, never a text.
+    it('lit, a chat service read that fails: every text still goes, back to back, and the miss is named', async () => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const im = stampedChannel('imessage');
+      const { ports, ledger } = makePorts({
+        renderer: multiRenderer,
+        channels: { sms: im.channel },
+        chatService: async () => {
+          throw new Error('connection reset');
+        },
+      });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(im.sends).toEqual(TEXTS.map((text) => [start, text]));
+      expect(ledger).toHaveLength(TEXTS.length);
+      expect(
+        warn.mock.calls.flatMap(([fields]) =>
+          fields && typeof fields === 'object' && 'outcome' in fields ? [fields.outcome] : [],
+        ),
+      ).toEqual(['pacing_read_failed']);
+      warn.mockRestore();
+    });
   });
 });
 

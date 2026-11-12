@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
+import { LINQ_WEBHOOK_TIMEOUT_MS } from '~/lib/channel/linq/signature';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeCollected } from './extract';
@@ -369,10 +370,17 @@ describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
     expect(await mapGap('true', 'iMessage')).toBe(BUBBLE_GAP_MS);
   });
 
-  // Inside Linq's webhook: a gap that would end past the moment Linq stops waiting is not
-  // taken, so pacing never turns an answered webhook into a timed-out one.
+  // Inside Linq's webhook: a gap is taken only when it and the bubble's own send both fit
+  // before the moment Linq stops waiting, so pacing never turns an answered webhook into a
+  // timed-out one.
   it('lit, with less than a gap left before the webhook deadline: back to back', async () => {
     expect(await mapGap('true', 'iMessage', BUBBLE_GAP_MS - 1)).toBe(0);
+  });
+
+  // Linq's whole response timeout is no more than one gap and one send's timeout, so even a
+  // webhook that has just arrived has no room for a gap.
+  it('lit, with all of Linq’s webhook timeout left: back to back', async () => {
+    expect(await mapGap('true', 'iMessage', LINQ_WEBHOOK_TIMEOUT_MS)).toBe(0);
   });
 
   it('positive control: lit, with the webhook deadline far off: the gap is taken', async () => {

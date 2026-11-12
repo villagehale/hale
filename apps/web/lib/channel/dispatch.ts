@@ -3,7 +3,7 @@ import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
-import { type BubbleGaps, bubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
+import { type BubbleGaps, readBubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
 import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
@@ -430,9 +430,9 @@ async function dispatchTexts(
         const chatId = previous.transport === 'imessage' ? previous.providerChatId : null;
         gaps =
           paced && chatId
-            ? bubbleGaps({
+            ? await readBubbleGaps({
                 chatId,
-                service: await ports.chatService(msg.parentUserId, chatId),
+                readService: () => ports.chatService(msg.parentUserId, chatId),
                 log: console,
               })
             : null;
