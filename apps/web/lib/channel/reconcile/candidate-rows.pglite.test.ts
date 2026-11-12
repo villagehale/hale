@@ -92,7 +92,8 @@ async function seedA() {
   await event(familyId, 'Clinic ZQXJ2', at(3), { sensitive: true });
   await event(familyId, 'Swim lesson', at(4), { childId: toddler });
   await event(familyId, 'Past ZQXJ4', at(-1));
-  await event(familyId, 'Deleted ZQXJ5', at(5), { deletedAt: NOW });
+  // Removed before the cancellation window: neither a calendar row nor a cancelled one.
+  await event(familyId, 'Deleted ZQXJ5', at(5), { deletedAt: at(-30) });
   await event(familyId, 'Mirror ZQXJ6', at(6), { googleEventId: 'g-mirror-1' });
   return { familyId, primary };
 }
@@ -250,6 +251,108 @@ describe('loadClaimShadowContext — ledger rows', () => {
       },
     ]);
     expect(JSON.stringify(context.rows)).not.toContain('https://');
+  });
+});
+
+describe('loadClaimShadowContext — what backs "registered", "sent" and "cancelled"', () => {
+  it('a confirmed signup is an r row by program; a 13+ child’s is private; an unconfirmed one is absent', async () => {
+    const { familyId, primary } = await seedA();
+    const [teen, toddler] = await db.database
+      .select({ id: schema.children.id })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+      .orderBy(asc(schema.children.dateOfBirth));
+    const offer = (childId: string, activityLabel: string | null, status: string, host: string) =>
+      db.database.insert(schema.authorizedSignupOffers).values({
+        familyId,
+        childId,
+        parentUserId: primary,
+        activityKey: `k-${host}`,
+        activityLabel,
+        registrationUrl: `https://${host}/x`,
+        sessions: [],
+        providerHost: host,
+        status,
+      });
+    await offer(toddler?.id as string, 'Saturday swim', 'completed', 'a.example.org');
+    await offer(toddler?.id as string, null, 'completed', 'b.example.org');
+    await offer(teen?.id as string, 'Teen climbing ZQXJ10', 'completed', 'c.example.org');
+    await offer(toddler?.id as string, 'Pending ZQXJ11', 'pending', 'd.example.org');
+
+    const context = await ready({ familyId, now: NOW, parentUserId: null });
+    const signups = context.rows.filter((r) => r.source === 'signup_confirmed');
+    expect(signups.map((r) => r.what).sort()).toEqual(
+      ['A private item', 'A registration on b.example.org', 'Saturday swim'].sort(),
+    );
+    expect(JSON.stringify(context.rows)).not.toContain('ZQXJ');
+  });
+
+  it('a removed calendar row is a cancelled row with the calendar redaction; a mirror is absent', async () => {
+    const { familyId } = await seedA();
+    const [teen] = await db.database
+      .select({ id: schema.children.id })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+      .orderBy(asc(schema.children.dateOfBirth));
+    await event(familyId, 'Piano', at(2), { deletedAt: at(-1) });
+    await event(familyId, 'Teen removed ZQXJ12', at(2), { deletedAt: at(-1), childId: teen?.id });
+    await event(familyId, 'Clinic removed ZQXJ13', at(2), { deletedAt: at(-1), sensitive: true });
+    await event(familyId, 'Mirror removed ZQXJ14', at(2), {
+      deletedAt: at(-1),
+      googleEventId: 'g-mirror-2',
+    });
+
+    const context = await ready({ familyId, now: NOW, parentUserId: null });
+    const cancelled = context.rows.filter((r) => r.source === 'cancelled');
+    expect(cancelled.map((r) => r.what).sort()).toEqual(['Piano', PRIVATE, PRIVATE].sort());
+    expect(JSON.stringify(context.rows)).not.toContain('ZQXJ');
+  });
+
+  it('sends: a group-chat text and an executed email back "sent"; the recipient’s own text and an unsent email do not', async () => {
+    const { familyId, primary } = await seedA();
+    const text = (extra: Partial<typeof schema.channelMessages.$inferInsert>) =>
+      db.database.insert(schema.channelMessages).values({
+        familyId,
+        parentUserId: primary,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+        sentAt: at(-1),
+        ...extra,
+      });
+    await text({ providerChatId: 'chat-one-to-one' });
+    await text({ providerChatId: 'chat-group', status: 'delivered' });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId,
+      chatId: 'chat-group',
+      userId: primary,
+      phoneE164Encrypted: 'x',
+      phoneE164Hash: 'h',
+      role: 'parent',
+    });
+    const action = async (sentAt: Date | null) => {
+      const [ev] = await db.database
+        .insert(schema.events)
+        .values({ familyId, source: 'test', eventType: 'test', dedupHash: `d-${seq++}` })
+        .returning({ id: schema.events.id });
+      const [row] = await db.database
+        .insert(schema.actions)
+        .values({ eventId: ev?.id as string, familyId, actionType: 'send_email', payload: {} })
+        .returning({ id: schema.actions.id });
+      await db.database
+        .insert(schema.outboundSends)
+        .values({ actionId: row?.id as string, sentAt });
+    };
+    await action(at(-2));
+    await action(null);
+
+    const context = await ready({ familyId, now: NOW, parentUserId: null });
+    const sends = context.rows.filter((r) => r.source === 'send_receipt');
+    expect(sends.map((r) => [r.what, r.source === 'send_receipt' && r.delivered])).toEqual([
+      ['A text in a group chat', true],
+      ['An email sent for this family', false],
+    ]);
   });
 });
 

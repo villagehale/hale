@@ -20,7 +20,14 @@ export type UnbackedWhy =
   | 'day_time_conflict'
   | 'never_backable';
 
-type MatchedBy = Extract<ClaimResolution, { status: 'matched' }>['matchedBy'];
+/** Main's regex matches, plus the rows only the reader can cite. */
+type MatchedBy =
+  | Extract<ClaimResolution, { status: 'matched' }>['matchedBy']
+  | 'signup_confirmation'
+  | 'booking_row'
+  | 'parent_reported'
+  | 'send_receipt'
+  | 'cancellation_row';
 type MintableWindow = Extract<ClaimCandidateRow, { source: 'mintable_window' }>;
 
 export type ReadClaimResolution =
@@ -41,7 +48,20 @@ function backing(kind: ReadClaim['kind'], row: ClaimCandidateRow): MatchedBy | '
     case 'scheduled_event':
       if (row.source === 'calendar') return 'scheduled_row';
       if (row.source === 'parent_stated') return 'parent_stated';
+      if (row.source === 'booking') return 'booking_row';
       return null;
+    // A calendar row is never a registration: it says the thing is planned, not that a
+    // place was taken. Only a confirmation, a recorded booking or the parent's own word.
+    case 'registration_done':
+      if (row.source === 'signup_confirmed') return 'signup_confirmation';
+      if (row.source === 'booking') return 'booking_row';
+      if (row.source === 'reported_outcome') return 'parent_reported';
+      if (row.source === 'parent_stated') return 'parent_stated';
+      return null;
+    case 'send_done':
+      return row.source === 'send_receipt' ? 'send_receipt' : null;
+    case 'cancelled':
+      return row.source === 'cancelled' ? 'cancellation_row' : null;
     case 'registration_watch':
       if (row.source === 'open_commitment' && row.kind === 'registration_watch') {
         return 'open_commitment';
@@ -89,6 +109,12 @@ function refusalFor(kind: ReadClaim['kind'], candidates: ClaimCandidateSet): Ref
       return 'no_coparent_invite';
     case 'self_referential':
       return 'self_referential';
+    case 'registration_done':
+      return 'no_registration_record';
+    case 'send_done':
+      return 'no_send_record';
+    case 'cancelled':
+      return 'no_cancel_record';
   }
 }
 

@@ -229,7 +229,31 @@ describe('degenerate readers', () => {
       'registration_watch',
       'activity_followup',
     ]);
-    expect(READ_CLAIM_KINDS).toHaveLength(6);
+    expect(READ_CLAIM_KINDS).toHaveLength(9);
+  });
+
+  it('registered-backed cites a registration row for a false "registered" only', () => {
+    const registered = {
+      id: 'en-toy-registered',
+      category: 'registered',
+      candidates: [
+        { ref: 'cal', source: 'calendar', kind: 'scheduled_event' },
+        { ref: 'soccer', source: 'signup_confirmed', kind: 'registration_done' },
+      ],
+      expect: {
+        claims: [
+          { sentence: 'She is registered for swim.', kind: 'registration_done', row: 'none' },
+          { sentence: 'Swim is Saturday.', kind: 'scheduled_event', row: 'none' },
+        ],
+        refused: [],
+        minted: [],
+      },
+    };
+    expect(DEGENERATE_READERS['registered-backed'].read(registered)).toEqual([
+      // Never the calendar row: only a row the verifier would accept, for the wrong program.
+      { sentence: 'She is registered for swim.', kind: 'registration_done', row: 'soccer' },
+      { sentence: 'Swim is Saturday.', kind: 'scheduled_event', row: 'none' },
+    ]);
   });
 
   it('random-row is seeded: the same fixture reads the same twice', () => {
@@ -255,6 +279,7 @@ describe('degenerate readers', () => {
       'random-row': 'caught',
       'wrong-kind': 'truePassed',
       'silent-on-injection': 'caught',
+      'registered-backed': 'caught',
     });
   });
 });

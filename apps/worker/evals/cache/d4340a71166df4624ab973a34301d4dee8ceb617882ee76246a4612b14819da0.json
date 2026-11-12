@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The sentence attributes the dentist booking to the parent ('you said it is already booked'), so it is reported speech rather than Hale's own claim, and there are no rows on record.",
+    "claims": []
+  },
+  "latencyMs": 1732
+}

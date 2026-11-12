@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale emailed the swim coach, which is a send_done claim. There are no rows on record, so no row backs it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_done",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1517
+}

@@ -69,6 +69,40 @@ const ROW = {
     what: label('Toddler activities'),
   },
   p2: { familyId: FAM, source: 'pending', kind: 'spot_watch', what: label('Swim class page') },
+  rSignup: {
+    familyId: FAM,
+    source: 'signup_confirmed',
+    kind: 'registration_done',
+    what: label('Saturday swim'),
+  },
+  rBooking: {
+    familyId: FAM,
+    source: 'booking',
+    kind: 'registration_done',
+    what: label('Swim lesson'),
+    startsAt: TUE_9,
+  },
+  rReported: {
+    familyId: FAM,
+    source: 'reported_outcome',
+    kind: 'registration_done',
+    what: label('Riverford swim registration'),
+  },
+  m: {
+    familyId: FAM,
+    source: 'send_receipt',
+    kind: 'send_done',
+    what: label('A text to the co-parent'),
+    sentAt: TUE_9,
+    delivered: true,
+  },
+  x: {
+    familyId: FAM,
+    source: 'cancelled',
+    kind: 'cancelled',
+    what: label('Swim lesson'),
+    startsAt: TUE_9,
+  },
 } satisfies Record<string, ClaimCandidateRow>;
 
 function verdict(
@@ -99,7 +133,8 @@ const claim = (kind: ReadClaimKind, row: ClaimRowAlias, segment = 0): ReadClaim 
 });
 
 describe('kind compatibility (every kind × every slot)', () => {
-  // One row per slot; aliases are e1 s1 c1 (registration) c2 (follow-up) g1 q1 w1 p1 p2.
+  // One row per source; aliases are e1 s1 c1 (registration) c2 (follow-up) g1 q1 w1 p1
+  // p2, r1 (signup) r2 (booking) r3 (parent-reported), m1 and x1.
   const ALL: ClaimCandidateRow[] = [
     ROW.e,
     ROW.s,
@@ -110,17 +145,51 @@ describe('kind compatibility (every kind × every slot)', () => {
     ROW.w,
     ROW.p1,
     ROW.p2,
+    ROW.rSignup,
+    ROW.rBooking,
+    ROW.rReported,
+    ROW.m,
+    ROW.x,
   ];
   const BACKS: Record<ReadClaimKind, Partial<Record<ClaimRowAlias, string>>> = {
-    scheduled_event: { e1: 'backed:scheduled_row', s1: 'backed:parent_stated' },
+    scheduled_event: {
+      e1: 'backed:scheduled_row',
+      s1: 'backed:parent_stated',
+      r2: 'backed:booking_row',
+    },
     registration_watch: { c1: 'backed:open_commitment', q1: 'backed:live_sequence', w1: 'minted' },
     spot_watch: { g1: 'backed:open_commitment', p2: 'backed:pending_commitment' },
     activity_followup: { c2: 'backed:open_commitment', p1: 'backed:pending_commitment' },
     co_parent_invite: {},
     self_referential: {},
+    // A calendar row (e1) never backs a registration: planned is not registered.
+    registration_done: {
+      r1: 'backed:signup_confirmation',
+      r2: 'backed:booking_row',
+      r3: 'backed:parent_reported',
+      s1: 'backed:parent_stated',
+    },
+    send_done: { m1: 'backed:send_receipt' },
+    cancelled: { x1: 'backed:cancellation_row' },
   };
+  const aliases = [
+    'e1',
+    's1',
+    'c1',
+    'c2',
+    'g1',
+    'q1',
+    'w1',
+    'p1',
+    'p2',
+    'r1',
+    'r2',
+    'r3',
+    'm1',
+    'x1',
+  ] as const;
   for (const kind of Object.keys(BACKS) as ReadClaimKind[]) {
-    for (const alias of ['e1', 's1', 'c1', 'c2', 'g1', 'q1', 'w1', 'p1', 'p2'] as const) {
+    for (const alias of aliases) {
       const expected =
         BACKS[kind][alias] ??
         (kind === 'co_parent_invite' || kind === 'self_referential'

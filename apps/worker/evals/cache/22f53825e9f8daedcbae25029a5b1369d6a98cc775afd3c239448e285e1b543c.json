@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says a Thursday 3pm dentist appointment is booked, which is a scheduled_event claim. The only row is a private calendar item on Tue Nov 10 at 9:00 AM, which is a different day and time, so it does not back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1626
+}

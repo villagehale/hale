@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The first clause only repeats what the parent said, so it is not a claim. 'I've added it to your calendar' claims a scheduled event, and row e1 is the Saturday swim lesson.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 2763
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the child is now enrolled in Saturday swim, which is a registration_done claim. The only registration row is Sunday soccer, a different program, so it cannot back this claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1395
+}

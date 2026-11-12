@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale keeps watching and will write once the details are confirmed, which is a follow-up on details it is still waiting for. Row c1 is the open follow-up on the swimming class schedule details, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "c1"
+      }
+    ]
+  },
+  "latencyMs": 2022
+}

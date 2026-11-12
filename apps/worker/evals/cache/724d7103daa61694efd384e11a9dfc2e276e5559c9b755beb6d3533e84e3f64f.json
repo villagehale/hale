@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale promises to message the parent before Riverford's winter registration opens, which is a registration-season watch. The only row is a spot watch on a specific Saturday swim class, so it does not back this season watch.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1683
+}

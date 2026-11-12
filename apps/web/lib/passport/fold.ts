@@ -45,9 +45,10 @@ const PASSPORT_DOOR_VIEW: ReconcileView = {
 
 /**
  * VIL-581 · the passport line is folded on AFTER the coach's claim read, so this
- * door is the only read that sees it. A failed or unbacked line is dropped; the
- * reply that was already gated still goes. Off (or a family the flag does not
- * enforce) leaves the line.
+ * door is the only read that sees it. A failed or unbacked line is dropped, by name;
+ * the reply that was already gated still goes. Off (or a family the flag does not
+ * enforce) leaves the line. A throw reaches the fold's own catch, which logs it and
+ * sends the body without the line.
  */
 export async function passportDoorAllowsLine(
   database: Database,
@@ -55,23 +56,26 @@ export async function passportDoorAllowsLine(
   enforcer: ClaimEnforcer = defaultClaimEnforcer(),
 ): Promise<boolean> {
   if (!enforcer.enforces(input.familyId)) return true;
-  try {
-    const read = await enforcer.read(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      now: input.now,
-      body: input.line,
-      view: PASSPORT_DOOR_VIEW,
-      signal: new AbortController().signal,
-      budgetMs: CLAIM_READ_MAX_BUDGET_MS,
-    });
-    if (read.status === 'failed') return false;
-    if (refusedResolutions(read.verdict).length > 0) return false;
-    if (read.mints.length > 0) return false;
-    return true;
-  } catch {
+  const read = await enforcer.read(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+    body: input.line,
+    view: PASSPORT_DOOR_VIEW,
+    signal: new AbortController().signal,
+    budgetMs: CLAIM_READ_MAX_BUDGET_MS,
+  });
+  // The read's own failure is already captured on the claim_read lane.
+  if (read.status === 'failed') return false;
+  const refused = refusedResolutions(read.verdict).map((r) => r.reason);
+  if (refused.length > 0 || read.mints.length > 0) {
+    console.error(
+      { event: 'passport_line_refused', reasons: refused, mints: read.mints.length },
+      'passport: the line claimed a row that does not back it - dropped',
+    );
     return false;
   }
+  return true;
 }
 
 export async function foldPassportIntoOutbound(args: {

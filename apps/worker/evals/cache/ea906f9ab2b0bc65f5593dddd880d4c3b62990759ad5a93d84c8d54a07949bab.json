@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale cancelled the Thursday dentist appointment. The only row, e1, is an open scheduled event, not a cancelled row, so the claim is cited to none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "cancelled",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1790
+}

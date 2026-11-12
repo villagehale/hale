@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence promises to text the parent 15 minutes before Maple Bend swim registration opens, which is a registration-season watch. Row q1 is a live registration_watch for Maple Bend swim lessons winter registration, matching the same program and season.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      }
+    ]
+  },
+  "latencyMs": 1880
+}

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The sentence reports what the parent said earlier ('you told me the dentist is booked for Tuesday'), which is not a claim Hale makes, and there are no rows on record.",
+    "claims": []
+  },
+  "latencyMs": 2066
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the Saturday swimming lesson is booked, which is a scheduled_event. Row e1 is the same swimming lesson on Saturday at 10:00 AM, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 1725
+}

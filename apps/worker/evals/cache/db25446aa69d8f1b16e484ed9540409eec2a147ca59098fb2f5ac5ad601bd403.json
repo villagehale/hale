@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The sentence says the parent told Hale the dentist is booked for Tuesday, which is a report of the parent's own statement, not a claim Hale made. No rows exist, so nothing can back a claim anyway.",
+    "claims": []
+  },
+  "latencyMs": 1740
+}

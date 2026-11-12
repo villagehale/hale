@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the Saturday swim lesson is booked. Row e1 is the swim lesson on Sat, Nov 7 at 10:00 AM, so it is the same event. The opening 'No worries' is not a claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 2315
+}

@@ -55,6 +55,8 @@ beforeAll(async () => {
 }, 60_000);
 
 const BASE = ['reproducer', 'no_worries', 'reported', 'negation', 'compound', 'arming', 'all_set'];
+/** VIL-581: each "done" kind, true and false, in every gated language. */
+const DONE = ['registered', 'sent', 'cancelled'];
 const MORE = [
   'season_spot',
   'wrong_subject',
@@ -75,10 +77,11 @@ const REQUIRED = {
     'private',
     'composer',
     'day_time_compound',
+    ...DONE,
   ],
-  fr: [...BASE, ...MORE, 'quotes', 'composer', 'day_time_compound'],
-  zh: [...BASE, ...MORE, 'quotes', 'anaphora'],
-  es: [...BASE, ...MORE],
+  fr: [...BASE, ...MORE, ...DONE, 'quotes', 'composer', 'day_time_compound'],
+  zh: [...BASE, ...MORE, ...DONE, 'quotes', 'anaphora'],
+  es: [...BASE, ...MORE, ...DONE],
   ar: ['reproducer', 'invite', 'proposal', 'arming', 'season_spot', 'true_row'],
 };
 const MINIMUM = {
@@ -178,6 +181,16 @@ describe('the JS compatibility table agrees with the production verifier', () =>
     { source: 'mintable_window', kind: 'registration_watch', opensForFamilyAt: new Date() },
     { source: 'pending', kind: 'activity_followup' },
     { source: 'pending', kind: 'spot_watch' },
+    { source: 'signup_confirmed', kind: 'registration_done' },
+    { source: 'booking', kind: 'registration_done', startsAt: new Date('2026-11-10T16:00:00Z') },
+    { source: 'reported_outcome', kind: 'registration_done' },
+    {
+      source: 'send_receipt',
+      kind: 'send_done',
+      sentAt: new Date('2026-11-03T15:00:00Z'),
+      delivered: true,
+    },
+    { source: 'cancelled', kind: 'cancelled', startsAt: null },
   ];
   it('for every kind and every source', () => {
     for (const kind of READ_CLAIM_KINDS) {

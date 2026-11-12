@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the swimming class is booked, which matches the scheduled swimming row e1. The first clause only states when registration opens and does not say Hale is watching it, so it makes no claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 2809
+}

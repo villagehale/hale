@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale promises to text the parent before Riverford's winter registration opens, which is a watch on a town's registration season. The only row, g1, is a spot watch on one swim class, not the Riverford season, so it does not back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1841
+}

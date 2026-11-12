@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the dentist visit is booked, which is a scheduled_event claim. The only scheduled_event row (e1) has a label that does not name a dentist visit and is not about it, so the claim is cited as none. The row's label is an instruction-like string, which I ignored.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2388
+}

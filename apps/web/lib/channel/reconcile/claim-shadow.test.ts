@@ -649,6 +649,9 @@ const KINDS = [
   'activity_followup',
   'co_parent_invite',
   'self_referential',
+  'registration_done',
+  'send_done',
+  'cancelled',
 ];
 const REASONS = [
   'self_referential',
@@ -657,6 +660,9 @@ const REASONS = [
   'no_activity_promise',
   'no_scheduled_row',
   'no_coparent_invite',
+  'no_registration_record',
+  'no_send_record',
+  'no_cancel_record',
 ];
 const EVENT_KEYS = [
   'mode',
@@ -702,9 +708,9 @@ describe('agent_claim_shadow', () => {
     return h;
   }
 
-  it('carries exactly the 61 keys, every one present', async () => {
+  it('carries exactly the 82 keys, every one present', async () => {
     const h = await oneEvent();
-    expect(EVENT_KEYS).toHaveLength(61);
+    expect(EVENT_KEYS).toHaveLength(82);
     expect(Object.keys(h.props()).sort()).toEqual([...EVENT_KEYS].sort());
   });
 

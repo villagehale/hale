@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale says it is watching one class (Tuesday gymnastics) for an open spot. The only watch row is for Saturday swimming, a different class, so no row backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "spot_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1525
+}

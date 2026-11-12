@@ -14,6 +14,9 @@ export const READ_CLAIM_KINDS = [
   'activity_followup',
   'co_parent_invite',
   'self_referential',
+  'registration_done',
+  'send_done',
+  'cancelled',
 ];
 
 /** Percent floors (design §j-7). Per language with kinds pooled, plus per kind with
@@ -140,7 +143,8 @@ export function failedBars(score) {
 /** Which candidate rows can back a claim kind (the verifier's table, claim-verdict.ts;
  * claim-read-fixtures.test.mjs checks the two agree). */
 const BACKS = {
-  scheduled_event: (c) => c.source === 'calendar' || c.source === 'parent_stated',
+  scheduled_event: (c) =>
+    c.source === 'calendar' || c.source === 'parent_stated' || c.source === 'booking',
   registration_watch: (c) =>
     (c.source === 'open_commitment' && c.kind === 'registration_watch') ||
     c.source === 'live_sequence' ||
@@ -151,6 +155,14 @@ const BACKS = {
     (c.source === 'open_commitment' || c.source === 'pending') && c.kind === 'activity_followup',
   co_parent_invite: () => false,
   self_referential: () => false,
+  // Never a calendar row: planned is not registered.
+  registration_done: (c) =>
+    c.source === 'signup_confirmed' ||
+    c.source === 'booking' ||
+    c.source === 'reported_outcome' ||
+    c.source === 'parent_stated',
+  send_done: (c) => c.source === 'send_receipt',
+  cancelled: (c) => c.source === 'cancelled',
 };
 
 export function compatibleRefs(fixture, kind) {
@@ -201,6 +213,18 @@ export const DEGENERATE_READERS = {
   'silent-on-injection': {
     mustFail: 'caught',
     read: (fixture) => (fixture.category === 'injection' ? [] : goldClaims(fixture)),
+  },
+  // VIL-581: a reader that lets a false "registered" through (it cites any registration
+  // row it was offered, for the wrong program too) must fail. Every other claim is gold,
+  // so only the registration fixtures can fail it.
+  'registered-backed': {
+    mustFail: 'caught',
+    read: (fixture) =>
+      goldClaims(fixture).map((c) =>
+        c.kind === 'registration_done' && c.row === 'none'
+          ? { ...c, row: compatibleRefs(fixture, c.kind)[0] ?? 'none' }
+          : c,
+      ),
   },
 };
 

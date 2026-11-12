@@ -36,6 +36,9 @@ export const READ_CLAIM_KINDS = [
   'activity_followup',
   'co_parent_invite',
   'self_referential',
+  'registration_done',
+  'send_done',
+  'cancelled',
 ] as const;
 export type ReadClaimKind = (typeof READ_CLAIM_KINDS)[number];
 

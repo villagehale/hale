@@ -188,6 +188,9 @@ const REFUSAL_REASONS = Object.keys({
   no_activity_promise: true,
   no_scheduled_row: true,
   no_coparent_invite: true,
+  no_registration_record: true,
+  no_send_record: true,
+  no_cancel_record: true,
 } satisfies Record<RefusalReason, true>) as RefusalReason[];
 
 export interface ShadowComparison {

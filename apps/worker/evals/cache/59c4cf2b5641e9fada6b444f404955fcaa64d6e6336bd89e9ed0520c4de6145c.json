@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 promises to text the parent before Riverford winter registration opens, which is a registration season watch. Row w1 is the Riverford winter registration and is mintable, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "w1"
+      }
+    ]
+  },
+  "latencyMs": 1864
+}

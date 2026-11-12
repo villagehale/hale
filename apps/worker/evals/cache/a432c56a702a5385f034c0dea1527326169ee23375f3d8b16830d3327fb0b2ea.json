@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale will tell the parent when Maple Bend swim registrations open, which is a registration watch on the matching winter swim row q1. It also says Hale keeps looking for visual arts classes, a follow-up with no matching row.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2213
+}

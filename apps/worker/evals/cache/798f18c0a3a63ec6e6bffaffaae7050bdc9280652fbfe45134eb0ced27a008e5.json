@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale is writing before Riverford's winter registrations open, which is a registration-season watch. The only row is a spot watch on a Saturday swimming class, not the season, so it cannot back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2540
+}

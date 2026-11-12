@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 promises to text the parent before Riverford soccer registration opens, which is a registration_watch claim. The only row is for Maple Bend swim lessons, a different program, so it does not back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2287
+}

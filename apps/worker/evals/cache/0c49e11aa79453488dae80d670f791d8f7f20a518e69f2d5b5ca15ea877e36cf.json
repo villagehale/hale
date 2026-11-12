@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the 18-month appointment is booked, which is a scheduled_event claim. Row s1 is that same appointment, so the claim is about it, though its state is open rather than confirmed.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "s1"
+      }
+    ]
+  },
+  "latencyMs": 2775
+}

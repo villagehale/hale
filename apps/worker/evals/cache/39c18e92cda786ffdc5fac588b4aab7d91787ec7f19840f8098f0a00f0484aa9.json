@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will remind the parent before Riverford's winter registration opens, which is a registration-season watch. The only row is a spot watch on a Saturday swim class, a different thing, so it is cited as none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1790
+}
