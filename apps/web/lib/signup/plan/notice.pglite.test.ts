@@ -6,6 +6,7 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { lookupLoginLink } from '../login-link/store';
 import { recordSignupOffer } from '../store';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
 import {
@@ -283,7 +284,8 @@ describe('the login card in a prep notice', () => {
   const CARD = 'https://app.villagehale.com/l/AbCdef1234';
   const PARTS = [
     { type: 'text', body: 'Hale needs the swim login for Saturday.' },
-    { type: 'link', url: CARD },
+    // A row id the door stamps once the card goes; these tests read the sends, not the row.
+    { type: 'link', url: CARD, loginLinkId: '7d0c6a52-3f1e-4c55-9a43-2b8f1c9e0a11' },
     { type: 'text', body: 'It takes a minute.' },
   ] as const;
 
@@ -421,7 +423,12 @@ describe('the login card in a prep notice', () => {
       },
     };
     const deps = {
-      writer: { write: async () => ['Hale needs the swim login.', 'It takes a minute.'] },
+      writer: {
+        write: async () => ({
+          bubbles: ['Hale needs the swim login.', 'It takes a minute.'],
+          card: null,
+        }),
+      },
       deliver: createPlanPrepDeliver(db.database, { transport, fetch: linqFetch() }),
     };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -455,6 +462,66 @@ describe('the login card in a prep notice', () => {
     ]);
     warn.mockRestore();
     error.mockRestore();
+  });
+
+  it('a sweep whose card went but whose next bubble did not sends the rest with that same card, never a second', async () => {
+    const f = await plannedFamily();
+    const sent: { to: string; body: string }[] = [];
+    let refuseSecond = true;
+    const transport: ChannelTransport = {
+      async send(input) {
+        if (refuseSecond && input.body === 'It takes a minute.') {
+          throw new LinqSendError('30003', 400, false);
+        }
+        sent.push({ to: input.to, body: input.body });
+        return { providerMessageId: `prov-${sent.length}` };
+      },
+    };
+    const deps = {
+      writer: {
+        write: async () => ({
+          bubbles: ['Hale needs the swim login.', 'It takes a minute.'],
+          card: { title: 'Swim login', description: 'Preschool Swim Sat 9:00' },
+        }),
+      },
+      deliver: createPlanPrepDeliver(db.database, { transport, fetch: linqFetch() }),
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const before = new Date(OPENS.getTime() - 10 * 60 * 60_000);
+    const mine = (notices: { offerId: string }[]) => notices.filter((n) => n.offerId === f.offerId);
+
+    const first = await runDueSignupPlanPrep(db.database, { now: before }, deps);
+    expect(mine(first.notices)).toEqual([
+      { offerId: f.offerId, kind: 'login_ask', outcome: 'failed' },
+    ]);
+    refuseSecond = false;
+    const second = await runDueSignupPlanPrep(
+      db.database,
+      { now: new Date(before.getTime() + 60_000) },
+      deps,
+    );
+    expect(mine(second.notices)).toEqual([
+      { offerId: f.offerId, kind: 'login_ask', outcome: 'sent' },
+    ]);
+
+    const toParent = sent.filter((s) => s.to === f.phone).map((s) => s.body);
+    expect(toParent).toEqual([
+      'Hale needs the swim login.',
+      expect.stringMatching(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/),
+      'It takes a minute.',
+    ]);
+    const code = (toParent[1] ?? '').split('/').pop() as string;
+    expect(
+      await lookupLoginLink(db.database, code, new Date(before.getTime() + 60_000)),
+    ).toMatchObject({ ok: true, purpose: { kind: 'login_ask', card: { title: 'Swim login' } } });
+    const cards = await db.database
+      .select({ sentAt: schema.providerLoginLinks.sentAt })
+      .from(schema.providerLoginLinks)
+      .where(eq(schema.providerLoginLinks.offerId, f.offerId));
+    expect(cards).toEqual([{ sentAt: before }]);
+    warn.mockRestore();
+    info.mockRestore();
   });
 
   it('sends a bubble whose first try failed, and a one-off notice every time', async () => {

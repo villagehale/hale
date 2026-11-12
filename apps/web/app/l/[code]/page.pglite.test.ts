@@ -18,10 +18,16 @@ import ProviderLoginPage, { generateMetadata } from './page';
 const NOW = new Date();
 const HOST = 'haltonhills.perfectmind.com';
 const TITLE = `Hale needs your login for ${HOST}`;
+// What the notice writer returned for the card, in the parent's language (here Chinese).
+const CARD = {
+  title: `${HOST} 的登录`,
+  description: 'Preschool Swim Sat 9:00 · 12月1日 7:00 开放报名',
+};
 const PURPOSE: LoginLinkPurpose = {
   kind: 'login_ask',
   sessionLabel: 'Preschool Swim Sat 9:00',
   opensAt: { local: 'Tuesday, December 1, 2026 at 7:00 a.m.', timeZone: 'America/Toronto' },
+  card: CARD,
 };
 const PURPOSE_LINE = 'Preschool Swim Sat 9:00 · opens Tuesday, December 1, 2026 at 7:00 a.m.';
 
@@ -40,7 +46,9 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function card(): Promise<{ code: string; mintAgain: () => Promise<string> }> {
+async function card(
+  purpose: LoginLinkPurpose = PURPOSE,
+): Promise<{ code: string; mintAgain: () => Promise<string> }> {
   const database = harness.db.database;
   const seeded = await seedFamily(database);
   const childId = await seedChild(database, seeded.familyId, 'Ada', 40, undefined, NOW);
@@ -70,7 +78,7 @@ async function card(): Promise<{ code: string; mintAgain: () => Promise<string> 
       parentUserId: seeded.parentUserId,
       offerId: offer.id,
       providerHost: HOST,
-      purpose: PURPOSE,
+      purpose,
       now: new Date(),
     });
     return minted.url.split('/').pop() as string;
@@ -87,15 +95,18 @@ async function open(code: string) {
 }
 
 describe('/l/<code> — the login card and its page', () => {
-  it('names the provider and the purpose in the preview and on the page, and says honestly what happens to the login', async () => {
+  it('previews the card the model wrote in the parent language, and the page says honestly what happens to the login', async () => {
     const { code } = await card();
     const { meta, html } = await open(code);
 
-    expect(meta.title).toEqual({ absolute: TITLE });
-    expect(meta.description).toBe(PURPOSE_LINE);
-    expect(meta.openGraph).toMatchObject({ title: TITLE, description: PURPOSE_LINE });
+    expect(meta.title).toEqual({ absolute: CARD.title });
+    expect(meta.description).toBe(CARD.description);
+    expect(meta.openGraph).toMatchObject({ title: CARD.title, description: CARD.description });
+    expect(meta.twitter).toMatchObject({ title: CARD.title, description: CARD.description });
+    expect(JSON.stringify(meta)).not.toContain('needs your login');
     expect(meta.robots).toEqual({ index: false, follow: false });
 
+    // The page itself is web chrome, not the thread.
     expect(html).toContain(TITLE);
     expect(html).toContain(PURPOSE_LINE);
     expect(html).toMatch(/<a [^>]*href="sms:\+14165550100"[^>]*>Not now<\/a>/);
@@ -103,6 +114,23 @@ describe('/l/<code> — the login card and its page', () => {
     expect(html).toContain('Deleted after 45 days unless a registration there is still open.');
     expect(html).not.toMatch(/\bcity\b/i);
     expect(html).not.toMatch(/never sees|sealed/i);
+  });
+
+  it('with no card written, the preview is the bare provider host and no fixed sentence', async () => {
+    const { code } = await card({ ...PURPOSE, card: null });
+    const { meta, html } = await open(code);
+
+    expect(meta.title).toEqual({ absolute: HOST });
+    expect(meta.description).toBeNull();
+    expect(meta.openGraph).toMatchObject({ title: HOST });
+    expect(meta.openGraph).not.toHaveProperty('description', expect.anything());
+    const preview = JSON.stringify(meta);
+    expect(preview).not.toContain('needs your login');
+    expect(preview).not.toContain(PURPOSE_LINE);
+    expect(preview).not.toContain('opens ');
+    // Positive control: the page chrome still names the host and the purpose.
+    expect(html).toContain(TITLE);
+    expect(html).toContain(PURPOSE_LINE);
   });
 
   it('keeps the code out of the next page and out of a session replay', async () => {
@@ -131,5 +159,6 @@ describe('/l/<code> — the login card and its page', () => {
     // Positive control: the fresh card for the same host is live.
     const live = await open(fresh);
     expect(live.html).toContain(TITLE);
+    expect(live.meta.title).toEqual({ absolute: CARD.title });
   });
 });
