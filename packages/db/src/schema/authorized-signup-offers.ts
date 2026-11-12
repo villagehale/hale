@@ -1,11 +1,14 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   index,
   integer,
   jsonb,
   numeric,
+  pgSequence,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -46,6 +49,9 @@ export type AuthorizedSignupPlanResume =
       costUsd: string | null;
     };
 
+/** Drawn once per delivered text about a sign-up ask: the order those texts reached a parent. */
+export const authorizedSignupAskSeq = pgSequence('authorized_signup_ask_seq');
+
 /**
  * VIL-375 — the activity a parent may authorize Hale to register, and nothing else.
  *
@@ -68,6 +74,11 @@ export const authorizedSignupOffers = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     /** Opaque public activity id. Not a sentence and not a child name. */
     activityKey: text('activity_key').notNull(),
+    /**
+     * The program's public name as the page or the parent gave it ("Little Kickers").
+     * Lets a later message about another activity read as about another one. Never a child.
+     */
+    activityLabel: text('activity_label'),
     registrationUrl: text('registration_url').notNull(),
     sessions: jsonb('sessions').$type<AuthorizedSignupSession[]>().notNull(),
     /** The only price the parent has approved, in cents. Null means none. */
@@ -107,6 +118,16 @@ export const authorizedSignupOffers = pgTable(
     /** Live seat/fee read. Never a person. */
     planAvailability: jsonb('plan_availability').$type<Record<string, unknown>>(),
     planAvailabilityAt: timestamp('plan_availability_at', { withTimezone: true }),
+    /**
+     * Drawn from `authorized_signup_ask_seq` right before the transport call of each text
+     * about the ask (the offer, a question back, a notice, a receipt), and kept here once the
+     * transport took it. Higher started later, and no two are equal: a bare yes or no answers
+     * the ask with the highest. Null: no text about it is known to have reached the parent,
+     * and it never takes a bare answer.
+     */
+    lastAskedSeq: bigint('last_asked_seq', { mode: 'number' }),
+    /** When `lastAskedSeq` was last drawn, for reading only. Never an order. */
+    lastAskedAt: timestamp('last_asked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -128,3 +149,31 @@ export const authorizedSignupOffers = pgTable(
 
 export type AuthorizedSignupOffer = typeof authorizedSignupOffers.$inferSelect;
 export type NewAuthorizedSignupOffer = typeof authorizedSignupOffers.$inferInsert;
+
+/**
+ * Written before every send about one of this parent's sign-up asks, with the number that
+ * send drew (`failedSeq` only rises), and deleted with the keep once the transport took the
+ * text, unless a later send is marked. A send that failed in any way, or whose keep failed,
+ * leaves it: the parent may have that text. While a row stands, no bare yes or no binds any
+ * of the parent's asks. A number kept later, drawn at or after `failedSeq`, removes it.
+ * `failures` counts keeps that missed before that; a repeat pages ops. A number and a count
+ * only, never a person, a message body or a link.
+ */
+export const authorizedSignupAskOrderUncertain = pgTable(
+  'authorized_signup_ask_order_uncertain',
+  {
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    parentUserId: uuid('parent_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    failedSeq: bigint('failed_seq', { mode: 'number' }).notNull(),
+    failures: integer('failures').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.familyId, table.parentUserId] }),
+  }),
+);

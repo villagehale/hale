@@ -33,6 +33,7 @@ function row(over: Partial<UnhandedInboundRow> = {}): UnhandedInboundRow {
     sentAt: new Date('2026-08-12T11:40:00.000Z'),
     createdAt: new Date('2026-08-12T11:40:01.000Z'),
     inGroup: null,
+    optOutUnread: null,
     ...over,
   };
 }
@@ -235,6 +236,24 @@ describe('reconcileUnhandedInbound', () => {
 
     expect(jobs.map((j) => j.in_group)).toEqual([false, true, undefined]);
     expect(jobs.every((j) => 'in_group' in j)).toBe(true);
+  });
+
+  it('carries a text the door could not read as a stop or not on to the re-drive', async () => {
+    const jobs: ChannelMessageReceivedJob[] = [];
+    const h = deps(
+      [
+        row({ id: '33333333-3333-4333-8333-333333333331', optOutUnread: true }),
+        row({ id: '33333333-3333-4333-8333-333333333332', optOutUnread: false }),
+        row({ id: '33333333-3333-4333-8333-333333333333', optOutUnread: null }),
+      ],
+      async (job) => {
+        jobs.push(job);
+      },
+    );
+
+    await reconcileUnhandedInbound(h.deps);
+
+    expect(jobs.map((j) => j.opt_out_unread)).toEqual([true, false, undefined]);
   });
 
   it('falls back to created_at when the row carries no send time', async () => {

@@ -722,6 +722,7 @@ describe('mergeBurstContext', () => {
     body,
     media,
     createdAt: new Date(T0),
+    optOutUnread: false,
   });
 
   it('joins the bodies, unions the media, and threads under the latest text', () => {

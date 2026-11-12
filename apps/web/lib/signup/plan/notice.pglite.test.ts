@@ -6,7 +6,7 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { recordSignupOffer } from '../store';
+import { loadLastAskedOfferId, recordSignupOffer } from '../store';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
 import {
   PLAN_NOTICE_TEMPLATE,
@@ -144,6 +144,20 @@ function rig(text: string | null = 'Sunday is in your cart, finish in the open b
   return { notify, facts, sent, writer, transport };
 }
 
+/** The ask whose text reached the parent last, as the walk reads it. */
+function lastAsked(f: { familyId: string; parentUserId: string }) {
+  return loadLastAskedOfferId(db.database, f);
+}
+
+/** Where the offer's last delivered text stands in the order texts reached the parent. */
+async function askedSeq(offerId: string) {
+  const [row] = await db.database
+    .select({ seq: schema.authorizedSignupOffers.lastAskedSeq })
+    .from(schema.authorizedSignupOffers)
+    .where(eq(schema.authorizedSignupOffers.id, offerId));
+  return row?.seq ?? null;
+}
+
 async function storedThread(familyId: string) {
   const rows = await db.database
     .select({ content: schema.messages.content })
@@ -190,6 +204,8 @@ describe('the parent notice after a plan run', () => {
       );
     expect(ledger).toMatchObject({ direction: 'out', providerMessageId: 'prov-1' });
     expect(ledger?.sentAt).not.toBeNull();
+    // The text is Hale's last word to them about this plan: a bare stop next answers it.
+    expect(await lastAsked(f)).toBe(f.offerId);
   });
 
   it('hands an ActiveNet parent a filled registration on the generic auto path, with the live browser after the text', async () => {
@@ -270,6 +286,7 @@ describe('the parent notice after a plan run', () => {
     const { notify, transport } = rig(null);
     expect(await notify(notice(f))).toBe('failed');
     expect(transport.send).not.toHaveBeenCalled();
+    expect(await lastAsked(f)).toBeNull();
   });
 
   it('tells the writer what the run charged, from the engine: unknown is never nothing', async () => {
@@ -346,6 +363,7 @@ describe('the login card in a prep notice', () => {
     const { transport, bodies } = phoneTransport({ transport: 'imessage', chatId: 'chat-1' });
     const fetchMock = linqFetch();
     const deliver = createPlanPrepDeliver(db.database, { transport, fetch: fetchMock });
+    expect(await lastAsked(f)).toBeNull();
 
     const delivered = await deliver({
       familyId: f.familyId,
@@ -358,6 +376,8 @@ describe('the login card in a prep notice', () => {
     });
 
     expect(delivered).toBe('sent');
+    // The notice reached them: their next bare answer is this plan's.
+    expect(await lastAsked(f)).toBe(f.offerId);
     expect(bodies).toEqual(['Hale needs the swim login for Saturday.', 'It takes a minute.']);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const sentBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
@@ -431,6 +451,8 @@ describe('the login card in a prep notice', () => {
 
     expect(delivered).toBe('failed');
     expect(fetchMock).not.toHaveBeenCalled();
+    // Nothing reached them, so nothing about this plan is the text they got last.
+    expect(await lastAsked(f)).toBeNull();
     const rows = await ledger(f.familyId);
     expect(rows.map((row) => [row.templateKey, row.status, row.errorCode])).toEqual([
       [`${PLAN_PREP_TEMPLATE}:login_ask`, 'failed', '21610'],
@@ -462,11 +484,16 @@ describe('the login card in a prep notice', () => {
     expect(mine(first.notices)).toEqual([
       { offerId: f.offerId, kind: 'login_ask', outcome: 'failed' },
     ]);
+    // Its text reached them before the link failed: the plan is the ask they got last.
+    expect(await lastAsked(f)).toBe(f.offerId);
+    const afterText = await askedSeq(f.offerId);
     refuseLink = false;
     const second = await runDueSignupPlanPrep(db.database, { now: before }, deps);
     expect(mine(second.notices)).toEqual([
       { offerId: f.offerId, kind: 'login_ask', outcome: 'sent' },
     ]);
+    // The bubble that went this time is later than the one that went before.
+    expect(await askedSeq(f.offerId)).toBeGreaterThan(afterText as number);
 
     const toParent = sent.filter((s) => s.to === f.phone).map((s) => s.body);
     expect(toParent).toEqual([

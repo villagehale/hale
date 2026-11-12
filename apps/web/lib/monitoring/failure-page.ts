@@ -198,6 +198,8 @@ export const OPS_PAGE_VOCABULARY = {
   registration_review_placed_order: {},
   registration_review_unread: {},
   linq_effect_delivery_unknown: {},
+  signup_ask_order_uncertain: {},
+  signup_ask_order_unmarked: {},
 } as const satisfies Record<string, Readonly<Record<string, readonly string[]>>>;
 
 type OpsPageVocabulary = typeof OPS_PAGE_VOCABULARY;
