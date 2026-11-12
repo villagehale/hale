@@ -48,6 +48,12 @@ import { registrationUrlAllowed } from './url';
 
 export const OFFER_SIGNUP_TOOL = 'offer_signup';
 
+/** An offer `offer_signup` recorded this turn, with the text the coach was handed to send. */
+export interface RecordedSignupOffer {
+  offerId: string;
+  text: string;
+}
+
 export interface SignupOfferToolPorts {
   database: Database;
   familyId: string;
@@ -62,6 +68,12 @@ export interface SignupOfferToolPorts {
   planWriter?: PlanReplyWriter;
   /** Reads whether this ask replaces an earlier one. Undefined uses the reply model. */
   supersedeReader?: SignupSupersedeReader;
+  /**
+   * Handed every offer this turn recorded. The router stamps it as asked once the reply that
+   * carries its text went out, so an offer whose text never reached the parent never takes
+   * their bare yes.
+   */
+  onRecorded: (offer: RecordedSignupOffer) => void;
 }
 
 const sessionSchema = z.object({
@@ -259,6 +271,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         { writer: ports.writer, planWriter: ports.planWriter },
       );
       if (!result.ok) return { recorded: false as const, reason: result.reason };
+      ports.onRecorded({ offerId: result.offerId, text: result.text });
       return {
         recorded: true as const,
         offerId: result.offerId,

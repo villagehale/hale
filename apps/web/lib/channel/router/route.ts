@@ -161,6 +161,8 @@ import {
 import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
+import { markOfferAsked } from '~/lib/signup/store';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
   type ChannelCoachRuntime,
@@ -2250,6 +2252,36 @@ async function recordCoachOfferFromReply(
   }
 }
 
+/**
+ * The reply carrying these sign-up offers' text just went out: each is now the ask whose text
+ * reached the parent last, so their next bare yes or no answers it. Stamped here and only
+ * here, so an offer whose reply never left takes no bare answer.
+ *
+ * Never throws: the parent already has the text, and an exception here would buy a carrier
+ * retry and a duplicate reply. An offer left unstamped takes no bare yes or no until words that
+ * name it get it asked about, and the miss is logged by name (rule #11).
+ */
+async function stampSignupOffersAsked(
+  deps: ChannelRouterDeps,
+  familyId: string,
+  offers: readonly RecordedSignupOffer[],
+): Promise<void> {
+  for (const offer of offers) {
+    try {
+      await markOfferAsked(deps.database, { familyId, offerId: offer.offerId });
+    } catch (err) {
+      deps.log.error(
+        {
+          outcome: 'signup_offer_unstamped',
+          offerId: offer.offerId,
+          err: err instanceof Error ? err.name : 'unknown',
+        },
+        'channel router: a sign-up offer went out and was not stamped as asked',
+      );
+    }
+  }
+}
+
 async function runAgentTurn(
   deps: ChannelRouterDeps,
   args: {
@@ -2323,6 +2355,7 @@ async function runAgentTurn(
       enforced,
       emailRead,
       capabilityNotes,
+      signupOffers,
     } = await composeReconciledReply(deps, args, view);
     // VIL-616: a reply written after reading an email may repeat the sender's words, so
     // its thread row says so and the nightly memory writer leaves it out.
@@ -2351,6 +2384,7 @@ async function runAgentTurn(
       threadSource,
       voiceMemo === true && !card ? { voiceMemo: true } : undefined,
     );
+    await stampSignupOffersAsked(deps, args.turn.familyId, signupOffers ?? []);
     // AFTER the send: the shadow read adds no latency and cannot change what was sent.
     // An enforced turn was already read before the send, so it starts no shadow.
     if (!enforced) {
@@ -2985,6 +3019,7 @@ async function composeReconciledReply(
         const unsaid = {
           spotWatch: null,
           capabilityNotes: null,
+          signupOffers: [],
           ...(enforced ? { activityPromise: null, planOffer: null } : {}),
           mints: [],
           attempts,
@@ -3037,6 +3072,10 @@ async function composeReconciledReply(
     regexKinds.has('activity_followup');
   const offerSurvived =
     !enforced || composed.planOffer === null || reply.includes(composed.planOffer.sentence.trim());
+  // A sign-up offer is stamped as asked only while the text it was sent with survived the cut.
+  const signupOffers = (composed.signupOffers ?? []).filter((offer) =>
+    reply.includes(offer.text.trim()),
+  );
   // VIL-303: a cut reply may have lost the sentence a note rides on, and nothing names
   // which sentence that was, so neither note is written. A no left unrecorded owes no
   // correction; a correction left unrecorded is offered again on a later text.
@@ -3044,6 +3083,9 @@ async function composeReconciledReply(
     ackSurvived ? null : ('ack_cut' as const),
     promiseSurvived ? null : ('promise_cut' as const),
     offerSurvived ? null : ('offer_cut' as const),
+    signupOffers.length === (composed.signupOffers ?? []).length
+      ? null
+      : ('signup_offer_cut' as const),
     composed.capabilityNotes ? ('capability_notes_cut' as const) : null,
   ].filter((drop) => drop !== null);
   for (const reason of drops) {
@@ -3059,6 +3101,7 @@ async function composeReconciledReply(
     spotWatch: ackSurvived ? armingAck : null,
     activityPromise: promiseSurvived ? composed.activityPromise : null,
     planOffer: offerSurvived ? composed.planOffer : null,
+    signupOffers,
     capabilityNotes: null,
     mints: enforced
       ? survivingMints(refusedVerdict, enforced.read, enforced.judged, reply)

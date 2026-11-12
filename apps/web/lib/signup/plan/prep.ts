@@ -130,7 +130,6 @@ async function deliverBubbles(
     parentUserId: string;
     offerId: string;
     kind: PlanNoticeKind;
-    now: Date;
   },
 ): Promise<boolean> {
   for (const [index, body] of bubbles.entries()) {
@@ -143,11 +142,7 @@ async function deliverBubbles(
     });
     if (!ok) return false;
     if (index === 0) {
-      await markOfferAsked(database, {
-        familyId: notice.familyId,
-        offerId: notice.offerId,
-        at: notice.now,
-      });
+      await markOfferAsked(database, { familyId: notice.familyId, offerId: notice.offerId });
     }
   }
   return true;
@@ -217,7 +212,6 @@ export async function runDueSignupPlanPrep(
       parentUserId: offer.parentUserId,
       offerId: offer.id,
       kind,
-      now: sweep.now,
     });
     if (!delivered) {
       notices.push({ offerId: offer.id, kind, sent: false });

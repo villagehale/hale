@@ -5,7 +5,7 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { recordSignupOffer } from '../store';
+import { loadLastAskedOfferId, recordSignupOffer } from '../store';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
 import { PLAN_NOTICE_TEMPLATE, createPlanNotifier } from './notice';
 import type { PlanOutcomeNotice } from './run';
@@ -136,12 +136,9 @@ function rig(text: string | null = 'Sunday is in your cart, finish in the open b
   return { notify, facts, sent, writer, transport };
 }
 
-async function lastAskedAt(offerId: string) {
-  const [row] = await db.database
-    .select({ at: schema.authorizedSignupOffers.lastAskedAt })
-    .from(schema.authorizedSignupOffers)
-    .where(eq(schema.authorizedSignupOffers.id, offerId));
-  return row?.at?.toISOString() ?? null;
+/** The ask whose text reached the parent last, as the walk reads it. */
+function lastAsked(f: { familyId: string; parentUserId: string }) {
+  return loadLastAskedOfferId(db.database, f);
 }
 
 async function storedThread(familyId: string) {
@@ -190,7 +187,7 @@ describe('the parent notice after a plan run', () => {
     expect(ledger).toMatchObject({ direction: 'out', providerMessageId: 'prov-1' });
     expect(ledger?.sentAt).not.toBeNull();
     // The text is Hale's last word to them about this plan: a bare stop next answers it.
-    expect(await lastAskedAt(f.offerId)).toBe(NOW.toISOString());
+    expect(await lastAsked(f)).toBe(f.offerId);
   });
 
   it('hands an ActiveNet parent a filled registration on the generic auto path, with the live browser after the text', async () => {
@@ -271,7 +268,7 @@ describe('the parent notice after a plan run', () => {
     const { notify, transport } = rig(null);
     expect(await notify(notice(f))).toBe('failed');
     expect(transport.send).not.toHaveBeenCalled();
-    expect(await lastAskedAt(f.offerId)).toBeNull();
+    expect(await lastAsked(f)).toBeNull();
   });
 
   it('a second notice for the same plan is not sent twice', async () => {

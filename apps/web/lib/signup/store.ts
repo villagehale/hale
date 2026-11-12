@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { redactSignupAudit } from './audit';
 import { signupProviderHost } from './consent';
 import { normalizeSession } from './forms/details';
@@ -163,35 +163,60 @@ export async function recordSignupOffer(
   }
 }
 
-/** When Hale last asked the parent about an offer: its last text about it, else the offer. */
-export function offerAskedAt(row: { lastAskedAt: Date | null; createdAt: Date }): Date {
-  return row.lastAskedAt ?? row.createdAt;
+/**
+ * Where an ask stands in the order Hale's texts about it reached the parent. `lastAskedSeq`
+ * is drawn when one was delivered ({@link markOfferAsked}): higher went later, and no two
+ * are equal. Null: no text about it is known to have reached them. Such an ask ranks below
+ * every ask whose text did, the newest offer first among them, and is never the one a bare
+ * yes or no answers ({@link loadLastAskedOfferId}).
+ */
+export interface AskOrder {
+  lastAskedSeq: number | null;
+  createdAt: Date;
 }
 
-/** {@link offerAskedAt} in SQL, to order offers most recently asked first. */
-export const OFFER_ASKED_AT = sql`coalesce(${schema.authorizedSignupOffers.lastAskedAt}, ${schema.authorizedSignupOffers.createdAt})`;
+/** Sorts asks by {@link AskOrder}, the one whose text reached the parent last first. */
+export function byAskedLast(a: AskOrder, b: AskOrder): number {
+  if (a.lastAskedSeq !== null && b.lastAskedSeq !== null) return b.lastAskedSeq - a.lastAskedSeq;
+  if (a.lastAskedSeq !== null) return -1;
+  if (b.lastAskedSeq !== null) return 1;
+  return b.createdAt.getTime() - a.createdAt.getTime();
+}
+
+/** {@link byAskedLast} in SQL, for `orderBy(...ASKED_LAST_FIRST)`. */
+export const ASKED_LAST_FIRST = [
+  sql`${schema.authorizedSignupOffers.lastAskedSeq} desc nulls last`,
+  desc(schema.authorizedSignupOffers.createdAt),
+] as const;
 
 /**
- * Hale just sent this parent a text about this ask: a bare yes or no of theirs answers it
- * next. Called once the text went out, never before, so a question that never reached them
- * cannot take their next answer.
+ * A text about this ask was just delivered to the parent (the offer, a question back, a
+ * notice, a receipt): it is now the ask whose text reached them last, so their next bare yes
+ * or no answers it. Called right after the transport accepted the text, never before, so a
+ * text that never went cannot take their answer. The order is drawn from
+ * `authorized_signup_ask_seq` here, never from a clock: a turn and a sweep each carry the time
+ * they started, and one sweep texting two asks has one time for both.
  */
 export async function markOfferAsked(
   database: Database,
-  input: { familyId: string; offerId: string; at: Date },
+  input: { familyId: string; offerId: string },
 ): Promise<void> {
   const offers = schema.authorizedSignupOffers;
   await database
     .update(offers)
-    .set({ lastAskedAt: input.at })
+    .set({
+      lastAskedSeq: sql`nextval(${schema.authorizedSignupAskSeq.seqName}::regclass)`,
+      lastAskedAt: sql`clock_timestamp()`,
+    })
     .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId)));
 }
 
 /**
- * The ask Hale texted this parent about last, whatever its status now: the offer, or a later
- * question back, notice or receipt about it ({@link offerAskedAt}). Null when Hale made them
- * none. An approved, running or finished ask can be it, so a bare yes after its login ask or
- * receipt is never handed to an older ask still waiting on one.
+ * The ask whose text reached this parent last, whatever its status now: the offer, or a later
+ * question back, notice or receipt about it ({@link AskOrder}). Null when none of Hale's texts
+ * about their asks is known to have reached them: an offer whose text never went is not it.
+ * An approved, running or finished ask can be it, so a bare yes after its login ask or receipt
+ * is never handed to an older ask still waiting on one.
  */
 export async function loadLastAskedOfferId(
   database: Database,
@@ -201,21 +226,25 @@ export async function loadLastAskedOfferId(
   const [row] = await database
     .select({ id: offers.id })
     .from(offers)
-    .where(and(eq(offers.familyId, input.familyId), eq(offers.parentUserId, input.parentUserId)))
-    .orderBy(desc(OFFER_ASKED_AT), desc(offers.id))
+    .where(
+      and(
+        eq(offers.familyId, input.familyId),
+        eq(offers.parentUserId, input.parentUserId),
+        isNotNull(offers.lastAskedSeq),
+      ),
+    )
+    .orderBy(desc(offers.lastAskedSeq))
     .limit(1);
   return row?.id ?? null;
 }
 
-/** A pending ask with the public facts a parent could name it by. */
-export interface PendingSignupOffer extends SignupOffer {
+/** A pending ask with the public facts a parent could name it by, and its {@link AskOrder}. */
+export interface PendingSignupOffer extends SignupOffer, AskOrder {
   activityLabel: string | null;
   providerHost: string;
-  /** {@link offerAskedAt}. */
-  askedAt: Date;
 }
 
-/** Every pending ask of the family, most recently asked first. Several can be open at once. */
+/** Every pending ask of the family, in {@link AskOrder}. Several can be open at once. */
 export async function loadPendingOffers(
   database: Database,
   familyId: string,
@@ -225,7 +254,7 @@ export async function loadPendingOffers(
     .select()
     .from(offers)
     .where(and(eq(offers.familyId, familyId), eq(offers.status, 'pending')))
-    .orderBy(desc(OFFER_ASKED_AT));
+    .orderBy(...ASKED_LAST_FIRST);
   return rows.flatMap((row) =>
     row.familyId !== familyId || row.status !== 'pending'
       ? []
@@ -241,7 +270,8 @@ export async function loadPendingOffers(
             approvedPriceCents: row.approvedPriceCents,
             activityLabel: row.activityLabel,
             providerHost: row.providerHost,
-            askedAt: offerAskedAt(row),
+            lastAskedSeq: row.lastAskedSeq,
+            createdAt: row.createdAt,
           },
         ],
   );

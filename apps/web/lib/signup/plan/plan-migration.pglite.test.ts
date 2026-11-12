@@ -14,6 +14,9 @@ const RESUME_MIGRATION = migrationFiles().find((file) =>
 const LAST_ASKED_MIGRATION = migrationFiles().find((file) =>
   file.endsWith('_authorized_signup_last_asked.sql'),
 );
+const ASK_SEQ_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_authorized_signup_ask_seq.sql'),
+);
 
 let db: TestDb;
 
@@ -80,5 +83,27 @@ describe('authorized signup last-asked migration', () => {
       `select (count(*) filter (where last_asked_at is null))::int as unasked, max(last_asked_at) = '2026-11-30T20:00:00Z'::timestamptz as stamped from authorized_signup_offers`,
     )) as { rows: { unasked: number; stamped: boolean }[] }[];
     expect(after[0]?.rows).toEqual([{ unasked: 0, stamped: true }]);
+  });
+});
+
+describe('authorized signup ask-order migration', () => {
+  it('survives a second pass without restarting the order, and leaves new offers unordered', async () => {
+    expect(ASK_SEQ_MIGRATION).toBeDefined();
+    await db.applyMigration(ASK_SEQ_MIGRATION as string);
+    const first = (await db.exec(`select nextval('authorized_signup_ask_seq')::int as n`)) as {
+      rows: { n: number }[];
+    }[];
+    // A replay that restarted the sequence would rank a later text below an earlier one.
+    await db.applyMigration(ASK_SEQ_MIGRATION as string);
+    const second = (await db.exec(`select nextval('authorized_signup_ask_seq')::int as n`)) as {
+      rows: { n: number }[];
+    }[];
+    expect(second[0]?.rows[0]?.n).toBeGreaterThan(first[0]?.rows[0]?.n as number);
+
+    await insertOffer('pending');
+    const stamped = (await db.exec(
+      'select (count(*) filter (where last_asked_seq is not null))::int as ordered from authorized_signup_offers',
+    )) as { rows: { ordered: number }[] }[];
+    expect(stamped[0]?.rows).toEqual([{ ordered: 0 }]);
   });
 });

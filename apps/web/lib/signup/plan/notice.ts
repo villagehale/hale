@@ -183,7 +183,7 @@ async function deliverDirect(
         sentAt: input.now,
       })
       .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
-    await markOfferAsked(tx, { familyId: notice.familyId, offerId: notice.offerId, at: input.now });
+    await markOfferAsked(tx, { familyId: notice.familyId, offerId: notice.offerId });
   });
   await threadProactiveMessage(database, {
     familyId: notice.familyId,

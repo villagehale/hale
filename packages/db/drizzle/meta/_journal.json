@@ -1548,6 +1548,13 @@
       "when": 1794365232000,
       "tag": "0234_authorized_signup_last_asked",
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1794365233000,
+      "tag": "0235_authorized_signup_ask_seq",
+      "breakpoints": true
     }
   ]
 }

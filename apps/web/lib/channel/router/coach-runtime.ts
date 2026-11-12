@@ -5,6 +5,7 @@ import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { TurnPhotoFacts } from '~/lib/channel/inbound-photo-facts';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
 
 /**
  * VIL-220 · C1 → VIL-221 · C2 — the seam between the router and the agent.
@@ -127,6 +128,13 @@ export interface ChannelTurnResult {
    * router writes it only once the reply is sent. Null or absent means neither.
    */
   capabilityNotes?: CapabilityNotes | null;
+  /**
+   * The sign-up offers this turn's `offer_signup` recorded, each with the text the coach was
+   * handed to send. The router stamps each as asked once the reply carrying it went out
+   * (`markOfferAsked`), and from a cut reply only if that text survived the cut, so an offer
+   * whose text never reached the parent never takes their bare yes. Absent means none.
+   */
+  signupOffers?: readonly RecordedSignupOffer[];
   /**
    * VIL-495 — the model chose to say this reply as a voice memo. Only ever true while
    * `LINQ_VOICE_MEMOS_ENABLED` is lit on a 1:1 turn. The router sends the SAME reply as a

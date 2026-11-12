@@ -79,6 +79,7 @@ async function toolsFor(body: string, photoFacts: TurnPhotoFacts) {
     undefined,
     undefined,
     'CA',
+    noop,
   );
   const pick = (name: string) => {
     const tool = tools.find((candidate) => candidate.name === name);

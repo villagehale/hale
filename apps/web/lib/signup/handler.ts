@@ -11,7 +11,7 @@ import { type SignupRunDeps, runAuthorizedSignup } from './run';
 import type { SignupBrowser } from './types';
 
 export interface AuthorizedSignupHandlerDeps
-  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter'> {
+  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter' | 'planReader' | 'planWriter'> {
   browser?: SignupBrowser | null;
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }

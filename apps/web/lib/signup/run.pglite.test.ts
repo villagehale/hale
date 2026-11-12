@@ -25,7 +25,12 @@ import {
   BROWSER_USE_RUN_ALLOWANCE_USD,
   runAuthorizedSignup,
 } from './run';
-import { browserUseRegistrationSpendUsd, loadSignupIdentity, recordSignupOffer } from './store';
+import {
+  browserUseRegistrationSpendUsd,
+  loadSignupIdentity,
+  markOfferAsked,
+  recordSignupOffer,
+} from './store';
 import { echoOutcomeWriter, renderEcho, stubConsentReader } from './test-models';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
 
@@ -182,7 +187,9 @@ describe('authorized signup runner', () => {
       approvedPriceCents: input.approvedPriceCents ?? null,
       now: NOW,
     });
-    expect(stored.ok).toBe(true);
+    if (!stored.ok) throw new Error(stored.reason);
+    // The coach's reply carrying the offer went out, so the parent's next yes is its.
+    await markOfferAsked(db.database, { familyId: seeded.familyId, offerId: stored.id });
     return seeded;
   }
 

@@ -441,7 +441,6 @@ async function reply(
     outcome,
     reply: planReplyBody(text, link),
     deliverOnThread: true,
-    afterSend: () =>
-      markOfferAsked(database, { familyId: input.familyId, offerId: plan.offerId, at: input.now }),
+    afterSend: () => markOfferAsked(database, { familyId: input.familyId, offerId: plan.offerId }),
   };
 }

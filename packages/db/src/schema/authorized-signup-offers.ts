@@ -1,10 +1,12 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   index,
   integer,
   jsonb,
   numeric,
+  pgSequence,
   pgTable,
   text,
   timestamp,
@@ -45,6 +47,9 @@ export type AuthorizedSignupPlanResume =
       holdExpiresAt: string | null;
       costUsd: string | null;
     };
+
+/** Drawn once per delivered text about a sign-up ask: the order those texts reached a parent. */
+export const authorizedSignupAskSeq = pgSequence('authorized_signup_ask_seq');
 
 /**
  * VIL-375 — the activity a parent may authorize Hale to register, and nothing else.
@@ -113,10 +118,14 @@ export const authorizedSignupOffers = pgTable(
     planAvailability: jsonb('plan_availability').$type<Record<string, unknown>>(),
     planAvailabilityAt: timestamp('plan_availability_at', { withTimezone: true }),
     /**
-     * When Hale last sent this parent a text about the ask after the offer itself: a
-     * question back, a mismatch question, a login ask, a receipt. Null: the offer was the
-     * last. A bare yes or no answers the ask asked last, by `coalesce(this, created_at)`.
+     * Drawn from `authorized_signup_ask_seq` each time a text about the ask was delivered
+     * (the offer, a question back, a notice, a receipt), right after the transport took it.
+     * Higher went later, and no two are equal: a bare yes or no answers the ask with the
+     * highest. Null: no text about it is known to have reached the parent, and it never
+     * takes a bare answer.
      */
+    lastAskedSeq: bigint('last_asked_seq', { mode: 'number' }),
+    /** When `lastAskedSeq` was last drawn, for reading only. Never an order. */
     lastAskedAt: timestamp('last_asked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -67,6 +67,7 @@ describe('catalog history cutover', () => {
       '0232_drop_civic_catalog',
       '0233_authorized_signup_activity_label',
       '0234_authorized_signup_last_asked',
+      '0235_authorized_signup_ask_seq',
     ]);
   });
 });

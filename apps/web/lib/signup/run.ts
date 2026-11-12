@@ -1280,11 +1280,7 @@ async function replyFor(
       now: input.now,
     });
     if (status === 'sent' || status === 'already_sent') {
-      await markOfferAsked(database, {
-        familyId: input.familyId,
-        offerId: facts.offerId,
-        at: input.now,
-      });
+      await markOfferAsked(database, { familyId: input.familyId, offerId: facts.offerId });
       return {
         ...rush,
         claimed: true,
@@ -1313,8 +1309,7 @@ async function replyFor(
     outcome: facts.outcome,
     reply: line,
     deliverOnThread: true,
-    afterSend: () =>
-      markOfferAsked(database, { familyId: input.familyId, offerId: facts.offerId, at: input.now }),
+    afterSend: () => markOfferAsked(database, { familyId: input.familyId, offerId: facts.offerId }),
   };
 }
 

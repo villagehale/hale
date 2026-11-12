@@ -13,7 +13,12 @@ import {
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
 import { authorizedSignupHandler } from '../handler';
 import { runAuthorizedSignup } from '../run';
-import { loadSignupIdentity, markOfferAsked, recordSignupOffer } from '../store';
+import {
+  loadLastAskedOfferId,
+  loadSignupIdentity,
+  markOfferAsked,
+  recordSignupOffer,
+} from '../store';
 import { echoOutcomeWriter } from '../test-models';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
@@ -87,7 +92,41 @@ async function family(options: { opensAt?: Date | null } = {}) {
     now: new Date(NOW.getTime() - 60 * 60_000),
   });
   if (!offer.ok) throw new Error(offer.reason);
+  await texted(seeded.familyId, offer.id);
   return { ...seeded, childId, offerId: offer.id };
+}
+
+const setUpOffers = new Map<string, string[]>();
+
+/**
+ * The coach's reply carrying this offer went out, and the router stamped it as asked. Offers
+ * a test sets up with an earlier `now` were texted earlier, so the family's set-up offers are
+ * stamped again in the order they were made. Only before any turn: a stamp no set-up made
+ * would be reordered, so it fails loudly instead.
+ */
+async function texted(familyId: string, offerId: string): Promise<void> {
+  const ids = [...(setUpOffers.get(familyId) ?? []), offerId];
+  setUpOffers.set(familyId, ids);
+  const rows = await db.database
+    .select({
+      id: schema.authorizedSignupOffers.id,
+      createdAt: schema.authorizedSignupOffers.createdAt,
+      lastAskedSeq: schema.authorizedSignupOffers.lastAskedSeq,
+    })
+    .from(schema.authorizedSignupOffers)
+    .where(eq(schema.authorizedSignupOffers.familyId, familyId));
+  if (rows.some((row) => row.lastAskedSeq !== null && !ids.includes(row.id))) {
+    throw new Error('texted: set offers up before any turn stamps one');
+  }
+  const ordered = rows
+    .filter((row) => ids.includes(row.id))
+    .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime());
+  for (const row of ordered) await markOfferAsked(db.database, { familyId, offerId: row.id });
+}
+
+/** The ask whose text reached the parent last, as the walk reads it. */
+async function lastAsked(f: { familyId: string; parentUserId: string }) {
+  return loadLastAskedOfferId(db.database, f);
 }
 
 /** A second adult in the household with full parent scope. */
@@ -649,6 +688,7 @@ describe('which ask a message answers', () => {
       now: new Date(NOW.getTime() - 10 * 60_000),
     });
     if (!recorded.ok) throw new Error(recorded.reason);
+    await texted(f.familyId, recorded.id);
     return recorded.id;
   }
 
@@ -848,8 +888,9 @@ describe('which ask a message answers', () => {
     expect((await offer(f.offerId)).status).toBe('pending');
     expect(await replyBindings(f.offerId)).toEqual(['tokens']);
     // Not yet asked: the router sends the question, then calls afterSend.
-    expect((await offer(f.offerId)).lastAskedAt).toBeNull();
+    expect(await lastAsked(f)).toBe(kickersId);
     await asked.afterSend?.('out-swim-question');
+    expect(await lastAsked(f)).toBe(f.offerId);
 
     // The model's worst answer: both asks read the bare yes as a go-ahead.
     const bare = reads('approve', 'approve');
@@ -1008,7 +1049,7 @@ describe('which ask a message answers', () => {
       },
     );
     expect(prep.notices).toContainEqual({ offerId: f.offerId, kind: 'login_ask', sent: true });
-    expect((await offer(f.offerId)).lastAskedAt?.toISOString()).toBe(NOW.toISOString());
+    expect(await lastAsked(f)).toBe(f.offerId);
 
     const planReader = goAheadReader(null);
     const { planWriter, written } = fakes(null);
@@ -1069,7 +1110,7 @@ describe('which ask a message answers', () => {
     );
     expect(sent).toEqual(['text for login_ask']);
     expect(prep.notices).toContainEqual({ offerId: f.offerId, kind: 'login_ask', sent: false });
-    expect((await offer(f.offerId)).lastAskedAt?.toISOString()).toBe(NOW.toISOString());
+    expect(await lastAsked(f)).toBe(f.offerId);
 
     // The model's worst answer: both asks read the bare yes as a go-ahead.
     const planReader = goAheadReader(null);
@@ -1101,7 +1142,7 @@ describe('which ask a message answers', () => {
       .update(schema.authorizedSignupOffers)
       .set({ status: 'completed' })
       .where(eq(schema.authorizedSignupOffers.id, f.offerId));
-    await markOfferAsked(db.database, { familyId: f.familyId, offerId: f.offerId, at: NOW });
+    await markOfferAsked(db.database, { familyId: f.familyId, offerId: f.offerId });
 
     const planReader = goAheadReader(null);
     const { planWriter, written } = fakes(null);
@@ -1207,6 +1248,7 @@ describe('which ask a message answers', () => {
       now: new Date(NOW.getTime() - 10 * 60_000),
     });
     if (!gym.ok) throw new Error(gym.reason);
+    await texted(f.familyId, gym.id);
     const consentReader: SignupConsentReader = {
       read: vi.fn(async () => ({ verdict: 'consent' as const, sessionId: 'sat-0900' })),
     };
@@ -1263,6 +1305,7 @@ describe('which ask a message answers', () => {
       now: new Date(NOW.getTime() - 30 * 60_000),
     });
     if (!swimmers.ok) throw new Error(swimmers.reason);
+    await texted(f.familyId, swimmers.id);
     const kickersId = await kickersAsk(f);
     const turns: { body: string; named: string; yes: boolean }[] = [
       { body: 'cancel', named: 'cancel', yes: false },
@@ -1362,6 +1405,7 @@ describe('which ask a message answers', () => {
       now: new Date(NOW.getTime() - 30 * 60_000),
     });
     if (!stuffed.ok) throw new Error(stuffed.reason);
+    await texted(f.familyId, stuffed.id);
     const kickersId = await kickersAsk(f); // ten minutes ago: the ask Hale asked last
     await approveSignupPlan(db.database, {
       offerId: kickersId,
@@ -1407,8 +1451,8 @@ describe('which ask a message answers', () => {
       expect(written).toHaveLength(attempt);
       expect(written.at(-1)?.question).toBe(PLAN_ASK_BACK_QUESTION);
       expect((await offer(stuffed.id)).status).toBe('pending');
-      // That question never went, so the stuffed ask was never asked.
-      expect((await offer(stuffed.id)).lastAskedAt).toBeNull();
+      // That question never went, so Kickers' text is still the last one.
+      expect(await lastAsked(f)).toBe(kickersId);
     }
     expect((await offer(f.offerId)).status).toBe('pending');
 
@@ -1545,9 +1589,9 @@ describe('which ask a message answers', () => {
     expect(asked.outcome).toBe('plan_clarify');
     expect(written.at(-1)?.question).toBe(question);
     // Asked only once the question went out: the router sends it, then calls afterSend.
-    expect((await offer(f.offerId)).lastAskedAt).toBeNull();
+    expect(await lastAsked(f)).toBe(kickersId);
     await asked.afterSend?.('out-swim-question');
-    expect((await offer(f.offerId)).lastAskedAt?.toISOString()).toBe(NOW.toISOString());
+    expect(await lastAsked(f)).toBe(f.offerId);
 
     // The model's worst answer: both asks read the bare yes as a go-ahead.
     const yes = { said: 'yes', choiceIds: ['sun-1000'], maxPriceCents: 9800 };
@@ -1613,6 +1657,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       now: new Date(NOW.getTime() - minutesAgo * 60_000),
     });
     if (!recorded.ok) throw new Error(recorded.reason);
+    await texted(f.familyId, recorded.id);
     return recorded.id;
   }
 
@@ -1779,6 +1824,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       now: new Date(NOW.getTime() - 30 * 60_000),
     });
     if (!stuffed.ok) throw new Error(stuffed.reason);
+    await texted(f.familyId, stuffed.id);
     const gymId = await gymAsk(f, 10); // the ask Hale asked last
     // The model's worst answer for every ask; the readers' checks are the real ones.
     const reads: string[] = [];
@@ -1954,6 +2000,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       now: new Date(NOW.getTime() - 90 * 60_000),
     });
     if (!older.ok) throw new Error(older.reason);
+    await texted(f.familyId, older.id);
     const { reads, planReader, consentReader } = readers(
       { verdict: 'unrelated' },
       { verdict: 'decline' },
@@ -2031,6 +2078,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       now: new Date(NOW.getTime() - 90 * 60_000),
     });
     if (!older.ok) throw new Error(older.reason);
+    await texted(f.familyId, older.id);
     const readings: [string, SignupConsentReading][] = [
       ['cancel', { verdict: 'decline' }],
       ['happy', { verdict: 'consent', sessionId: 'gym-sat' }],
@@ -2071,6 +2119,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
         now: new Date(NOW.getTime() - minutesAgo * 60_000),
       });
       if (!recorded.ok) throw new Error(recorded.reason);
+      await texted(seeded.familyId, recorded.id);
       return recorded.id;
     };
     const gymnasticsId = await oneShot('toddler-gymnastics', 'Toddler Gymnastics', GYM_URL, 90);
@@ -2307,6 +2356,7 @@ describe('when the site options do not match', () => {
       now: new Date(NOW.getTime() - 10 * 60_000),
     });
     if (!kickers.ok) throw new Error(kickers.reason);
+    await texted(f.familyId, kickers.id);
     const sendProviderEmail = vi.fn(async () => undefined);
     const { planReader, planWriter, written } = fakes({ verdict: 'unrelated' });
     const deps = (pick: MismatchReading) => ({
@@ -2382,6 +2432,7 @@ describe('when the site options do not match', () => {
       now: new Date(NOW.getTime() - 10 * 60_000),
     });
     if (!kickers.ok) throw new Error(kickers.reason);
+    await texted(f.familyId, kickers.id);
     // The model's raw answers are stipulated; the readers' checks are the real ones.
     const kickersReads = (verdict: 'approve' | 'unrelated'): PlanReader => ({
       read: vi.fn(async (read) =>

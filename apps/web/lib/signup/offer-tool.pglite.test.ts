@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { offerSignupTool } from './offer-tool';
+import { type RecordedSignupOffer, offerSignupTool } from './offer-tool';
 import {
   type SignupSupersedeReader,
   type SupersedeReadInput,
@@ -28,6 +28,7 @@ describe('offer_signup coach verb', () => {
     const seeded = await seedFamily(db.database);
     await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
     const writer = echoOfferWriter();
+    const recorded: RecordedSignupOffer[] = [];
     const tool = offerSignupTool({
       database: db.database,
       familyId: seeded.familyId,
@@ -36,6 +37,7 @@ describe('offer_signup coach verb', () => {
       parentWords: `Ada's rec email has parent and tot swim Tuesday 4:30 at ${URL}`,
       linksThisTurn: () => [],
       writer,
+      onRecorded: (offer) => recorded.push(offer),
     });
     const result = (await invokeTool(
       tool,
@@ -59,15 +61,21 @@ describe('offer_signup coach verb', () => {
       },
       { familyId: seeded.familyId, actor: seeded.parentUserId },
       { writeAudit: async () => {} },
-    )) as { recorded: boolean; text?: string };
+    )) as { recorded: boolean; offerId?: string; text?: string };
 
     expect(result.recorded).toBe(true);
     expect(result.text).toContain('Tue 4:30');
     const rows = await db.database
-      .select({ status: schema.authorizedSignupOffers.status })
+      .select({
+        id: schema.authorizedSignupOffers.id,
+        status: schema.authorizedSignupOffers.status,
+        lastAskedSeq: schema.authorizedSignupOffers.lastAskedSeq,
+      })
       .from(schema.authorizedSignupOffers)
       .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
-    expect(rows).toEqual([{ status: 'pending' }]);
+    // Recorded, not yet asked: the router stamps it once the reply carrying the text went out.
+    expect(rows).toEqual([{ id: result.offerId, status: 'pending', lastAskedSeq: null }]);
+    expect(recorded).toEqual([{ offerId: result.offerId, text: result.text }]);
   });
 
   const GYM_URL = 'https://gym.example-rec.test/register/tots';
@@ -105,6 +113,7 @@ describe('offer_signup coach verb', () => {
         linksThisTurn: () => [],
         writer: echoOfferWriter(),
         supersedeReader: reader,
+        onRecorded: () => {},
       }),
       {
         child: 'Ada',
@@ -382,6 +391,7 @@ describe('offer_signup coach verb', () => {
       parentWords: 'can you sign Ada up for swim',
       linksThisTurn: () => [],
       writer: echoOfferWriter(),
+      onRecorded: () => {},
     });
     const result = (await invokeTool(
       tool,
@@ -427,6 +437,7 @@ describe('offer_signup coach verb', () => {
           parentWords: input.words,
           linksThisTurn: () => input.links,
           writer: echoOfferWriter(),
+          onRecorded: () => {},
         }),
         {
           child: 'Ada',

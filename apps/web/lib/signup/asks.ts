@@ -4,15 +4,22 @@ import { registrationPlanRunEnabled } from './plan/flag';
 import { untrustedActivityLabel } from './plan/reader';
 import { type ConversablePlan, loadConversablePlans } from './plan/store';
 import type { SignupRunResult } from './run';
-import { type PendingSignupOffer, loadLastAskedOfferId, loadPendingOffers } from './store';
+import {
+  type AskOrder,
+  type PendingSignupOffer,
+  byAskedLast,
+  loadLastAskedOfferId,
+  loadPendingOffers,
+} from './store';
 
 /** Where an ask stands among the parent's: what their message may do to it. */
 export interface AskPlace {
   /**
-   * Hale texted this parent about it last, of all their asks in any status (the offer, or a
-   * question back, notice or receipt about it since). Only this ask is approved, taken back
-   * or picked for. Words that name another of the parent's asks only make Hale ask about that
-   * one; once that question went out, it is the newest, and their next answer is its.
+   * Hale's text about it reached this parent last, of all their asks in any status (the
+   * offer, or a question back, notice or receipt about it since). Only this ask is approved,
+   * taken back or picked for. An ask none of whose texts is known to have reached them is
+   * never it. Words that name another of the parent's asks only make Hale ask about that one;
+   * once that question went out, it is the newest, and their next answer is its.
    */
   newest: boolean;
 }
@@ -29,13 +36,14 @@ export const PICK_ASK_BACK_QUESTION =
   "Which of the site's options do you want for this, or should Hale join the waitlist or email the provider?";
 
 /**
- * The live sign-up asks Hale made one parent, plan and one-shot in one ordering, the one
- * Hale asked them about last first (`askedAt`: the offer, or Hale's last text about it
- * since, such as a question back). A bare yes or no answers the ask Hale asked last. A plan
- * ask is read by the plan lane (`runPlanAsk`), a one-shot ask by the consent read; a message
- * one ask's reader finds unrelated goes on to the next ask, whichever lane it is in.
+ * The live sign-up asks Hale made one parent, plan and one-shot in one ordering (`AskOrder`):
+ * the one whose text reached them last first (the offer, or Hale's last text about it since,
+ * such as a question back), then asks none of whose texts is known to have reached them. A
+ * bare yes or no answers only the ask whose text reached them last. A plan ask is read by
+ * the plan lane (`runPlanAsk`), a one-shot ask by the consent read; a message one ask's
+ * reader finds unrelated goes on to the next ask, whichever lane it is in.
  */
-export type LiveAsk = { offerId: string; askedAt: Date; place: AskPlace } & (
+export type LiveAsk = { offerId: string; place: AskPlace } & (
   | { lane: 'plan'; plan: ConversablePlan }
   | { lane: 'one_shot'; offer: PendingSignupOffer }
 );
@@ -58,25 +66,33 @@ export async function loadLiveAsks(
     (offer) => !planIds.has(offer.id),
   );
   const lastAsked = await loadLastAskedOfferId(database, input);
-  const ordered = [
+  const asks: LiveAsk[] = [
     ...plans
       .filter((plan) => plan.parentUserId === input.parentUserId)
-      .map((plan) => ({
-        lane: 'plan' as const,
-        offerId: plan.offerId,
-        askedAt: plan.askedAt,
-        plan,
-      })),
+      .map(
+        (plan): LiveAsk => ({
+          lane: 'plan',
+          offerId: plan.offerId,
+          plan,
+          place: { newest: plan.offerId === lastAsked },
+        }),
+      ),
     ...oneShots
       .filter((offer) => offer.parentUserId === input.parentUserId)
-      .map((offer) => ({
-        lane: 'one_shot' as const,
-        offerId: offer.id,
-        askedAt: offer.askedAt,
-        offer,
-      })),
-  ].sort((a, b) => b.askedAt.getTime() - a.askedAt.getTime() || (a.offerId < b.offerId ? 1 : -1));
-  return ordered.map((ask): LiveAsk => ({ ...ask, place: { newest: ask.offerId === lastAsked } }));
+      .map(
+        (offer): LiveAsk => ({
+          lane: 'one_shot',
+          offerId: offer.id,
+          offer,
+          place: { newest: offer.id === lastAsked },
+        }),
+      ),
+  ];
+  return asks.sort((a, b) => byAskedLast(askOrder(a), askOrder(b)));
+}
+
+function askOrder(ask: LiveAsk): AskOrder {
+  return ask.lane === 'plan' ? ask.plan : ask.offer;
 }
 
 /** The parent's words name this ask: a whole word of its program's name or of its site. */

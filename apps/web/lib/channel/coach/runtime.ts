@@ -114,6 +114,7 @@ import {
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import {
+  type RecordedSignupOffer,
   augmentCoachSkillForSignupOffer,
   signupAtOpenEnabled,
   signupOfferToolEnabled,
@@ -294,6 +295,8 @@ export interface ChannelCoachPorts {
     onUndo: ((undo: () => Promise<void>) => void) | undefined,
     /** The family row's country, read off the turn's own context (familyCountryOf). */
     familyCountry: FamilyCountry | null,
+    /** Every sign-up offer the turn recorded, which the router stamps after the send. */
+    onSignupOffer: (offer: RecordedSignupOffer) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -419,6 +422,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       let experienceCard: ExperienceCardIntent | null = null;
       // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
       let groupLeave: GroupLeaveIntent | null = null;
+      // Every sign-up offer this turn recorded: several sites can be offered in one reply.
+      const signupOffers: RecordedSignupOffer[] = [];
       // VIL-495: the model chose to say this reply as a voice memo.
       let voiceChosen = false;
       // VIL-447: writes a failed turn must take back (shared-list adds and check-offs), so
@@ -700,6 +705,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   undos.push(undo);
                 },
                 familyCountryOf(familyContext.location.country),
+                (offer) => {
+                  signupOffers.push(offer);
+                },
               );
               // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
               // are busy-only, on every group turn. VIL-615: once read_email returns text,
@@ -965,6 +973,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 activityPromise,
                 spotWatch,
                 capabilityNotes,
+                // A Gmail draft notice replaces the answer, and the offer's text with it.
+                signupOffers: noticeReady ? [] : signupOffers,
                 // The title passes the same age-derived teen floor as the answer (rule #1).
                 experienceCard:
                   card && !noticeReady
@@ -1105,6 +1115,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       onGmailNotice,
       onUndo,
       familyCountry,
+      onSignupOffer,
     ) => {
       const listJournal = createGroupListJournal();
       const factReader: FactReader =
@@ -1232,6 +1243,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
                   .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
                 ...photoFactSignupLinks(turn.photoFacts, turn.body),
               ],
+              onRecorded: onSignupOffer,
             }
           : null,
       });

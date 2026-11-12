@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
-import { recordSignupOffer } from '../store';
+import { loadLastAskedOfferId, recordSignupOffer } from '../store';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   PRE_OPEN_LEAD_MS,
@@ -76,13 +76,18 @@ async function planned() {
   return { ...seeded, childId, offerId: offer.id };
 }
 
-/** When Hale last texted the parent about the offer, after the offer itself. */
-async function lastAskedAt(offerId: string) {
+/** Where Hale's last delivered text about the offer stands in the order texts reached them. */
+async function askedSeq(offerId: string) {
   const [row] = await db.database
-    .select({ at: schema.authorizedSignupOffers.lastAskedAt })
+    .select({ seq: schema.authorizedSignupOffers.lastAskedSeq })
     .from(schema.authorizedSignupOffers)
     .where(eq(schema.authorizedSignupOffers.id, offerId));
-  return row?.at?.toISOString() ?? null;
+  return row?.seq ?? null;
+}
+
+/** The ask whose text reached the parent last, as the walk reads it. */
+function lastAsked(f: { familyId: string; parentUserId: string }) {
+  return loadLastAskedOfferId(db.database, f);
 }
 
 function fakes() {
@@ -118,10 +123,12 @@ describe('plan prep before the open', () => {
     expect(PRE_OPEN_LEAD_MS).toBe(30 * 60_000);
     expect(preOpenDueAt(OPENS).toISOString()).toBe('2026-12-01T11:30:00.000Z');
 
+    expect(await lastAsked(family)).toBeNull();
     const first = fakes();
     const login = await runDueSignupPlanPrep(db.database, { now: NOW }, first.deps);
     expect(login.notices).toEqual([{ offerId: family.offerId, kind: 'login_ask', sent: true }]);
-    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
+    expect(await lastAsked(family)).toBe(family.offerId);
+    const loginSeq = (await askedSeq(family.offerId)) as number;
     expect(first.bodies[0]).toBe('text for login_ask');
     expect(first.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
 
@@ -141,7 +148,7 @@ describe('plan prep before the open', () => {
     const third = fakes();
     const reminder = await runDueSignupPlanPrep(db.database, { now: reminderAt }, third.deps);
     expect(reminder.notices).toEqual([{ offerId: family.offerId, kind: 'pre_open', sent: true }]);
-    expect(await lastAskedAt(family.offerId)).toBe(reminderAt.toISOString());
+    expect(await askedSeq(family.offerId)).toBeGreaterThan(loginSeq);
     expect(third.bodies[0]).toBe('text for pre_open');
     expect(third.bodies[0]).not.toMatch(/https:\/\//);
 
@@ -163,7 +170,7 @@ describe('plan prep before the open', () => {
       },
     );
     expect(result.notices).toEqual([{ offerId: family.offerId, kind: 'login_ask', sent: false }]);
-    expect(await lastAskedAt(family.offerId)).toBeNull();
+    expect(await askedSeq(family.offerId)).toBeNull();
     const notices = await db.database
       .select()
       .from(schema.providerLoginNotices)
@@ -209,7 +216,7 @@ describe('plan prep before the open', () => {
       },
     );
     expect(sent).toBe(true);
-    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
+    expect(await lastAsked(family)).toBe(family.offerId);
     expect(bodies).toEqual([
       'They did not take that password.',
       'https://app.villagehale.com/l/AbCdef1234',
@@ -237,7 +244,7 @@ describe('plan prep before the open', () => {
     expect(result.notices.filter((notice) => notice.offerId === family.offerId)).toEqual([
       { offerId: family.offerId, kind: 'login_ask', sent: false },
     ]);
-    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
+    expect(await lastAsked(family)).toBe(family.offerId);
     const notices = await db.database
       .select()
       .from(schema.providerLoginNotices)
@@ -259,7 +266,7 @@ describe('plan prep before the open', () => {
     expect(result.notices.filter((notice) => notice.offerId === family.offerId)).toEqual([
       { offerId: family.offerId, kind: 'login_ask', sent: false },
     ]);
-    expect(await lastAskedAt(family.offerId)).toBeNull();
+    expect(await askedSeq(family.offerId)).toBeNull();
   });
 
   it('a rejected-password notice whose link bubble fails after its text still counts as asked', async () => {
@@ -301,6 +308,6 @@ describe('plan prep before the open', () => {
 
     expect(sent).toBe(false);
     expect(bodies).toEqual(['They did not take that password.']);
-    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
+    expect(await lastAsked(family)).toBe(family.offerId);
   });
 });
