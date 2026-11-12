@@ -61,9 +61,9 @@ export interface PlanTurnDeps {
  */
 type PlanBinding = 'newest' | PlanNaming;
 
-/** The newest ask binds unnamed; any other only on the parent's words that name it. */
-function binding(unnamedOk: boolean, named: PlanNaming | null): PlanBinding | null {
-  return unnamedOk ? 'newest' : named;
+/** The ask Hale asked last binds unnamed; any other only on the parent's words that name it. */
+function binding(newest: boolean, named: PlanNaming | null): PlanBinding | null {
+  return newest ? 'newest' : named;
 }
 
 /**
@@ -73,13 +73,14 @@ function binding(unnamedOk: boolean, named: PlanNaming | null): PlanBinding | nu
  * `approveSignupPlan`, a take-back calls `cancelSignupPlan` (or closes the offer when it was
  * never approved). Every claimed turn writes one audit row and a model-written reply.
  *
- * `unrelated` hands the message to the next ask, of either lane. A bare yes binds only the
- * parent's newest ask still waiting on one, a bare take-back only their newest ask; this
- * plan moves otherwise only on words that name it (its program or site), or the turn stops.
- * So does a reading that failed: it is never carried on to the next ask. A question back
- * comes only from their newest ask or one their words name; any other passes the message
- * on. Nothing moves from a group seat that may not authorize a sign-up. A stopped turn is
- * unclaimed, logged and named.
+ * `unrelated` hands the message to the next ask, of either lane. A bare yes or take-back
+ * binds only the ask Hale asked the parent about last, whatever its status: a yes to that
+ * plan once it is approved reads as unrelated, and no older ask takes it unless the words
+ * name that one. This plan moves otherwise only on words that name it (its program or site),
+ * or the turn stops. So does a reading that failed: it is never carried on to the next ask.
+ * A question back comes only from the ask Hale asked last or one their words name; any other
+ * passes the message on. Nothing moves from a group seat that may not authorize a sign-up. A
+ * stopped turn is unclaimed, logged and named.
  */
 export async function runPlanAsk(
   database: Database,
@@ -151,7 +152,7 @@ export async function runPlanAsk(
     return reply(database, input, deps, plan, 'cancelled', { boundBy });
   }
 
-  const boundBy = binding(place.newestAsk, reading.named);
+  const boundBy = binding(place.newest, reading.named);
   if (!boundBy) return stopped('plan_unnamed', plan);
   if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
   if (!input.inboundChannelMessageId) {

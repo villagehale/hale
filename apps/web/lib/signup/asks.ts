@@ -1,15 +1,20 @@
 import type { Database } from '@hale/db';
+import { namesFacts } from './parent-quote';
 import { registrationPlanRunEnabled } from './plan/flag';
+import { untrustedActivityLabel } from './plan/reader';
 import { type ConversablePlan, loadConversablePlans } from './plan/store';
 import type { SignupRunResult } from './run';
-import { type PendingSignupOffer, loadPendingOffers } from './store';
+import { type PendingSignupOffer, loadLastAskedOfferId, loadPendingOffers } from './store';
 
 /** Where an ask stands among the parent's: what their message may do to it unnamed. */
 export interface AskPlace {
-  /** Asked about last, of any lane and status: a take-back or a no need not name it. */
+  /**
+   * Hale texted this parent about it last, of all their asks in any status (the offer, or a
+   * question back, notice or receipt about it since). Only this ask takes an answer that
+   * names none. When it cannot take it (a yes to a plan already approved, or it is no longer
+   * live), no other ask does unless the parent's words name that one.
+   */
   newest: boolean;
-  /** Asked about last of the asks still waiting on a yes: a bare yes binds it. */
-  newestAsk: boolean;
 }
 
 /**
@@ -41,6 +46,7 @@ export async function loadLiveAsks(
   const oneShots = (await loadPendingOffers(database, input.familyId)).filter(
     (offer) => !planIds.has(offer.id),
   );
+  const lastAsked = await loadLastAskedOfferId(database, input);
   const ordered = [
     ...plans
       .filter((plan) => plan.parentUserId === input.parentUserId)
@@ -59,15 +65,13 @@ export async function loadLiveAsks(
         offer,
       })),
   ].sort((a, b) => b.askedAt.getTime() - a.askedAt.getTime() || (a.offerId < b.offerId ? 1 : -1));
-  const newestAsk = ordered.findIndex(
-    (ask) => ask.lane === 'one_shot' || ask.plan.status === 'pending',
-  );
-  return ordered.map(
-    (ask, index): LiveAsk => ({
-      ...ask,
-      place: { newest: index === 0, newestAsk: index === newestAsk },
-    }),
-  );
+  return ordered.map((ask): LiveAsk => ({ ...ask, place: { newest: ask.offerId === lastAsked } }));
+}
+
+/** The parent's words name this ask: a whole word of its program's name or of its site. */
+export function wordsNameAsk(text: string, ask: LiveAsk): boolean {
+  const { activityLabel, providerHost } = ask.lane === 'plan' ? ask.plan : ask.offer;
+  return namesFacts(text, { activity: untrustedActivityLabel(activityLabel), host: providerHost });
 }
 
 /**

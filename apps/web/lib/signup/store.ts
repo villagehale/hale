@@ -187,6 +187,26 @@ export async function markOfferAsked(
     .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId)));
 }
 
+/**
+ * The ask Hale texted this parent about last, whatever its status now: the offer, or a later
+ * question back, notice or receipt about it ({@link offerAskedAt}). Null when Hale made them
+ * none. An approved, running or finished ask can be it, so a bare yes after its login ask or
+ * receipt is never handed to an older ask still waiting on one.
+ */
+export async function loadLastAskedOfferId(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<string | null> {
+  const offers = schema.authorizedSignupOffers;
+  const [row] = await database
+    .select({ id: offers.id })
+    .from(offers)
+    .where(and(eq(offers.familyId, input.familyId), eq(offers.parentUserId, input.parentUserId)))
+    .orderBy(desc(OFFER_ASKED_AT), desc(offers.id))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 /** A pending ask with the public facts a parent could name it by. */
 export interface PendingSignupOffer extends SignupOffer {
   activityLabel: string | null;

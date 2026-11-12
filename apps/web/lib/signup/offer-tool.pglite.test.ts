@@ -408,4 +408,93 @@ describe('offer_signup coach verb', () => {
     )) as { recorded: boolean; reason?: string };
     expect(result).toEqual({ recorded: false, reason: 'url_not_this_turn' });
   });
+
+  describe('the program name an ask is stored, and named, by', () => {
+    /** Records one email-sourced ask for the Kickers page; returns the label it was stored under. */
+    async function storedLabel(input: {
+      activity: string;
+      words: string;
+      links: { title: string; url: string }[];
+    }) {
+      const seeded = await seedFamily(db.database);
+      await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+      const result = await invokeTool(
+        offerSignupTool({
+          database: db.database,
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          now: NOW,
+          parentWords: input.words,
+          linksThisTurn: () => input.links,
+          writer: echoOfferWriter(),
+        }),
+        {
+          child: 'Ada',
+          activity: input.activity,
+          source: 'email',
+          registrationUrl: KICKERS_URL,
+          evidence: 'Saturday 9:30 class',
+          sessions: [
+            {
+              id: 'sat-session',
+              label: 'Sat 9:30',
+              startsAt: '2027-01-09T14:30:00.000Z',
+              endsAt: '2027-01-09T15:15:00.000Z',
+              full: false,
+              priceCents: 12000,
+            },
+          ],
+          approvedPriceCents: null,
+        },
+        { familyId: seeded.familyId, actor: seeded.parentUserId },
+        { writeAudit: async () => {} },
+      );
+      expect(result).toMatchObject({ recorded: true });
+      return (await asks(seeded.familyId)).map((row) => row.label);
+    }
+
+    const KICKERS_PAGE = { title: 'Little Kickers Saturday | Example Sport', url: KICKERS_URL };
+
+    it("is the coach model's name when the parent's words or a page this turn wrote it", async () => {
+      expect(
+        await storedLabel({
+          activity: 'Little Kickers',
+          words: `can you sign her up for little kickers? ${KICKERS_URL}`,
+          links: [],
+        }),
+      ).toEqual(['Little Kickers']);
+      expect(
+        await storedLabel({
+          activity: 'Little Kickers',
+          words: 'can you sign her up for that one?',
+          links: [KICKERS_PAGE],
+        }),
+      ).toEqual(['Little Kickers']);
+    });
+
+    it('a name only the coach model wrote is never stored: the page title stands in, or none', async () => {
+      // Words of a name the parent or a page wrote, never a fragment of one of their words.
+      expect(
+        await storedLabel({
+          activity: 'Yes Please Cancel',
+          words: 'can you sign her up for that one?',
+          links: [KICKERS_PAGE],
+        }),
+      ).toEqual(['Little Kickers Saturday | Example Sport']);
+      expect(
+        await storedLabel({
+          activity: 'Kick',
+          words: `can you sign her up for little kickers? ${KICKERS_URL}`,
+          links: [],
+        }),
+      ).toEqual([null]);
+      expect(
+        await storedLabel({
+          activity: 'Little Kickers',
+          words: `can you sign her up? ${KICKERS_URL}`,
+          links: [],
+        }),
+      ).toEqual([null]);
+    });
+  });
 });

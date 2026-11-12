@@ -5,7 +5,7 @@ import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { type AskPlace, loadLiveAsks, stoppedTurn } from './asks';
+import { type AskPlace, loadLiveAsks, stoppedTurn, wordsNameAsk } from './asks';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -212,7 +212,14 @@ export async function runAuthorizedSignup(
     const turn =
       ask.lane === 'plan'
         ? await runPlanAsk(database, input, planDeps, ask.plan, ask.place)
-        : await runOneShotAsk(database, input, deps, ask.offer, ask.place);
+        : await runOneShotAsk(
+            database,
+            input,
+            deps,
+            ask.offer,
+            ask.place,
+            asks.some((other) => other !== ask && wordsNameAsk(input.body, other)),
+          );
     if (turn !== 'unrelated') return turn;
   }
   return UNCLAIMED;
@@ -220,11 +227,12 @@ export async function runAuthorizedSignup(
 
 /**
  * One pending ask Hale made this parent with no open ahead: the consent read, then the
- * booking. `unrelated` hands the message to the next ask. A yes binds this ask unnamed only
- * when it is the parent's newest ask waiting on one, and a no only when it is their newest
- * ask; otherwise their words must carry its program's name or its site, in whole words, or
- * the turn stops. A reading that failed stops too. A question back comes only from their
- * newest ask or one their words name; any other passes the message on.
+ * booking. `unrelated` hands the message to the next ask. A yes or a no binds this ask
+ * unnamed only when Hale asked the parent about it last; otherwise their words must carry its
+ * program's name or its site, in whole words, or the turn stops. Words that name another of
+ * their asks (`namesAnother`) and not this one are never this ask's: they pass on. A reading
+ * that failed stops the turn. A question back comes only from the ask Hale asked last or one
+ * their words name; any other passes the message on.
  */
 async function runOneShotAsk(
   database: Database,
@@ -232,6 +240,7 @@ async function runOneShotAsk(
   deps: SignupRunDeps,
   offer: PendingSignupOffer,
   place: AskPlace,
+  namesAnother: boolean,
 ): Promise<SignupRunResult | 'unrelated'> {
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
@@ -242,10 +251,16 @@ async function runOneShotAsk(
     activity: untrustedActivityLabel(offer.activityLabel),
     host: offer.providerHost,
   });
+  if (namesAnother && !named) {
+    console.info(
+      { offerId: offer.id, verdict: reading.verdict },
+      'signup asks: words name another ask, passed on',
+    );
+    return 'unrelated';
+  }
   if (reading.verdict === 'unclear' && !place.newest && !named) return 'unrelated';
   if (reading.verdict === 'consent' || reading.verdict === 'decline') {
-    const unnamedOk = reading.verdict === 'consent' ? place.newestAsk : place.newest;
-    if (!unnamedOk && !named) {
+    if (!place.newest && !named) {
       return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
     }
     if (deps.declineSeat && (await deps.declineSeat())) {

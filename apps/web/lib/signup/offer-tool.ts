@@ -12,8 +12,9 @@ import {
   sessionsFromModel,
 } from './offer-from-facts';
 import { SIGNUP_OFFER_SOURCES, type SignupOfferWriter } from './offer-writer';
-import { foldWords, quotesParent } from './parent-quote';
+import { foldWords, quotesParent, quotesParentWords } from './parent-quote';
 import { registrationPlanRunEnabled } from './plan/flag';
+import { untrustedActivityLabel } from './plan/reader';
 import type { PlanReplyWriter } from './plan/writer';
 import {
   type SignupSupersedeReader,
@@ -33,6 +34,9 @@ import { registrationUrlAllowed } from './url';
  * The URL is never the model's: it must already appear in this turn's parent
  * words or in a page a tool handed over. Chat evidence must be a quote from
  * those words. Nothing here matches keywords.
+ *
+ * The program name an ask is stored under is what later names it in the parent's words, so
+ * it is never only the model's: see {@link storedActivityLabel}.
  *
  * A sender whose group seat may not authorize a sign-up creates and closes nothing. A
  * family may hold several asks at once; an earlier ask of this parent closes only when a
@@ -81,6 +85,28 @@ export function urlSeenThisTurn(
   if (parentWords.includes(allowed.href) || parentWords.includes(raw)) return allowed.href;
   if (links.some((link) => link.url === allowed.href || link.url === raw)) return allowed.href;
   return null;
+}
+
+/**
+ * The program name an ask is stored, and later named, by. The coach model's `activity` is
+ * kept only when it is whole words the parent wrote this turn or of a page title a tool
+ * handed over this turn. Otherwise the registration page's own title as that tool gave it
+ * stands in, cleaned; with no such page, the ask has no name and is named by its site alone.
+ */
+function storedActivityLabel(input: {
+  activity: string;
+  parentWords: string;
+  links: readonly { title: string; url: string }[];
+  registrationUrl: string;
+  href: string;
+}): string | null {
+  const activity = input.activity.replace(/\s+/g, ' ').trim();
+  const sources = [input.parentWords, ...input.links.map((link) => link.title)];
+  if (sources.some((source) => quotesParentWords(source, activity))) return activity;
+  const page = input.links.find(
+    (link) => link.url === input.href || link.url === input.registrationUrl,
+  );
+  return page ? untrustedActivityLabel(page.title) : null;
 }
 
 const OFFSET_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -175,7 +201,13 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         return { recorded: false as const, reason: 'child_missing' };
       }
 
-      const activityLabel = input.activity.replace(/\s+/g, ' ').trim();
+      const activityLabel = storedActivityLabel({
+        activity: input.activity,
+        parentWords: ports.parentWords,
+        links: ports.linksThisTurn(),
+        registrationUrl: input.registrationUrl,
+        href,
+      });
       const earlier = await ownPendingAsks(ports.database, {
         familyId: ports.familyId,
         parentUserId: ports.parentUserId,
