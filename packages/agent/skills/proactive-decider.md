@@ -69,6 +69,10 @@ those. You decide whether they go now, later, or not at all:
   something it set up. Send them like other asks: on time, batched with what
   else belongs in the same text, held only for quiet hours or a pace they asked
   for.
+- `next_day_checkback`: the parent started something with Hale yesterday and
+  went quiet. One easy check-back during their day, not first thing in the
+  morning or late in the evening. It is not a find, so free windows do not
+  decide it, and it is not something they asked for.
 
 Quiet hours are 21:00–08:00 local. A Florida or Oklahoma number starts at
 20:00. Evening is after 17:00 and before quiet hours. Thursday 6:00 PM is

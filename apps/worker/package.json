@@ -102,6 +102,7 @@
     "eval:experience-card": "VIL_500_CARD_EVAL=1 node evals/run-coach-channel-eval.mjs --cached-only --only=experience-card-one-venue,experience-card-compare",
     "eval:proactive-decider": "node evals/run-proactive-decider-eval.mjs --cached-only",
     "eval:proactive-writer": "node evals/run-proactive-writer-eval.mjs --cached-only",
+    "eval:workstream-extract": "node evals/run-workstream-extract-eval.mjs --cached-only",
     "eval:weekday-care-ask": "node evals/run-weekday-care-ask-eval.mjs --cached-only",
     "eval:carpool": "node evals/carpool-eval.mjs --cached-only",
     "eval:group-reminder": "node evals/group-reminder-eval.mjs --dry",

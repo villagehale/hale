@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
+import type { NextDayCheckbackPayload } from '~/lib/channel/next-day-checkback/sweep';
 import { setNotifiedMessage } from '~/lib/channel/spots/store';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { recordActivityBooking } from '~/lib/integrations/booking';
 import { recordEmailAlertOffer } from '~/lib/integrations/email-alert-offer';
+import { markWorkstreamFollowedUp } from '~/lib/memory/workstreams';
 import type { ExtractionKind } from '~/lib/sentinel';
 
 /**
@@ -35,6 +37,8 @@ export interface CandidateAfterSend {
     } | null;
   };
   spotOpen?: { spotId: string };
+  /** VIL-681 · the ask this check-back was about: neither follow-up lane picks it again. */
+  nextDayCheckback?: NextDayCheckbackPayload;
 }
 
 export function payloadOf(value: unknown): CandidateAfterSend | null {
@@ -71,6 +75,10 @@ export async function applyCandidateAfterSend(
       channelMessageId: input.channelMessageId,
       now: input.now,
     });
+  }
+
+  if (payload.nextDayCheckback) {
+    await markWorkstreamFollowedUp(database, payload.nextDayCheckback.workstreamId, input.now);
   }
 
   if (payload.fulfillKind) {

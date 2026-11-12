@@ -35,6 +35,12 @@ import {
   familyOutboundTarget,
   householdCopies,
 } from '~/lib/channel/linq/family-outbound';
+import { onCheckbackClock } from '~/lib/channel/next-day-checkback/clock';
+import {
+  type OpenAskClosedReason,
+  type RecheckOpenAsk,
+  defaultRecheckOpenAsk,
+} from '~/lib/channel/next-day-checkback/recheck';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -145,6 +151,9 @@ export interface ProactiveReviewDeps {
   threadMessage: typeof threadProactiveMessage;
   /** The sweep's own close of the first-find promise. Required, as in the sweep. */
   fulfillCommitment: typeof fulfillCommitment;
+  /** VIL-681 · is a next-day check-back still unfinished at send time. Required: a
+   * check-back sent without it could text a parent about something they already did. */
+  recheckOpenAsk: RecheckOpenAsk;
   fetch?: typeof fetch;
 }
 
@@ -161,6 +170,7 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
     outboundTarget: familyOutboundTarget,
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
+    recheckOpenAsk: defaultRecheckOpenAsk(),
   };
 }
 
@@ -469,10 +479,15 @@ async function loadOpenItems(
 }
 
 /**
- * Kinds with no sweep of their own left to send them: the evening check-in and the
- * VIL-393 mid-activity ask. They are reviewed live even while the cadence flag is off.
+ * Kinds with no sweep of their own left to send them: the evening check-in, the VIL-393
+ * mid-activity ask and the VIL-681 next-day check-back. They are reviewed live even while
+ * the cadence flag is off.
  */
-const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = ['evening_check_in', 'mid_activity_ask'];
+const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
+  'evening_check_in',
+  'mid_activity_ask',
+  'next_day_checkback',
+];
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);
@@ -541,7 +556,8 @@ type SettledReason =
   | 'parent_not_in_family'
   | 'already_sent'
   | 'already_asked'
-  | 'requested_drop_after_parent_text';
+  | 'requested_drop_after_parent_text'
+  | OpenAskClosedReason;
 
 /**
  * Moves this family's candidate rows. The family is in the write, not only the caller.
@@ -694,6 +710,62 @@ async function dropAlreadySent(
     summary.dropped += 1;
   }
   return kept;
+}
+
+/**
+ * VIL-681 · a next-day check-back is read again at send time: still the ask the sweep
+ * queued, the parent still quiet, and not already signed up for somewhere Hale did not
+ * see. A closed ask is dropped by its name before the writer; one that could not be read
+ * is held with no clock. The rest of the batch goes on. An owed ask comes back with its
+ * asker's clock, which the gate's quiet floor reads for that parent.
+ */
+async function dropClosedAsks(
+  database: Database,
+  deps: ProactiveReviewDeps,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<{ kept: QueuedItem[]; clocks: Map<string, string> }> {
+  const kept: QueuedItem[] = [];
+  const clocks = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind !== 'next_day_checkback') {
+      kept.push(item);
+      continue;
+    }
+    const recheck = await deps.recheckOpenAsk(database, {
+      familyId,
+      parentUserId: item.parentUserId,
+      dedupeKey: item.dedupeKey,
+      payload: item.payload,
+      now,
+    });
+    if (recheck.verdict === 'owed') {
+      kept.push(item);
+      clocks.set(item.parentUserId, recheck.timeZone);
+      continue;
+    }
+    if (recheck.verdict === 'unchecked') {
+      await holdByName(database, familyId, [item], recheck.reason, now);
+      summary.held += 1;
+      continue;
+    }
+    await mark(database, familyId, [item.id], {
+      status: 'dropped',
+      reason: recheck.reason,
+      decision: 'send_now',
+      holdUntil: null,
+      now,
+    });
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: recheck.reason,
+      itemIds: [item.id],
+      mode: 'live',
+    });
+    summary.dropped += 1;
+  }
+  return { kept, clocks };
 }
 
 /**
@@ -1072,7 +1144,15 @@ async function sendChosen(
 ): Promise<void> {
   const { familyId, now, summary } = input;
   const seated = await dropUnseated(database, familyId, input.chosen, now, summary);
-  const chosen = await dropAlreadySent(database, familyId, seated, now, summary);
+  const unsent = await dropAlreadySent(database, familyId, seated, now, summary);
+  const { kept: chosen, clocks } = await dropClosedAsks(
+    database,
+    deps,
+    familyId,
+    unsent,
+    now,
+    summary,
+  );
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.
@@ -1114,7 +1194,7 @@ async function sendChosen(
     copies = perParent.map((copy) => ({ ...copy, members: [copy.parentUserId] }));
   }
 
-  const gate = deps.buildGate(database);
+  const gate = onCheckbackClock(deps.buildGate(database), clocks);
   const gated: Array<{
     parentUserId: string;
     items: QueuedItem[];
