@@ -11,6 +11,7 @@ import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import type { ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
+import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { loadAgentContext } from '~/lib/coach/context';
 import { appendMessage, loadTranscript, resolveNoteConversation } from '~/lib/coach/conversation';
@@ -47,15 +48,19 @@ import { pageUnwrittenCrisis } from './unwritten-moment';
  *
  *   the door's opt-out reader   before the text is queued at all (inbound-route.ts), so a
  *                               STOP never reaches a turn of any kind;
+ *   the resolver's place        while Hale holds a question a handler acts on, every text
+ *                               goes back: a bare "yes" names no question, so whether it
+ *                               answers one is the resolver's read, in its own turn;
  *   the handlers' place         every deterministic handler's own matcher, run without
  *                               acting: a text one would take goes back to it, so a
  *                               "forget" or a disconnect is done, never only answered;
- *   the resolver's place        the side read hands back anything that answers or decides
- *                               something Hale asked, needs a change, or is about the
- *                               running turn;
+ *   the side read               hands back anything else that answers or decides something
+ *                               Hale asked, needs a change, or is about the running turn;
  *   flood control               the same budget and the same first-refusal line;
  *   the off-domain lane         the same lane, crisis and medical answers among it;
- *   the answer                  the side read's own words, for a fact it can see.
+ *   the answer                  the side read's own words, for a fact it can see, and
+ *                               only when they claim no row (reconcile/claims.ts): a
+ *                               claim is the claim gate's to cite, in its own turn.
  *
  * READ-ONLY. No tool, no draft, no offer, no consent, no reminder, and the questions Hale
  * left open stay open. What it writes is what any answer writes: the parent's row and the
@@ -125,6 +130,9 @@ export type SideTurnQueuedWhy =
   /** A deterministic handler's own matcher takes it: that handler acts on it in its own
    * turn (GATE 2b). */
   | 'handler_takes'
+  /** Hale holds a question a handler acts on the answer to. Whether this text is that
+   * answer is the resolver's read, in its own turn. */
+  | 'question_open'
   /** The side read said it belongs to its own turn. */
   | 'handed_back'
   | 'reader_unavailable'
@@ -136,6 +144,9 @@ export type SideTurnQueuedWhy =
   | 'moment_unwritten'
   /** A question for the family's own facts that the side read had no words for. */
   | 'no_answer'
+  /** The side read's words say a row exists (a booking, a watch, a follow-up): the claim
+   * gate cites one or cuts it, in its own turn. */
+  | 'makes_a_claim'
   | 'timeout'
   /** The running turn's deadline passed before anything was written. */
   | 'turn_over'
@@ -369,7 +380,18 @@ async function decide(
     }),
   ]);
 
-  // GATE 2b's place, before any model reads the text: what a handler would take is its.
+  // The resolver's place, before any model reads the text. The handlers behind these kinds
+  // act only on what the resolver read, so no matcher below sees a bare "yes", "approve
+  // it" or "oui, vas-y": while one of their questions stands, every text goes back.
+  if (
+    questions.some((question) =>
+      deps.handlers.some((handler) => handler.resolves?.has(question.kind)),
+    )
+  ) {
+    return queued('question_open');
+  }
+
+  // GATE 2b's place: what a handler would take is its.
   const detect = {
     familyId: job.family_id,
     parentUserId: job.parent_user_id,
@@ -450,6 +472,7 @@ async function decide(
   }
   const words = await finished(deps.database, job.family_id, reading.reply, now);
   if (words === '') return queued('no_answer');
+  if (extractStateClaims(words).length > 0) return queued('makes_a_claim');
   return {
     kind: 'send',
     by: 'side_read',

@@ -717,7 +717,10 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
       }),
     // A side reply's claim row is read beside the others (claimAhead): taken before its
     // reply is sent, with no answered row yet, it is held until its lease lapses. Given
-    // back, it has a deferred row after it.
+    // back, it has a deferred row at or after it. Only the NEWEST claim is read, and only a
+    // deferred row from its time on gives it back: an older one released an earlier claim
+    // or deferred the text's own turn, and reading it as this claim's would let that turn
+    // answer while the side turn holding the claim is still sending.
     stageOf: async ({ familyId, channelMessageId }) => {
       const rows = await database
         .select({
@@ -741,8 +744,18 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
         );
       if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
       if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
-      const ahead = rows.find((row) => row.actionTaken === TURN_CLAIMED_AHEAD_ACTION);
-      if (ahead && !rows.some((row) => row.actionTaken === TURN_DEFERRED_ACTION)) {
+      const ahead = rows
+        .filter((row) => row.actionTaken === TURN_CLAIMED_AHEAD_ACTION)
+        .reduce<(typeof rows)[number] | undefined>(
+          (newest, row) => (newest && newest.occurredAt >= row.occurredAt ? newest : row),
+          undefined,
+        );
+      if (
+        ahead &&
+        !rows.some(
+          (row) => row.actionTaken === TURN_DEFERRED_ACTION && row.occurredAt >= ahead.occurredAt,
+        )
+      ) {
         return Date.now() - ahead.occurredAt.getTime() < SIDE_TURN_CLAIM_LEASE_MS
           ? 'held'
           : 'lapsed';

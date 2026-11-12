@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { createQueueWithPolicy } from '@hale/tools-contracts';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import PgBoss from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -45,6 +45,7 @@ import type { ChannelTurn } from './coach-runtime';
 import { runTurn, turnDeadlineSignal } from './deadline';
 import { createDisambiguationStore } from './disambiguation';
 import type { FloodLineComposer } from './flood-line';
+import type { OpenQuestion, OpenQuestionKind } from './open-questions';
 import { FakeReplyTransport, type ReplyTransport } from './reply-route';
 import {
   connectorDisconnectHandler,
@@ -65,6 +66,7 @@ import {
 import {
   SIDE_TURN_CLAIM_LEASE_MS,
   SIDE_TURN_TEMPLATE_KEY,
+  SIDE_TURN_UNSENT,
   type SideReply,
   type SideTurnOutcome,
   type SideTurnPorts,
@@ -663,10 +665,18 @@ interface Case {
   releaseFails?: true;
   /** A deterministic handler's own matcher takes the text. */
   handlerTakes?: true;
+  /** Hale holds a question a handler acts on the answer to. */
+  questionOpen?: true;
 }
 
 const ANSWER: SideTurnReading = { status: 'read', verdict: 'answer', reply: 'Swim is at 4:30.' };
 const SILENT: SideTurnReading = { status: 'read', verdict: 'answer', reply: '' };
+/** Words that say a row exists: the claim gate's to cite, in the text's own turn. */
+const CLAIMING: SideTurnReading = {
+  status: 'read',
+  verdict: 'answer',
+  reply: "Ada's swim lesson is booked for Thursday at 4:30.",
+};
 const denied = (firstDenied: boolean): RateLimiter => ({
   check: async () => ({ allowed: false, retryAfterSec: 60, firstDenied }),
 });
@@ -713,6 +723,8 @@ const CASES = {
   send_failed: { reading: ANSWER, transportFails: true },
   release_failed: { reading: ANSWER, transportFails: true, releaseFails: true },
   handler_takes: { reading: ANSWER, handlerTakes: true },
+  question_open: { reading: ANSWER, questionOpen: true },
+  makes_a_claim: { reading: CLAIMING },
 } satisfies Record<CaseKey, Case>;
 
 describe('every side turn ends answered or queued behind, never neither and never both', () => {
@@ -774,6 +786,12 @@ describe('every side turn ends answered or queued behind, never neither and neve
           }
         : {}),
       ...(setup.handlerTakes ? { handlers: [takingHandler()] } : {}),
+      ...(setup.questionOpen
+        ? {
+            handlers: [resolvingHandler('approval')],
+            questions: { open: async () => [openQuestion('approval')] },
+          }
+        : {}),
     };
     const send = async (reply: SideReply): Promise<string> => {
       if (setup.transportFails) throw new Error('provider refused');
@@ -849,8 +867,9 @@ describe('every side turn ends answered or queued behind, never neither and neve
       expect(threaded).toEqual([]);
       expect(await stageOf(fam, quick.id)).toBe('fresh');
     }
-    // A handler's text never reaches the side read at all.
-    if (setup.handlerTakes) expect(reader.calls).toEqual([]);
+    // A handler's text, or one that may answer a handler's question, never reaches the
+    // side read at all.
+    if (setup.handlerTakes || setup.questionOpen) expect(reader.calls).toEqual([]);
   });
 });
 
@@ -1021,6 +1040,14 @@ async function leaseLapses(channelMessageId: string): Promise<void> {
         eq(schema.auditLog.actionTaken, TURN_CLAIMED_AHEAD_ACTION),
       ),
     );
+}
+
+/** Every ledger row about one text, `ms` older, so their order is kept. */
+async function ledgerRowsAgo(channelMessageId: string, ms: number): Promise<void> {
+  await db.database
+    .update(schema.auditLog)
+    .set({ occurredAt: sql`${schema.auditLog.occurredAt} - (${ms} * interval '1 millisecond')` })
+    .where(eq(schema.auditLog.targetId, channelMessageId));
 }
 
 /** One run of a text's own job: its status, or the reason it went back to the queue. */
@@ -1220,6 +1247,44 @@ describe('claimed before it is sent: a side reply is answered once, never twice,
     expect(await stageOf(fam, quick.id)).toBe('answered');
   });
 
+  it('given back, then claimed again: the newer claim is held, and only it lapses', async () => {
+    const fam = await seedParent('Side Claimed Twice');
+    const quick = await text(fam, QUICK, QUIET);
+    const ledger = auditTurnLedger(db.database);
+    const turn = {
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channelMessageId: quick.id,
+    };
+    expect(await ledger.claimAhead(turn, async () => undefined)).toBe('claimed');
+    await ledger.releaseAhead({ ...turn, reason: SIDE_TURN_UNSENT });
+    expect(await stageOf(fam, quick.id)).toBe('deferred');
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await ledger.claimAhead(turn, async () => undefined)).toBe('claimed');
+    expect(await stageOf(fam, quick.id)).toBe('held');
+
+    await ledgerRowsAgo(quick.id, SIDE_TURN_CLAIM_LEASE_MS + 1_000);
+    expect(await stageOf(fam, quick.id)).toBe('lapsed');
+  });
+
+  it("a deferral of the text's own turn before the claim does not give the claim back", async () => {
+    const fam = await seedParent('Side Claimed After Deferral');
+    const quick = await text(fam, QUICK, QUIET);
+    const ledger = auditTurnLedger(db.database);
+    const turn = {
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channelMessageId: quick.id,
+    };
+    await ledger.recordDeferred({ ...turn, reason: 'turn_timeout' });
+    expect(await stageOf(fam, quick.id)).toBe('deferred');
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await ledger.claimAhead(turn, async () => undefined)).toBe('claimed');
+    expect(await stageOf(fam, quick.id)).toBe('held');
+  });
+
   it('its claim could not be written: nothing goes beside the turn, and its own job answers once', async () => {
     const run = await quickBehind('Side Claim Fails', {
       turns: (turns, quick) => failingFor(turns, /^claimAhead$/, quick),
@@ -1264,6 +1329,33 @@ function takingHandler(): DeterministicHandler {
     async handle() {
       throw new Error('a handler ran beside a running turn');
     },
+  };
+}
+
+/** A handler that acts only on what the resolver read: its own matcher takes nothing. */
+function resolvingHandler(kind: OpenQuestionKind): DeterministicHandler {
+  return {
+    name: `resolves_${kind}`,
+    resolves: new Set([kind]),
+    async detects() {
+      return false;
+    },
+    async handle() {
+      throw new Error('a handler ran beside a running turn');
+    },
+  };
+}
+
+/** One question Hale is holding, of this kind. */
+function openQuestion(kind: OpenQuestionKind): OpenQuestion {
+  return {
+    id: `question-${kind}`,
+    kind,
+    description: 'A question Hale asked',
+    subject: 'a question Hale asked',
+    answerable: { yes: true, no: true },
+    askedAt: new Date(Date.now() - 60_000),
+    solicited: true,
   };
 }
 
@@ -1484,6 +1576,61 @@ describe('a text a deterministic handler takes is handed back before the side re
     };
     expect(await takes(QUICK)).toEqual([]);
     expect(await takes('disconnect my calendar')).toEqual(['connector_disconnect']);
+  });
+});
+
+describe('a text that may answer a question a handler acts on goes back before the side read', () => {
+  // A bare yes names no question, so no handler's own matcher can take it: the handlers
+  // behind these kinds act only on what the resolver read, in the text's own turn.
+  const SAID = ['yes', 'approve it', 'oui, vas-y', 'sí, adelante', 'sounds good, go ahead'];
+  const neither: ConsentReader = { read: async () => ({ verdict: 'neither', target: 'none' }) };
+  const chain = defaultHandlers({ consent: neither });
+  const owned = [...new Set(chain.flatMap((handler) => [...(handler.resolves ?? [])]))];
+
+  it('the production chain acts on the answers no matcher sees', () => {
+    expect(owned).toEqual(
+      expect.arrayContaining([
+        'approval',
+        'email_alert_add',
+        'plan_offer',
+        'registration_readiness',
+        'checkup_offer',
+      ]),
+    );
+  });
+
+  it.each(owned)('%s', async (kind) => {
+    const fam = await seedParent(`Side Question ${kind}`);
+    const transport = new FakeReplyTransport();
+    const reader = scriptedReader(() => ANSWER);
+    const deps: ChannelRouterDeps = {
+      ...routerDeps(transport, { sideTurn: { reader } }),
+      handlers: chain,
+      questions: { open: async () => [openQuestion(kind)] },
+    };
+    for (const body of SAID) {
+      const { outcome, quick } = await sideTurnOn(deps, fam, body);
+      expect(outcome, body).toEqual({ kind: 'queued', why: 'question_open' });
+      expect(await stageOf(fam, quick.id), body).toBe('fresh');
+    }
+    expect(reader.calls).toEqual([]);
+    expect(transport.bodies()).toEqual([]);
+  });
+
+  it('positive control: beside a question no handler acts on, a quick question is still answered', async () => {
+    const fam = await seedParent('Side Question Control');
+    const transport = new FakeReplyTransport();
+    const reader = scriptedReader(() => ANSWER);
+    const deps: ChannelRouterDeps = {
+      ...routerDeps(transport, { sideTurn: { reader } }),
+      handlers: chain,
+      questions: { open: async () => [openQuestion('activity_followup_ask')] },
+    };
+    expect(owned).not.toContain('activity_followup_ask');
+    const { outcome } = await sideTurnOn(deps, fam, QUICK);
+
+    expect(outcome).toEqual({ kind: 'answered', by: 'side_read' });
+    expect(reader.calls).toHaveLength(1);
   });
 });
 
