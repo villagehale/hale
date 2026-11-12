@@ -407,6 +407,7 @@ async function main() {
         now: SIGNUP_NOW,
         parentWords: fixture.text,
         linksThisTurn: () => [],
+        onRecorded: () => {},
         planWriter: createPlanReplyWriter(() =>
           cachedAgentClient(
             `coach-capability-correction:${fixture.id}:plan-offer`,
