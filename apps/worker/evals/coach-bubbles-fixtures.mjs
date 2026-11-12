@@ -177,4 +177,54 @@ export const COACH_BUBBLES_FIXTURES = [
     rubric:
       'The week is given from the calendar without inventing anything. Not over-split: a bubble is a whole thought (a day or a stretch of days), never a fragment. No bubble is a count or a heading of what follows.',
   },
+  {
+    id: 'en-promise-followup',
+    text: 'anything for toddler gymnastics near us this winter?',
+    children: [TODDLER],
+    location: TORONTO,
+    village: [],
+    web: { found: false, reason: 'no_picks' },
+    mustCall: ['promise_activity_followup'],
+    rubric:
+      'Neither the village nor the live web had toddler gymnastics for this winter. The reply says so plainly and says, in its own words, that Hale will look again and come back to them. Nothing is invented: no program, venue, day or date.',
+  },
+  {
+    id: 'en-offer-last-bubble',
+    text: 'my 20 month old has started waking at 2am every night, is that normal?',
+    children: [TODDLER],
+    location: TORONTO,
+    mustCall: ['offer_full_plan'],
+    rubric:
+      'Says briefly that night waking is common at this age and gives one thing to try tonight. The only question is the offer of the full sleep plan, and it is in the last bubble. It does not diagnose or promise an outcome.',
+  },
+];
+
+/**
+ * The judge, calibrated both ways on sets written by hand for `zh-winter-swim`. The first
+ * opens with a count of the classes that follow, the miss the first recording made and a
+ * judge passed at 4 as a small flaw; the skill says no bubble is a count of what follows,
+ * so it must fail. The second is the same answer with no lead-in, the positive control.
+ */
+export const COACH_BUBBLES_JUDGE_CALIBRATION = [
+  {
+    id: 'calibration-zh-count-lead-in',
+    fixture: 'zh-winter-swim',
+    expect: 'fail',
+    bubbles: [
+      '有两个适合20个月宝宝的，都是家长一起下水的班。',
+      'Wellesley Community Centre pool 的 Parent and tot swim，周六 9:30，1月9日到3月13日，适合6到36个月。',
+      'Regent Park Aquatic Centre 的 Little splashers，周日 10:15，1月10日到3月14日，适合12到36个月。',
+      '两个都是12月1日早上7:00开始报名。 https://www.toronto.ca/fixture/parent-and-tot-swim https://www.toronto.ca/fixture/little-splashers',
+    ],
+  },
+  {
+    id: 'calibration-zh-no-lead-in',
+    fixture: 'zh-winter-swim',
+    expect: 'pass',
+    bubbles: [
+      'Wellesley Community Centre pool 的 Parent and tot swim，周六 9:30，1月9日到3月13日，6到36个月，家长一起下水。',
+      'Regent Park Aquatic Centre 的 Little splashers，周日 10:15，1月10日到3月14日，12到36个月，也是家长一起下水。',
+      '两个都是12月1日早上7:00开始报名。 https://www.toronto.ca/fixture/parent-and-tot-swim https://www.toronto.ca/fixture/little-splashers',
+    ],
+  },
 ];

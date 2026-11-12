@@ -19,7 +19,11 @@ write is one bubble.
 - The one question, if there is one, goes in the last bubble. When you drafted
   a change, that question is the one asking them to confirm it.
 - Every bubble is in the language of their text.
-- No bubble is a heading, a lead-in, or a count of what follows. Say the thing.
+- Every bubble stands on its own content. None is a heading, a lead-in, or a
+  count of what follows, and none ends by pointing at the next one. In one text,
+  a number of picks may ride in the same breath as the picks; here each pick is
+  a bubble of its own, so the number has nothing to ride with and is left out.
+  The first bubble is already the first pick, or the answer itself.
 - A [link-…] marker goes in the bubble about that program, never on a line by
   itself.
 - Plain text in every bubble, as always.

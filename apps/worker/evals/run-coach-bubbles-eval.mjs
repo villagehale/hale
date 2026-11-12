@@ -6,10 +6,15 @@
 // then coach-nearby-find, coach-home-place and the coach-bubbles addendum (through the REAL
 // `augmentCoachSkillForBubbles`) as the system extras. The answer then goes through the
 // REAL post-processor and split (`toSmsBubbles`, `joinReplyBubbles`, `splitReplyBubbles`),
-// so the bubbles graded are the bubbles the router would send. Tools are fixture stubs.
+// so the bubbles graded are the bubbles the router would send, the offer `offer_full_plan`
+// registered appended to the last one as runtime.ts appends it. Calendar and village tools
+// are fixture stubs; `find_activities` is the real definition with a fixture result, and
+// `promise_activity_followup`, `offer_full_plan` and `get_framework_guidance` are the real
+// tools.
 //
-// Objective: the shape of the set (coach-bubbles-grade.mjs). Judge (median of three): the
-// question, the language and the splitting, against each case's rubric.
+// Objective: the shape of the set and the tools a case must call (coach-bubbles-grade.mjs).
+// Judge (median of three): the question, the language and the splitting, against each
+// case's rubric. The judge is calibrated both ways first, on hand-written sets.
 //
 //   node evals/run-coach-bubbles-eval.mjs --max-usd 3    # live, then caches
 //   node evals/run-coach-bubbles-eval.mjs --cached-only  # CI: replay only
@@ -21,6 +26,7 @@ import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import {
   COACH_BUBBLES_FIXTURES,
+  COACH_BUBBLES_JUDGE_CALIBRATION,
   COACH_BUBBLES_NOW,
   COACH_BUBBLES_TIME_ZONE,
 } from './coach-bubbles-fixtures.mjs';
@@ -87,7 +93,7 @@ function contextFor(fixture) {
   };
 }
 
-function toolsFor(agent, linkRef, fixture, calls, listed) {
+function toolsFor(agent, linkRef, real, fixture, calls, turn, listed) {
   const passthrough = () => z.object({}).passthrough();
   const stub = (name, result) =>
     agent.defineTool({
@@ -106,7 +112,8 @@ function toolsFor(agent, linkRef, fixture, calls, listed) {
       inputSchema: passthrough(),
       handler: async () => {
         calls.push('lookup_week');
-        return { timeZone: COACH_BUBBLES_TIME_ZONE, events: fixture.events ?? [] };
+        turn.week = { timeZone: COACH_BUBBLES_TIME_ZONE, events: fixture.events ?? [] };
+        return turn.week;
       },
     }),
     agent.defineTool({
@@ -147,6 +154,40 @@ function toolsFor(agent, linkRef, fixture, calls, listed) {
         return { drafted: true, actionId: 'action-1', when: fixture.draftedWhen };
       },
     }),
+    // The real definition (what the model reads) with the fixture's search result in the
+    // shape the real handler returns. No picks unless the case says otherwise.
+    {
+      ...real.findActivitiesTool({ reader: {}, finder: {}, onPromise() {} }),
+      handler: async () => {
+        calls.push('find_activities');
+        return fixture.web ?? { found: false, reason: 'no_picks' };
+      },
+    },
+    // The real verbs: de-identification, the offer gate and its recompose loop all run.
+    real.promiseActivityFollowUpTool({
+      reader: { householdNames: async () => [] },
+      onPromise(promise) {
+        calls.push('promise_activity_followup');
+        turn.promises.push(promise);
+      },
+    }),
+    real.offerFullPlanTool((offer) => {
+      calls.push('offer_full_plan');
+      turn.offer = offer;
+    }),
+    (() => {
+      // Canada, as every case's location says.
+      const guidance = real.frameworkGuidanceTool('CA');
+      return {
+        ...guidance,
+        handler: async (input, ctx) => {
+          calls.push('get_framework_guidance');
+          const result = await guidance.handler(input, ctx);
+          turn.guidance.push(result);
+          return result;
+        },
+      };
+    })(),
   ];
   // Every other tool the skill lists, as an honest empty stub: this suite grades the bubbles.
   const have = new Set(tools.map((t) => t.name));
@@ -222,6 +263,21 @@ async function main() {
     join(COACH, 'reply.ts'),
   );
   const { linkRef } = await importTs(join(COACH, 'activity-links.ts'));
+  const { findActivitiesTool, promiseActivityFollowUpTool } = await importTs(
+    join(WEB_ROOT, 'lib', 'channel', 'activity', 'tools.ts'),
+  );
+  const { offerFullPlanTool } = await importTs(
+    join(WEB_ROOT, 'lib', 'channel', 'plan', 'offer.ts'),
+  );
+  const { frameworkGuidanceTool } = await importTs(
+    join(WEB_ROOT, 'lib', 'coach', 'framework-tool.ts'),
+  );
+  const real = {
+    findActivitiesTool,
+    promiseActivityFollowUpTool,
+    offerFullPlanTool,
+    frameworkGuidanceTool,
+  };
   const coach = await agent.loadSkill(join(SKILLS, 'coach-channel-sms.md'));
   const nearby = await agent.loadSkill(join(SKILLS, 'coach-nearby-find.md'));
   const homePlace = await agent.loadSkill(join(SKILLS, 'coach-home-place.md'));
@@ -246,15 +302,50 @@ async function main() {
   console.log(
     `coach-bubbles eval${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(skill.meta.task)} judge=${judgeModel}`,
   );
+  // What the judge may hold the reply to. The week is what `lookup_week` returned, and only
+  // when the turn read it: an empty week a turn read is a fact ("nothing else that
+  // afternoon"), not an invention.
+  const factsFor = (fixture, turn = { week: null, guidance: [] }) => ({
+    now: COACH_BUBBLES_NOW,
+    timeZone: COACH_BUBBLES_TIME_ZONE,
+    children: fixture.children,
+    village: (fixture.village ?? []).map(({ url, ...pick }) => pick),
+    ...(turn.week ? { weekRead: turn.week } : {}),
+    drafted: fixture.draftedWhen ?? null,
+    ...(fixture.web ? { web: fixture.web } : {}),
+    ...(turn.guidance.length > 0 ? { guidance: turn.guidance } : {}),
+  });
+  const byId = new Map(COACH_BUBBLES_FIXTURES.map((fixture) => [fixture.id, fixture]));
+
+  // The judge first, on sets written by hand: a count lead-in must fail and the same answer
+  // without it must pass, or the scores below mean nothing.
+  const calibration = [];
+  for (const row of COACH_BUBBLES_JUDGE_CALIBRATION) {
+    const fixture = byId.get(row.fixture);
+    const verdict = await judge(row.id, {
+      parentText: fixture.text,
+      facts: factsFor(fixture),
+      rubric: fixture.rubric,
+      bubbles: row.bubbles,
+    });
+    const passed = verdict.score >= JUDGE_MIN;
+    const failures =
+      verdict.dry || passed === (row.expect === 'pass')
+        ? []
+        : [`calibration: expected ${row.expect}, judge:${verdict.score} (${verdict.reason})`];
+    calibration.push({ row, verdict, failures });
+  }
+
   const results = [];
   for (const fixture of COACH_BUBBLES_FIXTURES) {
     const calls = [];
+    const turn = { promises: [], offer: null, guidance: [], week: null };
     const failures = [];
     const run = await agent.runAgent({
       skill,
       systemExtras,
       context: contextFor(fixture),
-      tools: toolsFor(agent, linkRef, fixture, calls, skill.meta.tools),
+      tools: toolsFor(agent, linkRef, real, fixture, calls, turn, skill.meta.tools),
       client: cachedAgentClient(`coach-bubbles:${fixture.id}`, cachedOnly, getClient, cost),
       maxSteps: MAX_STEPS,
       maxTokens: MAX_TOKENS,
@@ -277,22 +368,18 @@ async function main() {
             children: fixture.replyChildren ?? [],
             now: new Date(COACH_BUBBLES_NOW),
             activityLinks,
+            ...(turn.offer ? { planOffer: turn.offer.sentence } : {}),
             bubbles: true,
           }),
         ),
       );
-      failures.push(...bubbleShapeFailures(sent, fixture));
+      failures.push(
+        ...bubbleShapeFailures(sent, fixture, { calls, offer: turn.offer?.sentence ?? null }),
+      );
     }
     const verdict = await judge(fixture.id, {
       parentText: fixture.text,
-      facts: {
-        now: COACH_BUBBLES_NOW,
-        timeZone: COACH_BUBBLES_TIME_ZONE,
-        children: fixture.children,
-        village: (fixture.village ?? []).map(({ url, ...pick }) => pick),
-        events: fixture.events ?? [],
-        drafted: fixture.draftedWhen ?? null,
-      },
+      facts: factsFor(fixture, turn),
       rubric: fixture.rubric,
       bubbles: sent,
     });
@@ -302,6 +389,12 @@ async function main() {
     results.push({ fixture, sent, calls, failures });
   }
 
+  for (const c of calibration) {
+    console.log(
+      `${c.failures.length === 0 ? 'PASS' : 'FAIL'}  ${c.row.id.padEnd(24)} expect=${c.row.expect} judge=${c.verdict.score}`,
+    );
+    for (const f of c.failures) console.log(`      · ${f}`);
+  }
   for (const r of results) {
     console.log(
       `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(24)} calls=[${r.calls.join(',')}] bubbles=${JSON.stringify(r.sent)}`,
@@ -315,7 +408,7 @@ async function main() {
     console.log(dryReportLine('coach-bubbles', [judge.plan]));
     process.exit(0);
   }
-  process.exit(results.every((r) => r.failures.length === 0) ? 0 : 1);
+  process.exit([...calibration, ...results].every((r) => r.failures.length === 0) ? 0 : 1);
 }
 
 main().catch((err) => {
