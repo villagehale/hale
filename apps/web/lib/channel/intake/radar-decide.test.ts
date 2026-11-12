@@ -708,14 +708,17 @@ describe('decideRadar — registration absence (between cycles)', () => {
   });
 
   it('never offers the cycle that already went back as the one still to come', () => {
-    const torontoFall = win({
+    const torontoWinter = win({
       municipality: 'toronto' as Municipality,
-      cycleLabel: 'Fall 2026',
-      openAt: new Date('2026-09-08T11:00:00.000Z'),
+      cycleLabel: 'Winter 2027',
+      openAt: new Date('2026-12-08T12:00:00.000Z'),
     });
-    const decision = decide({ windows: [], pastCycle: past(torontoFall) });
-    expect(decision.registrationAbsence?.nextCycleLabel).not.toBe('Fall 2026');
-    expect(decision.registrationAbsence?.nextCycleLabel).toBe('Winter 2027');
+    const decision = decide({
+      windows: [],
+      pastCycle: past(torontoWinter, ['Fall 2026', 'Winter 2027']),
+    });
+    expect(decision.registrationAbsence?.nextCycleLabel).not.toBe('Winter 2027');
+    expect(decision.registrationAbsence?.nextCycleLabel).toBe('Spring 2027');
   });
 
   it('names no cycle the dataset already holds a row for, whichever one just went', () => {
@@ -804,14 +807,14 @@ describe('decideRadar — the open-now tense on the absence', () => {
     const decision = decide({
       children: [child({ name: 'Maya', ageMonths: 30 })],
       windows: [],
-      pastCycle: past(TORONTO_FALL),
+      pastCycle: past(TORONTO_FALL, ['Fall 2026', 'Winter 2027']),
       stillOpenCycle: past(TORONTO_FALL),
       now: FIVE_DAYS_AFTER,
     });
     expect(decision.registrationAbsence).toEqual({
       cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
       lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
-      nextCycleLabel: 'Winter 2027',
+      nextCycleLabel: 'Spring 2027',
       stillOpen: { registerUrl: TORONTO_URL, kidNames: ['Maya'] },
     });
   });

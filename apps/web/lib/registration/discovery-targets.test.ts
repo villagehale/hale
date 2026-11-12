@@ -22,9 +22,10 @@ describe('nextWatchedCycle', () => {
     ).toBeNull();
   });
 
-  it('names Winter 2027 for a Toronto family whose Fall 2026 cycle has gone', () => {
-    expect(nextWatchedCycle('toronto', 'rec_program', new Set(['Fall 2026']))).toBe('Winter 2027');
-    expect(nextWatchedCycle('toronto', 'swim', new Set(['Fall 2026']))).toBe('Winter 2027');
+  it('names Spring 2027 for a Toronto family whose Winter 2027 cycle has gone', () => {
+    const known = new Set(['Fall 2026', 'Winter 2027']);
+    expect(nextWatchedCycle('toronto', 'rec_program', known)).toBe('Spring 2027');
+    expect(nextWatchedCycle('toronto', 'swim', known)).toBe('Spring 2027');
   });
 
   it('is silent for a town nobody registered a target for', () => {
@@ -57,7 +58,7 @@ describe('DISCOVERY_TARGETS against the dataset', () => {
     const howTo =
       'https://www.toronto.ca/explore-enjoy/parks-recreation/how-to-use-our-services/how-to-register-for-recreation-programs/';
     const toronto = DISCOVERY_TARGETS.filter((target) => target.municipality === 'toronto');
-    expect(toronto.map((target) => target.cycleLabel)).toEqual(['Winter 2027', 'Winter 2027']);
+    expect(toronto.map((target) => target.cycleLabel)).toEqual(['Spring 2027', 'Spring 2027']);
     for (const target of toronto) {
       expect(target.sourceUrls).toEqual([
         'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/',

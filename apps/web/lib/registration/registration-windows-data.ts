@@ -100,6 +100,8 @@ const WHITCHURCH_STOUFFVILLE_VERIFIED_AT = '2026-09-17T00:00:00-04:00';
  * the same day — the two PDFs downloaded and text-extracted rather than searched for,
  * because both towns' landing pages print no dates at all. */
 const YORK_ROUND_VERIFIED_AT = '2026-09-18T00:00:00-04:00';
+/** Toronto's and Markham's Winter 2027 rows were read off each city's own page this day. */
+const WINTER_2027_VERIFIED_AT = '2026-11-12T00:00:00-05:00';
 
 const BRAMPTON_REGISTERED =
   'https://www.brampton.ca/EN/residents/Recreation/Pages/Registered-Programs.aspx';
@@ -150,6 +152,10 @@ const UXBRIDGE_UXPLORE_GUIDE = 'https://www.uxbridge.ca/public/download/files/36
 
 const TORONTO_FALL_2026_RELEASE =
   'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/';
+/** The page with Toronto's own "Upcoming Registration Dates" table. The how-to page
+ * links here for the dates rather than printing them. */
+const TORONTO_REGISTER =
+  'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/';
 const TORONTO_ARC =
   'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/camps-after-school/after-school-recreation-care/';
 const MARKHAM_REGISTRATION =
@@ -206,13 +212,15 @@ const TORONTO_FALL_2026_QUOTE =
  * after THAT area's resident morning, the same city-wide rule the after-school
  * rows use. Swim registers inside these mornings, not on its own.
  */
-const TORONTO_FALL_MORNINGS: readonly {
+interface TorontoMorning {
   district: TorontoDistrict;
   residentOpenAt: string;
   openAt: string;
   weekday: 'Tuesday' | 'Wednesday';
   morning: string;
-}[] = [
+}
+
+const TORONTO_FALL_MORNINGS: readonly TorontoMorning[] = [
   {
     district: 'etobicoke_york',
     residentOpenAt: '2026-09-15T07:00:00-04:00',
@@ -243,9 +251,7 @@ const TORONTO_FALL_MORNINGS: readonly {
   },
 ];
 
-function torontoFallSeed(
-  morning: (typeof TORONTO_FALL_MORNINGS)[number],
-): Omit<RegistrationWindowSeed, 'programDomain'> {
+function torontoFallSeed(morning: TorontoMorning): Omit<RegistrationWindowSeed, 'programDomain'> {
   return {
     municipality: 'toronto',
     district: morning.district,
@@ -260,6 +266,64 @@ function torontoFallSeed(
     sourceUrl: TORONTO_FALL_2026_RELEASE,
     verifiedAt: '2026-09-17T00:00:00-04:00',
     notes: `${TORONTO_FALL_2026_QUOTE} This row is the ${morning.morning} morning. ${TORONTO_NON_RESIDENT_RULE}`,
+    publishedWeekdays: { residentOpenAt: morning.weekday },
+  };
+}
+
+const TORONTO_WINTER_2027_QUOTE =
+  'register-for-recreation-activities page ("Date modified: November 2, 2026"), "Upcoming Registration Dates", verbatim: "Winter Recreation: Free Centres (for eligible residents)" "Tuesday, December 1, 7 a.m."; "Winter Recreation: Toronto, East York and Etobicoke" "Tuesday, December 8, 7 a.m."; "Winter Recreation: North York and Scarborough" "Wednesday, December 9, 7 a.m.". Same page: "Winter activities will be added to the registration and booking system to view and plan on November 17." (no time printed, so the preview is the start of that day); "Registered programs for the winter season run between January 4 and April 2, 2027."; "Invitations expire after 36 hours". The table prints no year: the page\'s "2026/2027 Registration Look Ahead" and the 2027 program run supply it, and the printed weekdays fit 2026, not 2025. The December 1 free-centre morning is Early Local Registration, "Residents living near free centres may be able to register one week before the general registration dates" (…/how-to-register-for-recreation-programs/early-local-recreation-registration/), a proximity rule, not a residency one, so it is not residentOpenAt.';
+
+/**
+ * Toronto's Winter 2027 seasonal cycle, the same four community-council rows as Fall:
+ * Toronto, East York and Etobicoke open Tuesday Dec 8 and North York and Scarborough
+ * Wednesday Dec 9, each followed ten days later by non-residents. Every instant is EST.
+ */
+const TORONTO_WINTER_MORNINGS: readonly TorontoMorning[] = [
+  {
+    district: 'etobicoke_york',
+    residentOpenAt: '2026-12-08T07:00:00-05:00',
+    openAt: '2026-12-18T07:00:00-05:00',
+    weekday: 'Tuesday',
+    morning: 'Etobicoke',
+  },
+  {
+    district: 'toronto_east_york',
+    residentOpenAt: '2026-12-08T07:00:00-05:00',
+    openAt: '2026-12-18T07:00:00-05:00',
+    weekday: 'Tuesday',
+    morning: 'Toronto and East York',
+  },
+  {
+    district: 'north_york',
+    residentOpenAt: '2026-12-09T07:00:00-05:00',
+    openAt: '2026-12-19T07:00:00-05:00',
+    weekday: 'Wednesday',
+    morning: 'North York',
+  },
+  {
+    district: 'scarborough',
+    residentOpenAt: '2026-12-09T07:00:00-05:00',
+    openAt: '2026-12-19T07:00:00-05:00',
+    weekday: 'Wednesday',
+    morning: 'Scarborough',
+  },
+];
+
+function torontoWinterSeed(morning: TorontoMorning): Omit<RegistrationWindowSeed, 'programDomain'> {
+  return {
+    municipality: 'toronto',
+    district: morning.district,
+    cycleLabel: 'Winter 2027',
+    previewAt: '2026-11-17T00:00:00-05:00',
+    residentOpenAt: morning.residentOpenAt,
+    openAt: morning.openAt,
+    residentPriorityDays: 10,
+    waitlistResponseHours: 36,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: TORONTO_REGISTER,
+    verifiedAt: WINTER_2027_VERIFIED_AT,
+    notes: `${TORONTO_WINTER_2027_QUOTE} This row is the ${morning.morning} morning. ${TORONTO_NON_RESIDENT_RULE}`,
     publishedWeekdays: { residentOpenAt: morning.weekday },
   };
 }
@@ -299,6 +363,28 @@ const MARKHAM_FALL_2026 = {
  * it. Pull a live swim or camp course page for the cycle into the fixtures and this goes.
  */
 const MARKHAM_INFERRED_TIER = ['residentOpenAt'] as const;
+
+/**
+ * Markham's Winter 2027 cycle is programs and swim lessons only. Its winter-break camps
+ * registered in the fall cycle above. Unlike the fall block, the page prints this tier
+ * itself and names swim lessons in it, so neither row infers anything. All EST.
+ */
+const MARKHAM_WINTER_2027 = {
+  municipality: 'markham',
+  cycleLabel: '2027 Winter Programs and Swim Lessons',
+  previewAt: '2026-11-16T00:00:00-05:00',
+  residentOpenAt: '2026-12-01T06:30:00-05:00',
+  openAt: '2026-12-02T06:30:00-05:00',
+  residentPriorityDays: 1,
+  waitlistResponseHours: 48,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: MARKHAM_REGISTRATION,
+  verifiedAt: WINTER_2027_VERIFIED_AT,
+  notes:
+    'Published as "2027 Registration Dates" / "Winter Programs and Swim Lessons" / "Preview starting Nov. 16 2026" / "Register starting Dec. 1, 2026 at 6:30 AM". The same page prints the tier under "Verify Your Registration Account Address to Keep Your Resident Benefits": "Earlier program and swim lesson registration: Residents can register 24 hours before non-residents." / "2027 Winter Registration for residents: December 1, 2026, at 6:30 AM" / "2027 Winter Registration for non-residents: December 2, 2026, at 6:30 AM". No preview time is published, so it is the start of that day, and no weekday is printed beside any date. Waitlist: "You will have 48 hours to decide". RESIDENCY IS RE-VERIFIED THIS CYCLE: "To maintain your resident benefits, verify your address between October 27 and November 30." / "Any account that has not been verified will automatically be assigned to non-resident status" / "All newly created registration accounts are automatically assigned to non-resident status." So a Markham family that has not verified by November 30 registers with non-residents on December 2. Non-residents also "pay an additional 15% on applicable program fees".',
+  publishedWeekdays: {},
+} as const satisfies Omit<RegistrationWindowSeed, 'programDomain'>;
 
 /** Burlington registers fall+winter youth, fall swim and fall+winter aquatic leadership
  * on one identical schedule; only the cycle label differs. */
@@ -477,6 +563,14 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
       { ...seed, programDomain: 'swim' as const },
     ];
   }),
+  // Winter 2027, read off the register page's table on 2026-11-12. The same shape.
+  ...TORONTO_WINTER_MORNINGS.flatMap((morning) => {
+    const seed = torontoWinterSeed(morning);
+    return [
+      { ...seed, programDomain: 'rec_program' as const },
+      { ...seed, programDomain: 'swim' as const },
+    ];
+  }),
   {
     ...TORONTO_AFTER_SCHOOL,
     cycleLabel: 'After-School Recreation Care (ARC) 2026/2027 school year',
@@ -496,6 +590,8 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
   { ...MARKHAM_FALL_2026, programDomain: 'rec_program' },
   { ...MARKHAM_FALL_2026, programDomain: 'swim', inferredFields: MARKHAM_INFERRED_TIER },
   { ...MARKHAM_FALL_2026, programDomain: 'camp', inferredFields: MARKHAM_INFERRED_TIER },
+  { ...MARKHAM_WINTER_2027, programDomain: 'rec_program' },
+  { ...MARKHAM_WINTER_2027, programDomain: 'swim' },
 
   // ── Vaughan ──────────────────────────────────────────────────────────────────
   // Vaughan registers swim lessons on their OWN dates, two days after general programs —

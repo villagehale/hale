@@ -63,16 +63,16 @@ export const DISCOVERY_TARGETS: readonly DiscoveryTarget[] = [
   {
     municipality: 'toronto',
     programDomain: 'rec_program',
-    cycleLabel: 'Winter 2027',
+    cycleLabel: 'Spring 2027',
     sourceUrls: TORONTO_WATCH,
-    gap: 'Toronto prints no Winter 2027 date, only a look-ahead: registration "is anticipated to occur between December 1 to 9" with programs browsable from November 17.',
+    gap: 'Toronto prints no Spring 2027 date, only a look-ahead: registration "is anticipated to occur between February 23 and March 3, 2027" with programs browsable from February 12.',
   },
   {
     municipality: 'toronto',
     programDomain: 'swim',
-    cycleLabel: 'Winter 2027',
+    cycleLabel: 'Spring 2027',
     sourceUrls: TORONTO_WATCH,
-    gap: 'Toronto registers swim inside the seasonal cycle; the same unpublished Winter 2027 date covers it.',
+    gap: 'Toronto registers swim inside the seasonal cycle; the same unpublished Spring 2027 date covers it.',
   },
   {
     municipality: 'halton_hills',

@@ -123,7 +123,7 @@ const CITY_LINES = {
   vaughan:
     'Vaughan Fall Session 2026 registration already opened Aug 18 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
   markham:
-    'Markham 2026 Fall Programs, Swim Lessons and Winter Break Camps registration already opened Aug 11 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+    'Markham 2027 Winter Programs and Swim Lessons registration: residents Tuesday Dec 1 at 6:30 a.m., non-residents Wednesday Dec 2 at 6:30 a.m.',
   mississauga:
     'Mississauga Fall 2026 Programs and Winter Camps registration already opened Aug 11 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
   pickering:
@@ -456,13 +456,18 @@ describe('rec-morning SMS · Brampton and Jack of Sports when asked', () => {
   });
 });
 
-function mustNotBeTorontoClock(body: string): void {
-  expect(body).not.toContain('7:00');
-  expect(body).not.toMatch(/Sept?\s*15/i);
-  expect(body.toLowerCase()).not.toContain('activeto');
-  expect(body.toLowerCase()).not.toContain("i'm an ai");
-  expect(body.toLowerCase()).not.toContain('6:32');
-  expect(body.toLowerCase()).not.toContain('6:30');
+/** Markham's own published clock ("Register starting Dec. 1, 2026 at 6:30 AM"). It is
+ * the town's, not a borrowed Toronto one, so the guard below sets it aside. */
+const MARKHAM_CLOCK = '6:30 a.m.';
+
+function mustNotBeTorontoClock(body: string, ownClock: string | null = null): void {
+  const text = ownClock === null ? body : body.replaceAll(ownClock, '');
+  expect(text).not.toContain('7:00');
+  expect(text).not.toMatch(/Sept?\s*15/i);
+  expect(text.toLowerCase()).not.toContain('activeto');
+  expect(text.toLowerCase()).not.toContain("i'm an ai");
+  expect(text.toLowerCase()).not.toContain('6:32');
+  expect(text.toLowerCase()).not.toContain('6:30');
 }
 
 describe('rec-morning SMS · a city line is derived, never locked', () => {
@@ -471,13 +476,14 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
       const town = townLabel(city);
       expect(reply(`when does ${town} rec open?`), town).toBe(line);
       expect(line, town).toContain(town);
-      mustNotBeTorontoClock(line);
+      mustNotBeTorontoClock(line, city === 'markham' ? MARKHAM_CLOCK : null);
       firstAnswerIsClean(line);
       expect(smsEncoding(line), town).toBe('gsm7');
     }
   });
 
   it('routes Markham by name, by stored city, and by FSA, to the one derived line', () => {
+    expect(CITY_LINES.markham).toContain(MARKHAM_CLOCK);
     expect(reply('Markham swim registration?')).toBe(CITY_LINES.markham);
     expect(reply('Markham winter-break camps?')).toBe(CITY_LINES.markham);
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L3R' })).toBe(CITY_LINES.markham);
@@ -488,11 +494,13 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
 
   it('names the cycle Hale is waiting on where there is one, and "the next" where there is not', () => {
     // discovery-targets watches Halton Hills and Stouffville for Winter 2027; nobody
-    // is watching a Vaughan or Markham winter, so no season is named for them.
+    // is watching a Vaughan or Markham season, so no season is named for them.
     expect(CITY_LINES.halton_hills).toContain('Winter 2027 dates are not posted yet');
     expect(CITY_LINES.whitchurch_stouffville).toContain('Winter 2027 dates are not posted yet');
     expect(CITY_LINES.vaughan).toContain('the next dates are not posted yet');
-    expect(CITY_LINES.markham).toContain('the next dates are not posted yet');
+    expect(reply('Markham rec?', new Date('2026-12-03T15:00:00.000Z'))).toBe(
+      'Markham 2027 Winter Programs and Swim Lessons registration already opened Dec 1 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+    );
   });
 
   it('drops the Vaughan November dates that were in no row at all', () => {
@@ -607,6 +615,14 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
     const northYork = cityRecLine('toronto', dayBefore, 'rec_program', undefined, 'M2N');
     expect(northYork).toContain('Wednesday Sep 16');
     expect(northYork).not.toContain('Sep 15');
+    // Winter 2027, as the register page's table prints it, through the default dataset.
+    const afterFall = new Date('2026-11-20T15:00:00.000Z');
+    expect(cityRecLine('toronto', afterFall, 'rec_program', undefined, 'M2N')).toBe(
+      'Toronto Winter 2027 registration: residents Wednesday Dec 9 at 7 a.m., non-residents Saturday Dec 19 at 7 a.m. Sign in at toronto.ca/OnlineReg.',
+    );
+    expect(cityRecLine('toronto', afterFall, 'swim', undefined, 'M5V')).toBe(
+      'Toronto Winter 2027 registration: residents Tuesday Dec 8 at 7 a.m., non-residents Friday Dec 18 at 7 a.m. Sign in at toronto.ca/OnlineReg.',
+    );
     expect(reply('Halton Hills rec registration?')).toBe(CITY_LINES.halton_hills);
     expect(reply('when does Brampton rec open?')).toBe(CITY_LINES.brampton);
   });

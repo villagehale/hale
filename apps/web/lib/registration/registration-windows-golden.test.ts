@@ -100,18 +100,21 @@ describe('golden — Toronto After-School Recreation Care 2026/2027', () => {
     );
   });
 
-  it('carries exactly the published Fall 2026 seasonal cycle and nothing unpublished', () => {
-    // Until August 24, 2026 the City printed "Registration dates will be announced at a
-    // later date" and this list was empty. Now it must hold the two Fall 2026 rows (rec
-    // and swim share one cycle) and nothing else — a Winter 2027 row appearing here
-    // before the City prints a date means someone loaded an unpublished one.
+  it('carries exactly the published seasonal cycles and nothing unpublished', () => {
+    // Fall 2026 was published August 24, 2026 and Winter 2027 by the register page's
+    // "Upcoming Registration Dates" table (read 2026-11-12). Spring 2027 is only
+    // "anticipated" on that page — a Spring row here would be an unpublished date.
     const seasonal = REGISTRATION_WINDOWS.filter(
       (s) => s.municipality === 'toronto' && s.programDomain !== 'after_school_care',
     ).map((s) => `${s.programDomain}/${s.cycleLabel}`);
-    // Four community-council mornings, rec and swim on each. The cycle labels stay
-    // Fall 2026 — a Winter 2027 row here would be an unpublished date.
-    expect([...new Set(seasonal)].sort()).toEqual(['rec_program/Fall 2026', 'swim/Fall 2026']);
-    expect(seasonal).toHaveLength(8);
+    // Four community-council mornings per cycle, rec and swim on each.
+    expect([...new Set(seasonal)].sort()).toEqual([
+      'rec_program/Fall 2026',
+      'rec_program/Winter 2027',
+      'swim/Fall 2026',
+      'swim/Winter 2027',
+    ]);
+    expect(seasonal).toHaveLength(16);
   });
 });
 
@@ -156,6 +159,70 @@ describe('golden — Markham 2026 Fall Programs, Swim Lessons and Winter Break C
     expect(inferredBy('swim')).toEqual(['residentOpenAt']);
     expect(inferredBy('camp')).toEqual(['residentOpenAt']);
     expect(inferredBy('rec_program')).toEqual([]);
+  });
+
+  it('cites the City of Markham registration page it was read from', () => {
+    expect(row.sourceUrl).toBe(
+      'https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information',
+    );
+  });
+});
+
+/**
+ * Markham Winter 2027, verbatim, the same registration page, read 2026-11-12:
+ *   "2027 Registration Dates" / "Winter Programs and Swim Lessons"
+ *   "Preview starting Nov. 16 2026" / "Register starting Dec. 1, 2026 at 6:30 AM"
+ * and its "Verify Your Registration Account Address" section:
+ *   "Earlier program and swim lesson registration: Residents can register 24 hours before
+ *   non-residents."
+ *   "2027 Winter Registration for residents: December 1, 2026, at 6:30 AM"
+ *   "2027 Winter Registration for non-residents: December 2, 2026, at 6:30 AM"
+ *   "To maintain your resident benefits, verify your address between October 27 and November 30."
+ *   "Any account that has not been verified will automatically be assigned to non-resident status"
+ *
+ * Unlike the fall cycle (VIL-347), the page itself prints the tier and names swim
+ * lessons in it, so nothing on these rows is inferred. And this cycle registers no
+ * camps: the winter-break camps were in the FALL cycle.
+ */
+describe('golden — Markham 2027 Winter Programs and Swim Lessons', () => {
+  const CYCLE = '2027 Winter Programs and Swim Lessons';
+  const row = toRegistrationWindowRow(seed('markham', 'rec_program', CYCLE));
+
+  it('opens for residents at 6:30 a.m. on 1 December 2026 (11:30 UTC, EST)', () => {
+    expect(row.residentOpenAt).toEqual(new Date('2026-12-01T11:30:00.000Z'));
+  });
+
+  it('opens for non-residents at 6:30 a.m. on 2 December 2026, a date the page prints', () => {
+    expect(row.openAt).toEqual(new Date('2026-12-02T11:30:00.000Z'));
+    expect(row.residentPriorityDays).toBe(1);
+  });
+
+  it('previews from the start of 16 November 2026', () => {
+    expect(row.previewAt).toEqual(new Date('2026-11-16T05:00:00.000Z'));
+  });
+
+  it('carries the 48-hour Markham waitlist window', () => {
+    expect(row.waitlistResponseHours).toBe(48);
+  });
+
+  it('covers rec and swim on identical dates, with nothing inferred, and no camp', () => {
+    const domains = REGISTRATION_WINDOWS.filter(
+      (s) => s.municipality === 'markham' && s.cycleLabel === CYCLE,
+    );
+    expect(domains.map((s) => s.programDomain).sort()).toEqual(['rec_program', 'swim']);
+    for (const other of domains) {
+      expect(toRegistrationWindowRow(other).openAt).toEqual(row.openAt);
+      expect(toRegistrationWindowRow(other).residentOpenAt).toEqual(row.residentOpenAt);
+      expect(toRegistrationWindowRow(other).previewAt).toEqual(row.previewAt);
+      expect(other.inferredFields ?? []).toEqual([]);
+    }
+  });
+
+  it('carries the address-verification deadline that decides who is a resident', () => {
+    expect(row.notes).toContain('verify your address between October 27 and November 30');
+    expect(row.notes).toContain(
+      'Any account that has not been verified will automatically be assigned to non-resident status',
+    );
   });
 
   it('cites the City of Markham registration page it was read from', () => {
@@ -252,6 +319,90 @@ describe('golden — Toronto Fall 2026 seasonal registration', () => {
     const swim = toRegistrationWindowRow(seed('toronto', 'swim', 'Fall 2026', 'north_york'));
     expect(swim.residentOpenAt).toEqual(at('north_york').residentOpenAt);
     expect(swim.district).toBe('north_york');
+  });
+});
+
+/**
+ * Toronto Winter 2027, verbatim, https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/
+ * ("Date modified: November 2, 2026", read 2026-11-12), "Upcoming Registration Dates":
+ *   "Winter Recreation: Free Centres (for eligible residents)" | "Tuesday, December 1, 7 a.m."
+ *   "Winter Recreation: Toronto, East York and Etobicoke"      | "Tuesday, December 8, 7 a.m."
+ *   "Winter Recreation: North York and Scarborough"            | "Wednesday, December 9, 7 a.m."
+ * and on the same page
+ *   "Winter activities will be added to the registration and booking system to view and plan on November 17."
+ *   "Registered programs for the winter season run between January 4 and April 2, 2027."
+ *   "Invitations expire after 36 hours"
+ * The free-centre morning is Early Local Registration: "Residents living near free
+ * centres may be able to register one week before the general registration dates"
+ * (…/how-to-register-for-recreation-programs/early-local-recreation-registration/).
+ * Proximity, not residency, so it is no district's resident open.
+ *
+ * Every instant is EST: the clock went back on 1 November 2026.
+ */
+describe('golden — Toronto Winter 2027 seasonal registration', () => {
+  const at = (domain: string, district: string) =>
+    toRegistrationWindowRow(seed('toronto', domain, 'Winter 2027', district));
+
+  it('opens Toronto, East York and Etobicoke at 7 a.m. on Tuesday 8 December 2026 (12:00 UTC, EST)', () => {
+    expect(at('rec_program', 'toronto_east_york').residentOpenAt).toEqual(
+      new Date('2026-12-08T12:00:00.000Z'),
+    );
+    expect(at('rec_program', 'etobicoke_york').residentOpenAt).toEqual(
+      new Date('2026-12-08T12:00:00.000Z'),
+    );
+  });
+
+  it('opens North York and Scarborough at 7 a.m. on Wednesday 9 December 2026', () => {
+    expect(at('rec_program', 'north_york').residentOpenAt).toEqual(
+      new Date('2026-12-09T12:00:00.000Z'),
+    );
+    expect(at('rec_program', 'scarborough').residentOpenAt).toEqual(
+      new Date('2026-12-09T12:00:00.000Z'),
+    );
+  });
+
+  it('opens non-residents ten days after their district morning, per the city-wide rule', () => {
+    expect(at('rec_program', 'toronto_east_york').openAt).toEqual(
+      new Date('2026-12-18T12:00:00.000Z'),
+    );
+    expect(at('rec_program', 'scarborough').openAt).toEqual(new Date('2026-12-19T12:00:00.000Z'));
+    expect(at('rec_program', 'north_york').residentPriorityDays).toBe(10);
+  });
+
+  it('previews from the start of 17 November 2026 — the page prints no time for it', () => {
+    expect(at('rec_program', 'north_york').previewAt).toEqual(new Date('2026-11-17T05:00:00.000Z'));
+  });
+
+  it('carries the 36-hour waitlist invitation', () => {
+    expect(at('swim', 'etobicoke_york').waitlistResponseHours).toBe(36);
+  });
+
+  it('registers swim on the same district mornings — Toronto has no separate swim cycle', () => {
+    for (const district of ['etobicoke_york', 'toronto_east_york', 'north_york', 'scarborough']) {
+      expect(at('swim', district).residentOpenAt, district).toEqual(
+        at('rec_program', district).residentOpenAt,
+      );
+      expect(at('swim', district).openAt, district).toEqual(at('rec_program', district).openAt);
+    }
+  });
+
+  it('files the December 1 free-centre morning as no resident open, and quotes it', () => {
+    const freeCentres = new Date('2026-12-01T12:00:00.000Z');
+    const winter = REGISTRATION_WINDOWS.filter(
+      (s) => s.municipality === 'toronto' && s.cycleLabel === 'Winter 2027',
+    ).map(toRegistrationWindowRow);
+    expect(winter).toHaveLength(8);
+    for (const row of winter) {
+      expect(row.residentOpenAt, row.district ?? '').not.toEqual(freeCentres);
+      expect(row.notes).toContain('"Tuesday, December 1, 7 a.m."');
+      expect(row.notes).toContain('Residents living near free centres');
+    }
+  });
+
+  it('cites the register page that prints the table, not the how-to page', () => {
+    expect(at('rec_program', 'north_york').sourceUrl).toBe(
+      'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/',
+    );
   });
 });
 

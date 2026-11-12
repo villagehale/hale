@@ -31,10 +31,13 @@ const QUOTE = 'Winter 2027 recreation registration opens Wednesday, December 9, 
 
 const FIRST_RUN = new Date('2026-11-02T15:00:00.000Z');
 
-const TORONTO = DISCOVERY_TARGETS.find(
+const LIVE_TORONTO = DISCOVERY_TARGETS.find(
   (target) => target.municipality === 'toronto' && target.programDomain === 'rec_program',
 );
-if (!TORONTO) throw new Error('fixture drift: no Toronto rec discovery target');
+if (!LIVE_TORONTO) throw new Error('fixture drift: no Toronto rec discovery target');
+// The live list moves on a season each time a cycle lands; the fixture stays a Winter
+// 2027 release, so the target keeps the live URLs and takes the fixture's cycle.
+const TORONTO = { ...LIVE_TORONTO, cycleLabel: 'Winter 2027' };
 
 function publishedReading(): ExtractedWindow {
   return {
