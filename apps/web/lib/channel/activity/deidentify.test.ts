@@ -5,6 +5,7 @@ import {
   deidentifyActivitySubject,
   refusalSentence,
 } from './deidentify';
+import { groundUserMessage } from './lane';
 
 /**
  * PHASE 0 — the rule-#1 gate in front of a cross-border search.
@@ -197,38 +198,98 @@ describe('the window is held to the same ceiling as the subject', () => {
 });
 
 /**
- * THE DAY A FIND IS FOR IS NOT A DATE OF BIRTH. A child's date of birth is never after
- * today (a future one is refused when it is written), so once the gate holds today on the
- * family's clock, a date on or after it crosses whole. A date before it may be a date of
- * birth and is still scrubbed, and with no clock every date is.
+ * THE DAY A FIND IS FOR CROSSES ONLY AS `date`. Free text is scrubbed of every full date,
+ * whatever day it names, so a newborn's "born <today>" never crosses. The one date that
+ * may cross is the structured `date`, and only when it is today on the family's clock or a
+ * later day within FIND_DATE_MAX_DAYS_AHEAD of it. Weekdays here are worked out by hand
+ * from 2026-08-09, a Sunday.
  */
-describe('the day a find is for crosses, a date of birth does not', () => {
+describe('the day a find is for crosses as `date`, and a date in free text never does', () => {
   const today = '2026-08-09 (Sunday)';
   const subject = 'things to do';
 
-  it('keeps a window that names today or a later day, byte for byte', () => {
-    for (const window of ['today Sunday 2026-08-09', 'Saturday 2026-08-15', 'August 15, 2026']) {
-      expect(deidentifyActivityQuery({ ...base, subject, window, today })).toMatchObject({
-        ok: true,
-        query: { window, today },
-      });
-    }
+  it('carries a window "today Sunday" with the system date to the search', () => {
+    const result = deidentifyActivityQuery({
+      ...base,
+      subject,
+      window: 'today Sunday',
+      date: '2026-08-09',
+      today,
+    });
+    expect(result).toEqual({
+      ok: true,
+      query: {
+        subject,
+        window: 'today Sunday',
+        date: '2026-08-09 (Sunday)',
+        town: 'Halton Hills',
+        stage: 'toddler',
+        today,
+      },
+    });
+    if (!result.ok) throw new Error('unreachable');
+    expect(groundUserMessage(result.query)).toBe(
+      '{"subject":"things to do","town":"Halton Hills","stage":"toddler","window":"today Sunday","date":"2026-08-09 (Sunday)","today":"2026-08-09 (Sunday)"}',
+    );
   });
 
-  it('POSITIVE CONTROL - still scrubs a date before today, which can be a date of birth', () => {
-    expect(
-      deidentifyActivityQuery({ ...base, subject, window: 'born 2024-03-15', today }),
-    ).toMatchObject({ ok: true, query: { window: 'born [redacted]' } });
-    // July 9 one way round, September 7 the other: one reading is a past day, so it goes.
-    expect(
-      deidentifyActivityQuery({ ...base, subject, window: 'DOB 07/09/2026', today }),
-    ).toMatchObject({ ok: true, query: { window: 'DOB [redacted]' } });
+  it.each([
+    ['six days on', '2026-08-15', '2026-08-15 (Saturday)'],
+    ['the last day of the reach', '2027-09-13', '2027-09-13 (Monday)'],
+  ])('carries a later day: %s', (_label, date, crossed) => {
+    expect(deidentifyActivityQuery({ ...base, subject, date, today })).toMatchObject({
+      ok: true,
+      query: { date: crossed },
+    });
   });
 
-  it('POSITIVE CONTROL - with no family clock, every date is scrubbed', () => {
+  it('scrubs "born <today>" in the query text', () => {
     expect(
-      deidentifyActivityQuery({ ...base, subject, window: 'today Sunday 2026-08-09' }),
-    ).toMatchObject({ ok: true, query: { window: 'today Sunday [redacted]' } });
+      deidentifyActivityQuery({ ...base, subject: 'class for a baby born 2026-08-09', today }),
+    ).toMatchObject({ ok: true, query: { subject: 'class for a baby born [redacted]' } });
+  });
+
+  it('scrubs every full date in the window text, today and later days included', () => {
+    const result = deidentifyActivityQuery({
+      ...base,
+      subject,
+      window: 'today Sunday 2026-08-09, appointment August 20, 2026',
+      date: '2026-08-09',
+      today,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      query: { window: 'today Sunday [redacted], appointment [redacted]' },
+    });
+  });
+
+  it.each([
+    ['a past date of birth', '2024-03-15'],
+    ['yesterday', '2026-08-08'],
+    ['two years out', '2028-08-09'],
+    ['one day past the reach', '2027-09-14'],
+    ['no such day', '2026-09-31'],
+    ['a weekday and not a date', 'Saturday'],
+    ['a date with words around it', '2026-08-15 (Saturday)'],
+  ])('drops a `date` that is %s', (_label, date) => {
+    const result = deidentifyActivityQuery({ ...base, subject, window: 'Saturday', date, today });
+    expect(result).toEqual({
+      ok: true,
+      query: {
+        subject,
+        window: 'Saturday',
+        town: 'Halton Hills',
+        stage: 'toddler',
+        today,
+      },
+    });
+  });
+
+  it('drops a `date` when there is no family clock to hold it against', () => {
+    expect(deidentifyActivityQuery({ ...base, subject, date: '2026-08-09' })).toEqual({
+      ok: true,
+      query: { subject, window: null, town: 'Halton Hills', stage: 'toddler' },
+    });
   });
 });
 

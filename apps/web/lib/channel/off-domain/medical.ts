@@ -405,58 +405,6 @@ function researchText(content: Anthropic.ContentBlock[]): string {
     .join('\n');
 }
 
-const ISO_DATE = /\b(?:19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g; // DOB YYYY-MM-DD / YYYY/MM/DD
-const SLASHED_DATE = /\b\d{1,2}\/\d{1,2}\/(?:19|20)\d{2}\b/g; // DOB M/D/YYYY or D/M/YYYY
-const NAMED_MONTH_DATE =
-  /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+(?:19|20)\d{2}\b/gi; // DOB "Month D, YYYY"
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-
-/** `YYYY-MM-DD`, or null when there is no such day (a 13th month, a 31st of June). */
-function calendarDay(year: number, month: number, day: number): string | null {
-  const at = new Date(Date.UTC(year, month - 1, day));
-  if (at.getUTCMonth() !== month - 1 || at.getUTCDate() !== day) return null;
-  return at.toISOString().slice(0, 10);
-}
-
-/** Every day a dated match can be read as. A slashed date reads both ways round. */
-const DATE_READINGS = new Map<RegExp, (match: string) => (string | null)[]>([
-  [
-    ISO_DATE,
-    (match) => {
-      const [year, month, day] = match.split(/[-/]/).map(Number) as [number, number, number];
-      return [calendarDay(year, month, day)];
-    },
-  ],
-  [
-    SLASHED_DATE,
-    (match) => {
-      const [first, second, year] = match.split('/').map(Number) as [number, number, number];
-      return [calendarDay(year, first, second), calendarDay(year, second, first)];
-    },
-  ],
-  [
-    NAMED_MONTH_DATE,
-    (match) => {
-      const [name, day, year] = match.split(/[\s.,]+/) as [string, string, string];
-      const month = MONTHS.indexOf(name.slice(0, 3).toLowerCase()) + 1;
-      return [calendarDay(Number.parseInt(year, 10), month, Number.parseInt(day, 10))];
-    },
-  ],
-]);
-
-/**
- * True when every day `match` can be read as is on or after `familyToday`. A child's date
- * of birth is never after today (a future one is refused when it is written), so such a
- * date is a day the family wants to go, not a birthday. A date that reads as no real day
- * is not one, and is scrubbed.
- */
-function cannotBeBirthDate(pattern: RegExp, match: string, familyToday: string): boolean {
-  const read = DATE_READINGS.get(pattern);
-  if (read === undefined) return false;
-  const days = read(match).filter((day): day is string => day !== null);
-  return days.length > 0 && days.every((day) => day >= familyToday);
-}
-
 /**
  * The deterministic PII backstop — defense-in-depth UNDER the blind LLM sanitizer, never a
  * replacement for it. Phase 0 is a single model call, and the fields it returns ride to
@@ -511,9 +459,9 @@ const RESIDUAL_PII_PATTERNS: RegExp[] = [
   // FR. A qualifier OR a capitalized name may follow "école"; "école de danse" is a venue
   // and survives, because "de" is neither.
   /(?<![\p{L}\p{N}])[ÉéEe]cole\s+(?:[ÉéEe]l[ée]mentaire|[Pp]rimaire|[Ss]econdaire|[Ii]nterm[ée]diaire|\p{Lu}[\p{L}'’.-]*)(?:\s+\p{Lu}[\p{L}'’.-]*){0,3}/gu, // named school (FR)
-  ISO_DATE,
-  SLASHED_DATE,
-  NAMED_MONTH_DATE,
+  /\b(?:19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g, // DOB YYYY-MM-DD / YYYY/MM/DD
+  /\b\d{1,2}\/\d{1,2}\/(?:19|20)\d{2}\b/g, // DOB M/D/YYYY or D/M/YYYY
+  /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+(?:19|20)\d{2}\b/gi, // DOB "Month D, YYYY"
   /\b\d{1,2}\s?(?:years?|yrs?)\s?(?:and\s)?\d{1,2}\s?(?:months?|mos?)(?:[\s-]?old)?\b/gi, // exact age "2 years 3 months (old)"
   /\b\d{1,3}[\s-]?(?:year|yr|month|mo|week|wk|day)s?[\s-]?old\b/gi, // exact age "6 weeks old", "18-month-old"
   /\b(?:1[2-9]|[2-9]\d)\s?months?\b/gi, // exact age "18 months", "27 months" (12+ = toddler age, not a duration)
@@ -522,22 +470,10 @@ const RESIDUAL_PII_PATTERNS: RegExp[] = [
 const REDACTED = '[redacted]';
 
 /** A postal code or a ZIP goes through the one matcher every search shares
- * (place-token.ts), and LAST, so a five-digit house number is taken with its street.
- *
- * `familyToday` is today on the family's own clock, `YYYY-MM-DD`. With it, a date on or
- * after that day is kept: it cannot be a child's date of birth, and today itself already
- * travels beside the query. Without it every date is scrubbed, which is the medical lane. */
-export function scrubResidualPii(text: string, familyToday?: string): string {
+ * (place-token.ts), and LAST, so a five-digit house number is taken with its street. */
+export function scrubResidualPii(text: string): string {
   return scrubPlaceTokens(
-    RESIDUAL_PII_PATTERNS.reduce(
-      (acc, pattern) =>
-        acc.replace(pattern, (match) =>
-          familyToday !== undefined && cannotBeBirthDate(pattern, match, familyToday)
-            ? match
-            : REDACTED,
-        ),
-      text,
-    ),
+    RESIDUAL_PII_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, REDACTED), text),
     REDACTED,
   );
 }

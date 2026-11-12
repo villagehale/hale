@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { familyLocalNow } from '~/lib/channel/coach/local-now';
 import { ACTIVITY_REVIEWS_SURFACE_ENV } from '~/lib/reviews/aggregate';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
@@ -250,13 +251,13 @@ describe('a venue three families near you did not rate', () => {
 });
 
 /**
- * THE DAY A SEARCH IS FOR REACHES THE SEARCH. `search_village` hands the de-identifier
- * today on the family's own clock, so a day the coach worked out crosses whole while a
- * date before today, which can be a date of birth, is still scrubbed. Without that clock
- * the window "Saturday 2030-07-13" crossed as "Saturday [redacted]".
+ * THE DAY A SEARCH IS FOR REACHES THE SEARCH, AS `date`. `search_village` hands the
+ * de-identifier its `date` and today on the family's own clock, so the day the coach worked
+ * out crosses as a structured field, while every full date in the window text is scrubbed.
+ * The day is tomorrow on the real clock, so no fake clock sits next to pglite.
  */
 describe('the day a find is for', () => {
-  it("crosses with the family's today, and a date before today does not", async () => {
+  it("crosses as `date` against the family's today, and a date in the window text does not", async () => {
     const { familyId, parentUserId } = await seedFamily('asker');
     await db.database
       .update(schema.users)
@@ -273,14 +274,35 @@ describe('the day a find is for', () => {
       },
     };
 
+    const local = familyLocalNow(new Date(), 'America/Toronto');
+    const tomorrow = new Date(Date.parse(`${local.date}T12:00:00Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+
     await invokeTool(
       searchVillageTool(db.database, undefined, finder),
-      { query: 'things to do', window: `Saturday ${EVENT_DATE}, not 2020-01-15` },
+      {
+        query: 'things to do',
+        window: `tomorrow ${tomorrow}, not 2020-01-15`,
+        date: tomorrow,
+      },
       { familyId, actor: 'user-1' },
       { writeAudit: async () => {} },
     );
 
-    expect(searched[0]?.window).toBe(`Saturday ${EVENT_DATE}, not [redacted]`);
-    expect(searched[0]?.today).toMatch(/^\d{4}-\d{2}-\d{2} \([A-Z][a-z]+day\)$/);
+    expect(searched[0]?.window).toBe('tomorrow [redacted], not [redacted]');
+    expect(searched[0]?.date).toMatch(new RegExp(`^${tomorrow} \\([A-Z][a-z]+day\\)$`));
+    expect(searched[0]?.today).toBe(`${local.date} (${local.weekday})`);
+
+    // A day with no window words is a search for that day, not for "this year".
+    searched.length = 0;
+    await invokeTool(
+      searchVillageTool(db.database, undefined, finder),
+      { query: 'things to do', date: tomorrow },
+      { familyId, actor: 'user-1' },
+      { writeAudit: async () => {} },
+    );
+    expect(searched[0]?.window).toBeNull();
+    expect(searched[0]?.date).toMatch(new RegExp(`^${tomorrow} \\(`));
   });
 });

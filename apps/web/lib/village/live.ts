@@ -152,11 +152,13 @@ export async function findFamilyActivities(
   options: {
     subject?: string;
     window?: string;
+    /** The one day the find is for, `YYYY-MM-DD` (deidentify.ts holds it against `today`). */
+    date?: string;
     /** A town, city, or area the parent named, searched instead of home (VIL-523). */
     area?: string;
     areaReader?: NamedAreaReader;
     now?: Date;
-    /** Today on the family's clock, `YYYY-MM-DD (Weekday)`, so a day in the window crosses. */
+    /** Today on the family's clock, `YYYY-MM-DD (Weekday)`, the day `date` is held against. */
     today?: string | null;
     finder?: ActivityFinder;
     excludePreviouslyOffered?: boolean;
@@ -199,11 +201,13 @@ export async function findFamilyActivities(
   }
   const query = deidentifyActivityQuery({
     subject: options.subject ?? 'local activities for kids',
-    window: options.window ?? 'this year',
+    // A find for one day is not a find for the whole year.
+    window: options.window ?? (options.date === undefined ? 'this year' : null),
     town,
     stage: deriveStage(youngest.dateOfBirth, now),
     householdNames,
     today: options.today,
+    date: options.date,
   });
   if (!query.ok) return { picks: [], reason: query.refusal };
   // A stored city is coarse context, not a postal code or precise home address.

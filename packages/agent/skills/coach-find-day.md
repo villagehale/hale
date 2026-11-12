@@ -20,9 +20,11 @@ today on the family's own clock: its date, its weekday, and the time. If enough
 of today is left, today comes first; otherwise the next days. Never treat a bare
 ask as a question about the whole season.
 
-**Search for that day.** Pass it to `search_village` as `window`, as the date
-and weekday you worked out from `localNow`, so the search looks for what runs
-then rather than for what runs at some point this year.
+**Search for that day.** Pass it to `search_village` in two fields: `window`
+names it in words (today, Saturday afternoon), and `date` is the `YYYY-MM-DD`
+you worked out from `localNow`. That way the search looks for what runs then
+rather than for what runs at some point this year. A date written into `window`
+or `query` is removed before the search, so the day reaches it only as `date`.
 
 **Lead only with what runs that day.** Check each find's `when` against the day
 before you name it. A find on another day, or a weekly class that does not meet

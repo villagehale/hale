@@ -32,6 +32,8 @@ import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
  *     A band, never an age and never a DOB, for the reason the medical lane keeps a band:
  *     an activity that fits a two-year-old does not fit a nine-year-old, and the band is
  *     the least identifying thing that carries that.
+ *   · the DATE — the one day a find is for, as a structured `YYYY-MM-DD`, never as words
+ *     inside the subject or the window (see {@link findDate}).
  *
  * WHAT NEVER DOES: a name, an exact age, a date of birth, a postal code, a street address,
  * a named school, a phone number, an email. The first is REFUSED (see below) and the rest
@@ -95,6 +97,11 @@ export type ActivityDeidRefusal =
 export interface ActivityQuery {
   subject: string;
   window: string | null;
+  /**
+   * The one day the find is for, `YYYY-MM-DD (Weekday)` ({@link findDate}). Absent unless
+   * the caller passed one that held, so the payload other callers send does not grow a key.
+   */
+  date?: string;
   /** The family's town, in the words a search engine understands (place.ts). */
   town: string;
   /** The coarse band, or null when no child was named and the family has none on file. */
@@ -140,9 +147,8 @@ export function namesAPerson(text: string, householdNames: readonly string[]): b
 function gateFreeText(
   raw: string,
   householdNames: readonly string[],
-  familyToday?: string,
 ): { ok: true; value: string } | { ok: false; refusal: 'empty' | 'too_long' | 'names_a_person' } {
-  const value = scrubResidualPii(raw, familyToday).replace(/\s+/g, ' ').trim();
+  const value = scrubResidualPii(raw).replace(/\s+/g, ' ').trim();
   if (value === '') return { ok: false, refusal: 'empty' };
   if (value.length > MAX_QUERY_FIELD_CHARS) return { ok: false, refusal: 'too_long' };
   if (namesAPerson(value, householdNames)) return { ok: false, refusal: 'names_a_person' };
@@ -152,10 +158,11 @@ function gateFreeText(
 /**
  * Turn what the coach asked for into what may be searched, or refuse.
  *
- * Every field on the returned {@link ActivityQuery} comes from ONE of two places and there
- * is no third: {@link gateFreeText}, or the family's own record. That is the structural
- * half of the promise — not "the raw message is scrubbed before it is sent", which is a
- * thing somebody has to remember, but "there is nowhere for unscrubbed text to enter".
+ * Every field on the returned {@link ActivityQuery} comes from ONE of three places and
+ * there is no fourth: {@link gateFreeText}, {@link findDate}, or the family's own record.
+ * That is the structural half of the promise — not "the raw message is scrubbed before it
+ * is sent", which is a thing somebody has to remember, but "there is nowhere for
+ * unscrubbed text to enter".
  */
 export function deidentifyActivityQuery(input: {
   subject: string;
@@ -166,11 +173,10 @@ export function deidentifyActivityQuery(input: {
   householdNames: readonly string[];
   /** From the family's own clock, never the model (see {@link ActivityQuery.today}). */
   today?: string | null;
+  /** The one day the find is for, `YYYY-MM-DD`, as the coach worked it out from `localNow`. */
+  date?: string | null;
 }): ActivityDeidResult {
-  // A day on or after this one is not a date of birth, so the day a find is for crosses
-  // whole (scrubResidualPii). With no family clock every date is scrubbed.
-  const familyToday = input.today ? /^\d{4}-\d{2}-\d{2}/.exec(input.today)?.[0] : undefined;
-  const subject = deidentifyActivitySubject(input.subject, input.householdNames, familyToday);
+  const subject = deidentifyActivitySubject(input.subject, input.householdNames);
   if (!subject.ok) return subject;
 
   // An ABSENT window is legal and a REFUSED one is not — different outcomes, kept apart
@@ -179,7 +185,7 @@ export function deidentifyActivityQuery(input: {
   const rawWindow = input.window?.trim() ?? '';
   let window: string | null = null;
   if (rawWindow !== '') {
-    const gated = gateFreeText(rawWindow, input.householdNames, familyToday);
+    const gated = gateFreeText(rawWindow, input.householdNames);
     if (!gated.ok && gated.refusal === 'too_long') return { ok: false, refusal: 'window_too_long' };
     if (!gated.ok && gated.refusal === 'names_a_person') {
       return { ok: false, refusal: 'names_a_person' };
@@ -189,16 +195,45 @@ export function deidentifyActivityQuery(input: {
 
   if (input.town === null) return { ok: false, refusal: 'no_place' };
 
+  const date = findDate(input.date, input.today);
   return {
     ok: true,
     query: {
       subject: subject.value,
       window,
+      ...(date ? { date } : {}),
       town: input.town,
       stage: input.stage,
       ...(input.today ? { today: input.today } : {}),
     },
   };
+}
+
+/** How far past today a find's `date` may be and still cross: next summer's camp is
+ * under it, and a child's date of birth is never after today. */
+export const FIND_DATE_MAX_DAYS_AHEAD = 400;
+
+const DAY_MS = 86_400_000;
+const WEEKDAY = new Intl.DateTimeFormat('en-CA', { weekday: 'long', timeZone: 'UTC' });
+
+/**
+ * THE ONE DATE THAT MAY CROSS, `YYYY-MM-DD (Weekday)`, or null.
+ *
+ * A full date in free text may be a child's date of birth, so {@link gateFreeText}
+ * scrubs every one, whatever day it names. A find's day crosses only as this structured
+ * field, and only when it is a real calendar day that is today on the family's clock or a
+ * later day within {@link FIND_DATE_MAX_DAYS_AHEAD} of it. Anything else is dropped, and
+ * with no family clock to hold it against, so is every date.
+ */
+function findDate(raw: string | null | undefined, today: string | null | undefined): string | null {
+  const day = raw?.trim().match(/^\d{4}-\d{2}-\d{2}$/)?.[0];
+  const todayDay = today?.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (!day || !todayDay) return null;
+  const at = Date.parse(`${day}T00:00:00Z`);
+  if (Number.isNaN(at) || new Date(at).toISOString().slice(0, 10) !== day) return null;
+  const ahead = (at - Date.parse(`${todayDay}T00:00:00Z`)) / DAY_MS;
+  if (ahead < 0 || ahead > FIND_DATE_MAX_DAYS_AHEAD) return null;
+  return `${day} (${WEEKDAY.format(new Date(at))})`;
 }
 
 /**
@@ -209,11 +244,10 @@ export function deidentifyActivityQuery(input: {
 export function deidentifyActivitySubject(
   raw: string,
   householdNames: readonly string[],
-  familyToday?: string,
 ):
   | { ok: true; value: string }
   | { ok: false; refusal: 'empty_subject' | 'subject_too_long' | 'names_a_person' } {
-  const subject = gateFreeText(raw, householdNames, familyToday);
+  const subject = gateFreeText(raw, householdNames);
   if (subject.ok) return subject;
   if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
   if (subject.refusal === 'too_long') return { ok: false, refusal: 'subject_too_long' };
