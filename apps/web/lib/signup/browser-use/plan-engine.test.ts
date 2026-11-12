@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SignupIdentity } from '../types';
-import { browserUseApi } from './client';
+import { BrowserUseApiError, browserUseApi } from './client';
 import type { BrowserUseEngineDeps } from './engine';
 import {
   type BrowserUsePlanInput,
@@ -858,6 +858,27 @@ describe('what the run charged, as the engine itself knows it', () => {
     expect(early).toBeInstanceOf(PlanEngineThrew);
     expect(early.reviewStarted).toBe(false);
     expect(skills(before.log)).toEqual(['# skill browser-use-plan-signup']);
+  });
+
+  it('a Browser Use error the engine catches once the review is under way: unknown; before it: nothing', async () => {
+    // The parent's yes is re-read once before the review and once after it.
+    const failingOnCall = (n: number) => {
+      let calls = 0;
+      return async () => {
+        calls += 1;
+        if (calls === n) throw new BrowserUseApiError(503, '/runs');
+        return true;
+      };
+    };
+    const after = plan({ stillAuthorized: failingOnCall(2) });
+    const late = await runBrowserUsePlanSignup(after.input, setup({ plan: CHECKOUT }).deps);
+    expect(late).toMatchObject({ detail: 'api_error', charged: 'unknown' });
+    expect(after.steps.at(-1)).toMatchObject({ step: 'payment', detail: 'api_error' });
+
+    const before = plan({ stillAuthorized: failingOnCall(1) });
+    const early = await runBrowserUsePlanSignup(before.input, setup({ plan: CHECKOUT }).deps);
+    expect(early).toMatchObject({ detail: 'api_error', charged: 'nothing' });
+    expect(before.steps.map((s) => s.step)).not.toContain('payment');
   });
 });
 

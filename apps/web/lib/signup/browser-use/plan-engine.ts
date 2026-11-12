@@ -490,12 +490,14 @@ async function drivePlan(
   } catch (error) {
     if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
     if (error instanceof BrowserUseApiError) {
-      return planResult(
+      const failed = planResult(
         failure('error', 'api_error', { runId, sessionId: tracker.sessionId }),
         'error',
         'api_error',
         null,
       );
+      // Once the review run exists it may have placed the order, as for a throw.
+      return tracker.reviewStarted ? reportPayment(input, failed) : failed;
     }
     throw error;
   }
