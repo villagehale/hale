@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient, RegisteredTool, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
@@ -23,7 +23,19 @@ import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
-import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
+import {
+  type FakeDb,
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  fakeNoOpenQuestions,
+  fakeRadar,
+  fakeSilentAnswerComposer,
+  makeFakeDb,
+} from '~/lib/channel/intake/fakes';
+import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
@@ -45,6 +57,7 @@ import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import {
@@ -100,7 +113,7 @@ import {
 } from './route';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
-import { TURN_ANSWERED_ACTION, auditTurnLedger } from './wiring';
+import { TURN_ANSWERED_ACTION, auditTurnLedger, loadInboundContext } from './wiring';
 
 // The live search is on by default in production. These tests describe the kill switch
 // (dark) unless a test lights it, so each starts dark.
@@ -6143,6 +6156,8 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider_message_id text');
       // And the audit row's audience (0227, VIL-635), which every audit write now carries.
       await db.exec('ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS audience uuid');
+      // And the inbound service (0233), which drizzle names on every ledger row.
+      await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS provider_service text');
     });
 
     afterAll(async () => {
@@ -7882,6 +7897,17 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     to: PHONE,
     chatId: 'chat-1',
     replyToMessageId: 'in-1',
+    service: 'iMessage',
+  };
+  const WATCH: SpotWatchIntent = {
+    url: 'https://rec.example.test/courses/tuesday-swim',
+    host: 'rec.example.test',
+    portalLabel: "the city's portal",
+    label: 'Tuesday preschool swim',
+    instant: false,
+    lastState: 'full',
+    sessionStartsAt: null,
+    sessionAnchor: null,
   };
   const UNTHREADED: ReplyRoute = { ...IMESSAGE, replyToMessageId: null };
   const THREE = 'Swim is Saturday at 10.\nBring a towel.\nWant me to add it to your calendar?';
@@ -7993,6 +8019,31 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(h.transport.bodies()).toEqual(['Swim is Saturday at 10.']);
   });
 
+  /**
+   * Linq relays green-bubble chats on the iMessage channel, and a carrier can deliver
+   * separate texts out of order. Only a chat Linq said is iMessage takes bubbles; a chat
+   * whose service Linq did not name is not assumed to be one.
+   */
+  it.each([
+    ['SMS', { ...IMESSAGE, service: 'SMS' }],
+    ['RCS', { ...IMESSAGE, service: 'RCS' }],
+    ['an unnamed service', { ...IMESSAGE, service: null }],
+    ['no service on the route', { ...IMESSAGE, service: undefined }],
+  ] as const)(
+    'lit, a 1:1 Linq chat over %s is not lit for bubbles and sends one text',
+    async (_label, route) => {
+      const { h, coach } = bubbleTurn(
+        { reply: 'Swim is Saturday at 10.' },
+        { context: { body: 'what is on saturday', reply: route } },
+      );
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(coach.turns[0]).not.toHaveProperty('replyBubbles');
+      expect(h.transport.sent).toEqual([{ route, body: 'Swim is Saturday at 10.' }]);
+    },
+  );
+
   it('lit, a group turn is not lit for bubbles', async () => {
     const { h, coach } = bubbleTurn(
       { reply: 'Swim is Saturday at 10.' },
@@ -8030,6 +8081,62 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(promises).toEqual([last]);
   });
 
+  /**
+   * Any bubble may carry "I'll come back to you" or "I'm watching that page". A set that
+   * stops after such a bubble went still writes the promise and the watch, against the
+   * last bubble that went. The offer rides the last bubble, which never went, so a later
+   * yes has no offer to land on.
+   */
+  it('a set that stops partway still keeps what the bubbles that went promised', async () => {
+    const offers: Array<string | null> = [];
+    const promises: Array<string | null> = [];
+    const watches: Array<string | null> = [];
+    const { h } = bubbleTurn(
+      {
+        reply:
+          'Nothing for winter is up yet.\nI will go back through it tomorrow and watch the Tuesday page.\nWant the full plan for his nights?',
+        planOffer: OFFER,
+        activityPromise: PROMISE,
+        spotWatch: WATCH,
+      },
+      {
+        recordPlanOffer: async (_db, input) => {
+          offers.push(input.channelMessageId);
+          return { status: 'recorded' };
+        },
+        recordActivityPromise: async (_db, input) => {
+          promises.push(input.channelMessageId);
+          return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+        },
+        armWatchedSpot: async (_db, input) => {
+          watches.push(input.channelMessageId);
+          return { status: 'armed' as const, spotId: 'spot-1' };
+        },
+      },
+    );
+    const send = h.transport.send.bind(h.transport);
+    let calls = 0;
+    h.transport.send = async (input) => {
+      calls += 1;
+      if (calls === 3) throw new Error('linq refused');
+      return send(input);
+    };
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([
+      'Nothing for winter is up yet.',
+      'I will go back through it tomorrow and watch the Tuesday page.',
+    ]);
+    const out = outRows(h.fake);
+    expect(out.map((row) => row.dedupeKey)).toEqual([`turn-reply:${ID}:0`, `turn-reply:${ID}:1`]);
+    expect(promises).toEqual([out[1]?.id]);
+    expect(watches).toEqual([out[1]?.id]);
+    expect(offers).toEqual([]);
+    expect(h.turns.failed).toEqual([{ channelMessageId: ID, reason: 'reply_set_incomplete' }]);
+  });
+
   it('stops after a bubble fails: what went is on record and claimed, nothing is re-sent', async () => {
     const offers: Array<string | null> = [];
     const { h } = bubbleTurn(
@@ -8055,7 +8162,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(h.transport.bodies()).toEqual(['Swim is Saturday at 10.']);
     expect(outRows(h.fake).map((row) => row.dedupeKey)).toEqual([`turn-reply:${ID}:0`]);
     expect(h.turns.answered).toEqual([ID]);
-    expect(h.turns.failed).toEqual([{ channelMessageId: ID, reason: 'broke_after_answering' }]);
+    expect(h.turns.failed).toEqual([{ channelMessageId: ID, reason: 'reply_set_incomplete' }]);
     expect(offers).toEqual([]);
     expect(JSON.stringify(h.logs)).toContain(
       '{"outcome":"reply_set_incomplete","bubblesSent":1,"bubbles":3}',
@@ -8065,6 +8172,36 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     const again = await routeChannelMessage(h.deps, job());
     expect(again.status).toBe('already_answered');
     expect(calls).toBe(2);
+  });
+
+  /**
+   * The send went and its receipt did not land. The parent has two bubbles, so this is a
+   * set that stopped partway, named as one with how far it got, and not a turn that broke
+   * after its whole answer went.
+   */
+  it('a receipt write that fails on a bubble that went stops the set as reply_set_incomplete', async () => {
+    const { h } = bubbleTurn();
+    const insert = h.fake.db.insert.bind(h.fake.db);
+    let outboundRows = 0;
+    h.fake.db.insert = ((table: Parameters<typeof insert>[0]) => {
+      if (table === schema.channelMessages) {
+        outboundRows += 1;
+        if (outboundRows === 2) throw new Error('db: connection reset');
+      }
+      return insert(table);
+    }) as typeof h.fake.db.insert;
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual(['Swim is Saturday at 10.', 'Bring a towel.']);
+    expect(outRows(h.fake).map((row) => row.dedupeKey)).toEqual([`turn-reply:${ID}:0`]);
+    expect(h.turns.answered).toEqual([ID]);
+    expect(h.turns.failed).toEqual([{ channelMessageId: ID, reason: 'reply_set_incomplete' }]);
+    expect(JSON.stringify(h.logs)).toContain(
+      '{"outcome":"reply_set_incomplete","bubblesSent":2,"bubbles":3}',
+    );
+    expect(JSON.stringify(h.logs)).not.toContain('brokeAfterAnswering');
   });
 
   it('a first bubble that fails is the failure it always was: nothing claimed by it', async () => {
@@ -8138,6 +8275,53 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
       [null, 'fake-out-1'],
       [null, 'fake-out-2'],
     ]);
+  });
+
+  /**
+   * The effect bubble is bubble 0, so it carries bubble 0's key: a plain resend of the same
+   * bubble (an effect POST that never reached Linq goes plain) is then one send to Linq.
+   */
+  it('the effect bubble carries the same turn-reply key as bubble 0', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+    const keys: unknown[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (new URL(url).pathname.endsWith('/messages')) {
+        keys.push(JSON.parse(String(init?.body)).message.idempotency_key);
+      }
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+    const { h } = bubbleTurn();
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(keys).toEqual([createHash('sha256').update(`turn-reply:${ID}:0`).digest('hex')]);
+  });
+
+  /**
+   * The model wrote nothing and chose a card. The card rides beside the words, so with no
+   * words nothing goes, and the turn ends on a named outcome rather than a crash.
+   */
+  it('an empty reply with a card sends nothing and names the card it withheld', async () => {
+    const cards: unknown[] = [];
+    const { h } = bubbleTurn({
+      reply: '',
+      experienceCard: { url: 'https://pool.example/lanes', title: 'Riverdale pool' },
+    });
+    h.deps.sendExperienceCard = async (input) => {
+      cards.push(input);
+      return { status: 'sent' } as never;
+    };
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_silent');
+    expect(h.transport.sent).toEqual([]);
+    expect(cards).toEqual([]);
+    expect(h.turns.answered).toEqual([ID]);
+    expect(JSON.stringify(h.logs)).toContain('{"outcome":"empty_reply_card_withheld"}');
   });
 
   it('a sticker the model chose never stands in for an answer of several bubbles', async () => {
@@ -8219,6 +8403,7 @@ describe('several bubbles through the production ledger and database', () => {
     to: PHONE,
     chatId: 'chat-bubbles',
     replyToMessageId: 'in-1',
+    service: 'iMessage',
   } satisfies ReplyRoute;
 
   beforeAll(async () => {
@@ -8340,5 +8525,174 @@ describe('several bubbles through the production ledger and database', () => {
       'Riverdale Pool has lane swim.',
       'Want to go Saturday?\nhttps://www.toronto.ca/riverdale-pool',
     ]);
+  });
+});
+
+/**
+ * From the Linq webhook to the send, through the real door, the real inbound row, the real
+ * context loader and the real router. Linq relays a green-bubble SMS chat on the iMessage
+ * channel, so `channel` on the row says `imessage` either way: the service Linq named is
+ * what keeps an SMS parent's answer to one text, and an iMessage parent's in bubbles.
+ */
+describe('a Linq chat’s service decides bubbles, from the webhook to the send', () => {
+  let db: TestDb;
+  const LINQ_KEY = Buffer.alloc(32, 9);
+  const LINQ_NOW = new Date('2026-11-12T17:00:00.000Z');
+  const LINQ_TS = String(Math.floor(LINQ_NOW.getTime() / 1000));
+  const REPLY = 'Swim is Saturday at 10.\nBring a towel.';
+
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${LINQ_KEY.toString('base64')}`);
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  /** The 2026-02-03 message.received a 1:1 chat on the Hale line posts, signed. */
+  function webhook(service: string, messageId: string): Request {
+    const body = JSON.stringify({
+      api_version: 'v3',
+      webhook_version: '2026-02-03',
+      event_type: 'message.received',
+      event_id: `evt-${messageId}`,
+      created_at: LINQ_NOW.toISOString(),
+      data: {
+        chat: { id: `chat-${messageId}`, is_group: false },
+        id: messageId,
+        direction: 'inbound',
+        sender_handle: { handle: PHONE, is_me: false, service },
+        parts: [{ type: 'text', value: 'what is on saturday' }],
+        sent_at: LINQ_NOW.toISOString(),
+        service,
+      },
+    });
+    const mac = createHmac('sha256', LINQ_KEY)
+      .update(`evt-${messageId}.${LINQ_TS}.${body}`)
+      .digest('base64');
+    return new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'webhook-id': `evt-${messageId}`,
+        'webhook-timestamp': LINQ_TS,
+        'webhook-signature': `v1,${mac}`,
+      },
+      body,
+    });
+  }
+
+  /** A parent enrolled on the SMS blind index whose intake is done, as the door expects. */
+  async function enrolledParent() {
+    await db.exec('truncate table families, users, sms_intake_sessions cascade');
+    const parent = await seedFamily(db.database);
+    await db.database.insert(schema.parentChannels).values({
+      userId: parent.parentUserId,
+      familyId: parent.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: LINQ_NOW,
+    });
+    await db.database.insert(schema.smsIntakeSessions).values({
+      phoneHash: phoneBlindIndex(PHONE),
+      phoneEncrypted: encryptString(PHONE),
+      state: 'complete',
+      dataEncrypted: encryptString(
+        JSON.stringify({ collected: { children: [], postalCode: null }, transcript: [] }),
+      ),
+      closedAt: LINQ_NOW,
+    });
+    return parent;
+  }
+
+  async function textIn(service: string, messageId: string) {
+    const jobs: ChannelMessageReceivedJob[] = [];
+    const intake: IntakeDeps = {
+      transport: new FakeTransport(),
+      threadMessage: async () => 'conv-1',
+      extractor: new FakeExtractor([{ children: [], postalCode: null }]),
+      intentReader: new FakeIntentReader([
+        { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
+      ]),
+      radar: fakeRadar,
+      answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
+      identityAsk: new FakeIdentityAsk(),
+      limiter: new FakeRateLimiter(() => LINQ_NOW.getTime()),
+      now: LINQ_NOW,
+    };
+    const door = {
+      database: db.database,
+      intake: () => intake,
+      enqueue: async (queued: ChannelMessageReceivedJob) => {
+        jobs.push(queued);
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      now: () => LINQ_NOW,
+      markRead: async () => ({ status: 'accepted' as const }),
+      sendGroupText: async () => ({ providerMessageId: 'unused' }),
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
+
+    const response = await handleLinqInboundRequest(webhook(service, messageId), door);
+    expect(await response.json()).toEqual({ outcome: 'handed_off' });
+    const queued = jobs[0];
+    if (!queued) throw new Error('the door queued no turn');
+
+    const coach = {
+      turns: [] as ChannelTurn[],
+      async respond(turn: ChannelTurn) {
+        coach.turns.push(turn);
+        return { reply: REPLY, planOffer: null, activityPromise: null, spotWatch: null };
+      },
+    };
+    const h = harness({ coach });
+    h.deps.database = db.database;
+    h.deps.loadContext = loadInboundContext;
+    h.deps.turns = auditTurnLedger(db.database);
+    h.deps.now = () => LINQ_NOW;
+    const result = await routeChannelMessage(h.deps, queued);
+    const [row] = await db.database
+      .select({
+        channel: schema.channelMessages.channel,
+        providerService: schema.channelMessages.providerService,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.id, queued.channel_message_id));
+    return { result, row, coach, sent: h.transport.sent };
+  }
+
+  it('an SMS chat Linq relays gets one joined text, never bubbles', async () => {
+    await enrolledParent();
+
+    const { result, row, coach, sent } = await textIn('SMS', 'in-sms-1');
+
+    expect(result.status).toBe('agent_replied');
+    expect(row).toEqual({ channel: 'imessage', providerService: 'SMS' });
+    expect(coach.turns[0]).not.toHaveProperty('replyBubbles');
+    expect(sent.map((send) => [send.route.channel, send.body])).toEqual([['imessage', REPLY]]);
+  });
+
+  it('positive control: an iMessage chat on the same line gets its bubbles', async () => {
+    await enrolledParent();
+
+    const { result, row, coach, sent } = await textIn('iMessage', 'in-imessage-1');
+
+    expect(result.status).toBe('agent_replied');
+    expect(row).toEqual({ channel: 'imessage', providerService: 'iMessage' });
+    expect(coach.turns[0]?.replyBubbles).toBe(true);
+    expect(sent.map((send) => send.body)).toEqual(['Swim is Saturday at 10.', 'Bring a towel.']);
   });
 });

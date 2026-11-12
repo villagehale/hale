@@ -1,3 +1,5 @@
+import type { LinqChatService } from '~/lib/channel/linq/transport';
+
 /**
  * WHERE HALE'S ANSWER GOES — the router's one question about delivery, and the only
  * place the answer is allowed to be shaped like a phone number.
@@ -34,6 +36,11 @@ export type ReplyRoute =
        * Null when the ledger row has no provider id — the send is still an
        * answer, it simply does not quote. */
       replyToMessageId: string | null;
+      /** The service Linq said carried the inbound (`channel_messages.provider_service`):
+       * Linq relays green-bubble SMS and RCS chats on this same channel. Only `iMessage`
+       * keeps several bubbles in order. Absent or null: Linq did not say, and the reply
+       * goes as one text. */
+      service?: LinqChatService | null;
     };
 
 /**

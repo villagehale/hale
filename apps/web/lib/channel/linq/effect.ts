@@ -319,6 +319,9 @@ export async function applyLinqEffect(input: {
   /** VIL-475 — the handle the plain send would mention, or undefined. Read only once
    * an effect is chosen, so a decline costs no mention read. */
   mentionFor: () => Promise<string | undefined>;
+  /** The caller's identity for this send (Linq's idempotency key), when it owns one.
+   * Absent: the effect is its own send. */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<LinqEffectOutcome> {
   const decision = await input.decider.decide(input.read);
@@ -337,6 +340,7 @@ export async function applyLinqEffect(input: {
       effect: decision.effect,
       replyTo: input.replyToMessageId ? { messageId: input.replyToMessageId } : undefined,
       ...(mention ? { mention } : {}),
+      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
       fetch: input.fetch,
     });
     return { status: 'sent', effect: decision.effect, providerMessageId: sent.providerMessageId };

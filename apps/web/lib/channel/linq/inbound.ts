@@ -528,6 +528,7 @@ async function routeOneToOne(
     isGroup: message.isGroup,
     providerAnsweredKeyword: null,
     media: message.media,
+    ...(message.service ? { service: message.service } : {}),
   });
 }
 

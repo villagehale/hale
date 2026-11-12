@@ -124,6 +124,10 @@ export const REPLY_SOURCES = [
 ] as const;
 
 export type ReplySourceValue = (typeof REPLY_SOURCES)[number];
+
+/** The service Linq names on a chat or a message; `other` is a value Linq sent that this
+ * code does not know. Mirrors `LinqChatService` (apps/web/lib/channel/linq/transport.ts). */
+export type LinqServiceValue = 'iMessage' | 'SMS' | 'RCS' | 'other';
 export const channelMessages = pgTable(
   'channel_messages',
   {
@@ -204,6 +208,14 @@ export const channelMessages = pgTable(
      * so a group text is never run as a 1:1 turn.
      */
     inGroup: boolean('in_group'),
+    /**
+     * INBOUND only: the service Linq said carried this text (migration 0233). Linq relays
+     * every chat on the Hale line as `channel = 'imessage'`, green-bubble SMS and RCS
+     * chats included, so this is what says whether the chat is really iMessage. Null on
+     * every other pipe, on outbound rows, on a payload that did not say, and on rows
+     * written before the column existed.
+     */
+    providerService: text('provider_service').$type<LinqServiceValue>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

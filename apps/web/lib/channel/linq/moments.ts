@@ -62,9 +62,10 @@ export async function considerLinqReply(
      * The reply goes out as several bubbles and this is the first. Every read still sees
      * the whole reply (`outboundBody`), but nothing stands in for a set: no tapback, no
      * edit, and a peeled sticker leaves the words to go plain. An effect rides this bubble
-     * alone. Absent: the reply is one bubble.
+     * alone, under `sendKey`: the key the bubble's own send carries, so the effect and a
+     * plain resend of the same bubble are one send to Linq. Absent: the reply is one bubble.
      */
-    firstOfSeveral?: string;
+    firstOfSeveral?: { text: string; sendKey: string };
     /** Bubbles the edit read may replace. Absent: no edit is considered, and that is
      * logged when the flag is on. */
     edit?: {
@@ -235,7 +236,9 @@ export async function considerLinqReply(
   const sent = await applyLinqEffect({
     decider: args.effect.decider,
     chatId,
-    text: args.firstOfSeveral ?? args.outboundBody,
+    ...(args.firstOfSeveral
+      ? { text: args.firstOfSeveral.text, sendKey: args.firstOfSeveral.sendKey }
+      : { text: args.outboundBody }),
     replyToMessageId: args.route.replyToMessageId,
     read: {
       audience: args.effect.audience,

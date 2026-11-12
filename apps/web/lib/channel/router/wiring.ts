@@ -157,6 +157,7 @@ export async function loadInboundContext(
       channel: schema.channelMessages.channel,
       providerMessageId: schema.channelMessages.providerMessageId,
       providerChatId: schema.channelMessages.providerChatId,
+      providerService: schema.channelMessages.providerService,
       inboundMedia: schema.channelMessages.inboundMedia,
     })
     .from(schema.channelMessages)
@@ -182,6 +183,7 @@ export async function loadInboundContext(
       message.channel,
       message.providerMessageId,
       message.providerChatId,
+      message.providerService,
     ),
     arrivedInFamilyGroup(database, job.family_id, message.channel, message.providerChatId),
   ]);
@@ -235,6 +237,7 @@ async function resolveReplyRoute(
   channel: typeof schema.channelMessages.$inferSelect.channel,
   providerMessageId: string | null,
   providerChatId: string | null,
+  providerService: schema.LinqServiceValue | null,
 ): Promise<ReplyRoute | null> {
   switch (channel) {
     case 'sms': {
@@ -256,6 +259,7 @@ async function resolveReplyRoute(
             to: phoneE164,
             chatId: providerChatId,
             replyToMessageId: providerMessageId,
+            service: providerService,
           }
         : null;
     }

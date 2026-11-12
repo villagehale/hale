@@ -47,8 +47,32 @@ describe('parseLinqWebhook', () => {
         otherHandles: [],
         isGroup: false,
         mentions: [],
+        service: 'iMessage',
       },
     });
+  });
+
+  /**
+   * Linq relays green-bubble chats on the same line, so the service is what says whether a
+   * chat is iMessage. A value this code does not know is `other`, and a payload that said
+   * nothing says nothing.
+   */
+  it('reads the service that carried the text, and says nothing when Linq did not', () => {
+    const service = (value: unknown) => {
+      const body = received();
+      if (value === undefined) Reflect.deleteProperty(body.data, 'service');
+      else (body.data as { service: unknown }).service = value;
+      const parsed = parseLinqWebhook(body, FALLBACK);
+      if (parsed.kind !== 'message') throw new Error('not a message');
+      return parsed.message;
+    };
+
+    expect(service('SMS').service).toBe('SMS');
+    expect(service('RCS').service).toBe('RCS');
+    expect(service('iMessage').service).toBe('iMessage');
+    expect(service('Pigeon').service).toBe('other');
+    expect(service(undefined)).not.toHaveProperty('service');
+    expect(service(7)).not.toHaveProperty('service');
   });
 
   /**

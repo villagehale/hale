@@ -2376,10 +2376,12 @@ async function runAgentTurn(
     // its thread row says so and the nightly memory writer leaves it out.
     const threadSource: schema.MessageSource | null = emailRead ? { kind: 'read_email' } : null;
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
-    // stands in for an empty reply (absolute-zero fixed parent copy).
-    if (!experienceCard && reply.trim() === '') {
+    // stands in for an empty reply (absolute-zero fixed parent copy). A card the model
+    // chose does not go either: it rides beside the words (VIL-495 Design lock), and
+    // there are none, so the empty reply is named with the card it withheld.
+    if (reply.trim() === '') {
       deps.log.info(
-        { outcome: 'empty_reply' },
+        { outcome: experienceCard ? 'empty_reply_card_withheld' : 'empty_reply' },
         'channel router: coach wrote nothing - nothing sent',
       );
       // Claim the turn so a redelivery reads `answered` and never reruns the coach
@@ -2400,12 +2402,91 @@ async function runAgentTurn(
     if (bubbles.length > 1) {
       deps.log.info({ bubbles: bubbles.length }, 'channel router: the answer goes as bubbles');
     }
+    // WHAT THE ANSWER OWES: the follow-up it promised, the registration morning and the
+    // page it said it was watching. Written AFTER the send, against a message that went
+    // (the MEM-10 send-time discipline, lib/commitments/ledger.ts). A set that stopped
+    // partway keeps them too, against its last bubble that went: any bubble may have
+    // carried the promise, and a promise the parent has with no row behind it is the
+    // one Hale breaks. One the parent never read only means a follow-up they asked for.
+    const keepWhatTheAnswerOwes = async (channelMessageId: string) => {
+      // The same send-time discipline for the same reason, and the writer never throws for
+      // the same reason too: the parent already has the message, so an exception here would
+      // buy a carrier retry and a duplicate reply. A turn that composed "I'll come back to
+      // you" and then failed to deliver it promised nobody anything.
+      if (activityPromise) {
+        const recorded = await deps.recordActivityPromise(deps.database, {
+          familyId: args.turn.familyId,
+          promise: activityPromise,
+          channelMessageId,
+          now: args.turn.now,
+        });
+        // AND THE RESEARCH, NOW. The promise used to wait for the hourly sweep whatever it
+        // was about; a parent who names a gym and asks when the fall term starts is asking
+        // about pages that exist right now, and the answer is worth four minutes rather
+        // than a day. Never throws and never blocks the reply — the reply has already been
+        // sent — and every way it can decline is a counted outcome, because the promise is
+        // kept either way and the only thing at stake is how fast (deep-queue.ts).
+        const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
+          familyId: args.turn.familyId,
+          subject: activityPromise.subject,
+          recorded,
+        });
+        deps.log.info(
+          {
+            dispatch: dispatched.status,
+            ...('reason' in dispatched ? { reason: dispatched.reason } : {}),
+          },
+          'channel router: activity promise recorded',
+        );
+      }
+      // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
+      // registration morning; the ledger had no row for that, and a matched municipal
+      // window with the ladder armed is the fact that lets one be written rather than the
+      // sentence deleted. Same send-time discipline and same never-throws contract as the
+      // writer above it: the parent already has the text.
+      for (const mint of mints) {
+        await deps.recordRegistrationWatch(deps.database, {
+          familyId: args.turn.familyId,
+          mint,
+          channelMessageId,
+          now: args.turn.now,
+        });
+      }
+      // THE COURSE PAGE THIS TURN STARTED WATCHING (VIL-337). Same send-time discipline
+      // and same never-throws contract: the row is armed against the outbound message
+      // that carried "I'm watching that", and a turn that composed the sentence without
+      // reaching a transport promised nobody anything. What it CAN report is a failed
+      // arm, which it writes to the trail rather than raising — the parent already has
+      // the text, and an exception here would buy a carrier retry and a second copy of it.
+      if (spotWatch) {
+        const armed = await deps.armWatchedSpot(deps.database, {
+          familyId: args.turn.familyId,
+          parentUserId: args.turn.parentUserId,
+          intent: spotWatch,
+          channelMessageId,
+          now: args.turn.now,
+        });
+        deps.log.info(
+          { arm: armed.status, host: spotWatch.host },
+          'channel router: watched spot armed after the send',
+        );
+      }
+    };
     // A card turn stays text: the card rides beside the words (VIL-495 Design lock).
-    const channelMessageId = await args.answer(
-      bubbles,
-      threadSource,
-      voiceMemo === true && !card ? { voiceMemo: true } : undefined,
-    );
+    const channelMessageId = await args
+      .answer(bubbles, threadSource, voiceMemo === true && !card ? { voiceMemo: true } : undefined)
+      .catch(async (err: unknown) => {
+        if (err instanceof ReplySetIncomplete) {
+          if (err.lastSentId !== null) await keepWhatTheAnswerOwes(err.lastSentId);
+          else if (activityPromise || spotWatch || mints.length > 0) {
+            deps.log.error(
+              { outcome: 'owed_rows_unwritten', reason: 'no_ledger_row' },
+              'channel router: the answer stopped partway with no bubble on record - what it owes is not written',
+            );
+          }
+        }
+        throw err;
+      });
     // AFTER the send: the shadow read adds no latency and cannot change what was sent.
     // An enforced turn was already read before the send, so it starts no shadow.
     if (!enforced) {
@@ -2532,36 +2613,7 @@ async function runAgentTurn(
         now: args.turn.now,
       });
     }
-    // The same send-time discipline for the same reason, and the writer never throws for
-    // the same reason too: the parent already has the message, so an exception here would
-    // buy a carrier retry and a duplicate reply. A turn that composed "I'll come back to
-    // you" and then failed to deliver it promised nobody anything.
-    if (activityPromise) {
-      const recorded = await deps.recordActivityPromise(deps.database, {
-        familyId: args.turn.familyId,
-        promise: activityPromise,
-        channelMessageId,
-        now: args.turn.now,
-      });
-      // AND THE RESEARCH, NOW. The promise used to wait for the hourly sweep whatever it
-      // was about; a parent who names a gym and asks when the fall term starts is asking
-      // about pages that exist right now, and the answer is worth four minutes rather
-      // than a day. Never throws and never blocks the reply — the reply has already been
-      // sent — and every way it can decline is a counted outcome, because the promise is
-      // kept either way and the only thing at stake is how fast (deep-queue.ts).
-      const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
-        familyId: args.turn.familyId,
-        subject: activityPromise.subject,
-        recorded,
-      });
-      deps.log.info(
-        {
-          dispatch: dispatched.status,
-          ...('reason' in dispatched ? { reason: dispatched.reason } : {}),
-        },
-        'channel router: activity promise recorded',
-      );
-    }
+    await keepWhatTheAnswerOwes(channelMessageId);
     // VIL-303 · the no this reply gave, or the earlier no it corrected. Same send-time
     // discipline and never-throws contract as the writers around it.
     if (capabilityNotes) {
@@ -2580,38 +2632,6 @@ async function runAgentTurn(
             : { reason: noted.reason }),
         },
         'channel router: capability notes',
-      );
-    }
-    // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
-    // registration morning; the ledger had no row for that, and a matched municipal
-    // window with the ladder armed is the fact that lets one be written rather than the
-    // sentence deleted. Same send-time discipline and same never-throws contract as the
-    // two writers above it: the parent already has the text.
-    for (const mint of mints) {
-      await deps.recordRegistrationWatch(deps.database, {
-        familyId: args.turn.familyId,
-        mint,
-        channelMessageId,
-        now: args.turn.now,
-      });
-    }
-    // THE COURSE PAGE THIS TURN STARTED WATCHING (VIL-337). Same send-time discipline
-    // and same never-throws contract: the row is armed against the outbound message
-    // that carried "I'm watching that", and a turn that composed the sentence without
-    // reaching a transport promised nobody anything. What it CAN report is a failed
-    // arm, which it writes to the trail rather than raising — the parent already has
-    // the text, and an exception here would buy a carrier retry and a second copy of it.
-    if (spotWatch) {
-      const armed = await deps.armWatchedSpot(deps.database, {
-        familyId: args.turn.familyId,
-        parentUserId: args.turn.parentUserId,
-        intent: spotWatch,
-        channelMessageId,
-        now: args.turn.now,
-      });
-      deps.log.info(
-        { arm: armed.status, host: spotWatch.host },
-        'channel router: watched spot armed after the send',
       );
     }
     if (deps.rememberWorkstream) {
@@ -3192,6 +3212,16 @@ async function disposeOfFailedTurn(
   err: unknown,
   drafted: readonly string[],
 ): Promise<FailedTurnDisposition> {
+  // Part of the answer reached the parent and the set claimed the turn. Nothing more is
+  // sent: the rest would be a re-run, and an apology would sit under words they have.
+  if (err instanceof ReplySetIncomplete) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'reply_set_incomplete',
+      log: { bubblesSent: err.bubblesSent, bubbles: err.bubbles },
+    };
+  }
   // The turn already texted the parent and then broke on its own bookkeeping. They have
   // their answer; a second message about it would be Hale talking to itself. Nothing to
   // defer either — the durable claim is already written, so a re-drive stops at the
@@ -3201,12 +3231,7 @@ async function disposeOfFailedTurn(
       outcome: 'agent_failed',
       reply: null,
       reason: 'broke_after_answering',
-      log: {
-        brokeAfterAnswering: true,
-        ...(err instanceof ReplySetIncomplete
-          ? { bubblesSent: err.bubblesSent, bubbles: err.bubbles }
-          : {}),
-      },
+      log: { brokeAfterAnswering: true },
     };
   }
 
@@ -3705,24 +3730,31 @@ async function claimAnswerQuietly(
 }
 
 /**
- * Whether a route takes one answer as several bubbles: a 1:1 iMessage chat. A group keeps
- * one text, because everyone in it reads every bubble. SMS keeps one text, because a
- * carrier can deliver separate texts out of order.
+ * Whether a route takes one answer as several bubbles: a 1:1 chat Linq said is iMessage.
+ * A group keeps one text, because everyone in it reads every bubble. SMS keeps one text,
+ * because a carrier can deliver separate texts out of order, and that includes the green-
+ * bubble SMS and RCS chats Linq relays on the iMessage channel. A chat whose service Linq
+ * did not name is not assumed to be iMessage.
  */
 function takesBubbles(route: ReplyRoute, job: ChannelMessageReceivedJob): boolean {
-  return route.channel === 'imessage' && job.in_group === false;
+  return route.channel === 'imessage' && route.service === 'iMessage' && job.in_group === false;
 }
 
 /**
  * An answer that stopped partway. The first `bubblesSent` of `bubbles` reached the parent
- * and the turn is claimed. The rest is never re-sent: a re-drive would re-run the coach
- * and repeat its tool writes, and keeping the unsent words would put a second copy of
- * family text outside `messages` (rule #1). The turn records it as broke_after_answering.
+ * (sent this attempt or found on record from an earlier one). The rest is never re-sent: a
+ * re-drive would re-run the coach and repeat its tool writes, and keeping the unsent words
+ * would put a second copy of family text outside `messages` (rule #1). The cause is the
+ * send that failed, or the receipt write or ledger read that did. The turn records it as
+ * `reply_set_incomplete`.
  */
 export class ReplySetIncomplete extends Error {
   constructor(
     readonly bubblesSent: number,
     readonly bubbles: number,
+    /** The ledger row of the last bubble on record, which what the answer owes rides; null
+     * when no bubble that went has a row (its receipt write is what failed). */
+    readonly lastSentId: string | null,
     cause: unknown,
   ) {
     super(`channel router: the answer stopped after ${bubblesSent} of ${bubbles} bubbles`, {
@@ -3752,8 +3784,9 @@ export class ReplySetIncomplete extends Error {
  * texts.
  *
  * A failure before any bubble went is today's failure: rethrown, nothing claimed. A
- * failure after one went throws {@link ReplySetIncomplete}. Returns the last bubble's
- * ledger id, which every post-send write rides.
+ * failure after one went, whether a send, a receipt write or a ledger read, claims the
+ * turn and throws {@link ReplySetIncomplete}. Returns the last bubble's ledger id, which
+ * every post-send write rides.
  */
 async function sendReplySet(
   deps: ChannelRouterDeps,
@@ -3810,7 +3843,8 @@ async function sendReplySet(
         route: args.route,
         inboundBody: args.inboundBody,
         outboundBody: whole,
-        firstOfSeveral: args.bodies[0] as string,
+        // Under the first bubble's own key, so a plain resend of it is the same send.
+        firstOfSeveral: { text: args.bodies[0] as string, sendKey: keys[0] as string },
         templateKey: args.templateKey ?? null,
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
@@ -3843,8 +3877,13 @@ async function sendReplySet(
       );
     }
   }
+  // How many bubbles the parent has, in order: sent this attempt, or on record from an
+  // earlier one. Whatever stops the set once this is past zero (a send, a receipt write,
+  // a ledger read) stops it partway.
+  let bubblesSent = 0;
   // An effect bubble already went out: the deadline cannot unsend it.
-  if (!effected) assertTurnLive();
+  if (effected) bubblesSent = 1;
+  else assertTurnLive();
 
   const route = args.route;
   let claimed = false;
@@ -3855,13 +3894,23 @@ async function sendReplySet(
   }>({
     texts: args.bodies,
     setKey: args.setKey,
-    alreadySent: onRecord,
+    alreadySent: async (key) => {
+      const found = await onRecord(key);
+      if (found) bubblesSent = keys.indexOf(key) + 1;
+      return found;
+    },
     send: async (text, index) => {
       if (index === 0 && effected) return effected;
       // Only the first bubble quotes the parent's message; the rest follow it.
       const to: ReplyRoute =
         index === 0 || route.channel !== 'imessage' ? route : { ...route, replyToMessageId: null };
-      return deps.transport.send({ route: to, body: text, sendKey: keys[index] as string });
+      const sent = await deps.transport.send({
+        route: to,
+        body: text,
+        sendKey: keys[index] as string,
+      });
+      bubblesSent = index + 1;
+      return sent;
     },
     record: async ({ index, key, text, result }) => {
       if (!claimed) {
@@ -3878,18 +3927,20 @@ async function sendReplySet(
         firstOfAnswer: index === 0,
       });
     },
-  });
+  }).catch((error: unknown) => ({ status: 'failed' as const, error }));
 
   const recorded = ids.filter((id): id is string => id !== undefined);
   if (outcome.status === 'failed') {
-    if (!claimed) throw outcome.error;
+    if (bubblesSent === 0) throw outcome.error;
+    // The parent has part of the answer, so the turn is answered whatever stopped it.
+    if (!claimed) await claimAnswerQuietly(deps, args);
     deps.log.error(
-      { outcome: 'reply_set_incomplete', bubblesSent: outcome.failedAt, bubbles: keys.length },
+      { outcome: 'reply_set_incomplete', bubblesSent, bubbles: keys.length },
       'channel router: the answer stopped partway - the rest is not sent again',
     );
-    const lastSent = recorded.at(-1);
+    const lastSent = recorded.at(-1) ?? null;
     if (lastSent) await settleAnswerAsks(deps, args, lastSent);
-    throw new ReplySetIncomplete(outcome.failedAt, keys.length, outcome.error);
+    throw new ReplySetIncomplete(bubblesSent, keys.length, lastSent, outcome.error);
   }
   const last = recorded.at(-1);
   if (!last) throw new Error('channel router: the answer set left no ledger row');

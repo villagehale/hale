@@ -6,6 +6,7 @@ import { describeInboundAppCard } from './app-card-inbound';
 import { groupLinkCardsEnabled, linqExperiencesEnabled } from './config';
 import { linqMessageEditEnabled } from './edit';
 import { LINQ_WEBHOOK_VERSION } from './signature';
+import { type LinqChatService, linqChatService } from './transport';
 
 /**
  * VIL-335 — the `2026-02-03` webhook envelope, and only that version.
@@ -112,6 +113,10 @@ export interface LinqInboundText {
    * `isMe` is whether Hale's line was the one named.
    */
   mentions: LinqInboundMention[];
+  /** The service that carried this text (`data.service`). Every chat on the Hale line is
+   * relayed by Linq, so a green-bubble SMS or RCS chat arrives here too. Absent when the
+   * payload did not say, which is not a yes. */
+  service?: LinqChatService;
 }
 
 /** One inbound mention on a text part. `handle` is never logged. */
@@ -319,6 +324,7 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
       otherHandles: otherHandles(data.chat),
       isGroup: saidGroup,
       mentions: mentionsFromParts(parts),
+      ...(typeof data.service === 'string' ? { service: linqChatService(data.service) } : {}),
     },
   };
 }
