@@ -48,6 +48,7 @@ import {
 } from '~/lib/channel/intake/identity-challenge';
 import { readNumberOrigin } from '~/lib/channel/intake/number-origin';
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
@@ -567,6 +568,9 @@ export interface ChannelRouterDeps {
       familyId: string;
       promise: ActivityPromise;
       channelMessageId: string | null;
+      /** The language the parent asked for in this text, else the screen's tag of it, or
+       * null: the follow-up that keeps the promise may be written in it (activity/sweep.ts). */
+      askLanguage: string | null;
       now: Date;
     },
   ): Promise<ActivityPromiseRecordOutcome>;
@@ -1969,6 +1973,8 @@ async function routeChannelMessageInner(
       replyBubbles: bubblesLit,
       cardRoute: inGroup ? null : route,
       groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
+      askLanguage:
+        acceptReplyLanguage(verdict.languageRequest) ?? acceptReplyLanguage(verdict.language),
     });
   } finally {
     await stopTyping();
@@ -2493,6 +2499,9 @@ async function runAgentTurn(
     cardRoute?: ReplyRoute | null;
     /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
     groupChatId?: string | null;
+    /** The language the parent explicitly asked for in this text, else the tag the screen
+     * read off it, else null. An activity promise this turn makes is recorded with it. */
+    askLanguage: string | null;
   },
 ): Promise<RouterResult> {
   try {
@@ -2567,6 +2576,7 @@ async function runAgentTurn(
           familyId: args.turn.familyId,
           promise: activityPromise,
           channelMessageId,
+          askLanguage: args.askLanguage,
           now: args.turn.now,
         });
         // AND THE RESEARCH, NOW. The promise used to wait for the hourly sweep whatever it
