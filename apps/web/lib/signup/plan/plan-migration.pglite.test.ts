@@ -20,6 +20,9 @@ const ASK_SEQ_MIGRATION = migrationFiles().find((file) =>
 const ASK_ORDER_UNCERTAIN_MIGRATION = migrationFiles().find((file) =>
   file.endsWith('_authorized_signup_ask_order_uncertain.sql'),
 );
+const OPT_OUT_UNREAD_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_channel_messages_opt_out_unread.sql'),
+);
 
 let db: TestDb;
 
@@ -131,5 +134,26 @@ describe('authorized signup ask-order-uncertain migration', () => {
          values ('${family.familyId}', '${family.parentUserId}', 8)`,
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('inbound opt-out-unread migration', () => {
+  it('survives a second pass and keeps what each row says, null where it said nothing', async () => {
+    expect(OPT_OUT_UNREAD_MIGRATION).toBeDefined();
+    const family = await seedFamily(db.database);
+    await db.applyMigration(OPT_OUT_UNREAD_MIGRATION as string);
+    await db.exec(
+      `insert into channel_messages (family_id, parent_user_id, channel, direction, category, status, provider_message_id, opt_out_unread)
+       values ('${family.familyId}', '${family.parentUserId}', 'sms', 'in', 'reply', 'delivered', 'unread-${family.familyId}', true),
+              ('${family.familyId}', '${family.parentUserId}', 'sms', 'in', 'reply', 'delivered', 'before-${family.familyId}', null)`,
+    );
+    await db.applyMigration(OPT_OUT_UNREAD_MIGRATION as string);
+    const rows = (await db.exec(
+      `select provider_message_id as id, opt_out_unread as unread from channel_messages where family_id = '${family.familyId}' order by provider_message_id`,
+    )) as { rows: { id: string; unread: boolean | null }[] }[];
+    expect(rows[0]?.rows).toEqual([
+      { id: `before-${family.familyId}`, unread: null },
+      { id: `unread-${family.familyId}`, unread: true },
+    ]);
   });
 });
