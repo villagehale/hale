@@ -205,6 +205,7 @@ async function ask(
       undefined,
       undefined,
       'CA',
+      noop,
     )
     .find((candidate) => candidate.name === 'propose_calendar_add');
   if (!tool) throw new Error('production buildTools registers no propose_calendar_add');

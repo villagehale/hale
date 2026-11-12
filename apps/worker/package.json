@@ -116,6 +116,7 @@
     "eval:calendar-write-notice": "node evals/run-calendar-write-notice-eval.mjs --cached-only",
     "eval:signup-outcome-reply": "node evals/run-signup-outcome-reply-eval.mjs --cached-only",
     "eval:signup-plan-read": "node evals/run-signup-plan-read-eval.mjs --cached-only",
+    "eval:signup-offer-supersede": "node evals/run-signup-offer-supersede-eval.mjs --cached-only",
     "eval:signup-plan-reply": "node evals/run-signup-plan-reply-eval.mjs --cached-only",
     "eval:signup-plan-reply:broken": "node evals/run-signup-plan-reply-eval.mjs --broken --cached-only",
     "eval:signup-provider-notice": "node evals/run-signup-provider-notice-eval.mjs --cached-only",

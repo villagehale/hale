@@ -11,6 +11,18 @@ const MIGRATION = migrationFiles().find((file) => file.endsWith('_authorized_sig
 const RESUME_MIGRATION = migrationFiles().find((file) =>
   file.endsWith('_authorized_signup_plan_resume.sql'),
 );
+const LAST_ASKED_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_authorized_signup_last_asked.sql'),
+);
+const ASK_SEQ_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_authorized_signup_ask_seq.sql'),
+);
+const ASK_ORDER_UNCERTAIN_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_authorized_signup_ask_order_uncertain.sql'),
+);
+const OPT_OUT_UNREAD_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_channel_messages_opt_out_unread.sql'),
+);
 
 let db: TestDb;
 
@@ -57,5 +69,91 @@ describe('authorized signup plan resume migration', () => {
       `select plan_resume->>'runId' as run_id, plan_lease_until is not null as leased, plan_cancel_requested_at is not null as taken_back from authorized_signup_offers where status = 'submitting'`,
     )) as { rows: unknown[] }[];
     expect(read[0]?.rows).toEqual([{ run_id: 'run-1', leased: true, taken_back: true }]);
+  });
+});
+
+describe('authorized signup last-asked migration', () => {
+  it('survives a second pass and holds when Hale last asked, null until it does', async () => {
+    expect(LAST_ASKED_MIGRATION).toBeDefined();
+    await db.applyMigration(LAST_ASKED_MIGRATION as string);
+    await db.applyMigration(LAST_ASKED_MIGRATION as string);
+    await insertOffer('pending');
+    const before = (await db.exec(
+      'select count(*)::int as unasked from authorized_signup_offers where last_asked_at is null',
+    )) as { rows: { unasked: number }[] }[];
+    expect(before[0]?.rows[0]?.unasked).toBeGreaterThan(0);
+    await db.exec(
+      `update authorized_signup_offers set last_asked_at = '2026-11-30T20:00:00Z' where last_asked_at is null`,
+    );
+    const after = (await db.exec(
+      `select (count(*) filter (where last_asked_at is null))::int as unasked, max(last_asked_at) = '2026-11-30T20:00:00Z'::timestamptz as stamped from authorized_signup_offers`,
+    )) as { rows: { unasked: number; stamped: boolean }[] }[];
+    expect(after[0]?.rows).toEqual([{ unasked: 0, stamped: true }]);
+  });
+});
+
+describe('authorized signup ask-order migration', () => {
+  it('survives a second pass without restarting the order, and leaves new offers unordered', async () => {
+    expect(ASK_SEQ_MIGRATION).toBeDefined();
+    await db.applyMigration(ASK_SEQ_MIGRATION as string);
+    const first = (await db.exec(`select nextval('authorized_signup_ask_seq')::int as n`)) as {
+      rows: { n: number }[];
+    }[];
+    // A replay that restarted the sequence would rank a later text below an earlier one.
+    await db.applyMigration(ASK_SEQ_MIGRATION as string);
+    const second = (await db.exec(`select nextval('authorized_signup_ask_seq')::int as n`)) as {
+      rows: { n: number }[];
+    }[];
+    expect(second[0]?.rows[0]?.n).toBeGreaterThan(first[0]?.rows[0]?.n as number);
+
+    await insertOffer('pending');
+    const stamped = (await db.exec(
+      'select (count(*) filter (where last_asked_seq is not null))::int as ordered from authorized_signup_offers',
+    )) as { rows: { ordered: number }[] }[];
+    expect(stamped[0]?.rows).toEqual([{ ordered: 0 }]);
+  });
+});
+
+describe('authorized signup ask-order-uncertain migration', () => {
+  it('survives a second pass and keeps the rows it holds, one per family and parent', async () => {
+    expect(ASK_ORDER_UNCERTAIN_MIGRATION).toBeDefined();
+    const family = await seedFamily(db.database);
+    await db.applyMigration(ASK_ORDER_UNCERTAIN_MIGRATION as string);
+    await db.exec(
+      `insert into authorized_signup_ask_order_uncertain (family_id, parent_user_id, failed_seq)
+       values ('${family.familyId}', '${family.parentUserId}', 7)`,
+    );
+    await db.applyMigration(ASK_ORDER_UNCERTAIN_MIGRATION as string);
+    const held = (await db.exec(
+      `select failed_seq::int as seq, failures from authorized_signup_ask_order_uncertain where family_id = '${family.familyId}'`,
+    )) as { rows: { seq: number; failures: number }[] }[];
+    expect(held[0]?.rows).toEqual([{ seq: 7, failures: 1 }]);
+    await expect(
+      db.exec(
+        `insert into authorized_signup_ask_order_uncertain (family_id, parent_user_id, failed_seq)
+         values ('${family.familyId}', '${family.parentUserId}', 8)`,
+      ),
+    ).rejects.toThrow();
+  });
+});
+
+describe('inbound opt-out-unread migration', () => {
+  it('survives a second pass and keeps what each row says, null where it said nothing', async () => {
+    expect(OPT_OUT_UNREAD_MIGRATION).toBeDefined();
+    const family = await seedFamily(db.database);
+    await db.applyMigration(OPT_OUT_UNREAD_MIGRATION as string);
+    await db.exec(
+      `insert into channel_messages (family_id, parent_user_id, channel, direction, category, status, provider_message_id, opt_out_unread)
+       values ('${family.familyId}', '${family.parentUserId}', 'sms', 'in', 'reply', 'delivered', 'unread-${family.familyId}', true),
+              ('${family.familyId}', '${family.parentUserId}', 'sms', 'in', 'reply', 'delivered', 'before-${family.familyId}', null)`,
+    );
+    await db.applyMigration(OPT_OUT_UNREAD_MIGRATION as string);
+    const rows = (await db.exec(
+      `select provider_message_id as id, opt_out_unread as unread from channel_messages where family_id = '${family.familyId}' order by provider_message_id`,
+    )) as { rows: { id: string; unread: boolean | null }[] }[];
+    expect(rows[0]?.rows).toEqual([
+      { id: `before-${family.familyId}`, unread: null },
+      { id: `unread-${family.familyId}`, unread: true },
+    ]);
   });
 });
