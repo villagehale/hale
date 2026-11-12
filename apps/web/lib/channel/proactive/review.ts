@@ -35,6 +35,7 @@ import {
   familyOutboundTarget,
   householdCopies,
 } from '~/lib/channel/linq/family-outbound';
+import { onCheckbackClock } from '~/lib/channel/next-day-checkback/clock';
 import {
   type OpenAskClosedReason,
   type RecheckOpenAsk,
@@ -715,7 +716,8 @@ async function dropAlreadySent(
  * VIL-681 · a next-day check-back is read again at send time: still the ask the sweep
  * queued, the parent still quiet, and not already signed up for somewhere Hale did not
  * see. A closed ask is dropped by its name before the writer; one that could not be read
- * is held with no clock. The rest of the batch goes on.
+ * is held with no clock. The rest of the batch goes on. An owed ask comes back with its
+ * asker's clock, which the gate's quiet floor reads for that parent.
  */
 async function dropClosedAsks(
   database: Database,
@@ -724,8 +726,9 @@ async function dropClosedAsks(
   items: readonly QueuedItem[],
   now: Date,
   summary: ProactiveReviewSummary,
-): Promise<QueuedItem[]> {
+): Promise<{ kept: QueuedItem[]; clocks: Map<string, string> }> {
   const kept: QueuedItem[] = [];
+  const clocks = new Map<string, string>();
   for (const item of items) {
     if (item.kind !== 'next_day_checkback') {
       kept.push(item);
@@ -740,6 +743,7 @@ async function dropClosedAsks(
     });
     if (recheck.verdict === 'owed') {
       kept.push(item);
+      clocks.set(item.parentUserId, recheck.timeZone);
       continue;
     }
     if (recheck.verdict === 'unchecked') {
@@ -761,7 +765,7 @@ async function dropClosedAsks(
     });
     summary.dropped += 1;
   }
-  return kept;
+  return { kept, clocks };
 }
 
 /**
@@ -1141,7 +1145,14 @@ async function sendChosen(
   const { familyId, now, summary } = input;
   const seated = await dropUnseated(database, familyId, input.chosen, now, summary);
   const unsent = await dropAlreadySent(database, familyId, seated, now, summary);
-  const chosen = await dropClosedAsks(database, deps, familyId, unsent, now, summary);
+  const { kept: chosen, clocks } = await dropClosedAsks(
+    database,
+    deps,
+    familyId,
+    unsent,
+    now,
+    summary,
+  );
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.
@@ -1183,7 +1194,7 @@ async function sendChosen(
     copies = perParent.map((copy) => ({ ...copy, members: [copy.parentUserId] }));
   }
 
-  const gate = deps.buildGate(database);
+  const gate = onCheckbackClock(deps.buildGate(database), clocks);
   const gated: Array<{
     parentUserId: string;
     items: QueuedItem[];

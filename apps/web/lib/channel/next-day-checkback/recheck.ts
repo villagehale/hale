@@ -12,7 +12,7 @@ import {
   loadWatchCalendar,
 } from '~/lib/channel/activity/calendar-check';
 import { familyLocalNow } from '~/lib/channel/coach/local-now';
-import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { knownHouseholdTimezone, knownParentTimezone } from '~/lib/channel/household-timezone';
 import { withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { boundedLine } from '~/lib/channel/proactive/tools';
 import { teenChildIds } from '~/lib/channel/role-scope';
@@ -27,11 +27,14 @@ import { type NextDayCheckbackPayload, askerReturned } from './sweep';
  *   1. the lane flag (the kill switch: a queued item stops on the next review);
  *   2. the workstream, which must still be the one the sweep queued;
  *   3. any text from the asker since the ask (they came back; that turn owns it);
- *   4. the household calendar and the asker's own bookings, read by the VIL-564 model
+ *   4. the asker's clock: their own zone, else the household's. The gate reads their
+ *      quiet floor on it, never on the UTC column default;
+ *   5. the household calendar and the asker's own bookings, read by the VIL-564 model
  *      reader: did they already sign up somewhere Hale did not see?
  *
- * Only `owed` sends. `unsure` is closed too: fewer asks wins ties. A read that failed is
- * `unchecked`, held with no clock, never sent, and expires with the candidate.
+ * Only `owed` sends. `unsure` is closed too: fewer asks wins ties. A read that failed, or
+ * a clock Hale does not know, is `unchecked`: held with no clock, never sent, and it
+ * expires with the candidate.
  */
 
 export type OpenAskClosedReason =
@@ -39,13 +42,12 @@ export type OpenAskClosedReason =
   | 'ask_moved'
   | 'parent_returned'
   | 'finished_elsewhere'
-  | 'maybe_finished'
-  | 'zone_unknown';
+  | 'maybe_finished';
 
 export type OpenAskRecheck =
-  | { verdict: 'owed' }
+  | { verdict: 'owed'; timeZone: string }
   | { verdict: 'closed'; reason: OpenAskClosedReason }
-  | { verdict: 'unchecked'; reason: 'recheck_failed' };
+  | { verdict: 'unchecked'; reason: 'recheck_failed' | 'zone_unknown' };
 
 export type RecheckOpenAsk = (
   database: Database,
@@ -112,6 +114,11 @@ export function createRecheckOpenAsk(check: WatchCalendarCheck): RecheckOpenAsk 
     ) {
       return closed('parent_returned');
     }
+    const timeZone = await knownParentTimezone(database, {
+      familyId: item.familyId,
+      parentUserId: item.parentUserId,
+    });
+    if (timeZone === null) return { verdict: 'unchecked', reason: 'zone_unknown' };
     const seen = await check.check(database, {
       familyId: item.familyId,
       parentUserId: item.parentUserId,
@@ -125,10 +132,10 @@ export function createRecheckOpenAsk(check: WatchCalendarCheck): RecheckOpenAsk 
         return closed('finished_elsewhere');
       case 'not_on_calendar':
       case 'calendar_empty':
-        return { verdict: 'owed' };
+        return { verdict: 'owed', timeZone };
       case 'calendar_unchecked':
         if (seen.reason === 'unsure') return closed('maybe_finished');
-        if (seen.reason === 'zone_unknown') return closed('zone_unknown');
+        if (seen.reason === 'zone_unknown') return { verdict: 'unchecked', reason: 'zone_unknown' };
         return { verdict: 'unchecked', reason: 'recheck_failed' };
     }
   };

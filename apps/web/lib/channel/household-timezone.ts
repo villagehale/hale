@@ -60,3 +60,20 @@ export async function knownHouseholdTimezone(
     .limit(1);
   return knownTimezone(row?.timezone);
 }
+
+/**
+ * This parent's own zone when they set one, else the household's when Hale knows it,
+ * else null. A parent whose row still holds the UTC default lives where the household
+ * lives (see {@link householdTimezone}); UTC is never anyone's day.
+ */
+export async function knownParentTimezone(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<string | null> {
+  const [row] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, input.parentUserId))
+    .limit(1);
+  return knownTimezone(row?.timezone) ?? knownHouseholdTimezone(database, input.familyId);
+}

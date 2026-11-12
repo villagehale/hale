@@ -5,15 +5,19 @@ import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import {
   NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
   nextDayCheckbackDedupeKey,
 } from '~/lib/channel/next-day-checkback/claim';
-import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { NEXT_DAY_CHECKBACK_ENABLED_ENV } from '~/lib/channel/next-day-checkback/flag';
+import { defaultRecheckOpenAsk } from '~/lib/channel/next-day-checkback/recheck';
+import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
+import { listDueWorkstreams } from '~/lib/memory/workstreams';
 import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { travelBriefDedupeKey } from '~/lib/travel/sweep';
@@ -184,7 +188,7 @@ function harness(
     fulfillCommitment,
     recheckOpenAsk: async (_db, item) => {
       state.rechecked.push(item.dedupeKey);
-      return { verdict: 'owed' };
+      return { verdict: 'owed', timeZone: TZ };
     },
     ...over,
   };
@@ -2913,7 +2917,7 @@ describe('classes the decider sends for their own sweeps', () => {
 describe('the next-day check-back', () => {
   const ANCHOR = new Date('2026-10-08T01:40:00.000Z');
 
-  async function waitingAsk(): Promise<string> {
+  async function waitingAsk(over: { checkBackAt?: Date } = {}): Promise<string> {
     const [row] = await db.database
       .insert(schema.familyWorkstreams)
       .values({
@@ -2921,6 +2925,7 @@ describe('the next-day check-back', () => {
         title: 'Fall swim registration',
         status: 'waiting_on_parent',
         nextStep: 'Pick a session',
+        checkBackAt: over.checkBackAt ?? null,
         createdFrom: 'seed',
         updatedFrom: 'seed',
         createdAt: ANCHOR,
@@ -2931,8 +2936,9 @@ describe('the next-day check-back', () => {
     return row?.id as string;
   }
 
-  async function enqueueCheckback(workstreamId: string): Promise<string> {
+  async function enqueueCheckback(workstreamId: string, asker = parentUserId): Promise<string> {
     return enqueue(nextDayCheckbackDedupeKey(workstreamId), {
+      parentUserId: asker,
       kind: 'next_day_checkback',
       category: 'followup',
       templateKey: NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
@@ -3030,6 +3036,150 @@ describe('the next-day check-back', () => {
     expect(await candidate(checkback)).toMatchObject({
       status: 'dropped',
       reason: 'parent_returned',
+    });
+  });
+
+  it('drops a check-back offered again after it went, as already sent, and texts once', async () => {
+    const workstreamId = await waitingAsk();
+    const id = await enqueueCheckback(workstreamId);
+    const h = harness(sendAll);
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+    // A crash after the ledger row and before the candidate's own mark leaves it open.
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ status: 'queued' })
+      .where(eq(schema.proactiveCandidates.id, id));
+
+    const again = await runProactiveReview(
+      db.database,
+      h.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+
+    expect(again).toMatchObject({ sent: 0, dropped: 1 });
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+    expect(h.rechecked).toEqual([nextDayCheckbackDedupeKey(workstreamId)]);
+    expect(await candidate(id)).toMatchObject({ status: 'dropped', reason: 'already_sent' });
+  });
+
+  it('leaves the VIL-419 follow-up nothing to pick up once it went', async () => {
+    const workstreamId = await waitingAsk({ checkBackAt: new Date(ANCHOR.getTime() + 3_600_000) });
+    await enqueueCheckback(workstreamId);
+    const due = await listDueWorkstreams(db.database, THURSDAY_EVENING);
+    expect(due.map((row) => row.id)).toEqual([workstreamId]);
+
+    await runProactiveReview(db.database, harness(sendAll).deps, THURSDAY_EVENING);
+
+    expect(await listDueWorkstreams(db.database, THURSDAY_EVENING)).toEqual([]);
+  });
+
+  describe('with a second parent who asked', () => {
+    const CHAT = 'chat-household';
+    const CO_PHONE = '+15555550101';
+    let coParentId: string;
+
+    async function secondParent(timezone: string): Promise<void> {
+      const [co] = await db.database
+        .insert(schema.users)
+        .values({ name: 'Second Parent', timezone })
+        .returning({ id: schema.users.id });
+      coParentId = co?.id as string;
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId, userId: coParentId, role: 'co_parent' });
+    }
+
+    it('goes 1:1 to the parent who asked, never into the confirmed household group', async () => {
+      vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+      vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+      await secondParent(TZ);
+      await db.database
+        .update(schema.families)
+        .set({ linqGroupChatId: CHAT })
+        .where(eq(schema.families.id, familyId));
+      const [roster] = await db.database
+        .insert(schema.linqGroupRosters)
+        .values({ chatId: CHAT, familyId, source: 'new_group', status: 'confirmed' })
+        .returning({ id: schema.linqGroupRosters.id });
+      await db.database.insert(schema.linqGroupRosterMembers).values([
+        {
+          rosterId: roster?.id as string,
+          chatId: CHAT,
+          phoneE164Hash: 'hash-primary',
+          knownUserId: parentUserId,
+          status: 'known_parent',
+        },
+        {
+          rosterId: roster?.id as string,
+          chatId: CHAT,
+          phoneE164Hash: 'hash-co-parent',
+          userId: coParentId,
+          status: 'confirmed',
+          confirmedRole: 'co_parent',
+        },
+      ]);
+      // The chat is claimed and its roster confirmed: the review's line is refused by
+      // its audience, not for want of a group.
+      expect(await familyOutboundTarget(db.database, familyId)).toEqual({
+        channel: 'legacy',
+        reason: 'group_audience_refused',
+      });
+      const workstreamId = await waitingAsk();
+      const id = await enqueueCheckback(workstreamId, coParentId);
+      let linqCalls = 0;
+      const h = harness(sendAll, {
+        outboundTarget: familyOutboundTarget,
+        resolveSendablePhone: async (_db, userId) => (userId === coParentId ? CO_PHONE : PHONE),
+        fetch: (async () => {
+          linqCalls += 1;
+          return Response.json({ message: { id: 'msg-group-1' } }, { status: 201 });
+        }) as unknown as typeof fetch,
+      });
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ sent: 1 });
+      expect(linqCalls).toBe(0);
+      expect(h.transport.sent.map((message) => message.to)).toEqual([CO_PHONE]);
+      expect(await candidate(id)).toMatchObject({ status: 'sent' });
+      const [ledger] = await db.database
+        .select()
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.dedupeKey, nextDayCheckbackDedupeKey(workstreamId)));
+      expect(ledger).toMatchObject({ direction: 'out', parentUserId: coParentId });
+    });
+
+    it("holds it in the household's quiet hours when the asker never set a zone", async () => {
+      vi.stubEnv(NEXT_DAY_CHECKBACK_ENABLED_ENV, 'true');
+      // The UTC column default: this parent never set a zone.
+      await secondParent('UTC');
+      const id = await enqueueCheckback(await waitingAsk(), coParentId);
+      const h = harness(sendAll, {
+        // The production zone port and re-check: the stored zone as is, and the asker's
+        // clock (here the household's) from an empty calendar, with no model call.
+        buildGate: (database) => ({
+          ...openGate(),
+          parentTimeZone: buildOutboundGatePorts(database).parentTimeZone,
+        }),
+        recheckOpenAsk: defaultRecheckOpenAsk(),
+      });
+
+      // Friday 06:00 EDT: the household's night, though 10:00 in UTC.
+      const summary = await runProactiveReview(
+        db.database,
+        h.deps,
+        new Date('2026-10-09T10:00:00.000Z'),
+      );
+
+      expect(summary).toMatchObject({ sent: 0, held: 1 });
+      expect(h.transport.bodies()).toEqual([]);
+      expect(await candidate(id)).toMatchObject({
+        status: 'held',
+        reason: 'quiet_hours',
+        // Friday 08:00 EDT.
+        holdUntil: new Date('2026-10-09T12:00:00.000Z'),
+      });
     });
   });
 });

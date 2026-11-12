@@ -168,7 +168,7 @@ describe('createRecheckOpenAsk', () => {
     vi.stubEnv(NEXT_DAY_CHECKBACK_ENABLED_ENV, 'false');
     expect(await recheck(db.database, item())).toEqual({ verdict: 'closed', reason: 'lane_off' });
     vi.stubEnv(NEXT_DAY_CHECKBACK_ENABLED_ENV, 'true');
-    expect(await recheck(db.database, item())).toEqual({ verdict: 'owed' });
+    expect(await recheck(db.database, item())).toEqual({ verdict: 'owed', timeZone: ET });
   });
 
   it('closes an ask that moved, closed, or was followed up since it was queued', async () => {
@@ -213,7 +213,7 @@ describe('createRecheckOpenAsk', () => {
 
   it('owes the ask without a model call when nothing is on the calendar', async () => {
     const { recheck, spy } = recheckWith('held');
-    expect(await recheck(db.database, item())).toEqual({ verdict: 'owed' });
+    expect(await recheck(db.database, item())).toEqual({ verdict: 'owed', timeZone: ET });
     expect(spy.calls).toHaveLength(0);
   });
 
@@ -249,10 +249,31 @@ describe('createRecheckOpenAsk', () => {
     });
     expect(await recheckWith('not_held').recheck(db.database, item())).toEqual({
       verdict: 'owed',
+      timeZone: ET,
     });
     expect(await recheckWith(null).recheck(db.database, item())).toEqual({
       verdict: 'unchecked',
       reason: 'recheck_failed',
+    });
+  });
+
+  it("owes the ask on the asker's own clock, else the household's, and holds it on neither", async () => {
+    const { recheck } = recheckWith('not_held');
+    const LA = 'America/Los_Angeles';
+    const zone = (userId: string, timezone: string) =>
+      db.database.update(schema.users).set({ timezone }).where(eq(schema.users.id, userId));
+
+    await zone(coParentId, LA);
+    expect(await recheck(db.database, item())).toEqual({ verdict: 'owed', timeZone: LA });
+
+    // The UTC column default means the asker never set one: the household's clock.
+    await zone(coParentId, 'UTC');
+    expect(await recheck(db.database, item())).toEqual({ verdict: 'owed', timeZone: ET });
+
+    await zone(primaryId, 'UTC');
+    expect(await recheck(db.database, item())).toEqual({
+      verdict: 'unchecked',
+      reason: 'zone_unknown',
     });
   });
 

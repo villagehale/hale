@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gt, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNull, notExists, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { TEXTABLE_ROLES } from '~/lib/channel/family-recipients';
-import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { knownParentTimezone } from '~/lib/channel/household-timezone';
 import { withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import {
   type OutboundGatePorts,
@@ -13,7 +13,12 @@ import { type CandidateDraft, queueCheckInForDecider } from '~/lib/channel/proac
 import { boundedLine } from '~/lib/channel/proactive/tools';
 import { teenChildIds } from '~/lib/channel/role-scope';
 import { workstreamsEnabled } from '~/lib/memory/workstreams';
-import { NEXT_DAY_CHECKBACK_TEMPLATE_KEY, nextDayCheckbackDedupeKey } from './claim';
+import {
+  NEXT_DAY_CHECKBACK_KEY_PREFIX,
+  NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
+  nextDayCheckbackDedupeKey,
+} from './claim';
+import { onCheckbackClock } from './clock';
 import { checkbackTiming } from './decide';
 import { nextDayCheckbackEnabled } from './flag';
 
@@ -28,17 +33,19 @@ import { nextDayCheckbackEnabled } from './flag';
  * Any text the asker sent after that turn means they came back, and that turn owns the
  * ask. A model-set `check_back_at` belongs to the VIL-419 follow-up, not here.
  *
+ * "The next day" is the asker's: their own zone, else the household's, and an unknown
+ * clock is a named skip. The gate's quiet floor is read on that same clock.
+ *
  * At most one per ask: the candidate's (family, dedupe key) is unique, so an ask queues
  * once, ever, whatever the decider does with it.
  */
 
 /**
- * An infra bound, not a send rule: the waiting rows one run reads, oldest first. Rows
- * past it wait for the next hourly run.
+ * How far back the read looks. The last daytime hour of an ask's next day, the floor's
+ * start that evening, is under two days after the ask in any zone, so an older row has
+ * nothing left the gate would send.
  */
-export const ROWS_PER_RUN = 200;
-/** An ask's day closes at most a little over two days after it: older rows are past it. */
-const LOOKBACK_MS = 3 * 86_400_000;
+const LOOKBACK_MS = 2 * 86_400_000;
 
 export interface NextDayCheckbackPayload {
   workstreamId: string;
@@ -132,7 +139,6 @@ export function nextDayCheckbackDraft(input: {
 }
 
 interface FamilyFacts {
-  zone: string | null;
   teenIds: Set<string>;
   childNames: string[];
   teenNames: string[];
@@ -149,7 +155,6 @@ async function familyFacts(database: Database, familyId: string, now: Date): Pro
     .where(eq(schema.children.familyId, familyId));
   const teenIds = teenChildIds(children, now);
   return {
-    zone: await knownHouseholdTimezone(database, familyId),
     teenIds,
     childNames: children.map((child) => child.name),
     teenNames: children.filter((child) => teenIds.has(child.id)).map((child) => child.name),
@@ -242,6 +247,11 @@ export async function runNextDayCheckbackSweep(
 
   const result = emptyResult(null);
   const ws = schema.familyWorkstreams;
+  const key = sql`${NEXT_DAY_CHECKBACK_KEY_PREFIX}::text || ${ws.id}::text`;
+  // No row bound: "due" needs the asker's zone, and family-zoned AT TIME ZONE stays out
+  // of SQL (runtime/tzdata.ts). So the read drops what is settled (an ask already queued
+  // or sent, one past the lookback) and every row left is timed below. A family holds at
+  // most MAX_OPEN_WORKSTREAMS open rows, so nothing can stack up ahead of a due ask.
   const rows = await database
     .select({
       id: ws.id,
@@ -261,10 +271,26 @@ export async function runNextDayCheckbackSweep(
         isNull(ws.lastFollowedUpAt),
         gt(ws.expiresAt, now),
         gte(ws.updatedAt, new Date(now.getTime() - LOOKBACK_MS)),
+        notExists(
+          database
+            .select({ id: schema.proactiveCandidates.id })
+            .from(schema.proactiveCandidates)
+            .where(
+              and(
+                eq(schema.proactiveCandidates.familyId, ws.familyId),
+                eq(schema.proactiveCandidates.dedupeKey, key),
+              ),
+            ),
+        ),
+        notExists(
+          database
+            .select({ id: schema.channelMessages.id })
+            .from(schema.channelMessages)
+            .where(eq(schema.channelMessages.dedupeKey, key)),
+        ),
       ),
     )
-    .orderBy(asc(ws.updatedAt), asc(ws.id))
-    .limit(ROWS_PER_RUN);
+    .orderBy(asc(ws.updatedAt), asc(ws.id));
 
   const facts = new Map<string, FamilyFacts>();
   const gate = deps.buildGate(database);
@@ -288,11 +314,12 @@ export async function runNextDayCheckbackSweep(
       result.noAsker += 1;
       continue;
     }
-    if (family.zone === null) {
+    const zone = await knownParentTimezone(database, { familyId: row.familyId, parentUserId });
+    if (zone === null) {
       result.zoneUnknown += 1;
       continue;
     }
-    const timing = checkbackTiming({ anchor: row.updatedAt, timeZone: family.zone, now });
+    const timing = checkbackTiming({ anchor: row.updatedAt, timeZone: zone, now });
     if (!timing.due) {
       if (timing.reason === 'too_soon') result.tooSoon += 1;
       else result.pastDay += 1;
@@ -312,7 +339,7 @@ export async function runNextDayCheckbackSweep(
     // Before the queue, so a parent the gate refuses never uses up the one chance.
     const verdict = await assertProactiveSendAllowed(
       { familyId: row.familyId, parentUserId, kind: 'next_day_checkback', now },
-      gate,
+      onCheckbackClock(gate, new Map([[parentUserId, zone]])),
     );
     if (!verdict.allowed) {
       result.held += 1;

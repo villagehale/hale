@@ -1,7 +1,7 @@
 import { type Database, type WorkstreamStatus, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { NEXT_DAY_CHECKBACK_TEMPLATE_KEY, nextDayCheckbackDedupeKey } from './claim';
@@ -50,6 +50,12 @@ const openGate = (): OutboundGatePorts => ({
   parentTimeZone: async () => ET,
 });
 
+/** The production zone port, which reads a parent's stored `users.timezone` as is. */
+const storedZoneGate = (database: Database): OutboundGatePorts => ({
+  ...openGate(),
+  parentTimeZone: buildOutboundGatePorts(database).parentTimeZone,
+});
+
 function deps(over: Partial<NextDayCheckbackDeps> = {}): NextDayCheckbackDeps {
   return {
     buildGate: openGate,
@@ -71,6 +77,7 @@ interface Seeded {
 async function seed(
   over: {
     primaryZone?: string;
+    askerZone?: string;
     status?: WorkstreamStatus;
     checkBackAt?: Date | null;
     lastFollowedUpAt?: Date | null;
@@ -92,7 +99,7 @@ async function seed(
     .returning({ id: schema.users.id });
   const [co] = await db.database
     .insert(schema.users)
-    .values({ name: 'Second', timezone: ET })
+    .values({ name: 'Second', timezone: over.askerZone ?? ET })
     .returning({ id: schema.users.id });
   const primaryId = primary?.id as string;
   const coParentId = co?.id as string;
@@ -255,7 +262,7 @@ describe('runNextDayCheckbackSweep', () => {
     });
   });
 
-  it('queues an ask at most once: a second sweep the same hour is a duplicate', async () => {
+  it('queues an ask at most once: a later sweep never reads it again', async () => {
     const seeded = await seed();
     await runNextDayCheckbackSweep(db.database, NOW, deps());
     const again = await runNextDayCheckbackSweep(
@@ -263,8 +270,54 @@ describe('runNextDayCheckbackSweep', () => {
       new Date(NOW.getTime() + 20 * 60_000),
       deps(),
     );
-    expect(again).toMatchObject({ queued: 0, duplicate: 1 });
+    expect(again).toMatchObject({ examined: 0, queued: 0, duplicate: 0 });
     expect(await candidates(seeded.familyId)).toHaveLength(1);
+  });
+
+  it('never reads an ask whose check-back is already on the send ledger', async () => {
+    const seeded = await seed();
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.coParentId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'followup',
+      status: 'sent',
+      templateKey: NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
+      dedupeKey: nextDayCheckbackDedupeKey(seeded.workstreamId),
+      createdAt: new Date(NOW.getTime() - 60_000),
+    });
+    const result = await runNextDayCheckbackSweep(db.database, NOW, deps());
+    expect(result).toMatchObject({ examined: 0, queued: 0 });
+    expect(await candidates(seeded.familyId)).toHaveLength(0);
+  });
+
+  it('offers a due ask that sits behind 250 asks whose day has passed', async () => {
+    const seeded = await seed();
+    // Monday 22:40 EST: their next day closed Wednesday 08:00, before NOW.
+    const monday = new Date(ANCHOR.getTime() - 86_400_000);
+    await db.database.insert(schema.familyWorkstreams).values(
+      Array.from({ length: 250 }, (_, index) => ({
+        familyId: seeded.familyId,
+        title: `Older ask ${index}`,
+        status: 'waiting_on_parent' as const,
+        nextStep: NEXT,
+        childIds: [seeded.childId],
+        createdFrom: seeded.askId,
+        updatedFrom: seeded.askId,
+        createdAt: monday,
+        updatedAt: monday,
+        expiresAt: new Date(monday.getTime() + 14 * 86_400_000),
+      })),
+    );
+
+    const result = await runNextDayCheckbackSweep(db.database, NOW, deps());
+
+    expect(result).toMatchObject({ examined: 251, pastDay: 250, queued: 1 });
+    const queued = await candidates(seeded.familyId);
+    expect(queued.map((row) => row.dedupeKey)).toEqual([
+      nextDayCheckbackDedupeKey(seeded.workstreamId),
+    ]);
   });
 
   it('waits out the same evening, and lets a passed day go', async () => {
@@ -329,7 +382,7 @@ describe('runNextDayCheckbackSweep', () => {
     expect(asked).toMatchObject({ noAsker: 2, queued: 0 });
     await db.exec('truncate table families, users cascade');
 
-    await seed({ primaryZone: 'UTC' });
+    await seed({ primaryZone: 'UTC', askerZone: 'UTC' });
     const zone = await runNextDayCheckbackSweep(db.database, NOW, deps());
     expect(zone).toMatchObject({ zoneUnknown: 1, queued: 0 });
     await db.exec('truncate table families, users cascade');
@@ -337,6 +390,46 @@ describe('runNextDayCheckbackSweep', () => {
     await seed();
     const dark = await runNextDayCheckbackSweep(db.database, NOW, deps({ f14For: () => false }));
     expect(dark).toMatchObject({ f14Dark: 1, queued: 0 });
+  });
+
+  it("keeps the next day on the asker's own clock", async () => {
+    const LA = 'America/Los_Angeles';
+    const seeded = await seed({ askerZone: LA });
+    // Wednesday 05:17 PST: still the asker's night, though 08:17 in the household.
+    const early = await runNextDayCheckbackSweep(db.database, NOW, deps());
+    expect(early).toMatchObject({ tooSoon: 1, queued: 0 });
+
+    const morning = await runNextDayCheckbackSweep(
+      db.database,
+      new Date('2026-11-11T16:17:00.000Z'),
+      deps({ buildGate: storedZoneGate }),
+    );
+    expect(morning).toMatchObject({ queued: 1 });
+    const [row] = await candidates(seeded.familyId);
+    // Thursday 08:00 PST.
+    expect(row?.worthlessAfter).toEqual(new Date('2026-11-12T16:00:00.000Z'));
+  });
+
+  it("reads an asker with the UTC default on the household's clock, never UTC's", async () => {
+    const seeded = await seed({ askerZone: 'UTC' });
+    // Thursday 05:00 EST: inside the next day and the household's quiet hours, though
+    // 10:00 in UTC.
+    const night = await runNextDayCheckbackSweep(
+      db.database,
+      new Date('2026-11-12T10:00:00.000Z'),
+      deps({ buildGate: storedZoneGate }),
+    );
+    expect(night).toMatchObject({ held: 1, queued: 0 });
+    expect(await candidates(seeded.familyId)).toHaveLength(0);
+
+    const day = await runNextDayCheckbackSweep(
+      db.database,
+      NOW,
+      deps({ buildGate: storedZoneGate }),
+    );
+    expect(day).toMatchObject({ queued: 1 });
+    const [row] = await candidates(seeded.familyId);
+    expect(row?.worthlessAfter).toEqual(CLOSES);
   });
 
   it('holds a parent the gate refuses without using up the one chance', async () => {
