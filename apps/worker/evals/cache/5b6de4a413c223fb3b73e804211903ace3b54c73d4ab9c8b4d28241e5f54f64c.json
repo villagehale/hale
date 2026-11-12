@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgyHq7YfTNjD3PWrRFr2e",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Got it, I'm using $900 as the budget for Ada. I searched fall programs for her age, and the only thing that came up was a parent and tot class, which is far too young for her. I'll go back through it tomorrow and text you what fits. Is there something Ada's into, like swim, art, or a sport?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 140,
+      "cache_read_input_tokens": 25175,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 140,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 98,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2107
+}

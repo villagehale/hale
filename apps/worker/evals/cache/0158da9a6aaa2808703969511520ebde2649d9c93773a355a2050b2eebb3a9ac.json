@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgyGnjyCz9r8T8t1f7er1",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvAYKEAgTGAI4AUIIdGhpbmtpbmcSDJ/s/jGAKoQCUKz6XBoMdx+a7c7dY69DUbG6IjDSp1eH1R4XPKcc5/GRctUHCZ4dIvvmbY2RYCpRP0C29aMncS90hFtPNCAjkqE4x4Aq2QUOzX23WSw+6KWUbZnqSknYTMrA5VYUVv9JayhKnsuQ9OWyjTJuw5/PnXpqAWbOJlf8Tdatj0RN0XRtk2HDUe0J6i22pwTxnyF+8Nrp76OeQYAcLBZS15UHeLUcivn1De6dDF6IVsBV1D55WOTTPhEzfOFwRXc7OJHqiL8r4xXKCRMiGKjzeFBw5bMI7BJGRIo4cV00x2NEFIZ69BDeNdTsl9dBW3016VJ2ukMdn1nXJMxmqQuX4An8E3yozMTTHGGRXODyEumFhqf3feFTLuY19w5bWu0fKvNsAaYxAn1aZFE3b1BdcABeSXkfUM1Ig4Cv8BqDQNTZBwsYLihHNuybyTa7bg4BuYEQKBnVfWwj2chAbiP2ClDmQgEdgjHQjSDhkzlnpQld2U9+SKPQbmcGXfRePmJJld7y+btbnbAEYWiUPRI0Ww59bcXCYzm3uBjvjISJcSC8RalHQxQauWCywGkafhgZ63pjKVa+OnI+sxV251P2lfMGxu10MyLFoFIItji2UoOwlOO8eVuJ1A60KBwQ0zossBiy/55YDPIhJ9+PvK8uaE2Z+UbqxhnLyAOjIP7AEgaXvOveQumSnm2ZNGsIJqyU4yYpgyQszJmLnSg2tDZmZIZUrxE3ahtBERV7hCixljvjAUwtVz6vC49HfAzNhGkMvElYP61nlnLEJOjdN3sS6t3kyvd6MMHZMJ5yEQN2JiiT2ztyy0wiUFEWwKj5vX9HBOaAkOq65GEIEIDYituieIUaBe5a7yhAPhiMnN8o6RLwdanfrHbgADYTDfQyAhBP/CvsIs/NumJAbn94bQxeldLrt1gAFEFGIl+v+IRQC2QLaYsHYSuFj7iODu3NJIbbA1YtEni99WdWQ4q8TBNV5UM98uX8+hZwVuEJS25uQq4All4UeaXQv6BDwB53c0lzuV34xATP2lqNtYwygfHKsEZRTU5wwZKTMTCUxzJxTtA9SM8YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "There's a private item Tue 3:45pm. What it is isn't mine to share."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1251,
+      "cache_read_input_tokens": 23580,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1251,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 99,
+      "output_tokens_details": {
+        "thinking_tokens": 71
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2131
+}

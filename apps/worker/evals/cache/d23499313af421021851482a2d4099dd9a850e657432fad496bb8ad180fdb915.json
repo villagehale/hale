@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyG8nwzNDCUKj1sboJ5F",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8QcKEAgTGAI4AUIIdGhpbmtpbmcSDNh2E4a/GrVppA32sBoMK+EzPsYaNg7bFK8FIjCQdjb1J/MvTsEUa86FvL9K3BZpBojnce0hqgKQDHH6o1Jci4Q2C3g33DtTTXcAg/cqjgdzDEsre/s759/8uNTxrkGxU9CHgLtQ5YJLn1jDsyfzMROtwkrxIVorarxKbRerGSAVz84g5sVYSbt7YYwg1ILUKBEGLVgftbHKc2WWorv6J4ODyqTL2tRNG6iD3/ZrkiWYvLqOx1iO9/57p47B+xyC2sCbzBW8hOADvr9jsueAfnOfpgoZ1HEBN8uwvUgnJwkfPII9UVFhwnEP1mjluGAHPk8FGY5Ecy2T1ll1XGJtdD+PXwy1ejRX6JeJ0tg6OEJLJM9KRnECdPSYAE8BzZDyvr74rQXCZreo4aia5JFG5ffSz+kkpALW+60Zc5OsGNZTFB06hiSPLtTMb6BCf6zMYli+W4FhgyujZDkzchgKrBXn2IFrkX7RwEz6tn2VuVB3muMYb2WI55LAq9Su9h6NcdQiI3bsvnh91Q2tDhXwPHvQvY756vwXGI7VZhr0QYCMP357EcVpouWh6zUN9eIjHn9Lz+4f7Z6amPCFSeEhJdpjcUT3p2XTlpsJ8Pyp0yg83+ZbN2cVNahl/IO835wP+8CAW/GKUNwEVW/2h7LiZOs3pqUG6lCcE8nSFvI4o2zVLTeTvE9NdQdd4a/gaUwR+aPR5UTspWfKFYWuLTobsJUJwUHn6hhiGYnEnsav8yki+huV4mxgBXzhGlG2s6QIcKqIvkysP/WHS5u2RKFFaEEIDHnpRoS4AzPXNU8Fed+i28T8r6IOhE55xDN9EI6vpmFaV0g8pveQ3GuGA7wzk1vREJCs5q3ctSePCsyrf9RIMUn59B+lSu9NiFtEJpfTkHtgie9iUupn7yvndReqFZRhONlCV6TfHiiHZnT1+Ze+OwLHQ7Uf8OUgQ9cj/j1KJShi/bycDN8SLQMAyPxc23KyYZ7UeY6wcoXbiw82zOv5nZEN0rvxSWhROZsTLQIgU2XeZ9uoDsf+3Y7l4vPMO0apNmnhFRWJF7B6978zBsfmezu1BIwC1ImvxJgaJ4gQTQC8zd8yMJ96cwOHzjnCQtiQiYNFUrgTTtRyyo0lu3Y9CvCMQ68BcZPZ08ZqZUiQLaHInfTOYxODsbTUL/emNKQK5lnWMwMfWAJXNesRe0R7IlNOWUSVWJI7Y0kXA48Sp0zB9BrmZMLWFoz/9W7b41C2HBEa1XDpSHkUZlK4zqQoTNaVhKg0F2I5cjlrIrvybOn41Xv1oCeczKO/Y3Z+ttR1CLseDpcjxjmPYU+bGAE="
+      },
+      {
+        "type": "text",
+        "text": "Nothing's on your calendar today, and it's a nice one with 22 and dry. Riverbend Community Centre's Indoor open play gym runs Saturdays 9 a.m. to noon, $6 per child, and fits your 2-year-old, per their program page. [link-187000] There's also a Toddler nature walk (outdoor trail), Saturdays at 10 a.m. and free, per Cedar Park Conservancy's events page, though it's probably already started. [link-0b6114]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 293,
+      "cache_read_input_tokens": 22313,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 293,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 270,
+      "output_tokens_details": {
+        "thinking_tokens": 108
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply groups every offerable find by day, as asked. Titles, venues, dates and URLs all match `knows.offerable`, and the weather line traces to the forecast. It ends with one natural question. Small blemishes: a double period ('a.m..') and a weather clause that adds a little padding.",
+    "score": 4
+  }
+}

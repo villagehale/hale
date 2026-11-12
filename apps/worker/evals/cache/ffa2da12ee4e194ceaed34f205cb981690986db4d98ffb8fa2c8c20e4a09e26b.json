@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011CgyGErtXyRMjWv9PTf1q5",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+AYKEAgTGAI4AUIIdGhpbmtpbmcSDDB9bUXcxAGTSquxqRoM4/vbz/LOTdSSrG2sIjD4KB5WWvYlWOlWEf5TyBhrOZC6A+C8jx2WhUxUF2Wsr8mqyHoHUuSkZfKM/vkI7AQqlQYKoN2wy8VlDCPJHH8Y7VKS4QnE+zKZ/eMmeLmIkG8vUCaVxzocmcPkGywlgYge5Srv0jb9ieM5X7JR2zC/5FePIbvZxTr+ahyfmeHD7th3jDi1RakLDFzL/b2KZGe9yRIjy5OkThEtv4BXh9U+lmd3JzKZlnDnHEqsQE3gcsGaBCSJb1L3uGJA0PSO/0LliC9nv20v/mrazhyrsYCjl62y+TM/bs+ONFtl++pKYxHfZNZRj/ylOp7GihJLmp/8tPQPWZcmgLYDTLsE/lMOHECUq/E3CAr06B57Ybi/jvcadRVgYbaJAOIpN8CSsZ172LApJ2h7edkumIjMBkj4WTERA/jim+eJayxaejrQseuOZcQcO2fNQnOJphxBa3JGzP4caJvwRvSLTLTqyBOmOc9Xg707EadX8isuGOoW8QaWcOIqBonX9/jf/3istkfdHYgfJpax5uxRBQAa4l6Y0HVxzTOayGsXF/xQ4QPI1YYrHdGmF56MjvAUokJh3YKoMnfcNjpR6O7s2PBWuzpEyGnN+muUlkGrEEscJ/CBG+asNozexDgtyavQEuiB9Rnr0sWlwNgUvBdA6T5OnKXZ8zbOrx8F6K6JdB1+N40PAlBinKEqc5UkT/epz7LSElIIXv/RPNJAkS/NjTvqLeYNyRc/CzZC4VLpdYQKpUFC8pug9Ld5xUe2r406cIGXXXjSLFvAtfMTC2jff2reKFnV5G49dfC+aNviwwDSM4La8cZ2Fi1WOBMXXlmHv3PB09sz7VZmwixVfRbdgZckL/bdpkkJ9d7nRSRIbrHnIEuuwlFer8rGOparhhUhz11XgWNoccX6QIRUSHz8eFgNda6ue/o8rZ0B2bo27LC1AcVeK9iSteajaaQtBmuCJLtBVj1XGTtObTnFkx+IWng/P74OMF0G1ZsUb0q4VUNE2dRrDA9hQTOmepkj3BA/ecO7sZ15e12jqVBvL3sN0a25xjcYHAPjANqjJf8k8xHKyopc5DaSUjBmqEnasn51LJAtm4uC+z/b8xPQ7yzJFblfO8T5quA1e95CIjsYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_018PAs4tFBRXcR8ZH6sTLoG4",
+        "name": "propose_calendar_move",
+        "input": {
+          "eventId": "evt-swim-sat",
+          "date": "2026-11-15",
+          "weekday": "Sunday",
+          "startsAt": "2026-11-15T15:00:00.000Z",
+          "endsAt": "2026-11-15T15:45:00.000Z"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22626,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 333,
+      "output_tokens_details": {
+        "thinking_tokens": 141
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
