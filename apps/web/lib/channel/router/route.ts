@@ -396,7 +396,8 @@ export type HandlerVerdict =
        * ledger row is minted or closed against the message that made it true, so a turn
        * that acted and then failed to reply leaves the question standing and the re-drive
        * finds it. Only called when a reply was sent — a handler that answers for itself
-       * owns its own ledger writes.
+       * owns its own ledger writes. With several `replies`, it is called once, with the
+       * first bubble's message, as soon as that one is sent.
        */
       afterSend?: (channelMessageId: string) => Promise<unknown>;
       /**
@@ -2151,7 +2152,9 @@ async function resolveNaturalReply(
  *
  * The two halves are ordered and not optional: {@link HandlerVerdict.afterSend} closes
  * ledger rows against the message that closed them, so it may only run once the transport
- * has accepted one. A handler that answered for itself (`reply: null`) owns both halves.
+ * has accepted one. It runs once the first bubble is accepted, before the rest: from then
+ * on the parent has the receipt, so a later bubble that fails cannot leave it undone. A
+ * handler that answered for itself (`reply: null`) owns both halves.
  */
 async function deliver(
   verdict: Extract<HandlerVerdict, { claimed: true }>,
@@ -2169,18 +2172,16 @@ async function deliver(
       : verdict.reply !== null
         ? [verdict.reply]
         : [];
-  if (bodies.length === 0) return;
-  let channelMessageId = '';
-  for (const body of bodies) {
-    channelMessageId = await answer(
+  for (const [index, body] of bodies.entries()) {
+    const channelMessageId = await answer(
       body,
       null,
       null,
       verdict.templateKey ?? null,
       verdict.groupSync,
     );
+    if (index === 0) await verdict.afterSend?.(channelMessageId);
   }
-  await verdict.afterSend?.(channelMessageId);
 }
 
 /**

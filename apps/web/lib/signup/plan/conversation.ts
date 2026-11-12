@@ -2,7 +2,12 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { type AskPlace, stoppedTurn } from '../asks';
+import {
+  type AskPlace,
+  PICK_ASK_BACK_QUESTION,
+  PLAN_ASK_BACK_QUESTION,
+  stoppedTurn,
+} from '../asks';
 import { signupProviderHost } from '../consent';
 import { namesFacts } from '../parent-quote';
 import type { SignupRunInput, SignupRunResult } from '../run';
@@ -61,7 +66,10 @@ export interface PlanTurnDeps {
  */
 type PlanBinding = 'newest' | PlanNaming;
 
-/** The ask Hale asked last binds unnamed; any other only on the parent's words that name it. */
+/**
+ * The ask Hale asked last takes the parent's words unnamed; any other only words that name
+ * it, and then only as far as a question back.
+ */
 function binding(newest: boolean, named: PlanNaming | null): PlanBinding | null {
   return newest ? 'newest' : named;
 }
@@ -73,14 +81,14 @@ function binding(newest: boolean, named: PlanNaming | null): PlanBinding | null 
  * `approveSignupPlan`, a take-back calls `cancelSignupPlan` (or closes the offer when it was
  * never approved). Every claimed turn writes one audit row and a model-written reply.
  *
- * `unrelated` hands the message to the next ask, of either lane. A bare yes or take-back
- * binds only the ask Hale asked the parent about last, whatever its status: a yes to that
- * plan once it is approved reads as unrelated, and no older ask takes it unless the words
- * name that one. This plan moves otherwise only on words that name it (its program or site),
- * or the turn stops. So does a reading that failed: it is never carried on to the next ask.
- * A question back comes only from the ask Hale asked last or one their words name; any other
- * passes the message on. Nothing moves from a group seat that may not authorize a sign-up. A
- * stopped turn is unclaimed, logged and named.
+ * `unrelated` hands the message to the next ask, of either lane. A yes or take-back moves
+ * only the ask Hale asked the parent about last, whatever its status: a yes to that plan once
+ * it is approved reads as unrelated, and no other ask takes it. Words that name another plan
+ * (its program or site) never move it: Hale asks about it instead, and once that question
+ * went out it is the ask asked last, so the parent's next answer is its. A yes or take-back
+ * that does not name a plan Hale did not ask last stops the turn, and so does a reading that
+ * failed: it is never carried on to the next ask. Nothing moves, and nothing is asked, from a
+ * group seat that may not authorize a sign-up. A stopped turn is unclaimed, logged and named.
  */
 export async function runPlanAsk(
   database: Database,
@@ -118,10 +126,17 @@ export async function runPlanAsk(
     return reply(database, input, deps, plan, 'clarify', { question: reading.question, boundBy });
   }
 
+  const boundBy = binding(place.newest, reading.named);
+  if (!boundBy) return stopped('plan_unnamed', plan);
+  if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
+  if (!place.newest) {
+    return reply(database, input, deps, plan, 'clarify', {
+      question: PLAN_ASK_BACK_QUESTION,
+      boundBy,
+    });
+  }
+
   if (reading.verdict === 'take_back') {
-    const boundBy = binding(place.newest, reading.named);
-    if (!boundBy) return stopped('plan_unnamed', plan);
-    if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
     if (plan.status === 'pending') {
       await markOffer(database, {
         offerId: plan.offerId,
@@ -152,9 +167,6 @@ export async function runPlanAsk(
     return reply(database, input, deps, plan, 'cancelled', { boundBy });
   }
 
-  const boundBy = binding(place.newest, reading.named);
-  if (!boundBy) return stopped('plan_unnamed', plan);
-  if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
   if (!input.inboundChannelMessageId) {
     return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
   }
@@ -213,9 +225,10 @@ export async function runPlanAsk(
 }
 
 /**
- * A pick among the site's options, for a plan whose options did not match. The mismatch
- * reader is never shown the program, so a plan other than the parent's newest asks back or
- * moves only when the parent's message names it, in whole words checked in code.
+ * A pick among the site's options, for a plan whose options did not match. A pick parks or
+ * emails only for the parent's newest ask. The mismatch reader is never shown the program,
+ * so any other plan is reached only by a message that names it, in whole words checked in
+ * code, and then Hale asks for the pick instead of making it.
  */
 async function runMismatchTurn(
   database: Database,
@@ -250,6 +263,12 @@ async function runMismatchTurn(
   // A pick parks the plan or emails the provider from the parent's Gmail: never from a
   // group seat that may not authorize a sign-up, as for any other ask.
   if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
+  if (!place.newest) {
+    return reply(database, input, deps, plan, 'clarify', {
+      question: PICK_ASK_BACK_QUESTION,
+      boundBy,
+    });
+  }
   if (reading.verdict === 'waitlist') {
     await parkSignupPlan(database, {
       offerId: plan.offerId,

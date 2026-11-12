@@ -116,6 +116,44 @@ function nextKind(sent: ReadonlySet<string>, opensAt: Date, now: Date): PlanPrep
 }
 
 /**
+ * Sends a notice's bubbles in order, stopping at the first that fails; true only when every
+ * one went. The offer is stamped as asked as soon as the first bubble is delivered: the
+ * parent has Hale's text about it from then on, whole or not, so their next bare answer is
+ * this ask's. A notice none of whose bubbles went stamps nothing.
+ */
+async function deliverBubbles(
+  database: Database,
+  deps: PlanPrepDeps,
+  bubbles: readonly string[],
+  notice: {
+    familyId: string;
+    parentUserId: string;
+    offerId: string;
+    kind: PlanNoticeKind;
+    now: Date;
+  },
+): Promise<boolean> {
+  for (const [index, body] of bubbles.entries()) {
+    const ok = await deps.deliver({
+      familyId: notice.familyId,
+      parentUserId: notice.parentUserId,
+      offerId: notice.offerId,
+      kind: notice.kind,
+      body,
+    });
+    if (!ok) return false;
+    if (index === 0) {
+      await markOfferAsked(database, {
+        familyId: notice.familyId,
+        offerId: notice.offerId,
+        at: notice.now,
+      });
+    }
+  }
+  return true;
+}
+
+/**
  * VIL-558 · the three parent texts that must exist before the open: the login
  * ask (with a /l/<code> link), account prep (create the provider account and
  * add the child as a family member, with a link), and the 30-minute reminder.
@@ -174,20 +212,13 @@ export async function runDueSignupPlanPrep(
       });
       bubbles = withLinkBubbles(written, minted.url);
     }
-    let delivered = true;
-    for (const body of bubbles) {
-      const ok = await deps.deliver({
-        familyId: offer.familyId,
-        parentUserId: offer.parentUserId,
-        offerId: offer.id,
-        kind,
-        body,
-      });
-      if (!ok) {
-        delivered = false;
-        break;
-      }
-    }
+    const delivered = await deliverBubbles(database, deps, bubbles, {
+      familyId: offer.familyId,
+      parentUserId: offer.parentUserId,
+      offerId: offer.id,
+      kind,
+      now: sweep.now,
+    });
     if (!delivered) {
       notices.push({ offerId: offer.id, kind, sent: false });
       continue;
@@ -199,7 +230,6 @@ export async function runDueSignupPlanPrep(
       kind,
       now: sweep.now,
     });
-    await markOfferAsked(database, { familyId: offer.familyId, offerId: offer.id, at: sweep.now });
     await writePlanAudit(database, {
       familyId: offer.familyId,
       actor: offer.parentUserId,
@@ -230,21 +260,7 @@ export async function sendSignupPlanNotice(
   const written = asBubbles(await deps.writer.write(input.facts));
   if (!written) return false;
   const bubbles = withLinkBubbles(written, input.link ?? null, input.linkAfter ?? 0);
-  for (const body of bubbles) {
-    const ok = await deps.deliver({
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      offerId: input.offerId,
-      kind: input.kind,
-      body,
-    });
-    if (!ok) return false;
-  }
-  await markOfferAsked(database, {
-    familyId: input.familyId,
-    offerId: input.offerId,
-    at: input.now,
-  });
+  if (!(await deliverBubbles(database, deps, bubbles, input))) return false;
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.parentUserId,

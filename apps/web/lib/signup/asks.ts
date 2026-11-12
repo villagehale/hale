@@ -6,16 +6,27 @@ import { type ConversablePlan, loadConversablePlans } from './plan/store';
 import type { SignupRunResult } from './run';
 import { type PendingSignupOffer, loadLastAskedOfferId, loadPendingOffers } from './store';
 
-/** Where an ask stands among the parent's: what their message may do to it unnamed. */
+/** Where an ask stands among the parent's: what their message may do to it. */
 export interface AskPlace {
   /**
    * Hale texted this parent about it last, of all their asks in any status (the offer, or a
-   * question back, notice or receipt about it since). Only this ask takes an answer that
-   * names none. When it cannot take it (a yes to a plan already approved, or it is no longer
-   * live), no other ask does unless the parent's words name that one.
+   * question back, notice or receipt about it since). Only this ask is approved, taken back
+   * or picked for. Words that name another of the parent's asks only make Hale ask about that
+   * one; once that question went out, it is the newest, and their next answer is its.
    */
   newest: boolean;
 }
+
+/**
+ * What Hale asks about a named ask it did not ask last, as a fact for that ask's own writer,
+ * which asks it in its own words. The readers never see Hale's question, so a yes or no
+ * question is put so that yes means go ahead and no means take it back.
+ */
+export const PLAN_ASK_BACK_QUESTION = 'Do you want Hale to register for this at the open?';
+export const SIGNUP_ASK_BACK_QUESTION = 'Do you want Hale to sign up for this?';
+/** A plan whose site options did not match is asked for the pick itself. */
+export const PICK_ASK_BACK_QUESTION =
+  "Which of the site's options do you want for this, or should Hale join the waitlist or email the provider?";
 
 /**
  * The live sign-up asks Hale made one parent, plan and one-shot in one ordering, the one

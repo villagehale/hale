@@ -5,7 +5,13 @@ import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { type AskPlace, loadLiveAsks, stoppedTurn, wordsNameAsk } from './asks';
+import {
+  type AskPlace,
+  SIGNUP_ASK_BACK_QUESTION,
+  loadLiveAsks,
+  stoppedTurn,
+  wordsNameAsk,
+} from './asks';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -227,12 +233,14 @@ export async function runAuthorizedSignup(
 
 /**
  * One pending ask Hale made this parent with no open ahead: the consent read, then the
- * booking. `unrelated` hands the message to the next ask. A yes or a no binds this ask
- * unnamed only when Hale asked the parent about it last; otherwise their words must carry its
- * program's name or its site, in whole words, or the turn stops. Words that name another of
- * their asks (`namesAnother`) and not this one are never this ask's: they pass on. A reading
- * that failed stops the turn. A question back comes only from the ask Hale asked last or one
- * their words name; any other passes the message on.
+ * booking. `unrelated` hands the message to the next ask. A yes or a no moves this ask only
+ * when Hale asked the parent about it last. Words that carry its program's name or its site,
+ * in whole words, only make Hale ask about it; once that question went out it is the ask
+ * asked last, and the parent's next answer is its. A yes or no in no ask's words stops the
+ * turn, and so does one whose words name another of their asks (`namesAnother`) and not
+ * this one: it is not this ask's, and it is not handed on. A reading that failed stops the
+ * turn. A question back comes only from the ask Hale asked last or one their words name;
+ * any other passes the message on.
  */
 async function runOneShotAsk(
   database: Database,
@@ -254,9 +262,10 @@ async function runOneShotAsk(
   if (namesAnother && !named) {
     console.info(
       { offerId: offer.id, verdict: reading.verdict },
-      'signup asks: words name another ask, passed on',
+      'signup asks: words name another ask',
     );
-    return 'unrelated';
+    if (reading.verdict === 'unclear') return 'unrelated';
+    return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
   }
   if (reading.verdict === 'unclear' && !place.newest && !named) return 'unrelated';
   if (reading.verdict === 'consent' || reading.verdict === 'decline') {
@@ -290,7 +299,7 @@ async function runOneShotAsk(
     };
   }
 
-  if (reading.verdict === 'unclear') {
+  if (reading.verdict === 'unclear' || !place.newest) {
     return replyFor(database, input, deps, door, {
       offerId: offer.id,
       outcome: 'clarify',
@@ -298,7 +307,7 @@ async function runOneShotAsk(
       link: '',
       prefilled: [],
       host,
-      question: reading.question,
+      question: reading.verdict === 'unclear' ? reading.question : SIGNUP_ASK_BACK_QUESTION,
     });
   }
   if (reading.verdict === 'decline') {

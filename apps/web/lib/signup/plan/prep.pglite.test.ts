@@ -216,4 +216,91 @@ describe('plan prep before the open', () => {
       'Their rule is eight and a number.',
     ]);
   });
+
+  it('a login ask whose link bubble fails after its text still counts as asked, and is not recorded as sent', async () => {
+    const family = await planned();
+    const bodies: string[] = [];
+    const result = await runDueSignupPlanPrep(
+      db.database,
+      { now: NOW },
+      {
+        writer: { write: async (facts) => `text for ${facts.kind}` },
+        deliver: async (input) => {
+          if (input.offerId !== family.offerId || input.body.startsWith('https://')) return false;
+          bodies.push(input.body);
+          return true;
+        },
+      },
+    );
+
+    expect(bodies).toEqual(['text for login_ask']);
+    expect(result.notices.filter((notice) => notice.offerId === family.offerId)).toEqual([
+      { offerId: family.offerId, kind: 'login_ask', sent: false },
+    ]);
+    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
+    const notices = await db.database
+      .select()
+      .from(schema.providerLoginNotices)
+      .where(eq(schema.providerLoginNotices.offerId, family.offerId));
+    expect(notices).toEqual([]);
+  });
+
+  it('a login ask whose first bubble never went is not asked', async () => {
+    const family = await planned();
+    const result = await runDueSignupPlanPrep(
+      db.database,
+      { now: NOW },
+      {
+        writer: { write: async (facts) => `text for ${facts.kind}` },
+        deliver: async () => false,
+      },
+    );
+
+    expect(result.notices.filter((notice) => notice.offerId === family.offerId)).toEqual([
+      { offerId: family.offerId, kind: 'login_ask', sent: false },
+    ]);
+    expect(await lastAskedAt(family.offerId)).toBeNull();
+  });
+
+  it('a rejected-password notice whose link bubble fails after its text still counts as asked', async () => {
+    const family = await planned();
+    const bodies: string[] = [];
+    const sent = await sendSignupPlanNotice(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        offerId: family.offerId,
+        providerHost: 'haltonhills.perfectmind.com',
+        kind: 'password_rejected',
+        facts: {
+          kind: 'password_rejected',
+          childFirstName: 'Ada',
+          opensAt: { local: '7:00', timeZone: 'UTC' },
+          host: 'haltonhills.perfectmind.com',
+          language: 'en',
+        },
+        link: 'https://app.villagehale.com/l/AbCdef1234',
+        linkAfter: 0,
+        now: NOW,
+      },
+      {
+        writer: {
+          write: async () => [
+            'They did not take that password.',
+            'Their rule is eight and a number.',
+          ],
+        },
+        deliver: async (input) => {
+          if (input.body.startsWith('https://')) return false;
+          bodies.push(input.body);
+          return true;
+        },
+      },
+    );
+
+    expect(sent).toBe(false);
+    expect(bodies).toEqual(['They did not take that password.']);
+    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
+  });
 });

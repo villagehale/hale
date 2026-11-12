@@ -2499,6 +2499,65 @@ describe('a re-driven turn never answers twice', () => {
   });
 });
 
+describe('a receipt sent as several bubbles', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A handler whose receipt is two bubbles, recording each afterSend call. */
+  function twoBubbles() {
+    const after: string[] = [];
+    const handler: DeterministicHandler = {
+      name: 'two_bubbles',
+      handle: async () => ({
+        claimed: true,
+        outcome: 'asked',
+        reply: 'Swim opens at 7.',
+        replies: ['Swim opens at 7.', 'https://example.test/l/abc'],
+        afterSend: async (channelMessageId: string) => {
+          after.push(channelMessageId);
+        },
+      }),
+    };
+    return { handler, after };
+  }
+
+  it('runs afterSend once the first bubble reached the parent, though a later one fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { handler, after } = twoBubbles();
+    const h = harness({ context: { body: 'yes' }, handlers: [handler] });
+    const send = h.transport.send.bind(h.transport);
+    h.transport.send = async (input) => {
+      if (input.body.startsWith('https://')) throw new Error('carrier refused');
+      return send(input);
+    };
+
+    await routeChannelMessage(h.deps, job()).catch(() => undefined);
+
+    expect(h.transport.bodies()).toEqual(['Swim opens at 7.']);
+    const outbound = h.fake
+      .rows(schema.channelMessages)
+      .filter((row) => row.direction === 'out')
+      .map((row) => row.id);
+    expect(outbound).toHaveLength(1);
+    expect(after).toEqual(outbound);
+  });
+
+  it('runs afterSend once, for the first bubble, when every bubble goes', async () => {
+    const { handler, after } = twoBubbles();
+    const h = harness({ context: { body: 'yes' }, handlers: [handler] });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Swim opens at 7.', 'https://example.test/l/abc']);
+    const [first] = h.fake
+      .rows(schema.channelMessages)
+      .filter((row) => row.direction === 'out')
+      .map((row) => row.id);
+    expect(after).toEqual([first]);
+  });
+});
+
 // ── the outage smoke alarm ───────────────────────────────────────────────────
 
 /**
