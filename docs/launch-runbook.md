@@ -120,6 +120,7 @@ Redeploy steps, same for every flag:
 | `LINQ_GROUP_MENTIONS_ENABLED` | empty | Inbound iMessage mentions are parsed and unused. Group replies go out without a `mention` field. Trimmed `true` enables them in any environment, including production. |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_POLLS_ENABLED` | empty | Parent-made group polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`. |
+| `LINQ_EFFECTS_ENABLED` | empty | iMessage screen and bubble effects stay dark. Trimmed `true` lets the model attach one to a rare celebratory reply in any environment, including production. |
 | `GROUP_POLLS_ENABLED` | empty | VIL-399 RSVP and time polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`; otherwise Hale asks in model-written plain text. Needs migration `0231_linq_group_experience`. |
 | `GROUP_LINK_CARDS_ENABLED` | empty | A posted group link stays an unnamed media part. Trimmed `true` lifts it into text and Hale says the public facts, then registration continues 1:1. |
 | `GROUP_CARPOOL_ENABLED` | empty | Same dark path as `LINQ_GROUP_CARPOOL_ENABLED` unless that flag is already on. |

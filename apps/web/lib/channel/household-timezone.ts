@@ -30,10 +30,18 @@ export async function householdTimezone(tx: Database, familyId: string): Promise
 }
 
 /**
+ * A stored `users.timezone` when it is a zone someone set, else null. UTC is the
+ * column default and means "never set" (migration 0178).
+ */
+export function knownTimezone(stored: string | null | undefined): string | null {
+  const zone = stored?.trim();
+  return zone && zone !== 'UTC' ? zone : null;
+}
+
+/**
  * The household's zone when Hale actually knows it, else null. Unlike
  * {@link householdTimezone} there is no product default: a fact handed to a model
  * ("today is Monday") must be the family's own clock or absent, never Toronto's.
- * UTC is the column default and means "never set" (migration 0178).
  */
 export async function knownHouseholdTimezone(
   database: Database,
@@ -50,6 +58,5 @@ export async function knownHouseholdTimezone(
       ),
     )
     .limit(1);
-  const zone = row?.timezone?.trim();
-  return zone && zone !== 'UTC' ? zone : null;
+  return knownTimezone(row?.timezone);
 }

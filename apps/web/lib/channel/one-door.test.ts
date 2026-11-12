@@ -37,6 +37,7 @@ const PROVIDER_TOKENS = [
   'createLinqChat(',
   'createLinqPhoneTransport(',
   'sendLinqParts(',
+  'sendLinqEffect(',
   'reactToLinqMessage(',
   'editLinqMessage(',
   'shareLinqContactCard(',
@@ -67,6 +68,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'VIL-479 edits one text part of a bubble Hale already sent; editLinqMessage runs only after the model writes the replacement, the original channel_messages row is the audit target (linq_message_edited), a linq:edit receipt is inserted after Linq accepts, and a refusal sends the follow-up instead',
   'apps/web/lib/channel/linq/tapback.ts':
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
+  'apps/web/lib/channel/linq/effect.ts':
+    "Hale's reply sent with an iMessage effect when the model chooses one; the router's sendReply writes its channel_messages row and sms_reply_sent audit as for any reply",
   'apps/web/lib/channel/linq/link-preview.ts':
     'a link part after a text that does not carry the URL; writes its own channel_messages row and linq_link_preview audit when a family id is passed, and sendLinkOnce ledgers its URL-as-text fallback (linq:link_text, sms_reply_sent)',
   'apps/web/lib/channel/linq/group.ts':
