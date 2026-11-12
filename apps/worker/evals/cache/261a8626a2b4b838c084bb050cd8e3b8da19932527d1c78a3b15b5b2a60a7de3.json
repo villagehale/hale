@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts, host, session and open time all match facts.loginCard; card title and description are in Chinese (facts.language zh), names the host, gives session and open time from facts; no child name, no price, no link, no invented details. Bubbles are short, one fact each, in Chinese. Minor: bubble 3 adds 'I can help you grab a spot,' which slightly implies a promised outcome, but no fabricated fact.",
+    "score": 5
+  }
+}

@@ -115,7 +115,10 @@ export type TurnFailureReason =
   | 'notice_unsent'
   /** VIL-581 · the claim reader could not read the composed reply, and neither a drafts
    * receipt nor an apology could be written. Nothing was texted; the turn is claimed. */
-  | 'claim_read_failed';
+  | 'claim_read_failed'
+  /** A text about a sign-up ask could not be marked before its send, so nothing was sent
+   * (signup/store.ts askStamp). The turn is claimed: the coach's writes landed. */
+  | 'ask_order_unmarked';
 
 /**
  * What became of an ANSWERED claim. 'already_answered' means another attempt's claim
@@ -155,6 +158,13 @@ export interface InboundTurnLedger {
      */
     folded: readonly string[];
   }): Promise<AnswerClaimOutcome>;
+  /**
+   * The turn is over for this text, whatever its outcome: it holds its claim, so no later
+   * turn reads it into a burst (burst.ts reads the claim). Written at the router's one
+   * exit, because a handler that answers for itself and a step that ends with nothing
+   * sent claim nothing on their own. A text already claimed keeps its claim.
+   */
+  recordRouted(input: { channelMessageId: string }): Promise<void>;
   /** Called before the turn is thrown back to the queue, so the re-drive knows the two
    * consuming steps are already paid for. */
   recordDeferred(input: {

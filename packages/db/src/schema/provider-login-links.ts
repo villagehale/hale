@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { authorizedSignupOffers } from './authorized-signup-offers.js';
 import { families } from './families.js';
@@ -34,9 +35,15 @@ export const providerLoginLinks = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Page purpose facts (host, session label, open time). Never a password. */
     purpose: jsonb('purpose').$type<Record<string, unknown>>(),
+    /** When the card reached the parent's thread. A retried notice reuses a sent card. */
+    sentAt: timestamp('sent_at', { withTimezone: true }),
   },
   (table) => ({
     tokenHashUniq: uniqueIndex('provider_login_links_token_hash_idx').on(table.tokenHash),
+    /** One live card per host: every mint spends the host's unspent rows in the same transaction. */
+    oneLivePerHost: uniqueIndex('provider_login_links_one_live_per_host')
+      .on(table.familyId, table.providerHost)
+      .where(sql`${table.consumedAt} IS NULL`),
     familyIdx: index('provider_login_links_family_idx').on(table.familyId, table.createdAt),
     expiresIdx: index('provider_login_links_expires_idx').on(table.expiresAt),
   }),

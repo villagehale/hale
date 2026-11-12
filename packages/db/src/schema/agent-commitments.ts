@@ -114,7 +114,7 @@ export const agentCommitments = pgTable(
     heardFacts: text('heard_facts').array(),
     /**
      * The BCP-47 tag the inbound screen read off the parent's text this activity promise
-     * answers (migration 0234), so the follow-up can be written in the language they asked
+     * answers (migration 0240), so the follow-up can be written in the language they asked
      * in. A tag, never the parent's words. Null when the screen read none, on every other
      * kind, and on rows written before the column existed: the follow-up then uses the
      * parent's stored language. A watch a follow-up mints carries its promise's tag on.

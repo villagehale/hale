@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reason": "Clear go-ahead with session order and price cap; waiver declined",
+    "said": "Oui vas-y : samedi d'abord, sinon dimanche.",
+    "named": null,
+    "verdict": "approve",
+    "choiceIds": [
+      "sat-0900",
+      "sun-1000"
+    ],
+    "maxPriceCents": 10000,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1596
+}

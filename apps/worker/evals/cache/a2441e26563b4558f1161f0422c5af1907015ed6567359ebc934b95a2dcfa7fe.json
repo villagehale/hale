@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Card title is in English ('Login for register.example-rec.test', 'Login for' is English) and description is in English ('Preschool Swim Sat 9:00, opens 7:00 a.m.'), not Chinese as facts.language requires. Bubbles are in Chinese and facts are accurate, names no child in card, no price, no invented time, no link; but the card language mismatch is a hard fail.",
+    "score": 2
+  }
+}

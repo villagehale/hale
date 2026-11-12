@@ -33,6 +33,19 @@ export function planReplyMode(registrationUrl: string): 'auto' | 'assisted' {
   return planModeFor(new URL(registrationUrl).hostname) === 'auto' ? 'auto' : 'assisted';
 }
 
+/**
+ * Registrable domains that host many providers' registration sites (ActiveNet, Amilia,
+ * Jackrabbit, PerfectMind, Uplifter). On one of these the domain names the platform, not
+ * the provider; a subdomain names the provider, when one does.
+ */
+export const SHARED_SIGNUP_PLATFORMS: readonly string[] = [
+  'activecommunities',
+  'amilia',
+  'jackrabbitclass',
+  'perfectmind',
+  'uplifterinc',
+];
+
 /** Optional hint only — never a gate. The generic agent may read this. */
 export function providerHint(hostname: string): string | null {
   const host = signupProviderHost(hostname);

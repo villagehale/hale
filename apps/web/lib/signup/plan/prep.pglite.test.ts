@@ -7,12 +7,13 @@ import { PROVIDER_CREDENTIALS_ENABLED_ENV } from '../credentials/flag';
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
 import { markCredentialsStale, saveProviderCredentials } from '../credentials/store';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
-import { lookupLoginLink } from '../login-link/store';
+import { lookupLoginLink, markLoginLinkSent } from '../login-link/store';
 import { recordSignupOffer } from '../store';
 import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   PRE_OPEN_LEAD_MS,
+  type PlanPrepDeliver,
   type PlanPrepFacts,
   plannedOfferDueForPrep,
   preOpenDueAt,
@@ -84,6 +85,20 @@ async function planned() {
   return { ...seeded, childId, offerId: offer.id };
 }
 
+type DeliverInput = Parameters<PlanPrepDeliver>[0];
+
+/** What the real door does once a card reaches the parent (notice.ts): stamp it sent. */
+async function stampCards(input: DeliverInput): Promise<void> {
+  for (const part of input.parts) {
+    if (part.type !== 'link') continue;
+    await markLoginLinkSent(db.database, {
+      id: part.loginLinkId,
+      familyId: input.familyId,
+      now: input.now,
+    });
+  }
+}
+
 function fakes() {
   const facts: PlanPrepFacts[] = [];
   const parts: PlanNoticePart[] = [];
@@ -94,11 +109,15 @@ function fakes() {
       writer: {
         write: async (input: PlanPrepFacts) => {
           facts.push(input);
-          return `text for ${input.kind}`;
+          return {
+            bubbles: [`text for ${input.kind}`],
+            card: input.loginCard ? { title: `card for ${input.kind}`, description: null } : null,
+          };
         },
       },
-      deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
+      deliver: async (input: DeliverInput) => {
         parts.push(...input.parts);
+        await stampCards(input);
         return 'sent' as const;
       },
     },
@@ -113,8 +132,9 @@ function fakesFor(offerId: string) {
     parts,
     deps: {
       writer: all.deps.writer,
-      deliver: async (input: { offerId: string; parts: readonly PlanNoticePart[] }) => {
+      deliver: async (input: DeliverInput) => {
         if (input.offerId === offerId) parts.push(...input.parts);
+        await stampCards(input);
         return 'sent' as const;
       },
     },
@@ -168,13 +188,19 @@ describe('plan prep before the open', () => {
       language: 'zh',
       host: HOST,
       sessionLabel: 'Preschool Swim Sat 9:00',
+      loginCard: { sessionLabel: 'Preschool Swim Sat 9:00', opensAt },
     });
     expect(first.parts[0]).toEqual({ type: 'text', body: 'text for login_ask' });
     const askCode = loginCode(first.parts[1]);
     expect(await lookupLoginLink(db.database, askCode, NOW)).toMatchObject({
       ok: true,
       providerHost: HOST,
-      purpose: { kind: 'login_ask', sessionLabel: 'Preschool Swim Sat 9:00', opensAt },
+      purpose: {
+        kind: 'login_ask',
+        sessionLabel: 'Preschool Swim Sat 9:00',
+        opensAt,
+        card: { title: 'card for login_ask', description: null },
+      },
     });
 
     // Account prep follows a sweep later. The login-ask card is still open, so it stays the
@@ -185,6 +211,7 @@ describe('plan prep before the open', () => {
       { offerId: family.offerId, kind: 'account_prep', outcome: 'sent' },
     ]);
     expect(second.parts).toEqual([{ type: 'text', body: 'text for account_prep' }]);
+    expect(second.facts[0]).toMatchObject({ kind: 'account_prep', loginCard: null });
     expect(await lookupLoginLink(db.database, askCode, NOW)).toMatchObject({ ok: true });
 
     const tooSoon = fakes();
@@ -348,16 +375,16 @@ describe('plan prep before the open', () => {
           passwordRejectionMessage: 'Password must include a number',
           passwordRule: '8 characters and a number',
         },
-        link: 'https://app.villagehale.com/l/AbCdef1234',
+        mintLink: async () => ({ url: 'https://app.villagehale.com/l/AbCdef1234', id: 'link-1' }),
         linkAfter: 0,
         now: NOW,
       },
       {
         writer: {
-          write: async () => [
-            'They did not take that password.',
-            'Their rule is eight and a number.',
-          ],
+          write: async () => ({
+            bubbles: ['They did not take that password.', 'Their rule is eight and a number.'],
+            card: null,
+          }),
         },
         deliver: async (input) => {
           parts.push(...input.parts);
@@ -368,7 +395,7 @@ describe('plan prep before the open', () => {
     expect(sent).toBe(true);
     expect(parts).toEqual([
       { type: 'text', body: 'They did not take that password.' },
-      { type: 'link', url: 'https://app.villagehale.com/l/AbCdef1234' },
+      { type: 'link', url: 'https://app.villagehale.com/l/AbCdef1234', loginLinkId: 'link-1' },
       { type: 'text', body: 'Their rule is eight and a number.' },
     ]);
   });

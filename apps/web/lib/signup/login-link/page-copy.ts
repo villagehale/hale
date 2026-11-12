@@ -2,7 +2,8 @@ import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
 import type { LoginLinkPurpose } from './store';
 
 /**
- * Static web UI copy for /l/<code>. Model-written SMS is a different surface.
+ * Static web UI copy for /l/<code>. Model-written SMS is a different surface, and so is the
+ * card's preview in the thread: its words come from the notice writer (page.tsx).
  * The lock line says what is true: Hale decrypts the login on its own servers to sign
  * in for the parent, so it never claims the login stays on the device.
  */
@@ -28,7 +29,7 @@ export const LOGIN_PAGE_COPY = {
   backToHale: 'back to Hale',
 } as const;
 
-/** The line under the heading and in the card preview: the session and the open. */
+/** The line under the page heading: the session and the open. Page chrome, never the preview. */
 export function loginPurposeLine(purpose: LoginLinkPurpose | null): string | null {
   if (!purpose) return null;
   if (!purpose.opensAt) return LOGIN_PAGE_COPY.finishing(purpose.sessionLabel);
