@@ -607,6 +607,9 @@ export async function cachedToolCall(opts) {
     ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
     ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
     userMessage,
+    // Image and document blocks ride after the text (VIL-413). Keyed only when present,
+    // so every recording made without them keeps its key.
+    ...(opts.attachments?.length ? { attachments: opts.attachments } : {}),
     toolName,
     toolSchema,
     ...(opts.lane ? { lane: opts.lane } : {}),
@@ -650,6 +653,9 @@ export async function cachedToolCall(opts) {
     };
   }
   requireLane(tag, model, opts);
+  if (opts.attachments?.length && !opts.lane) {
+    throw new Error(`${tag}: attachments ride only on a production lane`);
+  }
 
   const startedAt = Date.now();
   let value;
@@ -665,6 +671,7 @@ export async function cachedToolCall(opts) {
       ...(opts.systemExtras?.length ? { systemExtras: opts.systemExtras } : {}),
       ...(opts.cacheTtl ? { cacheTtl: opts.cacheTtl } : {}),
       userMessage,
+      ...(opts.attachments?.length ? { attachments: opts.attachments } : {}),
       toolName,
       toolDescription: opts.toolDescription ?? 'Return the result.',
       inputJsonSchema: toolSchema,

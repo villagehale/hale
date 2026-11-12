@@ -409,6 +409,11 @@ jobs:
       - name: Kid-relevance judge eval (cached-only)
         run: pnpm --filter @hale/worker eval:kid-relevance
 
+      # VIL-413. A URL this read returns counts as seen this turn for offer_signup, so an
+      # invented completion or a URL a planted line asked for would become an offer.
+      - name: Inbound photo facts eval (cached-only)
+        run: pnpm --filter @hale/worker eval:inbound-photo-facts
+
       - name: Autonomy notice eval (cached-only)
         run: pnpm --filter @hale/worker eval:autonomy-notice
 
@@ -431,6 +436,9 @@ jobs:
         run: pnpm --filter @hale/worker eval:said-line-convey:dry
       - name: Linq sticker eval (cached-only)
         run: pnpm --filter @hale/worker eval:linq-sticker
+
+      - name: Linq effect eval (cached-only)
+        run: pnpm --filter @hale/worker eval:linq-effect
 
       # VIL-479: linq-edit decision cache recorded. A miss fails CI.
       - name: Linq edit eval (cached-only)

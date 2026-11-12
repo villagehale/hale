@@ -9,10 +9,11 @@ import { attachmentContentBlock } from '~/lib/coach/attachment-blocks';
  *
  * Bytes are never stored. A photo is fetched when the coach runs, and only then.
  * A `.vcf` (`contact`, VIL-482) is fetched then too, and read into name and number —
- * the card itself is not handed to the model. A video, a voice memo, or any other
- * file is named so the model can write the reply; it is not downloaded. `audio`
- * (VIL-476) exists only while LINQ_VOICE_MEMOS_ENABLED is `true`; dark, audio reads
- * as `file`, exactly as before.
+ * the card itself is not handed to the model. A PDF (`file`, VIL-413) is fetched
+ * into a document block only while INBOUND_PHOTO_FACTS_ENABLED is lit. A video, a
+ * voice memo, or any other file is named so the model can write the reply; it is not
+ * downloaded. `audio` (VIL-476) exists only while LINQ_VOICE_MEMOS_ENABLED is `true`;
+ * dark, audio reads as `file`, exactly as before.
  */
 
 export type InboundMediaKind = 'image' | 'video' | 'audio' | 'file' | 'contact';
@@ -55,6 +56,10 @@ const IMAGE_BLOCK_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const IMAGE_BYTE_CAP = 4_000_000;
 /** A contact photo can make a `.vcf` large. The parser drops the photo itself. */
 const CONTACT_BYTE_CAP = 2_000_000;
+/** VIL-413 · the same ceiling a photo has. */
+const DOCUMENT_BYTE_CAP = 4_000_000;
+const PDF_EXT = /\.pdf(?:$|[?#])/i;
+const PDF_MIME = 'application/pdf';
 const FETCH_TIMEOUT_MS = 8_000;
 const MAX_PARTS = 8;
 
@@ -122,6 +127,7 @@ export type ContactFetch = (
 ) => Promise<Response>;
 
 const publicContactFetch: ContactFetch = createPublicFetch({ maxBytes: CONTACT_BYTE_CAP });
+const publicDocumentFetch: ContactFetch = createPublicFetch({ maxBytes: DOCUMENT_BYTE_CAP });
 
 export function classifyInboundMedia(
   mime: string | null,
@@ -221,17 +227,36 @@ function headerMime(header: string | null): string | null {
   return mime || null;
 }
 
+function sniffedPdf(bytes: Buffer): boolean {
+  return bytes.length >= 5 && bytes.toString('ascii', 0, 5) === '%PDF-';
+}
+
+function looksLikePdf(part: InboundMediaPart): boolean {
+  return (part.mime ?? '').toLowerCase() === PDF_MIME || PDF_EXT.test(part.url ?? '');
+}
+
+export interface ReadInboundMediaOptions {
+  /**
+   * VIL-413 · fetch a PDF file into a document block. Off (the default): files stay
+   * named and unwatched, so a dark turn downloads nothing new.
+   */
+  documents?: boolean;
+  /** The PDF fetch. Production pins the vetted address, like the `.vcf` fetch. */
+  documentFetch?: ContactFetch;
+}
+
 /**
  * Fetch the images on this turn into model blocks, `.vcf` parts into contact
  * fields, and hear its voice memos when a `hear` port is given (VIL-495). Videos
- * and other files are not fetched. A failed fetch is named in the return
- * (unwatched), never thrown, and the URL is not logged.
+ * and other files are not fetched, except a PDF while `documents` is on. A failed
+ * fetch is named in the return (unwatched), never thrown, and the URL is not logged.
  */
 export async function readInboundMedia(
   parts: readonly InboundMediaPart[],
   fetchImpl: typeof fetch = fetch,
   hear?: HearVoiceMemo,
   contactFetch: ContactFetch = publicContactFetch,
+  options: ReadInboundMediaOptions = {},
 ): Promise<ReadInboundMedia> {
   const blocks: Anthropic.ContentBlockParam[] = [];
   const unwatched: Array<{ kind: InboundMediaKind; heard?: string }> = [];
@@ -258,6 +283,12 @@ export async function readInboundMedia(
       const url = httpsMediaUrl(part.url);
       const heard = hear && url ? await hear({ ...part, url }) : null;
       unwatched.push(heard ? { kind: 'audio', heard } : { kind: 'audio' });
+      continue;
+    }
+    if (options.documents === true && part.kind === 'file' && looksLikePdf(part)) {
+      const block = await readDocumentPart(part, options.documentFetch ?? publicDocumentFetch);
+      if (block) blocks.push(block);
+      else unwatched.push({ kind: 'file' });
       continue;
     }
     if (part.kind !== 'image') {
@@ -314,47 +345,9 @@ async function readContactPart(
   part: InboundMediaPart,
   fetchImpl: ContactFetch,
 ): Promise<{ cards: CoachContact[]; truncated: boolean }> {
-  const first = publicMediaUrl(part.url);
-  if (!first) {
-    unreadContact(httpsMediaUrl(part.url) ? 'private_host' : 'not_https');
-    return EMPTY_CONTACTS;
-  }
-  let url: string = first;
   try {
-    const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-    let response = await fetchImpl(url, { redirect: 'manual', signal });
-    for (let hop = 0; response.status >= 300 && response.status < 400; hop++) {
-      const location = response.headers.get('location');
-      const next: string | null =
-        location && hop < MAX_CONTACT_REDIRECTS
-          ? publicMediaUrl(new URL(location, url).toString())
-          : null;
-      if (!next) {
-        unreadContact('redirect');
-        return EMPTY_CONTACTS;
-      }
-      url = next;
-      response = await fetchImpl(url, { redirect: 'manual', signal });
-    }
-    // Belt and braces: a fetch that followed anyway must still land on a public https host.
-    if (response.url && !publicMediaUrl(response.url)) {
-      unreadContact('redirect');
-      return EMPTY_CONTACTS;
-    }
-    if (!response.ok) {
-      unreadContact('http_status');
-      return EMPTY_CONTACTS;
-    }
-    const declared = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > CONTACT_BYTE_CAP) {
-      unreadContact('too_large');
-      return EMPTY_CONTACTS;
-    }
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.byteLength === 0 || bytes.byteLength > CONTACT_BYTE_CAP) {
-      unreadContact(bytes.byteLength === 0 ? 'empty' : 'too_large');
-      return EMPTY_CONTACTS;
-    }
+    const bytes = await fetchPublicMedia(part, fetchImpl, CONTACT_BYTE_CAP, unreadContact);
+    if (!bytes) return EMPTY_CONTACTS;
     const text = bytes.toString('utf8').replace(/^\uFEFF/, '');
     const parsed = parseContactCards(text);
     if (parsed.cards.length === 0) {
@@ -374,6 +367,88 @@ async function readContactPart(
   }
 }
 
+/** VIL-413 · a PDF the parent sent, as a document block. Null is already named in the log. */
+async function readDocumentPart(
+  part: InboundMediaPart,
+  fetchImpl: ContactFetch,
+): Promise<Anthropic.ContentBlockParam | null> {
+  try {
+    const bytes = await fetchPublicMedia(part, fetchImpl, DOCUMENT_BYTE_CAP, unreadDocument);
+    if (!bytes) return null;
+    // The bytes decide, not a header: a non-PDF sent as a document block fails the
+    // whole model call, not just this attachment.
+    if (!sniffedPdf(bytes)) {
+      unreadDocument('not_pdf');
+      return null;
+    }
+    return attachmentContentBlock(bytes, PDF_MIME);
+  } catch (err) {
+    console.info(
+      { reason: 'fetch_failed', err: err instanceof Error ? err.name : 'unknown' },
+      'inbound media: document unread',
+    );
+    return null;
+  }
+}
+
+/**
+ * GET one webhook-supplied URL (Devin SEC_0001, #985): only a public https host, every
+ * redirect hop checked again, and the body capped. Null is a refusal already named
+ * through `unread`; a thrown error is the caller's to name.
+ */
+async function fetchPublicMedia(
+  part: InboundMediaPart,
+  fetchImpl: ContactFetch,
+  byteCap: number,
+  unread: (reason: string) => void,
+): Promise<Buffer | null> {
+  const first = publicMediaUrl(part.url);
+  if (!first) {
+    unread(httpsMediaUrl(part.url) ? 'private_host' : 'not_https');
+    return null;
+  }
+  let url: string = first;
+  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  let response = await fetchImpl(url, { redirect: 'manual', signal });
+  for (let hop = 0; response.status >= 300 && response.status < 400; hop++) {
+    const location = response.headers.get('location');
+    const next: string | null =
+      location && hop < MAX_CONTACT_REDIRECTS
+        ? publicMediaUrl(new URL(location, url).toString())
+        : null;
+    if (!next) {
+      unread('redirect');
+      return null;
+    }
+    url = next;
+    response = await fetchImpl(url, { redirect: 'manual', signal });
+  }
+  // Belt and braces: a fetch that followed anyway must still land on a public https host.
+  if (response.url && !publicMediaUrl(response.url)) {
+    unread('redirect');
+    return null;
+  }
+  if (!response.ok) {
+    unread('http_status');
+    return null;
+  }
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > byteCap) {
+    unread('too_large');
+    return null;
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > byteCap) {
+    unread(bytes.byteLength === 0 ? 'empty' : 'too_large');
+    return null;
+  }
+  return bytes;
+}
+
 function unreadContact(reason: string): void {
   console.info({ reason }, 'inbound media: contact unread');
+}
+
+function unreadDocument(reason: string): void {
+  console.info({ reason }, 'inbound media: document unread');
 }
