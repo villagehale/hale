@@ -1,6 +1,6 @@
 'use client';
 
-import type { PostHog } from 'posthog-js';
+import type { CaptureResult, PostHog } from 'posthog-js';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { posthogReplayEnabled, posthogWebEnabled } from './flags';
@@ -34,6 +34,40 @@ export const POSTHOG_AUTOCAPTURE_URL_ALLOWLIST = [
 ];
 
 /**
+ * /l/<code> is a bearer link: whoever holds the code can save a login for the family, so
+ * the code never reaches PostHog. PostHog does not load on that page at all: a first load
+ * there stores the URL as the person's initial URL, which the flags request sends past
+ * `before_send`. Anything that still names one (a client-side visit, the page after it)
+ * goes out as `/l/[code]`, raw or URL-encoded, in any string or key.
+ */
+const LOGIN_LINK_CODE = /(\/|%2F)l(\/|%2F)[^/?#&\s"'\\]+/gi;
+
+export function isLoginLinkPath(pathname: string): boolean {
+  return pathname.startsWith('/l/');
+}
+
+function redactCodes<T>(value: T): T {
+  if (typeof value === 'string') return value.replace(LOGIN_LINK_CODE, '$1l$2[code]') as T;
+  if (Array.isArray(value)) return value.map(redactCodes) as T;
+  if (value && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, inner]) => [redactCodes(key), redactCodes(inner)]),
+    ) as T;
+  }
+  return value;
+}
+
+export function redactLoginLinkCodes(event: CaptureResult | null): CaptureResult | null {
+  if (!event) return null;
+  return {
+    ...event,
+    properties: redactCodes(event.properties),
+    ...(event.$set ? { $set: redactCodes(event.$set) } : {}),
+    ...(event.$set_once ? { $set_once: redactCodes(event.$set_once) } : {}),
+  };
+}
+
+/**
  * The single posthog-js init config, privacy-first (hard rule #1). Exported as a
  * pure value so the privacy posture is unit-tested directly.
  *
@@ -51,10 +85,14 @@ export const POSTHOG_AUTOCAPTURE_URL_ALLOWLIST = [
  *  - capture_exceptions ON. Console errors are left out (they may carry PII).
  *  - respect_dnt ON, plus the first-party opt-out in opt-out.ts.
  *  - events go through the /ingest rewrite, not *.i.posthog.com.
+ *  - before_send takes any /l/<code> out of every event (see redactLoginLinkCodes).
  * Identity is the HMAC'd family id only — set later via `identify`, never email.
  */
 export const POSTHOG_PII_SELECTOR = '[data-hale-pii], [data-hale-mask-input]';
-/** Classes/attrs we stamp on phone and code fields. `ph-mask` is rrweb's default maskTextClass. */
+/**
+ * Classes/attrs we stamp on phone and code fields, and on the /l/<code> login page.
+ * `ph-mask` is rrweb's default maskTextClass; `ph-no-capture` blocks the subtree whole.
+ */
 export const POSTHOG_MASK_INPUT_SELECTOR = 'ph-mask ph-no-capture';
 
 export const POSTHOG_INIT_CONFIG = {
@@ -70,6 +108,7 @@ export const POSTHOG_INIT_CONFIG = {
   },
   capture_exceptions: true,
   respect_dnt: true,
+  before_send: redactLoginLinkCodes,
 } satisfies Partial<Parameters<PostHog['init']>[1]>;
 
 /**
@@ -82,7 +121,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
   const [client, setClient] = useState<PostHog | null>(null);
 
   useEffect(() => {
-    if (!KEY || !posthogWebEnabled()) return;
+    if (!KEY || !posthogWebEnabled() || isLoginLinkPath(window.location.pathname)) return;
     let cancelled = false;
     void import('posthog-js').then(({ default: posthog }) => {
       if (cancelled) return;

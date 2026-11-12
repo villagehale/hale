@@ -41,6 +41,18 @@ const CHECKOUT = {
   payment_details_entered: false,
 };
 
+/** The last page before "place order": the saved card chosen, nothing placed. */
+const REVIEW = {
+  outcome: 'ready_to_place',
+  detail: 'none',
+  total_cents: 9800,
+  currency: 'cad',
+  tax_cents: 0,
+  fees_cents: 0,
+  saved_card_selected: true,
+  order_placed: false,
+};
+
 const PAID = {
   outcome: 'paid',
   detail: 'none',
@@ -50,7 +62,11 @@ const PAID = {
 
 type Logged = { method: string; path: string; body: Record<string, unknown> };
 
-type Outputs = { plan: Record<string, unknown>; payment?: Record<string, unknown> };
+type Outputs = {
+  plan: Record<string, unknown>;
+  review?: Record<string, unknown>;
+  payment?: Record<string, unknown>;
+};
 
 /** `runningUntil`: a run reports `running` until the clock reaches that time (a long queue). */
 function fakeFetch(
@@ -61,17 +77,18 @@ function fakeFetch(
 ) {
   const log: Logged[] = [];
   let runs = 0;
+  // Each run answers as the skill it was created with; a run this process never created
+  // (a payment an earlier sweep started) answers as the payment.
+  const skillOf = new Map<string, string>();
   const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
     const parsed = new URL(url);
     const method = init.method ?? 'GET';
     const path = `${parsed.pathname.replace('/api/v4', '')}${parsed.search}`;
-    log.push({
-      method,
-      path,
-      body: typeof init.body === 'string' ? JSON.parse(init.body) : {},
-    });
+    const body = typeof init.body === 'string' ? JSON.parse(init.body) : {};
+    log.push({ method, path, body });
     if (method === 'POST' && path === '/runs') {
       runs += 1;
+      skillOf.set(`run-${runs}`, String(body.task).split('\n')[0] ?? '');
       return Response.json({ id: `run-${runs}`, sessionId: 'bu-session-1' });
     }
     const run = /^\/runs\/(run-\d)/.exec(path)?.[1];
@@ -95,7 +112,13 @@ function fakeFetch(
     }
     if (run && path.endsWith('/cancel')) return Response.json({ id: run, status: 'cancelled' });
     if (run) {
-      const output = run === 'run-1' ? outputs.plan : outputs.payment;
+      const skill = skillOf.get(run);
+      const output =
+        skill === '# skill browser-use-plan-signup'
+          ? outputs.plan
+          : skill === '# skill browser-use-checkout-review'
+            ? (outputs.review ?? REVIEW)
+            : outputs.payment;
       return Response.json({
         id: run,
         status: 'completed',
@@ -159,6 +182,7 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
     ],
     maxPriceCents: 10000,
     waiverAccepted: true,
+    paymentEnabled: true,
     providerSession: {
       storageState: { cookies: [], origins: [] },
       browserUseProfileId: 'profile-seeded',
@@ -184,7 +208,7 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
 const runPosts = (log: Logged[]) => log.filter((r) => r.method === 'POST' && r.path === '/runs');
 
 describe('day-before plan engine', () => {
-  it('takes the first open choice, checks the cap on the cart total, then pays with the saved card', async () => {
+  it('takes the first open choice, checks the cap on the cart total, reads the final total, then pays with the saved card', async () => {
     const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
     const { input, steps, cap } = plan();
     const result = await runBrowserUsePlanSignup(input, deps);
@@ -196,12 +220,23 @@ describe('day-before plan engine', () => {
       confirmationNumber: 'R-55120',
       amountChargedCents: 9800,
       liveViewUrl: null,
-      costUsd: '0.0500',
+      costUsd: '0.0600',
       sessionCostUsd: '0.090000',
     });
-    expect(cap).toHaveBeenCalledWith(9800);
+    expect(cap.mock.calls).toEqual([[9800], [9800]]);
     expect(steps).toEqual([
       { step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 },
+      { step: 'spending_cap', amountCents: 9800, ok: true },
+      {
+        step: 'final_total',
+        checkoutTotalCents: 9800,
+        finalTotalCents: 9800,
+        taxCents: 0,
+        feesCents: 0,
+        currency: 'cad',
+        detail: 'none',
+        ok: true,
+      },
       { step: 'spending_cap', amountCents: 9800, ok: true },
       {
         step: 'payment',
@@ -211,18 +246,28 @@ describe('day-before plan engine', () => {
         confirmed: true,
       },
     ]);
-    const [first, second] = runPosts(log);
+    const [first, review, pay] = runPosts(log);
     expect(first?.body.keepAlive).toBe(900);
     expect(Object.prototype.hasOwnProperty.call(first?.body ?? {}, 'keepAlive')).toBe(true);
     expect(String(first?.body.task)).toContain('# skill browser-use-plan-signup');
     expect(String(first?.body.task)).toContain('"rank": 2');
     expect(String(first?.body.task)).toContain('"max_price_cents": 10000');
     expect(String(first?.body.task)).not.toContain('grace@example.test');
-    expect(String(second?.body.task)).toContain('# skill browser-use-saved-card-payment');
-    expect(second?.body).toMatchObject({ sessionId: 'bu-session-1' });
+    // The review reads the final total in the same browser, and is never told a figure to expect.
+    expect(String(review?.body.task)).toContain('# skill browser-use-checkout-review');
+    expect(String(review?.body.task)).toContain('"waiver_accepted_by_parent": true');
+    expect(String(review?.body.task)).not.toContain('9800');
+    expect(review?.body).toMatchObject({
+      sessionId: 'bu-session-1',
+      keepAlive: 900,
+      maxCostUsd: 1,
+    });
+    expect(review?.body).not.toHaveProperty('secretBindings');
+    expect(String(pay?.body.task)).toContain('# skill browser-use-saved-card-payment');
+    expect(pay?.body).toMatchObject({ sessionId: 'bu-session-1' });
     // The saved card is the city's; Hale sends no card at all.
-    expect(second?.body).not.toHaveProperty('secretBindings');
-    expect(second?.body).not.toHaveProperty('stripeLinkConnectionId');
+    expect(pay?.body).not.toHaveProperty('secretBindings');
+    expect(pay?.body).not.toHaveProperty('stripeLinkConnectionId');
   });
 
   it('never pays when the spending cap refuses: the cart stays on the live browser', async () => {
@@ -328,6 +373,319 @@ describe('day-before plan engine', () => {
 const MIN = 60_000;
 const cancels = (log: Logged[]) => log.filter((r) => r.path.endsWith('/cancel'));
 const browserStops = (log: Logged[]) => log.filter((r) => r.method === 'PATCH');
+const skills = (log: Logged[]) => runPosts(log).map((r) => String(r.body.task).split('\n')[0]);
+const PLAN_AND_REVIEW = ['# skill browser-use-plan-signup', '# skill browser-use-checkout-review'];
+
+describe('the final total, read before the saved card is charged', () => {
+  it('pays exactly the reviewed final total, tax included, not the cart total before the card', async () => {
+    // $80.00 in the cart, 13% tax shown only once the card is chosen: $80.00 + $10.40 = $90.40.
+    const { deps, log } = setup({
+      plan: { ...CHECKOUT, cart_total_cents: 8000 },
+      review: { ...REVIEW, total_cents: 9040, tax_cents: 1040 },
+      payment: { ...PAID, amount_charged_cents: 9040 },
+    });
+    const { input, cap, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'completed',
+      amountChargedCents: 9040,
+      cartTotalCents: 9040,
+    });
+    expect(cap.mock.calls).toEqual([[8000], [9040]]);
+    expect(checkpoints.filter((c) => c.phase === 'paying')[0]).toMatchObject({
+      cartTotalCents: 9040,
+    });
+    expect(String(runPosts(log)[2]?.body.task)).toContain('"amount_cents": 9040');
+  });
+
+  it('a charge of the pre-tax cart total is a mismatch against the final total', async () => {
+    const { deps } = setup({
+      plan: { ...CHECKOUT, cart_total_cents: 8000 },
+      review: { ...REVIEW, total_cents: 9040, tax_cents: 1040 },
+      payment: { ...PAID, amount_charged_cents: 8000 },
+    });
+    const result = await runBrowserUsePlanSignup(plan().input, deps);
+    expect(result).toMatchObject({ outcome: 'needs_human', detail: 'charge_mismatch' });
+  });
+
+  it('tax that pushes the final total over the maximum hands the cart back: price_change, never paying', async () => {
+    // $180.00 + 13% tax ($23.40) = $203.40 against a $200.00 maximum.
+    const { deps, log } = setup({
+      plan: { ...CHECKOUT, cart_total_cents: 18000 },
+      review: { ...REVIEW, total_cents: 20340, tax_cents: 2340 },
+      payment: PAID,
+    });
+    const { input, steps, cap, checkpoints } = plan({ maxPriceCents: 20000 });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'price_change',
+      liveViewUrl: LIVE,
+      cartTotalCents: 20340,
+      confirmationNumber: null,
+      amountChargedCents: null,
+    });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    expect(cap.mock.calls).toEqual([[18000]]);
+    expect(steps).toEqual([
+      { step: 'checkout', choiceIndex: 1, cartTotalCents: 18000 },
+      { step: 'spending_cap', amountCents: 18000, ok: true },
+      {
+        step: 'final_total',
+        checkoutTotalCents: 18000,
+        finalTotalCents: 20340,
+        taxCents: 2340,
+        feesCents: 0,
+        currency: 'cad',
+        detail: 'price_change',
+        ok: false,
+      },
+    ]);
+    // The cart stays on the live browser for the parent.
+    expect(browserStops(log)).toEqual([]);
+  });
+
+  it.each([
+    ['no total read', { total_cents: null }],
+    ['a total of zero', { total_cents: 0 }],
+    // Tax and fees only add: a final below the cart total is a subtotal, not the total.
+    ['a total below the cart total', { total_cents: 9000 }],
+    ['a review that stops with no reason', { outcome: 'needs_human' }],
+  ])('%s is total_unread: the cart goes back to the parent unpaid', async (_name, change) => {
+    const { deps, log } = setup({
+      plan: CHECKOUT,
+      review: { ...REVIEW, ...change },
+      payment: PAID,
+    });
+    const { input, steps, cap, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'total_unread',
+      liveViewUrl: LIVE,
+      cartTotalCents: 9800,
+    });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    expect(cap).toHaveBeenCalledTimes(1);
+    expect(steps.at(-1)).toMatchObject({ step: 'final_total', detail: 'total_unread', ok: false });
+  });
+
+  it.each([
+    ['another currency', { currency: 'usd' }],
+    ['no currency on the final page', { currency: null }],
+  ])('%s than the cart is currency_unknown, never paid', async (_name, change) => {
+    const { deps, log } = setup({
+      plan: CHECKOUT,
+      review: { ...REVIEW, ...change },
+      payment: PAID,
+    });
+    const { input, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'currency_unknown',
+      liveViewUrl: LIVE,
+    });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+  });
+
+  it('no currency on either page is currency_unknown, never paid: two unknowns are not a match', async () => {
+    const { deps, log } = setup({
+      plan: { ...CHECKOUT, cart_currency: null },
+      review: { ...REVIEW, currency: null },
+      payment: PAID,
+    });
+    const { input, steps, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'currency_unknown',
+      liveViewUrl: LIVE,
+      amountChargedCents: null,
+    });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    expect(steps.at(-1)).toMatchObject({
+      step: 'final_total',
+      currency: null,
+      detail: 'currency_unknown',
+      ok: false,
+    });
+  });
+
+  it('runs the spending cap again on the final total: a refusal there is never paid', async () => {
+    // $90.00 in the cart passes; $99.00 with fees does not, under a $95.00 cap.
+    const cap = vi.fn(async (cents: number) =>
+      cents <= 9500 ? { ok: true, reason: 'within' } : { ok: false, reason: 'over the cap' },
+    );
+    const { deps, log } = setup({
+      plan: { ...CHECKOUT, cart_total_cents: 9000 },
+      review: { ...REVIEW, total_cents: 9900, fees_cents: 900 },
+      payment: PAID,
+    });
+    const { input, steps, checkpoints } = plan({ checkSpendingCap: cap });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'spending_cap',
+      liveViewUrl: LIVE,
+      cartTotalCents: 9900,
+    });
+    expect(cap.mock.calls).toEqual([[9000], [9900]]);
+    expect(steps.slice(2)).toEqual([
+      {
+        step: 'final_total',
+        checkoutTotalCents: 9000,
+        finalTotalCents: 9900,
+        taxCents: 0,
+        feesCents: 900,
+        currency: 'cad',
+        detail: 'none',
+        ok: true,
+      },
+      { step: 'spending_cap', amountCents: 9900, ok: false },
+    ]);
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+  });
+
+  it('a review that says it placed the order may have charged the card: its own detail, the browser kept, a payment row, no payment run', async () => {
+    const { deps, log } = setup({
+      plan: CHECKOUT,
+      review: { ...REVIEW, order_placed: true },
+      payment: PAID,
+    });
+    const { input, steps, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'review_placed_order',
+      liveViewUrl: LIVE,
+      sessionId: 'bu-session-1',
+      browserId: 'browser-1',
+      confirmationNumber: null,
+      amountChargedCents: null,
+    });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    // Whatever the provider now shows stays on the live browser to be checked.
+    expect(browserStops(log)).toEqual([]);
+    expect(steps.slice(-2)).toEqual([
+      {
+        step: 'final_total',
+        checkoutTotalCents: 9800,
+        finalTotalCents: 9800,
+        taxCents: 0,
+        feesCents: 0,
+        currency: 'cad',
+        detail: 'review_placed_order',
+        ok: false,
+      },
+      // The amount is unknown, never zero: nothing here says the card was not charged.
+      {
+        step: 'payment',
+        outcome: 'needs_human',
+        detail: 'review_placed_order',
+        amountChargedCents: null,
+        confirmed: false,
+      },
+    ]);
+  });
+
+  it.each([
+    ['the saved card was not chosen', { saved_card_selected: false }, 'no_saved_card'],
+    [
+      'a code was asked for',
+      { outcome: 'needs_human', detail: 'verification_code', total_cents: null },
+      'verification_code',
+    ],
+  ])('%s: the cart goes back to the parent unpaid', async (_name, change, detail) => {
+    const { deps, log } = setup({
+      plan: CHECKOUT,
+      review: { ...REVIEW, ...change },
+      payment: PAID,
+    });
+    const { input, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({ outcome: 'needs_human', detail, liveViewUrl: LIVE });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+  });
+
+  it('a review still running at its deadline is cancelled and handed back: timeout, never paying', async () => {
+    const { deps, log } = setup(
+      { plan: CHECKOUT, payment: PAID },
+      { 'run-2': NOW.getTime() + 24 * 60 * MIN },
+    );
+    const { input, steps, checkpoints } = plan({ waitUntil: new Date(NOW.getTime() + 10 * MIN) });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({ outcome: 'needs_human', detail: 'timeout', liveViewUrl: LIVE });
+    expect(cancels(log).map((r) => r.path)).toEqual(['/runs/run-2/cancel']);
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    expect(steps.at(-1)).toMatchObject({
+      step: 'final_total',
+      finalTotalCents: null,
+      detail: 'timeout',
+      ok: false,
+    });
+  });
+
+  it('a signup run that ends at the sweep budget still leaves the review its own window', async () => {
+    // The sweep's budget is spent when checkout is reached; the review takes 90 seconds.
+    const { deps } = setup({ plan: CHECKOUT, payment: PAID }, { 'run-2': NOW.getTime() + 90_000 });
+    const result = await runBrowserUsePlanSignup(plan({ waitUntil: NOW }).input, deps);
+    expect(result).toMatchObject({ outcome: 'completed', confirmationNumber: 'R-55120' });
+  });
+
+  it("re-checks the parent's yes after the review: a lapse then is never paid", async () => {
+    const stillAuthorized = vi
+      .fn<() => Promise<boolean>>()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const { input, checkpoints } = plan({ stillAuthorized });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      liveViewUrl: null,
+    });
+    expect(stillAuthorized).toHaveBeenCalledTimes(2);
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    expect(browserStops(log).map((r) => r.path)).toEqual(['/browsers/browser-1']);
+  });
+
+  it('with the payment kill switch off the plan stops at checkout: payment_off, no review, never paying', async () => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const { input, steps, checkpoints } = plan({ paymentEnabled: false });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'payment_off',
+      liveViewUrl: LIVE,
+      cartTotalCents: 9800,
+    });
+    expect(skills(log)).toEqual(['# skill browser-use-plan-signup']);
+    expect(checkpoints.map((c) => c.phase)).toEqual(['signup']);
+    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
+  });
+});
 
 describe('a plan run longer than one sweep', () => {
   it('checkpoints at the sweep budget without cancelling, and the next sweep finishes the same run', async () => {
@@ -371,12 +729,19 @@ describe('a plan run longer than one sweep', () => {
     const done = await runBrowserUsePlanSignup(third.input, deps);
 
     expect(done).toMatchObject({ outcome: 'completed', confirmationNumber: 'R-55120' });
-    // One signup run and one payment run across all three sweeps.
+    // One signup run, one review and one payment run across all three sweeps.
     expect(runPosts(log).map((r) => String(r.body.task).split('\n')[0])).toEqual([
       '# skill browser-use-plan-signup',
+      '# skill browser-use-checkout-review',
       '# skill browser-use-saved-card-payment',
     ]);
-    expect(third.steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap', 'payment']);
+    expect(third.steps.map((s) => s.step)).toEqual([
+      'checkout',
+      'spending_cap',
+      'final_total',
+      'spending_cap',
+      'payment',
+    ]);
   });
 
   it('writes the paying checkpoint before it creates the payment run', async () => {
@@ -392,8 +757,8 @@ describe('a plan run longer than one sweep', () => {
 
     expect(order).toEqual([
       'signup:run-1 after 1 runs',
-      'paying:none after 1 runs',
-      'paying:run-2 after 2 runs',
+      'paying:none after 2 runs',
+      'paying:run-3 after 3 runs',
     ]);
   });
 
@@ -411,8 +776,16 @@ describe('a plan run longer than one sweep', () => {
       confirmationNumber: null,
       amountChargedCents: null,
     });
-    expect(runPosts(log)).toHaveLength(1);
-    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
+    expect(runPosts(log).map((r) => String(r.body.task).split('\n')[0])).toEqual([
+      '# skill browser-use-plan-signup',
+      '# skill browser-use-checkout-review',
+    ]);
+    expect(steps.map((s) => s.step)).toEqual([
+      'checkout',
+      'spending_cap',
+      'final_total',
+      'spending_cap',
+    ]);
     expect(browserStops(log).map((r) => r.path)).toEqual(['/browsers/browser-1']);
   });
 
