@@ -76,6 +76,15 @@ async function planned() {
   return { ...seeded, childId, offerId: offer.id };
 }
 
+/** When Hale last texted the parent about the offer, after the offer itself. */
+async function lastAskedAt(offerId: string) {
+  const [row] = await db.database
+    .select({ at: schema.authorizedSignupOffers.lastAskedAt })
+    .from(schema.authorizedSignupOffers)
+    .where(eq(schema.authorizedSignupOffers.id, offerId));
+  return row?.at?.toISOString() ?? null;
+}
+
 function fakes() {
   const kinds: PlanNoticeKind[] = [];
   const bodies: string[] = [];
@@ -112,6 +121,7 @@ describe('plan prep before the open', () => {
     const first = fakes();
     const login = await runDueSignupPlanPrep(db.database, { now: NOW }, first.deps);
     expect(login.notices).toEqual([{ offerId: family.offerId, kind: 'login_ask', sent: true }]);
+    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
     expect(first.bodies[0]).toBe('text for login_ask');
     expect(first.bodies[1]).toMatch(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/);
 
@@ -131,6 +141,7 @@ describe('plan prep before the open', () => {
     const third = fakes();
     const reminder = await runDueSignupPlanPrep(db.database, { now: reminderAt }, third.deps);
     expect(reminder.notices).toEqual([{ offerId: family.offerId, kind: 'pre_open', sent: true }]);
+    expect(await lastAskedAt(family.offerId)).toBe(reminderAt.toISOString());
     expect(third.bodies[0]).toBe('text for pre_open');
     expect(third.bodies[0]).not.toMatch(/https:\/\//);
 
@@ -152,6 +163,7 @@ describe('plan prep before the open', () => {
       },
     );
     expect(result.notices).toEqual([{ offerId: family.offerId, kind: 'login_ask', sent: false }]);
+    expect(await lastAskedAt(family.offerId)).toBeNull();
     const notices = await db.database
       .select()
       .from(schema.providerLoginNotices)
@@ -197,6 +209,7 @@ describe('plan prep before the open', () => {
       },
     );
     expect(sent).toBe(true);
+    expect(await lastAskedAt(family.offerId)).toBe(NOW.toISOString());
     expect(bodies).toEqual([
       'They did not take that password.',
       'https://app.villagehale.com/l/AbCdef1234',

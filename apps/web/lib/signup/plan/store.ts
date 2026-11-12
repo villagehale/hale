@@ -11,7 +11,13 @@ import {
   signupProviderHost,
 } from '../consent';
 import { LINK_SPEND_CEILING_CENTS } from '../link/client';
-import { isOneSubmittingViolation, loadPendingOffer, loadSignupIdentity } from '../store';
+import {
+  OFFER_ASKED_AT,
+  isOneSubmittingViolation,
+  loadPendingOffer,
+  loadSignupIdentity,
+  offerAskedAt,
+} from '../store';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
 
@@ -463,7 +469,8 @@ export interface ConversablePlan {
   childId: string;
   /** The parent Hale asked: only their words may set the plan or take it back. */
   parentUserId: string;
-  createdAt: Date;
+  /** When Hale last asked them about it (`offerAskedAt`). */
+  askedAt: Date;
   status: 'pending' | 'planned' | 'running';
   /** The program's public name, or null for an offer recorded before names were kept. */
   activityLabel: string | null;
@@ -480,9 +487,9 @@ export interface ConversablePlan {
 /**
  * The offers with a known open still ahead: a `pending` offer the coach recorded with its
  * open time, or a `planned` one the parent may still take back. A plan whose run is going
- * (possibly checkpointed between sweeps) can still be taken back too. Newest first; which
- * of the family's asks a message answers is `loadLiveAsks`'s ordering, plans and one-shot
- * asks together.
+ * (possibly checkpointed between sweeps) can still be taken back too. Most recently asked
+ * first; which of the family's asks a message answers is `loadLiveAsks`'s ordering, plans
+ * and one-shot asks together.
  */
 export async function loadConversablePlans(
   database: Database,
@@ -512,7 +519,7 @@ export async function loadConversablePlans(
         ),
       ),
     )
-    .orderBy(desc(offers.createdAt));
+    .orderBy(desc(OFFER_ASKED_AT));
   return rows.flatMap((row) => {
     if (!row.planOpensAt) return [];
     const status =
@@ -535,7 +542,7 @@ export async function loadConversablePlans(
         offerId: row.id,
         childId: row.childId,
         parentUserId: row.parentUserId,
-        createdAt: row.createdAt,
+        askedAt: offerAskedAt(row),
         status,
         activityLabel: row.activityLabel,
         providerHost: row.providerHost,

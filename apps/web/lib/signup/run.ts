@@ -60,6 +60,7 @@ import {
   loadBusy,
   loadSignupIdentity,
   markOffer,
+  markOfferAsked,
   recordBrowserUseCost,
   reserveBrowserUseAllowance,
 } from './store';
@@ -120,6 +121,11 @@ export interface SignupRunResult {
   /** Separate Linq sends, one bubble each. When set, the handler sends these instead of `reply`. */
   replies?: string[];
   deliverOnThread: boolean;
+  /**
+   * For the router to call once the reply went out on the thread: the ask it speaks to
+   * becomes the one Hale asked this parent last, so their next bare yes or no answers it.
+   */
+  afterSend?: (channelMessageId: string) => Promise<unknown>;
   /**
    * Set on the Browser Use path. Hale's AI writes the parent message from it;
    * this module has no fixed copy for it. `liveViewUrl` goes to the parent only.
@@ -981,7 +987,7 @@ function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionI
 }
 
 interface ReplyFacts {
-  offerId: string | null;
+  offerId: string;
   outcome: string;
   reason: SignupStopReason | BrowserUseHandoff['detail'] | null;
   link: string;
@@ -1246,10 +1252,15 @@ async function replyFor(
       parentUserId: input.parentUserId,
       chatId: door.chatId,
       body: line,
-      dedupeKey: `authorized_signup:${facts.offerId ?? 'none'}:${facts.outcome}`,
+      dedupeKey: `authorized_signup:${facts.offerId}:${facts.outcome}`,
       now: input.now,
     });
     if (status === 'sent' || status === 'already_sent') {
+      await markOfferAsked(database, {
+        familyId: input.familyId,
+        offerId: facts.offerId,
+        at: input.now,
+      });
       return {
         ...rush,
         claimed: true,
@@ -1272,7 +1283,15 @@ async function replyFor(
       };
     }
   }
-  return { ...rush, claimed: true, outcome: facts.outcome, reply: line, deliverOnThread: true };
+  return {
+    ...rush,
+    claimed: true,
+    outcome: facts.outcome,
+    reply: line,
+    deliverOnThread: true,
+    afterSend: () =>
+      markOfferAsked(database, { familyId: input.familyId, offerId: facts.offerId, at: input.now }),
+  };
 }
 
 async function writeAudit(

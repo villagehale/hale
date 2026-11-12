@@ -12,6 +12,7 @@ import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
+import { markOfferAsked } from '../store';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanPrepDeps } from './prep';
@@ -170,16 +171,20 @@ async function deliverDirect(
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
   if (delivered.status !== 'sent') return failed(delivered.reason);
-  await database
-    .update(messages)
-    .set({
-      channel: delivered.channel,
-      status: acceptedStatus(delivered.channel),
-      providerMessageId: delivered.providerMessageId,
-      providerChatId: delivered.chatId,
-      sentAt: input.now,
-    })
-    .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx
+      .update(messages)
+      .set({
+        channel: delivered.channel,
+        status: acceptedStatus(delivered.channel),
+        providerMessageId: delivered.providerMessageId,
+        providerChatId: delivered.chatId,
+        sentAt: input.now,
+      })
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+    await markOfferAsked(tx, { familyId: notice.familyId, offerId: notice.offerId, at: input.now });
+  });
   await threadProactiveMessage(database, {
     familyId: notice.familyId,
     parentUserId: notice.parentUserId,

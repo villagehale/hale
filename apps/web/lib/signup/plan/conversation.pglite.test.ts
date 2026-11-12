@@ -1,14 +1,26 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { z } from 'zod';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import type { SignupConsentReader, SignupConsentReading } from '../consent-reader';
+import {
+  type SignupConsentReader,
+  type SignupConsentReading,
+  type signupConsentSchema,
+  toSignupConsentReading,
+} from '../consent-reader';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
+import { authorizedSignupHandler } from '../handler';
 import { runAuthorizedSignup } from '../run';
 import { loadSignupIdentity, recordSignupOffer } from '../store';
 import { echoOutcomeWriter } from '../test-models';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
-import type { MismatchReader, MismatchReading } from './mismatch-reader';
+import {
+  type MismatchReader,
+  type MismatchReading,
+  type signupMismatchReadSchema,
+  toMismatchReading,
+} from './mismatch-reader';
 import { recordPlanNotice } from './prep';
 import { type PlanReader, type PlanReading, toPlanReading } from './reader';
 import { approveSignupPlan, parkSignupPlan } from './store';
@@ -176,6 +188,7 @@ describe('the day-before plan conversation', () => {
       outcome: 'plan_approved',
       reply: 'reply for approved',
       deliverOnThread: true,
+      afterSend: expect.any(Function),
     });
     const row = await offer(f.offerId);
     expect(row.status).toBe('planned');
@@ -825,6 +838,37 @@ describe('which ask a message answers', () => {
     expect(readOrder(planReader)).toEqual(['Little Kickers', 'Preschool Swim']);
     expect(result?.outcome).toBe('plan_approved');
     expect((await offer(f.offerId)).status).toBe('planned');
+
+    // Hale's receipt for the swim plan is its last word to them: a bare stop next takes the
+    // swim plan back, not the Kickers plan approved before it.
+    await result.afterSend?.('out-swim-planned');
+    const stop: PlanReader = {
+      read: vi.fn(async (read) =>
+        toPlanReading(
+          {
+            reason: 'r',
+            said: 'no stop',
+            named: null,
+            verdict: 'take_back',
+            choiceIds: [],
+            maxPriceCents: null,
+            waiverSaid: null,
+            waiverAccepted: false,
+            question: null,
+          },
+          read.offer,
+          read.text,
+        ),
+      ),
+    };
+    const stopped = await runAuthorizedSignup(db.database, turn(f, 'no stop'), {
+      planReader: stop,
+      planWriter,
+    });
+    expect(stopped.outcome).toBe('plan_cancelled');
+    expect(readOrder(stop)).toEqual(['Preschool Swim']);
+    expect((await offer(f.offerId)).status).toBe('handed_back');
+    expect((await offer(kickersId)).status).toBe('planned');
   });
 
   it('a reading that fails stops the turn: no later plan is read, and nothing moves', async () => {
@@ -1106,6 +1150,68 @@ describe('which ask a message answers', () => {
     expect(clarified.outcome).toBe('plan_clarify');
     expect(written.at(-1)?.question).toBe(question);
     expect(await replyBindings(f.offerId)).toEqual(['tokens']);
+  });
+
+  it('a named older plan that asks back is the ask a bare yes after it answers', async () => {
+    const f = await family(); // the swim plan ask, an hour ago
+    const kickersId = await kickersAsk(f); // ten minutes ago
+    const raw = (over: Partial<Parameters<typeof toPlanReading>[0]>) => ({
+      reason: 'r',
+      said: null,
+      named: null,
+      verdict: 'unrelated' as const,
+      choiceIds: [],
+      maxPriceCents: null,
+      waiverSaid: null,
+      waiverAccepted: false,
+      question: null,
+      ...over,
+    });
+    // The model's raw answers are stipulated, one per program; the readers are the real ones.
+    const readerOf = (
+      swim: Parameters<typeof toPlanReading>[0],
+      kickers: Parameters<typeof toPlanReading>[0],
+    ): PlanReader => ({
+      read: vi.fn(async (read) =>
+        toPlanReading(
+          read.offer.activity === 'Little Kickers' ? kickers : swim,
+          read.offer,
+          read.text,
+        ),
+      ),
+    });
+    const question = 'Do you want the Sunday 10:00 swim session instead?';
+    const { planWriter, written } = fakes(null);
+
+    const asked = await runAuthorizedSignup(db.database, turn(f, 'can we do the later swim one?'), {
+      planReader: readerOf(
+        raw({ verdict: 'unclear', named: 'the later swim one', question }),
+        raw({ verdict: 'unrelated' }),
+      ),
+      planWriter,
+    });
+    expect(asked.outcome).toBe('plan_clarify');
+    expect(written.at(-1)?.question).toBe(question);
+    // Asked only once the question went out: the router sends it, then calls afterSend.
+    expect((await offer(f.offerId)).lastAskedAt).toBeNull();
+    await asked.afterSend?.('out-swim-question');
+    expect((await offer(f.offerId)).lastAskedAt?.toISOString()).toBe(NOW.toISOString());
+
+    // The model's worst answer: both asks read the bare yes as a go-ahead.
+    const yes = { said: 'yes', choiceIds: ['sun-1000'], maxPriceCents: 9800 };
+    const bare = readerOf(raw({ verdict: 'approve', ...yes }), raw({ verdict: 'approve', ...yes }));
+    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+      planReader: bare,
+      planWriter,
+    });
+    expect(approved.outcome).toBe('plan_approved');
+    expect(readOrder(bare)).toEqual(['Preschool Swim']);
+    const swim = await offer(f.offerId);
+    expect(swim.status).toBe('planned');
+    expect(swim.planChoiceIds).toEqual(['sun-1000']);
+    expect((await offer(kickersId)).status).toBe('pending');
+    expect(await replyBindings(f.offerId)).toEqual(['tokens', 'newest']);
+    expect(await replyBindings(kickersId)).toEqual([]);
   });
 
   it('a message about none of them leaves the pending ask to no one but the coach', async () => {
@@ -1394,6 +1500,85 @@ describe('a plan ask and a one-shot ask, both live', () => {
     expect((await offer(older.id)).status).toBe('pending');
     expect((await offer(f.offerId)).status).toBe('pending');
   });
+
+  it('a named older one-shot ask that asks back is the ask a bare no after it hands back', async () => {
+    const seeded = await seedFamily(db.database);
+    const childId = await seedChild(db.database, seeded.familyId, 'Ada', 40, undefined, NOW);
+    const oneShot = async (key: string, label: string, url: string, minutesAgo: number) => {
+      const recorded = await recordSignupOffer(db.database, {
+        familyId: seeded.familyId,
+        childId,
+        parentUserId: seeded.parentUserId,
+        activityKey: key,
+        activityLabel: label,
+        registrationUrl: url,
+        sessions: [GYM_SESSION],
+        approvedPriceCents: null,
+        planOpensAt: null,
+        now: new Date(NOW.getTime() - minutesAgo * 60_000),
+      });
+      if (!recorded.ok) throw new Error(recorded.reason);
+      return recorded.id;
+    };
+    const gymnasticsId = await oneShot('toddler-gymnastics', 'Toddler Gymnastics', GYM_URL, 90);
+    const kickersId = await oneShot(
+      'kickers-sat',
+      'Little Kickers',
+      'https://kickers.example-sport.test/register/sat',
+      10,
+    );
+    // The model's raw answers are stipulated, one per program; the reader's checks are real.
+    const consentOf = (
+      gymnastics: z.infer<typeof signupConsentSchema>,
+      kickers: z.infer<typeof signupConsentSchema>,
+    ): SignupConsentReader => ({
+      read: vi.fn(async ({ offer: read }) =>
+        toSignupConsentReading(read.activityKey === 'kickers-sat' ? kickers : gymnastics, read),
+      ),
+    });
+    // The production handler, as the router calls it: send the reply, then afterSend.
+    const handle = (body: string, consentReader: SignupConsentReader) => {
+      seq += 1;
+      return authorizedSignupHandler({ consentReader, outcomeWriter: echoOutcomeWriter() }).handle(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          conversationId: 'conv-asked',
+          body,
+          now: NOW,
+          send: async () => {
+            throw new Error('handler must not send a 1:1 itself');
+          },
+          resolved: null,
+          openQuestions: async () => [],
+          inboundChannelMessageId: `msg-${seq}`,
+        },
+      );
+    };
+    const none = { sessionId: null, question: null };
+
+    const asked = await handle(
+      'is the gymnastics one on Saturdays?',
+      consentOf(
+        { verdict: 'unclear', sessionId: null, question: 'Do you want the Saturday class?' },
+        { verdict: 'unrelated', ...none },
+      ),
+    );
+    expect(asked).toMatchObject({ claimed: true, outcome: 'clarify' });
+    if (!asked.claimed) return;
+    expect(asked.reply).not.toBeNull();
+    await asked.afterSend?.('out-gymnastics-question');
+
+    // The model's worst answer: both asks read the bare no as a no.
+    const declined = await handle(
+      'no, forget it',
+      consentOf({ verdict: 'decline', ...none }, { verdict: 'decline', ...none }),
+    );
+    expect(declined).toMatchObject({ claimed: true, outcome: 'declined' });
+    expect((await offer(gymnasticsId)).status).toBe('handed_back');
+    expect((await offer(kickersId)).status).toBe('pending');
+  });
 });
 
 describe('when the site options do not match', () => {
@@ -1615,5 +1800,82 @@ describe('when the site options do not match', () => {
     expect(named.outcome).toBe('plan_approved');
     expect(sendProviderEmail).toHaveBeenCalledTimes(1);
     expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'emailed' });
+  });
+
+  it('a named older plan whose options did not match asks back, and the bare yes after it is its pick', async () => {
+    const f = await mismatched(); // the swim plan, asked an hour ago
+    const kickers = await recordSignupOffer(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      activityKey: 'kickers-sat',
+      activityLabel: 'Little Kickers',
+      registrationUrl: 'https://kickers.example-sport.test/register/sat',
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      planOpensAt: new Date('2026-12-08T12:00:00.000Z'),
+      now: new Date(NOW.getTime() - 10 * 60_000),
+    });
+    if (!kickers.ok) throw new Error(kickers.reason);
+    // The model's raw answers are stipulated; the readers' checks are the real ones.
+    const kickersReads = (verdict: 'approve' | 'unrelated'): PlanReader => ({
+      read: vi.fn(async (read) =>
+        toPlanReading(
+          {
+            reason: 'r',
+            said: verdict === 'approve' ? 'yes' : null,
+            named: null,
+            verdict,
+            choiceIds: verdict === 'approve' ? ['sat-0900'] : [],
+            maxPriceCents: verdict === 'approve' ? 9800 : null,
+            waiverSaid: null,
+            waiverAccepted: false,
+            question: null,
+          },
+          read.offer,
+          read.text,
+        ),
+      ),
+    });
+    const swimReads = (raw: z.infer<typeof signupMismatchReadSchema>): MismatchReader => ({
+      read: vi.fn(async (read) => toMismatchReading(raw, read.choices)),
+    });
+    const sendProviderEmail = vi.fn(async () => undefined);
+    const { planWriter, written } = fakes(null);
+    const question = 'Do you want the January waitlist instead?';
+
+    const asked = await runAuthorizedSignup(
+      db.database,
+      turn(f, 'can the swim one wait for January?'),
+      {
+        planReader: kickersReads('unrelated'),
+        planWriter,
+        mismatchReader: swimReads({ reason: 'r', verdict: 'unclear', choiceId: null, question }),
+        sendProviderEmail,
+      },
+    );
+    expect(asked.outcome).toBe('plan_clarify');
+    expect(written.at(-1)?.question).toBe(question);
+    // The router sends the question, then hands the turn its outbound message.
+    await asked.afterSend?.('out-swim-mismatch-question');
+
+    // The model's worst answer: the newer ask reads the bare yes as its go-ahead.
+    const planReader = kickersReads('approve');
+    const picked = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+      planReader,
+      planWriter,
+      mismatchReader: swimReads({
+        reason: 'r',
+        verdict: 'waitlist',
+        choiceId: null,
+        question: null,
+      }),
+      sendProviderEmail,
+    });
+    expect(picked.outcome).toBe('plan_approved');
+    expect(planReader.read).not.toHaveBeenCalled();
+    expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'join_waitlist' });
+    expect((await offer(kickers.id)).status).toBe('pending');
+    expect(sendProviderEmail).not.toHaveBeenCalled();
   });
 });

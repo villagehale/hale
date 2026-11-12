@@ -163,14 +163,39 @@ export async function recordSignupOffer(
   }
 }
 
+/** When Hale last asked the parent about an offer: its last text about it, else the offer. */
+export function offerAskedAt(row: { lastAskedAt: Date | null; createdAt: Date }): Date {
+  return row.lastAskedAt ?? row.createdAt;
+}
+
+/** {@link offerAskedAt} in SQL, to order offers most recently asked first. */
+export const OFFER_ASKED_AT = sql`coalesce(${schema.authorizedSignupOffers.lastAskedAt}, ${schema.authorizedSignupOffers.createdAt})`;
+
+/**
+ * Hale just sent this parent a text about this ask: a bare yes or no of theirs answers it
+ * next. Called once the text went out, never before, so a question that never reached them
+ * cannot take their next answer.
+ */
+export async function markOfferAsked(
+  database: Database,
+  input: { familyId: string; offerId: string; at: Date },
+): Promise<void> {
+  const offers = schema.authorizedSignupOffers;
+  await database
+    .update(offers)
+    .set({ lastAskedAt: input.at })
+    .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId)));
+}
+
 /** A pending ask with the public facts a parent could name it by. */
 export interface PendingSignupOffer extends SignupOffer {
   activityLabel: string | null;
   providerHost: string;
-  createdAt: Date;
+  /** {@link offerAskedAt}. */
+  askedAt: Date;
 }
 
-/** Every pending ask of the family, newest first. Several can be open at once. */
+/** Every pending ask of the family, most recently asked first. Several can be open at once. */
 export async function loadPendingOffers(
   database: Database,
   familyId: string,
@@ -180,7 +205,7 @@ export async function loadPendingOffers(
     .select()
     .from(offers)
     .where(and(eq(offers.familyId, familyId), eq(offers.status, 'pending')))
-    .orderBy(desc(offers.createdAt));
+    .orderBy(desc(OFFER_ASKED_AT));
   return rows.flatMap((row) =>
     row.familyId !== familyId || row.status !== 'pending'
       ? []
@@ -196,7 +221,7 @@ export async function loadPendingOffers(
             approvedPriceCents: row.approvedPriceCents,
             activityLabel: row.activityLabel,
             providerHost: row.providerHost,
-            createdAt: row.createdAt,
+            askedAt: offerAskedAt(row),
           },
         ],
   );

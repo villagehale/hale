@@ -6,19 +6,20 @@ import { type PendingSignupOffer, loadPendingOffers } from './store';
 
 /** Where an ask stands among the parent's: what their message may do to it unnamed. */
 export interface AskPlace {
-  /** Their newest ask of any lane and status: a take-back or a no need not name it. */
+  /** Asked about last, of any lane and status: a take-back or a no need not name it. */
   newest: boolean;
-  /** Their newest ask of any lane still waiting on a yes: a bare yes binds it. */
+  /** Asked about last of the asks still waiting on a yes: a bare yes binds it. */
   newestAsk: boolean;
 }
 
 /**
- * The live sign-up asks Hale made one parent, plan and one-shot in one ordering, newest
- * first. A plan ask is read by the plan lane (`runPlanAsk`), a one-shot ask by the consent
- * read; a message one ask's reader finds unrelated goes on to the next ask, whichever lane
- * it is in.
+ * The live sign-up asks Hale made one parent, plan and one-shot in one ordering, the one
+ * Hale asked them about last first (`askedAt`: the offer, or Hale's last text about it
+ * since, such as a question back). A bare yes or no answers the ask Hale asked last. A plan
+ * ask is read by the plan lane (`runPlanAsk`), a one-shot ask by the consent read; a message
+ * one ask's reader finds unrelated goes on to the next ask, whichever lane it is in.
  */
-export type LiveAsk = { offerId: string; createdAt: Date; place: AskPlace } & (
+export type LiveAsk = { offerId: string; askedAt: Date; place: AskPlace } & (
   | { lane: 'plan'; plan: ConversablePlan }
   | { lane: 'one_shot'; offer: PendingSignupOffer }
 );
@@ -46,7 +47,7 @@ export async function loadLiveAsks(
       .map((plan) => ({
         lane: 'plan' as const,
         offerId: plan.offerId,
-        createdAt: plan.createdAt,
+        askedAt: plan.askedAt,
         plan,
       })),
     ...oneShots
@@ -54,12 +55,10 @@ export async function loadLiveAsks(
       .map((offer) => ({
         lane: 'one_shot' as const,
         offerId: offer.id,
-        createdAt: offer.createdAt,
+        askedAt: offer.askedAt,
         offer,
       })),
-  ].sort(
-    (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.offerId < b.offerId ? 1 : -1),
-  );
+  ].sort((a, b) => b.askedAt.getTime() - a.askedAt.getTime() || (a.offerId < b.offerId ? 1 : -1));
   const newestAsk = ordered.findIndex(
     (ask) => ask.lane === 'one_shot' || ask.plan.status === 'pending',
   );

@@ -3,6 +3,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import { signupProviderHost } from '../consent';
 import { mintLoginLink } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
+import { markOfferAsked } from '../store';
 import { asBubbles, withLinkBubbles } from './bubbles';
 import { writePlanAudit } from './store';
 
@@ -198,6 +199,7 @@ export async function runDueSignupPlanPrep(
       kind,
       now: sweep.now,
     });
+    await markOfferAsked(database, { familyId: offer.familyId, offerId: offer.id, at: sweep.now });
     await writePlanAudit(database, {
       familyId: offer.familyId,
       actor: offer.parentUserId,
@@ -238,6 +240,11 @@ export async function sendSignupPlanNotice(
     });
     if (!ok) return false;
   }
+  await markOfferAsked(database, {
+    familyId: input.familyId,
+    offerId: input.offerId,
+    at: input.now,
+  });
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.parentUserId,

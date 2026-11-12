@@ -7,7 +7,7 @@ import { signupProviderHost } from '../consent';
 import { namesFacts } from '../parent-quote';
 import type { SignupRunInput, SignupRunResult } from '../run';
 import { siteChoiceSchema } from '../site-choices';
-import { loadSignupIdentity, markOffer } from '../store';
+import { loadSignupIdentity, markOffer, markOfferAsked } from '../store';
 import type { SignupSession } from '../types';
 import { type MismatchReader, createMismatchReader } from './mismatch-reader';
 import { hasPlanNotice, recordPlanNotice } from './prep';
@@ -416,5 +416,12 @@ async function reply(
     };
   }
   const link = moment === 'refused' ? plan.registrationUrl : null;
-  return { claimed: true, outcome, reply: planReplyBody(text, link), deliverOnThread: true };
+  return {
+    claimed: true,
+    outcome,
+    reply: planReplyBody(text, link),
+    deliverOnThread: true,
+    afterSend: () =>
+      markOfferAsked(database, { familyId: input.familyId, offerId: plan.offerId, at: input.now }),
+  };
 }

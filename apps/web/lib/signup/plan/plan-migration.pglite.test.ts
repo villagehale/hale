@@ -11,6 +11,9 @@ const MIGRATION = migrationFiles().find((file) => file.endsWith('_authorized_sig
 const RESUME_MIGRATION = migrationFiles().find((file) =>
   file.endsWith('_authorized_signup_plan_resume.sql'),
 );
+const LAST_ASKED_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_authorized_signup_last_asked.sql'),
+);
 
 let db: TestDb;
 
@@ -57,5 +60,25 @@ describe('authorized signup plan resume migration', () => {
       `select plan_resume->>'runId' as run_id, plan_lease_until is not null as leased, plan_cancel_requested_at is not null as taken_back from authorized_signup_offers where status = 'submitting'`,
     )) as { rows: unknown[] }[];
     expect(read[0]?.rows).toEqual([{ run_id: 'run-1', leased: true, taken_back: true }]);
+  });
+});
+
+describe('authorized signup last-asked migration', () => {
+  it('survives a second pass and holds when Hale last asked, null until it does', async () => {
+    expect(LAST_ASKED_MIGRATION).toBeDefined();
+    await db.applyMigration(LAST_ASKED_MIGRATION as string);
+    await db.applyMigration(LAST_ASKED_MIGRATION as string);
+    await insertOffer('pending');
+    const before = (await db.exec(
+      'select count(*)::int as unasked from authorized_signup_offers where last_asked_at is null',
+    )) as { rows: { unasked: number }[] }[];
+    expect(before[0]?.rows[0]?.unasked).toBeGreaterThan(0);
+    await db.exec(
+      `update authorized_signup_offers set last_asked_at = '2026-11-30T20:00:00Z' where last_asked_at is null`,
+    );
+    const after = (await db.exec(
+      `select (count(*) filter (where last_asked_at is null))::int as unasked, max(last_asked_at) = '2026-11-30T20:00:00Z'::timestamptz as stamped from authorized_signup_offers`,
+    )) as { rows: { unasked: number; stamped: boolean }[] }[];
+    expect(after[0]?.rows).toEqual([{ unasked: 0, stamped: true }]);
   });
 });

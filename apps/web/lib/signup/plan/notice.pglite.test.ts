@@ -136,6 +136,14 @@ function rig(text: string | null = 'Sunday is in your cart, finish in the open b
   return { notify, facts, sent, writer, transport };
 }
 
+async function lastAskedAt(offerId: string) {
+  const [row] = await db.database
+    .select({ at: schema.authorizedSignupOffers.lastAskedAt })
+    .from(schema.authorizedSignupOffers)
+    .where(eq(schema.authorizedSignupOffers.id, offerId));
+  return row?.at?.toISOString() ?? null;
+}
+
 async function storedThread(familyId: string) {
   const rows = await db.database
     .select({ content: schema.messages.content })
@@ -181,6 +189,8 @@ describe('the parent notice after a plan run', () => {
       );
     expect(ledger).toMatchObject({ direction: 'out', providerMessageId: 'prov-1' });
     expect(ledger?.sentAt).not.toBeNull();
+    // The text is Hale's last word to them about this plan: a bare stop next answers it.
+    expect(await lastAskedAt(f.offerId)).toBe(NOW.toISOString());
   });
 
   it('hands an ActiveNet parent a filled registration on the generic auto path, with the live browser after the text', async () => {
@@ -261,6 +271,7 @@ describe('the parent notice after a plan run', () => {
     const { notify, transport } = rig(null);
     expect(await notify(notice(f))).toBe('failed');
     expect(transport.send).not.toHaveBeenCalled();
+    expect(await lastAskedAt(f.offerId)).toBeNull();
   });
 
   it('a second notice for the same plan is not sent twice', async () => {

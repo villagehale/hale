@@ -112,6 +112,12 @@ export const authorizedSignupOffers = pgTable(
     /** Live seat/fee read. Never a person. */
     planAvailability: jsonb('plan_availability').$type<Record<string, unknown>>(),
     planAvailabilityAt: timestamp('plan_availability_at', { withTimezone: true }),
+    /**
+     * When Hale last sent this parent a text about the ask after the offer itself: a
+     * question back, a mismatch question, a login ask, a receipt. Null: the offer was the
+     * last. A bare yes or no answers the ask asked last, by `coalesce(this, created_at)`.
+     */
+    lastAskedAt: timestamp('last_asked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
