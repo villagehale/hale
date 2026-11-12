@@ -601,7 +601,7 @@ describe('a prep notice on an iMessage chat arrives paced', () => {
   const CARD = 'https://app.villagehale.com/l/AbCdef1234';
   const PARTS = [
     { type: 'text', body: 'Hale needs the swim login for Saturday.' },
-    { type: 'link', url: CARD },
+    { type: 'link', url: CARD, loginLinkId: '7d0c6a52-3f1e-4c55-9a43-2b8f1c9e0a11' },
     { type: 'text', body: 'It takes a minute.' },
   ] as const;
 
