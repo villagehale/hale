@@ -1,0 +1,12 @@
+{
+  "value": {
+    "kind": "time_vote",
+    "title": null,
+    "response": null,
+    "optionKey": "b",
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 1206
+}

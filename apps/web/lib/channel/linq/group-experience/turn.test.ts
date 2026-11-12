@@ -119,6 +119,7 @@ function reading(partial: Partial<GroupExperienceReading>): GroupExperienceReadi
     response: null,
     optionKey: null,
     options: [],
+    starts: [],
     confidence: 'high',
     ...partial,
   };
@@ -140,6 +141,7 @@ describe('takeGroupExperienceTurn', () => {
         senderFamilyId: FAMILY,
         text: 'who is in for Saturday',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -166,6 +168,7 @@ describe('takeGroupExperienceTurn', () => {
         senderFamilyId: FAMILY,
         text: 'who is in for the picnic',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -183,6 +186,7 @@ describe('takeGroupExperienceTurn', () => {
           return { providerMessageId: 'out-1' };
         },
         privateSlices: async () => [] as FamilyPrivateSlice[],
+        deny: async () => [],
         households: async () => [FAMILY],
       },
     );
@@ -207,6 +211,7 @@ describe('takeGroupExperienceTurn', () => {
         senderFamilyId: FAMILY,
         text: 'who is in',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -220,6 +225,7 @@ describe('takeGroupExperienceTurn', () => {
           return { providerMessageId: 'out-1' };
         },
         privateSlices: async () => [],
+        deny: async () => [],
         households: async () => [FAMILY],
       },
     );
@@ -244,6 +250,7 @@ describe('takeGroupExperienceTurn', () => {
         senderFamilyId: FAMILY,
         text: 'does the snack have peanuts? Mira is allergic',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -272,6 +279,7 @@ describe('takeGroupExperienceTurn', () => {
             signups: [],
           },
         ],
+        deny: async () => ['Mira peanut allergy'],
         households: async () => [FAMILY],
       },
     );
@@ -280,7 +288,7 @@ describe('takeGroupExperienceTurn', () => {
     expect(oneToOne).toEqual([{ familyId: FAMILY, text: 'Noted on Mira.' }]);
   });
 
-  it('refuses a group line that repeats a private slice string', async () => {
+  it('refuses a group line that repeats a deny-list term', async () => {
     vi.stubEnv('GROUP_PRIVATE_QUESTION_ENABLED', 'true');
     const group: string[] = [];
     await takeGroupExperienceTurn(
@@ -293,6 +301,7 @@ describe('takeGroupExperienceTurn', () => {
         senderFamilyId: FAMILY,
         text: 'peanut allergy?',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -306,16 +315,8 @@ describe('takeGroupExperienceTurn', () => {
           return { providerMessageId: 'g1' };
         },
         sendOneToOne: async () => 'sent',
-        privateSlices: async () => [
-          {
-            familyId: FAMILY,
-            memory: ['peanut allergy'],
-            calendar: [],
-            email: [],
-            children: [],
-            signups: [],
-          },
-        ],
+        privateSlices: async () => [],
+        deny: async () => ['peanut allergy'],
         households: async () => [FAMILY],
       },
     );

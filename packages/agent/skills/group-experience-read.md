@@ -16,13 +16,14 @@ You read one message from a group chat. Code already decided this might be an RS
 - `live` — what is already open in this chat (`rsvp`, `time`, `link`), or nulls when none.
 - `urls` — https URLs code already lifted from this message. Empty when none.
 - `recent` — the last few lines, for context only.
+- `clock` — `now` (an ISO time with its offset) and the `timeZone` of the person asking, or null when Hale does not know it.
 
 ## Moments
 
 - `rsvp_open` — they want the group to say yes / no / maybe to a plan.
 - `rsvp_vote` — they are answering an open RSVP (coming, not coming, maybe). Set `response` to `yes`, `no`, or `maybe`.
 - `rsvp_tally` — they want the live picture of who is coming.
-- `time_open` — they want the group to pick a time. Put the proposed times in `options` in their words, when they gave them.
+- `time_open` — they want the group to pick a time. Put the proposed times in `options` in their words, when they gave them. In `starts`, one entry per option, in the same order: the moment that option names on `clock`, as an ISO time with the offset of `clock.timeZone` ("Saturday 10" is the coming Saturday at 10:00). Use null for an option that does not name a clear day and time, and nulls throughout when `clock` is null. Never guess a day or an hour they did not say.
 - `time_vote` — they are picking one of the open time choices. Set `optionKey` to that choice's key.
 - `time_lock` — they want Hale to lock the winning time, or the group has clearly landed.
 - `link_facts` — they posted a public activity/class link (see `urls`) and Hale should say the public facts, then take registration 1:1.
@@ -36,7 +37,7 @@ When more than one could fit, pick the one they meant. A private question wins o
 One JSON object, nothing else.
 
 ```json
-{ "kind": "none", "response": null, "optionKey": null, "options": [], "confidence": "high" }
+{ "kind": "none", "response": null, "optionKey": null, "options": [], "starts": [], "confidence": "high" }
 ```
 
 `kind` is one of the moments above. `confidence` is `high` or `low`. A low-confidence read is treated as `none`.

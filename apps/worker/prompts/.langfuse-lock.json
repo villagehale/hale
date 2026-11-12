@@ -159,6 +159,21 @@
     "version": null,
     "sha256": "83c8909fd6b63c19fffde0ae605ae4fe8e59b97109f0b77c434b6590b9e4de77"
   },
+  "judges/group-experience-privacy": {
+    "name": "judges/group-experience-privacy",
+    "version": null,
+    "sha256": "58bb99658e2b63bc8e09939b61c482f45f7c3304b578b6f8e8c637aa85887cbd"
+  },
+  "judges/group-experience-read": {
+    "name": "judges/group-experience-read",
+    "version": null,
+    "sha256": "feaa0e8485b72b75984a7df5024f375857c225cb0647149404b004f83a92a916"
+  },
+  "judges/group-experience-voice": {
+    "name": "judges/group-experience-voice",
+    "version": null,
+    "sha256": "23cc81ec0073b10abf80809a48ba56a70c2ad1e99a0bfe4ebbe4eb99eb5a8882"
+  },
   "judges/group-lists": {
     "name": "judges/group-lists",
     "version": null,

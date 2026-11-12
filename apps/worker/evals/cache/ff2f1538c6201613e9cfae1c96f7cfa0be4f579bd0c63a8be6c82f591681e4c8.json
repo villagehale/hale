@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Opens with a generic form-like thank-you and tells the family to reply YES/NO/MAYBE, which is a bot voice and an instruction to type a reply. It also fails to address the peanut question using the stored fact about Mira's allergy.",
+    "score": 1
+  }
+}

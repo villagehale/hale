@@ -1,9 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { groupExperienceTurnEnabled, groupPollsEnabled } from '../config';
-import { privateAsideOneToOne } from '../connect-link-1to1';
+import { type OneToOneSend, privateAsideOneToOne } from '../connect-link-1to1';
+import { settleGroupPlanCalendarAfterRsvp } from '../group-plan-rsvp/inbound';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
+import type { GroupPlanRsvpComposer } from '../group-plan-rsvp/voice';
 import { readFamilySliceForAudience } from '../multi-family';
 import { lookupLinqPollOption } from '../poll';
 import { isGroupExperiencePollKind } from './kinds';
@@ -24,6 +27,23 @@ export interface GroupExperienceInboundPorts {
   reader?: GroupExperienceReader;
   composer?: GroupExperienceComposer;
   sendOneToOne?: GroupExperienceTurnPorts['sendOneToOne'];
+  /** The 1:1 transport. Absent means production Linq (the door's own test seam). */
+  oneToOne?: OneToOneSend;
+  /** The VIL-503 calendar ask's writer. Absent means the production model. */
+  calendarComposer?: GroupPlanRsvpComposer;
+}
+
+function calendarSettle(ports: GroupExperienceInboundPorts, chatId: string) {
+  return (answer: Parameters<NonNullable<GroupExperienceTurnPorts['settleCalendar']>>[0]) =>
+    settleGroupPlanCalendarAfterRsvp(
+      {
+        database: ports.database,
+        now: ports.now,
+        oneToOne: ports.oneToOne,
+        composer: ports.calendarComposer,
+      },
+      { chatId, ...answer },
+    );
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -39,8 +59,9 @@ async function senderNameOf(database: Database, userId: string | null): Promise<
 function productionOneToOne(
   database: Database,
   now: Date,
+  send: OneToOneSend | undefined,
 ): NonNullable<GroupExperienceTurnPorts['sendOneToOne']> {
-  const aside = privateAsideOneToOne(database, { now });
+  const aside = privateAsideOneToOne(database, { now, send });
   return async (input) => {
     const textOut = await aside({
       familyId: input.familyId,
@@ -64,6 +85,7 @@ export async function considerGroupExperience(
 ): Promise<GroupExperienceTurnOutcome> {
   if (!groupExperienceTurnEnabled()) return { handled: false };
   const senderUserId = input.senderUserId ?? null;
+  const askerFamilyId = input.senderFamilyId ?? input.coveringFamilyId;
   return takeGroupExperienceTurn(
     {
       chatId: input.chatId,
@@ -74,6 +96,7 @@ export async function considerGroupExperience(
       senderFamilyId: input.senderFamilyId ?? null,
       text: input.text,
       language: 'en',
+      timeZone: await knownHouseholdTimezone(ports.database, askerFamilyId),
       now: ports.now,
     },
     {
@@ -82,7 +105,9 @@ export async function considerGroupExperience(
       composer: ports.composer,
       send: ports.send,
       pollCard: postgresExperiencePollCard(ports.database),
-      sendOneToOne: ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now),
+      settleCalendar: calendarSettle(ports, input.chatId),
+      sendOneToOne:
+        ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now, ports.oneToOne),
       privateSlices: async (familyIds) => {
         const out = [];
         for (const familyId of familyIds) {
@@ -146,6 +171,17 @@ export async function considerGroupExperiencePollVote(
       coversKeys: [],
       verbatim: option.text,
       now: ports.now,
+    });
+    await calendarSettle(
+      ports,
+      input.chatId,
+    )({
+      planId: option.subjectKey,
+      userId: senderUserId,
+      memberKey,
+      displayName: senderName || 'someone',
+      response,
+      parentWords: null,
     });
     return { handled: true, outcome: 'group_experience_recorded', count: 'intake' };
   }

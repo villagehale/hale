@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to see who is coming to the Saturday picnic, which is an RSVP status lookup and expects an rsvp_open moment. The reading returned kind 'none', so Hale produced no moment at all instead of the expected rsvp_open. That is the wrong moment for this message, so it scores low, though it is not an invented or private detail.",
+    "score": 2
+  }
+}

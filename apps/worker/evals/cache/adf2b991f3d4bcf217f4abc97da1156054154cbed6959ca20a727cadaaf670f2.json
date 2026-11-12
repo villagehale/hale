@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a family login, which is a private detail, and the reading correctly classifies it as private_question with no fields filled in, so no credential is leaked and the moment is right.",
+    "score": 5
+  }
+}

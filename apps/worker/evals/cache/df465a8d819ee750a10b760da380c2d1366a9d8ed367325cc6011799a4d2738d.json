@@ -1,0 +1,13 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday picnic — are you in? Tap below or just tell me yes, no, or maybe.",
+    "options": [
+      "I'm in",
+      "Can't make it",
+      "Maybe"
+    ],
+    "why": "rsvp_open"
+  },
+  "latencyMs": 2495
+}

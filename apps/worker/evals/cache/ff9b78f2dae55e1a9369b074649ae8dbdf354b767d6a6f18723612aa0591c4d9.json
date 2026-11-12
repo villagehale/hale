@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message reads like a form or bot: opens with 'Thank you for your message' and tells the family to reply YES, NO or MAYBE, which is explicitly disallowed. It also fails to use the camp link fact or offer warm, specific help taking registration forward.",
+    "score": 1
+  }
+}

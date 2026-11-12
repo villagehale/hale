@@ -481,6 +481,16 @@ jobs:
         working-directory: apps/worker
         run: node evals/group-reminder-eval.mjs --cached-only --broken
 
+      # VIL-399 group-chat scenes: reader + voice through the production validator.
+      # Hard gate: every privacy fixture (a private question leaves the group; a group line
+      # keeps every secret). Quality misses are printed, not gated. A cache miss fails CI.
+      - name: Group scenes eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-experience
+
+      # Calibration: a leaking line and one canned reply-keyword line must each be rejected.
+      - name: Group scenes eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:group-experience:broken
+
       - name: Email alert notice eval (cached-only)
         run: pnpm --filter @hale/worker eval:email-alert-notice
 

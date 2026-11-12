@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is rsvp_tally, meaning the parent wants the RSVP picture for Saturday. The reading returned kind 'none', so it failed to recognize the request and produced no tally. That is the wrong moment for this message.",
+    "score": 1
+  }
+}

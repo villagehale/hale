@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for the status of Saturday, and the expected moment is rsvp_tally. The reading is kind rsvp_tally for the Saturday picnic, with no response, options or starts set, which is correct for a tally request. No private details are copied into any field.",
+    "score": 5
+  }
+}

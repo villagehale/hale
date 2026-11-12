@@ -20,7 +20,11 @@ import {
   hostFamilyIdForPlan,
   sharedCalendarConsentReader,
 } from './calendar';
-import { answerPendingCalendarAsk } from './calendar-turn';
+import {
+  type CalendarEffect,
+  answerPendingCalendarAsk,
+  settleCalendarAfterAnswer,
+} from './calendar-turn';
 import { senderMemberKey } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
@@ -39,7 +43,7 @@ import {
   sendGroupPlanRsvpLine,
 } from './send';
 import { createPostgresGroupPlanRsvpStore } from './store';
-import type { PlanTally } from './tally';
+import type { PlanRsvpResponse, PlanTally } from './tally';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import type { GroupPlanRsvpComposer } from './voice';
 
@@ -268,6 +272,45 @@ function calendarOutcome(
     tally,
     calendar: answered.effect,
   };
+}
+
+/**
+ * VIL-399 — an answer recorded on a plan outside this module's turn (a native card tap, a
+ * group-experience read, a locked time) takes the same household OK before anything lands
+ * on that household's calendar: the VIL-503 1:1 ask, never a silent write. Off unless plan
+ * RSVPs and their calendar step are both on, exactly as the turn itself reads them.
+ */
+export async function settleGroupPlanCalendarAfterRsvp(
+  ports: GroupPlanRsvpInboundPorts,
+  input: {
+    chatId: string;
+    planId: string;
+    userId: string | null;
+    memberKey: string;
+    displayName: string;
+    response: PlanRsvpResponse;
+    parentWords: string | null;
+  },
+): Promise<CalendarEffect | undefined> {
+  if (!linqGroupPlanRsvpEnabled() || !linqGroupPlanRsvpCalendarEnabled()) return undefined;
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const plan = await store.loadLivePlan(input.chatId);
+  if (!plan || plan.id !== input.planId) return undefined;
+  return settleCalendarAfterAnswer(
+    {
+      chatId: input.chatId,
+      plan,
+      userId: input.userId,
+      memberKey: input.memberKey,
+      displayName: input.displayName,
+      householdLabel: null,
+      response: input.response,
+      language: await calendarHouseholdLanguage(ports.database, input.chatId, input.userId),
+      parentWords: input.parentWords,
+      now: ports.now,
+    },
+    { store, ...calendarPorts(ports) },
+  );
 }
 
 type PrivateCalendarCandidate = Awaited<

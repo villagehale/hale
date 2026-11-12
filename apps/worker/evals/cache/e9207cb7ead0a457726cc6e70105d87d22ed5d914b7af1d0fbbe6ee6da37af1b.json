@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is an RSVP acceptance for the whole family, and the reading correctly produces an rsvp_vote with response yes. No time, option, or private detail is invented; empty options and starts are appropriate for a plain RSVP.",
+    "score": 5
+  }
+}

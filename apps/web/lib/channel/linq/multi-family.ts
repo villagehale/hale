@@ -124,6 +124,15 @@ export interface MultiFamilyTurnPorts {
   commonTimeWriter?: (request: SpokenLineRequest) => Promise<string | null>;
   /** VIL-459: a picked time becomes a plan with per-family invites. Production: inbound. */
   commonTimePlan?: CommonTimePlanPorts;
+  /**
+   * VIL-399: a group moment (an RSVP or time poll, a posted link, a private question) read
+   * before Hale's plain answer. Null leaves the turn to the answer below. `privateMove`
+   * means the asker was already texted 1:1 about their own question, so no aside follows.
+   */
+  experience?: () => Promise<{
+    result: Extract<MultiFamilyTurnResult, { handled: true }>;
+    privateMove: boolean;
+  } | null>;
 }
 
 const LEFT_TEMPLATE = 'linq:multi_family_left';
@@ -938,7 +947,7 @@ async function readFamilyPrivateSlice(
  * (present or not), and the family whose group this chat is. A union, so losing one source
  * (a forgotten presence row, an ended seat) never narrows it.
  */
-async function denyListForChat(database: Database, chatId: string): Promise<string[]> {
+export async function denyListForChat(database: Database, chatId: string): Promise<string[]> {
   const [present, joins, hosts] = await Promise.all([
     presentHouseholds(database, chatId, { includeStopped: true, includeLeft: true }),
     liveJoins(database, chatId),
@@ -1100,7 +1109,7 @@ export type MultiFamilyTurnResult =
       handled: true;
       outcome: string;
       count: 'intake' | 'ignored' | 'duplicate';
-      notice?: string;
+      notice?: string | { skipped: string };
       /** VIL-457: what the private aside did for this message, when it ran. */
       aside?: string;
     };
@@ -1836,6 +1845,13 @@ export async function takeMultiFamilyTurn(
     });
     const aside = await runAside();
     return aside ? { ...picked, aside: aside.outcome } : picked;
+  }
+
+  const moment = wired.experience ? await wired.experience() : null;
+  if (moment) {
+    if (moment.privateMove) return moment.result;
+    const aside = await runAside();
+    return aside ? { ...moment.result, aside: aside.outcome } : moment.result;
   }
 
   if (intent === 'question' || intent === 'find_time' || intent === 'yes' || intent === 'no') {

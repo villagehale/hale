@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a form-style reply ('Thank you for your message') and tells people what to type ('Reply YES, NO or MAYBE'), which the rubric treats as a 1. It also omits the actual new time (4:00 PM) and the change itself, so it fails the moment's one job.",
+    "score": 1
+  }
+}

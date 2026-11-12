@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message reads like a form or bot: it opens with 'Thank you for your message' and instructs people to 'reply YES, NO or MAYBE', which the spec explicitly forbids. It also never names the Saturday picnic, so it is generic rather than specific to this moment.",
+    "score": 1
+  }
+}

@@ -31,25 +31,18 @@ describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
     vi.unstubAllEnvs();
   });
 
-  it('counts only when the flag is exactly true and the deploy is preview', () => {
-    vi.stubEnv('VERCEL_ENV', 'preview');
+  it('counts only when the flag is exactly true, on every deploy (Barton 11-12: launch scope)', () => {
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
+    for (const deploy of ['production', 'preview', 'development', '']) {
+      vi.stubEnv('VERCEL_ENV', deploy);
+      expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
+    }
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true\n');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'on');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'false');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
-    vi.stubEnv('VERCEL_ENV', 'production');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', 'development');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', '');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+    for (const off of ['on', 'false', '']) {
+      vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', off);
+      expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+    }
     vi.unstubAllEnvs();
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
   });

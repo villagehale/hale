@@ -6,23 +6,17 @@ import {
   groupPrivateQuestionEnabled,
   linqPollsEnabled,
 } from '../config';
-import type { GroupPlanCopyStore } from '../group-plan-invites';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { optionKeyAt } from '../group-plan-rsvp/poll-tally';
 import {
   type GroupPlanRsvpStore,
   createPostgresGroupPlanRsvpStore,
 } from '../group-plan-rsvp/store';
-import { type FamilyPrivateSlice, presentHouseholds } from '../multi-family';
-import {
-  placeYesFamilyCalendars,
-  planAsGroupPlan,
-  postgresYesCalendarCopies,
-  yesFamilyIdsForPlan,
-} from './calendar';
+import { type FamilyPrivateSlice, denyListForChat, presentHouseholds } from '../multi-family';
+import { settleGroupPlanCalendarAfterRsvp } from '../group-plan-rsvp/inbound';
+import type { PlanRsvpResponse } from '../group-plan-rsvp/tally';
 import { GROUP_RSVP_POLL_KIND, GROUP_TIME_POLL_KIND } from './kinds';
 import { type ExperiencePollCardPort, postgresExperiencePollCard } from './poll-card';
-import { privateDenyTokens } from './privacy';
 import {
   type GroupExperienceKind,
   type GroupExperienceLiveView,
@@ -52,7 +46,7 @@ export type GroupExperienceTurnOutcome =
         | 'group_experience_line_unsent'
         | 'group_experience_1to1';
       count: 'ignored' | 'intake';
-      notice?: 'sent' | { skipped: GroupExperienceVoiceSkip | 'not_sent' };
+      notice?: 'sent' | { skipped: GroupExperienceVoiceSkip | 'not_sent' | 'asker_unknown' };
       card?: 'sent' | { skipped: string };
     };
 
@@ -65,6 +59,8 @@ export interface GroupExperienceTurnInput {
   senderFamilyId: string | null;
   text: string;
   language: 'en' | 'fr';
+  /** The asking household's zone, so the reader can place a proposed time. Null: unknown. */
+  timeZone: string | null;
   now: Date;
 }
 
@@ -75,7 +71,11 @@ export interface GroupExperienceTurnPorts {
   reader?: GroupExperienceReader;
   composer?: GroupExperienceComposer;
   pollCard?: ExperiencePollCardPort;
-  copies?: GroupPlanCopyStore;
+  /**
+   * An answer on a plan goes to the VIL-503 household OK before any calendar write.
+   * Production: settleGroupPlanCalendarAfterRsvp.
+   */
+  settleCalendar?: (input: SettleCalendarInput) => Promise<unknown>;
   send?: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
   sendOneToOne?: (input: {
     familyId: string;
@@ -83,9 +83,36 @@ export interface GroupExperienceTurnPorts {
     url?: string | null;
     dedupeKey: string;
   }) => Promise<'sent' | 'not_sent'>;
+  /** The asking household's own slice, for its 1:1 answer only. */
   privateSlices?: (familyIds: readonly string[]) => Promise<FamilyPrivateSlice[]>;
+  /** Terms no group line may carry. Production: every household's, via denyListForChat. */
+  deny?: () => Promise<readonly string[]>;
   recent?: () => Promise<{ from: 'hale' | 'member'; text: string }[]>;
   households?: (chatId: string) => Promise<string[]>;
+}
+
+export interface SettleCalendarInput {
+  planId: string;
+  userId: string | null;
+  memberKey: string;
+  displayName: string;
+  response: PlanRsvpResponse;
+  parentWords: string | null;
+}
+
+async function settleCalendar(
+  ports: GroupExperienceTurnPorts,
+  input: GroupExperienceTurnInput,
+  answer: SettleCalendarInput,
+): Promise<void> {
+  if (ports.settleCalendar) {
+    await ports.settleCalendar(answer);
+    return;
+  }
+  await settleGroupPlanCalendarAfterRsvp(
+    { database: ports.database, now: input.now },
+    { chatId: input.chatId, ...answer },
+  );
 }
 
 async function liveView(
@@ -198,10 +225,9 @@ async function householdsInChat(
 
 async function denyForChat(
   ports: GroupExperienceTurnPorts,
-  familyIds: readonly string[],
-): Promise<string[]> {
-  if (!ports.privateSlices) return [];
-  return privateDenyTokens(await ports.privateSlices(familyIds));
+  chatId: string,
+): Promise<readonly string[]> {
+  return ports.deny ? ports.deny() : denyListForChat(ports.database, chatId);
 }
 
 export async function takeGroupExperienceTurn(
@@ -224,13 +250,14 @@ export async function takeGroupExperienceTurn(
     live,
     urls,
     recent: ports.recent ? await ports.recent() : [],
+    clock: input.timeZone ? { now: input.now.toISOString(), timeZone: input.timeZone } : null,
   });
   if (!reading || reading.kind === 'none' || !allowedKind(reading.kind)) {
     return { handled: false };
   }
 
   const familyIds = await householdsInChat(ports, input.chatId, input.familyId);
-  const deny = await denyForChat(ports, familyIds);
+  const deny = await denyForChat(ports, input.chatId);
 
   if (reading.kind === 'rsvp_open') return openRsvp(input, ports, store, plans, reading, deny);
   if (reading.kind === 'rsvp_vote' && reading.response) {
@@ -241,7 +268,7 @@ export async function takeGroupExperienceTurn(
   if (reading.kind === 'time_vote' && reading.optionKey) {
     return voteTime(input, ports, store, reading.optionKey, deny);
   }
-  if (reading.kind === 'time_lock') return lockTime(input, ports, store, deny);
+  if (reading.kind === 'time_lock') return lockTime(input, ports, store, plans, deny);
   if (reading.kind === 'link_facts') {
     return speakLink(input, ports, store, urls[0] ?? live.link?.url ?? null, familyIds, deny);
   }
@@ -367,6 +394,14 @@ async function voteRsvp(
     verbatim: input.text,
     now: input.now,
   });
+  await settleCalendar(ports, input, {
+    planId: plan.id,
+    userId: input.senderUserId,
+    memberKey,
+    displayName: input.senderName || 'someone',
+    response,
+    parentWords: input.text,
+  });
   const loaded = await plans.loadTally(plan.id);
   if (loaded.tally.toGo === 0) {
     return tallyRsvp(input, ports, plans, deny, store);
@@ -420,15 +455,6 @@ async function tallyRsvp(
       notice: { skipped: 'not_sent' },
     };
   }
-  const groupPlan = await planAsGroupPlan(ports.database, plan.id, input.chatId);
-  if (groupPlan) {
-    const yesIds = await yesFamilyIdsForPlan(ports.database, plan.id);
-    await placeYesFamilyCalendars(
-      ports.copies ?? postgresYesCalendarCopies(ports.database),
-      groupPlan,
-      yesIds,
-    );
-  }
   if (store) {
     const live = await store.loadLive(input.chatId, 'rsvp_poll');
     if (live && tally.toGo === 0) await store.close(live.id, input.now);
@@ -476,7 +502,8 @@ async function openTime(
       notice: { skipped: 'not_sent' },
     };
   }
-  const labels = parentOptions.length >= 2 ? parentOptions : spoken.options;
+  const fromParent = parentOptions.length >= 2;
+  const labels = fromParent ? parentOptions : spoken.options;
   if (labels.length < 2) {
     return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
   }
@@ -484,6 +511,8 @@ async function openTime(
     key: optionKeyAt(index),
     text,
     choiceValue: optionKeyAt(index),
+    // Only a time the reader placed on the asker's clock; the voice's own labels carry none.
+    startsAt: fromParent ? (reading.starts[index] ?? null) : null,
   }));
   const plan = await plans.loadLivePlan(input.chatId);
   const subjectKey = plan?.id ?? `time:${input.chatId}`;
@@ -543,12 +572,13 @@ async function lockTime(
   input: GroupExperienceTurnInput,
   ports: GroupExperienceTurnPorts,
   store: GroupExperienceStore,
+  plans: GroupPlanRsvpStore,
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
   const live = await store.loadLive(input.chatId, 'time_poll');
   if (!live) return { handled: false };
   const options = Array.isArray(live.payload.options)
-    ? (live.payload.options as { key: string; text: string }[])
+    ? (live.payload.options as { key: string; text: string; startsAt?: string | null }[])
     : [];
   const votes = (live.payload.votes as Record<string, string> | undefined) ?? {};
   const counts = new Map<string, number>();
@@ -569,7 +599,8 @@ async function lockTime(
   }
   if (!winnerKey || tie || best === 0)
     return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
-  const winner = options.find((option) => option.key === winnerKey)?.text ?? null;
+  const won = options.find((option) => option.key === winnerKey) ?? null;
+  const winner = won?.text ?? null;
   if (!winner) return { handled: false };
   const spoken = await speak(ports, input, 'time_lock', { winner }, 0, 'group', deny);
   if (spoken.status !== 'composed') {
@@ -590,22 +621,24 @@ async function lockTime(
     };
   }
   const planId = typeof live.payload.planId === 'string' ? live.payload.planId : null;
-  if (planId) {
-    const startsAt = Date.parse(winner);
-    if (!Number.isNaN(startsAt)) {
-      await ports.database
-        .update(schema.linqGroupPlans)
-        .set({ startsAt: new Date(startsAt) })
-        .where(eq(schema.linqGroupPlans.id, planId));
-      const groupPlan = await planAsGroupPlan(ports.database, planId, input.chatId);
-      if (groupPlan) {
-        const yesIds = await yesFamilyIdsForPlan(ports.database, planId);
-        await placeYesFamilyCalendars(
-          ports.copies ?? postgresYesCalendarCopies(ports.database),
-          groupPlan,
-          yesIds,
-        );
-      }
+  // The winner's time is the instant the reader placed when the poll opened. A label is
+  // never parsed into a date: no placed instant, no plan time and no calendar step.
+  const placed = typeof won?.startsAt === 'string' ? new Date(won.startsAt) : null;
+  if (planId && placed && !Number.isNaN(placed.getTime())) {
+    await ports.database
+      .update(schema.linqGroupPlans)
+      .set({ startsAt: placed })
+      .where(eq(schema.linqGroupPlans.id, planId));
+    const { rows } = await plans.loadTally(planId);
+    for (const yes of await plans.listYesRsvps(planId)) {
+      await settleCalendar(ports, input, {
+        planId,
+        userId: yes.userId,
+        memberKey: yes.memberKey,
+        displayName: rows.find((row) => row.memberKey === yes.memberKey)?.displayName ?? 'someone',
+        response: 'yes',
+        parentWords: null,
+      });
     }
   }
   await store.close(live.id, input.now);
@@ -677,6 +710,18 @@ async function movePrivate(
   familyIds: readonly string[],
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
+  // Only the asking household hears it 1:1. An asker with no household here gets no 1:1 and
+  // no group promise of one: another family is never texted in their place.
+  const targetFamilyId =
+    input.senderFamilyId && familyIds.includes(input.senderFamilyId) ? input.senderFamilyId : null;
+  if (!targetFamilyId) {
+    return {
+      handled: true,
+      outcome: 'group_experience_line_unsent',
+      count: 'ignored',
+      notice: { skipped: 'asker_unknown' },
+    };
+  }
   const spoken = await speak(ports, input, 'private_hold', {}, 0, 'group', deny);
   if (spoken.status === 'composed') {
     const notice = await sendGroup(ports, input, spoken.line);
@@ -691,10 +736,6 @@ async function movePrivate(
   } else {
     // Model miss or a private leak: stay quiet in the group, still try 1:1.
   }
-  const targetFamilyId =
-    input.senderFamilyId && familyIds.includes(input.senderFamilyId)
-      ? input.senderFamilyId
-      : (familyIds[0] ?? input.familyId);
   const slices = ports.privateSlices ? await ports.privateSlices([targetFamilyId]) : [];
   const own = slices[0];
   const oneToOne = await speak(
