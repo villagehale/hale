@@ -3,7 +3,6 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { OPS_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import {
@@ -1205,9 +1204,6 @@ describe('what the parent is told was charged', () => {
   const threw = (): never => {
     throw new Error('engine fell over');
   };
-  /** #ops pages once per site per hour: each paging case starts a fresh window. */
-  const freshPageWindow = () =>
-    db.database.delete(schema.rateLimits).where(eq(schema.rateLimits.route, OPS_PAGE_ROUTE));
 
   it('a paid run carries its cents; a hand-back before the engine carries nothing', async () => {
     const paid = await plannedFamily();
@@ -1256,7 +1252,6 @@ describe('what the parent is told was charged', () => {
   });
 
   it('a payment an earlier sweep started, read by an engine that throws: unknown, and no review page', async () => {
-    await freshPageWindow();
     const posted = stubOpsSlack();
     const family = await payingFamily();
     const { runner } = settling(PAID);
@@ -1271,10 +1266,10 @@ describe('what the parent is told was charged', () => {
     expect(posted).toEqual([]);
   });
 
-  it('a review whose answer was never read pages #ops and tells the parent the charge is unknown', async () => {
-    await freshPageWindow();
+  it('a review whose answer was never read pages #ops for each run and tells the parent the charge is unknown', async () => {
     const posted = stubOpsSlack();
     const family = await plannedFamily();
+    const other = await plannedFamily();
     const runner = {
       ...engineLike(PAID).runner,
       run: vi.fn(async () => ({
@@ -1295,13 +1290,15 @@ describe('what the parent is told was charged', () => {
       charged: 'unknown',
       liveViewUrl: LIVE_VIEW,
     });
-    expect(posted).toEqual([
-      `Hale: ops page. site registration_review_unread. ref ${family.offerId}.`,
-    ]);
+    // Two families in the same hour: each one's possible charge is its own page.
+    expect(posted.sort()).toEqual(
+      [family, other]
+        .map((f) => `Hale: ops page. site registration_review_unread. ref ${f.offerId}.`)
+        .sort(),
+    );
   });
 
   it('an engine that throws once the review started may have charged: unknown, and pages #ops', async () => {
-    await freshPageWindow();
     const posted = stubOpsSlack();
     const family = await plannedFamily();
     const runner = {
