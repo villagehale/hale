@@ -14,8 +14,34 @@ describe('parseGroupExperienceReading', () => {
       response: null,
       optionKey: null,
       options: [],
+      starts: [],
       confidence: 'low',
     });
+  });
+
+  it('pairs each time option with the instant the model placed, never a parsed label', () => {
+    expect(
+      parseGroupExperienceReading({
+        kind: 'time_open',
+        options: ['Saturday 10', 'Sunday 10', 'Monday'],
+        starts: ['2026-11-14T10:00:00-05:00', 'Sunday 10', null],
+        confidence: 'high',
+      }),
+    ).toMatchObject({
+      options: ['Saturday 10', 'Sunday 10', 'Monday'],
+      starts: ['2026-11-14T10:00:00-05:00', null, null],
+    });
+  });
+
+  it('places nothing when the starts do not line up with the options', () => {
+    expect(
+      parseGroupExperienceReading({
+        kind: 'time_open',
+        options: ['Saturday 10', 'Sunday 10'],
+        starts: ['2026-11-14T10:00:00-05:00'],
+        confidence: 'high',
+      }),
+    ).toMatchObject({ starts: [null, null] });
   });
 
   it('keeps a high-confidence RSVP vote', () => {

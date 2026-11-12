@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does the moment's one job: asks whether people are in for the Saturday picnic and names the title from facts. It carries exactly one question as required. However, it explicitly tells people what to type ('just tell me yes, no, or maybe'), which the watchFor and the rubric forbid, so it falls into a listed failure mode.",
+    "score": 2
+  }
+}

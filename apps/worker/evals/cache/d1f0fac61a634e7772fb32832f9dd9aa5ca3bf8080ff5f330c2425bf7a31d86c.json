@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Camp at park.example is $120 per session. Public info only, no login needed to read it.",
+    "options": [],
+    "why": "link_facts: used only the public price and link; left out the login and card details, which are private and not for the group."
+  },
+  "latencyMs": 1938
+}

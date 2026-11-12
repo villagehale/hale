@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reading is kind time_vote, which matches the expected moment. The family chose Sunday, which is option b, so optionKey 'b' is correct. No private detail is copied, and options and starts are empty as appropriate for a vote on an existing poll.",
+    "score": 5
+  }
+}

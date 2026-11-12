@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Heads up: swim has moved from 3:00 PM to 4:00 PM on Sat, Nov 14. Same day, just an hour later.",
+    "options": [],
+    "why": "mail_notice: provider moved the time; told the group the new time with the previous one for reference, no login, no ask."
+  },
+  "latencyMs": 2083
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "kind": "time_lock",
+    "title": null,
+    "response": null,
+    "optionKey": "a",
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 1229
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Carries exactly one question asking which of the two named times works, uses only the given facts (Saturday 10, Sunday 10, park), and reads warm and specific. However, 'Tap one below' is a mild instruction about the interface, which is close to telling people what to do, though it refers to a poll card rather than asking them to type a reply, so it stays acceptable.",
+    "score": 4
+  }
+}

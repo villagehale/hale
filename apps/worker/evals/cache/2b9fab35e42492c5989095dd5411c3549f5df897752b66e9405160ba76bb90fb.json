@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is link_facts, but the reading returned kind 'none', so it did not produce the expected moment. The message is a public camp link with price and spots, which should be captured as link facts, not dropped. Wrong moment, so a low score.",
+    "score": 1
+  }
+}

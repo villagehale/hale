@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks to poll two time options for a park outing, which matches the expected time_open moment. The title, options, and starts are correct: Saturday 10 is 2026-11-14 10:00 and Sunday 10 is 2026-11-15 10:00 in America/Toronto on the given clock. No private details are included.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private question asking for a family login, which should be classified as private_question. The reading returned kind 'none' rather than 'private_question', so it does not match the expected moment. It also fails to flag the private detail, though it did not leak any credentials. Meaning is not captured in the expected field, so the score is low.",
+    "score": 2
+  }
+}

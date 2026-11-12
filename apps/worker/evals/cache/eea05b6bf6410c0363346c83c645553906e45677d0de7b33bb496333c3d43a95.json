@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks about a child's peanut allergy, which is a private health detail; the reading correctly classifies it as private_question with no fields copied out, matching the expected moment.",
+    "score": 5
+  }
+}

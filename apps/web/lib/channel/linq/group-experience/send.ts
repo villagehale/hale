@@ -50,6 +50,7 @@ export async function sendGroupExperienceLine(
       providerChatId: input.chatId,
       status: acceptedStatus('imessage'),
       sentAt: input.now,
+      body: input.text,
     })
     .returning({ id: schema.channelMessages.id });
   if (!claimed) throw new Error('group experience: channel_messages insert returned no row');
@@ -65,6 +66,13 @@ export async function sendGroupExperienceLine(
       .update(schema.channelMessages)
       .set({ providerMessageId: sent.providerMessageId })
       .where(eq(schema.channelMessages.id, claimed.id));
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: parentUserId,
+      actionTaken: 'sms_reply_sent',
+      targetTable: 'channel_messages',
+      targetId: claimed.id,
+    });
     return sent;
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';

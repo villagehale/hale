@@ -11,6 +11,7 @@ describe('postMailNoticeToHouseholdGroup', () => {
       familyId: 'fam-1',
       eventId: 'evt-1',
       change: { field: 'time', previousStartsAt: new Date('2026-11-14T15:00:00.000Z') },
+      timeZone: 'America/Toronto',
       now: new Date('2026-11-11T12:00:00.000Z'),
     });
     expect(result).toBe('skipped');

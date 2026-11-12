@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is casual parent chatter with nothing for Hale to act on. The expected outcome is 'none', but the reading returned kind 'rsvp_open', which opens an RSVP where none was requested. That is the wrong moment, so this reading fails.",
+    "score": 1
+  }
+}
