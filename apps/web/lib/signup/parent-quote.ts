@@ -25,12 +25,6 @@ function isLongWord(word: string): boolean {
   return [...word].length >= MIN_NAME_WORD;
 }
 
-/** True when `text` and `other` have a whole word in common, of any length. */
-export function sharesWord(text: string, other: string): boolean {
-  const theirs = new Set(words(other));
-  return words(text).some((word) => theirs.has(word));
-}
-
 /**
  * The labels of a registration site's host that name its provider. The top-level label
  * goes, then every label too short to name anything (`www`, `on` in `.on.ca`, `co`, `apm`);
@@ -52,6 +46,12 @@ function containsRun(said: readonly string[], run: readonly string[]): boolean {
   return said.some((_, start) => run.every((word, i) => said[start + i] === word));
 }
 
+/** True when `quote` is whole words of the parent's, copied in order: never part of one. */
+export function quotesParentWords(parentWords: string, quote: string): boolean {
+  const run = words(quote);
+  return run.length > 0 && containsRun(words(parentWords), run);
+}
+
 /**
  * A name is named by one of its words of four letters or more, written whole. A name made
  * only of shorter words (`Art & Me`) is named by all of them, written in order.
@@ -68,6 +68,11 @@ function nameWritten(name: readonly string[], said: readonly string[]): boolean 
  * site is hosted on, never a section of a site (`register`). Shape only: what the words
  * mean is the model's to read. `activity` is untrusted page text: clean it before it gets
  * here.
+ *
+ * Letters written with no space between them (Chinese, Japanese, Thai) are one word, so
+ * such a name is named only when it is written whole and set off on its own: 游泳 never
+ * names 儿童游泳课, and a name in another script than the label's names nothing. That
+ * fails closed: the ask is not moved, and Hale asks which one the parent means.
  */
 export function namesFacts(
   text: string,

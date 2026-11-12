@@ -910,27 +910,126 @@ describe('which ask a message answers', () => {
     expect((await offer(gym.id)).status).toBe('pending');
   });
 
-  it('the reply audit says how the plan was bound: the newest ask, or which words named it', async () => {
-    for (const named of ['tokens', 'reader'] as const) {
-      const f = await family();
-      await kickersAsk(f);
-      const planReader = readerBy({
-        'Little Kickers': { verdict: 'unrelated' },
-        'Preschool Swim': { ...APPROVE, named },
-      });
-      const { planWriter } = fakes(null);
-      const result = await runAuthorizedSignup(db.database, turn(f, 'yes to the swim one'), {
+  it('the reply audit says how the plan was bound: the newest ask, or the words that named it', async () => {
+    const older = await family();
+    await kickersAsk(older);
+    const planReader = readerBy({
+      'Little Kickers': { verdict: 'unrelated' },
+      'Preschool Swim': { ...APPROVE, named: 'tokens' },
+    });
+    const { planWriter } = fakes(null);
+    const result = await runAuthorizedSignup(db.database, turn(older, 'yes to the swim one'), {
+      planReader,
+      planWriter,
+    });
+    expect(result.outcome).toBe('plan_approved');
+    expect(await replyBindings(older.offerId)).toEqual(['tokens']);
+
+    const f = await family();
+    const kickersId = await kickersAsk(f);
+    const newest = fakes({ ...APPROVE, named: 'tokens' });
+    await runAuthorizedSignup(db.database, turn(f, 'yes to kickers'), {
+      planReader: newest.planReader,
+      planWriter: newest.planWriter,
+    });
+    expect(await replyBindings(kickersId)).toEqual(['newest']);
+  });
+
+  it('a bare cancel, happy or yes never moves an older plan, whatever the model quoted as its name', async () => {
+    const f = await family(); // the swim plan ask, an hour ago
+    const swimmers = await recordSignupOffer(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      activityKey: 'little-swimmers',
+      activityLabel: '儿童游泳课',
+      registrationUrl: 'https://app.amilia.com/store/en/example-club/shop/programs/1',
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      planOpensAt: OPENS,
+      now: new Date(NOW.getTime() - 30 * 60_000),
+    });
+    if (!swimmers.ok) throw new Error(swimmers.reason);
+    const kickersId = await kickersAsk(f);
+    const turns: { body: string; named: string; yes: boolean }[] = [
+      { body: 'cancel', named: 'cancel', yes: false },
+      { body: 'happy', named: 'happy', yes: true },
+      { body: 'yes', named: 'yes', yes: true },
+      { body: '游泳那个取消吧', named: '游泳', yes: false },
+    ];
+    for (const { body, named, yes } of turns) {
+      // The model's worst answer is stipulated: its verdict on the older plan, with the
+      // parent's words as the plan's name. The bindings are the real ones.
+      const planReader: PlanReader = {
+        read: vi.fn(async (read) =>
+          read.offer.activity === 'Little Kickers'
+            ? { verdict: 'unrelated' as const }
+            : toPlanReading(
+                {
+                  reason: 'r',
+                  said: body,
+                  named,
+                  verdict: yes ? 'approve' : 'take_back',
+                  choiceIds: yes ? ['sat-0900'] : [],
+                  maxPriceCents: yes ? 9800 : null,
+                  waiverSaid: null,
+                  waiverAccepted: false,
+                  question: null,
+                },
+                read.offer,
+                read.text,
+              ),
+        ),
+      };
+      const { planWriter, written } = fakes(null);
+      const result = await runAuthorizedSignup(db.database, turn(f, body), {
         planReader,
         planWriter,
       });
-      expect(result.outcome).toBe('plan_approved');
-      expect(await replyBindings(f.offerId)).toEqual([named]);
+      expect(readOrder(planReader)).toEqual(['Little Kickers', '儿童游泳课']);
+      expect(result).toEqual({
+        claimed: false,
+        outcome: 'plan_unnamed',
+        reply: null,
+        deliverOnThread: false,
+      });
+      expect(written).toEqual([]);
     }
-    const f = await family();
-    const kickersId = await kickersAsk(f);
-    const { planReader, planWriter } = fakes({ ...APPROVE, named: 'tokens' });
-    await runAuthorizedSignup(db.database, turn(f, 'yes to kickers'), { planReader, planWriter });
-    expect(await replyBindings(kickersId)).toEqual(['newest']);
+    for (const id of [kickersId, swimmers.id, f.offerId]) {
+      expect((await offer(id)).status).toBe('pending');
+    }
+    expect(await replyBindings(swimmers.id)).toEqual([]);
+
+    // Positive control: the parent writing its whole name, set off on its own, reaches it.
+    const named: PlanReader = {
+      read: vi.fn(async (read) =>
+        read.offer.activity === 'Little Kickers'
+          ? { verdict: 'unrelated' as const }
+          : toPlanReading(
+              {
+                reason: 'r',
+                said: '取消吧',
+                named: '儿童游泳课',
+                verdict: 'take_back',
+                choiceIds: [],
+                maxPriceCents: null,
+                waiverSaid: null,
+                waiverAccepted: false,
+                question: null,
+              },
+              read.offer,
+              read.text,
+            ),
+      ),
+    };
+    const { planWriter } = fakes(null);
+    const result = await runAuthorizedSignup(db.database, turn(f, '儿童游泳课，取消吧'), {
+      planReader: named,
+      planWriter,
+    });
+    expect(result.outcome).toBe('plan_declined');
+    expect((await offer(swimmers.id)).status).toBe('handed_back');
+    expect(await replyBindings(swimmers.id)).toEqual(['tokens']);
   });
 
   it('a message about none of them leaves the pending ask to no one but the coach', async () => {
@@ -1139,6 +1238,44 @@ describe('a plan ask and a one-shot ask, both live', () => {
       deliverOnThread: false,
     });
     expect((await offer(gymId)).status).toBe('pending');
+    expect((await offer(f.offerId)).status).toBe('pending');
+  });
+
+  it('a bare cancel, happy or yes never moves an older one-shot ask on a shared platform', async () => {
+    const f = await family(); // the swim plan ask, an hour ago
+    const older = await recordSignupOffer(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      activityKey: 'little-swimmers',
+      activityLabel: '儿童游泳课',
+      registrationUrl: 'https://app.amilia.com/store/en/example-club/shop/programs/1',
+      sessions: [GYM_SESSION],
+      approvedPriceCents: null,
+      planOpensAt: null,
+      now: new Date(NOW.getTime() - 90 * 60_000),
+    });
+    if (!older.ok) throw new Error(older.reason);
+    const readings: [string, SignupConsentReading][] = [
+      ['cancel', { verdict: 'decline' }],
+      ['happy', { verdict: 'consent', sessionId: 'gym-sat' }],
+      ['yes', { verdict: 'consent', sessionId: 'gym-sat' }],
+      ['游泳那个取消吧', { verdict: 'decline' }],
+    ];
+    for (const [body, reading] of readings) {
+      const { reads, planReader, consentReader } = readers({ verdict: 'unrelated' }, reading);
+      const { planWriter } = fakes(null);
+      const result = await runAuthorizedSignup(db.database, turn(f, body), {
+        planReader,
+        planWriter,
+        consentReader,
+        outcomeWriter: echoOutcomeWriter(),
+        browser: null,
+      });
+      expect(reads).toEqual(['plan:Preschool Swim', 'one_shot:little-swimmers']);
+      expect(result).toMatchObject({ claimed: false, outcome: 'signup_unnamed' });
+    }
+    expect((await offer(older.id)).status).toBe('pending');
     expect((await offer(f.offerId)).status).toBe('pending');
   });
 });

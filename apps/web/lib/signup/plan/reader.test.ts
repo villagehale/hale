@@ -261,6 +261,20 @@ describe('what an approval may rest on', () => {
     }
   });
 
+  it('words that hold the whole go-ahead are the go-ahead too, and never tick the waiver', () => {
+    const text = 'yes, Sunday then Saturday, up to $100';
+    const said = 'Sunday then Saturday';
+    for (const waiverSaid of [text, 'yes, Sunday then Saturday, up']) {
+      expect(
+        toPlanReading(raw({ said, waiverSaid, waiverAccepted: true }), OFFER, text),
+      ).toMatchObject({ verdict: 'approve', waiverAccepted: false });
+    }
+    // Positive control: words of theirs apart from the go-ahead still answer it.
+    expect(
+      toPlanReading(raw({ said, waiverSaid: 'up to $100', waiverAccepted: true }), OFFER, text),
+    ).toMatchObject({ verdict: 'approve', waiverAccepted: true });
+  });
+
   it("an answer to the waiver Hale asked holds on the parent's own words, a short one too", () => {
     const text = 'yes, Sunday then Saturday, up to $100. ok';
     expect(
@@ -308,21 +322,64 @@ describe('what an approval may rest on', () => {
     });
   });
 
-  it("in other words than the label's, the reader's own naming holds when it shares no word with the label", () => {
+  it('a bare cancel, happy or yes, quoted whole as the name, never names a plan', () => {
+    const amilia: PlanReadOffer = {
+      ...OFFER,
+      activity: 'Little Swimmers',
+      host: 'app.amilia.com',
+    };
+    for (const offer of [OFFER, amilia]) {
+      expect(
+        toPlanReading(
+          raw({ verdict: 'take_back', said: 'cancel', named: 'cancel' }),
+          offer,
+          'cancel',
+        ),
+      ).toEqual({ verdict: 'take_back', named: null });
+      for (const word of ['happy', 'yes']) {
+        expect(
+          toPlanReading(
+            raw({ said: word, named: word, choiceIds: ['sat-0900'], maxPriceCents: 9800 }),
+            offer,
+            word,
+          ),
+        ).toMatchObject({ verdict: 'approve', named: null });
+      }
+    }
+  });
+
+  it("words in another language than the label's name nothing: the turn fails closed", () => {
     const takeBack = (named: string, text: string, offer: PlanReadOffer = OFFER) =>
       toPlanReading(raw({ verdict: 'take_back', named }), offer, text);
-    expect(takeBack('游泳那个', '游泳那个取消吧')).toEqual({
-      verdict: 'take_back',
-      named: 'reader',
-    });
+    expect(takeBack('游泳那个', '游泳那个取消吧')).toEqual({ verdict: 'take_back', named: null });
     expect(takeBack('la natation', 'laisse tomber pour la natation')).toEqual({
       verdict: 'take_back',
-      named: 'reader',
-    });
-    // An offer recorded before names were kept shows the reader no name to judge by.
-    expect(takeBack('游泳那个', '游泳那个取消吧', { ...OFFER, activity: null })).toEqual({
-      verdict: 'take_back',
       named: null,
+    });
+    // Characters written with no space between them are one word: 游泳 is not 儿童游泳课.
+    const zh: PlanReadOffer = { ...OFFER, activity: '儿童游泳课' };
+    expect(takeBack('游泳', '游泳 取消吧', zh)).toEqual({ verdict: 'take_back', named: null });
+    expect(takeBack('游泳', '游泳那个取消吧', zh)).toEqual({ verdict: 'take_back', named: null });
+    // Positive control: the whole name, set off on its own, is a whole word of it.
+    expect(takeBack('儿童游泳课', '儿童游泳课，取消吧', zh)).toEqual({
+      verdict: 'take_back',
+      named: 'tokens',
+    });
+  });
+
+  it("a quote that is part of one of the parent's words names nothing", () => {
+    const sound: PlanReadOffer = { ...OFFER, activity: 'Sound Start Music' };
+    const yes = (said: string, text: string) =>
+      toPlanReading(
+        raw({ said, named: 'sound', choiceIds: ['sat-0900'], maxPriceCents: 9800 }),
+        sound,
+        text,
+      );
+    expect(yes('sounds good', 'sounds good')).toMatchObject({ verdict: 'approve', named: null });
+    // Positive control: the same word, written whole, names it.
+    expect(yes('yes', 'yes to the sound one')).toMatchObject({
+      verdict: 'approve',
+      named: 'tokens',
     });
   });
 

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { foldWords, namesFacts, quotesParent, sharesWord } from '../parent-quote';
+import { foldWords, namesFacts, quotesParent, quotesParentWords } from '../parent-quote';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -19,9 +19,8 @@ import { MAX_PLAN_CHOICES } from './store';
  * an approval. An approval holds only on the parent's own words, copied (`said`); its
  * maximum only on a price Hale's offer stated or an amount of money they wrote; the waiver
  * only on a plan whose waiver question Hale sent, and only on their own words that are no
- * part of the go-ahead (`waiverSaid`). A plan is named only by their own words: words with
- * a whole word of its program's name or its site, or words the model read as naming it
- * that share no word with the untrusted label. Anything else fails closed.
+ * part of the go-ahead (`waiverSaid`). A plan is named only by their own words, whole,
+ * that carry a whole word of its program's name or its site. Anything else fails closed.
  *
  * A missing client, a missing skill, a model failure or an unreadable result is null, and
  * the log names which. The caller treats null as no plan: it claims nothing.
@@ -50,12 +49,11 @@ export interface PlanReadOffer {
 }
 
 /**
- * How the parent's own words (`named`, copied from their message) name this plan: by a
- * whole word of its program's name or its site (`tokens`), or by the model's reading of
- * words in another language than the label that share no word with it (`reader`). A plan
- * other than the parent's newest is only ever moved on words that name it.
+ * How the parent's own words (`named`, copied whole from their message) name this plan: by
+ * a whole word of its program's name or its site (`tokens`), checked in code. A plan other
+ * than the parent's newest is only ever moved on words that name it.
  */
-export type PlanNaming = 'tokens' | 'reader';
+export type PlanNaming = 'tokens';
 
 export type PlanReading =
   | {
@@ -220,10 +218,16 @@ function maxSupported(
   return offered.includes(maxPriceCents) && bare.includes(maxPriceCents);
 }
 
+/** One span holds the other, case and spacing aside. */
+function nested(a: string, b: string): boolean {
+  const [x, y] = [foldWords(a), foldWords(b)];
+  return x.includes(y) || y.includes(x);
+}
+
 /**
  * The waiver answer holds only on a plan whose waiver question Hale sent, and only on the
- * parent's own words that are no part of the go-ahead: the go-ahead, or any span of it, is
- * still the go-ahead.
+ * parent's own words that are no part of the go-ahead: the go-ahead, any span of it, or
+ * words that hold it whole are still the go-ahead.
  */
 function waiverGranted(
   raw: z.infer<typeof signupPlanReadSchema>,
@@ -236,27 +240,24 @@ function waiverGranted(
     raw.waiverAccepted &&
     waiverSaid !== null &&
     quotesParent(text, waiverSaid) &&
-    (said === null || !foldWords(said).includes(foldWords(waiverSaid)))
+    (said === null || !nested(said, waiverSaid))
   );
 }
 
 /**
- * The parent's own words name this plan by a whole word of its program's name or its site.
- * Or the model read them as naming it, in words that share no word with the untrusted label
- * (游泳那个 for "Preschool Swim"), so they cannot be an echo of the label's text; the model
- * judged this plan with the label marked untrusted. With no label kept, it had none to
- * judge by. Words sharing only short words with the label name nothing.
+ * The words the model read as naming this plan are whole words of the parent's, never part
+ * of one, and carry a whole word of its program's name or its site. The model's reading
+ * alone names nothing: words in another language than the label (游泳那个 for "Preschool
+ * Swim") do not name it, and the turn fails closed.
  */
 function planNaming(
   raw: z.infer<typeof signupPlanReadSchema>,
   offer: PlanReadOffer,
   text: string,
 ): PlanNaming | null {
-  if (raw.named === null || !quotesParent(text, raw.named)) return null;
-  const label = untrustedActivityLabel(offer.activity);
-  if (namesFacts(raw.named, { activity: label, host: offer.host })) return 'tokens';
-  if (label !== null && !sharesWord(raw.named, label)) return 'reader';
-  return null;
+  if (raw.named === null || !quotesParentWords(text, raw.named)) return null;
+  const facts = { activity: untrustedActivityLabel(offer.activity), host: offer.host };
+  return namesFacts(raw.named, facts) ? 'tokens' : null;
 }
 
 /**

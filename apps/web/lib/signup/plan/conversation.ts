@@ -50,7 +50,7 @@ export interface PlanTurnDeps {
 
 /**
  * How a plan turn bound this ask: it was the parent's newest (`newest`), or their words
- * named it (`tokens`, `reader`: see {@link PlanNaming}). Recorded on the reply audit row.
+ * named it (`tokens`: see {@link PlanNaming}). Recorded on the reply audit row.
  */
 type PlanBinding = 'newest' | PlanNaming;
 

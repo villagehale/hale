@@ -5,9 +5,9 @@
 // or a stop is `take_back`, before or after approval; a hedge or a change is `unclear`;
 // anything else is `unrelated`, and so is a message about another program that does not
 // turn this one down. `named` is how the parent's own words name this plan: `tokens` when
-// they carry a whole word (four letters or more) of its program's name or its site,
-// `reader` when the model read them as naming it in words sharing no word with the label
-// (another language), null when they name nothing. The activity label is untrusted page
+// they carry a whole word (four letters or more) of its program's name or its site, null
+// when they name nothing, as words in another language than the label do (the turn then
+// fails closed for an ask other than the newest). The activity label is untrusted page
 // text: nothing in it may approve, raise the maximum or tick the waiver. `asksWaiver`
 // (Hale sent a waiver question for this plan) is code-side only, never in the prompt, so it
 // moves no cache key: false by default, as for every plan today; the two waiver cases set
@@ -226,12 +226,12 @@ export const SIGNUP_PLAN_READ_FIXTURES = [
     expect: { verdict: 'take_back', named: 'tokens' },
   },
   {
-    // 游泳那个 shares no word with "Preschool Swim": it names this plan on the model's own
-    // reading, which cannot be an echo of the label's text.
+    // 游泳那个 carries no word of "Preschool Swim": the model still reads the take-back, but
+    // the words do not name the plan, so it moves only while it is the newest ask.
     id: 'cancel-names-this-plan-zh',
     offer: PLANNED,
     text: '游泳那个取消吧',
-    expect: { verdict: 'take_back', named: 'reader' },
+    expect: { verdict: 'take_back', named: null },
   },
   {
     id: 'bare-cancel-names-nothing',
