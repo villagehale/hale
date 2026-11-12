@@ -150,7 +150,11 @@ import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import type { SharedGroupComposer } from './shared-group-voice';
-import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
+import {
+  LINQ_WEBHOOK_TIMEOUT_MS,
+  LINQ_WEBHOOK_VERSION,
+  verifyLinqWebhookSignature,
+} from './signature';
 import { type LinqEffectResult, type LinqTapback, listLinqParticipantHandles } from './transport';
 
 /**
@@ -272,15 +276,18 @@ export async function handleLinqInboundRequest(
     return json({ error: 'linq_not_configured' }, 503);
   }
 
+  const timestamp = req.headers.get('webhook-timestamp');
   const valid = verifyLinqWebhookSignature({
     secret,
     rawBody,
     webhookId: req.headers.get('webhook-id'),
-    timestamp: req.headers.get('webhook-timestamp'),
+    timestamp,
     signature: req.headers.get('webhook-signature'),
     now: deps.now?.(),
   });
   if (!valid) return json({ error: 'invalid_signature' }, 403);
+  // Signed, so a number: when Linq stops waiting for this attempt.
+  const answerBy = new Date(Number(timestamp) * 1000 + LINQ_WEBHOOK_TIMEOUT_MS);
 
   const version = new URL(req.url).searchParams.get('version');
   if (version !== LINQ_WEBHOOK_VERSION) {
@@ -372,7 +379,7 @@ export async function handleLinqInboundRequest(
           outcome = nudge.count;
           answered = nudge.body;
         } else {
-          outcome = await routeOneToOne(deps, message);
+          outcome = await routeOneToOne(deps, message, answerBy);
         }
       } else {
         if (linqGroupOnboardingV2Enabled()) {
@@ -393,7 +400,7 @@ export async function handleLinqInboundRequest(
           outcome = calendarReply.count;
           answered = calendarReply.body;
         } else {
-          outcome = await routeOneToOne(deps, message);
+          outcome = await routeOneToOne(deps, message, answerBy);
         }
       }
     }
@@ -499,6 +506,7 @@ async function handleLinqLocation(
 async function routeOneToOne(
   deps: LinqDoorDeps,
   message: LinqInboundText,
+  answerBy: Date,
 ): Promise<InboundRouteOutcome> {
   // A forwarded link is queued for extraction. The reply the parent was already
   // going to get does not change, and a failure here is named rather than fatal.
@@ -529,6 +537,7 @@ async function routeOneToOne(
     providerAnsweredKeyword: null,
     media: message.media,
     ...(message.service ? { service: message.service } : {}),
+    answerBy,
   });
 }
 

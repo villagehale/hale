@@ -31,8 +31,9 @@ import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
 
 const LINQ_API_BASE = 'https://api.linqapp.com/api/partner/v3';
 
-/** Inside Linq's 10s webhook budget when a keyword ack sends inline, and short
- * enough that a hung partner fails the turn instead of holding the instance. */
+/** Inside Linq's webhook timeout (LINQ_WEBHOOK_TIMEOUT_MS, signature.ts) when a keyword
+ * ack sends inline, and short enough that a hung partner fails the turn instead of holding
+ * the instance. */
 export const SEND_TIMEOUT_MS = 8_000;
 
 const TEXT_MAX = 10_000;
