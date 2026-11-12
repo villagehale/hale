@@ -50,6 +50,16 @@ const FULL_PAGE_READ: ClassAvailabilityReading = {
   digest: 'digest-1',
 };
 
+/** The parent's message in every test that is not about where the link came from: it
+ * carries each link the tests below ask to watch. */
+const PASTED = [
+  courseUrl(FULL_COURSE),
+  courseUrl(OPEN_COURSE),
+  courseUrl(CLOSED_COURSE),
+  courseUrl(FULL_COURSE, '&redirectedFromEmbededMode=False&sessionId=SECRET'),
+  PAGE_URL,
+].join(' ');
+
 function ports(overrides: Partial<Parameters<typeof watchForOpeningTool>[0]> = {}) {
   const armed: SpotWatchIntent[] = [];
   const fetchBody = vi.fn(async () => fixture('open-window-markham'));
@@ -61,6 +71,8 @@ function ports(overrides: Partial<Parameters<typeof watchForOpeningTool>[0]> = {
     reader: { householdNames: async () => [] },
     watchConsentGranted: async () => true,
     readClassAvailability,
+    parentWords: `can you watch these? ${PASTED}`,
+    linksThisTurn: () => [],
     onWatch: (watch) => armed.push(watch),
     ...overrides,
   });
@@ -249,6 +261,50 @@ describe('watch_for_opening — arms only on a full course page, for a consentin
     await tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX);
 
     expect(armed[0]?.instant).toBe(false);
+  });
+});
+
+/**
+ * The link is the parent's, never the model's. A watch polls a page and texts a
+ * household for weeks, so a URL only the model typed — or only a photo or PDF carried —
+ * is refused before anything reads it.
+ */
+describe('watch_for_opening — only a link this turn carried', () => {
+  it.each([
+    ['the parent sent no link', 'can you tell me if a spot opens in Tuesday swim?'],
+    ['the parent sent a longer link', `watch this ${courseUrl(FULL_COURSE)}&level=2`],
+  ])('refuses when %s, before it reads the page', async (_name, parentWords) => {
+    const { tool, fetchBody, armed } = ports({ parentWords });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).rejects.toThrow(/did not send that link/);
+    expect(fetchBody).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('refuses a page outside the registry the same way, before the reader runs', async () => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'true');
+    const { tool, readClassAvailability, armed } = ports({ parentWords: 'watch the swim class' });
+
+    await expect(
+      tool.handler({ url: PAGE_URL, label: 'Tuesday preschool swim' }, CTX),
+    ).rejects.toThrow(/did not send that link/);
+    expect(readClassAvailability).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('arms on a link a tool put in front of the parent this turn', async () => {
+    const { tool, fetchBody, armed } = ports({
+      parentWords: 'yes watch that one',
+      linksThisTurn: () => [{ title: 'Preschool swim', url: courseUrl(FULL_COURSE) }],
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
   });
 });
 

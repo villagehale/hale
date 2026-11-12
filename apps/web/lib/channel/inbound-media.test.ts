@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type ContactFetch,
   classifyInboundMedia,
-  httpsMediaUrl,
   inboundMediaFromStored,
   mediaPartFromLinq,
   persistableMedia,
   readInboundMedia,
 } from './inbound-media';
+import { httpsMediaUrl } from './public-url';
 
 describe('classifyInboundMedia', () => {
   it('reads an image mime, a video mime, and a file otherwise', () => {
