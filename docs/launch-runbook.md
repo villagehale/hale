@@ -85,7 +85,8 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 | Route | Schedule | What it does for iMessage |
 | --- | --- | --- |
 | `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. Each run expires active jobs past their expiry before it fetches, so one stuck inbound job cannot stall every family until queue-maintenance is called. |
-| `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). |
+| `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). A failed tick pages #ops at once, at most once an hour: `site inbound_canary_failed`, with the `stage` it failed at (`never_answered` means the drain or the router). |
+| `/api/cron/unanswered` | every 5 minutes | Pages #ops at most once an hour while a real parent's text (not a probe, QA or founder household) has gone 15 minutes with nothing from the router: no answered, unanswered or failed row, and no answer claim except a text folded into itself. `site parent_text_unanswered`, with the `count` from the last hour. A deferred text counts. |
 | `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null, and pages #ops when the Linq line crosses 70% or 90% of its chat IDs ([linq-chat-capacity.md](linq-chat-capacity.md)). |
 | `/api/cron/intake-sitting-reminder` | hourly | One nudge for a parent who stopped on the place or ages question. |
 

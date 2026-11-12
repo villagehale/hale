@@ -277,6 +277,24 @@ describe('pageOps: the one primitive', () => {
     expect(posted[1]).toContain('ref redacted.');
   });
 
+  it('a count travels as a short number: anything phone-shaped, negative or fractional is redacted', async () => {
+    const at = (hours: number) => ({ post, now: new Date(BASE.getTime() + hours * HOUR) });
+    const page = (count: number): OpsPage => ({ site: 'parent_text_unanswered', facts: {}, count });
+    await pageOps(db.database, page(3), at(100));
+    await pageOps(db.database, page(4375550100), at(101));
+    await pageOps(db.database, page(-2), at(102));
+    await pageOps(db.database, page(1.5), at(103));
+    expect(posted[0]).toBe('Hale: ops page. site parent_text_unanswered. count 3.');
+    expect(posted[1]).not.toContain('4375550100');
+    expect(posted.slice(1)).toEqual(
+      Array(3).fill('Hale: ops page. site parent_text_unanswered. count redacted.'),
+    );
+    const urgent = vi
+      .mocked(console.error)
+      .mock.calls.find((call) => call[1] === 'URGENT: parent_text_unanswered - paging #ops');
+    expect(urgent?.[0]).toEqual({ count: '3', page: 'parent_text_unanswered' });
+  });
+
   it("a key outside its site's list never travels, and is counted", async () => {
     await pageOps(
       db.database,
