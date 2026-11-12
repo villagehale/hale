@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { FakeReplyTransport, type ReplySent } from '~/lib/channel/router/reply-route';
@@ -21,7 +22,8 @@ import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
 import { authorizedSignupHandler } from '../handler';
 import { recordSignupOffer } from '../store';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
-import { recordPlanNotice, runDueSignupPlanPrep } from './prep';
+import { createPlanPrepDeliver } from './notice';
+import { type PlanPrepDeps, recordPlanNotice, runDueSignupPlanPrep } from './prep';
 import type { PlanReader, PlanReading } from './reader';
 import type { PlanReplyWriter } from './writer';
 
@@ -84,7 +86,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-type Household = { familyId: string; parentUserId: string; childId: string };
+type Household = { familyId: string; parentUserId: string; childId: string; phone: string };
 
 let phones = 0;
 
@@ -101,7 +103,33 @@ async function household(): Promise<Household> {
     phoneE164Hash: phoneBlindIndex(phone),
     verifiedAt: new Date(NOW.getTime() - 24 * 3_600_000),
   });
-  return { ...seeded, childId };
+  return { ...seeded, childId, phone };
+}
+
+/**
+ * The minute sweep with its production deliver, over a carrier that records what reached this
+ * household, in order: each text by the site it is about, and the login link as `link`.
+ */
+function sweep(f: Household, wire: string[]): PlanPrepDeps {
+  const transport: ChannelTransport = {
+    async send(input) {
+      if (input.to === f.phone) {
+        wire.push(
+          input.body.includes('/l/') ? 'link' : (input.body.split(' at ')[1] ?? input.body),
+        );
+      }
+      return { providerMessageId: `sweep-${f.familyId}-${wire.length}` };
+    },
+  };
+  return {
+    writer: { write: async (facts) => `text for ${facts.kind} at ${facts.host}` },
+    deliver: createPlanPrepDeliver(db.database, {
+      transport,
+      fetch: async () => {
+        throw new Error('ask-order.pglite.test: this test makes no network calls');
+      },
+    }),
+  };
 }
 
 /** Stands in for the model: one stipulated reading per program. */
@@ -330,15 +358,7 @@ describe('a bare answer moves the ask whose text reached the parent last', () =>
         await runDueSignupPlanPrep(
           db.database,
           { now: new Date(NOW.getTime() + 2_000) },
-          {
-            writer: { write: async (facts) => `text for ${facts.kind}` },
-            deliver: async (notice) => {
-              if (notice.parentUserId === f.parentUserId) {
-                wire.push(notice.offerId === kickersId ? 'kickers' : 'swim');
-              }
-              return true;
-            },
-          },
+          sweep(f, wire),
         );
       }
       wire.push('swim question');
@@ -352,7 +372,7 @@ describe('a bare answer moves the ask whose text reached the parent last', () =>
       }),
     });
     expect(asked.handler).toBe('authorized_signup');
-    expect(wire).toEqual(['kickers', 'kickers', 'swim question']);
+    expect(wire).toEqual([KICKERS.host, 'link', 'swim question']);
     expect((await offerRow(swimId)).status).toBe('planned');
 
     // The model's worst reading: both asks hear the bare no as a take-back.
@@ -374,22 +394,12 @@ describe('a bare answer moves the ask whose text reached the parent last', () =>
       kickers: `00000000-0000-4000-8000-${suffix}`,
     });
     const wire: string[] = [];
-    await runDueSignupPlanPrep(
-      db.database,
-      { now: NOW },
-      {
-        writer: { write: async (facts) => `text for ${facts.kind}` },
-        deliver: async (notice) => {
-          if (notice.parentUserId === f.parentUserId && !notice.body.startsWith('https://')) {
-            wire.push(notice.offerId);
-          }
-          return true;
-        },
-      },
-    );
-    expect([...wire].sort()).toEqual([swimId, kickersId].sort());
-    const last = wire.at(-1) as string;
-    const first = wire[0] as string;
+    await runDueSignupPlanPrep(db.database, { now: NOW }, sweep(f, wire));
+    const texts = wire.filter((sent) => sent !== 'link');
+    expect([...texts].sort()).toEqual([KICKERS.host, SWIM.host].sort());
+    const idOf = (host: string) => (host === SWIM.host ? swimId : kickersId);
+    const last = idOf(texts.at(-1) as string);
+    const first = idOf(texts[0] as string);
 
     await parentTexts(f, 'stop', minutes(1), {
       planReader: readerBy({ 'Little Kickers': TAKE_BACK, 'Preschool Swim': TAKE_BACK }),

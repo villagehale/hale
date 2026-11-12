@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
@@ -15,7 +16,7 @@ import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { markOfferAsked } from '../store';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
-import type { PlanPrepDeps } from './prep';
+import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
 import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
 import { planLapse } from './store';
 import { planReplyMode } from './towns';
@@ -27,6 +28,7 @@ import {
 } from './writer';
 
 export const PLAN_NOTICE_TEMPLATE = 'signup_plan_notice';
+export const PLAN_PREP_TEMPLATE = 'signup_plan_prep';
 
 export interface PlanNotifierDeps {
   writer: PlanReplyWriter;
@@ -193,28 +195,213 @@ async function deliverDirect(
   return 'sent';
 }
 
+/**
+ * The door for the login ask, account prep, the 30-minute reminder and the event notices.
+ * Each bubble has its own ledger row beside its send; under a notice key that row is keyed
+ * `signup_plan_prep:<noticeKey>:<index>`, so the sweep's retry skips a bubble that went and
+ * sends one whose try failed. The login link goes once through {@link sendLinkOnce}, on the
+ * chat the bubble before it used: a Linq link card on iMessage, its own text where a card
+ * cannot go. A part that does not go stops the notice as `failed`, and the sweep sends the
+ * rest next time. Each text bubble that goes stamps the offer as asked (`markOfferAsked`), so
+ * a notice that partly went still counts, and a bubble a retry skips stamps nothing again.
+ */
+export function createPlanPrepDeliver(
+  database: Database,
+  deps: { transport: ChannelTransport; fetch?: typeof fetch },
+): PlanPrepDeliver {
+  return async (input) => {
+    const to = await resolveSendablePhone(database, input.parentUserId);
+    if (!to) {
+      console.info(
+        { offerId: input.offerId, kind: input.kind, code: 'withheld' },
+        'signup plan prep: not sent',
+      );
+      return 'withheld';
+    }
+    let carried: { channel: 'sms' | 'imessage'; chatId: string | null } = {
+      channel: 'sms',
+      chatId: null,
+    };
+    let textIndex = 0;
+    for (const part of input.parts) {
+      if (part.type === 'text') {
+        const sent = await sendPrepText(database, deps.transport, {
+          ...input,
+          to,
+          body: part.body,
+          dedupeKey:
+            input.noticeKey === null
+              ? null
+              : `${PLAN_PREP_TEMPLATE}:${input.noticeKey}:${textIndex}`,
+        });
+        textIndex += 1;
+        if (!sent) return 'failed';
+        carried = sent;
+        continue;
+      }
+      const link = await sendLinkOnce({
+        transport: deps.transport,
+        to,
+        channel: carried.channel,
+        chatId: carried.chatId,
+        url: part.url,
+        database,
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        now: input.now,
+        fetch: deps.fetch,
+      });
+      if (link.status === 'not_sent') {
+        console.warn(
+          { offerId: input.offerId, kind: input.kind, why: link.why, code: link.code },
+          'signup plan prep: the login link did not go',
+        );
+        return 'failed';
+      }
+      if (link.status === 'text') {
+        console.info(
+          { offerId: input.offerId, kind: input.kind, why: link.why },
+          'signup plan prep: the login link went as a text, not a card',
+        );
+      }
+    }
+    return 'sent';
+  };
+}
+
+/**
+ * The row a text sends under. With a dedupe key, a bubble that already went (or is going)
+ * is not sent again: its row comes back as `went`, with the chat it used. A bubble whose
+ * try failed is claimed again and sent.
+ */
+async function claimPrepText(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    offerId: string;
+    kind: PlanNoticeKind;
+    dedupeKey: string | null;
+  },
+): Promise<
+  | { claimed: true; id: string }
+  | { claimed: false; went: { channel: 'sms' | 'imessage'; chatId: string | null } }
+> {
+  const messages = schema.channelMessages;
+  const [row] = await database
+    .insert(messages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      templateKey: `${PLAN_PREP_TEMPLATE}:${input.kind}`,
+      dedupeKey: input.dedupeKey,
+      status: 'queued',
+      sentAt: null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: messages.id });
+  if (row) return { claimed: true, id: row.id };
+  if (input.dedupeKey === null) throw new Error('channel_messages insert returned no row');
+  const [retried] = await database
+    .update(messages)
+    .set({ status: 'queued', errorCode: null })
+    .where(
+      and(
+        eq(messages.dedupeKey, input.dedupeKey),
+        eq(messages.familyId, input.familyId),
+        eq(messages.status, 'failed'),
+      ),
+    )
+    .returning({ id: messages.id });
+  if (retried) return { claimed: true, id: retried.id };
+  const [prior] = await database
+    .select({ channel: messages.channel, chatId: messages.providerChatId, sentAt: messages.sentAt })
+    .from(messages)
+    .where(and(eq(messages.dedupeKey, input.dedupeKey), eq(messages.familyId, input.familyId)))
+    .limit(1);
+  if (!prior) throw new Error('channel_messages dedupe row not found');
+  if (!prior.sentAt) {
+    console.warn(
+      { offerId: input.offerId, kind: input.kind, code: 'claimed_unconfirmed' },
+      'signup plan prep: a bubble was claimed but never confirmed; not sending it again',
+    );
+  }
+  return {
+    claimed: false,
+    went: { channel: prior.channel === 'imessage' ? 'imessage' : 'sms', chatId: prior.chatId },
+  };
+}
+
+async function sendPrepText(
+  database: Database,
+  transport: ChannelTransport,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    offerId: string;
+    kind: PlanNoticeKind;
+    to: string;
+    body: string;
+    dedupeKey: string | null;
+    now: Date;
+  },
+): Promise<{ channel: 'sms' | 'imessage'; chatId: string | null } | null> {
+  const messages = schema.channelMessages;
+  const claim = await claimPrepText(database, input);
+  if (!claim.claimed) return claim.went;
+  const failed = async (code: string): Promise<null> => {
+    await database
+      .update(messages)
+      .set({ status: 'failed', errorCode: code.slice(0, 80) })
+      .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
+    console.warn(
+      { offerId: input.offerId, kind: input.kind, code },
+      'signup plan prep: a text did not go',
+    );
+    return null;
+  };
+  let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
+  try {
+    delivered = await deliverFamilyOutbound(database, {
+      familyId: input.familyId,
+      body: input.body,
+      to: input.to,
+      legacy: transport,
+      target: { channel: 'legacy' },
+      shareGroupCap: false,
+      now: input.now,
+    });
+  } catch (err) {
+    return failed(err instanceof Error ? err.constructor.name : 'send_threw');
+  }
+  if (delivered.status !== 'sent') return failed(delivered.reason);
+  // This bubble reached the parent: the ask is now the one whose text they got last, so
+  // their next bare answer is its, even if a later part of the notice does not go.
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx
+      .update(messages)
+      .set({
+        channel: delivered.channel,
+        status: acceptedStatus(delivered.channel),
+        providerMessageId: delivered.providerMessageId,
+        providerChatId: delivered.chatId,
+        sentAt: input.now,
+      })
+      .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
+    await markOfferAsked(tx, { familyId: input.familyId, offerId: input.offerId });
+  });
+  return { channel: delivered.channel, chatId: delivered.chatId };
+}
+
 /** Login-ask, account-prep and 30-minute reminder on the same minute cron. */
 export function signupPlanPrepDepsFromEnv(database: Database): PlanPrepDeps {
-  const transport = createOutboundTransport();
   return {
     writer: createProviderNoticeWriter(() => resolveReplyClient(undefined)),
-    deliver: async (input) => {
-      const to = await resolveSendablePhone(database, input.parentUserId);
-      if (!to) return false;
-      try {
-        const delivered = await deliverFamilyOutbound(database, {
-          familyId: input.familyId,
-          body: input.body,
-          to,
-          legacy: transport,
-          target: { channel: 'legacy' },
-          shareGroupCap: false,
-        });
-        return delivered.status === 'sent';
-      } catch {
-        return false;
-      }
-    },
+    deliver: createPlanPrepDeliver(database, { transport: createOutboundTransport() }),
   };
 }
 

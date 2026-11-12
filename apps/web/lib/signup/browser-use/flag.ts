@@ -23,7 +23,9 @@ export function browserUseSignupEnabled(
 export const BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV = 'BROWSER_USE_SIGNUP_PAYMENT_ENABLED';
 
 /**
- * Agent payment through the Stripe Link wallet. Off unless exactly `true`.
+ * Agent payment through the Stripe Link wallet, and the day-before plan's payment with the
+ * card saved on the parent's city account. Off unless exactly `true`; off, a plan stops at
+ * checkout and the parent pays on the live browser.
  *
  * ENV-ONLY. Not a PostHog flag. Nothing in PostHog can turn a payment on.
  * Runtime still stops before any payment > $0 (`payment_boundary`) and still

@@ -2,6 +2,10 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { PICK_ASK_BACK_QUESTION, PLAN_ASK_BACK_QUESTION, SIGNUP_ASK_BACK_QUESTION } from '../asks';
 import {
@@ -27,6 +31,7 @@ import {
   type signupMismatchReadSchema,
   toMismatchReading,
 } from './mismatch-reader';
+import { createPlanPrepDeliver } from './notice';
 import { recordPlanNotice, runDueSignupPlanPrep } from './prep';
 import { type PlanReader, type PlanReading, toPlanReading } from './reader';
 import { approveSignupPlan, parkSignupPlan } from './store';
@@ -128,6 +133,44 @@ async function texted(familyId: string, offerId: string): Promise<void> {
 async function lastAsked(f: { familyId: string; parentUserId: string }) {
   return loadLastAskedOfferId(db.database, f);
 }
+
+let phones = 0;
+
+/** A verified number for the parent, so the production prep deliver can text them. */
+async function reachable(f: { familyId: string; parentUserId: string }) {
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  phones += 1;
+  const phone = `+1416555${String(2000 + phones).slice(-4)}`;
+  await db.database.insert(schema.parentChannels).values({
+    familyId: f.familyId,
+    userId: f.parentUserId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: new Date(NOW.getTime() - 24 * 3_600_000),
+  });
+  return phone;
+}
+
+/**
+ * The carrier under the production prep deliver: `sent` is what reached `to`, in order, and
+ * `refuse` names the bodies it turns down.
+ */
+function prepTransport(to: string | null, refuse: (body: string) => boolean = () => false) {
+  const sent: string[] = [];
+  const transport: ChannelTransport = {
+    async send(input) {
+      if (refuse(input.body)) throw new LinqSendError('30003', 400, false);
+      if (input.to === to) sent.push(input.body);
+      return { providerMessageId: `prep-${input.to}-${sent.length}` };
+    },
+  };
+  return { sent, transport };
+}
+
+const noNetwork: typeof fetch = async () => {
+  throw new Error('conversation.pglite.test: this test makes no network calls');
+};
 
 /** A second adult in the household with full parent scope. */
 async function seedCoParent(familyId: string): Promise<string> {
@@ -1039,16 +1082,20 @@ describe('which ask a message answers', () => {
     const f = await family(); // the swim plan ask, an hour ago
     await approveSwim(f);
     const kickersId = await kickersAsk(f); // ten minutes ago, still waiting on a yes
-    // The real prep sweep sends the swim plan's login ask, and only that one.
+    // The real prep sweep and its production deliver send the swim plan's login ask.
+    const phone = await reachable(f);
     const prep = await runDueSignupPlanPrep(
       db.database,
       { now: NOW },
       {
         writer: { write: async (facts) => `text for ${facts.kind}` },
-        deliver: async (input) => input.offerId === f.offerId,
+        deliver: createPlanPrepDeliver(db.database, {
+          transport: prepTransport(phone).transport,
+          fetch: noNetwork,
+        }),
       },
     );
-    expect(prep.notices).toContainEqual({ offerId: f.offerId, kind: 'login_ask', sent: true });
+    expect(prep.notices).toContainEqual({ offerId: f.offerId, kind: 'login_ask', outcome: 'sent' });
     expect(await lastAsked(f)).toBe(f.offerId);
 
     const planReader = goAheadReader(null);
@@ -1095,21 +1142,24 @@ describe('which ask a message answers', () => {
     const kickersId = await kickersAsk(f); // ten minutes ago, still waiting on a yes
     // The real prep sweep: the text about the swim plan reaches the parent, then the bubble
     // with its login link fails.
-    const sent: string[] = [];
+    const phone = await reachable(f);
+    const { sent, transport } = prepTransport(phone, (body) => body.includes('/l/'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const prep = await runDueSignupPlanPrep(
       db.database,
       { now: NOW },
       {
         writer: { write: async (facts) => `text for ${facts.kind}` },
-        deliver: async (input) => {
-          if (input.offerId !== f.offerId || input.body.startsWith('https://')) return false;
-          sent.push(input.body);
-          return true;
-        },
+        deliver: createPlanPrepDeliver(db.database, { transport, fetch: noNetwork }),
       },
     );
+    warn.mockRestore();
     expect(sent).toEqual(['text for login_ask']);
-    expect(prep.notices).toContainEqual({ offerId: f.offerId, kind: 'login_ask', sent: false });
+    expect(prep.notices).toContainEqual({
+      offerId: f.offerId,
+      kind: 'login_ask',
+      outcome: 'failed',
+    });
     expect(await lastAsked(f)).toBe(f.offerId);
 
     // The model's worst answer: both asks read the bare yes as a go-ahead.
