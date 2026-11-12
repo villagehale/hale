@@ -1,5 +1,5 @@
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
-import type { LinqTextDecoration } from '~/lib/channel/linq/transport';
+import type { LinqChatService, LinqTextDecoration } from '~/lib/channel/linq/transport';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 
 /**
@@ -40,6 +40,9 @@ export interface InboundMessage {
   /** True when this text arrived in a Linq group. The contact-card share is
    * 1:1 only and does not fire into a group. */
   isGroup?: boolean;
+  /** The service Linq said carried this text when `transport` is `imessage`: a chat on
+   * the Linq line can be iMessage, SMS or RCS. Absent when Linq did not say, and on SMS. */
+  service?: LinqChatService;
   /**
    * Whose hourly inbound budget this text spends. Absent is `sender`: the per-number
    * `sms-inbound` cap, which every caller written before group onboarding v2 means.
@@ -88,6 +91,13 @@ export interface OutboundMessage {
    * correct downgrade because the words are identical either way.
    */
   decorations?: readonly LinqTextDecoration[];
+  /**
+   * A later answer to an ask: send into this existing iMessage chat, threaded under this
+   * message (the parent's ask), while it is still `to`'s 1:1 on the Hale line; otherwise
+   * to `to`, unthreaded. Text only. A transport with no threads (Preview capture) sends
+   * to `to`, which for a 1:1 is the same chat, unthreaded.
+   */
+  replyIn?: { chatId: string; messageId: string };
 }
 
 /** The native iMessage location-request card. SMS transports do not implement it. */

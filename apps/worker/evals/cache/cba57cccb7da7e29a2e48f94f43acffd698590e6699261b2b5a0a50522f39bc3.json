@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is one bubble in French, answers the single request, and contains one question in the last bubble. However, the facts show the swim lesson was at 15:00 UTC, which is 10:00 Toronto time on Nov 14; the proposed Sunday slot of 10:00 matches that local time, so it is correct. The bubble is a single thought and not split or padded. No invented facts, and the venue name is kept as given. It meets the points and the rubric.",
+    "score": 5
+  }
+}

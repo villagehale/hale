@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single question with two class recommendations, each in its own bubble, all in Chinese with program and venue names kept as given. Days, times, date ranges, age ranges, and the Dec 1 at 7:00 registration opening are all correct. The first two bubbles are substantive items, not lead-ins. The third bubble carries the registration fact and the page addresses, which is a reasonable place for them. No questions are asked, no facts are invented, and the register is brief and friendly. Minor nit: the third bubble bundles the registration note with the link placement, but that is acceptable.",
+    "score": 5
+  }
+}

@@ -1539,21 +1539,28 @@
       "idx": 223,
       "version": "7",
       "when": 1794365231000,
-      "tag": "0233_authorized_signup_activity_label",
+      "tag": "0233_channel_messages_provider_service",
       "breakpoints": true
     },
     {
       "idx": 224,
       "version": "7",
       "when": 1794365232000,
-      "tag": "0234_authorized_signup_last_asked",
+      "tag": "0234_authorized_signup_activity_label",
       "breakpoints": true
     },
     {
       "idx": 225,
       "version": "7",
       "when": 1794365233000,
-      "tag": "0235_authorized_signup_ask_seq",
+      "tag": "0235_authorized_signup_last_asked",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1794365234000,
+      "tag": "0236_authorized_signup_ask_seq",
       "breakpoints": true
     }
   ]

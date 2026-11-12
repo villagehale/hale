@@ -88,6 +88,10 @@ interface Recorded {
   costUsd: number;
 }
 
+function readingFindTurn(findTurn = true): ChannelCoachPorts['readFindTurn'] {
+  return async () => (findTurn ? { findTurn: true } : { findTurn: false, reason: 'not_find' });
+}
+
 function ports(overrides: Partial<ChannelCoachPorts> = {}) {
   const recorded: Recorded[] = [];
   const contextInputs: unknown[] = [];
@@ -112,6 +116,8 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     guardDeps: { async writeAudit() {} },
     // Never reached: `runAgent` is injected below, and it is the only consumer.
     client: () => ({ messages: {} }) as never,
+    // Not a find by default; the find-turn cases override this.
+    readFindTurn: readingFindTurn(false),
     judgeFindReply: findReplyNotJudged,
     runAgent: answering('Move swim to Tue 4:30? YES to confirm.'),
     recordRun: async (run) => {
@@ -232,6 +238,31 @@ describe('channelCoachRuntime', () => {
     expect((await run(true, 'direct')).endsWith(`\n\n${addendum}`)).toBe(true);
     expect(await run(false, 'direct')).not.toContain(addendum);
     expect(await run(true, 'group')).not.toContain(addendum);
+  });
+
+  it('tells the coach how many texts arrived together, and only on a burst', async () => {
+    const run = async (burstSize?: number) => {
+      const seen: { context: unknown; prompt: string }[] = [];
+      const p = ports({
+        runAgent: async (args) => {
+          seen.push({ context: args.context, prompt: promptOf(args) });
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond(
+        burstSize === undefined ? turn() : { ...turn(), burstSize },
+        [],
+      );
+      return seen[0];
+    };
+    const lone = await run();
+    expect(lone?.context).not.toHaveProperty('arrivedTogether');
+    const burst = await run(2);
+    expect(burst?.context).toMatchObject({ arrivedTogether: 2 });
+    // The fact rides in the context; the system prompt, and its cache prefix, stay put.
+    expect(burst?.prompt).toBe(lone?.prompt);
+    const { arrivedTogether: _dropped, ...rest } = burst?.context as Record<string, unknown>;
+    expect(JSON.stringify(rest)).toBe(JSON.stringify(lone?.context));
   });
 
   it('asks for the context as the parent who texted (VIL-429)', async () => {
@@ -1233,6 +1264,58 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
   });
 });
 
+describe('channelCoachRuntime · several bubbles on a 1:1 iMessage turn', () => {
+  const TWO_THOUGHTS = 'Swim is Saturday at 10.\n\nWant me to add it to your calendar?';
+
+  function seeing(seen: string[]): ChannelCoachPorts['runAgent'] {
+    return async (args) => {
+      seen.push(promptOf(args));
+      return answering(TWO_THOUGHTS)(args);
+    };
+  }
+
+  it('lit: the bubble addendum rides last and the reply breaks between bubbles', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const { reply } = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), replyBubbles: true },
+      [],
+    );
+
+    expect(seen[0]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(reply).toBe('Swim is Saturday at 10.\nWant me to add it to your calendar?');
+  });
+
+  it('dark: the same skill bytes as a turn that never heard of bubbles, and one line', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const dark = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), replyBubbles: false },
+      [],
+    );
+    await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(turn(), []);
+
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[0]).toBe(seen[1]);
+    expect(dark.reply).toBe('Swim is Saturday at 10. Want me to add it to your calendar?');
+  });
+
+  it('a group turn never splits, even when asked to', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const { reply } = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), audience: 'group', replyBubbles: true },
+      [],
+    );
+
+    expect(seen[0]).not.toContain(addendum);
+    expect(reply).not.toContain('\n');
+  });
+});
+
 describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
   const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
   const FLYER = {
@@ -1777,6 +1860,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
 
 describe('find reasoning stays off the reply (VIL-524)', () => {
   const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
 
   it('does not append the private skill or call the judge on a calendar edit', async () => {
     let instructions = '';
@@ -1801,6 +1885,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const draft = 'All three finds are at the library: Storytime Saturday at 10.';
     let instructions = '';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: send,
       runAgent: async (args) => {
         instructions = promptOf(args);
@@ -1817,6 +1902,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'All three finds share one page…';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'withhold' }),
       runAgent: answering(draft),
     });
@@ -1870,6 +1956,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
   it("the judge reads the draft with a teen's name already redacted", async () => {
     const drafts: string[] = [];
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async (draft) => {
         drafts.push(draft);
         return { verdict: 'send' };
@@ -1889,12 +1976,31 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       'EarlyON Saturday at 10.',
     );
     expect(gate).toEqual({ verdict: 'unjudged', reason: 'client_unavailable' });
+    vi.unstubAllEnvs();
+  });
+
+  it('production wires a find-turn reader, not a word list', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const reading = await productionChannelCoachPorts({} as Database).readFindTurn({
+      text: "what's on this weekend",
+      transcript: [],
+    });
+    expect(reading).toEqual({ findTurn: false, reason: 'client_unavailable' });
+    expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("what's on this weekend");
+    logged.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it('the scripted pass-through sends the draft and names that', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
-    const p = ports({ judgeFindReply: findReplyNotJudged, runAgent: answering(draft) });
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: findReplyNotJudged,
+      runAgent: answering(draft),
+    });
     const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
     expect(reply).toBe(draft);
     expect(error).toHaveBeenCalledWith(
@@ -1908,6 +2014,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
       runAgent: answering(draft),
     });
@@ -1928,6 +2035,133 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     );
     error.mockRestore();
   });
+});
+
+describe('the day a find is for (VIL-567)', () => {
+  const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
+
+  it("hands the model today on the family's clock, not the UTC day", async () => {
+    const seen: Record<string, unknown>[] = [];
+    // 02:30Z Monday is still Sunday evening for a family on Pacific time.
+    const p = ports({
+      now: () => new Date('2026-11-09T02:30:00.000Z'),
+      loadTimeZone: async () => 'America/Los_Angeles',
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(seen[0]?.localNow).toEqual({
+      date: '2026-11-08',
+      weekday: 'Sunday',
+      time: '18:30',
+      timeZone: 'America/Los_Angeles',
+    });
+  });
+
+  it('a bare find after a question about today gets the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      loadTranscript: async () => [
+        { role: 'user' as const, content: 'is there anything on today?' },
+        { role: 'assistant' as const, content: 'Nothing on your calendar today.' },
+        { role: 'user' as const, content: 'find me something to do' },
+      ],
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  it('a find with their own Gmail connected keeps the day addendum and the email addendum, email last', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      voiceMemosEnabled: () => true,
+      emailReader: {
+        connected: async () => true,
+        read: async () => ({ read: true as const, body: 'unused', truncated: false }),
+      },
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do today'), []);
+    const voiceAt = instructions.indexOf('A reply can be a voice memo');
+    const findPrivateAt = instructions.indexOf('Keep the finding to yourself');
+    const findDayAt = instructions.indexOf('The day a find is for');
+    const readEmailAt = instructions.indexOf('An email Hale told them about');
+    expect(voiceAt).toBeGreaterThan(-1);
+    expect(findPrivateAt).toBeGreaterThan(voiceAt);
+    expect(findDayAt).toBeGreaterThan(findPrivateAt);
+    expect(readEmailAt).toBeGreaterThan(findDayAt);
+  });
+
+  it('a calendar edit does not get the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(instructions).not.toContain('The day a find is for');
+  });
+
+  it('a find in any language gets the day addendum when the reader says it is one', async () => {
+    const seen: string[] = [];
+    let instructions = '';
+    const p = ports({
+      readFindTurn: async ({ text }) => {
+        seen.push(text);
+        return { findTurn: true };
+      },
+      judgeFindReply: send,
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Patinoire familiale à 13h.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('trouve-moi quelque chose à faire'), []);
+    expect(seen).toEqual(['trouve-moi quelque chose à faire']);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  // The read is a model call on the SMS hot path. A reader that only answers once the
+  // family context has started loading never answers when it runs in front of that load.
+  it('reads the find turn while the family context loads, not in front of it', async () => {
+    let contextStarted = () => {};
+    const contextLoading = new Promise<void>((resolve) => {
+      contextStarted = resolve;
+    });
+    const p = ports({
+      readFindTurn: async () => {
+        await contextLoading;
+        return { findTurn: true };
+      },
+      judgeFindReply: send,
+      runAgent: answering('Family skate at the arena, today at 1.'),
+    });
+    const loadContext = p.loadContext;
+    p.loadContext = async (input) => {
+      contextStarted();
+      return loadContext(input);
+    };
+    const { reply } = await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(reply).toBe('Family skate at the arena, today at 1.');
+  }, 2000);
 });
 
 /**

@@ -122,13 +122,18 @@ import {
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
+import { augmentCoachSkillForBubbles } from './bubbles';
 import { draftOriginForTurn, productionChannelDraftPort } from './draft';
 import {
   type ExperienceCardIntent,
   augmentCoachSkillForExperienceCards,
   shareExperienceCardTool,
 } from './experience-card-tool';
-import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import {
+  type FindTurnReading,
+  augmentCoachSkillForFindPrivate,
+  createFindTurnReader,
+} from './find-private';
 import { type FindReplyGate, judgeWholeFindReply } from './find-reasoning-judge';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
@@ -165,7 +170,7 @@ import {
   productionRegistrationContextPorts,
 } from './registration-context';
 import { redactTeenNames } from './reply';
-import { type ReplyChild, toSmsReply } from './reply';
+import { type ReplyChild, joinReplyBubbles, toSmsBubbles, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
   buildChannelCoachTools,
@@ -349,6 +354,17 @@ export interface ChannelCoachPorts {
    */
   client(): AgentClient;
   /**
+   * VIL-524 / VIL-567. Whether this inbound is a nearby-find, in any language.
+   * Required: it decides both the find addenda and whether the find-reply judge
+   * gates the send, so a coach built without it must say what it reads. Production
+   * wires the model read, which answers not a find on a missing client or a failed
+   * read (logged), so a calendar edit is never treated as a search.
+   */
+  readFindTurn(input: {
+    text: string;
+    transcript: readonly { role: string; content: string }[];
+  }): Promise<FindTurnReading>;
+  /**
    * VIL-524. On a nearby-find turn, after the model writes, this decides whether
    * the whole reply is internal reasoning. Required: production wires the model
    * judge, and a scripted coach passes `findReplyNotJudged`, which sends the draft
@@ -454,18 +470,33 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
         ]);
       const localDay = localDayContext(timeZone ? familyLocalNow(now, timeZone) : null, forecast);
-      const providerWatch = ports.loadProviderWatch
-        ? await ports.loadProviderWatch(turn.familyId, now)
-        : [];
+      const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
+      // VIL-524 / VIL-567. Only a nearby-find turn gets the find addenda. A model reads
+      // the parent's words in any language; there is no word list, and a failed read is
+      // not a find. The read is a model call on the SMS hot path, so it runs beside the
+      // family context and the other reads rather than in front of them.
+      const [providerWatch, emailLit, { findTurn }, familyContext] = await Promise.all([
+        ports.loadProviderWatch ? ports.loadProviderWatch(turn.familyId, now) : [],
+        emailReader ? emailReader.connected(turn.familyId, turn.parentUserId) : false,
+        ports.readFindTurn({ text: turn.body, transcript }),
+        ports.loadContext({
+          familyId: turn.familyId,
+          question: turn.body,
+          intent: null,
+          // A text has no per-child chip to focus, so the turn is whole-family and the
+          // model resolves who is meant from the words and the schedule.
+          focusedChildId: null,
+          transcript,
+          sourceNote: null,
+          readerUserId: turn.parentUserId,
+          inGroup: turn.audience === 'group',
+        }),
+      ]);
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
       const voiceLit = turn.audience !== 'group' && (ports.voiceMemosEnabled?.() ?? false);
-      const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
-      const emailLit =
-        emailReader !== undefined &&
-        (await emailReader.connected(turn.familyId, turn.parentUserId));
       const groupedSkill =
         turn.audience === 'group'
           ? // VIL-447: the shared-list verbs exist only in a group, and only with the flag on.
@@ -484,11 +515,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...groupedSkill,
         instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
       };
-      // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
-      // itself stays byte-identical, so coach-channel and group-privacy
-      // recordings stay keyed on the prompt they already have.
-      const findTurn = nearbyFindTurn(turn.body, transcript);
+      // coach-nearby-find itself stays byte-identical, so coach-channel and
+      // group-privacy recordings stay keyed on the prompt they already have.
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
+      // VIL-567: the same gate, so a bare find reads its day from the thread.
+      const findDay = findTurn ? await loadCronSkill('coach-find-day') : null;
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
@@ -501,17 +532,20 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const composedSkill = augmentCoachSkillForContactCard(
         augmentCoachSkillForReadEmail(
           augmentCoachSkillForFindPrivate(
-            augmentCoachSkillForGroupLeave(
-              augmentCoachSkillForVoiceMemos(
-                augmentCoachSkillForExperienceCards(
-                  baseSkill,
-                  cardsLit ? await loadCronSkill('experience-card-coach') : null,
+            augmentCoachSkillForFindPrivate(
+              augmentCoachSkillForGroupLeave(
+                augmentCoachSkillForVoiceMemos(
+                  augmentCoachSkillForExperienceCards(
+                    baseSkill,
+                    cardsLit ? await loadCronSkill('experience-card-coach') : null,
+                  ),
+                  voiceLit ? await loadCronSkill('coach-voice-memo') : null,
                 ),
-                voiceLit ? await loadCronSkill('coach-voice-memo') : null,
+                leaveLit,
               ),
-              leaveLit,
+              findPrivate,
             ),
-            findPrivate,
+            findDay,
           ),
           emailLit ? await loadCronSkill(READ_EMAIL_SKILL) : null,
         ),
@@ -525,18 +559,6 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           ...offeredThisTurn.links().map((link) => link.url),
         ].map((url) => ({ ref: linkRef(url), url }));
 
-      const familyContext = await ports.loadContext({
-        familyId: turn.familyId,
-        question: turn.body,
-        intent: null,
-        // A text has no per-child chip to focus, so the turn is whole-family and the
-        // model resolves who is meant from the words and the schedule.
-        focusedChildId: null,
-        transcript,
-        sourceNote: null,
-        readerUserId: turn.parentUserId,
-        inGroup: turn.audience === 'group',
-      });
       // VIL-566: the household-group addendum rides only when the fact does, so every
       // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
       // only a 1:1 turn holding a fact Hale read in email or the calendar carries it.
@@ -636,6 +658,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
         // VIL-303: absent unless this parent is owed a correction, for the same reason.
         ...(owedCorrections.length > 0 ? { capabilityCorrections: owedCorrections } : {}),
+        // The last N user rows arrived back to back and this turn answers them together
+        // (router/burst.ts). Absent on a lone text, so its prompt bytes are untouched.
+        ...(turn.burstSize !== undefined && turn.burstSize >= 2
+          ? { arrivedTogether: turn.burstSize }
+          : {}),
       };
       const media = await mediaForTurn(turn, ports);
       if (media.unwatched.length > 0) {
@@ -655,9 +682,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         { stage: 'coach', ...llmFamilyContext(turn.familyId) },
         () => photoFactsForTurn(turn, ports, media.blocks, now, timeZone),
       );
-      const skillForTurn = photoFacts
-        ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
-        : coachSkill;
+      // A 1:1 turn the router lit for several bubbles gets their addendum, last. Every
+      // other turn keeps the skill object it already had, and its recordings their keys.
+      const bubblesLit = turn.replyBubbles === true && turn.audience === 'direct';
+      const skillForTurn = augmentCoachSkillForBubbles(
+        photoFacts
+          ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
+          : coachSkill,
+        bubblesLit ? await loadCronSkill('coach-bubbles') : null,
+      );
       if (photoFacts) {
         Object.assign(context, { photoFacts });
       }
@@ -951,7 +984,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // VIL-434: the model's answer goes out whole. Length is the model's judgment
               // (the skill, or a rewrite the model chooses). Code does not cut it, and it
               // does not call a shorten pass because a sentence ran past two segments.
-              const reply = toSmsReply(spoken, {
+              const smsArgs = {
                 children,
                 now,
                 ...(noticeReady
@@ -962,7 +995,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                       activityLinks: turnLinks(),
                       nearby: nearby ?? undefined,
                     }),
-              });
+              };
+              // A lit turn's reply breaks between bubbles and nowhere else. A Gmail draft
+              // notice is a receipt to read, so it is one bubble.
+              const reply = bubblesLit
+                ? joinReplyBubbles(toSmsBubbles(spoken, { ...smsArgs, bubbles: !noticeReady }))
+                : toSmsReply(spoken, smsArgs);
               await ports.recordRun(record('completed'));
               const card = experienceCard as ExperienceCardIntent | null;
               const capabilityNotes: CapabilityNotes | null =
@@ -1043,8 +1081,10 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
  * compiles perfectly when either half is missing, and a fake port cannot fail on that.
  */
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
+  const findTurnReader = createFindTurnReader(anthropicClient);
   return {
     client: anthropicClient,
+    readFindTurn: (input) => findTurnReader.read(input),
     judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
     voiceMemosEnabled: linqVoiceMemosEnabled,

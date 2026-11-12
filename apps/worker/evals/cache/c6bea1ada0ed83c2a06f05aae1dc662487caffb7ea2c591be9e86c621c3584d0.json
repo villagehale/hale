@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single parent question in Chinese, names both classes with their day, time, venue and dates, and states the Dec 1 7:00 registration opening. It has no question and the page links are in the last bubble as expected. Minor issue: the first bubble is a lead-in count ('有两个...的班') rather than a substantive thought, and bubble 4 combines the registration point with links, so splitting is slightly off, but overall it meets the rubric.",
+    "score": 4
+  }
+}

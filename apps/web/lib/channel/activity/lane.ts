@@ -329,6 +329,7 @@ export function groundUserMessage(query: ActivityQuery): string {
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.stages && query.stages.length > 0 ? { stages: query.stages } : {}),
     ...(query.window ? { window: query.window } : {}),
+    ...(query.date ? { date: query.date } : {}),
     ...(query.today ? { today: query.today } : {}),
   });
 }

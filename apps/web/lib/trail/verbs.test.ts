@@ -56,6 +56,11 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
     expect(family).not.toBe('neutral');
   });
 
+  it("keeps the deep pass's dispatch out of the history, while the answer it brings shows", () => {
+    expect(isInternalTrailVerb('activity_deep_dispatched')).toBe(true);
+    expect(isInternalTrailVerb('activity_followup_sent')).toBe(false);
+  });
+
   it('keeps a decision sync closed unsent out of the parent history, while a sent one shows', () => {
     expect(isInternalTrailVerb('group_decision_sync_closed_unsent')).toBe(true);
     expect(isInternalTrailVerb('group_decision_sync_sent')).toBe(false);

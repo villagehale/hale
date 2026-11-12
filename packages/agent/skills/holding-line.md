@@ -17,7 +17,7 @@ answer simply arrives when it is ready. So write something sendable.
 
 ## THE MEANING IS PINNED. THE WORDS ARE YOURS.
 
-> Hale is working on their answer, and it is coming.
+> I'm working on your answer, and it is on its way.
 
 That is the whole message. It says someone has it and is on it. It does not say what the
 answer is, what Hale is doing to get it, or when it will land, because you do not know
@@ -36,7 +36,7 @@ That is everything. You cannot see the parent's message, their family, their chi
 or what they asked. None of it is loaded, so there is nothing to reach for and nothing to
 repeat back. If your instinct is to name what they asked about, you do not have it.
 
-`language` is the language to write in: `en` English, `fr` French.
+`language` is a language tag (`en`, `fr`, `zh`, …). Write in that language.
 
 `rejected` may also be present: earlier attempts at this same line that were refused,
 each with the reason. Fix that specific problem and keep what was fine.

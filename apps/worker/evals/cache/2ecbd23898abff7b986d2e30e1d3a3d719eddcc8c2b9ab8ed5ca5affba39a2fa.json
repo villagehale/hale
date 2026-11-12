@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in Spanish, names both Saturday picks with their own times, and avoids any count or lead-in bubble. It answers the single question with no question back. Bubble splitting is reasonable: one bubble per event plus a closing note on the free calendar. Minor issue: the second bubble's sentence structure is slightly heavy, and the final bubble mixes the calendar fact with the links, which is acceptable since code appends the page address. Facts are accurate to the inputs (free calendar stated, no invented details).",
+    "score": 4
+  }
+}

@@ -528,6 +528,7 @@ async function routeOneToOne(
     isGroup: message.isGroup,
     providerAnsweredKeyword: null,
     media: message.media,
+    ...(message.service ? { service: message.service } : {}),
   });
 }
 
@@ -1452,6 +1453,12 @@ async function recordHandledInbound(
     .returning({ id: schema.channelMessages.id });
   const id = row?.id;
   if (!id) return null;
+  // The door answers this text itself, so it holds the text's answer claim: no C1 turn
+  // may fold it into another ask (router/burst.ts reads the same claim table).
+  await deps.database
+    .insert(schema.channelTurnAnswerClaims)
+    .values({ channelMessageId: id })
+    .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId });
   await deps.database.insert(schema.auditLog).values({
     familyId: owner.familyId,
     actor: owner.userId,

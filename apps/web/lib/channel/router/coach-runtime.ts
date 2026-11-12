@@ -76,12 +76,25 @@ export interface ChannelTurn {
   /** VIL-477 — the Linq group this turn is in; absent/null on a 1:1 or SMS turn. */
   groupChatId?: string | null;
   /**
+   * The router lit this turn's answer to go out as several short bubbles: a 1:1 iMessage
+   * chat while COACH_BUBBLES_ENABLED is lit for the family. Decided in code (route.ts),
+   * never by the model. When set, a line break in `ChannelTurnResult.reply` is a bubble
+   * boundary and appears nowhere else (coach/reply.ts REPLY_BUBBLE_BREAK). Absent on
+   * every other turn, whose reply never carries one from the coach.
+   */
+  replyBubbles?: boolean;
+  /**
    * VIL-413 — facts Hale already read from this turn's photo or PDF. Set by the
    * coach runtime, never by the router, and only on a 1:1 turn while
    * INBOUND_PHOTO_FACTS_ENABLED is lit. Absent on a text-only turn, a group turn, and
    * when the extract found nothing.
    */
   photoFacts?: TurnPhotoFacts;
+  /**
+   * How many texts the parent sent back to back that this turn reads as one (burst.ts).
+   * Absent unless two or more, so a lone turn keeps its prompt bytes and cache keys.
+   */
+  burstSize?: number;
 }
 
 /**

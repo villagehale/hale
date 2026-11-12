@@ -69,6 +69,11 @@
     "version": null,
     "sha256": "27cea18015ddf86912a654ec57b02449f94ec644b414675bc439ad94a4eb37a8"
   },
+  "judges/coach-bubbles": {
+    "name": "judges/coach-bubbles",
+    "version": null,
+    "sha256": "f40b4ce7029371b589f4fc53e6eb173e46555ccc4abc37dbeb08470cd0aa5631"
+  },
   "judges/coach-capability-correction": {
     "name": "judges/coach-capability-correction",
     "version": null,
@@ -83,6 +88,11 @@
     "name": "judges/coach-clash",
     "version": null,
     "sha256": "27f6ea878596f2a38ea420a2698f91051e809f1277110c1c15a7ad9662abe922"
+  },
+  "judges/coach-find-day": {
+    "name": "judges/coach-find-day",
+    "version": null,
+    "sha256": "40e44c6104908f1e09f94aa7be12a3060f505c1acf32b404c068e8e633ac52f1"
   },
   "judges/coach-local-day": {
     "name": "judges/coach-local-day",

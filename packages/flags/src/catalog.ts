@@ -79,6 +79,10 @@ export const FLAGS = [
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
+  exact('coach-bubbles', 'COACH_BUBBLES_ENABLED', {
+    allowlistEnv: 'COACH_BUBBLES_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
   exact('cold-start-ladder', 'COLD_START_LADDER_ENABLED'),
   exact('coparent-duty-asks', 'COPARENT_DUTY_ASKS_ENABLED', {
     allowlistEnv: 'COPARENT_DUTY_ASKS_FAMILY_ALLOWLIST',
@@ -107,7 +111,14 @@ export const FLAGS = [
   exact('going-count', 'GOING_COUNT_ENABLED'),
   exact('google-push-sync', 'GOOGLE_PUSH_SYNC_ENABLED'),
   exact('google-write-scopes', 'GOOGLE_WRITE_SCOPES_ENABLED'),
-  exact('holding-line', 'HOLDING_LINE_ENABLED'),
+  exact('holding-line', 'HOLDING_LINE_ENABLED', {
+    allowlistEnv: 'HOLDING_LINE_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
+  exact('inbound-burst', 'INBOUND_BURST_ENABLED', {
+    allowlistEnv: 'INBOUND_BURST_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
   exact('inbound-photo-facts', 'INBOUND_PHOTO_FACTS_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
@@ -118,6 +129,7 @@ export const FLAGS = [
   exact('memory-synthesis-apply', 'MEMORY_SYNTHESIS_APPLY'),
   exact('mid-activity-ask', 'MID_ACTIVITY_ASK_ENABLED'),
   exact('mid-activity-signup-tool', 'MID_ACTIVITY_SIGNUP_TOOL_ENABLED'),
+  exact('next-day-checkback', 'NEXT_DAY_CHECKBACK_ENABLED'),
   exact('orphan-user-sweep', 'ORPHAN_USER_SWEEP_ENABLED'),
   exact('parent-calendar-mirror', 'PARENT_CALENDAR_MIRROR_ENABLED'),
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),

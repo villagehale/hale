@@ -329,6 +329,34 @@ describe('handleLinqInboundRequest', () => {
     expect(h.jobs[0]?.in_group).toBeUndefined();
   });
 
+  /**
+   * Linq relays a green-bubble chat on the iMessage channel too. The row keeps the service
+   * Linq named, so the router can tell an SMS chat (one text) from an iMessage one.
+   */
+  it('records the service Linq said carried the text on the inbound row', async () => {
+    const serviceOf = async (service: string | undefined) => {
+      const h = harness();
+      enrol(h.fake);
+      const body = JSON.parse(messageBody());
+      if (service === undefined) Reflect.deleteProperty(body.data, 'service');
+      else body.data.service = service;
+
+      const res = await handleLinqInboundRequest(request(JSON.stringify(body)), h.deps);
+
+      await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
+      const row = h.fake
+        .rows(schema.channelMessages)
+        .find((candidate) => candidate.providerMessageId === MESSAGE_ID);
+      expect(row?.channel).toBe('imessage');
+      return row?.providerService;
+    };
+
+    expect(await serviceOf('SMS')).toBe('SMS');
+    expect(await serviceOf('RCS')).toBe('RCS');
+    expect(await serviceOf('iMessage')).toBe('iMessage');
+    expect(await serviceOf(undefined)).toBeNull();
+  });
+
   it('does not claim a group or hand it to the coach until the trigger', async () => {
     const h = harness();
     const { familyId } = enrol(h.fake);

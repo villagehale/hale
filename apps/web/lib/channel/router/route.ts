@@ -22,7 +22,9 @@ import {
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import type { CapabilityNotes, CapabilityNotesOutcome } from '~/lib/channel/capabilities/ledger';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
+import { REPLY_BUBBLE_BREAK, splitReplyBubbles } from '~/lib/channel/coach/reply';
 import {
   CALL_TIMEOUT_MS,
   GATE_TIMEOUT,
@@ -103,6 +105,8 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
+import { sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ClaimEnforceFailure, ClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
@@ -164,6 +168,7 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
 import { markOfferAsked } from '~/lib/signup/store';
 import type { ApologyFallback, TurnApology } from './apology';
+import { type InboundBurst, mergeBurstContext } from './burst';
 import {
   type ChannelCoachRuntime,
   type ChannelTurn,
@@ -191,6 +196,7 @@ import {
   type HoldingLineComposer,
   armHoldingLine,
   holdingLineNotArmed,
+  holdingLineRead,
 } from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
@@ -509,6 +515,9 @@ export interface ChannelRouterDeps {
    * twice and thread others nine times, and "we didn't wire the ledger" is not a state
    * this router may be in. */
   turns: InboundTurnLedger;
+  /** Which back-to-back texts this turn reads together (burst.ts). Non-nullable (rule
+   * #11): dark is the plan's own `flag_off`, never an absent planner. */
+  burst: InboundBurst;
   /** The words a broken turn gets, composed (apology.ts). Non-nullable (rule #11) and
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
@@ -556,7 +565,7 @@ export interface ChannelRouterDeps {
    * SEND THE DEEP PASS AFTER IT — the question-time half of the promise.
    *
    * The row above says Hale owes this family a find; this puts the research on a queue
-   * the drain runs within the minute, so a parent who named a place gets the dated answer
+   * the drain runs within the minute, so the parent gets the dated answer
    * in about four minutes rather than in a day (activity/deep-queue.ts).
    *
    * Non-nullable (rule #11), and its absence is IN the outcome: `not_enqueued` with a
@@ -566,7 +575,7 @@ export interface ChannelRouterDeps {
    * exists for. A silent no-op would look exactly like a subject nobody thought worth
    * researching.
    */
-  dispatchDeepResearch(payload: DeepResearchPayload): Promise<DeepDispatchOutcome>;
+  dispatchDeepResearch(payload: DeepResearchPayload, askedBy: string): Promise<DeepDispatchOutcome>;
   /**
    * What the parent's own message settled, written down before anything reads state
    * (VIL-294 — lib/channel/stated-state.ts).
@@ -820,6 +829,9 @@ export type RouterStatus =
   /** This text already has Hale's answer, and the queue handed it back anyway. The turn
    * stops before anything is threaded, spent or sent (turn-ledger.ts). */
   | 'already_answered'
+  /** An earlier text's turn read this one with it (burst.ts) and answers both. Nothing
+   * threaded, counted or sent here. */
+  | 'folded'
   /** The turn broke because the provider was unreachable AND the text named an
    * emergency: the fixed safety line went out with no model in the loop (smoke-alarm.ts).
    * A distinct status from `agent_failed` because it is the one outcome where a failed
@@ -969,10 +981,27 @@ async function routeChannelMessageInner(
       lane: null,
     });
   }
+  if (stage === 'folded') {
+    return done(deps, job, { status: 'folded', handler: null, conversationId: null, lane: null });
+  }
   const redriven = stage === 'deferred';
 
-  const context = await deps.loadContext(deps.database, job);
-  if (!context) {
+  // BACK-TO-BACK TEXTS (burst.ts). Before any gate reads a word, so every gate below reads
+  // the whole burst: a STOP or a crisis in the second text cannot slip past one.
+  const burst = await deps.burst.plan(job, redriven ? 'deferred' : 'fresh');
+  deps.log.info(
+    {
+      channelMessageId: job.channel_message_id,
+      burstSize: burst.kind === 'anchor' ? burst.members.length : 1,
+      settleWaitMs: burst.waitedMs,
+      pickupMs: now.getTime() - Date.parse(job.received_at),
+      ...(burst.kind === 'anchor' ? { readOutcome: burst.read } : { why: burst.why }),
+    },
+    'channel router: burst',
+  );
+
+  const loaded = await deps.loadContext(deps.database, job);
+  if (!loaded) {
     return done(deps, job, {
       status: 'unknown_message',
       handler: null,
@@ -980,6 +1009,7 @@ async function routeChannelMessageInner(
       lane: null,
     });
   }
+  const context = burst.kind === 'anchor' ? mergeBurstContext(loaded, burst) : loaded;
 
   if (context.reply) {
     const originChatId = context.reply.channel === 'imessage' ? context.reply.chatId : null;
@@ -1007,6 +1037,12 @@ async function routeChannelMessageInner(
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       channelMessageId: job.channel_message_id,
+      folded:
+        burst.kind === 'anchor'
+          ? burst.members
+              .map((member) => member.channelMessageId)
+              .filter((id) => id !== job.channel_message_id)
+          : [],
     });
     if (claim === 'already_answered') {
       // The DB refused the claim: another attempt at this same turn answered first, so
@@ -1105,13 +1141,23 @@ async function routeChannelMessageInner(
   if (!redriven) {
     // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
     // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
-    const inboundProviderId =
-      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
-    await appendMessage(conversationId, 'user', context.body, deps.database, {
-      childId: null,
-      topic: null,
-      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
-    });
+    // A burst threads each text as its own row with its own id, never the joined body.
+    const texts =
+      burst.kind === 'anchor'
+        ? burst.members.map((member) => ({
+            body: member.body,
+            providerMessageId: member.providerMessageId,
+          }))
+        : [{ body: context.body, providerMessageId: job.provider_message_id }];
+    const editable = linqMessageEditEnabled() && route.channel === 'imessage';
+    for (const text of texts) {
+      const inboundProviderId = editable ? text.providerMessageId : null;
+      await appendMessage(conversationId, 'user', text.body, deps.database, {
+        childId: null,
+        topic: null,
+        ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+      });
+    }
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -1213,6 +1259,7 @@ async function routeChannelMessageInner(
     conversationId,
     body: context.body,
     ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
+    ...(burst.kind === 'anchor' ? { burstSize: burst.members.length } : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
     // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {
@@ -1311,6 +1358,42 @@ async function routeChannelMessageInner(
       openAsks: { leaves: null },
       beforeSend: stopTyping,
     });
+
+  /**
+   * The coach's answer as several bubbles (a lit 1:1 iMessage turn). The outbound folds
+   * read the whole answer once and only ever append, so whatever they add rides the last
+   * bubble, where the skill puts the one question.
+   */
+  const answerBubbles = async (
+    bubbles: readonly string[],
+    threadSource: schema.MessageSource | null,
+    voiceMemo: boolean,
+  ) => {
+    const whole = bubbles.join(REPLY_BUBBLE_BREAK);
+    const folded = await withPassport(whole);
+    if (!folded.startsWith(whole)) {
+      throw new Error('channel router: an outbound fold rewrote the answer instead of appending');
+    }
+    const bodies = [...bubbles.slice(0, -1), `${bubbles.at(-1)}${folded.slice(whole.length)}`];
+    return sendReplySet(deps, {
+      route,
+      bodies,
+      setKey: `turn-reply:${job.channel_message_id}`,
+      job,
+      conversationId,
+      claim: claimAnswer,
+      threadSource,
+      openAsks: { leaves: null },
+      beforeSend: stopTyping,
+      voiceMemo,
+      inboundBody: context.body,
+      stickerRead: {
+        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
+        parentAttachments: (context.media ?? []).map((part) => part.kind),
+      },
+      effectRead: { audience: inGroup || job.in_group === undefined ? 'group' : 'direct' },
+    });
+  };
 
   // A receipt for its asker alone, on a group turn, goes 1:1 only to the asker's own
   // enrolled SMS number, and only when that is the handle this text came from: a Linq
@@ -1595,20 +1678,31 @@ async function routeChannelMessageInner(
   // opt-out or a flood-held turn never has one, however slow its database. Once per text:
   // a re-driven turn already had its chance. Not in a group thread, which other families read. The group
   // bit is the door's own, not `context.inGroup`, which stays false while group onboarding
-  // v2 is dark however many people are in the chat.
+  // v2 is dark however many people are in the chat. 1:1 iMessage only.
+  //
+  // What the screen read is kept for the line, which reads it when it is DUE: it is
+  // written in this text's language, and withheld when the screen filed the text as a
+  // crisis or a medical symptom, or has not read it yet (holding-line.ts holdingLineRead).
+  let screened: LaneReading | null = null;
   const holdingSkip = redriven
     ? 're_driven'
     : job.in_group === undefined
       ? 'group_unknown'
       : job.in_group
         ? 'group_thread'
-        : null;
+        : route.channel !== 'imessage'
+          ? 'sms'
+          : null;
   if (holdingSkip) {
     holding = holdingLineNotArmed(holdingSkip, deps.log);
   } else {
     holding = armHoldingLine({
-      afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
-      language: await familySpeechLanguage(deps.database, job.family_id),
+      // The settle already spent part of the parent's wait, so the line comes no later
+      // from their side than it would have without one.
+      afterMs: Math.max(0, (deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS) - burst.waitedMs),
+      familyId: job.family_id,
+      read: () =>
+        holdingLineRead(screened, () => familySpeechLanguage(deps.database, job.family_id)),
       composer: deps.holdingLine,
       log: deps.log,
       send: async (line) => {
@@ -1686,6 +1780,9 @@ async function routeChannelMessageInner(
             channel: route.channel,
             providerChatId: route.channel === 'imessage' ? route.chatId : null,
             inGroup: job.in_group,
+          },
+          onScreened: (reading) => {
+            screened = reading;
           },
         }),
         OFF_DOMAIN_BUDGET_MS,
@@ -1786,18 +1883,20 @@ async function routeChannelMessageInner(
     return await runAgentTurn(deps, {
       job,
       turn,
-      answer: (body, threadSource, how) =>
-        answer(
-          body,
-          null,
-          null,
-          null,
-          undefined,
-          null,
-          undefined,
-          threadSource,
-          how?.voiceMemo === true,
-        ),
+      answer: (bubbles, threadSource, how) =>
+        bubbles.length > 1
+          ? answerBubbles(bubbles, threadSource, how?.voiceMemo === true)
+          : answer(
+              bubbles[0] as string,
+              null,
+              null,
+              null,
+              undefined,
+              null,
+              undefined,
+              threadSource,
+              how?.voiceMemo === true,
+            ),
       hasAnswered: () => answered,
       claimSilent: claimAnswer,
       conversationId,
@@ -1807,6 +1906,7 @@ async function routeChannelMessageInner(
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
+      replyBubbles: !inGroup && takesBubbles(route, job) && coachBubblesEnabled(job.family_id),
       cardRoute: inGroup ? null : route,
       groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
     });
@@ -2199,15 +2299,20 @@ function isOutsiderWeMayAnswer(role: FamilyRole | null): boolean {
 }
 
 /**
- * The agent half. ONE message goes out per turn, and it is the answer.
+ * The agent half. ONE answer goes out per turn, possibly as several short bubbles (Barton,
+ * 2026-11-11): on a 1:1 iMessage chat with COACH_BUBBLES lit, the model writes the answer
+ * the way a friend texts it and each bubble is its own message (sendReplySet). Still one
+ * answer: one claim, one question, and every post-send write rides the last bubble.
  *
  * There used to be an "On it - one sec." raced against a five-second timer. It is gone
- * (founder decision, 2026-08-13): silence, then the answer. Two texts for one question
- * is worse on a phone than a pause — and the coach itself had started promising parents
- * it would stop sending the thing, which deterministic code then went on sending. An
- * agent must not be wired to break its own promises, so the wiring is what was removed.
- * The real fix for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts)
- * and the unbounded model call, not a message about waiting.
+ * (founder decision, 2026-08-13), and bubbles do not bring it back: there is still no
+ * deterministic waiting text. The coach itself had started promising parents it would
+ * stop sending the thing, which deterministic code then went on sending. An agent must
+ * not be wired to break its own promises, so the wiring is what was removed. The real fix
+ * for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts) and the
+ * unbounded model call, not a message about waiting. The one line that may come first is
+ * the composed holding line (holding-line.ts), dark unless lit, and only on a 1:1 iMessage
+ * turn still unanswered past HOLDING_LINE_AFTER_MS.
  */
 /**
  * After the coach's sentence has gone out, ask the model whether it offered to add
@@ -2282,6 +2387,15 @@ async function stampSignupOffersAsked(
   }
 }
 
+/** The offers whose whole text is in these bubbles, the bubbles of one answer that went. */
+function offersCarriedBy(
+  offers: readonly RecordedSignupOffer[],
+  sent: readonly string[],
+): RecordedSignupOffer[] {
+  const carried = sent.join(REPLY_BUBBLE_BREAK);
+  return offers.filter((offer) => carried.includes(offer.text.trim()));
+}
+
 async function runAgentTurn(
   deps: ChannelRouterDeps,
   args: {
@@ -2293,10 +2407,11 @@ async function runAgentTurn(
      * send-time discipline) and this is the only place that knows which row that was.
      * `threadSource` marks the thread row the answer lands in (VIL-616).
      * `voiceMemo` (VIL-495): the model chose to say it; the send gates decide whether it
-     * goes as a memo or as this same text.
+     * goes as a memo or as this same text. Several `bubbles` are one answer sent as
+     * several messages, and the id handed back is the LAST bubble's.
      */
     answer: (
-      body: string,
+      bubbles: readonly string[],
       threadSource: schema.MessageSource | null,
       how?: { voiceMemo: true },
     ) => Promise<string>;
@@ -2326,6 +2441,8 @@ async function runAgentTurn(
      */
     unplacedAnswer: UnplacedAnswer | null;
     audience: ChannelTurn['audience'];
+    /** The answer may go out as several bubbles (see ChannelTurn.replyBubbles). */
+    replyBubbles?: boolean;
     /** VIL-497 — the 1:1 route a card may go to; null on a group turn. */
     cardRoute?: ReplyRoute | null;
     /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
@@ -2356,15 +2473,18 @@ async function runAgentTurn(
       emailRead,
       capabilityNotes,
       signupOffers,
+      singleBubble,
     } = await composeReconciledReply(deps, args, view);
     // VIL-616: a reply written after reading an email may repeat the sender's words, so
     // its thread row says so and the nightly memory writer leaves it out.
     const threadSource: schema.MessageSource | null = emailRead ? { kind: 'read_email' } : null;
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
-    // stands in for an empty reply (absolute-zero fixed parent copy).
-    if (!experienceCard && reply.trim() === '') {
+    // stands in for an empty reply (absolute-zero fixed parent copy). A card the model
+    // chose does not go either: it rides beside the words (VIL-495 Design lock), and
+    // there are none, so the empty reply is named with the card it withheld.
+    if (reply.trim() === '') {
       deps.log.info(
-        { outcome: 'empty_reply' },
+        { outcome: experienceCard ? 'empty_reply_card_withheld' : 'empty_reply' },
         'channel router: coach wrote nothing - nothing sent',
       );
       // Claim the turn so a redelivery reads `answered` and never reruns the coach
@@ -2378,12 +2498,104 @@ async function runAgentTurn(
       });
     }
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
+    const text = card ? card.text : reply;
+    // A line break is a bubble boundary only on a turn lit for bubbles. Anywhere else it
+    // is part of the one text (a venue page, a passport line), and is never split.
+    const bubbles = args.replyBubbles && !singleBubble ? splitReplyBubbles(text) : [text];
+    if (bubbles.length > 1) {
+      deps.log.info({ bubbles: bubbles.length }, 'channel router: the answer goes as bubbles');
+    }
+    // WHAT THE ANSWER OWES: the follow-up it promised, the registration morning and the
+    // page it said it was watching. Written AFTER the send, against a message that went
+    // (the MEM-10 send-time discipline, lib/commitments/ledger.ts). A set that stopped
+    // partway keeps them too, against its last bubble that went: any bubble may have
+    // carried the promise, and a promise the parent has with no row behind it is the
+    // one Hale breaks. One the parent never read only means a follow-up they asked for.
+    const keepWhatTheAnswerOwes = async (channelMessageId: string) => {
+      // The same send-time discipline for the same reason, and the writer never throws for
+      // the same reason too: the parent already has the message, so an exception here would
+      // buy a carrier retry and a duplicate reply. A turn that composed "I'll come back to
+      // you" and then failed to deliver it promised nobody anything.
+      if (activityPromise) {
+        const recorded = await deps.recordActivityPromise(deps.database, {
+          familyId: args.turn.familyId,
+          promise: activityPromise,
+          channelMessageId,
+          now: args.turn.now,
+        });
+        // AND THE RESEARCH, NOW. The promise used to wait for the hourly sweep whatever it
+        // was about; a parent who names a gym and asks when the fall term starts is asking
+        // about pages that exist right now, and the answer is worth four minutes rather
+        // than a day. Never throws and never blocks the reply — the reply has already been
+        // sent — and every way it can decline is a counted outcome, because the promise is
+        // kept either way and the only thing at stake is how fast (deep-queue.ts).
+        const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
+          familyId: args.turn.familyId,
+          parentUserId: args.turn.parentUserId,
+          recorded,
+        });
+        deps.log.info(
+          {
+            dispatch: dispatched.status,
+            ...('reason' in dispatched ? { reason: dispatched.reason } : {}),
+          },
+          'channel router: activity promise recorded',
+        );
+      }
+      // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
+      // registration morning; the ledger had no row for that, and a matched municipal
+      // window with the ladder armed is the fact that lets one be written rather than the
+      // sentence deleted. Same send-time discipline and same never-throws contract as the
+      // writer above it: the parent already has the text.
+      for (const mint of mints) {
+        await deps.recordRegistrationWatch(deps.database, {
+          familyId: args.turn.familyId,
+          mint,
+          channelMessageId,
+          now: args.turn.now,
+        });
+      }
+      // THE COURSE PAGE THIS TURN STARTED WATCHING (VIL-337). Same send-time discipline
+      // and same never-throws contract: the row is armed against the outbound message
+      // that carried "I'm watching that", and a turn that composed the sentence without
+      // reaching a transport promised nobody anything. What it CAN report is a failed
+      // arm, which it writes to the trail rather than raising — the parent already has
+      // the text, and an exception here would buy a carrier retry and a second copy of it.
+      if (spotWatch) {
+        const armed = await deps.armWatchedSpot(deps.database, {
+          familyId: args.turn.familyId,
+          parentUserId: args.turn.parentUserId,
+          intent: spotWatch,
+          channelMessageId,
+          now: args.turn.now,
+        });
+        deps.log.info(
+          { arm: armed.status, host: spotWatch.host },
+          'channel router: watched spot armed after the send',
+        );
+      }
+    };
     // A card turn stays text: the card rides beside the words (VIL-495 Design lock).
-    const channelMessageId = await args.answer(
-      card ? card.text : reply,
-      threadSource,
-      voiceMemo === true && !card ? { voiceMemo: true } : undefined,
-    );
+    const channelMessageId = await args
+      .answer(bubbles, threadSource, voiceMemo === true && !card ? { voiceMemo: true } : undefined)
+      .catch(async (err: unknown) => {
+        if (err instanceof ReplySetIncomplete) {
+          // The bubbles that went carried their offers' text to the parent.
+          await stampSignupOffersAsked(
+            deps,
+            args.turn.familyId,
+            offersCarriedBy(signupOffers ?? [], bubbles.slice(0, err.bubblesSent)),
+          );
+          if (err.lastSentId !== null) await keepWhatTheAnswerOwes(err.lastSentId);
+          else if (activityPromise || spotWatch || mints.length > 0) {
+            deps.log.error(
+              { outcome: 'owed_rows_unwritten', reason: 'no_ledger_row' },
+              'channel router: the answer stopped partway with no bubble on record - what it owes is not written',
+            );
+          }
+        }
+        throw err;
+      });
     await stampSignupOffersAsked(deps, args.turn.familyId, signupOffers ?? []);
     // AFTER the send: the shadow read adds no latency and cannot change what was sent.
     // An enforced turn was already read before the send, so it starts no shadow.
@@ -2468,7 +2680,7 @@ async function runAgentTurn(
         }
       } else if (groupLeave.ifLeaveFails.trim() !== '') {
         try {
-          await args.answer(groupLeave.ifLeaveFails, threadSource);
+          await args.answer([groupLeave.ifLeaveFails], threadSource);
           deps.log.info({ leave: 'stayed_said' }, 'channel router: leave refused, told the group');
         } catch (err) {
           deps.log.error(
@@ -2511,36 +2723,7 @@ async function runAgentTurn(
         now: args.turn.now,
       });
     }
-    // The same send-time discipline for the same reason, and the writer never throws for
-    // the same reason too: the parent already has the message, so an exception here would
-    // buy a carrier retry and a duplicate reply. A turn that composed "I'll come back to
-    // you" and then failed to deliver it promised nobody anything.
-    if (activityPromise) {
-      const recorded = await deps.recordActivityPromise(deps.database, {
-        familyId: args.turn.familyId,
-        promise: activityPromise,
-        channelMessageId,
-        now: args.turn.now,
-      });
-      // AND THE RESEARCH, NOW. The promise used to wait for the hourly sweep whatever it
-      // was about; a parent who names a gym and asks when the fall term starts is asking
-      // about pages that exist right now, and the answer is worth four minutes rather
-      // than a day. Never throws and never blocks the reply — the reply has already been
-      // sent — and every way it can decline is a counted outcome, because the promise is
-      // kept either way and the only thing at stake is how fast (deep-queue.ts).
-      const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
-        familyId: args.turn.familyId,
-        subject: activityPromise.subject,
-        recorded,
-      });
-      deps.log.info(
-        {
-          dispatch: dispatched.status,
-          ...('reason' in dispatched ? { reason: dispatched.reason } : {}),
-        },
-        'channel router: activity promise recorded',
-      );
-    }
+    await keepWhatTheAnswerOwes(channelMessageId);
     // VIL-303 · the no this reply gave, or the earlier no it corrected. Same send-time
     // discipline and never-throws contract as the writers around it.
     if (capabilityNotes) {
@@ -2559,38 +2742,6 @@ async function runAgentTurn(
             : { reason: noted.reason }),
         },
         'channel router: capability notes',
-      );
-    }
-    // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
-    // registration morning; the ledger had no row for that, and a matched municipal
-    // window with the ladder armed is the fact that lets one be written rather than the
-    // sentence deleted. Same send-time discipline and same never-throws contract as the
-    // two writers above it: the parent already has the text.
-    for (const mint of mints) {
-      await deps.recordRegistrationWatch(deps.database, {
-        familyId: args.turn.familyId,
-        mint,
-        channelMessageId,
-        now: args.turn.now,
-      });
-    }
-    // THE COURSE PAGE THIS TURN STARTED WATCHING (VIL-337). Same send-time discipline
-    // and same never-throws contract: the row is armed against the outbound message
-    // that carried "I'm watching that", and a turn that composed the sentence without
-    // reaching a transport promised nobody anything. What it CAN report is a failed
-    // arm, which it writes to the trail rather than raising — the parent already has
-    // the text, and an exception here would buy a carrier retry and a second copy of it.
-    if (spotWatch) {
-      const armed = await deps.armWatchedSpot(deps.database, {
-        familyId: args.turn.familyId,
-        parentUserId: args.turn.parentUserId,
-        intent: spotWatch,
-        channelMessageId,
-        now: args.turn.now,
-      });
-      deps.log.info(
-        { arm: armed.status, host: spotWatch.host },
-        'channel router: watched spot armed after the send',
       );
     }
     if (deps.rememberWorkstream) {
@@ -2699,7 +2850,7 @@ async function runAgentTurn(
       throw new TurnDeferred(disposition.reason, err);
     }
     if (disposition.reply !== null) {
-      const channelMessageId = await args.answer(disposition.reply, null);
+      const channelMessageId = await args.answer([disposition.reply], null);
       // Only the choice sentence has one: it is the only reply on this path that asks the
       // parent a question, and a question that is not written down is the defect VIL-304
       // exists to close.
@@ -2740,13 +2891,15 @@ async function runAgentTurn(
         chatId: args.turn.groupChatId,
       });
     }
-    if (err instanceof LinqSendError) {
+    // A set that stopped partway carries the send's own failure.
+    const sendFailure = err instanceof ReplySetIncomplete ? err.cause : err;
+    if (sendFailure instanceof LinqSendError) {
       noteSendFailed({
         familyId: args.job.family_id,
         channel: args.turn.groupChatId ? 'imessage' : 'sms',
         isGroup: args.job.in_group,
         chatId: args.turn.groupChatId,
-        reason: err.code,
+        reason: sendFailure.code,
       });
     }
     return done(deps, args.job, {
@@ -2885,6 +3038,7 @@ async function composeReconciledReply(
     questions: readonly OpenQuestion[];
     audience: ChannelTurn['audience'];
     groupChatId?: string | null;
+    replyBubbles?: boolean;
   },
   view: Promise<ReconcileView>,
 ): Promise<
@@ -2893,6 +3047,8 @@ async function composeReconciledReply(
     attempts: readonly CoachShadowAttempt[];
     /** VIL-581: the reader decided this turn, so no shadow read is started for it. */
     enforced: boolean;
+    /** The reply is a locked line that goes as one bubble whatever it contains. */
+    singleBubble?: true;
   }
 > {
   const standingQuestions = args.questions.map((question) => question.subject);
@@ -2911,6 +3067,7 @@ async function composeReconciledReply(
         standingQuestions,
         audience: args.audience,
         ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
+        ...(args.replyBubbles ? { replyBubbles: true } : {}),
       },
       rejected,
     );
@@ -3036,7 +3193,7 @@ async function composeReconciledReply(
           { reason: 'no_coparent_invite' },
           'channel router: an invite claim was replaced with the Linq co-parent ask',
         );
-        return { ...composed, reply: instruction, ...unsaid };
+        return { ...composed, reply: instruction, ...unsaid, singleBubble: true };
       }
     }
     throw new Error(
@@ -3167,7 +3324,6 @@ async function disposeOfFailedTurn(
   args: {
     job: ChannelMessageReceivedJob;
     turn: HandlerContext;
-    answer: (body: string, threadSource: schema.MessageSource | null) => Promise<string>;
     hasAnswered: () => boolean;
     questions: readonly OpenQuestion[];
     unplacedAnswer: UnplacedAnswer | null;
@@ -3175,6 +3331,16 @@ async function disposeOfFailedTurn(
   err: unknown,
   drafted: readonly string[],
 ): Promise<FailedTurnDisposition> {
+  // Part of the answer reached the parent and the set claimed the turn. Nothing more is
+  // sent: the rest would be a re-run, and an apology would sit under words they have.
+  if (err instanceof ReplySetIncomplete) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'reply_set_incomplete',
+      log: { bubblesSent: err.bubblesSent, bubbles: err.bubbles },
+    };
+  }
   // The turn already texted the parent and then broke on its own bookkeeping. They have
   // their answer; a second message about it would be Hale talking to itself. Nothing to
   // defer either — the durable claim is already written, so a re-drive stops at the
@@ -3318,93 +3484,76 @@ async function disposeOfFailedTurn(
  * CARRIED it (the MEM-10 send-time discipline) and this is the only place that knows
  * which row that was.
  */
-async function sendReply(
-  deps: ChannelRouterDeps,
-  args: {
-    route: ReplyRoute;
-    body: string;
-    job: ChannelMessageReceivedJob;
-    conversationId: string | null;
-    claim?: () => Promise<void>;
-    /** The medical lane's outcome (migration 0090), or null for every other reply. The
-     * only thing this row carries about the CONTENT of what was said, and it is a
-     * two-value enum: which of the lane's two answers went out, so the founder
-     * scorecard's safety row can count the fixed-line fallbacks it could not see while
-     * the outcome lived only in memory. `body` stays null as ever (rule #1). */
-    medicalSource?: MedicalReplySource | null;
-    /** Where a DEFLECTION reply's words came from (migration 0103) — composed, a fixed
-     * door, or one of the four named reasons the composer could not run — and null on
-     * every reply that is not the off-domain lane's. Persisting it is what lets the
-     * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
-     * vocabulary and never a word of what was said (rule #1). */
-    replySource?: ReplySource | null;
-    /** What the thread row this reply lands in is marked with (messages.source), or null.
-     * VIL-616: `read_email` on a coach reply written after reading an email. */
-    threadSource?: schema.MessageSource | null;
-    /**
-     * What this send does to the questions Hale has left open for this parent (migration
-     * 0167). Every caller says, because it is a fact about WHICH send this is and not
-     * about sending: only the turn's ANSWER settles them.
-     *
-     * `{ leaves }` is that answer. Every earlier question is closed, and the one this
-     * reply left open itself, or null on every reply but a general answer's, is kept in a
-     * table of its own beside this reply's row. De-identified by the lane before it gets
-     * here: never the parent's words and never what Hale said, so `body` stays null as
-     * ever (rule #1). The parent's next text is read beside it (off-domain/lane.ts
-     * readPendingAsk).
-     *
-     * `'untouched'` is a line that is not an answer (the holding line). It goes out while
-     * the turn is still reading, and the question the turn is about to read is one it
-     * must not close.
-     */
-    openAsks: { leaves: PendingAsk | null } | 'untouched';
-    /** The lane's own name for this receipt, or null for a reply nothing reads back
-     * (see {@link HandlerVerdict.templateKey}). */
-    templateKey?: string | null;
-    /** A 1:1 kid-logistics decision to mirror once into the claimed group. */
-    groupSync?: GroupActivityDecision;
-    /** Runs before the transport call. The iMessage think-section uses it to
-     * stop the typing bubble before the reply goes out. */
-    beforeSend?: () => Promise<void> | void;
-    /** Runs once the transport accepted the text, before any receipt is written, so what
-     * it records holds even when a receipt write then throws. */
-    onSent?: () => Promise<unknown>;
-    /** VIL-495 — the model chose to say this reply as a voice memo. Tried first on a
-     * Linq 1:1 chat; every "no" sends the same body as the text below. */
-    voiceMemo?: boolean;
-    /** The parent's words, when this reply is the turn's answer. A tapback or
-     * a poll can stand in for the text. Absent on the caregiver line, which
-     * keeps its sentence. */
-    inboundBody?: string;
-    /** What the VIL-472 sticker read sees beside the two bodies. Absent: no sticker. */
-    stickerRead?: {
-      audience: 'direct' | 'group';
-      parentAttachments: readonly InboundMediaPart['kind'][];
-    };
-    /** What the VIL-473 effect read sees beside the two bodies, or why this reply is
-     * withheld from it. Absent: no effect. */
-    effectRead?: { audience: 'direct' | 'group' } | { withheld: LinqEffectWithheld };
-  },
-): Promise<string> {
-  assertTurnLive();
-  // Flag dark, it returns before any read or write. A failure here must not unsend the
-  // reply the parent already has.
-  const settleOpenAsks = async (channelMessageId: string) => {
-    if (args.openAsks === 'untouched') return;
-    try {
-      await settlePendingAsks(deps.database, {
-        familyId: args.job.family_id,
-        parentUserId: args.job.parent_user_id,
-        channelMessageId,
-        ask: args.openAsks.leaves,
-      });
-    } catch (err) {
-      deps.log.warn(
-        { code: err instanceof Error ? err.name : 'unknown' },
-        'pending ask: the reply landed; the question it left open was not kept',
-      );
-    }
+type SendReplyArgs = {
+  route: ReplyRoute;
+  body: string;
+  job: ChannelMessageReceivedJob;
+  conversationId: string | null;
+  claim?: () => Promise<void>;
+  /** The medical lane's outcome (migration 0090), or null for every other reply. The
+   * only thing this row carries about the CONTENT of what was said, and it is a
+   * two-value enum: which of the lane's two answers went out, so the founder
+   * scorecard's safety row can count the fixed-line fallbacks it could not see while
+   * the outcome lived only in memory. `body` stays null as ever (rule #1). */
+  medicalSource?: MedicalReplySource | null;
+  /** Where a DEFLECTION reply's words came from (migration 0103) — composed, a fixed
+   * door, or one of the four named reasons the composer could not run — and null on
+   * every reply that is not the off-domain lane's. Persisting it is what lets the
+   * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
+   * vocabulary and never a word of what was said (rule #1). */
+  replySource?: ReplySource | null;
+  /** What the thread row this reply lands in is marked with (messages.source), or null.
+   * VIL-616: `read_email` on a coach reply written after reading an email. */
+  threadSource?: schema.MessageSource | null;
+  /**
+   * What this send does to the questions Hale has left open for this parent (migration
+   * 0167). Every caller says, because it is a fact about WHICH send this is and not
+   * about sending: only the turn's ANSWER settles them.
+   *
+   * `{ leaves }` is that answer. Every earlier question is closed, and the one this
+   * reply left open itself, or null on every reply but a general answer's, is kept in a
+   * table of its own beside this reply's row. De-identified by the lane before it gets
+   * here: never the parent's words and never what Hale said, so `body` stays null as
+   * ever (rule #1). The parent's next text is read beside it (off-domain/lane.ts
+   * readPendingAsk).
+   *
+   * `'untouched'` is a line that is not an answer (the holding line). It goes out while
+   * the turn is still reading, and the question the turn is about to read is one it
+   * must not close.
+   */
+  openAsks: { leaves: PendingAsk | null } | 'untouched';
+  /** The lane's own name for this receipt, or null for a reply nothing reads back
+   * (see {@link HandlerVerdict.templateKey}). */
+  templateKey?: string | null;
+  /** A 1:1 kid-logistics decision to mirror once into the claimed group. */
+  groupSync?: GroupActivityDecision;
+  /** Runs before the transport call. The iMessage think-section uses it to
+   * stop the typing bubble before the reply goes out. */
+  beforeSend?: () => Promise<void> | void;
+  /** Runs once the transport accepted the text, before any receipt is written, so what
+   * it records holds even when a receipt write then throws. */
+  onSent?: () => Promise<unknown>;
+  /** VIL-495 — the model chose to say this reply as a voice memo. Tried first on a
+   * Linq 1:1 chat; every "no" sends the same body as the text below. */
+  voiceMemo?: boolean;
+  /** The parent's words, when this reply is the turn's answer. A tapback or
+   * a poll can stand in for the text. Absent on the caregiver line, which
+   * keeps its sentence. */
+  inboundBody?: string;
+  /** What the VIL-472 sticker read sees beside the two bodies. Absent: no sticker. */
+  stickerRead?: {
+    audience: 'direct' | 'group';
+    parentAttachments: readonly InboundMediaPart['kind'][];
   };
+  /** What the VIL-473 effect read sees beside the two bodies, or why this reply is
+   * withheld from it. Absent: no effect. */
+  effectRead?: { audience: 'direct' | 'group' } | { withheld: LinqEffectWithheld };
+};
+
+async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<string> {
+  assertTurnLive();
+  const settleOpenAsks = (channelMessageId: string) =>
+    settleAnswerAsks(deps, args, channelMessageId);
   if (args.beforeSend) await args.beforeSend();
   // VIL-477: never speak into a chat Hale already left. Checked at the last moment
   // before the transport, so an overlapping turn whose reply was composed before
@@ -3520,29 +3669,39 @@ async function sendReply(
   }
   const sent =
     voiced ?? effected ?? (await deps.transport.send({ route: args.route, body: args.body }));
-  // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
-  // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,
-  // on every turn, while max_pipeline was 0. The outbound channel_messages row
-  // and the assistant thread row below are the receipt Hale reads back. They
-  // stay outside that transaction, so a ledger failure leaves the reply on
-  // record and does not fail the turn.
-  if (args.claim) {
-    try {
-      await args.claim();
-    } catch (err) {
-      deps.log.warn(
-        {
-          channelMessageId: args.job.channel_message_id,
-          familyId: args.job.family_id,
-          err: err instanceof Error ? err.message : 'unknown',
-        },
-        'channel router: the reply landed; the answer ledger did not',
-      );
-    }
-  }
+  await claimAnswerQuietly(deps, args);
   if (args.onSent) await args.onSent();
   await mirrorActivityDecision(deps, args);
 
+  const channelMessageId = await writeReplyReceipts(deps, args, sent, {
+    body: args.body,
+    voiced: voiced !== null,
+    effected,
+    dedupeKey: null,
+    firstOfAnswer: true,
+  });
+
+  await settleOpenAsks(channelMessageId);
+  return channelMessageId;
+}
+
+/**
+ * The receipts for one message that went: its `channel_messages` row (body null, rule #1),
+ * its audit row (rule #6), the ops page for an effect nobody saw Linq take, the product
+ * event, and its thread row. Returns the ledger row's id.
+ */
+async function writeReplyReceipts(
+  deps: ChannelRouterDeps,
+  args: SendReplyArgs,
+  sent: { providerMessageId: string | null; channel: ReplySent['channel']; chatId?: string | null },
+  how: {
+    body: string;
+    voiced: boolean;
+    effected: { delivery: 'sent' | 'unknown' } | null;
+    dedupeKey: string | null;
+    firstOfAnswer: boolean;
+  },
+): Promise<string> {
   // The channel the send reported. The ledger records that door, which is what a
   // PIPEDA export renders.
   const carriedBy = sent.channel;
@@ -3555,7 +3714,7 @@ async function sendReply(
       direction: 'out',
       category: 'reply',
       // A reply with its own key is never sent with an effect (moments.ts).
-      templateKey: effected ? LINQ_EFFECT_TEMPLATE_KEY : (args.templateKey ?? null),
+      templateKey: how.effected ? LINQ_EFFECT_TEMPLATE_KEY : (args.templateKey ?? null),
       providerMessageId: sent.providerMessageId,
       // The chat the blue bubble landed in. Later async sends (a connect
       // receipt) read it back so they return to this thread rather than
@@ -3564,10 +3723,12 @@ async function sendReply(
       // Accepted by the provider, not yet on a phone — the receipt advances it
       // (channel/ledger.ts acceptedStatus, delivery-status.ts). An effect POST nobody saw
       // Linq take is not "accepted": it stays queued and named, and ops is paged with it.
-      ...(effected?.delivery === 'unknown'
+      ...(how.effected?.delivery === 'unknown'
         ? { status: 'queued' as const, errorCode: LINQ_EFFECT_DELIVERY_UNKNOWN }
         : { status: acceptedStatus(carriedBy) }),
       body: null,
+      // One answer sent as several bubbles keys each bubble's row (sendReplySet).
+      ...(how.dedupeKey ? { dedupeKey: how.dedupeKey } : {}),
       medicalReplySource: args.medicalSource ?? null,
       replySource: args.replySource ?? null,
       relatedConversationId: args.conversationId,
@@ -3587,18 +3748,18 @@ async function sendReply(
     targetId: channelMessageId,
     // The form only, never the words (rule #1): this reply went as a voice memo, or
     // carried an iMessage effect.
-    ...(voiced
+    ...(how.voiced
       ? { after: { form: 'voice_memo' } }
-      : effected
+      : how.effected
         ? {
             after:
-              effected.delivery === 'unknown'
+              how.effected.delivery === 'unknown'
                 ? { form: 'effect', delivery: 'unknown' }
                 : { form: 'effect' },
           }
         : {}),
   });
-  if (effected?.delivery === 'unknown') {
+  if (how.effected?.delivery === 'unknown') {
     // Nothing settles this row on its own: no receipt names a message id Hale never saw.
     const page = await pageOps(deps.database, {
       site: 'linq_effect_delivery_unknown',
@@ -3613,17 +3774,20 @@ async function sendReply(
     channel: carriedBy,
     isGroup: args.job.in_group,
     chatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
-    mediaKind: voiced ? 'audio' : 'none',
-    latencyMs: Math.max(0, deps.now().getTime() - new Date(args.job.received_at).getTime()),
+    mediaKind: how.voiced ? 'audio' : 'none',
+    // The parent's wait is the first bubble's, so later bubbles do not move the p95.
+    ...(how.firstOfAnswer
+      ? { latencyMs: Math.max(0, deps.now().getTime() - new Date(args.job.received_at).getTime()) }
+      : {}),
     database: deps.database,
   });
 
   if (args.conversationId) {
-    await appendMessage(args.conversationId, 'assistant', args.body, deps.database, {
+    await appendMessage(args.conversationId, 'assistant', how.body, deps.database, {
       childId: null,
       topic: null,
       source: args.threadSource ?? null,
-      ...(!voiced &&
+      ...(!how.voiced &&
       linqMessageEditEnabled() &&
       args.route.channel === 'imessage' &&
       sent.providerMessageId
@@ -3632,8 +3796,275 @@ async function sendReply(
     });
   }
 
-  await settleOpenAsks(channelMessageId);
   return channelMessageId;
+}
+
+/** Flag dark, it returns before any read or write. A failure here must not unsend the
+ * reply the parent already has. */
+async function settleAnswerAsks(
+  deps: ChannelRouterDeps,
+  args: Pick<SendReplyArgs, 'openAsks' | 'job'>,
+  channelMessageId: string,
+): Promise<void> {
+  if (args.openAsks === 'untouched') return;
+  try {
+    await settlePendingAsks(deps.database, {
+      familyId: args.job.family_id,
+      parentUserId: args.job.parent_user_id,
+      channelMessageId,
+      ask: args.openAsks.leaves,
+    });
+  } catch (err) {
+    deps.log.warn(
+      { code: err instanceof Error ? err.name : 'unknown' },
+      'pending ask: the reply landed; the question it left open was not kept',
+    );
+  }
+}
+
+/**
+ * The claim is a transaction (auditTurnLedger.recordAnswered). It can fail after the
+ * carrier has already accepted the reply — UNSAFE_TRANSACTION did, on every turn, while
+ * max_pipeline was 0. The outbound channel_messages row and the assistant thread row are
+ * the receipt Hale reads back. They stay outside that transaction, so a ledger failure
+ * leaves the reply on record and does not fail the turn.
+ */
+async function claimAnswerQuietly(
+  deps: ChannelRouterDeps,
+  args: Pick<SendReplyArgs, 'claim' | 'job'>,
+): Promise<void> {
+  if (!args.claim) return;
+  try {
+    await args.claim();
+  } catch (err) {
+    deps.log.warn(
+      {
+        channelMessageId: args.job.channel_message_id,
+        familyId: args.job.family_id,
+        err: err instanceof Error ? err.message : 'unknown',
+      },
+      'channel router: the reply landed; the answer ledger did not',
+    );
+  }
+}
+
+/**
+ * Whether a route takes one answer as several bubbles: a 1:1 chat Linq said is iMessage.
+ * A group keeps one text, because everyone in it reads every bubble. SMS keeps one text,
+ * because a carrier can deliver separate texts out of order, and that includes the green-
+ * bubble SMS and RCS chats Linq relays on the iMessage channel. A chat whose service Linq
+ * did not name is not assumed to be iMessage.
+ */
+function takesBubbles(route: ReplyRoute, job: ChannelMessageReceivedJob): boolean {
+  return route.channel === 'imessage' && route.service === 'iMessage' && job.in_group === false;
+}
+
+/**
+ * An answer that stopped partway. The first `bubblesSent` of `bubbles` reached the parent
+ * (sent this attempt or found on record from an earlier one). The rest is never re-sent: a
+ * re-drive would re-run the coach and repeat its tool writes, and keeping the unsent words
+ * would put a second copy of family text outside `messages` (rule #1). The cause is the
+ * send that failed, or the receipt write or ledger read that did. The turn records it as
+ * `reply_set_incomplete`.
+ */
+export class ReplySetIncomplete extends Error {
+  constructor(
+    readonly bubblesSent: number,
+    readonly bubbles: number,
+    /** The ledger row of the last bubble on record, which what the answer owes rides; null
+     * when no bubble that went has a row (its receipt write is what failed). */
+    readonly lastSentId: string | null,
+    cause: unknown,
+  ) {
+    super(`channel router: the answer stopped after ${bubblesSent} of ${bubbles} bubbles`, {
+      cause,
+    });
+    this.name = 'ReplySetIncomplete';
+  }
+}
+
+/**
+ * One answer as several bubbles, in order, on a 1:1 iMessage chat (coach/reply.ts
+ * REPLY_BUBBLE_BREAK), over the shared send-set primitive (`sendTexts`).
+ *
+ * Once per ANSWER, as `sendReply` does for one text: the moment read, the claim, `onSent`,
+ * the group mirror, and the open-ask settle (against the last bubble that went). Once per
+ * BUBBLE, what a delivered message leaves behind: a ledger row keyed `<setKey>:<i>`, its
+ * audit row and its thread row. The key is also Linq's idempotency key for that send, and
+ * a bubble already on record under it is not sent again.
+ *
+ * The moment is read against the whole answer, and nothing stands in for a set: no
+ * tapback, no edit, and a peeled sticker leaves the words to go plain. An effect rides the
+ * FIRST bubble. It is decided before anything is sent, so it is the bubble that would have
+ * gone first anyway, it lands on the bubble threaded under the parent's message, and a set
+ * that stops partway never strands it.
+ *
+ * A voice memo the model chose says the whole answer once. Refused, the bubbles go as
+ * texts.
+ *
+ * A failure before any bubble went is today's failure: rethrown, nothing claimed. A
+ * failure after one went, whether a send, a receipt write or a ledger read, claims the
+ * turn and throws {@link ReplySetIncomplete}. Returns the last bubble's ledger id, which
+ * every post-send write rides.
+ */
+async function sendReplySet(
+  deps: ChannelRouterDeps,
+  args: Omit<SendReplyArgs, 'body'> & { bodies: readonly string[]; setKey: string },
+): Promise<string> {
+  assertTurnLive();
+  if (args.beforeSend) await args.beforeSend();
+  const keys = args.bodies.map((_body, index) => textDedupeKey(args.setKey, index));
+  const ids: Array<string | undefined> = keys.map(() => undefined);
+  const onRecord = async (key: string): Promise<boolean> => {
+    // Read back by key and checked in code as well, so a reader that ignores the
+    // predicate cannot report a bubble that is not this one.
+    const rows = await deps.database
+      .select({ id: schema.channelMessages.id, dedupeKey: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.dedupeKey, key))
+      .limit(1);
+    const row = rows.find((candidate) => candidate.dedupeKey === key);
+    if (row) ids[keys.indexOf(key)] = row.id;
+    return row !== undefined;
+  };
+
+  const spoken = args.bodies.join(' ');
+  const voiced = await voiceMemoFor(deps, { ...args, body: spoken });
+  if (voiced) {
+    await claimAnswerQuietly(deps, args);
+    if (args.onSent) await args.onSent();
+    await mirrorActivityDecision(deps, args);
+    const id = await writeReplyReceipts(deps, { ...args, body: spoken }, voiced, {
+      body: spoken,
+      voiced: true,
+      effected: null,
+      dedupeKey: keys[0] as string,
+      firstOfAnswer: true,
+    });
+    await settleAnswerAsks(deps, args, id);
+    return id;
+  }
+
+  let effected: {
+    providerMessageId: string | null;
+    delivery: 'sent' | 'unknown';
+    channel: 'imessage';
+    chatId: string;
+  } | null = null;
+  const whole = args.bodies.join(REPLY_BUBBLE_BREAK);
+  if (
+    args.route.channel === 'imessage' &&
+    args.inboundBody !== undefined &&
+    !(await onRecord(keys[0] as string))
+  ) {
+    try {
+      const moment = await considerLinqReply(deps.database, {
+        route: args.route,
+        inboundBody: args.inboundBody,
+        outboundBody: whole,
+        // Under the first bubble's own key, so a plain resend of it is the same send.
+        firstOfSeveral: { text: args.bodies[0] as string, sendKey: keys[0] as string },
+        templateKey: args.templateKey ?? null,
+        familyId: args.job.family_id,
+        parentUserId: args.job.parent_user_id,
+        now: deps.now(),
+        ...(args.stickerRead
+          ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
+          : {}),
+        ...(args.effectRead
+          ? {
+              effect:
+                'withheld' in args.effectRead
+                  ? args.effectRead
+                  : { decider: sharedLinqEffectDecider(), ...args.effectRead },
+            }
+          : {}),
+      });
+      if (moment.handled === 'effect') {
+        effected = {
+          providerMessageId: moment.providerMessageId,
+          delivery: moment.delivery,
+          channel: 'imessage',
+          chatId: args.route.chatId,
+        };
+      }
+    } catch (err) {
+      if (isTurnTimeout(err)) throw err;
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'linq moment: fell through to the text',
+      );
+    }
+  }
+  // How many bubbles the parent has, in order: sent this attempt, or on record from an
+  // earlier one. Whatever stops the set once this is past zero (a send, a receipt write,
+  // a ledger read) stops it partway.
+  let bubblesSent = 0;
+  // An effect bubble already went out: the deadline cannot unsend it.
+  if (effected) bubblesSent = 1;
+  else assertTurnLive();
+
+  const route = args.route;
+  let claimed = false;
+  const outcome = await sendTexts<{
+    providerMessageId: string | null;
+    channel: ReplySent['channel'];
+    chatId?: string | null;
+  }>({
+    texts: args.bodies,
+    setKey: args.setKey,
+    alreadySent: async (key) => {
+      const found = await onRecord(key);
+      if (found) bubblesSent = keys.indexOf(key) + 1;
+      return found;
+    },
+    send: async (text, index) => {
+      if (index === 0 && effected) return effected;
+      // Only the first bubble quotes the parent's message; the rest follow it.
+      const to: ReplyRoute =
+        index === 0 || route.channel !== 'imessage' ? route : { ...route, replyToMessageId: null };
+      const sent = await deps.transport.send({
+        route: to,
+        body: text,
+        sendKey: keys[index] as string,
+      });
+      bubblesSent = index + 1;
+      return sent;
+    },
+    record: async ({ index, key, text, result }) => {
+      if (!claimed) {
+        claimed = true;
+        await claimAnswerQuietly(deps, args);
+        if (args.onSent) await args.onSent();
+        await mirrorActivityDecision(deps, args);
+      }
+      ids[index] = await writeReplyReceipts(deps, { ...args, body: text }, result, {
+        body: text,
+        voiced: false,
+        effected: index === 0 ? effected : null,
+        dedupeKey: key,
+        firstOfAnswer: index === 0,
+      });
+    },
+  }).catch((error: unknown) => ({ status: 'failed' as const, error }));
+
+  const recorded = ids.filter((id): id is string => id !== undefined);
+  if (outcome.status === 'failed') {
+    if (bubblesSent === 0) throw outcome.error;
+    // The parent has part of the answer, so the turn is answered whatever stopped it.
+    if (!claimed) await claimAnswerQuietly(deps, args);
+    deps.log.error(
+      { outcome: 'reply_set_incomplete', bubblesSent, bubbles: keys.length },
+      'channel router: the answer stopped partway - the rest is not sent again',
+    );
+    const lastSent = recorded.at(-1) ?? null;
+    if (lastSent) await settleAnswerAsks(deps, args, lastSent);
+    throw new ReplySetIncomplete(bubblesSent, keys.length, lastSent, outcome.error);
+  }
+  const last = recorded.at(-1);
+  if (!last) throw new Error('channel router: the answer set left no ledger row');
+  await settleAnswerAsks(deps, args, last);
+  return last;
 }
 
 /**

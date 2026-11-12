@@ -537,6 +537,8 @@ export const AUDIT_VERBS = [
   // ── the review pool: the ONE verb the capture pass writes, on every model read ──
   'activity_verdict_read',
   'activity_followup_sent',
+  // VIL-682 · whether a promise went on the deep queue at question time.
+  'activity_deep_dispatched',
   'activity_followup_shared',
   'village_intro_card_sent',
   'village_intro_accepted',
@@ -551,6 +553,7 @@ export const AUDIT_VERBS = [
   'smoke_alarm_fired',
   'sms_reader_timeout',
   'sms_turn_unanswered',
+  'sms_turn_folded',
   // ── the founder's welcome note ──────────────────────────────────────────
   'founder_welcome_offered',
   'founder_welcome_sent',
@@ -2006,6 +2009,13 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale came back to you about an activity search',
     family: 'done',
   },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide export:
+  // it is about one adult's own question, so the row carries that adult as its audience
+  // (VIL-635). The answer it brings is the row History shows (activity_followup_sent).
+  activity_deep_dispatched: {
+    sentence: 'Hale started a closer look at an activity question',
+    family: 'note',
+  },
   // Historical. Follow-ups used to put the rest of a schedule on a public page. The
   // verb stays so those audit rows still read. 'done' because the row records something
   // Hale finished, not something it is waiting on.
@@ -2053,6 +2063,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   sms_turn_unanswered: {
     sentence: 'Hale had no reply to send',
     family: 'problem',
+  },
+  // A text read into the turn of the text just before it (router/burst.ts). Internal:
+  // the answer to the earlier text is the row that matters.
+  sms_turn_folded: {
+    sentence: 'Hale read two texts in a row as one message',
+    family: 'note',
   },
   // Written on the FOUNDER's own trail when a family arrives from one of his posters.
   // 'awaiting' because the note has not been sent — a word from him is what sends it.
@@ -2262,6 +2278,10 @@ export const INTERNAL_TRAIL_VERBS = [
   'capability_denial_corrected',
   // VIL-635. A rail refusal is one adult's, and names no input.
   'tool_refused',
+  // About one parent's own texts.
+  'sms_turn_folded',
+  // VIL-682. Queue bookkeeping for one adult's question; the answer is the visible row.
+  'activity_deep_dispatched',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

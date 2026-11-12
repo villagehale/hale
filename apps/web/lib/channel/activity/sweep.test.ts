@@ -110,6 +110,7 @@ function harness(
       parentUserId: PARENT,
       conversationId: overrides.conversationId === undefined ? 'conv-1' : overrides.conversationId,
       language: overrides.language ?? 'en-CA',
+      thread: null,
     }),
     reader: {
       place: async () => ({ status: 'known', town: 'Halton Hills' }),

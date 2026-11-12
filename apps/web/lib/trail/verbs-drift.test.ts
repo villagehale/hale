@@ -255,6 +255,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // attempts back by the same value (attempt cap and backoff, VIL-449).
   'apps/web/lib/loop/calendar-invite.ts': ['calendar_cancel.retry_attempt'],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
+  // TURN_FOLDED_ACTION — the turn ledger reads the same constant back at GATE 0.
+  'apps/web/lib/channel/router/burst.ts': ['sms_turn_folded'],
   // CANARY_ANSWERED_ACTION — a constant precisely because the cron's
   // verification reads the same value back (channel/canary/run.ts); a literal
   // here would let the two halves drift apart silently.

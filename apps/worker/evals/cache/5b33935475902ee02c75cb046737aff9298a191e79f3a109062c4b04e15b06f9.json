@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's single question in Spanish, with each bubble carrying one thought: the morning library story time, then the afternoon open gym with its price and age range. Both Saturday picks are named with their own times, and no bubble serves as a lead-in or count. There is no question, the facts match the tool results, and the page addresses sit at the end of the last bubble. Minor issue: the second bubble packs the venue, time, price, and age range into one line, which is a little dense for a friend-register text, and the first bubble's age range fits the story time facts. Otherwise it meets every point of the rubric.",
+    "score": 4
+  }
+}

@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, lte } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
@@ -524,6 +524,7 @@ async function keepOne(
       evidence,
       heardFacts: commitment.heardFacts,
       ...(searched ? { searched } : {}),
+      lane: 'candidate',
     },
     now,
   );
@@ -555,6 +556,9 @@ export async function resolveFollowUpRecipient(
       conversationId: schema.channelMessages.relatedConversationId,
       proactiveLanguage: schema.users.proactiveLanguage,
       familyLanguage: schema.families.primaryLanguage,
+      channel: schema.channelMessages.channel,
+      providerChatId: schema.channelMessages.providerChatId,
+      carriedAt: schema.channelMessages.createdAt,
     })
     .from(schema.channelMessages)
     .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
@@ -568,7 +572,46 @@ export async function resolveFollowUpRecipient(
     conversationId: row.conversationId ?? null,
     // VIL-572 · the one proactive language, never the last text's.
     language: parentLanguage(row.proactiveLanguage, row.familyLanguage),
+    thread: await oneToOneThread(database, row),
   };
+}
+
+/**
+ * The 1:1 iMessage chat a promise was carried in, and the parent's ask to thread under, or
+ * null. The ask is this parent's latest text in that chat at or before the reply that
+ * carried the promise — the inbound that reply answered, which is what every router reply
+ * threads under. Only when the door saw that ask as 1:1: a group, an SMS row, an ask with
+ * no provider id, or one the door never said anything about is null, and the answer is
+ * routed as it always was.
+ */
+async function oneToOneThread(
+  database: Database,
+  carrying: {
+    parentUserId: string;
+    channel: string;
+    providerChatId: string | null;
+    carriedAt: Date;
+  },
+): Promise<{ chatId: string; messageId: string } | null> {
+  if (carrying.channel !== 'imessage' || !carrying.providerChatId) return null;
+  const [ask] = await database
+    .select({
+      providerMessageId: schema.channelMessages.providerMessageId,
+      inGroup: schema.channelMessages.inGroup,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, carrying.parentUserId),
+        eq(schema.channelMessages.providerChatId, carrying.providerChatId),
+        eq(schema.channelMessages.direction, 'in'),
+        lte(schema.channelMessages.createdAt, carrying.carriedAt),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(1);
+  if (ask?.inGroup !== false || !ask.providerMessageId) return null;
+  return { chatId: carrying.providerChatId, messageId: ask.providerMessageId };
 }
 
 export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
