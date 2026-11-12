@@ -1,0 +1,16 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "野餐还差饮料和纸盘，水果林已经认领了。"
+  },
+  "latencyMs": 2155
+}

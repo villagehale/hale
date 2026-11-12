@@ -4,6 +4,14 @@ import { noteGroupChatMemberAdded } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
+import {
+  type SharedListTurnModel,
+  applySharedListTurn,
+  forgetSharedListPeople,
+  readSharedListTurn,
+  sharedListTurnModel,
+} from '~/lib/channel/lists/shared-group-lists';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { type SpokenLineRequest, speak as speakLine } from '~/lib/channel/spoken-line';
@@ -124,6 +132,8 @@ export interface MultiFamilyTurnPorts {
   commonTimeWriter?: (request: SpokenLineRequest) => Promise<string | null>;
   /** VIL-459: a picked time becomes a plan with per-family invites. Production: inbound. */
   commonTimePlan?: CommonTimePlanPorts;
+  /** VIL-687: reads a shared-list turn. Production: sharedListTurnModel(). */
+  listTurn?: SharedListTurnModel;
 }
 
 const LEFT_TEMPLATE = 'linq:multi_family_left';
@@ -133,6 +143,7 @@ const STOP_TEMPLATE = 'linq:multi_family_member_stop';
 const INTRO_TEMPLATE = 'linq:multi_family_intro';
 const WHO_TEMPLATE = 'linq:multi_family_who_confirmed';
 const COMMON_TIME_TEMPLATE = 'linq:multi_family_common_time';
+const LIST_TEMPLATE = 'linq:multi_family_list';
 
 function haleLine(phone: string): boolean {
   const from = outboundLineFrom();
@@ -712,6 +723,12 @@ export async function forgetSharedGroupPeople(
   now: Date,
 ): Promise<number> {
   const people = schema.linqSharedGroupPeople;
+  // VIL-687: their list items go first; a stopped row stays, so its cascade never fires.
+  const scoped = await database.select({ id: people.id }).from(people).where(scope);
+  await forgetSharedListPeople(
+    database,
+    scoped.map((row) => row.id),
+  );
   const forgotten = await database
     .delete(people)
     .where(and(scope, isNull(people.stoppedAt)))
@@ -1594,6 +1611,31 @@ export async function takeMultiFamilyTurn(
       : null;
   const reader = wired.reader ?? sharedGroupReader();
   const reaction = input.targetIsHale === false ? null : reactionAsVote(input.reactionType ?? null);
+  // VIL-687: a shared-list turn (a claim, an add, "what's left?") is read beside the group
+  // read and written only if the group read hands the turn on. It never rejects.
+  const listContext =
+    groupSharedListsEnabled() && input.text.trim() && !input.reactionType
+      ? {
+          chatId: input.chatId,
+          text: input.text,
+          language: wired.language ?? null,
+          speaker: me,
+          people: live,
+        }
+      : null;
+  const listModel = listContext ? (wired.listTurn ?? sharedListTurnModel()) : null;
+  const listRead = listContext
+    ? readSharedListTurn(database, listContext, listModel).catch((err: unknown) => {
+        console.error(
+          {
+            outcome: 'shared_list_read_failed',
+            fault: err instanceof Error ? err.name : 'unknown',
+          },
+          'linq multi-family: list read failed',
+        );
+        return { kind: 'failed' as const };
+      })
+    : null;
   const reading: SharedGroupReading = reader
     ? await reader.read({
         text: input.text,
@@ -1836,6 +1878,48 @@ export async function takeMultiFamilyTurn(
     });
     const aside = await runAside();
     return aside ? { ...picked, aside: aside.outcome } : picked;
+  }
+
+  if (listContext && listRead) {
+    const listed = await applySharedListTurn(database, listContext, await listRead, {
+      model: listModel,
+      now: input.now,
+      deny: () => denyListForChat(database, input.chatId),
+    });
+    if (listed.handled) {
+      const notice: NoticeResult = listed.line
+        ? await deliverShared(database, {
+            familyId: host.familyId,
+            parentUserId: host.parentUserId,
+            chatId: input.chatId,
+            text: listed.line,
+            templateKey: LIST_TEMPLATE,
+            dedupeKey: `${LIST_TEMPLATE}:${input.chatId}:${input.providerMessageId}`,
+            now: input.now,
+            send: wired.send,
+          })
+        : 'declined';
+      // Counts and the line's fate only: no item text, owner or kid, so a hidden gift
+      // never reaches a family's audit trail.
+      await audit(database, {
+        familyId,
+        actor: userId,
+        actionTaken: 'linq_multi_family_list_turn',
+        targetTable: 'shared_group_list_items',
+        targetId: me.id,
+        after: { ...listed.counts, line: listed.lineWhy, notice },
+      });
+      // A withheld line may be a secret gift: the 1:1 aside, which drafts from the group
+      // text, stays quiet too.
+      const aside = listed.lineWhy === 'withheld' ? undefined : await runAside();
+      return {
+        handled: true,
+        outcome: 'shared_list',
+        count: 'intake',
+        notice,
+        ...(aside ? { aside: aside.outcome } : {}),
+      };
+    }
   }
 
   if (intent === 'question' || intent === 'find_time' || intent === 'yes' || intent === 'no') {

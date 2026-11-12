@@ -66,6 +66,8 @@
     "eval:group-private-aside": "node evals/run-group-private-aside-eval.mjs --cached-only",
     "eval:group-privacy": "node evals/run-group-privacy-eval.mjs --cached-only",
     "eval:group-lists": "node evals/run-group-lists-eval.mjs --cached-only",
+    "eval:shared-group-list-turn": "node evals/run-shared-group-list-turn-eval.mjs --cached-only",
+    "eval:shared-group-list-turn:broken": "node evals/run-shared-group-list-turn-eval.mjs --broken --cached-only",
     "eval:read-email": "node evals/run-read-email-eval.mjs --cached-only",
     "eval:read-email:broken": "node evals/run-read-email-eval.mjs --broken --cached-only",
     "eval:group-turn-read": "node evals/run-group-turn-read-eval.mjs --cached-only",

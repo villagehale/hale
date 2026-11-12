@@ -1,0 +1,21 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Salad's yours, Dana, thanks! 🥗"
+  },
+  "latencyMs": 2998
+}

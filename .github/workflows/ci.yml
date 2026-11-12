@@ -347,6 +347,13 @@ jobs:
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:group-lists
 
+      # VIL-687 shared list owners in a multi-family group.
+      - name: Shared list owners eval (cached-only)
+        run: pnpm --filter @hale/worker eval:shared-group-list-turn
+
+      - name: Shared list owners eval broken calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:shared-group-list-turn:broken
+
       - name: Coach local day eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:coach-local-day

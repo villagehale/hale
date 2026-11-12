@@ -1,0 +1,19 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": "Picnic",
+    "add": [
+      "ice",
+      "cooler"
+    ],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Got it, ice and a cooler are on the Picnic list."
+  },
+  "latencyMs": 1547
+}

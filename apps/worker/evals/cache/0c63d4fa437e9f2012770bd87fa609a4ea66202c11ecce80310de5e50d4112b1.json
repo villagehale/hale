@@ -1,0 +1,21 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": "Gifts",
+    "add": [],
+    "claim": [
+      {
+        "item": null,
+        "text": "Lego set for Zara"
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Nice one, Sam! The Lego set for Zara is down as yours."
+  },
+  "latencyMs": 4217
+}

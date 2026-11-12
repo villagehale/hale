@@ -1,0 +1,16 @@
+{
+  "value": {
+    "listTurn": false,
+    "list": null,
+    "add": [],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": null
+  },
+  "latencyMs": 1703
+}

@@ -599,6 +599,10 @@
     "file": "said-line.md",
     "sha256": "2cc922ae1a7db57f1f1c0e7b4de8fbfdc9103d49a9a98c384f03c6b66e6f6570"
   },
+  "shared-group-list-turn.md": {
+    "file": "shared-group-list-turn.md",
+    "sha256": "c82071611b8d56acb0e27f85df6a2b2791c724b98dd8dfb2f7fdc53f61ab5ba4"
+  },
   "shared-group-reading-common-time.md": {
     "file": "shared-group-reading-common-time.md",
     "sha256": "045c723248fefb6bd0f549f0db6ef852d7365409e3cac499c0b19ecd39ae0079"

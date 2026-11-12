@@ -1,0 +1,25 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      },
+      {
+        "item": "i2",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Got it, Sam, napkins and cups are yours. Plates are still open."
+  },
+  "latencyMs": 2429
+}
