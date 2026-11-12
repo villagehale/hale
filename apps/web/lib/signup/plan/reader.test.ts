@@ -72,6 +72,7 @@ describe('toPlanReading', () => {
     expect(toPlanReading(raw({ ...over, question: 'Which day?' }), OFFER, YES)).toEqual({
       verdict: 'unclear',
       question: 'Which day?',
+      named: null,
     });
   });
 
@@ -237,6 +238,15 @@ describe('what an approval may rest on', () => {
     expect(toPlanReading(raw({ said: null }), OFFER, YES)).toBeNull();
   });
 
+  it("a go-ahead that is part of one of the parent's words is not an approval", () => {
+    const text = 'yesterday was Sunday then Saturday, up to $100';
+    expect(toPlanReading(raw({ said: 'yes' }), OFFER, text)).toBeNull();
+    // Positive control: the same word, written whole, is a go-ahead.
+    expect(toPlanReading(raw({ said: 'yes' }), OFFER, `yes, ${text}`)).toMatchObject({
+      verdict: 'approve',
+    });
+  });
+
   it('the waiver is ticked only on words the parent wrote', () => {
     const text = 'yes, Sunday then Saturday, up to $100, you can tick the waiver';
     expect(
@@ -249,6 +259,10 @@ describe('what an approval may rest on', () => {
     expect(
       toPlanReading(raw({ waiverSaid: 'tick the waiver', waiverAccepted: true }), OFFER, YES),
     ).toMatchObject({ waiverAccepted: false });
+    // Part of one of their words is not their answer: `ok` inside `book`.
+    expect(
+      toPlanReading(raw({ waiverSaid: 'ok', waiverAccepted: true }), OFFER, `${YES}, book it`),
+    ).toMatchObject({ verdict: 'approve', waiverAccepted: false });
   });
 
   it('the go-ahead, or any part of it, never ticks the waiver', () => {
@@ -307,6 +321,21 @@ describe('what an approval may rest on', () => {
     expect(
       toPlanReading(raw({ verdict: 'take_back', named: '游泳那个' }), OFFER, 'cancel it'),
     ).toEqual({ verdict: 'take_back', named: null });
+  });
+
+  it('a question back says whether the words it answers named the plan', () => {
+    const unclear = (named: string, text: string) =>
+      toPlanReading(raw({ verdict: 'unclear', named, question: 'Which day?' }), OFFER, text);
+    expect(unclear('the later swim one', 'can we do the later swim one?')).toEqual({
+      verdict: 'unclear',
+      question: 'Which day?',
+      named: 'tokens',
+    });
+    expect(unclear('the later one', 'can we do the later one?')).toEqual({
+      verdict: 'unclear',
+      question: 'Which day?',
+      named: null,
+    });
   });
 
   it("words sharing a whole word of four letters with the program's name or site name it", () => {

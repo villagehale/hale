@@ -217,7 +217,8 @@ export async function runAuthorizedSignup(
  * booking. `unrelated` hands the message to the next ask. A yes binds this ask unnamed only
  * when it is the parent's newest ask waiting on one, and a no only when it is their newest
  * ask; otherwise their words must carry its program's name or its site, in whole words, or
- * the turn stops. A reading that failed stops too.
+ * the turn stops. A reading that failed stops too. A question back comes only from their
+ * newest ask or one their words name; any other passes the message on.
  */
 async function runOneShotAsk(
   database: Database,
@@ -231,12 +232,13 @@ async function runOneShotAsk(
   // Unreadable (no model, model failure) is not consent and does not claim the message.
   if (!reading) return stoppedTurn('signup_unread', { offerId: offer.id, status: 'pending' });
   if (reading.verdict === 'unrelated') return 'unrelated';
+  const named = namesFacts(input.body, {
+    activity: untrustedActivityLabel(offer.activityLabel),
+    host: offer.providerHost,
+  });
+  if (reading.verdict === 'unclear' && !place.newest && !named) return 'unrelated';
   if (reading.verdict === 'consent' || reading.verdict === 'decline') {
     const unnamedOk = reading.verdict === 'consent' ? place.newestAsk : place.newest;
-    const named = namesFacts(input.body, {
-      activity: untrustedActivityLabel(offer.activityLabel),
-      host: offer.providerHost,
-    });
     if (!unnamedOk && !named) {
       return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
     }

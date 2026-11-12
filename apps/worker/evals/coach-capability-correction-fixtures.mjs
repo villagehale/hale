@@ -177,7 +177,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
   },
   {
     id: 'signup-switch-closes-the-older-ask',
-    note: 'Hale asked about a gymnastics class; the parent switches to Little Kickers in Chinese and sends its page. Their words replace the gymnastics ask, so recording the new one closes it.',
+    note: 'Hale asked about a gymnastics class; the parent switches to Little Kickers in Chinese, naming the gymnastics class as Hale did, and sends its page. Their words replace the gymnastics ask and name it, so recording the new one closes it. (体操 alone is not a word of its name: that ask stays open, see the signup-offer-supersede eval.)',
     location: OTTAWA,
     dark: ['spot_watch'],
     owed: [],
@@ -192,7 +192,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
       },
       earlierAfter: 'handed_back',
     },
-    text: `体操那个不要了，换 Little Kickers 吧，周六9:30那个班，12月1号早上7点开放报名 ${KICKERS_URL}`,
+    text: `Gymnastics Tots 那个不要了，换 Little Kickers 吧，周六9:30那个班，12月1号早上7点开放报名 ${KICKERS_URL}`,
     mustCall: [],
     mustRecord: true,
     mustNotCall: ['note_capability_declined', 'note_capability_correction'],

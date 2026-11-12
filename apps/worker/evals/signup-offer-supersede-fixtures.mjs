@@ -4,7 +4,9 @@
 // earlier ask is replaced only when the parent's own words drop it for the new one; adding
 // the new one beside it, or saying nothing about it, leaves it open. The activity label is
 // untrusted page text and never decides. `expect` is the offer ids replaced, in any order.
-// Scored exactly, with no judge. Invented programs and hosts only.
+// Closing an ask moves it, so code closes one only on whole words of the parent's that name
+// it; `unnamed` is the offer ids the model dropped in words that do not, which stay open
+// (empty when unset). Scored exactly, with no judge. Invented programs and hosts only.
 
 const GYM = {
   offerId: 'offer-gym',
@@ -26,7 +28,9 @@ export const SIGNUP_OFFER_SUPERSEDE_FIXTURES = [
     next: KICKERS,
     earlier: [GYM],
     text: '体操那个不要了，换 Little Kickers 吧，周六9:30那个班',
-    expect: ['offer-gym'],
+    // 体操 is not a word of "Gymnastics Tots": the drop is read, and the ask stays open.
+    expect: [],
+    unnamed: ['offer-gym'],
   },
   {
     id: 'add-zh',

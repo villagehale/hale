@@ -4,8 +4,9 @@
 // SUBJECT: packages/agent/skills/signup-offer-supersede.md, called the way the runtime calls
 // it (apps/web/lib/signup/supersede-reader.ts): the REAL user message, the REAL strict
 // schema on the skill's lane, and the REAL check (`toSupersedeReading`: shown asks only,
-// each dropped in words the parent wrote). A replaced ask is closed, so the answer is
-// exact: the set of asks replaced. No judge.
+// each closed only on whole words of the parent's that name it). A replaced ask is closed,
+// so the answer is exact: the set of asks replaced, and the set the model dropped in words
+// that do not name them, which stay open. No judge.
 //
 //   node evals/run-signup-offer-supersede-eval.mjs --max-usd <cap>   # live, then caches
 //   node evals/run-signup-offer-supersede-eval.mjs --cached-only      # replay only
@@ -67,13 +68,17 @@ async function main() {
     });
     if (dry) continue;
     const parsed = reader.signupSupersedeReadSchema.safeParse(call.value);
-    const replaced = parsed.success
+    const reading = parsed.success
       ? reader.toSupersedeReading(parsed.data, fixture.earlier, fixture.text)
       : null;
-    const ok = sameSet(replaced, fixture.expect);
+    const want = { replaced: fixture.expect, unnamed: fixture.unnamed ?? [] };
+    const ok =
+      reading !== null &&
+      sameSet(reading.replaced, want.replaced) &&
+      sameSet(reading.unnamed, want.unnamed);
     if (!ok) failures.push(fixture.id);
     console.info(
-      `${ok ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(32)} ${JSON.stringify(replaced)}${ok ? '' : ` wanted ${JSON.stringify(fixture.expect)}`}`,
+      `${ok ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(32)} ${JSON.stringify(reading)}${ok ? '' : ` wanted ${JSON.stringify(want)}`}`,
     );
   }
   if (dry) {

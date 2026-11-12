@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { quotesParent } from './parent-quote';
+import { namesFacts, quotesParentWords } from './parent-quote';
 import { untrustedActivityLabel } from './plan/reader';
 
 /**
@@ -13,9 +13,12 @@ import { untrustedActivityLabel } from './plan/reader';
  * another. "不要了，要 Little Kickers" drops the gymnastics ask; "也帮我报 Little Kickers"
  * keeps it. A model reads the parent's words beside the asks; there is no word list.
  *
- * Every replaced ask must be one the model was shown, named once, with the parent's own
- * words that drop it copied from their message. Anything else, a missing client or skill,
- * or a model failure is null, and the log names which. The caller stops on null.
+ * Every replaced ask must be one the model was shown, named once. A missing client or
+ * skill, a model failure, or a reading that breaks that is null, and the log names which;
+ * the caller stops on null. Closing an ask moves it, so an ask closes only when the words
+ * the model copied as dropping it are whole words of the parent's message that name it (a
+ * whole word of its program's name or its site, checked in code). Otherwise it stays open
+ * beside the new one, and the reading says so (`unnamed`).
  */
 
 export interface SupersedeAsk {
@@ -32,9 +35,16 @@ export interface SupersedeReadInput {
   earlier: readonly SupersedeAsk[];
 }
 
+export interface SupersedeReading {
+  /** The offer ids of the earlier asks the parent's words drop and name: these close. */
+  replaced: string[];
+  /** The offer ids the model read as dropped in words that do not name them: these stay open. */
+  unnamed: string[];
+}
+
 export interface SignupSupersedeReader {
-  /** The offer ids of the earlier asks the parent's words replaced; null when unreadable. */
-  read(input: SupersedeReadInput): Promise<string[] | null>;
+  /** Which earlier asks close, and which the model dropped unnamed; null when unreadable. */
+  read(input: SupersedeReadInput): Promise<SupersedeReading | null>;
 }
 
 const MAX_TEXT_CHARS = 1600;
@@ -91,19 +101,25 @@ export function signupSupersedeReadUserMessage(input: SupersedeReadInput): strin
   });
 }
 
-/** Each replaced ref must be a shown ask, once, dropped in words the parent wrote. */
+/**
+ * Each replaced ref must be a shown ask, once. It closes only when `said` is whole words of
+ * the parent's that name it; otherwise it is `unnamed`, and stays open.
+ */
 export function toSupersedeReading(
   raw: z.infer<typeof signupSupersedeReadSchema>,
   earlier: readonly SupersedeAsk[],
   text: string,
-): string[] | null {
-  const ids: string[] = [];
+): SupersedeReading | null {
+  const reading: SupersedeReading = { replaced: [], unnamed: [] };
   for (const item of raw.replaced) {
     const ask = earlier.find((_, index) => refFor(index) === item.ref);
-    if (!ask || ids.includes(ask.offerId) || !quotesParent(text, item.said)) return null;
-    ids.push(ask.offerId);
+    if (!ask || [...reading.replaced, ...reading.unnamed].includes(ask.offerId)) return null;
+    const named =
+      quotesParentWords(text, item.said) &&
+      namesFacts(item.said, { activity: untrustedActivityLabel(ask.activity), host: ask.host });
+    (named ? reading.replaced : reading.unnamed).push(ask.offerId);
   }
-  return ids;
+  return reading;
 }
 
 function className(err: unknown): string {

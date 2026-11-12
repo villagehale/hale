@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { foldWords, namesFacts, quotesParent, quotesParentWords } from '../parent-quote';
+import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -16,10 +16,10 @@ import { MAX_PLAN_CHOICES } from './store';
  *
  * The offer's activity name came from a web page or the coach model, so it is untrusted:
  * it reaches the model marked as such, cleaned and cut short, and nothing in it can carry
- * an approval. An approval holds only on the parent's own words, copied (`said`); its
+ * an approval. An approval holds only on the parent's own words, copied whole (`said`); its
  * maximum only on a price Hale's offer stated or an amount of money they wrote; the waiver
- * only on a plan whose waiver question Hale sent, and only on their own words that are no
- * part of the go-ahead (`waiverSaid`). A plan is named only by their own words, whole,
+ * only on a plan whose waiver question Hale sent, and only on their own words, whole, that
+ * are no part of the go-ahead (`waiverSaid`). A plan is named only by their own words, whole,
  * that carry a whole word of its program's name or its site. Anything else fails closed.
  *
  * A missing client, a missing skill, a model failure or an unreadable result is null, and
@@ -51,7 +51,7 @@ export interface PlanReadOffer {
 /**
  * How the parent's own words (`named`, copied whole from their message) name this plan: by
  * a whole word of its program's name or its site (`tokens`), checked in code. A plan other
- * than the parent's newest is only ever moved on words that name it.
+ * than the parent's newest is only ever moved, or asked about, on words that name it.
  */
 export type PlanNaming = 'tokens';
 
@@ -64,7 +64,7 @@ export type PlanReading =
       named: PlanNaming | null;
     }
   | { verdict: 'take_back'; named: PlanNaming | null }
-  | { verdict: 'unclear'; question: string }
+  | { verdict: 'unclear'; question: string; named: PlanNaming | null }
   | { verdict: 'unrelated' };
 
 export interface PlanReader {
@@ -239,7 +239,7 @@ function waiverGranted(
     offer.asksWaiver &&
     raw.waiverAccepted &&
     waiverSaid !== null &&
-    quotesParent(text, waiverSaid) &&
+    quotesParentWords(text, waiverSaid) &&
     (said === null || !nested(said, waiverSaid))
   );
 }
@@ -263,8 +263,8 @@ function planNaming(
 /**
  * Structural checks, and the bindings above. An approval of a plan already approved
  * changes nothing. An approval naming a session outside the offer or repeating one, with
- * no usable or supported price, or with no go-ahead copied from the parent's words, is not
- * an approval of anything: it becomes `unclear` when the model gave a question, and
+ * no usable or supported price, or with no go-ahead copied whole from the parent's words, is
+ * not an approval of anything: it becomes `unclear` when the model gave a question, and
  * unreadable otherwise. A waiver the parent's words do not grant is not ticked.
  */
 export function toPlanReading(
@@ -277,7 +277,7 @@ export function toPlanReading(
   if (raw.verdict === 'unrelated') return { verdict: 'unrelated' };
   if (raw.verdict === 'unclear') {
     const question = cleanQuestion(raw.question);
-    return question ? { verdict: 'unclear', question } : null;
+    return question ? { verdict: 'unclear', question, named } : null;
   }
   if (offer.status === 'planned') return { verdict: 'unrelated' };
   const ids = raw.choiceIds;
@@ -291,7 +291,8 @@ export function toPlanReading(
     max !== null &&
     max > 0 &&
     maxSupported(max, chosen, offer, text) &&
-    quotesParent(text, raw.said);
+    raw.said !== null &&
+    quotesParentWords(text, raw.said);
   if (valid && max !== null) {
     return {
       verdict: 'approve',
@@ -302,7 +303,7 @@ export function toPlanReading(
     };
   }
   const question = cleanQuestion(raw.question);
-  return question ? { verdict: 'unclear', question } : null;
+  return question ? { verdict: 'unclear', question, named } : null;
 }
 
 function className(err: unknown): string {

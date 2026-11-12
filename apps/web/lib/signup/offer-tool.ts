@@ -36,8 +36,10 @@ import { registrationUrlAllowed } from './url';
  *
  * A sender whose group seat may not authorize a sign-up creates and closes nothing. A
  * family may hold several asks at once; an earlier ask of this parent closes only when a
- * model reading of their words this turn says this one replaces it, and an unreadable
- * reading records nothing.
+ * model reading of their words this turn says this one replaces it, in words of theirs that
+ * name it (see `toSupersedeReading`), and an unreadable reading records nothing. One the
+ * reading dropped in words that do not name it stays open beside the new ask, and the
+ * result lists it (`keptOpen`).
  */
 
 export const OFFER_SIGNUP_TOOL = 'offer_signup';
@@ -179,6 +181,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         parentUserId: ports.parentUserId,
       });
       let supersede: string[] = [];
+      let keptOpen: SupersedeAsk[] = [];
       if (earlier.length > 0) {
         const reader =
           ports.supersedeReader ?? createSignupSupersedeReader(() => resolveReplyClient(undefined));
@@ -192,7 +195,14 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
           console.warn({ earlier: earlier.length }, 'offer_signup: supersede unread, not recorded');
           return { recorded: false as const, reason: 'supersede_unread' };
         }
-        supersede = read;
+        supersede = read.replaced;
+        keptOpen = earlier.filter((prior) => read.unnamed.includes(prior.offerId));
+        if (keptOpen.length > 0) {
+          console.warn(
+            { keptOpen: keptOpen.length },
+            'offer_signup: an earlier ask dropped in words that do not name it stays open',
+          );
+        }
       }
 
       const result: OfferSignupResult = await offerSignupFromFacts(
@@ -226,6 +236,16 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
           host: prior.providerHost,
           sessions: prior.sessionLabels,
         })),
+        // Only when one was: an empty list beside `replaced` gives the coach nothing to say.
+        ...(keptOpen.length > 0
+          ? {
+              keptOpen: keptOpen.map((prior) => ({
+                activity: prior.activity,
+                host: prior.host,
+                sessions: prior.sessionLabels,
+              })),
+            }
+          : {}),
       };
     },
   });

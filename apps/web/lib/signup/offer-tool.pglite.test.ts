@@ -4,7 +4,11 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { offerSignupTool } from './offer-tool';
-import type { SignupSupersedeReader, SupersedeReadInput } from './supersede-reader';
+import {
+  type SignupSupersedeReader,
+  type SupersedeReadInput,
+  toSupersedeReading,
+} from './supersede-reader';
 import { echoOfferWriter } from './test-models';
 
 const NOW = new Date('2026-10-28T15:00:00.000Z');
@@ -75,9 +79,10 @@ describe('offer_signup coach verb', () => {
    */
   function supersedeReader(drops: string | null): SignupSupersedeReader {
     return {
-      read: vi.fn(async ({ earlier }: SupersedeReadInput) =>
-        earlier.filter((ask) => ask.activity === drops).map((ask) => ask.offerId),
-      ),
+      read: vi.fn(async ({ earlier }: SupersedeReadInput) => ({
+        replaced: earlier.filter((ask) => ask.activity === drops).map((ask) => ask.offerId),
+        unnamed: [],
+      })),
     };
   }
 
@@ -205,6 +210,57 @@ describe('offer_signup coach verb', () => {
         { label: 'Gymnastics Tots', status: 'handed_back' },
         { label: 'Little Kickers', status: 'pending' },
       ]),
+    );
+  });
+
+  it('an earlier ask the parent dropped in words that do not name it stays open beside the new one, and the coach is told', async () => {
+    // The model's reading is stipulated, its worst: the earlier gymnastics ask dropped on the
+    // words `said`. The check is the real one.
+    async function switchToKickers(said: string, words: string) {
+      const seeded = await seedFamily(db.database);
+      await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+      await ask(seeded, GYM_URL, 'Gymnastics Tots', 'Sat 10:15', NOW, supersedeReader(null));
+      const reader: SignupSupersedeReader = {
+        read: vi.fn(async ({ earlier, text }: SupersedeReadInput) =>
+          toSupersedeReading({ reason: 'r', replaced: [{ ref: 'ask-1', said }] }, earlier, text),
+        ),
+      };
+      const result = await ask(
+        seeded,
+        KICKERS_URL,
+        'Little Kickers',
+        'Sat 9:30',
+        new Date(NOW.getTime() + 60_000),
+        reader,
+        `${words} Little Kickers Sat 9:30 ${KICKERS_URL}`,
+      );
+      return { result, rows: await asks(seeded.familyId) };
+    }
+
+    const kept = await switchToKickers('体操那个不要了', '体操那个不要了，换');
+    expect(kept.result).toMatchObject({
+      recorded: true,
+      replaced: [],
+      keptOpen: [
+        { activity: 'Gymnastics Tots', host: 'gym.example-rec.test', sessions: ['Sat 10:15'] },
+      ],
+    });
+    expect(kept.rows).toEqual(
+      expect.arrayContaining([
+        { label: 'Gymnastics Tots', status: 'pending' },
+        { label: 'Little Kickers', status: 'pending' },
+      ]),
+    );
+
+    // Positive control: a drop in words that name it closes it.
+    const closed = await switchToKickers('forget the gymnastics', 'forget the gymnastics,');
+    expect(closed.result).toMatchObject({
+      recorded: true,
+      replaced: [{ activity: 'Gymnastics Tots' }],
+    });
+    expect(closed.result).not.toHaveProperty('keptOpen');
+    expect(closed.rows).toEqual(
+      expect.arrayContaining([{ label: 'Gymnastics Tots', status: 'handed_back' }]),
     );
   });
 

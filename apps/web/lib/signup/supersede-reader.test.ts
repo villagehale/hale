@@ -23,30 +23,46 @@ const EARLIER: SupersedeAsk[] = [
 const TEXT = '体操那个不要了，换 Little Kickers 吧';
 
 describe('toSupersedeReading', () => {
-  it('maps each replaced ref to its offer when the parent wrote the words that drop it', () => {
+  const EN = 'Forget the gymnastics, do Little Kickers instead';
+
+  it('closes an earlier ask only on whole words of the parent that name it', () => {
     expect(
       toSupersedeReading(
-        { reason: 'r', replaced: [{ ref: 'ask-1', said: '体操那个不要了' }] },
+        { reason: 'r', replaced: [{ ref: 'ask-1', said: 'Forget the gymnastics' }] },
         EARLIER,
-        TEXT,
+        EN,
       ),
-    ).toEqual(['offer-gym']);
-    expect(toSupersedeReading({ reason: 'r', replaced: [] }, EARLIER, TEXT)).toEqual([]);
+    ).toEqual({ replaced: ['offer-gym'], unnamed: [] });
+    expect(toSupersedeReading({ reason: 'r', replaced: [] }, EARLIER, EN)).toEqual({
+      replaced: [],
+      unnamed: [],
+    });
   });
 
   it.each([
-    ['a ref it was never shown', [{ ref: 'ask-3', said: '体操那个不要了' }]],
+    ['a ref it was never shown', [{ ref: 'ask-3', said: 'Forget the gymnastics' }]],
     [
       'the same ask twice',
       [
-        { ref: 'ask-1', said: '体操那个不要了' },
-        { ref: 'ask-1', said: '不要了' },
+        { ref: 'ask-1', said: 'Forget the gymnastics' },
+        { ref: 'ask-1', said: 'gymnastics' },
       ],
     ],
-    ['words the parent never wrote', [{ ref: 'ask-2', said: 'drop the swim one' }]],
-    ['no words at all', [{ ref: 'ask-1', said: '  ' }]],
   ])('a reading naming %s is unreadable, so nothing closes', (_, replaced) => {
-    expect(toSupersedeReading({ reason: 'r', replaced }, EARLIER, TEXT)).toBeNull();
+    expect(toSupersedeReading({ reason: 'r', replaced }, EARLIER, EN)).toBeNull();
+  });
+
+  it.each([
+    ['words the parent never wrote', 'ask-2', 'drop the swim one', EN, 'offer-swim'],
+    ['no words at all', 'ask-1', '  ', EN, 'offer-gym'],
+    ['part of one of their words', 'ask-1', 'gymnast', EN, 'offer-gym'],
+    ['words that name only the new ask', 'ask-1', 'do Little Kickers instead', EN, 'offer-gym'],
+    ["words in another script than the ask's name", 'ask-1', '体操那个不要了', TEXT, 'offer-gym'],
+  ])('a drop in %s leaves the earlier ask open, and says so', (_, ref, said, text, offerId) => {
+    expect(toSupersedeReading({ reason: 'r', replaced: [{ ref, said }] }, EARLIER, text)).toEqual({
+      replaced: [],
+      unnamed: [offerId],
+    });
   });
 });
 

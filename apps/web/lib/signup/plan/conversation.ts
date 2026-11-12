@@ -4,13 +4,20 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type AskPlace, stoppedTurn } from '../asks';
 import { signupProviderHost } from '../consent';
+import { namesFacts } from '../parent-quote';
 import type { SignupRunInput, SignupRunResult } from '../run';
 import { siteChoiceSchema } from '../site-choices';
 import { loadSignupIdentity, markOffer } from '../store';
 import type { SignupSession } from '../types';
 import { type MismatchReader, createMismatchReader } from './mismatch-reader';
 import { hasPlanNotice, recordPlanNotice } from './prep';
-import { type PlanNaming, type PlanReader, type PlanReading, createPlanReader } from './reader';
+import {
+  type PlanNaming,
+  type PlanReader,
+  type PlanReading,
+  createPlanReader,
+  untrustedActivityLabel,
+} from './reader';
 import {
   type ConversablePlan,
   approveSignupPlan,
@@ -69,9 +76,10 @@ function binding(unnamedOk: boolean, named: PlanNaming | null): PlanBinding | nu
  * `unrelated` hands the message to the next ask, of either lane. A bare yes binds only the
  * parent's newest ask still waiting on one, a bare take-back only their newest ask; this
  * plan moves otherwise only on words that name it (its program or site), or the turn stops.
- * So does a reading that failed: it is never carried on to the next ask. Nothing moves from
- * a group seat that may not authorize a sign-up. A stopped turn is unclaimed, logged and
- * named.
+ * So does a reading that failed: it is never carried on to the next ask. A question back
+ * comes only from their newest ask or one their words name; any other passes the message
+ * on. Nothing moves from a group seat that may not authorize a sign-up. A stopped turn is
+ * unclaimed, logged and named.
  */
 export async function runPlanAsk(
   database: Database,
@@ -81,7 +89,7 @@ export async function runPlanAsk(
   place: AskPlace,
 ): Promise<SignupRunResult | 'unrelated'> {
   if (plan.availability && plan.availability.kind === 'options_mismatch') {
-    return runMismatchTurn(database, input, deps, plan);
+    return runMismatchTurn(database, input, deps, plan, place);
   }
   const reader = deps.planReader ?? createPlanReader(() => resolveReplyClient(undefined));
   const reading: PlanReading | null = await reader.read({
@@ -102,7 +110,11 @@ export async function runPlanAsk(
   if (reading.verdict === 'unrelated') return 'unrelated';
 
   if (reading.verdict === 'unclear') {
-    return reply(database, input, deps, plan, 'clarify', { question: reading.question });
+    // A question back about an older plan its words never named would leave the parent's
+    // next bare yes to the newest ask: it passes on instead.
+    const boundBy = binding(place.newest, reading.named);
+    if (!boundBy) return 'unrelated';
+    return reply(database, input, deps, plan, 'clarify', { question: reading.question, boundBy });
   }
 
   if (reading.verdict === 'take_back') {
@@ -199,11 +211,17 @@ export async function runPlanAsk(
   });
 }
 
+/**
+ * A pick among the site's options, for a plan whose options did not match. The mismatch
+ * reader is never shown the program, so a plan other than the parent's newest asks back or
+ * moves only when the parent's message names it, in whole words checked in code.
+ */
 async function runMismatchTurn(
   database: Database,
   input: SignupRunInput,
   deps: PlanTurnDeps,
   plan: ConversablePlan,
+  place: AskPlace,
 ): Promise<SignupRunResult | 'unrelated'> {
   const rawChoices = plan.availability?.choices;
   const parsed = Array.isArray(rawChoices)
@@ -218,9 +236,16 @@ async function runMismatchTurn(
   const reading = await reader.read({ text: input.body, askedStart, choices: parsed });
   if (!reading) return stopped('plan_unread', plan);
   if (reading.verdict === 'unrelated') return 'unrelated';
+  const named = namesFacts(input.body, {
+    activity: untrustedActivityLabel(plan.activityLabel),
+    host: plan.providerHost,
+  });
+  const boundBy = binding(place.newest, named ? 'tokens' : null);
   if (reading.verdict === 'unclear') {
-    return reply(database, input, deps, plan, 'clarify', { question: reading.question });
+    if (!boundBy) return 'unrelated';
+    return reply(database, input, deps, plan, 'clarify', { question: reading.question, boundBy });
   }
+  if (!boundBy) return stopped('plan_unnamed', plan);
   // A pick parks the plan or emails the provider from the parent's Gmail: never from a
   // group seat that may not authorize a sign-up, as for any other ask.
   if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
@@ -231,7 +256,7 @@ async function runMismatchTurn(
       availability: { kind: 'join_waitlist', askedStart, choices: parsed },
       now: input.now,
     });
-    return reply(database, input, deps, plan, 'approved', {});
+    return reply(database, input, deps, plan, 'approved', { boundBy });
   }
   if (reading.verdict === 'option') {
     const choice = parsed.find((item) => item.id === reading.choiceId);
@@ -241,7 +266,7 @@ async function runMismatchTurn(
       availability: { kind: 'take_option', choice, askedStart, choices: parsed },
       now: input.now,
     });
-    return reply(database, input, deps, plan, 'approved', {});
+    return reply(database, input, deps, plan, 'approved', { boundBy });
   }
   const to = parsed
     .map((item) => item.provider_email)
@@ -249,6 +274,7 @@ async function runMismatchTurn(
   if (!to || !deps.sendProviderEmail) {
     return reply(database, input, deps, plan, 'clarify', {
       question: 'Hale does not have an email address for this provider on the page.',
+      boundBy,
     });
   }
   await deps.sendProviderEmail({
@@ -270,7 +296,7 @@ async function runMismatchTurn(
     availability: { kind: 'emailed', askedStart, choices: parsed },
     now: input.now,
   });
-  return reply(database, input, deps, plan, 'approved', {});
+  return reply(database, input, deps, plan, 'approved', { boundBy });
 }
 
 function stopped(outcome: 'plan_unread' | 'plan_unnamed', plan: ConversablePlan): SignupRunResult {
