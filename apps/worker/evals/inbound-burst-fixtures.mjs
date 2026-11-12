@@ -89,4 +89,26 @@ export const INBOUND_BURST_FIXTURES = [
     messages: [msg('m1', 'thanks!'), msg('m2', 'what time is pickup friday')],
     allowed: [[['m1', 'm2']]],
   },
+  // HELD OUT. Written after the skill was tuned and recorded once; never tuned against.
+  // A miss here is a finding about the skill, not a fixture to re-draw.
+  {
+    id: 'heldout-addendum-limit',
+    note: 'The second text adds a limit to the ask in the first: one ask.',
+    previousHaleLine: null,
+    messages: [
+      msg('m1', 'looking for a soccer camp for Milo in july'),
+      msg('m2', 'under $300 a week if you can'),
+    ],
+    allowed: [[['m1', 'm2']]],
+  },
+  {
+    id: 'heldout-two-kids-two-asks',
+    note: 'Two asks about two different children, joined by "and": two answers.',
+    previousHaleLine: null,
+    messages: [
+      msg('m1', "is Ada's ballet recital still on the 14th?"),
+      msg('m2', 'and find Milo a swim class on sunday mornings'),
+    ],
+    allowed: [[['m1'], ['m2']]],
+  },
 ];
