@@ -118,6 +118,7 @@ function notice(
     choiceIndex: 0,
     cartTotalCents: 9800,
     amountChargedCents: null,
+    charged: 'nothing',
     confirmationNumber: null,
     liveViewUrl: LIVE,
     holdExpiresAt: new Date(NOW.getTime() + 9 * 60_000),
@@ -180,6 +181,7 @@ describe('the parent notice after a plan run', () => {
     expect(facts[0]?.run).toMatchObject({
       outcome: 'needs_human',
       detail: 'security_code',
+      charged: 'nothing',
       confirmed: false,
       sessionLabel: 'Preschool Swim Sun 10:00',
       liveBrowser: true,
@@ -286,6 +288,33 @@ describe('the parent notice after a plan run', () => {
     expect(await notify(notice(f))).toBe('failed');
     expect(transport.send).not.toHaveBeenCalled();
     expect(await lastAsked(f)).toBeNull();
+  });
+
+  it('tells the writer what the run charged, from the engine: unknown is never nothing', async () => {
+    const placed = await plannedFamily();
+    const unknown = rig();
+    await unknown.notify(
+      notice(placed, { detail: 'review_placed_order', charged: 'unknown', cartTotalCents: 9800 }),
+    );
+    expect(unknown.facts[0]?.run).toMatchObject({
+      detail: 'review_placed_order',
+      amountChargedCents: null,
+      charged: 'unknown',
+    });
+
+    const paid = await plannedFamily();
+    const cents = rig();
+    await cents.notify(
+      notice(paid, {
+        outcome: 'completed',
+        detail: 'none',
+        amountChargedCents: 9800,
+        charged: { cents: 9800 },
+        confirmationNumber: 'R-55120',
+        liveViewUrl: null,
+      }),
+    );
+    expect(cents.facts[0]?.run).toMatchObject({ confirmed: true, charged: { cents: 9800 } });
   });
 
   it('a second notice for the same plan is not sent twice', async () => {

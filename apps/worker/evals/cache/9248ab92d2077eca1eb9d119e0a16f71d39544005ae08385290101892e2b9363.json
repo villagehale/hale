@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text asks three things at once (which session first, maximum price, waiver tick), violating the one-ask-at-a-time rule; the offer details themselves are accurate and no spot is claimed.",
-    "score": 2
-  }
-}

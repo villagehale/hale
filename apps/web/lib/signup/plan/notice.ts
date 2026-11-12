@@ -109,6 +109,7 @@ export function createPlanNotifier(
           notice.choiceIndex === null ? null : (choices[notice.choiceIndex]?.label ?? null),
         cartTotalCents: notice.cartTotalCents,
         amountChargedCents: notice.amountChargedCents,
+        charged: notice.charged,
         liveBrowser: live !== null,
         holdMinutes,
       },

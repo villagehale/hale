@@ -57,6 +57,19 @@ describe('the login card preview the notice writer returns', () => {
     ).toEqual([]);
   });
 
+  it('refuses a garbled accent, so the page previews the bare host', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    expect(
+      loginCardViolations({ title: 'Connexion', description: 'Natation prรฉscolaire' }, FACTS),
+    ).toEqual(['description: garbled characters']);
+    expect(keptCard({ title: 'Natation prĂ©scolaire', description: '' }, FACTS)).toBeNull();
+    expect(JSON.stringify(info.mock.calls)).toContain('card_refused');
+    // Positive control: the same words with their accent intact.
+    expect(
+      loginCardViolations({ title: 'Connexion', description: 'Natation préscolaire' }, FACTS),
+    ).toEqual([]);
+  });
+
   it('writes no card when the notice carries none, and names a card it could not read', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     expect(keptCard({ title: 'Login', description: 'Swim' }, { ...FACTS, loginCard: null })).toBe(
