@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { BUBBLE_GAP_MS, sendAfterBubbleGap } from './linq/bubble-gap';
+import { BUBBLE_GAP_MS, bubbleGaps } from './linq/bubble-gap';
 import { sendTexts, textDedupeKey } from './outbound-transport';
 
 /** VIL-467 · the shared multi-text sender. Fakes only; no provider is reached. */
@@ -164,6 +164,8 @@ describe('sendTexts paced between bubbles', () => {
   });
 
   it('three bubbles: two gaps of about two seconds, typing up before each later bubble', async () => {
+    const gaps = bubbleGaps({ chatId: 'chat-1', service: 'iMessage', log });
+    if (!gaps) throw new Error('an iMessage chat must be paced');
     const start = Date.now();
     const sends: Array<[number, string]> = [];
     const out = sendTexts({
@@ -174,7 +176,7 @@ describe('sendTexts paced between bubbles', () => {
         return text;
       },
       record: async () => {},
-      pace: (send) => sendAfterBubbleGap({ chatId: 'chat-1', log }, send),
+      pace: (send) => gaps(send),
     });
     await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
 

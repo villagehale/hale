@@ -328,8 +328,12 @@ describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
     return work;
   }
 
-  /** Milliseconds between the swim bubble and the storytime bubble of the map. */
-  async function mapGap(flag: 'true' | 'false'): Promise<number> {
+  /** Milliseconds between the swim bubble and the storytime bubble of the map, on a Linq
+   * chat Linq said `service` carried. */
+  async function mapGap(
+    flag: 'true' | 'false',
+    service: InboundMessage['service'],
+  ): Promise<number> {
     vi.useFakeTimers();
     vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
     const { fake, transport, deps } = harness();
@@ -342,7 +346,11 @@ describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
     const first = await onFakeClock(
       handleInboundSms(
         fake.db,
-        transport.inbound(PHONE, 'Ada is 4, H0H 0H0', { transport: 'imessage', chatId: 'chat-1' }),
+        transport.inbound(PHONE, 'Ada is 4, H0H 0H0', {
+          transport: 'imessage',
+          chatId: 'chat-1',
+          ...(service ? { service } : {}),
+        }),
         deps,
       ),
     );
@@ -353,10 +361,19 @@ describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
   }
 
   it('lit: the next map bubble waits about two seconds', async () => {
-    expect(await mapGap('true')).toBe(BUBBLE_GAP_MS);
+    expect(await mapGap('true', 'iMessage')).toBe(BUBBLE_GAP_MS);
   });
 
   it('dark: the map bubbles go back to back', async () => {
-    expect(await mapGap('false')).toBe(0);
+    expect(await mapGap('false', 'iMessage')).toBe(0);
   });
+
+  // Linq relays green-bubble SMS and RCS chats as `imessage` too; only the service it
+  // named on the parent's text says the chat is really iMessage.
+  it.each([['SMS'], ['RCS'], [undefined]] as const)(
+    'lit, on a Linq chat Linq said is %s: the map bubbles go back to back',
+    async (service) => {
+      expect(await mapGap('true', service)).toBe(0);
+    },
+  );
 });

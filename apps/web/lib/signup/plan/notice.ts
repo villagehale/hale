@@ -1,9 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { type BubbleGaps, bubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
+import { chatServiceSaid } from '~/lib/channel/messaging-door';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
@@ -198,6 +201,9 @@ async function deliverDirect(
  * chat the bubble before it used: a Linq link card on iMessage, its own text where a card
  * cannot go. A part that does not go stops the notice as `failed`, and the sweep sends the
  * rest next time.
+ *
+ * Lit for bubbles (VIL-682 K5), a part that follows one this call sent, in a chat Linq said
+ * is iMessage, waits the bubble gap with typing up: the model's bubbles and the card alike.
  */
 export function createPlanPrepDeliver(
   database: Database,
@@ -216,10 +222,30 @@ export function createPlanPrepDeliver(
       channel: 'sms',
       chatId: null,
     };
+    const lit = coachBubblesEnabled(input.familyId);
+    // Opened at the first part that follows a send, on the chat that send used.
+    let gaps: BubbleGaps | null | undefined;
+    let sentHere = false;
+    const pace: PrepPace = async (send) => {
+      if (sentHere && gaps === undefined) {
+        const chatId = carried.channel === 'imessage' ? carried.chatId : null;
+        gaps =
+          lit && chatId
+            ? bubbleGaps({
+                chatId,
+                service: await chatServiceSaid(database, input.parentUserId, chatId),
+                log: console,
+              })
+            : null;
+      }
+      const out = sentHere && gaps ? await gaps(send) : await send();
+      sentHere = true;
+      return out;
+    };
     let textIndex = 0;
     for (const part of input.parts) {
       if (part.type === 'text') {
-        const sent = await sendPrepText(database, deps.transport, {
+        const sent = await sendPrepText(database, deps.transport, pace, {
           ...input,
           to,
           body: part.body,
@@ -233,18 +259,20 @@ export function createPlanPrepDeliver(
         carried = sent;
         continue;
       }
-      const link = await sendLinkOnce({
-        transport: deps.transport,
-        to,
-        channel: carried.channel,
-        chatId: carried.chatId,
-        url: part.url,
-        database,
-        familyId: input.familyId,
-        parentUserId: input.parentUserId,
-        now: input.now,
-        fetch: deps.fetch,
-      });
+      const link = await pace(() =>
+        sendLinkOnce({
+          transport: deps.transport,
+          to,
+          channel: carried.channel,
+          chatId: carried.chatId,
+          url: part.url,
+          database,
+          familyId: input.familyId,
+          parentUserId: input.parentUserId,
+          now: input.now,
+          fetch: deps.fetch,
+        }),
+      );
       if (link.status === 'not_sent') {
         console.warn(
           { offerId: input.offerId, kind: input.kind, why: link.why, code: link.code },
@@ -329,9 +357,13 @@ async function claimPrepText(
   };
 }
 
+/** Wraps each send of one prep notice: the bubble gap before any after the first. */
+type PrepPace = <T>(send: () => Promise<T>) => Promise<T>;
+
 async function sendPrepText(
   database: Database,
   transport: ChannelTransport,
+  pace: PrepPace,
   input: {
     familyId: string;
     parentUserId: string;
@@ -359,15 +391,17 @@ async function sendPrepText(
   };
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
-    delivered = await deliverFamilyOutbound(database, {
-      familyId: input.familyId,
-      body: input.body,
-      to: input.to,
-      legacy: transport,
-      target: { channel: 'legacy' },
-      shareGroupCap: false,
-      now: input.now,
-    });
+    delivered = await pace(() =>
+      deliverFamilyOutbound(database, {
+        familyId: input.familyId,
+        body: input.body,
+        to: input.to,
+        legacy: transport,
+        target: { channel: 'legacy' },
+        shareGroupCap: false,
+        now: input.now,
+      }),
+    );
   } catch (err) {
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }

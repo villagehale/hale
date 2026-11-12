@@ -497,3 +497,124 @@ describe('the login card in a prep notice', () => {
     warn.mockRestore();
   });
 });
+
+/**
+ * VIL-682 K5 · the model's bubbles and the login card of one prep notice, on a chat Linq
+ * said is iMessage, arrive about two seconds apart with typing up between, the same as
+ * every other multi-bubble send. The pause before the card is a pause before a bubble too.
+ */
+describe('a prep notice on an iMessage chat arrives paced', () => {
+  const CARD = 'https://app.villagehale.com/l/AbCdef1234';
+  const PARTS = [
+    { type: 'text', body: 'Hale needs the swim login for Saturday.' },
+    { type: 'link', url: CARD },
+    { type: 'text', body: 'It takes a minute.' },
+  ] as const;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** The parent's own text on `chat-1`, with the service Linq said carried it. */
+  async function saidOnChat(
+    f: { familyId: string; parentUserId: string },
+    service: 'iMessage' | 'SMS',
+  ) {
+    seq += 1;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: `in-paced-${seq}`,
+      providerChatId: 'chat-1',
+      providerService: service,
+      status: 'delivered',
+      body: 'ok',
+      sentAt: NOW,
+    });
+  }
+
+  /** Run on the fake clock, stepping it until the work settles. */
+  async function onFakeClock<T>(work: Promise<T>): Promise<T> {
+    let settled = false;
+    void work.finally(() => {
+      settled = true;
+    });
+    while (!settled) await vi.advanceTimersByTimeAsync(100);
+    return work;
+  }
+
+  /** Each send of the notice and each typing start, as milliseconds from the first send. */
+  async function timeline(flag: 'true' | 'false', service: 'iMessage' | 'SMS' | null) {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
+    const f = await plannedFamily();
+    if (service) await saidOnChat(f, service);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const start = Date.now();
+    const events: Array<[number, string]> = [];
+    const transport: ChannelTransport = {
+      async send(input) {
+        events.push([Date.now() - start, input.body]);
+        return {
+          providerMessageId: `prov-${events.length}`,
+          transport: 'imessage',
+          chatId: 'chat-1',
+        };
+      },
+    };
+    // The login card goes through the deliver's own fetch; typing through Linq's.
+    const card = vi.fn(async () => {
+      events.push([Date.now() - start, 'card']);
+      return Response.json({ message: { id: 'card-1' } }, { status: 201 });
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        if (String(url).endsWith('/chats/chat-1/typing')) {
+          events.push([Date.now() - start, `typing ${init?.method}`]);
+        }
+        return new Response(null, { status: 204 });
+      }),
+    );
+    const deliver = createPlanPrepDeliver(db.database, { transport, fetch: card });
+    const delivered = await onFakeClock(
+      deliver({
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        offerId: f.offerId,
+        kind: 'login_ask',
+        noticeKey: null,
+        parts: PARTS,
+        now: NOW,
+      }),
+    );
+    expect(delivered).toBe('sent');
+    return events;
+  }
+
+  it('lit, on a chat Linq said is iMessage: text, card, text about two seconds apart, typing up before each later one', async () => {
+    expect(await timeline('true', 'iMessage')).toEqual([
+      [0, 'Hale needs the swim login for Saturday.'],
+      [0, 'typing POST'],
+      [2_000, 'card'],
+      [2_000, 'typing POST'],
+      [4_000, 'It takes a minute.'],
+    ]);
+  });
+
+  it.each([
+    ['dark, on iMessage', 'false', 'iMessage'],
+    ['lit, but Linq said the chat is SMS', 'true', 'SMS'],
+    ['lit, and Linq never said what the chat is', 'true', null],
+  ] as const)('%s: the parts go back to back, with no typing', async (_label, flag, service) => {
+    expect(await timeline(flag, service)).toEqual([
+      [0, 'Hale needs the swim login for Saturday.'],
+      [0, 'card'],
+      [0, 'It takes a minute.'],
+    ]);
+  });
+});

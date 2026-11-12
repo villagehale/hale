@@ -51,7 +51,7 @@ import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-re
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
-import { sendAfterBubbleGap } from '~/lib/channel/linq/bubble-gap';
+import { bubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import {
@@ -1256,7 +1256,15 @@ async function routeChannelMessageInner(
   // A 1:1 iMessage turn lit for bubbles (COACH_BUBBLES). Its several messages, the coach's
   // bubbles or a handler's ordered sends, arrive paced (linq/bubble-gap.ts).
   const bubblesLit = !inGroup && takesBubbles(route, job) && coachBubblesEnabled(job.family_id);
-  const pacedChat = bubblesLit && route.channel === 'imessage' ? route.chatId : null;
+  const handlerGaps =
+    bubblesLit && route.channel === 'imessage'
+      ? bubbleGaps({
+          chatId: route.chatId,
+          service: route.service,
+          log: deps.log,
+          gapMs: deps.bubbleGapMs,
+        })
+      : null;
   let handlerSent = false;
   const turn: HandlerContext = {
     familyId: job.family_id,
@@ -1273,13 +1281,7 @@ async function routeChannelMessageInner(
       await stopTyping();
       const folded = await withPassport(body);
       const go = () => deps.transport.send({ route, body: folded });
-      const sent =
-        handlerSent && pacedChat
-          ? await sendAfterBubbleGap(
-              { chatId: pacedChat, log: deps.log, gapMs: deps.bubbleGapMs },
-              go,
-            )
-          : await go();
+      const sent = handlerSent && handlerGaps ? await handlerGaps(go) : await go();
       handlerSent = true;
       return sent;
     },
@@ -3969,7 +3971,15 @@ async function sendReplySet(
   else assertTurnLive();
 
   const route = args.route;
-  const pacedChat = route.channel === 'imessage' ? route.chatId : null;
+  const gaps =
+    route.channel === 'imessage'
+      ? bubbleGaps({
+          chatId: route.chatId,
+          service: route.service,
+          log: deps.log,
+          gapMs: deps.bubbleGapMs,
+        })
+      : null;
   let claimed = false;
   const outcome = await sendTexts<{
     providerMessageId: string | null;
@@ -3978,12 +3988,7 @@ async function sendReplySet(
   }>({
     texts: args.bodies,
     setKey: args.setKey,
-    ...(pacedChat
-      ? {
-          pace: (send) =>
-            sendAfterBubbleGap({ chatId: pacedChat, log: deps.log, gapMs: deps.bubbleGapMs }, send),
-        }
-      : {}),
+    ...(gaps ? { pace: (send) => gaps(send) } : {}),
     alreadySent: async (key) => {
       const found = await onRecord(key);
       if (found) bubblesSent = keys.indexOf(key) + 1;
