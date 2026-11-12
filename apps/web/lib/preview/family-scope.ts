@@ -99,6 +99,7 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own
     'registration-verify': 'skip',
     'watched-spots': 'skip',
     'failure-page': 'skip',
+    unanswered: 'skip',
     'connector-sync': 'skip',
     'inbound-canary': 'skip',
     'browser-use-watch': 'skip',

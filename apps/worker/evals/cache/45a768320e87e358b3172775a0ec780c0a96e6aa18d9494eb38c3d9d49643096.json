@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgwWkBinuFY1tUJosTN38",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsAYKEAgTGAI4AUIIdGhpbmtpbmcSDJR3mJPkJ1gzXZVV8BoMieQMDZgmWxTFCGOYIjASaHfHy3vTBVDyaVy2cvF/Fde0f0UEvQd8UmsMndFrskzLjJJlsN62OipQMGGSoMwqzQW423NCR5HAWmVXIJe3Ts5zzZmp5Wc+l5ASoMtVrAaPxbeyQ/ACxVMlK0EEkWsbKRKF84DQWaVwgSsCSBpbkzbyFfS1zLtv6hlTnudckRzcHLsOcano127eFVCAaq2rtIpp2p189PIZS6WPvuz8Z0BScrOB8nVVgLGf2Wtuz5lGtPQ/YPQnqn6+PoYDBsHv/bBiMB3o+fEX6ZSHgMT5CcnQayqIxJh+19lLrsOOCtfC0ifKGT/QhPQoQqFXwqO0DGFVTVwFvXj/q5ijAuGgD8Bz23oLMNC4hmlpCD+MvJpdsNvmw8R9m2NVxSeZfCLwXU4z3Iwr15epSDM1ibiAFBVaFFrOjZ+blgVy4q/O8DR4VsiAq/ZvP5epxUNJk3Btbc4R1dg0JWEdbnY4txom7ehFNiNrUeWznPuURdbOIFlxwnws2nxFmEWr+pR4Lp2fN8e+8GGQjrJrYS9+X1M2D8U7sFkfVrmcqDhEHmdkPX/14lPhusgSbBnVVv75TbIsbEo4ZFopxupjPPxc5/My4JHxB+/xL+kFN9nkn90+r9ew6vyDdqOLJ9SCmF+d/nBGieYQxh68O0v5+inahZYEtR/yitCOr16lS32w03z0TNwPBp8YZYieIGlE5qxUHsrj/Pwkf8F7oscLWwLlQb0xmyCg0rrnwGkgT+z5jESBitKPY7Nqcp/bF9DzSv9ql9bIgR+F1MVDUDoOnvvEBNqnV2c4vewrL1bdLAh1mhetaE2aLtLSJyKzzp68+UA34hxCFGj1JE/FsncD/N6jkND6uqotSVIPMtMBqD0M0RIEqeeF6Jt+8PBgM3J1VadEHLztMjizNWb3VuWoNP9HWNFFwhwQESQIwB6hKpGBekJjPUU2V/12QosFggYzjuf7SXK9ZDla8dmHS26cuxhQENcO6970XO4KaUIMpbqHElB14Q+BBLpHauCjaB6GDNjDMcEYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Saturday you've got soccer practice at 10:00am at Cedarvale Park. There's also Riverdale story time at Riverdale Library, Sat, Aug 8. It's a free indoor drop-in and all ages are welcome. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1396,
+      "cache_read_input_tokens": 23382,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1396,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 156,
+      "output_tokens_details": {
+        "thinking_tokens": 67
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1722
+}

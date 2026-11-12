@@ -23,15 +23,17 @@ import {
   REPO_ROOT,
   assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
@@ -74,11 +76,13 @@ async function sentAfterRefusal(
     async compose(turn, options) {
       calls += 1;
       if (calls === 1) throw refusal;
-      const { skill, system } = await voice.friendVoiceSystem(turn, options?.prompt === 'short');
+      const { skill, extras } = await voice.friendVoiceSystem(turn, options?.prompt === 'short');
       const drawn = await cachedToolCall({
         tag: `${tag}:rewrite`,
         lane: agent.pickLane(skill.meta.task),
-        system,
+        system: skill.instructions,
+        systemExtras: extras,
+        cacheTtl: '1h',
         userMessage: JSON.stringify(voice.friendVoiceContext(turn)),
         toolName: voice.ONBOARDING_REPLY_TOOL,
         toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
@@ -127,7 +131,7 @@ async function main() {
     const phrase =
       fixture.over.language === 'fr' ? LINQ_GROUP_TRIGGER_PHRASE.fr : LINQ_GROUP_TRIGGER_PHRASE.en;
     const input = inputFor(voice, phrase, fixture);
-    const { skill, system } = await voice.friendVoiceSystem(input, false);
+    const { skill, extras } = await voice.friendVoiceSystem(input, false);
     const context = voice.friendVoiceContext(input);
     let reply = BROKEN_REPLY;
     let refused = null;
@@ -136,7 +140,9 @@ async function main() {
       const result = await cachedToolCall({
         tag,
         lane: agent.pickLane(skill.meta.task),
-        system,
+        system: skill.instructions,
+        systemExtras: extras,
+        cacheTtl: '1h',
         userMessage: JSON.stringify(context),
         toolName: voice.ONBOARDING_REPLY_TOOL,
         toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
@@ -189,6 +195,10 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
+  if (isDryRun()) {
+    console.log(dryReportLine('household-group', [judge.plan]));
+    process.exit(0);
+  }
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);

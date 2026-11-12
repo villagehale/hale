@@ -1,6 +1,10 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
+import { type BubbleGaps, readBubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
+import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimEnforce } from '~/lib/channel/reconcile/claim-enforce';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
@@ -89,6 +93,9 @@ export interface DispatchPorts {
   smsConsentLive(userId: string): Promise<boolean>;
   /** A prior send (not a suppression) already carries this per-channel dedupe key. */
   activeDedupe(dedupeKey: string): Promise<boolean>;
+  /** The service Linq said carried the parent's texts in this Linq chat, or null when it
+   * never said (messaging-door.ts `chatServiceSaid`). Read once per paced set. */
+  chatService(parentUserId: string, chatId: string): Promise<LinqChatService | null>;
   /** Write one channel_messages row; returns its id (for the audit target). */
   record(write: LedgerWrite): Promise<string>;
   /** X1 (VIL-227) loop taxonomy: fires the analytics event paired 1:1 with the
@@ -444,10 +451,29 @@ async function dispatchTexts(
       super('channel refused');
     }
   }
+  const paced = coachBubblesEnabled(msg.familyId);
+  // Undefined until the first text has gone: the chat is only known from its result.
+  let gaps: BubbleGaps | null | undefined;
   const outcome = await sendTexts<Sent>({
     texts,
     setKey: legKey,
     alreadySent: (key) => ports.activeDedupe(key),
+    // VIL-682 K5 · lit, a text that follows one which landed in a chat Linq said is
+    // iMessage waits the bubble gap.
+    pace: async (send, previous) => {
+      if (gaps === undefined) {
+        const chatId = previous.transport === 'imessage' ? previous.providerChatId : null;
+        gaps =
+          paced && chatId
+            ? await readBubbleGaps({
+                chatId,
+                readService: () => ports.chatService(msg.parentUserId, chatId),
+                log: console,
+              })
+            : null;
+      }
+      return gaps ? gaps(send, sentUnlessThrown) : send();
+    },
     send: async (text, index) => {
       // By position, not by text: two identical texts must not both carry the bold.
       const bolded = index === boldAt ? rendered.bold : undefined;
@@ -541,7 +567,8 @@ async function writeLedgerRow(
   status: LedgerWrite['status'],
   extra: Partial<LedgerWrite> = {},
 ): Promise<string> {
-  const id = await ports.record(rowFor(msg, channel, status, extra));
+  const write = rowFor(msg, channel, status, extra);
+  const id = await ports.record(write);
   // A SEND, not a status match: an SMS row is born 'queued', and keying the event off
   // 'sent' alone would report every text Hale sends as a failure.
   const event: AnalyticsEvent = (SENT_STATUSES as readonly string[]).includes(status)
@@ -553,6 +580,21 @@ async function writeLedgerRow(
     templateKey: msg.templateKey,
     reason: status,
   });
+  if ((SENT_STATUSES as readonly string[]).includes(status)) {
+    noteMessage({
+      direction: 'out',
+      familyId: msg.familyId,
+      channel,
+      chatId: write.providerChatId,
+    });
+  } else if (status === 'failed') {
+    noteSendFailed({
+      familyId: msg.familyId,
+      channel,
+      chatId: write.providerChatId,
+      reason: extra.errorCode ?? 'failed',
+    });
+  }
   return id;
 }
 

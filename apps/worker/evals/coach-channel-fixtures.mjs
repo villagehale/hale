@@ -17,6 +17,8 @@
 //   rather than in a fixture of their own because the leak that matters is the casual
 //   one: a "what's on this week" answer that lists everything.
 
+import { judgePrompt } from './lib/judge-prompt.mjs';
+
 /** The family's IANA zone. Every `when` below is EDT (UTC-4) in the first week of August. */
 export const FIXTURE_TIMEZONE = 'America/Toronto';
 
@@ -433,6 +435,67 @@ function smallTalk(pairs, offset = 0) {
   return out;
 }
 
+/**
+ * VIL-567 · Sunday 10:00 a.m. family-local, the last day of the fixture week. Nothing of
+ * the family's is on that day, so a find is the whole answer.
+ */
+export const FIXTURE_SUNDAY_NOW = '2026-08-09T14:00:00.000Z';
+
+const TUMBLE_TOTS = {
+  title: 'Tumble tots gym class',
+  kind: 'class',
+  summary: 'Weekly gym class for ages 3 to 6.',
+  venue: 'Northside Community Centre',
+  when: 'Tue & Thu, 10am',
+  url: 'https://example.org/tumble-tots',
+};
+
+/**
+ * VIL-567 · what a search for that Sunday finds: one thing that runs that day and one
+ * weekly class that does not. The class comes FIRST and fits the five-year-old, so a
+ * reply that hands over the first candidate leads with a day the parent did not ask
+ * about. Invented names, example.org pages.
+ */
+export const FIXTURE_VILLAGE_SUNDAY = {
+  candidates: [
+    TUMBLE_TOTS,
+    {
+      title: 'Family skate',
+      kind: 'drop_in',
+      summary: 'Public skate, all ages, helmets for under-sixes.',
+      venue: 'Lakeside Arena',
+      when: 'Sun, Aug 9, 1pm',
+      url: 'https://example.org/family-skate',
+    },
+  ],
+  inVerification: 0,
+  standingOption: null,
+};
+
+/**
+ * VIL-567 · what a search with no window finds. Production searches the whole year then
+ * (village/live.ts), and a year's search turns up the standing weekly class: the 2026-11
+ * audit case, where Hale offered a Tue/Thu class to a parent asking about today.
+ */
+export const FIXTURE_VILLAGE_YEAR = {
+  candidates: [TUMBLE_TOTS],
+  inVerification: 0,
+  standingOption: null,
+};
+
+/**
+ * VIL-567 · the day judge. Graded by meaning: "today", "this afternoon" and the weekday's
+ * name are one day. A fixture states the day the parent means in `expect.dayJudge.day`.
+ */
+export const FIND_DAY_JUDGE_SYSTEM = judgePrompt('coach-find-day');
+
+/** The stand-in that fails the day judge: it hands over the first candidate, whatever its day. */
+const FIND_DAY_BROKEN = {
+  reply:
+    'Tumble tots gym class at Northside Community Centre is a good fit for Milo, Tue & Thu at 10am.',
+  calls: [{ tool: 'search_village' }],
+};
+
 export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'move-named-day',
@@ -588,6 +651,42 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'find-day-from-thread-sunday',
+    text: 'find me something to do',
+    note: 'VIL-567, the 2026-11 audit case. On a Sunday the parent asked whether anything was on today, then asked Hale to find something. Today is still the day: they should not have to say it twice. Hale offered a Tue/Thu class and the parent had to repeat himself. The reply leads with what runs today and never hands over the weekday class as if it fit.',
+    now: FIXTURE_SUNDAY_NOW,
+    findTurnPrompt: true,
+    village: FIXTURE_VILLAGE_SUNDAY,
+    yearVillage: FIXTURE_VILLAGE_YEAR,
+    transcript: [
+      { role: 'user', content: 'is there anything on today?' },
+      { role: 'assistant', content: 'Nothing on your calendar today.' },
+    ],
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      dayJudge: { day: 'today, Sunday, August 9, as the earlier text in the thread asked' },
+    },
+    broken: FIND_DAY_BROKEN,
+  },
+  {
+    id: 'find-day-none-given-sunday',
+    text: 'find me something to do',
+    note: 'VIL-567. A bare find with no day in the text or the thread. The day is the soonest time they could go, and Sunday at 10 a.m. leaves most of today, so today comes first and a weekday class is never the lead.',
+    now: FIXTURE_SUNDAY_NOW,
+    findTurnPrompt: true,
+    village: FIXTURE_VILLAGE_SUNDAY,
+    yearVillage: FIXTURE_VILLAGE_YEAR,
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      dayJudge: {
+        day: 'the soonest the family could go: today, Sunday, August 9, with most of the day left',
+      },
+    },
+    broken: FIND_DAY_BROKEN,
+  },
+  {
     id: 'find-activities-bare-ask',
     text: "why don't u find some activities",
     note: 'VIL-365. A bare ask: no day, no kind, no child. Ages are already in context and the tools attach the town from the postal area, so the turn searches and hands a verified find over. A clarifying question with no search is the failure. One question after the find, offering to narrow, is allowed.',
@@ -595,6 +694,63 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['search_village'],
       mustNotDraft: true,
       mustMention: ['story time', 'bloor'],
+    },
+  },
+  {
+    id: 'show-everything-grouped',
+    text: 'show me everything you found, grouped',
+    note: "VIL-536. A broad follow-up in an ongoing 1:1: the finds are already in the thread, and the parent asks for the whole map grouped. Preview 2026-11-01 spent the coach's 400-token ceiling on tools and reasoning, re-asked once, still wrote nothing (`truncated before speaking (1 re-ask)`, draftedThisTurn 0), and the parent got the failed-turn apology. The gate here is that the turn SPEAKS and names what it already found. Grouping is the model's; the names are the facts.",
+    village: {
+      candidates: [
+        {
+          title: 'Swim Kids 3',
+          kind: 'class',
+          summary: 'Saturday swim for school-age kids.',
+          venue: 'West pool',
+          when: 'Sat, Aug 8, 11:00 a.m.',
+          url: 'https://www.toronto.ca/explore-enjoy/recreation/swimming/',
+        },
+        {
+          title: 'Central Library story time',
+          kind: 'drop_in',
+          summary: 'Free indoor drop-in, all ages welcome.',
+          venue: 'Bloor/Gladstone branch',
+          when: 'Sat, Aug 8',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+        },
+        {
+          title: 'Riverdale Farm visit',
+          kind: 'outing',
+          summary: 'Free outdoor farm, open daily.',
+          venue: 'Riverdale Farm',
+          when: 'Sun, Aug 9',
+          url: 'https://www.toronto.ca/explore-enjoy/parks-gardens-beaches/riverdale-farm/',
+        },
+        {
+          title: 'High Park playground',
+          kind: 'outing',
+          summary: 'Jamie Bell Adventure Playground, free.',
+          venue: 'High Park',
+          when: 'Sat, Aug 8',
+          url: 'https://www.toronto.ca/explore-enjoy/parks-gardens-beaches/high-park/',
+        },
+      ],
+      inVerification: 0,
+      standingOption: null,
+    },
+    transcript: [
+      { role: 'user', content: 'anything fun for the kids this weekend?' },
+      {
+        role: 'assistant',
+        content:
+          'Swim Kids 3 at the West pool Saturday 11:00 a.m., Central Library story time Saturday at Bloor/Gladstone, Riverdale Farm visit Sunday, and High Park playground Saturday. Want me to pick one?',
+      },
+      ...smallTalk(2, 4),
+    ],
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['swim kids', 'story time', 'riverdale farm', 'high park'],
+      forbidden: [...HEDGES, 'the app'],
     },
   },
   {
@@ -966,9 +1122,6 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['get_framework_guidance'],
       mustNotDraft: true,
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
-      // The first draw with the day facts on asked the readiness cues as a question next
-      // to the plan offer. A finding, not re-drawn (coach-channel-known-miss.mjs).
-      knownMiss: { ticket: 'VIL-652', failure: 'questions in one message' },
     },
   },
   /**
@@ -1253,6 +1406,49 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'postal-home-unmarked-place',
+    text: 'anything fun Lin could do this Sunday afternoon?',
+    city: 'Markham',
+    postalTown: 'Markham',
+    olderPlace: 'Georgetown',
+    children: [{ id: 'kid-lin', name: 'Lin', gender: 'girl', dateOfBirth: '2016-05-01' }],
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    // 20 days before FIXTURE_NOW, parent_message, no record mark. Still inside the
+    // 365-day window, so the find slice would still hand it over. The postal town wins.
+    memoryFacts: [
+      {
+        childId: null,
+        factType: 'logistic',
+        factKey: 'home_city',
+        factValue: 'Georgetown',
+        confidence: 1,
+      },
+    ],
+    memoryBrief: {
+      status: 'ok',
+      text: 'memory_brief status=ok\nlife: logistic:home_city=Georgetown (source=parent_message confidence=1 valid_from=2026-07-14)',
+      asOf: '2026-08-03T13:00:00.000Z',
+      digestFreshness: 'unavailable',
+    },
+    webPick: {
+      name: 'Sunday drop-in at the museum',
+      ageFit: 'ages 6-12',
+      sourceName: 'Markham Museum',
+      when: 'Sunday afternoon',
+      price: null,
+      url: 'https://www.markham.ca/museum',
+    },
+    judgeHome:
+      "Home is Markham, from the postal code. Georgetown is an older or unconfirmed place from memory. Score 1 if the reply states Georgetown as where they live or as the place that was searched. One question, in the reply's own words, about whether that other place still matters is not that failure. Do not require particular wording.",
+    note: 'Sloane, VIL-519. Postal town is home. A 20-day unmarked home_city must not be named as home and must not be the search. The model judges the conflict.',
+    expect: {
+      mustNotDraft: true,
+      mustCall: ['find_activities'],
+      searchTown: 'Markham',
+      subjectMustNotName: 'Georgetown',
+      },
+    },
+    {
     id: 'fact-seen-in-email',
     text: 'is Ada still doing art on fridays?',
     // VIL-429. The one fact here came from an email, not from the parent. The context
@@ -1270,6 +1466,38 @@ export const COACH_CHANNEL_FIXTURES = [
     note: 'VIL-429. Hale knows the Friday art class only from a Harbour Art Studio email of Jul 28. The answer leans on that fact, so it says, in its own words, that it saw it in that email and roughly when, and lets the parent correct it. It never quotes the email or claims anything about it beyond the sender and the day.',
     expect: {
       mustMention: ['harbour'],
+    },
+  },
+  // VIL-679 · back-to-back texts read as one turn (router/burst.ts). Production threads
+  // each text as its own user row before the coach runs and joins their words as the
+  // question, with `arrivedTogether` in the context. These fixtures carry that shape.
+  {
+    id: 'burst-correction-budget',
+    text: '$600 budget for a fall program for Ada\n$900',
+    transcript: [
+      { role: 'user', content: '$600 budget for a fall program for Ada' },
+      { role: 'user', content: '$900' },
+    ],
+    arrivedTogether: 2,
+    note: 'VIL-679. Two texts a second apart, answered as one turn: the second corrects the budget in the first. The reply and every tool input work within $900; the stale $600 appears nowhere.',
+    expect: {
+      mustNotDraft: true,
+      forbidden: ['600'],
+      toolInputsMustNotSay: ['600'],
+    },
+  },
+  {
+    id: 'burst-wait-then-ask',
+    text: 'wait, two more coming\nis swim on thursday',
+    transcript: [
+      { role: 'user', content: 'wait, two more coming' },
+      { role: 'user', content: 'is swim on thursday' },
+    ],
+    arrivedTogether: 2,
+    note: 'VIL-679. An announcement and the one ask that came with it, answered as one turn. The reply answers the swim question from the week and says nothing about the wait.',
+    expect: {
+      mustCall: ['lookup_week'],
+      mustNotDraft: true,
     },
   },
 ];

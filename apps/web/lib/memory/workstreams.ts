@@ -1,4 +1,5 @@
 import { type Database, WORKSTREAM_STATUSES, type WorkstreamStatus, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { deriveStage } from '@hale/types';
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or } from 'drizzle-orm';
 
@@ -19,7 +20,7 @@ export const WORKSTREAMS_ENABLED_ENV = 'WORKSTREAMS_ENABLED';
 
 /** Strict equality. `true\n` and `TRUE` stay off. */
 export function workstreamsEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env[WORKSTREAMS_ENABLED_ENV] === 'true';
+  return isEnabled('workstreams', undefined, env);
 }
 
 export const OPEN_WORKSTREAM_STATUSES = [

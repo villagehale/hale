@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { isEnabled } from '@hale/flags';
+import { and, desc, eq, lte } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type OutboundGatePorts,
@@ -218,7 +220,7 @@ export interface ActivityFollowUpDeps extends FollowUpDelivery {
   loadDue: typeof loadDueCommitments;
   /** The parent who was actually texted the promise, read back off the row that carried
    * it. Never a household lookup: a co-parent did not ask this question. */
-  resolveRecipient(database: Database, channelMessageId: string): Promise<FollowUpRecipient | null>;
+  resolveRecipient(database: Database, promise: OwedPromise): Promise<FollowUpRecipient | null>;
   reader: ActivityFamilyReader;
   /** REQUIRED (rule #11). The whole point of the sweep is that the search actually runs. */
   finder: ActivityFinder;
@@ -301,7 +303,7 @@ async function keepOne(
     );
     return;
   }
-  const recipient = await deps.resolveRecipient(database, commitment.createdFrom);
+  const recipient = await deps.resolveRecipient(database, commitment);
   if (!recipient) {
     result.unsendable += 1;
     console.error(
@@ -523,7 +525,9 @@ async function keepOne(
       pageEvidence,
       evidence,
       heardFacts: commitment.heardFacts,
+      askLanguage: commitment.askLanguage,
       ...(searched ? { searched } : {}),
+      lane: 'candidate',
     },
     now,
   );
@@ -535,7 +539,7 @@ async function keepOne(
     result.refusedAtSend += 1;
     return;
   }
-  if (outcome.status === 'skipped') return;
+  if (outcome.status === 'skipped' || outcome.status === 'queued') return;
   result.sent += 1;
   if (outcome.emptyHanded) result.sentEmptyHanded += 1;
   if (outcome.watchRecorded === true) result.watching += 1;
@@ -544,10 +548,21 @@ async function keepOne(
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
 
-/** The parent the promise went to, and the thread it went to them in. */
+/** What the recipient resolver reads off a promise row. */
+export type OwedPromise = Pick<DueCommitment, 'familyId' | 'createdFrom' | 'askLanguage'>;
+
+/**
+ * The parent the promise went to, the thread it went to them in, and the language it is
+ * answered in.
+ *
+ * `deep-followup-now` decides the last two, for the deep job and the sweep alike. Lit, a
+ * promise made in a 1:1 iMessage chat is answered under the parent's ask there, in the
+ * language of that ask. Dark, there is no thread, so the family's outbound router picks
+ * the target as it did before the flag, in the parent's one proactive language (VIL-572).
+ */
 export async function resolveFollowUpRecipient(
   database: Database,
-  channelMessageId: string,
+  promise: OwedPromise,
 ): Promise<FollowUpRecipient | null> {
   const [row] = await database
     .select({
@@ -555,20 +570,64 @@ export async function resolveFollowUpRecipient(
       conversationId: schema.channelMessages.relatedConversationId,
       proactiveLanguage: schema.users.proactiveLanguage,
       familyLanguage: schema.families.primaryLanguage,
+      channel: schema.channelMessages.channel,
+      providerChatId: schema.channelMessages.providerChatId,
+      carriedAt: schema.channelMessages.createdAt,
     })
     .from(schema.channelMessages)
     .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.channelMessages.familyId))
-    .where(eq(schema.channelMessages.id, channelMessageId))
+    .where(eq(schema.channelMessages.id, promise.createdFrom))
     .limit(1);
   // No user row means there is nobody to write to: the outcome the sweep already names.
   if (!row?.parentUserId) return null;
+  // VIL-572 · the one proactive language: dark always, and lit when no tag was read.
+  const stored = parentLanguage(row.proactiveLanguage, row.familyLanguage);
+  const lit = isEnabled('deep-followup-now', promise.familyId);
   return {
     parentUserId: row.parentUserId,
     conversationId: row.conversationId ?? null,
-    // VIL-572 · the one proactive language, never the last text's.
-    language: parentLanguage(row.proactiveLanguage, row.familyLanguage),
+    language: lit ? (acceptReplyLanguage(promise.askLanguage) ?? stored) : stored,
+    thread: lit ? await oneToOneThread(database, row) : null,
   };
+}
+
+/**
+ * The 1:1 iMessage chat a promise was carried in, and the parent's ask to thread under, or
+ * null. The ask is this parent's latest text in that chat at or before the reply that
+ * carried the promise — the inbound that reply answered, which is what every router reply
+ * threads under. Only when the door saw that ask as 1:1: a group, an SMS row, an ask with
+ * no provider id, or one the door never said anything about is null, and the answer is
+ * routed as it always was.
+ */
+async function oneToOneThread(
+  database: Database,
+  carrying: {
+    parentUserId: string;
+    channel: string;
+    providerChatId: string | null;
+    carriedAt: Date;
+  },
+): Promise<{ chatId: string; messageId: string } | null> {
+  if (carrying.channel !== 'imessage' || !carrying.providerChatId) return null;
+  const [ask] = await database
+    .select({
+      providerMessageId: schema.channelMessages.providerMessageId,
+      inGroup: schema.channelMessages.inGroup,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, carrying.parentUserId),
+        eq(schema.channelMessages.providerChatId, carrying.providerChatId),
+        eq(schema.channelMessages.direction, 'in'),
+        lte(schema.channelMessages.createdAt, carrying.carriedAt),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(1);
+  if (ask?.inGroup !== false || !ask.providerMessageId) return null;
+  return { chatId: carrying.providerChatId, messageId: ask.providerMessageId };
 }
 
 export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {

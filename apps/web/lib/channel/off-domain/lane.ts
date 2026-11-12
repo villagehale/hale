@@ -23,7 +23,7 @@ import { safetyDoorFor } from './answer-request';
 import { referralReply } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
 import { type Moment, type MomentWriter, createMomentReply } from './moment-reply';
-import { type MomentPlace, UNKNOWN_MOMENT_PLACE } from './moment-request';
+import { MOMENTS, type MomentPlace, UNKNOWN_MOMENT_PLACE } from './moment-request';
 import { readFamilyPlace, readHealthPlace } from './place';
 import {
   type InboundLaneScreen,
@@ -140,6 +140,10 @@ export type OffDomainVerdict =
       /** This reply answers a crisis ({@link crisisMarkingLane}): the router marks it
        * answered once the transport accepted it, and never before (VIL-602). */
       crisisReply?: true;
+      /** This reply is a safety moment the lane wrote ({@link crisisMarkingLane}): someone
+       * hurt, ill, in danger or in crisis. Every crisis reply is one. The router sends it
+       * as a plain bubble and never asks for an iMessage effect on it. */
+      safetyReply?: true;
     }
   /** The moment reply could not be written. Nothing preset goes out, and the ordinary
    * answer does not resume. */
@@ -244,6 +248,10 @@ export interface OffDomainLane {
     /** Where the text arrived. A question Hale left open was asked in one thread, and a
      * family's home city is said only in the parent's own. */
     thread: InboundThread;
+    /** Told what the screen read, the moment it has read it and before any lane runs: the
+     * router's holding line is written in this text's language and never in front of a
+     * safety lane. Absent, nothing is told, and a holding line stays withheld. */
+    onScreened?(reading: LaneReading): void;
   }): Promise<OffDomainVerdict>;
 }
 
@@ -263,6 +271,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // screen: a reply that gives the city AND describes a symptom would be read as the
       // answer and composed as a general question, past the medical lane and both doors.
       const reading = await ports.screen.read(input.text);
+      input.onScreened?.(reading);
       const inDomain = reading.lane === 'in_domain' || reading.category === null;
 
       // A REPLY TO A QUESTION HALE LEFT OPEN is considered only for a text the screen
@@ -850,6 +859,13 @@ export function productionOffDomainLane(
 /** The moments that answer a crisis. */
 const CRISIS_MOMENTS: ReadonlySet<Moment> = new Set(['mental_crisis', 'emergency']);
 
+/** The moments that answer someone hurt, ill, in danger or in crisis: every moment but
+ * the one written when the ordinary answer could not be, so a moment added later is a
+ * safety reply until it is said not to be. */
+const SAFETY_MOMENTS: ReadonlySet<Moment> = new Set(
+  MOMENTS.filter((moment) => moment !== 'could_not_answer'),
+);
+
 /**
  * The lane, with every crisis reply it writes marked as leaving before it is returned to
  * be sent, and the verdict saying so (VIL-602). A text whose opt-out read failed is held
@@ -857,14 +873,21 @@ const CRISIS_MOMENTS: ReadonlySet<Moment> = new Set(['mental_crisis', 'emergency
  * the router turns it to answered only once the transport accepted the reply, so a held
  * crisis whose live reply never left is still answered late. A mark that did not land is
  * logged by name and never holds the reply back.
+ *
+ * Every safety moment it writes, a crisis or not, is marked on the verdict too, from the
+ * moment the lane chose and never from the reply's words: whichever reading opened the
+ * door (the screen's, the compose's, or the reply to a question Hale left open), the
+ * moment writer is the one place a safety reply is written.
  */
 export function crisisMarkingLane(database: Database, ports: OffDomainPorts): OffDomainLane {
   return {
     async consider(input) {
       let crisisWritten = false;
+      let safetyWritten = false;
       const moment: MomentWriter = {
         async write(text, which, place) {
           const written = await ports.moment.write(text, which, place);
+          if (written.status === 'written' && SAFETY_MOMENTS.has(which)) safetyWritten = true;
           if (written.status === 'written' && CRISIS_MOMENTS.has(which)) {
             crisisWritten = true;
             const mark = await markLedgerInbound(database, input.channelMessageId, input.now);
@@ -876,9 +899,12 @@ export function crisisMarkingLane(database: Database, ports: OffDomainPorts): Of
         },
       };
       const verdict = await offDomainLane({ ...ports, moment }).consider(input);
-      return crisisWritten && verdict.status === 'deflected'
-        ? { ...verdict, crisisReply: true }
-        : verdict;
+      if (verdict.status !== 'deflected') return verdict;
+      return {
+        ...verdict,
+        ...(crisisWritten ? { crisisReply: true } : {}),
+        ...(safetyWritten ? { safetyReply: true } : {}),
+      };
     },
   };
 }

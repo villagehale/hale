@@ -248,7 +248,13 @@ describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () =
 
     // The cron path has no viewer, so it can never hold a teen grant — fail closed.
     expect(capture.facts).toEqual([]);
-    expect(capture.audits).toEqual([]);
+    // VIL-635: only a content-free tool_refused row; the refused fact never lands.
+    expect(capture.audits).toEqual([
+      expect.objectContaining({
+        actionTaken: 'tool_refused',
+        after: { rail: 'child_content', tool: 'save_child_fact' },
+      }),
+    ]);
   });
 
   it('REFUSES a childId outside the caller family — a hallucinated uuid cannot be persisted', async () => {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is the connect shape the rubric calls for. The reply says connecting is possible and quotes the exact plain words that trigger the one-tap link. It mentions the 15-minute window, writes out no URL, and does not send the parent to the app. It is short, carries no greeting or sign-off, and stops.",
+    "score": 5
+  }
+}

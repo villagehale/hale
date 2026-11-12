@@ -127,6 +127,10 @@ export type SuppressReason =
   | 'quiet_hours'
   /** VIL-625. Held for the writer COMPOSE_HOLD_MAX_ATTEMPTS times and it never answered. */
   | 'compose_retries_exhausted'
+  /** VIL-661. Two kids overlap and nobody said who is driving. */
+  | 'split_unassigned'
+  /** VIL-661. This parent is not the driver for this kid. */
+  | 'split_other_driver'
   /** VIL-586 · NOT a drop: the mark on a row left 'scheduled' because the writer could
    * not be reached. The drain asks again for a T-1h held this way, which the next hourly
    * slot would only find started. Sending or dropping the row overwrites it. */

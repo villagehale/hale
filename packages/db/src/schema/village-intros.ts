@@ -1,7 +1,6 @@
 import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { children } from './children.js';
-import { civicSessions } from './civic.js';
 import { families } from './families.js';
 
 /**
@@ -56,13 +55,6 @@ export const villageIntroProposals = pgTable(
     status: text('status').notNull().$type<VillageIntroStatus>(),
     /** The FamilyStage band the two families overlap on, as derived at match time. */
     stage: text('stage').notNull(),
-    /** The free civic session both families could be at, when one exists in the area
-     * they were matched across. Null is the normal case and means the card carries no
-     * activity anchor. ON DELETE SET NULL: a superseded session must not delete a live
-     * proposal. */
-    civicSessionId: uuid('civic_session_id').references(() => civicSessions.id, {
-      onDelete: 'set null',
-    }),
 
     familyAId: uuid('family_a_id')
       .notNull()

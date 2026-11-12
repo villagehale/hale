@@ -1,7 +1,8 @@
-import { createHash } from 'node:crypto';
+import { hashFamilyIdForEvents } from '@hale/flags';
 import { after } from 'next/server';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { captureSafeException } from './exceptions';
+import { posthogWebEnabled } from './flags';
 import { productClient } from './posthog-node';
 
 /**
@@ -67,6 +68,22 @@ export async function captureServerEvent(
   });
   await client.flush();
   return 'sent';
+}
+
+/**
+ * Product events that belong to the web-app launch (login funnel, signup_completed
+ * as the other end of signup_started). Dark unless NEXT_PUBLIC_POSTHOG_WEB_ENABLED
+ * is exactly `true` AND the key is set. SMS/agent events keep using
+ * {@link captureServerEvent} so they do not wait on that flag.
+ */
+export async function captureWebEvent(
+  event: AnalyticsEvent,
+  distinctId: string,
+  properties: Record<string, unknown> = {},
+  options: { setOnce?: Record<string, unknown> } = {},
+): Promise<CaptureOutcome> {
+  if (!posthogWebEnabled()) return 'not_configured';
+  return captureServerEvent(event, distinctId, properties, options);
 }
 
 // ── Agent error tracking ─────────────────────────────────────────────────────
@@ -159,11 +176,20 @@ function classOf(error: AgentError): string {
 /**
  * A family id as a one-way digest. PostHog holds nothing that joins its rows back to a
  * Hale family, and an operator counting failures per household does not need one — they
- * need to know it is the SAME household. sha256 over a 128-bit random uuid is not
- * enumerable, so no salt would be doing work the id's own entropy is not already doing.
+ * need to know it is the SAME household.
+ *
+ * HMAC-SHA256 (full hex, the same id @hale/flags evaluates flags on) with POSTHOG_ID_SALT
+ * when that secret is set (the launch posture: the
+ * raw id never reaches the browser, and a dump of PostHog plus the database still
+ * cannot join without the salt). Unset, this is the historical unsalted sha256 so
+ * existing SMS-side rows keep matching until the salt is chosen once at launch.
+ * Never rotate the salt: that forks every person in PostHog.
+ *
+ * Computed only on the server. The hashed value is passed down to IdentifyUser;
+ * the raw family id and the phone number never ride in client JS.
  */
 export function hashFamilyId(familyId: string): string {
-  return createHash('sha256').update(familyId).digest('hex').slice(0, 16);
+  return hashFamilyIdForEvents(familyId, process.env.POSTHOG_ID_SALT);
 }
 
 /** The payload, split out from the send so the redaction is asserted as a pure value. */

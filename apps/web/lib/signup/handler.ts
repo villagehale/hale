@@ -11,7 +11,7 @@ import { type SignupRunDeps, runAuthorizedSignup } from './run';
 import type { SignupBrowser } from './types';
 
 export interface AuthorizedSignupHandlerDeps
-  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter'> {
+  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter' | 'planReader' | 'planWriter'> {
   browser?: SignupBrowser | null;
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }
@@ -38,6 +38,7 @@ export function authorizedSignupHandler(
           inboundChannelMessageId: ctx.inboundChannelMessageId,
           existingThread: true,
           now: ctx.now,
+          optOutUnread: ctx.optOutUnread === true,
         },
         {
           ...deps,
@@ -54,6 +55,8 @@ export function authorizedSignupHandler(
         claimed: true,
         outcome: result.unsent ?? result.outcome,
         reply: result.deliverOnThread ? result.reply : null,
+        replies: result.deliverOnThread ? result.replies : undefined,
+        stamp: result.deliverOnThread ? result.stamp : undefined,
         templateKey: AUTHORIZED_SIGNUP_TEMPLATE_KEY,
       };
     },

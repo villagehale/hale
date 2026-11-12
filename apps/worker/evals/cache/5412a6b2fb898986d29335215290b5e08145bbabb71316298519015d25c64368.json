@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "Line promises an immediate reply, which is a claim about timing; it does not send the parent to another screen.",
+    "promises_a_time": "yes",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1629
+}

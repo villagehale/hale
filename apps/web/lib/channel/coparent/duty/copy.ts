@@ -19,7 +19,8 @@ export type DutyCopyId =
   | 'parent_initiated'
   | 'which_kid'
   | 'both_claimed'
-  | 'silent_parent';
+  | 'silent_parent'
+  | 'split_duty';
 
 export type DutyCopyLanguage = 'en' | 'fr';
 
@@ -57,6 +58,7 @@ const REQUIRED: Record<Exclude<DutyCopyId, 'night_before'>, readonly (keyof Duty
   which_kid: ['name', 'kids'],
   both_claimed: ['event', 'day', 'parentA', 'parentB'],
   silent_parent: ['name', 'event', 'day'],
+  split_duty: ['list'],
 };
 
 function filled(value: string | null | undefined): string | null {
@@ -93,11 +95,12 @@ export function dutyLinePlan(id: DutyCopyId, params: DutyCopyParams = {}): DutyL
     if (BANNED.test(value)) throw new DutyCopyError('banned');
     facts.push(value);
   }
-  const purpose = owned ? 'duty_owner' : `duty_${id}`;
+  const purpose = owned ? 'duty_owner' : id === 'split_duty' ? 'duty_split' : `duty_${id}`;
   const questionAllowed =
     id === 'which_kid' ||
     id === 'both_claimed' ||
     id === 'reask_48h' ||
+    id === 'split_duty' ||
     (id === 'parent_initiated' && !owned);
   return { purpose, questionAllowed, facts };
 }

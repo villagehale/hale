@@ -1,7 +1,8 @@
 import type { GuardDeps } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OfferedCandidate } from '~/lib/coach/tools';
+import { TEEN_NAME_SHARED_MATCHER_ENABLED_ENV } from '~/lib/privacy/teen-name';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
   type ChannelCoachToolArgs,
@@ -214,6 +215,10 @@ describe('lookup_week', () => {
   });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('calendar blocks the coach may see', () => {
   const start = new Date('2026-07-28T13:00:00.000Z');
 
@@ -247,6 +252,38 @@ describe('calendar blocks the coach may see', () => {
 
     expect(view?.title).toBe(PRIVATE_EVENT_WHAT);
     expect(JSON.stringify(view)).not.toContain('Nadia');
+    expect(JSON.stringify(view)).not.toContain('therapy');
+  });
+
+  it('unlit, keeps a title that names a teen only with an accent the legacy check misses', () => {
+    vi.stubEnv(TEEN_NAME_SHARED_MATCHER_ENABLED_ENV, undefined);
+    const view = calendarBlockForCoach(
+      {
+        startAt: start,
+        endAt: null,
+        allDay: false,
+        kidRelated: true,
+        title: 'Támsin therapy',
+      },
+      ['Tamsin'],
+    );
+    expect(view?.title).toBe('Támsin therapy');
+  });
+
+  it('lit, replaces a title that names a teen with an accent', () => {
+    vi.stubEnv(TEEN_NAME_SHARED_MATCHER_ENABLED_ENV, 'true');
+    const view = calendarBlockForCoach(
+      {
+        startAt: start,
+        endAt: null,
+        allDay: false,
+        kidRelated: true,
+        title: 'Támsin therapy',
+      },
+      ['Tamsin'],
+    );
+    expect(view?.title).toBe(PRIVATE_EVENT_WHAT);
+    expect(JSON.stringify(view)).not.toContain('Támsin');
     expect(JSON.stringify(view)).not.toContain('therapy');
   });
 
@@ -735,6 +772,8 @@ describe('watch_for_opening — registered only when the whole wiring is there',
     reader: {} as never,
     watchConsentGranted: {} as never,
     readClassAvailability: {} as never,
+    parentWords: '',
+    linksThisTurn: () => [],
   };
 
   it('is registered when the ports and the collector are both wired', () => {

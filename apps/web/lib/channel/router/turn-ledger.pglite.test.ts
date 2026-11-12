@@ -43,8 +43,8 @@ describe('auditTurnLedger answered claim', () => {
     // Both consumers passed the stageOf gate before either answered — the exact
     // interleaving the read alone cannot stop.
     expect(await ledger.stageOf(turn)).toBe('fresh');
-    expect(await ledger.recordAnswered(turn)).toBe('claimed');
-    expect(await ledger.recordAnswered(turn)).toBe('already_answered');
+    expect(await ledger.recordAnswered({ ...turn, folded: [] })).toBe('claimed');
+    expect(await ledger.recordAnswered({ ...turn, folded: [] })).toBe('already_answered');
 
     // Positive control on the negative claim: exactly ONE answered row exists, and
     // the re-drive gate reads it.
@@ -71,8 +71,8 @@ describe('auditTurnLedger answered claim', () => {
     };
     const second = { ...first, channelMessageId: randomUUID() };
 
-    expect(await ledger.recordAnswered(first)).toBe('claimed');
-    expect(await ledger.recordAnswered(second)).toBe('claimed');
+    expect(await ledger.recordAnswered({ ...first, folded: [] })).toBe('claimed');
+    expect(await ledger.recordAnswered({ ...second, folded: [] })).toBe('claimed');
   });
 
   it('leaves the deferred arc unclaimed: nine re-drives may each record a defer', async () => {
@@ -89,7 +89,7 @@ describe('auditTurnLedger answered claim', () => {
     expect(await ledger.stageOf(turn)).toBe('deferred');
 
     // The turn that finally answers still claims cleanly over its defer history.
-    expect(await ledger.recordAnswered(turn)).toBe('claimed');
+    expect(await ledger.recordAnswered({ ...turn, folded: [] })).toBe('claimed');
     expect(await ledger.stageOf(turn)).toBe('answered');
   });
 });

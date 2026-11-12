@@ -14,6 +14,8 @@
  * not arm it. The allowlist is comma-separated and trimmed.
  */
 
+import { flagValue } from '@hale/flags';
+
 export const CLAIM_READER_MODE_ENV = 'CLAIM_READER_MODE';
 export const CLAIM_READER_ENFORCE_ALLOWLIST_ENV = 'CLAIM_READER_ENFORCE_FAMILY_ALLOWLIST';
 
@@ -21,8 +23,9 @@ export type ClaimReaderMode = 'off' | 'shadow' | 'enforce';
 
 export function claimReaderMode(
   env: Record<string, string | undefined> = process.env,
+  familyId?: string,
 ): ClaimReaderMode {
-  const value = env[CLAIM_READER_MODE_ENV];
+  const value = flagValue('claim-reader-mode', familyId, env);
   if (value === 'shadow' || value === 'enforce') return value;
   return 'off';
 }
@@ -32,7 +35,7 @@ export function claimReaderEnforces(
   familyId: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  const mode = claimReaderMode(env);
+  const mode = claimReaderMode(env, familyId);
   if (mode === 'enforce') return true;
   if (mode === 'off') return false;
   return (env[CLAIM_READER_ENFORCE_ALLOWLIST_ENV] ?? '')

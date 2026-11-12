@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createReplyTransport } from './reply-transport';
 
@@ -75,5 +76,35 @@ describe('router reply transport — iMessage', () => {
       replyToMessageId: 'msg-in-3',
       mention: '+14155551234',
     });
+  });
+});
+
+describe('router reply transport — a send key', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("names the Linq send with the caller's key, so a resend under it is the same send", async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const bodies: Array<{ message: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ message: { id: 'msg-out-9' } }, { status: 201 });
+    });
+    const transport = createReplyTransport({ phone: { send: vi.fn() } });
+    const route = {
+      channel: 'imessage' as const,
+      to: '+12025559876',
+      chatId: 'chat-1',
+      replyToMessageId: null,
+    };
+
+    await transport.send({ route, body: 'Bring a towel.', sendKey: 'turn-reply:in-1:1' });
+    await transport.send({ route, body: 'Bring a towel.', sendKey: 'turn-reply:in-1:1' });
+
+    const expected = createHash('sha256').update('turn-reply:in-1:1').digest('hex');
+    expect(bodies.map((body) => body.message.idempotency_key)).toEqual([expected, expected]);
   });
 });

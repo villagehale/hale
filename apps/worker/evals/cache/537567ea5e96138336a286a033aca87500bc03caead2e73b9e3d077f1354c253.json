@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgwWSF6wpa2H3jVxEvpMN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqAgKEAgTGAI4AUIIdGhpbmtpbmcSDBODHdd1KTeqGlCu8xoM5n6uy3edaFe9T4ROIjALXrOm9dd9dVsmIwSoaCvSJKC6ApMoDfEyYcCP1uKPU575Ct1g2o816SQRuMAoaYwqxQcP04sVTM2639Vgx4DY66bVwcs6yCgMnCUveMYwnuA3YC2/OU8XYLgP9+KYS89J5X1xbYHNkyOUmDT704s8nHGZygmsmd+vUPy8f9rtu1N1EoZlF4uZcS8UsQ8E64ytCqBsYG9NZL5qnxcB0VhiQOI53c17gQHiq9k1TRz9A/V8idAatdTQxzFxs/o/IocK029o0aJ/pDxvmeIVze8TmDsjV7OM25Lr1OEQSl5xwbQL+7lI6tc4TcaBxkD67+Lj8LVbxjHMjc1jxAGFC3YeBaT1ZwZpls3ozl9mo5VR4LoXLjYS3so34L2KDTQH2dbJ1cvQnv8HDvNhK2j48cjxHu6pZTQqFn+6AwGynd330eSrQQbjo/Fx43MTFvs51knbkuH5PQEULKg5Xk32pIlPHms+O6rpPIspS0+3DxmOUKCkvnCnYlWqHmnXdTjMpr7LsPcjeA5uw4sMlVlfw8b6bUj8hcTU+qpUIe6jE9laLQoF+VkRB5Rf8O0Eqb/s9uQQ8nGbEyMS/OYNcZxeNxnQ3+DdDzjr3anrpy+n7lZzs+JpZOZ7zGrImC7g2/TbrFHrHbfGntFWiqyeAB7JA783Su3ZJVoryIt2dBF+QcCtFy8PAYgga4Syk8IK+CvKfoIV4HQQeX9LWFnAreF93DNF4AoFtM78i3QFd560FUzOunJmpZ2747NtrusF0SWdsSVD8gBMycoABoA1Gt0+8mmW90HaFrkrFfup6gdN+rk9exJncLchdritIE6TTaZBdzDpeD1GuhlsR2MQQP7kYzqWOFLK7RfNRDXOWvB/frkfn95a6FyCVnAwuoLytnkGz67IuzZBmCRD/VENvgkBRknjNzYbsAfJxqzExPo0+K4jMBIhdgui6N90lqpnU8YH9n23ImZNX7ZF7RkwFnaBpUYSmL7twCdaozRsjnORnonxUZXr8axxZCxEHq+OyM5NsObbDUqfxbGexxVp4z0TI5Qt2IFD1PaZFUJeipXwVJUO4Cs8jxig0FKVEFLXcPfXEoxqkpDLr5OriI+v554MFKlO8zuipO+l2B61Z8sET0QUp9FlDjDUZeJFupS/LdsQF9i5YRI3m5XpuQ8z40dpqVrORHg0qoVwrv8Q/ZaIzASwGeTCRBptfwvRsttL1f7lmLgjrCDDYZG4+42k664fj277bdtmCoAqdGV7oMY+laG9m//E3BOrXGOF4uBkKAGVJtCVhHPAFXyyzABm31SQoQnUm8sF65OYFGAYy6uM/yuqPQGiv/nNDgf1ewUpRCvkH9AvoT66i1y3bhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01CpiViGzsFDtHDJKkQNaHL7",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan for getting Ada sleeping through?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1210,
+      "cache_read_input_tokens": 23382,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1210,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 294,
+      "output_tokens_details": {
+        "thinking_tokens": 171
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2955
+}

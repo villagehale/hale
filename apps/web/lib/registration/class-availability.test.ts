@@ -7,6 +7,7 @@ import {
   type ExtractedAvailability,
   createClassAvailabilityReader,
   createLiveClassAvailabilityReader,
+  listingSessionStart,
   normalizeClassAvailability,
   pageDigest,
 } from './class-availability';
@@ -33,6 +34,9 @@ function extraction(overrides: Partial<ExtractedAvailability> = {}): ExtractedAv
     availability_quote: 'Full - Waitlist open',
     waitlist_quote: 'Waitlist open',
     schedule_quote: 'Tuesdays 4:30 PM',
+    session_start_quote: null,
+    session_start_date_text: null,
+    session_start: null,
     state: 'full',
     spots_left: null,
     waitlist_room: true,
@@ -60,6 +64,7 @@ describe('normalizeClassAvailability — every fact is checked against the page 
       spotsLeft: null,
       waitlistRoom: true,
       schedule: 'Tuesdays 4:30 PM',
+      sessionStartsAt: null,
       digest: pageDigest(PAGE_TEXT),
     });
     expect(normalizeClassAvailability(extraction(SATURDAY_OPEN), PAGE_TEXT, QUERY)).toMatchObject({
@@ -171,6 +176,82 @@ describe('normalizeClassAvailability — every fact is checked against the page 
         QUERY,
       ),
     ).toMatchObject({ status: 'read', schedule: null });
+  });
+});
+
+/**
+ * The first class, off the listing's own words. A missing or unbacked date is null —
+ * the sixty-day bound — never a reason to refuse a full class.
+ */
+const DATED_TEXT = stripHtml(`<html><body>
+<h1>City of Riverton</h1><h2>Fall 2026 swim lessons</h2>
+<p>Lessons run September 15 to November 24.</p>
+<table>
+<tr><td>Preschool Swim - Tuesdays 4:30 PM</td><td>Full - Waitlist open</td></tr>
+</table></body></html>`);
+
+const DATED_START = {
+  session_start_quote: 'September 15',
+  session_start_date_text: 'September 15',
+  session_start: '2026-09-15',
+} as const;
+
+describe('listingSessionStart — the listing date the watch can end at', () => {
+  it('positive control: a start the page prints, with a year the page states', () => {
+    expect(listingSessionStart(extraction(DATED_START), DATED_TEXT)).toEqual(
+      new Date('2026-09-15T04:00:00.000Z'),
+    );
+    expect(normalizeClassAvailability(extraction(DATED_START), DATED_TEXT, QUERY)).toMatchObject({
+      status: 'read',
+      sessionStartsAt: new Date('2026-09-15T04:00:00.000Z'),
+    });
+  });
+
+  it('is null when the page publishes no start, and the reading still stands', () => {
+    expect(listingSessionStart(extraction(), PAGE_TEXT)).toBeNull();
+    expect(normalizeClassAvailability(extraction(), PAGE_TEXT, QUERY)).toMatchObject({
+      status: 'read',
+      sessionStartsAt: null,
+    });
+  });
+
+  it('drops a start whose quote is not on the page', () => {
+    expect(
+      listingSessionStart(
+        extraction({ ...DATED_START, session_start_quote: 'January 6' }),
+        DATED_TEXT,
+      ),
+    ).toBeNull();
+  });
+
+  it('drops a start whose year the page never printed', () => {
+    expect(
+      listingSessionStart(extraction({ ...DATED_START, session_start: '2027-09-15' }), DATED_TEXT),
+    ).toBeNull();
+  });
+
+  it('drops a start whose labelled span is not the date it claimed', () => {
+    expect(
+      listingSessionStart(
+        extraction({ ...DATED_START, session_start_date_text: 'November 24' }),
+        DATED_TEXT,
+      ),
+    ).toBeNull();
+  });
+
+  it('drops a whole range quoted as the start, and keeps the reading', () => {
+    const range = 'September 15 to November 24';
+    expect(
+      normalizeClassAvailability(
+        extraction({
+          session_start_quote: range,
+          session_start_date_text: 'September 15',
+          session_start: '2026-09-15',
+        }),
+        DATED_TEXT,
+        QUERY,
+      ),
+    ).toMatchObject({ status: 'read', sessionStartsAt: null });
   });
 });
 

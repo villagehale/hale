@@ -21,12 +21,19 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import {
+  createOutboundTransport,
+  sendLinqChatMessage,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
+import { teenNameIn } from '~/lib/privacy/teen-name';
 import {
   type CadenceLine,
   type CadencePlan,
@@ -51,18 +58,27 @@ import {
   formatDutyKids,
   spokenFirstName,
 } from './copy';
-import { coparentDutySendsActive, coparentDutySendsArmed } from './flag';
+import {
+  coparentDutySendsActive,
+  coparentDutySendsArmed,
+  coparentSplitDutyActive,
+  coparentSplitDutyArmed,
+} from './flag';
 import type { DutyExtractor } from './interpret';
 import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from './model';
 import { type DutyNightFacts, composeDutyNight } from './night-compose';
+import { resolveSplitDutyPair } from './split-resolve';
+import { defaultTravelTimeClient } from './travel';
 
 /**
  * VIL-382 · duty asks in the Linq co-parent group.
  *
  * Flag off is a no-op before any read. A send goes to `families.linq_group_chat_id`
- * and nowhere else: no 1:1, no SMS, no email, no push. Copy leaves only when it
- * is locked and no longer a design placeholder. Every fact write is an
- * audit row with `logistics_decision_recorded`. Nothing is deleted.
+ * when the household has a group. A VIL-661 split-duty ask may also go 1:1 on
+ * Linq when there is no group, so both parents still see the one question.
+ * Never Twilio, email, or push. Copy leaves only when the model wrote it.
+ * Every fact write is an audit row with `logistics_decision_recorded`.
+ * Nothing is deleted.
  *
  * Email stays out. This module does not read a mailbox. An occasion marked
  * `email` is dropped by the planner, including a party invite.
@@ -95,6 +111,12 @@ export interface DutySendPorts {
     text: string;
     fetch?: typeof fetch;
   }) => Promise<{ providerMessageId: string }>;
+  /** VIL-661 · Linq 1:1 when the household has no group. */
+  sendDirect?: (input: {
+    to: string;
+    text: string;
+    fetch?: typeof fetch;
+  }) => Promise<{ providerMessageId: string }>;
 }
 
 export function defaultDutySendPorts(): DutySendPorts {
@@ -105,6 +127,13 @@ export function defaultDutySendPorts(): DutySendPorts {
     gatePorts: buildOutboundGatePorts,
     send: (input) =>
       sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch }),
+    sendDirect: async (input) => {
+      const sent = await sendResolvingNewChat(createOutboundTransport({ fetch: input.fetch }), {
+        to: input.to,
+        body: input.text,
+      });
+      return { providerMessageId: sent.providerMessageId };
+    },
   };
 }
 
@@ -124,7 +153,8 @@ export type DutyDelivery =
         | 'ask_budget'
         | 'model_unsent';
     }
-  | { status: 'not_sent'; reason: string };
+  | { status: 'not_sent'; reason: string }
+  | { status: 'queued' };
 
 export interface DutySweepResult {
   enabled: boolean;
@@ -195,6 +225,8 @@ export function dutyOpenValue(input: {
   unanswered: number;
   silentNamed: boolean;
   status: 'open' | 'stepped_down';
+  peerEventKey?: string | null;
+  split?: boolean;
 }): Record<string, unknown> {
   return {
     schemaVersion: 1,
@@ -204,6 +236,8 @@ export function dutyOpenValue(input: {
     unanswered: input.unanswered,
     silentNamed: input.silentNamed,
     status: input.status,
+    peerEventKey: input.peerEventKey ?? null,
+    split: input.split === true,
   };
 }
 
@@ -216,6 +250,8 @@ function readOpen(value: unknown): OpenDutyQuestion | null {
     unanswered?: number;
     silentNamed?: boolean;
     status?: string;
+    peerEventKey?: string | null;
+    split?: boolean;
   };
   if (row.kind !== 'duty_open_question') return null;
   if (row.role !== 'dropoff' && row.role !== 'pickup' && row.role !== 'attend') return null;
@@ -227,6 +263,8 @@ function readOpen(value: unknown): OpenDutyQuestion | null {
     unanswered: typeof row.unanswered === 'number' ? row.unanswered : 0,
     silentNamed: row.silentNamed === true,
     status,
+    peerEventKey: typeof row.peerEventKey === 'string' ? row.peerEventKey : null,
+    split: row.split === true,
   };
 }
 
@@ -377,6 +415,7 @@ function occasionFor(input: {
   language: 'en' | 'fr';
   reasked: boolean;
   venue: DutyOccasion['venue'];
+  childId?: string | null;
 }): DutyOccasion {
   const state = input.state;
   const split = input.title ? splitKidEvent(input.title, input.childNames) : null;
@@ -384,6 +423,7 @@ function occasionFor(input: {
   return {
     eventKey: input.eventKey,
     role: input.role,
+    childId: input.childId ?? null,
     startsAt: input.startsAt,
     endsAt: input.endsAt,
     // From the activity's own booking row, never from parent_calendar_blocks,
@@ -391,7 +431,7 @@ function occasionFor(input: {
     venue: input.venue,
     hasOwner: state?.status === 'confirmed' && state.owner !== null,
     conflict: state?.status === 'conflict',
-    needsWhichKid: needsWhichKid(input.title, input.childNames),
+    needsWhichKid: !input.childId && needsWhichKid(input.title, input.childNames),
     cancelled: input.cancelled,
     hasDutyRecord: state !== null,
     reasked: input.reasked,
@@ -568,6 +608,7 @@ async function buildOccasions(
       familyId: schema.parentCalendarBlocks.familyId,
       standing: schema.parentCalendarBlocks.calendarStanding,
       childName: schema.children.name,
+      childId: schema.parentCalendarBlocks.childId,
     })
     .from(schema.parentCalendarBlocks)
     .leftJoin(schema.children, eq(schema.children.id, schema.parentCalendarBlocks.childId))
@@ -579,7 +620,7 @@ async function buildOccasions(
       (row) =>
         row.familyId === familyId &&
         row.standing !== 'invited' &&
-        !(row.childName !== null && home.teenNames.includes(row.childName)),
+        !(row.childName !== null && teenNameIn(row.childName, home.teenNames)),
     ),
     home.childNames,
     home.teenNames,
@@ -608,6 +649,9 @@ async function buildOccasions(
     const soloCalendarName =
       calendarUsers.length === 1 ? (home.parentNames[calendarUsers[0] as string] ?? null) : null;
     const matching = duties.filter((row) => row.state.eventKey === eventKey);
+    const childIds = [
+      ...new Set(active.map((row) => row.childId).filter((id): id is string => Boolean(id))),
+    ];
     const shared = {
       eventKey,
       startsAt: sample.startAt,
@@ -620,6 +664,7 @@ async function buildOccasions(
       soloCalendarName,
       language: home.language,
       venue: venueFor(venueRows, eventKey, sample.startAt, otherFamilies),
+      childId: childIds.length === 1 ? (childIds[0] ?? null) : null,
     };
     if (matching.length === 0) {
       const role = roleFromTitle(title);
@@ -674,11 +719,16 @@ export async function planFamilyDutyAsks(
     speakerUserId?: string | null;
   },
 ): Promise<FamilyDutyView> {
-  if (!coparentDutySendsActive(input.familyId)) return { skipped: 'flag_off' };
+  const dutySends = coparentDutySendsActive(input.familyId);
+  const splitDuty = coparentSplitDutyActive(input.familyId);
+  if (!dutySends && !splitDuty) return { skipped: 'flag_off' };
   const home = await loadHousehold(database, input.familyId, input.now);
   if (home.parentIds.length < 2 || !home.primaryUserId) return { skipped: 'single_parent' };
   const built = await buildOccasions(database, input.familyId, home, input.now);
   const local = localParts(input.now, home.timeZone);
+  const splitPair = splitDuty
+    ? await resolveSplitDutyPair(built.occasions, defaultTravelTimeClient())
+    : null;
   const plan = planDutyCadence({
     now: input.now,
     bubbleLeaving: input.bubbleLeaving,
@@ -696,7 +746,12 @@ export async function planFamilyDutyAsks(
     quietStartMin: quietStartMinutes(),
     timeZone: home.timeZone,
     stopAsking: built.stopAsking,
+    splitPair,
   });
+  if (!dutySends && splitDuty) {
+    plan.sendLines = plan.sendLines.filter((row) => row.mode === 'split_duty');
+    plan.foldLines = plan.foldLines.filter((row) => row.mode === 'split_duty');
+  }
   return {
     plan,
     chatId: home.chatId,
@@ -803,6 +858,25 @@ function paramsFor(line: CadenceLine, ctx: DutyRenderInput): DutyCopyParams | nu
       ? { name: occasion.spokenName, kid, event, day, time }
       : { kid, event, day, time };
   }
+  if (line.mode === 'split_duty') {
+    const peer = line.peerEventKey
+      ? ctx.occasions.find((row) => row.eventKey === line.peerEventKey)
+      : undefined;
+    if (!peer) return null;
+    const items = [occasion, peer].map((row) => {
+      const itemDay = dutyWeekdayName(row.startsAt, ctx.timeZone, ctx.language);
+      const itemTime = dutyClockLabel(row.startsAt, ctx.timeZone, ctx.language);
+      const itemKid = row.kid?.trim();
+      const itemEvent = row.eventLabel?.trim();
+      if (!itemKid || !itemEvent) return null;
+      const venue = row.venue?.address?.trim() || row.venue?.name?.trim() || null;
+      return venue
+        ? `${itemDay} ${itemKid} ${itemEvent} ${itemTime} ${venue}`
+        : `${itemDay} ${itemKid} ${itemEvent} ${itemTime}`;
+    });
+    if (items.some((item) => !item)) return null;
+    return { list: items.join('; ') };
+  }
   return null;
 }
 
@@ -846,6 +920,7 @@ async function voiceDuty(
     plan: DutyLinePlan;
     facts: readonly string[];
     replyClient?: AgentClient | null;
+    audience?: 'group' | 'direct';
   },
 ): Promise<string | null> {
   const voiced = await replyProse(
@@ -854,7 +929,7 @@ async function voiceDuty(
       database,
       familyId: input.familyId,
       language: input.language,
-      audience: 'group',
+      audience: input.audience ?? 'group',
       surface: 'duty',
     },
     {
@@ -1037,6 +1112,8 @@ async function noteLinesSent(
         unanswered: (input.open?.unanswered ?? 0) + (question ? 1 : 0),
         silentNamed: silent || input.open?.silentNamed === true,
         status: 'open',
+        peerEventKey: question?.peerEventKey ?? input.open?.peerEventKey ?? null,
+        split: question?.mode === 'split_duty' || input.open?.split === true,
       }),
       confidence: 1,
       inferredBy: 'coparent_duty_ask',
@@ -1108,6 +1185,39 @@ export async function deliverDutyGroupLine(
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
   if (await dedupeActive(input.dedupeKey, database))
     return { status: 'skipped', reason: 'deduped' };
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { status: 'queued' };
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        kind: 'duty_ask',
+        category: 'duty_ask',
+        templateKey: input.templateKey,
+        what: input.text,
+        why: 'duty_ask',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: 'duty_ask' },
+    });
+    return { status: 'queued' };
+  }
   const body = withOptOut(input.text, verdict.optOut);
   if (!input.composed && body.includes('TODO-Design')) {
     return { status: 'skipped', reason: 'placeholder' };
@@ -1161,6 +1271,77 @@ export async function deliverDutyGroupLine(
       .where(eq(schema.channelMessages.id, claimed.id));
     return { status: 'not_sent', reason: code };
   }
+}
+
+/**
+ * VIL-661 · the same model-written split ask, to each parent on Linq 1:1 when
+ * there is no group. One question, two doors. A parent without a number is skipped.
+ */
+async function deliverDutyDirectLines(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserIds: readonly string[];
+    text: string;
+    now: Date;
+    dedupeKey: string;
+    templateKey: string;
+    fetch?: typeof fetch;
+  },
+  ports: DutySendPorts,
+): Promise<DutyDelivery> {
+  if (!ports.sendDirect) return { status: 'skipped', reason: 'no_group' };
+  if (input.text.trim() === '') return { status: 'skipped', reason: 'placeholder' };
+  const verdict = await ports.gate(
+    {
+      familyId: input.familyId,
+      parentUserId: input.parentUserIds[0] ?? '',
+      kind: 'duty_ask',
+      now: input.now,
+    },
+    ports.gatePorts(database),
+  );
+  if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
+  const body = withOptOut(input.text, verdict.optOut);
+  let sentChat: string | null = null;
+  for (const parentUserId of input.parentUserIds) {
+    const phone = await resolveSendablePhone(database, parentUserId);
+    if (!phone) continue;
+    const dedupeKey = `${input.dedupeKey}:${parentUserId}`;
+    if (await dedupeActive(dedupeKey, database)) continue;
+    const [claimed] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: input.familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'duty_ask',
+        templateKey: input.templateKey,
+        dedupeKey,
+        status: acceptedStatus('imessage'),
+        sentAt: input.now,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.channelMessages.id });
+    if (!claimed) continue;
+    try {
+      const sent = await ports.sendDirect({ to: phone, text: body, fetch: input.fetch });
+      await database
+        .update(schema.channelMessages)
+        .set({ providerMessageId: sent.providerMessageId })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      sentChat = phone;
+    } catch (err) {
+      const code = err instanceof LinqSendError ? err.code : 'unknown';
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: code })
+        .where(eq(schema.channelMessages.id, claimed.id));
+    }
+  }
+  if (!sentChat) return { status: 'skipped', reason: 'no_group' };
+  return { status: 'sent', chatId: sentChat };
 }
 
 async function applyNightBefore(
@@ -1245,29 +1426,48 @@ async function applyPlan(
   }
   const plan = renderDutyLines(input.lines, input.view.render);
   if (!plan) return { status: 'skipped', reason: 'placeholder' };
+  const ports = input.ports ?? defaultDutySendPorts();
+  const split = input.lines.some((row) => row.mode === 'split_duty');
+  const target = split ? await ports.target(database, input.familyId) : null;
+  const audience = target?.channel === 'legacy' ? 'direct' : 'group';
   const text = await voiceDuty(database, {
     familyId: input.familyId,
     language: input.view.render.language,
     plan,
     facts: dutyFacts(input.lines, input.view.render, input.view.open),
     replyClient: input.replyClient,
+    audience,
   });
   if (!text) return { status: 'held', reason: 'model_unsent' };
   const first = input.lines[0];
   const ymd = localYmd(input.now, input.view.timeZone);
-  const delivered = await deliverDutyGroupLine(
-    database,
-    {
-      familyId: input.familyId,
-      parentUserId: input.view.parentUserId,
-      text,
-      now: input.now,
-      dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
-      templateKey: input.templateKey,
-      sendsActive: true,
-    },
-    input.ports,
-  );
+  const delivered =
+    split && audience === 'direct'
+      ? await deliverDutyDirectLines(
+          database,
+          {
+            familyId: input.familyId,
+            parentUserIds: input.view.render.parentIds,
+            text,
+            now: input.now,
+            dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
+            templateKey: input.templateKey,
+          },
+          ports,
+        )
+      : await deliverDutyGroupLine(
+          database,
+          {
+            familyId: input.familyId,
+            parentUserId: input.view.parentUserId,
+            text,
+            now: input.now,
+            dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
+            templateKey: input.templateKey,
+            sendsActive: true,
+          },
+          ports,
+        );
   if (delivered.status === 'sent') {
     await noteLinesSent(database, {
       familyId: input.familyId,
@@ -1288,14 +1488,17 @@ export async function sweepDutyAsks(
     composeNight?: typeof composeDutyNight;
   } = {},
 ): Promise<DutySweepResult> {
-  if (!coparentDutySendsArmed()) return emptyDutySweep(false);
+  if (!coparentDutySendsArmed() && !coparentSplitDutyArmed()) return emptyDutySweep(false);
   const now = input.now ?? new Date();
   const result = emptyDutySweep(true);
   const families = await database
     .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
     .from(schema.families);
   for (const family of families) {
-    if (!family.linqGroupChatId || !coparentDutySendsActive(family.id)) continue;
+    const sends = coparentDutySendsActive(family.id);
+    const split = coparentSplitDutyActive(family.id);
+    if (!sends && !split) continue;
+    if (!family.linqGroupChatId && !split) continue;
     result.considered += 1;
     const view = await planFamilyDutyAsks(database, {
       familyId: family.id,
@@ -1316,7 +1519,7 @@ export async function sweepDutyAsks(
       if (view.plan.held) result.held += 1;
       continue;
     }
-    if (!view.chatId) {
+    if (!view.chatId && !view.plan.sendLines.some((row) => row.mode === 'split_duty')) {
       result.skipped += 1;
       continue;
     }
@@ -1351,7 +1554,8 @@ export async function dutyOverviewForWeeklyBubble(
   // The weekly bubble is already addressed to this parent. The fold does not
   // open a second recipient.
   void input.parentUserId;
-  if (!coparentDutySendsActive(input.familyId)) return null;
+  if (!coparentDutySendsActive(input.familyId) && !coparentSplitDutyActive(input.familyId))
+    return null;
   const view = await planFamilyDutyAsks(database, {
     familyId: input.familyId,
     now: input.now,

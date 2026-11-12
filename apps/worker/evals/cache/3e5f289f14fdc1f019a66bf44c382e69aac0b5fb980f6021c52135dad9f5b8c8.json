@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "line says the week is in the app, sending parent to an app; no timing promised",
+    "promises_a_time": "no",
+    "points_at_an_app": "yes"
+  },
+  "latencyMs": 1300
+}
