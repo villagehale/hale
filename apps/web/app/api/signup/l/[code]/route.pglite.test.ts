@@ -48,6 +48,7 @@ describe('POST /api/signup/l/<code>', () => {
         kind: 'login_ask',
         sessionLabel: null,
         opensAt: { local: 'Tuesday, December 1, 2026 at 7:00 a.m.', timeZone: 'America/Toronto' },
+        card: null,
       },
       now: new Date(),
     });
