@@ -14,6 +14,7 @@ import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inb
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
 import { runMidActivityAnswerPass } from '~/lib/channel/mid-activity/answer';
 import { runMidActivityAskSweep } from '~/lib/channel/mid-activity/sweep';
+import { runNextDayCheckbackSweep } from '~/lib/channel/next-day-checkback/sweep';
 import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { cronRoute } from '~/lib/cron/auth';
@@ -113,6 +114,12 @@ export const maxDuration = 300;
  * on the same activity_reviews row VIL-366 already uses to reorder this household's
  * next find. It does not send an acknowledgment, and it does not read a price.
  *
+ * THE NEXT-DAY CHECK-BACK (VIL-681) rides after the mid-activity legs. A parent who
+ * started something with Hale and went quiet may be checked back on once, the next day.
+ * It queues for the proactive decider and sends nothing itself. Its own flag
+ * (NEXT_DAY_CHECKBACK_ENABLED) is strict `true` and default off, and it reads nothing
+ * while WORKSTREAMS_ENABLED is off.
+ *
  * THE WORKSTREAM CHECK-BACK (VIL-419) rides last. It is a follow-up on a thread
  * Hale is still in the middle of, once that thread's check-back time has passed.
  * Its own flag (WORKSTREAMS_ENABLED) is strict `true` and default off. While the
@@ -162,6 +169,7 @@ export const GET = cronRoute('nudge', async () => {
       verdict: createVerdictReader(reviewVerdictClient),
       now: answeredAt,
     });
+    const nextDayCheckbacks = await runNextDayCheckbackSweep(db(), new Date());
     const workstreamFollowups = await runWorkstreamFollowupSweep(db());
     // VIL-449 · cancellation texts that were deferred (or held) get another try, hourly,
     // through the same sender: dedupe, consent and quiet hours apply in the dispatch. A
@@ -185,6 +193,7 @@ export const GET = cronRoute('nudge', async () => {
         reviewCapture,
         midActivityAsks,
         midActivityAnswers,
+        nextDayCheckbacks,
         workstreamFollowups,
         calendarCancelRetries,
       },

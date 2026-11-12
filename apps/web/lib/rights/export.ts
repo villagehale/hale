@@ -44,6 +44,8 @@ const NOT_IN_FAMILY_EXPORT = [
   'integration_google_revoke_cancelled',
   // VIL-635. A rail refusal names one adult; the family copy never carries it.
   'tool_refused',
+  // That one adult's own 1:1 ask went on the deep queue (VIL-682).
+  'activity_deep_dispatched',
 ] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {

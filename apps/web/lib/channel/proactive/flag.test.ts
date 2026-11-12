@@ -53,5 +53,6 @@ describe('proactive cadence flag', () => {
     expect(PROACTIVE_ROUTING.duty_ask).toBe('decider');
     expect(PROACTIVE_ROUTING.co_parent_departed).toBe('decider');
     expect(PROACTIVE_ROUTING.travel_brief).toBe('decider');
+    expect(PROACTIVE_ROUTING.next_day_checkback).toBe('decider');
   });
 });

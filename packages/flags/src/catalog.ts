@@ -107,7 +107,10 @@ export const FLAGS = [
   exact('going-count', 'GOING_COUNT_ENABLED'),
   exact('google-push-sync', 'GOOGLE_PUSH_SYNC_ENABLED'),
   exact('google-write-scopes', 'GOOGLE_WRITE_SCOPES_ENABLED'),
-  exact('holding-line', 'HOLDING_LINE_ENABLED'),
+  exact('holding-line', 'HOLDING_LINE_ENABLED', {
+    allowlistEnv: 'HOLDING_LINE_FAMILY_ALLOWLIST',
+    allowlistMode: 'arm',
+  }),
   exact('inbound-burst', 'INBOUND_BURST_ENABLED', {
     allowlistEnv: 'INBOUND_BURST_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
@@ -122,6 +125,7 @@ export const FLAGS = [
   exact('memory-synthesis-apply', 'MEMORY_SYNTHESIS_APPLY'),
   exact('mid-activity-ask', 'MID_ACTIVITY_ASK_ENABLED'),
   exact('mid-activity-signup-tool', 'MID_ACTIVITY_SIGNUP_TOOL_ENABLED'),
+  exact('next-day-checkback', 'NEXT_DAY_CHECKBACK_ENABLED'),
   exact('orphan-user-sweep', 'ORPHAN_USER_SWEEP_ENABLED'),
   exact('parent-calendar-mirror', 'PARENT_CALENDAR_MIRROR_ENABLED'),
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),

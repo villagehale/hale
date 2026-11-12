@@ -792,8 +792,17 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordCapabilityNotes,
     // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
     // tick is the consumer — so the reply is never waiting on research.
-    dispatchDeepResearch: (payload) =>
-      dispatchDeepResearch(async () => (await getQueue()) as unknown as DeepResearchQueue, payload),
+    dispatchDeepResearch: (payload, askedBy) =>
+      dispatchDeepResearch(
+        {
+          resolve: async () => (await getQueue()) as unknown as DeepResearchQueue,
+          audit: async (row) => {
+            await database.insert(schema.auditLog).values(row);
+          },
+        },
+        payload,
+        askedBy,
+      ),
     // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.

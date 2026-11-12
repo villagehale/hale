@@ -131,9 +131,17 @@
     "file": "coach-fact-source.md",
     "sha256": "20e86b9157be89631cfc16276ad8e945042e0e8f1731627b7c1fbd8108b480f4"
   },
+  "coach-find-day.md": {
+    "file": "coach-find-day.md",
+    "sha256": "b959bd6d79cb479579ad54ac239e584c7a75f433dd69ca2ffe7f9663928c0d9b"
+  },
   "coach-find-private.md": {
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
+  },
+  "coach-find-turn.md": {
+    "file": "coach-find-turn.md",
+    "sha256": "2caf87d704110fef35689584caa399f84f4aa16ced1bf4320f9c1caf9c007bd6"
   },
   "coach-group-lists.md": {
     "file": "coach-group-lists.md",
@@ -375,9 +383,13 @@
     "file": "group-turn-read.md",
     "sha256": "d71b65072598da1529eaed76fc46ae07f9cb45157da5aca46760106161ef04df"
   },
+  "holding-line-judge.md": {
+    "file": "holding-line-judge.md",
+    "sha256": "4c0c2ace65cef8d704595b2a3e870c3066c998ca522b0b90a9a0181a4c9e64f7"
+  },
   "holding-line.md": {
     "file": "holding-line.md",
-    "sha256": "d989fc5395640746c4ac6c733b1a6c9a35d43095e84ee1e9c5d3c4137adbec3b"
+    "sha256": "2663b3fb8ef2ee4ccd6aaa79a805c5475d0ee504810119f2d153b511324ac60a"
   },
   "household-group.md": {
     "file": "household-group.md",
@@ -505,11 +517,11 @@
   },
   "proactive-decider.md": {
     "file": "proactive-decider.md",
-    "sha256": "556989aff3ee83dfa0b6d020303009ebd3c82bc1244701f387d86fdb197bdb91"
+    "sha256": "a1c011c3f0e5c4e906f731b36930516a18b60670f06026f465cad28ad98fbeab"
   },
   "proactive-writer.md": {
     "file": "proactive-writer.md",
-    "sha256": "d4c297de34685ba0d88d81160c6622f1445a58704df74e0c9ecc0e0dbef537b5"
+    "sha256": "910e4ed0c6919b46df7b4fefbf3a92556435ef06d2268913d28bff03c6e4a1bb"
   },
   "radar-voice.md": {
     "file": "radar-voice.md",

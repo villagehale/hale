@@ -36,6 +36,7 @@ import {
   offDomainLane,
   productionOffDomainLane,
 } from '~/lib/channel/off-domain/lane';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { type ClaimEnforcer, createClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
 import { claimRowLabel } from '~/lib/channel/reconcile/claim-label';
 import type { ClaimReader } from '~/lib/channel/reconcile/claim-reader';
@@ -204,11 +205,15 @@ function fakeCoach(
 }
 
 /** A holding-line composer that always has a line, counting how often it was asked. */
-function fakeHoldingLine(line = "I'm on it."): HoldingLineComposer & { calls: number } {
+function fakeHoldingLine(
+  line = "I'm on it.",
+): HoldingLineComposer & { calls: number; languages: Array<string | null> } {
   const holding = {
     calls: 0,
-    async compose() {
+    languages: [] as Array<string | null>,
+    async compose(language: string | null) {
       holding.calls += 1;
+      holding.languages.push(language);
       return { status: 'composed' as const, line };
     },
   };
@@ -251,13 +256,37 @@ function fakeLane(verdict: OffDomainVerdict): OffDomainLane & {
   const lane = {
     calls: 0,
     seen: [] as Array<{ text: string; channelMessageId: string }>,
-    async consider(input: { familyId: string; channelMessageId: string; text: string }) {
+    async consider(input: {
+      familyId: string;
+      channelMessageId: string;
+      text: string;
+      onScreened?: (reading: LaneReading) => void;
+    }) {
       lane.calls += 1;
       lane.seen.push({ text: input.text, channelMessageId: input.channelMessageId });
+      input.onScreened?.(screenedAs(verdict));
       return verdict;
     },
   };
   return lane;
+}
+
+/** What the screen read for a scripted verdict: its lane, and its tag when it has one. */
+function screenedAs(verdict: OffDomainVerdict): LaneReading {
+  if (verdict.status === 'in_domain') {
+    return {
+      lane: 'in_domain',
+      category: null,
+      fallback: verdict.fallback,
+      language: verdict.language ?? null,
+    };
+  }
+  return {
+    lane: verdict.lane,
+    category: verdict.category,
+    fallback: null,
+    language: verdict.status === 'deflected' ? (verdict.language ?? null) : null,
+  };
 }
 
 /** The lane's answer for everything Hale actually does — the overwhelmingly common one. */
@@ -1369,6 +1398,8 @@ describe('the off-domain lane', () => {
         text: 'Toronto',
         now: NOW,
         thread: { channel: 'sms', providerChatId: null, inGroup: false },
+        // Told what the screen read, for the holding line.
+        onScreened: expect.any(Function),
       },
     ]);
   });
@@ -2048,6 +2079,7 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as AgentClient,
+      readFindTurn: async () => ({ findTurn: true }),
       judgeFindReply: async () => input.gate,
       runAgent: async () => ({
         answer: WITHHELD_DRAFT,
@@ -2567,6 +2599,7 @@ describe('back-to-back texts read as one turn', () => {
         coach: slowCoach(150),
         holdingLine: fakeHoldingLine("I'm on it."),
         holdingLineAfterMs: 300,
+        context: { reply: IMESSAGE },
       });
 
       await routeChannelMessage(h.deps, job());
@@ -4292,7 +4325,7 @@ describe('what the parent stated is written before anything reads it', () => {
  *
  * The row is #532's, unchanged: the coach's tool registers an intent, the router writes it
  * against the message that carried it once the transport accepts. What is new is the four
- * lines after: a promise about a NAMED PLACE or a TIMETABLE also goes on a queue the drain
+ * lines after: every recorded promise also goes on a queue the drain
  * runs within the minute, so the parent gets the dated answer in minutes rather than in a
  * day.
  *
@@ -4319,14 +4352,16 @@ describe('a promise worth opening pages for is dispatched at question time', () 
   it('mints the commitment AND enqueues the deep pass keyed to it', async () => {
     const promises: unknown[] = [];
     const dispatched: unknown[] = [];
+    const askers: unknown[] = [];
     const h = harness({
       coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
       recordActivityPromise: async (_db, input) => {
         promises.push(input);
         return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
       },
-      dispatchDeepResearch: async (payload) => {
+      dispatchDeepResearch: async (payload, askedBy) => {
         dispatched.push(payload);
+        askers.push(askedBy);
         return { status: 'enqueued' as const };
       },
     });
@@ -4343,24 +4378,34 @@ describe('a promise worth opening pages for is dispatched at question time', () 
     // ONE job, keyed to the promise that was just written — never to the message, never
     // to the family: the commitment is what the job is about and what it re-reads.
     expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
+    // The adult whose ask it was, so the dispatch's audit row is theirs (VIL-635).
+    expect(askers).toEqual([PARENT]);
   });
 
-  it('does NOT enqueue for a subject with no place and no timetable in it', async () => {
-    const dispatched: unknown[] = [];
-    const h = harness({
-      coach: promisingCoach('something for a toddler'),
-      dispatchDeepResearch: async (payload) => {
-        dispatched.push(payload);
-        return { status: 'enqueued' as const };
-      },
-    });
+  // A subject is never read for keywords to decide this: the promise was made, so it is
+  // researched now. These two named no place and no timetable, and used to wait a day.
+  it.each([['indoor swim lessons'], ['幼儿游泳课']])(
+    'enqueues the deep pass for every recorded promise (%s)',
+    async (subject) => {
+      const dispatched: unknown[] = [];
+      const h = harness({
+        coach: promisingCoach(subject),
+        recordActivityPromise: async () => ({
+          status: 'recorded' as const,
+          commitmentId: PROMISE_COMMITMENT_ID,
+        }),
+        dispatchDeepResearch: async (payload) => {
+          dispatched.push(payload);
+          return { status: 'enqueued' as const };
+        },
+      });
 
-    await routeChannelMessage(h.deps, job());
+      await routeChannelMessage(h.deps, job());
 
-    expect(dispatched).toEqual([]);
-    // ...and the promise is still a row, so the hourly sweep still owes them an answer.
-    expect(JSON.stringify(h.logs)).toContain('no_depth_owed');
-  });
+      expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
+      expect(h.logs).toContainEqual([{ dispatch: 'enqueued' }, expect.any(String)]);
+    },
+  );
 
   it('does not enqueue against a promise that was never recorded', async () => {
     const dispatched: unknown[] = [];
@@ -6105,7 +6150,7 @@ describe('a slow answer gets one holding line first', () => {
       },
     };
     const h = harness({
-      context: { body: 'STOP' },
+      context: { body: 'STOP', reply: IMESSAGE_ROUTE },
       handlers: [slowOptOut],
       holdingLine: holding,
       holdingLineAfterMs: 10,
@@ -6124,6 +6169,7 @@ describe('a slow answer gets one holding line first', () => {
       limiter: slowLimiter(120, false),
       holdingLine: holding,
       holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_ROUTE },
     });
 
     const result = await routeChannelMessage(h.deps, job());
@@ -6139,6 +6185,7 @@ describe('a slow answer gets one holding line first', () => {
       limiter: slowLimiter(200, true),
       holdingLine: holding,
       holdingLineAfterMs: 50,
+      context: { reply: IMESSAGE_ROUTE },
     });
 
     const result = await routeChannelMessage(h.deps, job());
@@ -6161,6 +6208,7 @@ describe('a slow answer gets one holding line first', () => {
         coach: slowCoach(120, 'the real answer'),
         holdingLine: holding,
         holdingLineAfterMs: 10,
+        context: { reply: IMESSAGE_ROUTE },
       });
 
       const result = await routeChannelMessage(h.deps, job());
@@ -6174,7 +6222,11 @@ describe('a slow answer gets one holding line first', () => {
 
   it('a fast turn: no holding line is composed or sent', async () => {
     const holding = fakeHoldingLine();
-    const h = harness({ holdingLine: holding, holdingLineAfterMs: 200 });
+    const h = harness({
+      holdingLine: holding,
+      holdingLineAfterMs: 200,
+      context: { reply: IMESSAGE_ROUTE },
+    });
 
     await routeChannelMessage(h.deps, job());
 
@@ -6318,12 +6370,142 @@ describe('a slow answer gets one holding line first', () => {
 
   it('an answer that beats the wait is recorded as answered_first', async () => {
     const holding = fakeHoldingLine();
-    const h = harness({ holdingLine: holding, holdingLineAfterMs: 200 });
+    const h = harness({
+      holdingLine: holding,
+      holdingLineAfterMs: 200,
+      context: { reply: IMESSAGE_ROUTE },
+    });
 
     await routeChannelMessage(h.deps, job());
 
     expect(holding.calls).toBe(0);
     expect(h.logs).toContainEqual([{ outcome: 'answered_first' }, expect.any(String)]);
+  });
+
+  it('an SMS turn never gets one: the line is a 1:1 iMessage thing', async () => {
+    const turnOn = async (reply: ReplyRoute) => {
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+        context: { reply },
+      });
+      const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+      return { result, holding, h };
+    };
+
+    const sms = await turnOn(SMS_ROUTE);
+    expect(sms.result.status).toBe('agent_replied');
+    expect(sms.h.transport.bodies()).toEqual(['the real answer']);
+    expect(sms.holding.calls).toBe(0);
+    expect(sms.h.logs).toContainEqual([{ outcome: 'sms' }, expect.any(String)]);
+
+    // Positive control: the same slow turn on iMessage gets its line.
+    const imessage = await turnOn(IMESSAGE_ROUTE);
+    expect(imessage.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
+    expect(imessage.holding.calls).toBe(1);
+  });
+
+  it("is written in the language the screen read off THIS text, not the family's", async () => {
+    const turnTagged = async (language: string | undefined) => {
+      const holding = fakeHoldingLine('在看了，有结果告诉你');
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+        context: { reply: IMESSAGE_ROUTE },
+        offDomain: fakeLane({
+          status: 'in_domain',
+          fallback: null,
+          ...(language ? { language } : {}),
+        }),
+      });
+      await h.fake.db
+        .insert(schema.families)
+        .values({ id: FAMILY, displayName: 'The family', primaryLanguage: 'en' });
+      await routeChannelMessage(h.deps, job({ in_group: false }));
+      return holding;
+    };
+
+    expect((await turnTagged('zh')).languages).toEqual(['zh']);
+    // Positive control: no tag on this text, so the family's stored language is the fallback.
+    expect((await turnTagged(undefined)).languages).toEqual(['en']);
+  });
+
+  /** The lane's answer arrives `ms` after the screen has read the text: a slow lane. */
+  function slowLane(verdict: OffDomainVerdict, ms: number, screenFirst = true): OffDomainLane {
+    return {
+      async consider(input) {
+        if (screenFirst) input.onScreened?.(screenedAs(verdict));
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        if (!screenFirst) input.onScreened?.(screenedAs(verdict));
+        return verdict;
+      },
+    };
+  }
+
+  const MEDICAL: OffDomainVerdict = {
+    status: 'deflected',
+    lane: 'safety_critical',
+    category: 'medical-symptom',
+    reply: 'the medical answer',
+    replySource: 'web_grounded',
+    medicalSource: 'web_grounded',
+    signal: 'not_applicable',
+    pendingAsk: null,
+  };
+
+  it('never goes out in front of a crisis or medical answer, however slow that answer is', async () => {
+    const turnThrough = async (verdict: OffDomainVerdict) => {
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+        context: { reply: IMESSAGE_ROUTE },
+        offDomain: slowLane(verdict, 120),
+      });
+      const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+      return { result, holding, h };
+    };
+
+    const medical = await turnThrough(MEDICAL);
+    expect(medical.result.status).toBe('deflected');
+    expect(medical.h.transport.bodies()).toEqual(['the medical answer']);
+    expect(medical.holding.calls).toBe(0);
+    expect(medical.h.logs).toContainEqual([{ outcome: 'safety_lane' }, expect.any(String)]);
+
+    // Positive control: the same slow lane answering a question about the world (the
+    // search lane) gets its line first.
+    const search = await turnThrough({
+      ...MEDICAL,
+      lane: 'off_domain_general',
+      category: 'weather',
+      reply: 'Rain later.',
+      replySource: 'web_grounded',
+      medicalSource: null,
+      signal: 'recorded',
+    });
+    expect(search.h.transport.bodies()).toEqual(["I'm on it.", 'Rain later.']);
+    expect(search.holding.calls).toBe(1);
+  });
+
+  it('withholds the line while the screen has not read the text, and names it', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_ROUTE },
+      // The screen itself is the slow call: nothing has read the text when the line is due.
+      offDomain: slowLane({ status: 'in_domain', fallback: null }, 120, false),
+      coach: slowCoach(120, 'the real answer'),
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'unscreened' }, expect.any(String)]);
   });
 });
 
@@ -6660,11 +6842,8 @@ describe('the reply row, written to a real database', () => {
       });
 
       it.each([
-        [
-          'goes out while the screen is still reading',
-          'screen',
-          ["I'm on it.", 'Sunny, high of 14.'],
-        ],
+        // Withheld: nothing has read the text yet, so nobody knows it is not a crisis.
+        ['is due while the screen is still reading', 'screen', ['Sunny, high of 14.']],
         // Controls. The question is read before the compose, and with no slow call the
         // line never goes out at all.
         ['goes out while the answer is composed', 'compose', ["I'm on it.", 'Sunny, high of 14.']],

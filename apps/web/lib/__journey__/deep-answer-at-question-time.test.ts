@@ -593,6 +593,8 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         },
       },
       client,
+      // The turn asks about a gym's fall term: an activity ask, as the model read would say.
+      readFindTurn: async () => ({ findTurn: true }),
       judgeFindReply: findReplyNotJudged,
       runAgent: scriptedRunAgent(steps, write),
       recordRun: async () => {},
@@ -697,6 +699,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         recordWatch: async () => ({ status: 'recorded', commitmentId: 'watch-1' }),
       },
       cancelPromise: cancelActivityPromise,
+      clock: () => JOB_AT,
       ...overrides,
     };
   }

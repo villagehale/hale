@@ -29,7 +29,11 @@ import {
  * Exactly `true`. Anything else returns before a read or a model call.
  */
 
-const TOOL_NAME = 'record_workstreams';
+/** The request shape, exported for the workstream-extract eval so it cannot drift. */
+export const WORKSTREAM_TOOL_NAME = 'record_workstreams';
+export const WORKSTREAM_TOOL_DESCRIPTION =
+  'Open, update, close, or drop workstreams from this one turn.';
+export const WORKSTREAM_MAX_TOKENS = 2048;
 const EVENT_WINDOW_PAST_MS = 30 * 24 * 60 * 60 * 1000;
 const EVENT_WINDOW_FUTURE_MS = 90 * 24 * 60 * 60 * 1000;
 const EVENT_LIMIT = 8;
@@ -69,7 +73,7 @@ const opSchema = z.object({
   declined: z.boolean().optional().default(false),
 });
 
-const extractionSchema = z.object({
+export const workstreamExtractionSchema = z.object({
   ops: z.array(opSchema).max(4).default([]),
 });
 
@@ -364,11 +368,11 @@ export async function rememberWorkstreamTurn(input: {
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
       userMessage,
-      toolName: TOOL_NAME,
-      toolDescription: 'Open, update, close, or drop workstreams from this one turn.',
+      toolName: WORKSTREAM_TOOL_NAME,
+      toolDescription: WORKSTREAM_TOOL_DESCRIPTION,
       inputJsonSchema: workstreamToolJsonSchema as unknown as Anthropic.Tool.InputSchema,
-      schema: extractionSchema,
-      maxTokens: 2048,
+      schema: workstreamExtractionSchema,
+      maxTokens: WORKSTREAM_MAX_TOKENS,
       transport: 'create',
     });
     const applied = await applyWorkstreamOps(input.database, {
