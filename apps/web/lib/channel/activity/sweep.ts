@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, desc, eq, lte } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type OutboundGatePorts,
@@ -218,7 +220,7 @@ export interface ActivityFollowUpDeps extends FollowUpDelivery {
   loadDue: typeof loadDueCommitments;
   /** The parent who was actually texted the promise, read back off the row that carried
    * it. Never a household lookup: a co-parent did not ask this question. */
-  resolveRecipient(database: Database, channelMessageId: string): Promise<FollowUpRecipient | null>;
+  resolveRecipient(database: Database, promise: OwedPromise): Promise<FollowUpRecipient | null>;
   reader: ActivityFamilyReader;
   /** REQUIRED (rule #11). The whole point of the sweep is that the search actually runs. */
   finder: ActivityFinder;
@@ -301,7 +303,7 @@ async function keepOne(
     );
     return;
   }
-  const recipient = await deps.resolveRecipient(database, commitment.createdFrom);
+  const recipient = await deps.resolveRecipient(database, commitment);
   if (!recipient) {
     result.unsendable += 1;
     console.error(
@@ -523,6 +525,7 @@ async function keepOne(
       pageEvidence,
       evidence,
       heardFacts: commitment.heardFacts,
+      askLanguage: commitment.askLanguage,
       ...(searched ? { searched } : {}),
       lane: 'candidate',
     },
@@ -545,10 +548,22 @@ async function keepOne(
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
 
-/** The parent the promise went to, and the thread it went to them in. */
+/** What the recipient resolver reads off a promise row. */
+export type OwedPromise = Pick<DueCommitment, 'familyId' | 'createdFrom' | 'askLanguage'>;
+
+/**
+ * The parent the promise went to, the thread it went to them in, and the language it is
+ * answered in.
+ *
+ * `deep-followup-now` decides the last two, for the deep job and the sweep alike. Lit, a
+ * promise made in a 1:1 iMessage chat is answered under the parent's ask there, in the
+ * language of that ask. Dark, there is no thread, so the answer goes where it did before
+ * the flag (the household group when one is claimed, otherwise the parent's number), in
+ * the parent's one proactive language (VIL-572).
+ */
 export async function resolveFollowUpRecipient(
   database: Database,
-  channelMessageId: string,
+  promise: OwedPromise,
 ): Promise<FollowUpRecipient | null> {
   const [row] = await database
     .select({
@@ -563,16 +578,18 @@ export async function resolveFollowUpRecipient(
     .from(schema.channelMessages)
     .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.channelMessages.familyId))
-    .where(eq(schema.channelMessages.id, channelMessageId))
+    .where(eq(schema.channelMessages.id, promise.createdFrom))
     .limit(1);
   // No user row means there is nobody to write to: the outcome the sweep already names.
   if (!row?.parentUserId) return null;
+  // VIL-572 · the one proactive language: dark always, and lit when no tag was read.
+  const stored = parentLanguage(row.proactiveLanguage, row.familyLanguage);
+  const lit = isEnabled('deep-followup-now', promise.familyId);
   return {
     parentUserId: row.parentUserId,
     conversationId: row.conversationId ?? null,
-    // VIL-572 · the one proactive language, never the last text's.
-    language: parentLanguage(row.proactiveLanguage, row.familyLanguage),
-    thread: await oneToOneThread(database, row),
+    language: lit ? (acceptReplyLanguage(promise.askLanguage) ?? stored) : stored,
+    thread: lit ? await oneToOneThread(database, row) : null,
   };
 }
 

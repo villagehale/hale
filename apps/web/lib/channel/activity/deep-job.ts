@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
@@ -54,8 +55,10 @@ import { defaultActivityFollowUpDeps, resolveFollowUpRecipient } from './sweep';
  *   buys its way past. The gate is read again after the lane, which runs for minutes: a
  *   job that started at 20:58 must not text at 21:01.
  *
- *   NOT THE HOURLY DECIDER. The answer goes out on the `immediate` cadence lane: it is the
- *   second half of a reply to a parent's own question, not a proactive text to batch.
+ *   NOT THE HOURLY DECIDER, while `deep-followup-now` is lit. The answer goes out on the
+ *   `immediate` cadence lane: it is the second half of a reply to a parent's own question,
+ *   not a proactive text to batch. Dark, it hands off on `candidate` as it did before the
+ *   flag, and lands where it did then (the recipient resolver in sweep.ts).
  */
 
 export type DeepJobOutcome =
@@ -137,7 +140,7 @@ export async function runDeepResearchJob(
     return { status: 'left_open', reason: 'unsendable' };
   }
 
-  const recipient = await deps.resolveRecipient(database, commitment.createdFrom);
+  const recipient = await deps.resolveRecipient(database, commitment);
   if (!recipient) {
     console.error(
       { commitmentId: commitment.id },
@@ -255,7 +258,8 @@ export async function runDeepResearchJob(
       pageEvidence: run.result.pageVerdict,
       evidence: run.evidence,
       heardFacts: commitment.heardFacts,
-      lane: 'immediate',
+      askLanguage: commitment.askLanguage,
+      lane: isEnabled('deep-followup-now', commitment.familyId) ? 'immediate' : 'candidate',
     },
     sendAt,
   );

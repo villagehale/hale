@@ -265,6 +265,7 @@ describe('family memory in the right-to-access copy', () => {
         createdFrom: 'msg-3',
         summary: 'your first weekend find lands in a day or two',
         heardFacts: ['when:time:9:15', 'price:free'],
+        askLanguage: 'zh',
         dueAt: new Date('2026-11-10T00:00:00.000Z'),
       },
       {
@@ -274,6 +275,7 @@ describe('family memory in the right-to-access copy', () => {
         subjectChildId: teenId,
         summary: 'teen raw promise',
         heardFacts: ['when:time:teen-raw-anchor'],
+        askLanguage: 'ko',
         dueAt: new Date('2026-11-11T00:00:00.000Z'),
       },
     ]);
@@ -305,11 +307,13 @@ describe('family memory in the right-to-access copy', () => {
         kind: 'first_find',
         summary: 'your first weekend find lands in a day or two',
         heardFacts: ['when:time:9:15', 'price:free'],
+        askLanguage: 'zh',
       }),
       expect.objectContaining({
         kind: 'plan_offer',
         summary: TEEN_REDACTED_PLACEHOLDER,
         heardFacts: null,
+        askLanguage: null,
         withheld: 'teen',
       }),
     ]);

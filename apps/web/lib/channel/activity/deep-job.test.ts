@@ -42,6 +42,7 @@ const OPEN: DueCommitment = {
   createdFrom: 'msg-9',
   subjectChildId: null,
   heardFacts: null,
+  askLanguage: 'zh',
   dueAt: new Date('2026-08-25T18:00:00.000Z'),
 };
 
@@ -146,6 +147,7 @@ interface Harness {
   audited: Array<Record<string, unknown>>;
   watched: unknown[];
   composed: unknown[];
+  resolved: unknown[];
 }
 
 function harness(
@@ -166,15 +168,19 @@ function harness(
   const audited: Array<Record<string, unknown>> = [];
   const watched: unknown[] = [];
   const composed: unknown[] = [];
+  const resolved: unknown[] = [];
 
   const deps: DeepJobDeps = {
     loadOpen: async () => (overrides.open === undefined ? OPEN : overrides.open),
-    resolveRecipient: async () => ({
-      parentUserId: PARENT,
-      conversationId: 'conv-1',
-      language: 'en-CA',
-      thread: null,
-    }),
+    resolveRecipient: async (_db, promise) => {
+      resolved.push(promise);
+      return {
+        parentUserId: PARENT,
+        conversationId: 'conv-1',
+        language: 'en-CA',
+        thread: null,
+      };
+    },
     reader: {
       place: async () => ({ status: 'known', town: 'Halton Hills' }),
       stage: async () => 'toddler',
@@ -236,7 +242,7 @@ function harness(
     clock: () => NOW,
   };
 
-  return { deps, transport, fulfilled, cancelled, threaded, audited, watched, composed };
+  return { deps, transport, fulfilled, cancelled, threaded, audited, watched, composed, resolved };
 }
 
 /** Enough of a database for the cadence queue: nothing is queued yet, and what is
@@ -257,13 +263,15 @@ function cadenceDatabase(): Database & { inserted: unknown[] } {
 }
 
 /**
- * MINUTES, NOT AN HOUR. A parent asked; the answer is the second half of that reply. With
- * the cadence live, every proactive kind waits for the hourly decider, but this one is
- * not proactive in that sense and must not wait.
+ * MINUTES, NOT AN HOUR — while `deep-followup-now` is lit. A parent asked; the answer is
+ * the second half of that reply. With the cadence live, every proactive kind waits for the
+ * hourly decider, but this one is not proactive in that sense and must not wait. Dark, the
+ * job hands off on the `candidate` lane exactly as it did before the flag existed.
  */
 describe('the question-time answer and the hourly decider', () => {
-  it('never queues for the decider, even with the cadence live', async () => {
+  it('lit: never queues for the decider, even with the cadence live', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const h = harness();
     const db = cadenceDatabase();
 
@@ -272,6 +280,35 @@ describe('the question-time answer and the hourly decider', () => {
     expect(outcome.status).toBe('sent');
     expect(h.transport.sent).toHaveLength(1);
     expect(db.inserted).toEqual([]);
+  });
+
+  it('lit for this family by the allowlist: never queues for the decider', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', `fam-other,${FAMILY}`);
+    const h = harness();
+    const db = cadenceDatabase();
+
+    const outcome = await runDeepResearchJob(db, PAYLOAD, h.deps, NOW);
+
+    expect(outcome.status).toBe('sent');
+    expect(db.inserted).toEqual([]);
+  });
+
+  // Hand-derived from the code before the flag: deliverFollowUp handed off on
+  // 'candidate', a live cadence queued the candidate for the decider, and the job read the
+  // `queued` delivery as `left_open` / `deferred` — nothing sent, the promise still open.
+  it('dark: hands off on the candidate lane, so a live cadence holds it for the hourly decider', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', 'fam-other');
+    const h = harness();
+    const db = cadenceDatabase();
+
+    const outcome = await runDeepResearchJob(db, PAYLOAD, h.deps, NOW);
+
+    expect(outcome).toEqual({ status: 'left_open', reason: 'deferred' });
+    expect(h.transport.sent).toEqual([]);
+    expect(h.fulfilled).toEqual([]);
+    expect(db.inserted.length).toBeGreaterThan(0);
   });
 
   it("positive control: the hourly sweep's own delivery still queues under live", async () => {
@@ -295,6 +332,7 @@ describe('the question-time answer and the hourly decider', () => {
         pageEvidence: 'page_has_schedule',
         evidence: noEvidence(),
         heardFacts: null,
+        askLanguage: null,
         lane: 'candidate',
       },
       NOW,
@@ -346,6 +384,11 @@ describe('runDeepResearchJob', () => {
     expect(outcome.status).toBe('sent');
     expect(h.composed[0]).toMatchObject({ language: 'en-CA' });
     expect(h.transport.sent).toHaveLength(1);
+    // The resolver is handed the promise itself: the language of the ask it answers rides
+    // on the row, and the resolver decides whether this family writes in it.
+    expect(h.resolved).toEqual([
+      expect.objectContaining({ familyId: FAMILY, createdFrom: 'msg-9', askLanguage: 'zh' }),
+    ]);
     // Threaded, so the parent's reply arrives as an ordinary coach turn with the finds
     // above it (#531).
     expect(h.threaded).toEqual([`Tiny Gym runs Sundays 9:30.\n${SLOT.sourceUrl}`]);

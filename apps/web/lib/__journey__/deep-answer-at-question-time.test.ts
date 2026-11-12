@@ -658,9 +658,9 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         const { loadOpenCommitmentById } = await import('~/lib/commitments/ledger');
         return loadOpenCommitmentById(db2, id);
       },
-      resolveRecipient: async (db2, channelMessageId) => {
+      resolveRecipient: async (db2, promise) => {
         const { resolveFollowUpRecipient } = await import('~/lib/channel/activity/sweep');
-        return resolveFollowUpRecipient(db2, channelMessageId);
+        return resolveFollowUpRecipient(db2, promise);
       },
       reader: productionActivityFamilyReader(),
       buildGate: () => openGate,

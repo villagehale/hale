@@ -316,6 +316,37 @@ describe('a refused ledger write logs its code, never the Postgres error', () =>
 });
 
 /**
+ * The language of the ask an activity promise answers rides on the row, so whichever of
+ * the deep job and the sweep keeps it can write in it. Both of their readers hand it back.
+ */
+describe("an activity promise remembers the language of the parent's ask", () => {
+  async function recordPromise(askLanguage?: string | null) {
+    const recorded = await recordCommitment(db.database, {
+      familyId,
+      kind: 'activity_followup',
+      summary: 'A promise to come back with what I find on toddler gym',
+      topic: 'toddler gym',
+      ...(askLanguage !== undefined ? { askLanguage } : {}),
+      dueAt: DUE,
+      channelMessageId: SENT_MESSAGE,
+    });
+    return recorded.status === 'recorded' ? recorded.commitmentId : '';
+  }
+
+  it('hands the language back to the due sweep and to the question-time job', async () => {
+    const id = await recordPromise('zh');
+    const due = await loadDueCommitments(db.database, 'activity_followup', DUE, 10);
+    expect(due.map((row) => [row.id, row.askLanguage])).toEqual([[id, 'zh']]);
+    expect((await loadOpenCommitmentById(db.database, id))?.askLanguage).toBe('zh');
+  });
+
+  it('a promise recorded with no language reads back null', async () => {
+    const id = await recordPromise();
+    expect((await loadOpenCommitmentById(db.database, id))?.askLanguage).toBeNull();
+  });
+});
+
+/**
  * VIL-564 · an activity watch remembers what the parent was told, and a look that found
  * nothing new moves the watch to its next look without closing it.
  */

@@ -241,7 +241,9 @@ async function enqueueDeepResearch(
  * EVERY RECORDED PROMISE IS RESEARCHED NOW. The parent was told Hale would come back, so
  * the answer is worth minutes rather than a day, whatever the promise is about. No word
  * in the subject decides it: a keyword test here used to send "indoor swim lessons" and
- * every non-English subject to the 24-hour sweep.
+ * every non-English subject to the 24-hour sweep. `deep-followup-now` does not gate this
+ * either: lit or dark, the recorded promise is the one condition. The flag decides when
+ * the answer goes out and where it lands (deep-job.ts, and the resolver in sweep.ts).
  *
  * Its answers are outcomes somebody has to be able to count (rule #11):
  *
