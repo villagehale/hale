@@ -13,7 +13,7 @@ import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
-import { markOfferAsked } from '../store';
+import { askStamp } from '../store';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
@@ -158,6 +158,11 @@ async function deliverDirect(
     console.warn({ offerId: notice.offerId, code }, 'signup plans: notice failed');
     return 'failed';
   };
+  const keep = await askStamp(database, {
+    familyId: notice.familyId,
+    parentUserId: notice.parentUserId,
+    offerIds: [notice.offerId],
+  })();
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
     delivered = await deliverFamilyOutbound(database, {
@@ -173,20 +178,17 @@ async function deliverDirect(
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
   if (delivered.status !== 'sent') return failed(delivered.reason);
-  await database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
-    await tx
-      .update(messages)
-      .set({
-        channel: delivered.channel,
-        status: acceptedStatus(delivered.channel),
-        providerMessageId: delivered.providerMessageId,
-        providerChatId: delivered.chatId,
-        sentAt: input.now,
-      })
-      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
-    await markOfferAsked(tx, { familyId: notice.familyId, offerId: notice.offerId });
-  });
+  await keep();
+  await database
+    .update(messages)
+    .set({
+      channel: delivered.channel,
+      status: acceptedStatus(delivered.channel),
+      providerMessageId: delivered.providerMessageId,
+      providerChatId: delivered.chatId,
+      sentAt: input.now,
+    })
+    .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
   await threadProactiveMessage(database, {
     familyId: notice.familyId,
     parentUserId: notice.parentUserId,
@@ -202,7 +204,7 @@ async function deliverDirect(
  * sends one whose try failed. The login link goes once through {@link sendLinkOnce}, on the
  * chat the bubble before it used: a Linq link card on iMessage, its own text where a card
  * cannot go. A part that does not go stops the notice as `failed`, and the sweep sends the
- * rest next time. Each text bubble that goes stamps the offer as asked (`markOfferAsked`), so
+ * rest next time. Each text bubble that goes stamps the offer as asked (`askStamp`), so
  * a notice that partly went still counts, and a bubble a retry skips stamps nothing again.
  */
 export function createPlanPrepDeliver(
@@ -363,6 +365,11 @@ async function sendPrepText(
     );
     return null;
   };
+  const keep = await askStamp(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    offerIds: [input.offerId],
+  })();
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
     delivered = await deliverFamilyOutbound(database, {
@@ -380,20 +387,17 @@ async function sendPrepText(
   if (delivered.status !== 'sent') return failed(delivered.reason);
   // This bubble reached the parent: the ask is now the one whose text they got last, so
   // their next bare answer is its, even if a later part of the notice does not go.
-  await database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
-    await tx
-      .update(messages)
-      .set({
-        channel: delivered.channel,
-        status: acceptedStatus(delivered.channel),
-        providerMessageId: delivered.providerMessageId,
-        providerChatId: delivered.chatId,
-        sentAt: input.now,
-      })
-      .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
-    await markOfferAsked(tx, { familyId: input.familyId, offerId: input.offerId });
-  });
+  await keep();
+  await database
+    .update(messages)
+    .set({
+      channel: delivered.channel,
+      status: acceptedStatus(delivered.channel),
+      providerMessageId: delivered.providerMessageId,
+      providerChatId: delivered.chatId,
+      sentAt: input.now,
+    })
+    .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
   return { channel: delivered.channel, chatId: delivered.chatId };
 }
 

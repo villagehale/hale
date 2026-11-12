@@ -9,7 +9,7 @@ import { activityKeyFor, offerSignupFromFacts } from './offer-from-facts';
 import type { PlanReplyFacts } from './plan/writer';
 import { runAuthorizedSignup } from './run';
 import { captureProviderSession } from './session-capture';
-import { markOfferAsked } from './store';
+import { askStamp } from './store';
 import { echoOfferWriter } from './test-models';
 
 const NOW = new Date('2026-10-28T15:00:00.000Z');
@@ -319,7 +319,12 @@ describe('offerSignupFromFacts (production caller)', () => {
     );
     if (!offered.ok) throw new Error(offered.reason);
     // The coach's reply carrying the offer went out, so the parent's next yes is its.
-    await markOfferAsked(db.database, { familyId: seeded.familyId, offerId: offered.offerId });
+    const keep = await askStamp(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      offerIds: [offered.offerId],
+    })();
+    await keep();
 
     const captured = await captureProviderSession(db.database, {
       familyId: seeded.familyId,

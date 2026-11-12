@@ -2,7 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient, RegisteredTool, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const waitUntil = vi.hoisted(() => vi.fn());
@@ -69,9 +69,10 @@ import {
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { recordSignupOffer } from '~/lib/signup/store';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
   INTRO_REPLY_FACTS,
   type IntroReplySituation,
@@ -8985,6 +8986,138 @@ describe('several bubbles through the production ledger and database', () => {
       'Riverdale Pool has lane swim.',
       'Want to go Saturday?\nhttps://www.toronto.ca/riverdale-pool',
     ]);
+  });
+
+  describe('a sign-up offer in the answer', () => {
+    const OFFER = 'Want me to sign Ada up for Little Kickers at the open?';
+
+    async function offerTurn(
+      onBubble: (index: number, ids: { swim: string; gym: string }) => Promise<void>,
+      options: { reply?: string; voiceMemo?: true } = {},
+    ) {
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const parent = await seedFamily(db.database);
+      const childId = await seedChild(db.database, parent.familyId, 'Ada', 40);
+      const offer = async (activityKey: string, registrationUrl: string) => {
+        const recorded = await recordSignupOffer(db.database, {
+          ...parent,
+          childId,
+          activityKey,
+          registrationUrl,
+          sessions: [
+            {
+              id: 'sat-0900',
+              label: 'Sat 9:00',
+              startsAt: '2027-01-09T14:00:00.000Z',
+              endsAt: '2027-01-09T14:45:00.000Z',
+              full: false,
+              priceCents: 9800,
+            },
+          ],
+          approvedPriceCents: null,
+          now: new Date(),
+        });
+        if (!recorded.ok) throw new Error(recorded.reason);
+        return recorded.id;
+      };
+      const ids = {
+        swim: await offer('swim-preschool', 'https://swim.example-rec.test/register'),
+        gym: await offer('gym-tots', 'https://gym.example-rec.test/register'),
+        kickers: await offer('kickers-sat', 'https://kickers.example-sport.test/register'),
+      };
+      const coach: ChannelCoachRuntime = {
+        async respond() {
+          return {
+            reply: options.reply ?? `Kickers opens Dec 8 at 7.\n${OFFER}`,
+            planOffer: null,
+            activityPromise: null,
+            spotWatch: null,
+            signupOffers: [{ offerId: ids.kickers, text: OFFER }],
+            ...(options.voiceMemo ? { voiceMemo: true } : {}),
+          };
+        },
+      };
+      const h = harness({ coach, context: { body: 'and kickers?', reply: IMESSAGE } });
+      h.deps.database = db.database;
+      h.deps.turns = auditTurnLedger(db.database);
+      const voiced: string[] = [];
+      h.deps.sendVoiceReply = async (input) => {
+        voiced.push(input.text);
+        return { sent: 'voice_memo', providerMessageId: 'vm-offer' };
+      };
+      const send = h.transport.send.bind(h.transport);
+      h.transport.send = async (input) => {
+        await onBubble(h.transport.sent.length, ids);
+        return send(input);
+      };
+      const [inbound] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          ...parent,
+          channel: 'imessage',
+          providerChatId: IMESSAGE.chatId,
+          direction: 'in',
+          category: 'reply',
+          status: 'delivered',
+          body: 'and kickers?',
+        })
+        .returning({ id: schema.channelMessages.id });
+      const result = await routeChannelMessage(
+        h.deps,
+        job({
+          family_id: parent.familyId,
+          parent_user_id: parent.parentUserId,
+          channel_message_id: inbound?.id as string,
+        }),
+      );
+      const seq = async (offerId: string) => {
+        const [row] = await db.database
+          .select({ seq: schema.authorizedSignupOffers.lastAskedSeq })
+          .from(schema.authorizedSignupOffers)
+          .where(eq(schema.authorizedSignupOffers.id, offerId));
+        return row?.seq ?? null;
+      };
+      return { result, said: h.transport.bodies(), voiced, ids, seq };
+    }
+
+    /** Another send about another ask, starting now: it draws the next number. */
+    const otherSendStarts = (offerId: string) =>
+      db.database.execute(
+        sql`update authorized_signup_offers set last_asked_seq = nextval('authorized_signup_ask_seq') where id = ${offerId}`,
+      );
+
+    it('ranks it by the start of the bubble that carries its text', async () => {
+      const turn = await offerTurn(async (index, ids) => {
+        // Swim's send starts while the first bubble is on the wire, Gym's while the
+        // bubble carrying the offer is.
+        await otherSendStarts(index === 0 ? ids.swim : ids.gym);
+      });
+
+      expect(turn.result.status).toBe('agent_replied');
+      expect(turn.said).toEqual(['Kickers opens Dec 8 at 7.', OFFER]);
+      const swim = (await turn.seq(turn.ids.swim)) as number;
+      const kickers = (await turn.seq(turn.ids.kickers)) as number;
+      const gym = (await turn.seq(turn.ids.gym)) as number;
+      expect(kickers).toBeGreaterThan(swim);
+      expect(gym).toBeGreaterThan(kickers);
+    });
+
+    it('sends it as its own text, never as a voice memo the model chose', async () => {
+      const turn = await offerTurn(async () => {}, { reply: OFFER, voiceMemo: true });
+      expect(turn.voiced).toEqual([]);
+      expect(turn.said).toEqual([OFFER]);
+      expect(await turn.seq(turn.ids.kickers)).not.toBeNull();
+    });
+
+    it('leaves it unstamped when the set stops before the bubble that carries its text', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const turn = await offerTurn(async (index) => {
+        if (index === 1) throw new Error('carrier refused');
+      });
+      expect(turn.said).toEqual(['Kickers opens Dec 8 at 7.']);
+      expect(await turn.seq(turn.ids.kickers)).toBeNull();
+      vi.restoreAllMocks();
+    });
   });
 });
 

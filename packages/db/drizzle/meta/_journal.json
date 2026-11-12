@@ -1562,6 +1562,13 @@
       "when": 1794365234000,
       "tag": "0236_authorized_signup_ask_seq",
       "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1794365235000,
+      "tag": "0237_authorized_signup_ask_order_uncertain",
+      "breakpoints": true
     }
   ]
 }

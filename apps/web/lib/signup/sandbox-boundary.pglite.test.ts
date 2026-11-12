@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { runAuthorizedSignup } from './run';
-import { markOfferAsked, recordSignupOffer } from './store';
+import { askStamp, recordSignupOffer } from './store';
 import type { FieldSlot, PageControl, PageSnapshot, SignupBrowser, SignupPage } from './types';
 
 // The consent read and the reply are model calls. Tests stand in for both (no live calls).
@@ -165,7 +165,12 @@ describe('sandbox boundary — browser input is consented slots only', () => {
     });
     if (!stored.ok) throw new Error(stored.reason);
     // The coach's reply carrying the offer went out, so the parent's next yes is its.
-    await markOfferAsked(db.database, { familyId: seeded.familyId, offerId: stored.id });
+    const keep = await askStamp(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      offerIds: [stored.id],
+    })();
+    await keep();
     const [child] = await db.database
       .select({ dob: schema.children.dateOfBirth })
       .from(schema.children)

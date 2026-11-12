@@ -63,10 +63,11 @@ import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import {
   type PendingSignupOffer,
+  type SendStamp,
+  askStamp,
   loadBusy,
   loadSignupIdentity,
   markOffer,
-  markOfferAsked,
   recordBrowserUseCost,
   reserveBrowserUseAllowance,
 } from './store';
@@ -128,10 +129,11 @@ export interface SignupRunResult {
   replies?: string[];
   deliverOnThread: boolean;
   /**
-   * For the router to call once the reply went out on the thread: the ask it speaks to
-   * becomes the one Hale asked this parent last, so their next bare yes or no answers it.
+   * For the router to bracket the send of the reply on the thread (`askStamp`): the ask it
+   * speaks to becomes the one Hale asked this parent last, so their next bare yes or no
+   * answers it.
    */
-  afterSend?: (channelMessageId: string) => Promise<unknown>;
+  stamp?: SendStamp;
   /**
    * Set on the Browser Use path. Hale's AI writes the parent message from it;
    * this module has no fixed copy for it. `liveViewUrl` goes to the parent only.
@@ -1278,9 +1280,13 @@ async function replyFor(
       body: line,
       dedupeKey: `authorized_signup:${facts.offerId}:${facts.outcome}`,
       now: input.now,
+      stamp: askStamp(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        offerIds: [facts.offerId],
+      }),
     });
     if (status === 'sent' || status === 'already_sent') {
-      await markOfferAsked(database, { familyId: input.familyId, offerId: facts.offerId });
       return {
         ...rush,
         claimed: true,
@@ -1309,7 +1315,11 @@ async function replyFor(
     outcome: facts.outcome,
     reply: line,
     deliverOnThread: true,
-    afterSend: () => markOfferAsked(database, { familyId: input.familyId, offerId: facts.offerId }),
+    stamp: askStamp(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      offerIds: [facts.offerId],
+    }),
   };
 }
 

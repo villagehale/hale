@@ -26,9 +26,9 @@ import {
   runAuthorizedSignup,
 } from './run';
 import {
+  askStamp,
   browserUseRegistrationSpendUsd,
   loadSignupIdentity,
-  markOfferAsked,
   recordSignupOffer,
 } from './store';
 import { echoOutcomeWriter, renderEcho, stubConsentReader } from './test-models';
@@ -189,7 +189,12 @@ describe('authorized signup runner', () => {
     });
     if (!stored.ok) throw new Error(stored.reason);
     // The coach's reply carrying the offer went out, so the parent's next yes is its.
-    await markOfferAsked(db.database, { familyId: seeded.familyId, offerId: stored.id });
+    const keep = await askStamp(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      offerIds: [stored.id],
+    })();
+    await keep();
     return seeded;
   }
 

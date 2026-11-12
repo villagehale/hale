@@ -1,8 +1,15 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Database } from '@hale/db';
+import { and, eq, sql } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { loadPendingOffer, loadPendingOffers, recordSignupOffer } from './store';
+import {
+  askStamp,
+  loadLastAskedOfferId,
+  loadPendingOffer,
+  loadPendingOffers,
+  recordSignupOffer,
+} from './store';
 
 // Invented hosts and programs only.
 const NOW = new Date('2026-11-20T15:00:00.000Z');
@@ -233,5 +240,142 @@ describe('loadPendingOffers', () => {
     const stranger = await family();
     expect(await loadPendingOffers(db.database, stranger.familyId)).toEqual([]);
     expect(await loadPendingOffer(db.database, stranger.familyId, older.id)).toBeNull();
+  });
+});
+
+describe('askStamp: the ask number of a send', () => {
+  async function twoAsks() {
+    const f = await family();
+    const gym = await record(f, GYM_URL, 'Gym Tots', 0);
+    const kickers = await record(f, KICKERS_URL, 'Little Kickers', 1);
+    if (!gym.ok || !kickers.ok) throw new Error('set-up offers');
+    return { f, gymId: gym.id, kickersId: kickers.id };
+  }
+  const about = (f: { familyId: string; parentUserId: string }, offerId: string) => ({
+    familyId: f.familyId,
+    parentUserId: f.parentUserId,
+    offerIds: [offerId],
+  });
+  async function seqOf(offerId: string) {
+    const [row] = await db.database
+      .select({ seq: schema.authorizedSignupOffers.lastAskedSeq })
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.id, offerId));
+    return row?.seq ?? null;
+  }
+  async function uncertainRow(f: { familyId: string; parentUserId: string }) {
+    const [row] = await db.database
+      .select()
+      .from(schema.authorizedSignupAskOrderUncertain)
+      .where(
+        and(
+          eq(schema.authorizedSignupAskOrderUncertain.familyId, f.familyId),
+          eq(schema.authorizedSignupAskOrderUncertain.parentUserId, f.parentUserId),
+        ),
+      );
+    return row ?? null;
+  }
+  async function failStampsOf(offerId: string) {
+    await db.database.execute(sql`create or replace function store_test_fail_stamp() returns trigger as $$
+      begin
+        if new.id::text = current_setting('store_test.fail_offer') and new.last_asked_seq is distinct from old.last_asked_seq then
+          raise exception 'store.pglite.test: the stamp fails';
+        end if;
+        return new;
+      end $$ language plpgsql`);
+    await db.database.execute(sql`select set_config('store_test.fail_offer', ${offerId}, false)`);
+    await db.database.execute(
+      sql`create trigger store_test_fail_stamp before update on authorized_signup_offers for each row execute function store_test_fail_stamp()`,
+    );
+  }
+  afterEach(async () => {
+    await db.database.execute(
+      sql`drop trigger if exists store_test_fail_stamp on authorized_signup_offers`,
+    );
+    vi.restoreAllMocks();
+  });
+
+  it('ranks asks by when their sends started, and a send that failed keeps nothing', async () => {
+    const { f, gymId, kickersId } = await twoAsks();
+    const gymKeep = await askStamp(db.database, about(f, gymId))();
+    const kickersKeep = await askStamp(db.database, about(f, kickersId))();
+    // Kickers' send was accepted first; Gym's started first.
+    expect(await kickersKeep()).toBe('stamped');
+    expect(await gymKeep()).toBe('stamped');
+    expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
+
+    // A later send about Gym that never went is never kept.
+    await askStamp(db.database, about(f, gymId))();
+    expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
+  });
+
+  it('never lowers a number a later-started send already kept', async () => {
+    const { f, gymId } = await twoAsks();
+    const first = await askStamp(db.database, about(f, gymId))();
+    const second = await askStamp(db.database, about(f, gymId))();
+    await second();
+    const kept = await seqOf(gymId);
+    await first();
+    expect(await seqOf(gymId)).toBe(kept);
+  });
+
+  it('fails closed when the number is not kept: no ask is the last asked until a later one is', async () => {
+    const { f, gymId, kickersId } = await twoAsks();
+    await (await askStamp(db.database, about(f, gymId))())();
+    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+    const before = await askStamp(db.database, about(f, gymId))(); // started before the miss
+
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await failStampsOf(kickersId);
+    expect(await (await askStamp(db.database, about(f, kickersId))())()).toBe(
+      'ask_order_uncertain',
+    );
+    await db.database.execute(sql`drop trigger store_test_fail_stamp on authorized_signup_offers`);
+    expect(await seqOf(kickersId)).toBeNull();
+    expect(await uncertainRow(f)).toMatchObject({ failures: 1 });
+    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(errors.mock.calls.some((call) => String(call[1]).includes('URGENT'))).toBe(false);
+
+    // A number drawn before the miss, kept after it, does not settle the order.
+    expect(await before()).toBe('stamped');
+    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    // One drawn after it does.
+    expect(await (await askStamp(db.database, about(f, kickersId))())()).toBe('stamped');
+    expect(await uncertainRow(f)).toBeNull();
+    expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
+  });
+
+  it('pages ops when the order goes uncertain again before a number is kept', async () => {
+    const { f, kickersId } = await twoAsks();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await failStampsOf(kickersId);
+    await (await askStamp(db.database, about(f, kickersId))())();
+    expect(errors.mock.calls.some((call) => String(call[1]).includes('URGENT'))).toBe(false);
+    await (await askStamp(db.database, about(f, kickersId))())();
+    expect(await uncertainRow(f)).toMatchObject({ failures: 2 });
+    expect(
+      errors.mock.calls.some((call) =>
+        String(call[1]).includes('URGENT: signup_ask_order_uncertain'),
+      ),
+    ).toBe(true);
+  });
+
+  it('fails closed when no number could be drawn before the send', async () => {
+    const { f, kickersId } = await twoAsks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const undrawn = new Proxy(db.database, {
+      get(target, key, receiver) {
+        if (key === 'execute') {
+          return async () => {
+            throw new Error('store.pglite.test: no sequence');
+          };
+        }
+        return Reflect.get(target, key, receiver);
+      },
+    }) as Database;
+    expect(await (await askStamp(undrawn, about(f, kickersId))())()).toBe('ask_order_uncertain');
+    expect(await seqOf(kickersId)).toBeNull();
+    expect(await uncertainRow(f)).toMatchObject({ failures: 1 });
+    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
   });
 });

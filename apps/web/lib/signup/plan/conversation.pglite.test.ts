@@ -18,9 +18,10 @@ import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
 import { authorizedSignupHandler } from '../handler';
 import { runAuthorizedSignup } from '../run';
 import {
+  type SendStamp,
+  askStamp,
   loadLastAskedOfferId,
   loadSignupIdentity,
-  markOfferAsked,
   recordSignupOffer,
 } from '../store';
 import { echoOutcomeWriter } from '../test-models';
@@ -126,7 +127,28 @@ async function texted(familyId: string, offerId: string): Promise<void> {
   const ordered = rows
     .filter((row) => ids.includes(row.id))
     .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime());
-  for (const row of ordered) await markOfferAsked(db.database, { familyId, offerId: row.id });
+  for (const row of ordered) await stamped(familyId, row.id);
+}
+
+/** A text about this offer went to its parent, through the stamp every send site uses. */
+async function stamped(familyId: string, offerId: string): Promise<void> {
+  const [row] = await db.database
+    .select({ parentUserId: schema.authorizedSignupOffers.parentUserId })
+    .from(schema.authorizedSignupOffers)
+    .where(eq(schema.authorizedSignupOffers.id, offerId));
+  if (!row) throw new Error('stamped: no such offer');
+  const keep = await askStamp(db.database, {
+    familyId,
+    parentUserId: row.parentUserId,
+    offerIds: [offerId],
+  })();
+  expect(await keep()).toBe('stamped');
+}
+
+/** What the router does around a claimed reply's send: draws before it, keeps after it. */
+async function replySent(result: { stamp?: SendStamp }): Promise<void> {
+  const keep = await result.stamp?.();
+  await keep?.();
 }
 
 /** The ask whose text reached the parent last, as the walk reads it. */
@@ -273,7 +295,7 @@ describe('the day-before plan conversation', () => {
       outcome: 'plan_approved',
       reply: 'reply for approved',
       deliverOnThread: true,
-      afterSend: expect.any(Function),
+      stamp: expect.any(Function),
     });
     const row = await offer(f.offerId);
     expect(row.status).toBe('planned');
@@ -800,7 +822,7 @@ describe('which ask a message answers', () => {
     expect((await offer(f.offerId)).status).toBe('planned');
     expect((await offer(f.offerId)).planCancelRequestedAt).toBeNull();
     expect((await offer(kickersId)).status).toBe('pending');
-    await asked.afterSend?.('out-swim-question');
+    await replySent(asked);
 
     // The model's worst answer: both asks read the bare no as a take-back.
     const bare = readerBy({
@@ -878,7 +900,7 @@ describe('which ask a message answers', () => {
     );
     expect(asked.outcome).toBe('plan_clarify');
     expect((await offer(f.offerId)).planCancelRequestedAt).toBeNull();
-    await asked.afterSend?.('out-swim-question');
+    await replySent(asked);
     const stopped = await runAuthorizedSignup(
       db.database,
       { ...turn(f, 'stop'), ...later },
@@ -930,9 +952,9 @@ describe('which ask a message answers', () => {
     ]);
     expect((await offer(f.offerId)).status).toBe('pending');
     expect(await replyBindings(f.offerId)).toEqual(['tokens']);
-    // Not yet asked: the router sends the question, then calls afterSend.
+    // Not yet asked: the router sends the question, then stamps it.
     expect(await lastAsked(f)).toBe(kickersId);
-    await asked.afterSend?.('out-swim-question');
+    await replySent(asked);
     expect(await lastAsked(f)).toBe(f.offerId);
 
     // The model's worst answer: both asks read the bare yes as a go-ahead.
@@ -1015,7 +1037,7 @@ describe('which ask a message answers', () => {
     });
     expect(asked.outcome).toBe('plan_clarify');
     expect((await offer(f.offerId)).status).toBe('pending');
-    await asked.afterSend?.('out-swim-question');
+    await replySent(asked);
     const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
       planReader: bare,
       planWriter,
@@ -1025,7 +1047,7 @@ describe('which ask a message answers', () => {
 
     // Hale's receipt for the swim plan is its last word to them: a bare stop next takes the
     // swim plan back, not the Kickers plan approved before it.
-    await result.afterSend?.('out-swim-planned');
+    await replySent(result);
     const stop: PlanReader = {
       read: vi.fn(async (read) =>
         toPlanReading(
@@ -1126,7 +1148,7 @@ describe('which ask a message answers', () => {
     );
     expect(asked.outcome).toBe('plan_clarify');
     expect((await offer(kickersId)).status).toBe('pending');
-    await asked.afterSend?.('out-kickers-question');
+    await replySent(asked);
     const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
       planReader: goAheadReader(null),
       planWriter,
@@ -1192,7 +1214,7 @@ describe('which ask a message answers', () => {
       .update(schema.authorizedSignupOffers)
       .set({ status: 'completed' })
       .where(eq(schema.authorizedSignupOffers.id, f.offerId));
-    await markOfferAsked(db.database, { familyId: f.familyId, offerId: f.offerId });
+    await stamped(f.familyId, f.offerId);
 
     const planReader = goAheadReader(null);
     const { planWriter, written } = fakes(null);
@@ -1221,7 +1243,7 @@ describe('which ask a message answers', () => {
     );
     expect(asked.outcome).toBe('plan_clarify');
     expect((await offer(kickersId)).status).toBe('pending');
-    await asked.afterSend?.('out-kickers-question');
+    await replySent(asked);
     const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
       planReader: goAheadReader(null),
       planWriter,
@@ -1512,7 +1534,7 @@ describe('which ask a message answers', () => {
       planWriter,
     });
     expect(asked.outcome).toBe('plan_clarify');
-    await asked.afterSend?.('out-stuffed-question');
+    await replySent(asked);
     const approved = await runAuthorizedSignup(db.database, turn(f, 'yes please'), {
       planReader: stuffedReader(),
       planWriter,
@@ -1638,9 +1660,9 @@ describe('which ask a message answers', () => {
     });
     expect(asked.outcome).toBe('plan_clarify');
     expect(written.at(-1)?.question).toBe(question);
-    // Asked only once the question went out: the router sends it, then calls afterSend.
+    // Asked only once the question went out: the router sends it, then stamps it.
     expect(await lastAsked(f)).toBe(kickersId);
-    await asked.afterSend?.('out-swim-question');
+    await replySent(asked);
     expect(await lastAsked(f)).toBe(f.offerId);
 
     // The model's worst answer: both asks read the bare yes as a go-ahead.
@@ -1794,8 +1816,8 @@ describe('a plan ask and a one-shot ask, both live', () => {
     const planned = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
     expect(planned.outcome).toBe('plan_approved');
     expect(consentReader.read).not.toHaveBeenCalled();
-    // The router sends Hale's receipt for the swim plan, then calls afterSend.
-    await planned.afterSend?.('out-swim-planned');
+    // The router sends Hale's receipt for the swim plan, then stamps it.
+    await replySent(planned);
 
     const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
     expect(result).toEqual({
@@ -1817,7 +1839,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     );
     expect(named).toMatchObject({ claimed: true, outcome: 'clarify' });
     expect((await offer(gymId)).status).toBe('pending');
-    await named.afterSend?.('out-gym-question');
+    await replySent(named);
     const signed = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
     expect(signed).toMatchObject({ claimed: true, outcome: 'browser_unavailable' });
     expect((await offer(gymId)).status).toBe('handed_back');
@@ -1952,7 +1974,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     ]);
     expect((await offer(gymId)).status).toBe('pending');
     expect((await offer(f.offerId)).status).toBe('pending');
-    await asked.afterSend?.('out-gym-question');
+    await replySent(asked);
 
     // The answer to Hale's question about it is the gym ask's, bare.
     const signed = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
@@ -1981,7 +2003,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     expect(written.at(-1)?.question).toBe(PLAN_ASK_BACK_QUESTION);
     expect((await offer(f.offerId)).status).toBe('pending');
     expect((await offer(gymId)).status).toBe('pending');
-    await asked.afterSend?.('out-swim-question');
+    await replySent(asked);
 
     const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
       planReader,
@@ -2079,7 +2101,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     const named = await runAuthorizedSignup(db.database, turn(f, 'cancel the toddler one'), deps);
     expect(named).toMatchObject({ claimed: true, outcome: 'clarify' });
     expect((await offer(older.id)).status).toBe('pending');
-    await named.afterSend?.('out-toddler-question');
+    await replySent(named);
     const declined = await runAuthorizedSignup(db.database, turn(f, 'no'), deps);
     expect(declined).toMatchObject({ claimed: true, outcome: 'declined' });
     expect((await offer(older.id)).status).toBe('handed_back');
@@ -2188,7 +2210,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
         toSignupConsentReading(read.activityKey === 'kickers-sat' ? kickers : gymnastics, read),
       ),
     });
-    // The production handler, as the router calls it: send the reply, then afterSend.
+    // The production handler, as the router calls it: send the reply, then stamps it.
     const handle = (body: string, consentReader: SignupConsentReader) => {
       seq += 1;
       return authorizedSignupHandler({ consentReader, outcomeWriter: echoOutcomeWriter() }).handle(
@@ -2220,7 +2242,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     expect(asked).toMatchObject({ claimed: true, outcome: 'clarify' });
     if (!asked.claimed) return;
     expect(asked.reply).not.toBeNull();
-    await asked.afterSend?.('out-gymnastics-question');
+    await replySent(asked);
 
     // The model's worst answer: both asks read the bare no as a no.
     const declined = await handle(
@@ -2455,7 +2477,7 @@ describe('when the site options do not match', () => {
     expect(written.at(-1)).toMatchObject({ moment: 'clarify', question: PICK_ASK_BACK_QUESTION });
     expect(sendProviderEmail).not.toHaveBeenCalled();
     expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'options_mismatch' });
-    await named.afterSend?.('out-swim-pick-question');
+    await replySent(named);
     const emailed = await runAuthorizedSignup(
       db.database,
       turn(f, 'email them'),
@@ -2523,7 +2545,7 @@ describe('when the site options do not match', () => {
     expect(asked.outcome).toBe('plan_clarify');
     expect(written.at(-1)?.question).toBe(question);
     // The router sends the question, then hands the turn its outbound message.
-    await asked.afterSend?.('out-swim-mismatch-question');
+    await replySent(asked);
 
     // The model's worst answer: the newer ask reads the bare yes as its go-ahead.
     const planReader = kickersReads('approve');

@@ -143,9 +143,9 @@ export interface ChannelTurnResult {
   capabilityNotes?: CapabilityNotes | null;
   /**
    * The sign-up offers this turn's `offer_signup` recorded, each with the text the coach was
-   * handed to send. The router stamps each as asked once the reply carrying it went out
-   * (`markOfferAsked`), and from a cut reply only if that text survived the cut, so an offer
-   * whose text never reached the parent never takes their bare yes. Absent means none.
+   * handed to send. The router stamps each with the send of the bubble that carries its text
+   * (`askStamp`), and from a cut reply only if that text survived the cut, so an offer whose
+   * text never reached the parent never takes their bare yes. Absent means none.
    */
   signupOffers?: readonly RecordedSignupOffer[];
   /**

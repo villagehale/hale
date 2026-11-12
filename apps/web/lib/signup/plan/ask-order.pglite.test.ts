@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
@@ -332,60 +332,6 @@ async function twoApprovedPlans(f: Household, ids: { swim?: string; kickers?: st
 }
 
 describe('a bare answer moves the ask whose text reached the parent last', () => {
-  it('a notice the sweep sends while a turn asks back about Swim goes first: the bare no after takes back Swim', async () => {
-    const f = await household();
-    const { swimId, kickersId } = await twoApprovedPlans(f);
-    // Swim's prep texts went long ago; only Kickers has one due.
-    for (const kind of ['login_ask', 'account_prep']) {
-      await recordPlanNotice(db.database, {
-        familyId: f.familyId,
-        offerId: swimId,
-        providerHost: SWIM.host,
-        kind,
-        now: minutes(-30),
-      });
-    }
-
-    // The parent names Swim at NOW. While the router is still sending Hale's question back,
-    // the minute sweep (started two seconds later) texts Kickers' login ask, which reaches
-    // the parent first; the question about Swim is the last text they get.
-    const wire: string[] = [];
-    const transport = new FakeReplyTransport();
-    const send = transport.send.bind(transport);
-    let swept = false;
-    transport.send = async (input): Promise<ReplySent> => {
-      if (!swept) {
-        swept = true;
-        await runDueSignupPlanPrep(
-          db.database,
-          { now: new Date(NOW.getTime() + 2_000) },
-          sweep(f, wire),
-        );
-      }
-      wire.push('swim question');
-      return send(input);
-    };
-    const asked = await parentTexts(f, 'cancel the swim one', NOW, {
-      transport,
-      planReader: readerBy({
-        'Little Kickers': UNRELATED,
-        'Preschool Swim': { verdict: 'take_back', named: 'tokens' },
-      }),
-    });
-    expect(asked.handler).toBe('authorized_signup');
-    expect(wire).toEqual([KICKERS.host, 'link', 'swim question']);
-    expect((await offerRow(swimId)).status).toBe('planned');
-
-    // The model's worst reading: both asks hear the bare no as a take-back.
-    await parentTexts(f, 'no', minutes(1), {
-      planReader: readerBy({ 'Little Kickers': TAKE_BACK, 'Preschool Swim': TAKE_BACK }),
-    });
-    expect((await offerRow(swimId)).status).toBe('handed_back');
-    const kickers = await offerRow(kickersId);
-    expect(kickers.status).toBe('planned');
-    expect(kickers.planCancelRequestedAt).toBeNull();
-  });
-
   it('one sweep texting two plans: a bare stop takes back the one whose text went last, whatever their ids', async () => {
     const f = await household();
     const suffix = f.familyId.slice(-12);
@@ -474,5 +420,150 @@ describe('an offer whose text never reached the parent', () => {
     });
     expect((await offerRow(swimId)).status).toBe('planned');
     vi.restoreAllMocks();
+  });
+});
+
+describe('the ask number is drawn when the send starts, not when it was accepted', () => {
+  it('the carrier accepts the question about Swim, then the sweep texts Kickers before the router is done: a bare no takes back Kickers', async () => {
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+    for (const kind of ['login_ask', 'account_prep']) {
+      await recordPlanNotice(db.database, {
+        familyId: f.familyId,
+        offerId: swimId,
+        providerHost: SWIM.host,
+        kind,
+        now: minutes(-30),
+      });
+    }
+
+    // The question about Swim reaches the parent first; the sweep, which started its send
+    // after the router started Swim's, lands while the router is still finishing that send.
+    // (The reverse, the sweep's text landing first while the router's call is still open,
+    // ranks the same way: the router sees only when its call starts and ends, and asks rank
+    // by start. That is the residual askStamp names.)
+    const wire: string[] = [];
+    const transport = new FakeReplyTransport();
+    const send = transport.send.bind(transport);
+    let swept = false;
+    transport.send = async (input): Promise<ReplySent> => {
+      const sent = await send(input);
+      wire.push('swim question');
+      if (!swept) {
+        swept = true;
+        await runDueSignupPlanPrep(
+          db.database,
+          { now: new Date(NOW.getTime() + 2_000) },
+          sweep(f, wire),
+        );
+      }
+      return sent;
+    };
+    await parentTexts(f, 'cancel the swim one', NOW, {
+      transport,
+      planReader: readerBy({
+        'Little Kickers': UNRELATED,
+        'Preschool Swim': { verdict: 'take_back', named: 'tokens' },
+      }),
+    });
+    expect(wire).toEqual(['swim question', KICKERS.host, 'link']);
+
+    await parentTexts(f, 'no', minutes(1), {
+      planReader: readerBy({ 'Little Kickers': TAKE_BACK, 'Preschool Swim': TAKE_BACK }),
+    });
+    expect((await offerRow(kickersId)).status).toBe('handed_back');
+    const swim = await offerRow(swimId);
+    expect(swim.status).toBe('planned');
+    expect(swim.planCancelRequestedAt).toBeNull();
+  });
+});
+
+describe('a text that went whose ask number could not be kept', () => {
+  async function failKickersStamps() {
+    await db.database.execute(sql`create or replace function ask_order_test_fail_stamp() returns trigger as $$
+      begin
+        if new.activity_key = 'kickers-sat' and new.last_asked_seq is distinct from old.last_asked_seq then
+          raise exception 'ask-order.pglite.test: the stamp fails';
+        end if;
+        return new;
+      end $$ language plpgsql`);
+    await db.database.execute(
+      sql`create trigger ask_order_test_fail_stamp before update on authorized_signup_offers for each row execute function ask_order_test_fail_stamp()`,
+    );
+  }
+  async function stampsWork() {
+    await db.database.execute(
+      sql`drop trigger if exists ask_order_test_fail_stamp on authorized_signup_offers`,
+    );
+  }
+  afterEach(stampsWork);
+
+  it('binds no bare answer to an older ask until a later text about an ask is kept', async () => {
+    const f = await household();
+    await parentTexts(f, 'can you sign Ada up for swim', minutes(-60), {
+      coachOffer: offering(f, SWIM),
+    });
+    const swimId = await offerIdFor(f, SWIM);
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await failKickersStamps();
+    const transport = new FakeReplyTransport();
+    await parentTexts(f, 'and kickers on saturdays', minutes(-40), {
+      transport,
+      planReader: readerBy({ 'Preschool Swim': UNRELATED }),
+      coachOffer: offering(f, KICKERS),
+    });
+    await stampsWork();
+    const kickersId = await offerIdFor(f, KICKERS);
+    // The parent has the Kickers offer; nothing records that it was the last ask they got.
+    expect(transport.bodies()).toEqual(['Want me to sign Ada up for Little Kickers?']);
+    expect((await offerRow(kickersId)).lastAskedSeq).toBeNull();
+
+    // Their bare yes, which the model reads as a yes to either: it binds nothing.
+    const bare = await parentTexts(f, 'yes', minutes(-30), {
+      planReader: readerBy({ 'Little Kickers': APPROVE, 'Preschool Swim': APPROVE }),
+    });
+    expect(bare.handler).not.toBe('authorized_signup');
+    expect((await offerRow(swimId)).status).toBe('pending');
+    expect((await offerRow(kickersId)).status).toBe('pending');
+
+    // Words that name Kickers get it asked about; that question's number is kept.
+    const asked = new FakeReplyTransport();
+    const named = await parentTexts(f, 'yes to the kickers one', minutes(-25), {
+      transport: asked,
+      planReader: readerBy({
+        'Preschool Swim': UNRELATED,
+        'Little Kickers': { ...APPROVE, named: 'tokens' },
+      }),
+    });
+    expect(named.handler).toBe('authorized_signup');
+    expect(asked.bodies()).toEqual(['reply for clarify']);
+    expect((await offerRow(kickersId)).status).toBe('pending');
+
+    // The bare yes after that question answers it.
+    await parentTexts(f, 'yes', minutes(-20), {
+      planReader: readerBy({ 'Little Kickers': APPROVE, 'Preschool Swim': APPROVE }),
+    });
+    expect((await offerRow(kickersId)).status).toBe('planned');
+    expect((await offerRow(swimId)).status).toBe('pending');
+    vi.restoreAllMocks();
+  });
+
+  it('positive control: the same offer whose number was kept takes the bare yes', async () => {
+    const f = await household();
+    await parentTexts(f, 'can you sign Ada up for swim', minutes(-60), {
+      coachOffer: offering(f, SWIM),
+    });
+    const swimId = await offerIdFor(f, SWIM);
+    await parentTexts(f, 'and kickers on saturdays', minutes(-40), {
+      planReader: readerBy({ 'Preschool Swim': UNRELATED }),
+      coachOffer: offering(f, KICKERS),
+    });
+    const kickersId = await offerIdFor(f, KICKERS);
+    await parentTexts(f, 'yes', minutes(-30), {
+      planReader: readerBy({ 'Little Kickers': APPROVE, 'Preschool Swim': APPROVE }),
+    });
+    expect((await offerRow(kickersId)).status).toBe('planned');
+    expect((await offerRow(swimId)).status).toBe('pending');
   });
 });

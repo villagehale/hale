@@ -55,7 +55,7 @@ export function authorizedSignupHandler(
         outcome: result.unsent ?? result.outcome,
         reply: result.deliverOnThread ? result.reply : null,
         replies: result.deliverOnThread ? result.replies : undefined,
-        afterSend: result.deliverOnThread ? result.afterSend : undefined,
+        stamp: result.deliverOnThread ? result.stamp : undefined,
         templateKey: AUTHORIZED_SIGNUP_TEMPLATE_KEY,
       };
     },

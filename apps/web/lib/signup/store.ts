@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { redactSignupAudit } from './audit';
 import { signupProviderHost } from './consent';
 import { normalizeSession } from './forms/details';
@@ -165,10 +166,10 @@ export async function recordSignupOffer(
 
 /**
  * Where an ask stands in the order Hale's texts about it reached the parent. `lastAskedSeq`
- * is drawn when one was delivered ({@link markOfferAsked}): higher went later, and no two
- * are equal. Null: no text about it is known to have reached them. Such an ask ranks below
- * every ask whose text did, the newest offer first among them, and is never the one a bare
- * yes or no answers ({@link loadLastAskedOfferId}).
+ * is drawn when a send about it started and kept once that send went ({@link askStamp}):
+ * higher started later, and no two are equal. Null: no text about it is known to have
+ * reached them. Such an ask ranks below every ask whose text did, the newest offer first
+ * among them, and is never the one a bare yes or no answers ({@link loadLastAskedOfferId}).
  */
 export interface AskOrder {
   lastAskedSeq: number | null;
@@ -189,39 +190,199 @@ export const ASKED_LAST_FIRST = [
   desc(schema.authorizedSignupOffers.createdAt),
 ] as const;
 
+/** The asks one text is about, all made the parent it goes to. */
+export interface AskedAbout {
+  familyId: string;
+  parentUserId: string;
+  offerIds: readonly string[];
+}
+
+/** What keeping a send's ask number came to. Everything but `stamped` is logged by name. */
+export type AskStampOutcome = 'stamped' | 'ask_order_uncertain' | 'ask_order_unmarked';
+
 /**
- * A text about this ask was just delivered to the parent (the offer, a question back, a
- * notice, a receipt): it is now the ask whose text reached them last, so their next bare yes
- * or no answers it. Called right after the transport accepted the text, never before, so a
- * text that never went cannot take their answer. The order is drawn from
- * `authorized_signup_ask_seq` here, never from a clock: a turn and a sweep each carry the time
- * they started, and one sweep texting two asks has one time for both.
+ * Brackets the one transport call that carries a text about sign-up asks. Run it right
+ * before that call; run what it returns once the transport accepted the text, and never
+ * when the send failed.
  */
-export async function markOfferAsked(
+export type SendStamp = () => Promise<() => Promise<AskStampOutcome>>;
+
+/**
+ * The stamp for a text about these asks (the offer, a question back, a notice, a receipt).
+ * Before the transport call it draws the next number from `authorized_signup_ask_seq`, so
+ * asks rank by when their sends started, never by a clock: a turn and a sweep each carry the
+ * time they began, and one sweep texting two asks has one time for both. Once the transport
+ * took the text, the number is kept on each ask ({@link keepAskNumber}), so a text that never
+ * went cannot take the parent's bare answer.
+ *
+ * Residual (minor): two sends to one parent whose transport calls overlap rank by which
+ * started first, though the carrier may deliver the other first. The window is one carrier
+ * call, and both texts are Hale's about the parent's own asks.
+ */
+export function askStamp(database: Database, asks: AskedAbout): SendStamp {
+  return async () => {
+    let seq: number | null = null;
+    try {
+      seq = await drawAskNumber(database);
+    } catch (err) {
+      console.error(
+        { outcome: 'signup_ask_number_undrawn', err: err instanceof Error ? err.name : 'unknown' },
+        'signup asks: no ask number before the send',
+      );
+    }
+    return () => keepAskNumber(database, asks, seq);
+  };
+}
+
+async function drawAskNumber(database: Database): Promise<number> {
+  const result = (await database.execute(
+    sql`select nextval(${schema.authorizedSignupAskSeq.seqName}::regclass)::text as seq`,
+  )) as unknown;
+  // postgres-js returns the rows as an array; pglite wraps them in `{ rows }`.
+  const rows = Array.isArray(result) ? result : (result as { rows?: unknown }).rows;
+  const seq = Array.isArray(rows)
+    ? Number((rows[0] as { seq?: unknown } | undefined)?.seq)
+    : Number.NaN;
+  if (!Number.isSafeInteger(seq)) throw new Error('signup asks: unreadable ask number');
+  return seq;
+}
+
+/**
+ * The text went: keep its number on each ask (never lowering one a later-started send
+ * kept), and clear a standing "order uncertain" row older than it, in one transaction.
+ * Retried once. When it still fails, or no number was drawn, the order on file is wrong:
+ * an older ask would take the bare answer to the text the parent just got. That fails
+ * closed ({@link askOrderUncertain}). Never throws: the parent already has the text.
+ */
+async function keepAskNumber(
   database: Database,
-  input: { familyId: string; offerId: string },
-): Promise<void> {
-  const offers = schema.authorizedSignupOffers;
-  await database
-    .update(offers)
-    .set({
-      lastAskedSeq: sql`nextval(${schema.authorizedSignupAskSeq.seqName}::regclass)`,
-      lastAskedAt: sql`clock_timestamp()`,
-    })
-    .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId)));
+  asks: AskedAbout,
+  seq: number | null,
+): Promise<AskStampOutcome> {
+  let failure: unknown = null;
+  if (seq !== null) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await database.transaction(async (rawTx) => {
+          const tx = rawTx as unknown as Database;
+          const offers = schema.authorizedSignupOffers;
+          const uncertain = schema.authorizedSignupAskOrderUncertain;
+          await tx
+            .update(offers)
+            .set({
+              lastAskedSeq: sql`greatest(${offers.lastAskedSeq}, ${seq}::bigint)`,
+              lastAskedAt: sql`clock_timestamp()`,
+            })
+            .where(
+              and(
+                inArray(offers.id, [...asks.offerIds]),
+                eq(offers.familyId, asks.familyId),
+                eq(offers.parentUserId, asks.parentUserId),
+              ),
+            );
+          await tx
+            .delete(uncertain)
+            .where(
+              and(
+                eq(uncertain.familyId, asks.familyId),
+                eq(uncertain.parentUserId, asks.parentUserId),
+                lt(uncertain.failedSeq, seq),
+              ),
+            );
+        });
+        return 'stamped';
+      } catch (err) {
+        failure = err;
+      }
+    }
+  }
+  return askOrderUncertain(database, asks, seq, failure);
+}
+
+/**
+ * A text about the parent's asks went and its number was not kept. Writes (or bumps) the
+ * parent's "order uncertain" row, which holds every bare answer of theirs unbound until a
+ * number drawn after this one is kept ({@link loadLastAskedOfferId}). An undrawn number is
+ * marked by one drawn now, after the send. A repeat before then pages ops; a row that could
+ * not be written pages at once, since nothing then holds their bare answer.
+ */
+async function askOrderUncertain(
+  database: Database,
+  asks: AskedAbout,
+  seq: number | null,
+  failure: unknown,
+): Promise<AskStampOutcome> {
+  const uncertain = schema.authorizedSignupAskOrderUncertain;
+  const err = failure instanceof Error ? failure.name : seq === null ? 'undrawn' : 'unknown';
+  let failures: number;
+  try {
+    const [row] = await database
+      .insert(uncertain)
+      .values({
+        familyId: asks.familyId,
+        parentUserId: asks.parentUserId,
+        failedSeq:
+          seq === null ? sql`nextval(${schema.authorizedSignupAskSeq.seqName}::regclass)` : seq,
+      })
+      .onConflictDoUpdate({
+        target: [uncertain.familyId, uncertain.parentUserId],
+        set: {
+          failedSeq: sql`greatest(${uncertain.failedSeq}, excluded.failed_seq)`,
+          failures: sql`${uncertain.failures} + 1`,
+          updatedAt: sql`now()`,
+        },
+      })
+      .returning({ failures: uncertain.failures });
+    if (!row) throw new Error('signup asks: the order-uncertain row returned nothing');
+    failures = row.failures;
+  } catch (markErr) {
+    console.error(
+      {
+        outcome: 'signup_ask_order_unmarked',
+        err,
+        markErr: markErr instanceof Error ? markErr.name : 'unknown',
+      },
+      'signup asks: a text went, its ask number was not kept, and nothing holds the bare answer',
+    );
+    await pageOps(database, { site: 'signup_ask_order_unmarked', facts: {} });
+    return 'ask_order_unmarked';
+  }
+  console.error(
+    { outcome: 'signup_ask_order_uncertain', failures, err },
+    'signup asks: a text went and its ask number was not kept - bare answers bind nothing',
+  );
+  if (failures > 1) await pageOps(database, { site: 'signup_ask_order_uncertain', facts: {} });
+  return 'ask_order_uncertain';
 }
 
 /**
  * The ask whose text reached this parent last, whatever its status now: the offer, or a later
  * question back, notice or receipt about it ({@link AskOrder}). Null when none of Hale's texts
  * about their asks is known to have reached them: an offer whose text never went is not it.
- * An approved, running or finished ask can be it, so a bare yes after its login ask or receipt
- * is never handed to an older ask still waiting on one.
+ * Null too while their order is uncertain (a text went whose number was not kept), so no
+ * bare answer binds until a later one is. An approved, running or finished ask can be it, so
+ * a bare yes after its login ask or receipt is never handed to an older ask still waiting on
+ * one.
  */
 export async function loadLastAskedOfferId(
   database: Database,
   input: { familyId: string; parentUserId: string },
 ): Promise<string | null> {
+  const uncertain = schema.authorizedSignupAskOrderUncertain;
+  const [held] = await database
+    .select({ failures: uncertain.failures })
+    .from(uncertain)
+    .where(
+      and(eq(uncertain.familyId, input.familyId), eq(uncertain.parentUserId, input.parentUserId)),
+    )
+    .limit(1);
+  if (held) {
+    console.info(
+      { outcome: 'signup_ask_order_uncertain_held', failures: held.failures },
+      'signup asks: the order is uncertain - no ask takes a bare answer',
+    );
+    return null;
+  }
   const offers = schema.authorizedSignupOffers;
   const [row] = await database
     .select({ id: offers.id })

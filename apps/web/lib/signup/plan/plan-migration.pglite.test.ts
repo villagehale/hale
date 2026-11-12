@@ -17,6 +17,9 @@ const LAST_ASKED_MIGRATION = migrationFiles().find((file) =>
 const ASK_SEQ_MIGRATION = migrationFiles().find((file) =>
   file.endsWith('_authorized_signup_ask_seq.sql'),
 );
+const ASK_ORDER_UNCERTAIN_MIGRATION = migrationFiles().find((file) =>
+  file.endsWith('_authorized_signup_ask_order_uncertain.sql'),
+);
 
 let db: TestDb;
 
@@ -105,5 +108,28 @@ describe('authorized signup ask-order migration', () => {
       'select (count(*) filter (where last_asked_seq is not null))::int as ordered from authorized_signup_offers',
     )) as { rows: { ordered: number }[] }[];
     expect(stamped[0]?.rows).toEqual([{ ordered: 0 }]);
+  });
+});
+
+describe('authorized signup ask-order-uncertain migration', () => {
+  it('survives a second pass and keeps the rows it holds, one per family and parent', async () => {
+    expect(ASK_ORDER_UNCERTAIN_MIGRATION).toBeDefined();
+    const family = await seedFamily(db.database);
+    await db.applyMigration(ASK_ORDER_UNCERTAIN_MIGRATION as string);
+    await db.exec(
+      `insert into authorized_signup_ask_order_uncertain (family_id, parent_user_id, failed_seq)
+       values ('${family.familyId}', '${family.parentUserId}', 7)`,
+    );
+    await db.applyMigration(ASK_ORDER_UNCERTAIN_MIGRATION as string);
+    const held = (await db.exec(
+      `select failed_seq::int as seq, failures from authorized_signup_ask_order_uncertain where family_id = '${family.familyId}'`,
+    )) as { rows: { seq: number; failures: number }[] }[];
+    expect(held[0]?.rows).toEqual([{ seq: 7, failures: 1 }]);
+    await expect(
+      db.exec(
+        `insert into authorized_signup_ask_order_uncertain (family_id, parent_user_id, failed_seq)
+         values ('${family.familyId}', '${family.parentUserId}', 8)`,
+      ),
+    ).rejects.toThrow();
   });
 });

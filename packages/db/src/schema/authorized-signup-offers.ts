@@ -8,6 +8,7 @@ import {
   numeric,
   pgSequence,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -118,11 +119,11 @@ export const authorizedSignupOffers = pgTable(
     planAvailability: jsonb('plan_availability').$type<Record<string, unknown>>(),
     planAvailabilityAt: timestamp('plan_availability_at', { withTimezone: true }),
     /**
-     * Drawn from `authorized_signup_ask_seq` each time a text about the ask was delivered
-     * (the offer, a question back, a notice, a receipt), right after the transport took it.
-     * Higher went later, and no two are equal: a bare yes or no answers the ask with the
-     * highest. Null: no text about it is known to have reached the parent, and it never
-     * takes a bare answer.
+     * Drawn from `authorized_signup_ask_seq` right before the transport call of each text
+     * about the ask (the offer, a question back, a notice, a receipt), and kept here once the
+     * transport took it. Higher started later, and no two are equal: a bare yes or no answers
+     * the ask with the highest. Null: no text about it is known to have reached the parent,
+     * and it never takes a bare answer.
      */
     lastAskedSeq: bigint('last_asked_seq', { mode: 'number' }),
     /** When `lastAskedSeq` was last drawn, for reading only. Never an order. */
@@ -148,3 +149,29 @@ export const authorizedSignupOffers = pgTable(
 
 export type AuthorizedSignupOffer = typeof authorizedSignupOffers.$inferSelect;
 export type NewAuthorizedSignupOffer = typeof authorizedSignupOffers.$inferInsert;
+
+/**
+ * A text about one of this parent's sign-up asks went, and its `last_asked_seq` could not be
+ * kept: the order on file is wrong. While a row stands, no bare yes or no binds any of the
+ * parent's asks. A number kept later, drawn after `failedSeq`, removes it. `failures` counts
+ * the misses before that; a repeat pages ops. A number and a count only, never a person,
+ * a message body or a link.
+ */
+export const authorizedSignupAskOrderUncertain = pgTable(
+  'authorized_signup_ask_order_uncertain',
+  {
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    parentUserId: uuid('parent_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    failedSeq: bigint('failed_seq', { mode: 'number' }).notNull(),
+    failures: integer('failures').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.familyId, table.parentUserId] }),
+  }),
+);

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { playwrightSignupBrowser } from './browser';
 import { runAuthorizedSignup } from './run';
-import { markOfferAsked, recordSignupOffer } from './store';
+import { askStamp, recordSignupOffer } from './store';
 
 // The consent read and the reply are model calls. Tests stand in for both (no live calls).
 vi.mock('./consent-reader', async (importOriginal) => {
@@ -327,7 +327,12 @@ describe('authorized signup sandbox', () => {
     });
     if (!stored.ok) throw new Error(stored.reason);
     // The coach's reply carrying the offer went out, so the parent's next yes is its.
-    await markOfferAsked(db.database, { familyId: seeded.familyId, offerId: stored.id });
+    const keep = await askStamp(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      offerIds: [stored.id],
+    })();
+    await keep();
     return seeded;
   }
 
