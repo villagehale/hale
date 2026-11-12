@@ -1,8 +1,0 @@
-{
-  "value": {
-    "reasoning": "The new text is just 'thanks!', which asks nothing and is not a standalone question. Hale is still working on the Saturday art class search, so this must be handed back.",
-    "verdict": "hand_back",
-    "reply": ""
-  },
-  "latencyMs": 1026
-}

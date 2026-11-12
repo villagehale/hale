@@ -13,7 +13,11 @@ import {
 } from '~/lib/channel/config';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { writeChannelMessage } from '~/lib/channel/intake/machine';
-import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
+import {
+  type OffDomainLane,
+  type OffDomainVerdict,
+  readPendingAsk,
+} from '~/lib/channel/off-domain/lane';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { resolveNoteConversation, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -29,9 +33,9 @@ import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { BURST_QUIET_MS, createInboundBurst } from './burst';
+import { BURST_QUIET_MS, type BurstPlan, createInboundBurst } from './burst';
 import type { ChannelTurn } from './coach-runtime';
-import { runTurn } from './deadline';
+import { runTurn, turnDeadlineSignal } from './deadline';
 import { createDisambiguationStore } from './disambiguation';
 import type { FloodLineComposer } from './flood-line';
 import { FakeReplyTransport, type ReplyTransport } from './reply-route';
@@ -43,9 +47,11 @@ import {
   type SideTurnPorts,
   type SideTurnQueuedWhy,
   runSideTurn,
+  watchSideTurns,
 } from './side-turn';
 import { darkSideTurn } from './side-turn.fixture';
 import type { SideTurnFamily, SideTurnInput, SideTurnReading } from './side-turn-reader';
+import type { InboundTurnLedger } from './turn-ledger';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
 
 /**
@@ -172,7 +178,7 @@ const QUIET = BURST_QUIET_MS + 500;
 
 const FAMILY: SideTurnFamily = {
   thread: [],
-  children: [{ name: 'Ada', stage: 'school_age', ageMonths: 84 }],
+  children: [{ name: 'Ada', stage: 'school_age', age: { years: 7, months: 0 } }],
   city: 'Toronto',
   memory: null,
   localNow: null,
@@ -622,6 +628,8 @@ interface Case {
   service?: 'iMessage' | null;
   noThread?: true;
   abortDuringRead?: true;
+  /** Another claim already holds the text. */
+  claimHeld?: true;
   transportFails?: true;
 }
 
@@ -656,6 +664,7 @@ const CASES = {
   handed_back: { reading: { status: 'read', verdict: 'hand_back' } },
   reader_unavailable: { reading: { status: 'unavailable', reason: 'model_failed' } },
   over_limit: { reading: ANSWER, limiter: denied(false) },
+  unclaimed: { reading: ANSWER, claimHeld: true },
   moment_unwritten: {
     reading: ANSWER,
     lane: {
@@ -679,6 +688,11 @@ describe('every side turn ends answered or queued behind, never neither and neve
     const quick = await text(fam, 'what time is swim on thursday?', QUIET, {
       providerService: setup.service === null ? null : 'iMessage',
     });
+    if (setup.claimHeld) {
+      await db.database
+        .insert(schema.channelTurnAnswerClaims)
+        .values({ channelMessageId: quick.id });
+    }
     if (!setup.noThread) {
       await resolveOrCreateNoteConversation(
         fam.familyId,
@@ -732,6 +746,7 @@ describe('every side turn ends answered or queued behind, never neither and neve
             body: 'what time is swim on thursday?',
             media: [],
             createdAt: new Date(quick.job.received_at),
+            optOutUnread: false,
           },
           workingOn: ['can you find a saturday art class for Ada'],
         },
@@ -760,9 +775,14 @@ describe('every side turn ends answered or queued behind, never neither and neve
       expect(claims).toHaveLength(1);
       expect(threaded).toHaveLength(1);
       expect(await stageOf(fam, quick.id)).toBe('answered');
+    } else if (outcome.why === 'unclaimed') {
+      // Another claim holds it, and its holder answers it: nothing written or sent here.
+      expect(transport.sent).toEqual([]);
+      expect(claims).toHaveLength(1);
+      expect(threaded).toEqual([]);
     } else if (outcome.why === 'send_failed') {
-      // Threaded and counted, unsent: deferred, so its own turn answers it without
-      // threading or counting it twice.
+      // Claimed, threaded and counted, then unsent: the claim given back as deferred, so
+      // its own turn answers it without threading or counting it twice.
       expect(transport.sent).toEqual([]);
       expect(claims).toEqual([]);
       expect(threaded).toHaveLength(1);
@@ -810,6 +830,7 @@ describe('the side reply is finished as every coach reply is', () => {
           body: 'when are practices this week?',
           media: [],
           createdAt: new Date(quick.job.received_at),
+          optOutUnread: false,
         },
         workingOn: ['can you find a saturday art class for Ada'],
       },
@@ -904,5 +925,372 @@ describe('through the production drain', () => {
       expect.objectContaining({ replyToMessageId: quick?.providerId }),
       expect.objectContaining({ replyToMessageId: running.providerId }),
     ]);
+  });
+});
+
+/** The ledger, with every call of the methods `named` matches failing for one text. */
+function failingFor(
+  ledger: InboundTurnLedger,
+  named: RegExp,
+  id: () => string | undefined,
+): InboundTurnLedger {
+  return new Proxy(ledger, {
+    get(target, prop, receiver) {
+      const value: unknown = Reflect.get(target, prop, receiver);
+      if (typeof prop !== 'string' || !named.test(prop) || typeof value !== 'function') {
+        return value;
+      }
+      return async (input: { channelMessageId: string }, ...rest: unknown[]) => {
+        if (input.channelMessageId === id()) throw new Error('UNSAFE_TRANSACTION');
+        return value.call(target, input, ...rest);
+      };
+    },
+  });
+}
+
+const QUICK = 'what time is swim on thursday?';
+const SIDE_ANSWER = 'Swim is Thursday at 4:30.';
+const RUNNING_ANSWER = 'Two Saturday art classes for her.';
+const OWN_ANSWER = 'Swim is at 4:30 on Thursday.';
+
+/**
+ * A quick question behind a running turn, answered beside it, then its own job. What
+ * each failure costs is read off the parent's phone (`sent`) and the thread.
+ */
+async function quickBehind(
+  name: string,
+  wrap: {
+    transport?: (fake: FakeReplyTransport) => ReplyTransport;
+    turns?: (turns: InboundTurnLedger, quick: () => string | undefined) => InboundTurnLedger;
+  },
+) {
+  const fam = await seedParent(name);
+  const running = await text(fam, 'can you find a saturday art class for Ada', 20_000);
+  const fake = new FakeReplyTransport();
+  const logged: Logged[] = [];
+  let quick: Text | undefined;
+  const base = routerDeps(wrap.transport ? wrap.transport(fake) : fake, {
+    logged,
+    sideTurn: {
+      reader: scriptedReader(() => ({ status: 'read', verdict: 'answer', reply: SIDE_ANSWER })),
+    },
+    coach: async () => {
+      if (quick) return OWN_ANSWER;
+      quick = await text(fam, QUICK, QUIET);
+      await waitFor(() => settledLines(logged).length === 1, 'the side turn');
+      return RUNNING_ANSWER;
+    },
+  });
+  const deps = wrap.turns ? { ...base, turns: wrap.turns(base.turns, () => quick?.id) } : base;
+
+  await routeChannelMessage(deps, running.job);
+  const before = await stageOf(fam, quick?.id ?? '');
+  const own = await routeChannelMessage(deps, quick?.job as ChannelMessageReceivedJob);
+
+  return {
+    settled: settledLines(logged)[0]?.fields,
+    before,
+    own: own.status,
+    sent: fake.bodies(),
+    threaded: (await threadRows(fam)).filter((row) => row.content === QUICK).length,
+  };
+}
+
+describe('claimed before it is sent: a side reply is answered once, never twice, never zero times', () => {
+  it('the reply went and its answered row did not: its own job still stops at GATE 0', async () => {
+    const run = await quickBehind('Side Row Fails', {
+      turns: (turns, quick) => failingFor(turns, /^recordAnswered/, quick),
+    });
+
+    expect(run.settled).toMatchObject({ outcome: 'answered', by: 'side_read' });
+    expect(run).toMatchObject({
+      before: 'answered',
+      own: 'already_answered',
+      sent: [SIDE_ANSWER, RUNNING_ANSWER],
+      threaded: 1,
+    });
+  });
+
+  it('its claim could not be written: nothing goes beside the turn, and its own job answers once', async () => {
+    const run = await quickBehind('Side Claim Fails', {
+      turns: (turns, quick) => failingFor(turns, /^claimAhead$/, quick),
+    });
+
+    expect(run.settled).toMatchObject({ outcome: 'queued', why: 'unclaimed' });
+    expect(run).toMatchObject({
+      before: 'fresh',
+      own: 'agent_replied',
+      sent: [RUNNING_ANSWER, OWN_ANSWER],
+      threaded: 1,
+    });
+  });
+
+  it('the send failed after the claim: the claim is given back, and its own job answers once', async () => {
+    const run = await quickBehind('Side Send Fails', {
+      transport: (fake) => ({
+        async send(input) {
+          if (input.body === SIDE_ANSWER) throw new Error('provider refused');
+          return fake.send(input);
+        },
+      }),
+    });
+
+    expect(run.settled).toMatchObject({ outcome: 'queued', why: 'send_failed' });
+    expect(run).toMatchObject({
+      before: 'deferred',
+      own: 'agent_replied',
+      sent: [RUNNING_ANSWER, OWN_ANSWER],
+      threaded: 1,
+    });
+  });
+});
+
+/** Hale's word in this chat a minute ago, which left a question open (migration 0167). */
+async function askedEarlier(fam: Family, ask: { question: string; missing: string }) {
+  const at = new Date(Date.now() - 60_000);
+  const [row] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      providerMessageId: `prov-out-${randomUUID()}`,
+      providerChatId: CHAT,
+      status: 'sent',
+      inGroup: false,
+      createdAt: at,
+      sentAt: at,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (!row) throw new Error('no outbound row');
+  await db.database
+    .insert(schema.channelPendingAsks)
+    .values({ channelMessageId: row.id, familyId: fam.familyId, ...ask });
+}
+
+const openAsk = (fam: Family, asOf: Date) =>
+  readPendingAsk(db.database)({
+    familyId: fam.familyId,
+    parentUserId: fam.parentUserId,
+    channel: 'imessage',
+    providerChatId: CHAT,
+    asOf,
+  });
+
+describe('the questions Hale left open', () => {
+  const EARLIER = { question: 'Which pool do you mean?', missing: 'the pool' };
+
+  it('stay open for the turn the side reply runs beside, which reads them as of its own start', async () => {
+    const fam = await seedParent('Side Keeps Asks');
+    await askedEarlier(fam, EARLIER);
+    const running = await text(fam, 'can you find a saturday art class for Ada', 20_000);
+    const transport = new FakeReplyTransport();
+    const logged: Logged[] = [];
+    const startedAt = new Date();
+    let asTheTurnReadsIt: unknown;
+    const deps = routerDeps(transport, {
+      logged,
+      sideTurn: {
+        reader: scriptedReader(() => ({ status: 'read', verdict: 'answer', reply: SIDE_ANSWER })),
+      },
+      coach: async () => {
+        await text(fam, QUICK, QUIET);
+        await waitFor(() => settledLines(logged).length === 1, 'the side turn');
+        asTheTurnReadsIt = await openAsk(fam, startedAt);
+        return RUNNING_ANSWER;
+      },
+    });
+
+    await routeChannelMessage(deps, running.job);
+
+    expect(transport.bodies()).toEqual([SIDE_ANSWER, RUNNING_ANSWER]);
+    expect(asTheTurnReadsIt).toEqual({ status: 'open', ask: EARLIER });
+  });
+
+  it('keep the one an off-domain side answer leaves, beside its reply, and close none', async () => {
+    const fam = await seedParent('Side Leaves An Ask');
+    await askedEarlier(fam, EARLIER);
+    const running = await text(fam, 'can you find a saturday art class for Ada', 20_000);
+    const library = 'is the library open sunday?';
+    const left = { question: 'Which branch of the library?', missing: 'the branch' };
+    const lane = scriptedLane((said) =>
+      said === library
+        ? {
+            status: 'deflected',
+            lane: 'off_domain_general',
+            category: 'other',
+            reply: 'Most branches open at 10 on Sundays.',
+            replySource: 'composed',
+            medicalSource: null,
+            signal: 'recorded',
+            pendingAsk: left,
+          }
+        : IN_DOMAIN,
+    );
+    const transport = new FakeReplyTransport();
+    const logged: Logged[] = [];
+    const startedAt = new Date();
+    let asTheTurnReadsIt: unknown;
+    let afterTheSideReply: unknown;
+    const deps = routerDeps(transport, {
+      logged,
+      offDomain: lane,
+      sideTurn: { reader: scriptedReader(() => SILENT) },
+      coach: async () => {
+        await text(fam, library, QUIET);
+        await waitFor(() => settledLines(logged).length === 1, 'the side turn');
+        asTheTurnReadsIt = await openAsk(fam, startedAt);
+        afterTheSideReply = await openAsk(fam, new Date());
+        return RUNNING_ANSWER;
+      },
+    });
+
+    await routeChannelMessage(deps, running.job);
+
+    expect(settledLines(logged)[0]?.fields).toMatchObject({
+      outcome: 'answered',
+      by: 'off_domain',
+    });
+    expect(asTheTurnReadsIt).toEqual({ status: 'open', ask: EARLIER });
+    expect(afterTheSideReply).toEqual({ status: 'open', ask: left });
+  });
+});
+
+describe('a side answer is an answer', () => {
+  it('counts the language the parent wrote in, as every answered text does', async () => {
+    const fam = await seedParent('Side Language');
+    const running = await text(fam, 'can you find a saturday art class for Ada', 20_000);
+    const quick = await text(fam, 'tu peux répondre en français?', QUIET);
+    await resolveOrCreateNoteConversation(
+      fam.familyId,
+      channelSmsNoteKey(fam.parentUserId),
+      db.database,
+    );
+    const transport = new FakeReplyTransport();
+    const deps = routerDeps(transport, {
+      offDomain: scriptedLane(() => ({
+        status: 'in_domain',
+        fallback: null,
+        languageRequest: 'fr',
+      })),
+      sideTurn: {
+        reader: scriptedReader(() => ({ status: 'read', verdict: 'answer', reply: 'Oui.' })),
+      },
+    });
+
+    const outcome = await runSideTurn(
+      deps,
+      {
+        running: running.job,
+        candidate: {
+          channelMessageId: quick.id,
+          providerMessageId: quick.providerId,
+          body: 'tu peux répondre en français?',
+          media: [],
+          createdAt: new Date(quick.job.received_at),
+          optOutUnread: false,
+        },
+        workingOn: ['can you find a saturday art class for Ada'],
+      },
+      async (reply) => {
+        await deps.transport.send({ route: reply.route, body: reply.body });
+        await reply.claim();
+        return 'out-row';
+      },
+    );
+
+    expect(outcome).toEqual({ kind: 'answered', by: 'side_read' });
+    const [user] = await db.database
+      .select({ language: schema.users.proactiveLanguage })
+      .from(schema.users)
+      .where(eq(schema.users.id, fam.parentUserId));
+    expect(user?.language).toBe('fr');
+  });
+});
+
+describe('the watch on a running turn', () => {
+  /**
+   * One quiet text behind a running turn, watched for `forMs` inside a turn whose deadline
+   * is `deadlineMs` away. How many times the side read was asked.
+   */
+  async function sideReads(
+    name: string,
+    setup: {
+      deadlineMs: number;
+      budgetMs?: number;
+      /** The clock, from the text's own arrival. */
+      sinceText?: number;
+      /** Runs inside the watch's first look at the clock. */
+      onLook?: (stop: () => void) => void;
+    },
+    forMs = 200,
+  ): Promise<number> {
+    const fam = await seedParent(name);
+    const running = await text(fam, 'can you find a saturday art class for Ada', 20_000);
+    const quick = await text(fam, QUICK, QUIET);
+    await resolveOrCreateNoteConversation(
+      fam.familyId,
+      channelSmsNoteKey(fam.parentUserId),
+      db.database,
+    );
+    const reader = scriptedReader(() => ({ status: 'read', verdict: 'hand_back' }));
+    const base = routerDeps(new FakeReplyTransport(), {
+      sideTurn: { reader, ...(setup.budgetMs ? { budgetMs: setup.budgetMs } : {}) },
+    });
+    let stop = () => {};
+    const deps: ChannelRouterDeps = {
+      ...base,
+      now: () => {
+        setup.onLook?.(stop);
+        const arrived = new Date(quick.job.received_at).getTime();
+        return setup.sinceText === undefined ? new Date() : new Date(arrived + setup.sinceText);
+      },
+    };
+    const plan: BurstPlan = { kind: 'lone', waitedMs: 0, why: 'flag_off' };
+
+    await runTurn(turnDeadlineSignal(setup.deadlineMs), async () => {
+      const watch = watchSideTurns(deps, running.job, plan, async () => {
+        throw new Error('a hand-back sends nothing');
+      });
+      stop = () => {
+        void watch.stop();
+      };
+      await new Promise((resolve) => setTimeout(resolve, forMs));
+      await watch.stop();
+    });
+    return reader.calls.length;
+  }
+
+  it('starts no side turn once the running turn has less time left than a side turn may take', async () => {
+    // 20 s left; a side turn may take 45 s.
+    expect(await sideReads('Side Late', { deadlineMs: 20_000 })).toBe(0);
+    // Positive control: the same text, with the time to spare.
+    expect(await sideReads('Side In Time', { deadlineMs: 20_000, budgetMs: 1_000 })).toBe(1);
+  });
+
+  it('reads a text only once it has gone quiet, as a burst would', async () => {
+    // A second after it landed, the parent may still be typing the next one.
+    expect(await sideReads('Side Not Quiet', { deadlineMs: 120_000, sinceText: 1_000 })).toBe(0);
+    // Positive control: past the burst's quiet window.
+    expect(
+      await sideReads('Side Quiet', { deadlineMs: 120_000, sinceText: BURST_QUIET_MS + 500 }),
+    ).toBe(1);
+  });
+
+  it('starts nothing once the running turn has stopped it, even partway through a look', async () => {
+    let looks = 0;
+    expect(
+      await sideReads('Side Stopped', {
+        deadlineMs: 120_000,
+        onLook: (stop) => {
+          looks += 1;
+          stop();
+        },
+      }),
+    ).toBe(0);
+    // It did look: the text was there and quiet, and only the stop kept it from a read.
+    expect(looks).toBe(1);
   });
 });

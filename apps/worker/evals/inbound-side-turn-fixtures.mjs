@@ -1,7 +1,9 @@
 // Fixtures for run-inbound-side-turn-eval.mjs: a text that lands while Hale is still
 // answering the parent's last one. `expect` is the verdict the side read must give.
-// `mentions` (any one, case-insensitive) is what an answer must say; `replyMayBeEmpty`
-// marks a question another reader answers (the world, health, safety). Names are synthetic.
+// `mentions` (any one, case-insensitive) is what an answer must say; `ageOf` names the
+// child whose age, as the family below gives it, an answer must state exactly;
+// `replyMayBeEmpty` marks a question another reader answers (the world, health, safety).
+// Names are synthetic.
 
 const NOW = { date: '2026-11-12', weekday: 'Thursday', time: '09:40', timeZone: 'America/Toronto' };
 
@@ -14,8 +16,8 @@ const FAMILY = {
     },
   ],
   children: [
-    { name: 'Ada', stage: 'school_age', ageMonths: 86 },
-    { name: 'Milo', stage: 'preschool', ageMonths: 50 },
+    { name: 'Ada', stage: 'school_age', age: { years: 7, months: 2 } },
+    { name: 'Milo', stage: 'preschool', age: { years: 4, months: 2 } },
   ],
   city: 'Toronto',
   memory: "Ada is in grade 2; her teacher is Ms. Okafor. Milo's daycare closes at 6.",
@@ -53,7 +55,7 @@ export const INBOUND_SIDE_TURN_FIXTURES = [
     'fact-from-family',
     "A child's age is in the family Hale can see.",
     { text: 'how old is Milo now?' },
-    { expect: 'answer', mentions: ['4', 'four'] },
+    { expect: 'answer', ageOf: 'Milo' },
   ),
   fixture(
     'fact-from-memory',

@@ -371,6 +371,16 @@ function fakeTurnLedger(): InboundTurnLedger & {
       ledger.answered.push(input.channelMessageId);
       return 'claimed' as const;
     },
+    // A side turn's (side-turn.ts): dark in every test here.
+    async claimAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
+    },
+    async recordAnsweredAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
+    },
+    async releaseAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
+    },
     async recordDeferred(input: {
       channelMessageId: string;
       reason?: string;

@@ -667,25 +667,70 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
         ]);
         return 'claimed';
       }),
+    claimAhead: async (input, alongside) =>
+      database.transaction(async (tx) => {
+        const claimed = await tx
+          .insert(schema.channelTurnAnswerClaims)
+          .values({ channelMessageId: input.channelMessageId })
+          .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId })
+          .returning({ id: schema.channelTurnAnswerClaims.id });
+        if (claimed.length === 0) return 'already_answered';
+        await alongside(tx as unknown as Database);
+        return 'claimed';
+      }),
+    recordAnsweredAhead: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: TURN_ANSWERED_ACTION,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+      });
+    },
+    releaseAhead: async (input) =>
+      database.transaction(async (tx) => {
+        await tx
+          .delete(schema.channelTurnAnswerClaims)
+          .where(eq(schema.channelTurnAnswerClaims.channelMessageId, input.channelMessageId));
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          actionTaken: TURN_DEFERRED_ACTION,
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: input.channelMessageId,
+          after: { reason: input.reason },
+        });
+      }),
+    // The claim is read beside the rows: a side reply's claim is taken before it is sent,
+    // with no answered row yet, and a claim held is an answer owned.
     stageOf: async ({ familyId, channelMessageId }) => {
-      const rows = await database
-        .select({ actionTaken: schema.auditLog.actionTaken })
-        .from(schema.auditLog)
-        .where(
-          and(
-            eq(schema.auditLog.familyId, familyId),
-            gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
-            eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
-            eq(schema.auditLog.targetId, channelMessageId),
-            inArray(schema.auditLog.actionTaken, [
-              TURN_ANSWERED_ACTION,
-              TURN_DEFERRED_ACTION,
-              TURN_FOLDED_ACTION,
-            ]),
+      const [rows, claims] = await Promise.all([
+        database
+          .select({ actionTaken: schema.auditLog.actionTaken })
+          .from(schema.auditLog)
+          .where(
+            and(
+              eq(schema.auditLog.familyId, familyId),
+              gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
+              eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
+              eq(schema.auditLog.targetId, channelMessageId),
+              inArray(schema.auditLog.actionTaken, [
+                TURN_ANSWERED_ACTION,
+                TURN_DEFERRED_ACTION,
+                TURN_FOLDED_ACTION,
+              ]),
+            ),
           ),
-        );
+        database
+          .select({ id: schema.channelTurnAnswerClaims.id })
+          .from(schema.channelTurnAnswerClaims)
+          .where(eq(schema.channelTurnAnswerClaims.channelMessageId, channelMessageId))
+          .limit(1),
+      ]);
       if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
-      if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
+      if (claims.length > 0 || rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) {
+        return 'answered';
+      }
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
     recordDeferred: async (input) => {

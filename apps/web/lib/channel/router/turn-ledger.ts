@@ -1,3 +1,4 @@
+import type { Database } from '@hale/db';
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 
 /**
@@ -40,7 +41,9 @@ export type TurnStage =
   | 'fresh'
   /** Attempted and handed back to the queue: threaded, counted, unanswered. */
   | 'deferred'
-  /** Answered. Whatever else happens, this text does not get a second reply. */
+  /** Answered, or its answer claimed by a side reply about to go ({@link
+   * InboundTurnLedger.claimAhead}). Whatever else happens, this text does not get a
+   * second reply. */
   | 'answered'
   /** Read as part of an earlier text's turn (burst.ts). That turn threads it, counts it
    * and answers it; this text's own job has nothing left to do. Wins over `answered`: a
@@ -65,6 +68,14 @@ export const TURN_FAILED_ACTION = 'sms_turn_failed';
 
 /** A text read into an earlier text's turn. `after: { into, read }` names that turn. */
 export const TURN_FOLDED_ACTION = 'sms_turn_folded';
+
+/**
+ * The ledger name on a reply sent beside a running turn (side-turn.ts,
+ * `channel_messages.template_key`). A DATA value. Named here, beside the verbs, because
+ * Linq's edit read keeps those replies out of the bubbles the running turn may edit
+ * (linq/edit.ts): a side reply is another text's answer.
+ */
+export const SIDE_TURN_TEMPLATE_KEY = 'side_turn';
 
 /** The table every ledger row points at, named ONCE. The reader's predicate and the
  * writers' values are the same strings; a second copy is how a gate stops matching the
@@ -158,6 +169,40 @@ export interface InboundTurnLedger {
      */
     folded: readonly string[];
   }): Promise<AnswerClaimOutcome>;
+  /**
+   * A SIDE TURN'S CLAIM (side-turn.ts), taken BEFORE its reply is sent, the way a fold's
+   * is taken before the turn that answers it starts (burst.ts). The arbiter row and
+   * whatever `alongside` writes (the parent's row in the thread) commit in one
+   * transaction. From then the text's own job reads `answered` at GATE 0 whatever the
+   * writes after the send do, so a reply that went cannot be answered twice.
+   * 'already_answered' writes nothing, and nothing may be sent.
+   *
+   * The reverse of {@link recordAnswered}'s order, and safe here for a reason that does
+   * not hold there: the side turn knows whether its send went, and gives the claim back
+   * when it did not ({@link releaseAhead}).
+   */
+  claimAhead(
+    input: { channelMessageId: string },
+    alongside: (tx: Database) => Promise<unknown>,
+  ): Promise<AnswerClaimOutcome>;
+  /** The reply a {@link claimAhead} was taken for went: the answered row, which every
+   * reader of the verb counts, under the claim already held. */
+  recordAnsweredAhead(input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+  }): Promise<void>;
+  /**
+   * The reply a {@link claimAhead} was taken for did not go. The claim is deleted and a
+   * deferred row written, in one transaction, so the text's own job reads `deferred` and
+   * answers it once, without threading or counting it again.
+   */
+  releaseAhead(input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+    reason: string;
+  }): Promise<void>;
   /** Called before the turn is thrown back to the queue, so the re-drive knows the two
    * consuming steps are already paid for. */
   recordDeferred(input: {

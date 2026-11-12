@@ -1,8 +1,0 @@
-{
-  "value": {
-    "reasoning": "The new text asks a fact about the family's schedule, and the thread already states Ada's swim is Thursday at 4:30 at the Y. It stands alone and needs only words, so I can answer it now without touching the Saturday art class search Hale is working on.",
-    "verdict": "answer",
-    "reply": "Ada's swim is Thursday at 4:30 at the Y."
-  },
-  "latencyMs": 2401
-}

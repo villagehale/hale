@@ -1,8 +1,0 @@
-{
-  "value": {
-    "reasoning": "The new text asks Milo's age, a fact about the family. family lists Milo at ageMonths 50, which is 4 years and 2 months. Answering from that data is allowed, so this is answered now rather than handed back.",
-    "verdict": "answer",
-    "reply": "Milo is 4 years old, about 4 and a half, going by what I have."
-  },
-  "latencyMs": 2285
-}

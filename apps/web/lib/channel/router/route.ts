@@ -101,6 +101,7 @@ import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import {
   type OffDomainLane,
   type ReplySource,
+  keepPendingAsk,
   settlePendingAsks,
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
@@ -1016,9 +1017,12 @@ async function routeChannelMessageInner(
     'channel router: burst',
   );
   // From here a text that lands behind this turn may be answered beside it (side-turn.ts).
-  // Every open question stays open on a side reply.
-  wait.side = watchSideTurns(deps, job, burst, (reply) =>
-    sendReply(deps, { ...reply, openAsks: 'untouched' }),
+  // A side reply closes no open question, and keeps the one its own answer leaves.
+  wait.side = watchSideTurns(deps, job, burst, ({ pendingAsk, ...reply }) =>
+    sendReply(deps, {
+      ...reply,
+      openAsks: pendingAsk === null ? 'untouched' : { keeps: pendingAsk },
+    }),
   );
 
   const loaded = await deps.loadContext(deps.database, job);
@@ -3566,8 +3570,12 @@ type SendReplyArgs = {
    * `'untouched'` is a line that is not an answer (the holding line). It goes out while
    * the turn is still reading, and the question the turn is about to read is one it
    * must not close.
+   *
+   * `{ keeps }` is an answer sent while another turn is still running (side-turn.ts):
+   * the question it left open is kept beside its row, and it closes none, for the
+   * holding line's reason.
    */
-  openAsks: { leaves: PendingAsk | null } | 'untouched';
+  openAsks: { leaves: PendingAsk | null } | { keeps: PendingAsk } | 'untouched';
   /** The lane's own name for this receipt, or null for a reply nothing reads back
    * (see {@link HandlerVerdict.templateKey}). */
   templateKey?: string | null;
@@ -3876,6 +3884,14 @@ async function settleAnswerAsks(
 ): Promise<void> {
   if (args.openAsks === 'untouched') return;
   try {
+    if ('keeps' in args.openAsks) {
+      await keepPendingAsk(deps.database, {
+        familyId: args.job.family_id,
+        channelMessageId,
+        ask: args.openAsks.keeps,
+      });
+      return;
+    }
     await settlePendingAsks(deps.database, {
       familyId: args.job.family_id,
       parentUserId: args.job.parent_user_id,

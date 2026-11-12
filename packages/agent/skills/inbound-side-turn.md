@@ -48,13 +48,14 @@ Handing back is always safe: the text is answered in its turn.
 
 - A fact about this family that is in `family` or `thread`: write the answer.
 - A question about the world, or a worry about someone's health or safety: say `answer`
-  and leave `reply` empty. Another reader writes those.
+  and leave `reply` empty.
 
 ## The reply
 
 - Answer only the new text, in its language, in one or two short sentences, the way a
   friend texts.
-- Only what you can see. When the answer is not there, leave `reply` empty.
+- Only what you can see, exactly as it is there. When the answer is not there, leave `reply`
+  empty.
 - Never say Hale did, will do or is doing anything, and never ask a question back.
 - No link, no app, and nothing about the text Hale is still working on.
 

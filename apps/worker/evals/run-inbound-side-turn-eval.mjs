@@ -17,7 +17,8 @@
 //   node evals/run-inbound-side-turn-eval.mjs --cached-only          # CI: replay only
 //
 // The metric is objective: the verdict must be the fixture's, and an answer about the
-// family must say what the fixture names. No judge.
+// family must say what the fixture names, a child's age exactly as the fixture's family
+// gives it. No judge.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +66,26 @@ function sideTurnUserMessage(input) {
   });
 }
 
+/**
+ * A child's age, said exactly: every number in the reply is the child's years, the months
+ * past them, or the months in all, and the years are among them. A half is six months.
+ * The fact comes from the fixture's own family, never from the reply.
+ */
+function ageFailures(reply, child) {
+  const { years, months: past } = child.age;
+  const months = years * 12 + past;
+  const exact = `${years}y ${past}m`;
+  const said = [...reply.matchAll(/\d+(?:[.,]\d+)?/g)].map((m) => Number(m[0].replace(',', '.')));
+  const failures = [];
+  if (!said.includes(years)) failures.push(`reply never says ${years} (${child.name} is ${exact})`);
+  const wrong = said.filter((n) => n !== years && n !== past && n !== months);
+  if (wrong.length > 0) failures.push(`reply says ${wrong.join(', ')} (${child.name} is ${exact})`);
+  if (/\bhalf\b|½|\bdemi/i.test(reply) && past !== 6) {
+    failures.push(`reply says a half (${child.name} is ${exact})`);
+  }
+  return failures;
+}
+
 function failuresFor(fixture, value) {
   const failures = [];
   if (value.verdict !== fixture.expect) {
@@ -77,6 +98,11 @@ function failuresFor(fixture, value) {
   if (fixture.replyMayBeEmpty) return failures;
   if (reply === '') {
     failures.push('answered with no words');
+    return failures;
+  }
+  if (fixture.ageOf) {
+    const child = fixture.input.family.children.find((c) => c.name === fixture.ageOf);
+    failures.push(...ageFailures(reply, child));
     return failures;
   }
   const lower = reply.toLowerCase();

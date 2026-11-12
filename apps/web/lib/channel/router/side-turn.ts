@@ -6,8 +6,10 @@ import { plainText, redactTeenNames } from '~/lib/channel/coach/reply';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { linqMessageEditEnabled } from '~/lib/channel/linq/edit';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
+import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import type { ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
+import { observeParentLanguage } from '~/lib/channel/parent-language';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { loadAgentContext } from '~/lib/coach/context';
 import { appendMessage, loadTranscript, resolveNoteConversation } from '~/lib/coach/conversation';
@@ -22,10 +24,10 @@ import {
 } from './burst';
 import { DeadlineError, turnRemainingMs, turnSignalAborted, withTimeout } from './deadline';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
-import { FLOOD_LINE_TEMPLATE_KEY } from './flood-line';
 import type { ReplyRoute } from './reply-route';
 import type { ChannelRouterDeps } from './route';
 import type { SideTurnFamily, SideTurnReader } from './side-turn-reader';
+import { type AnswerClaimOutcome, SIDE_TURN_TEMPLATE_KEY } from './turn-ledger';
 
 /**
  * A QUICK QUESTION WHILE THE LAST ANSWER IS STILL COMING (phase 2 of back-to-back texts).
@@ -52,11 +54,15 @@ import type { SideTurnFamily, SideTurnReader } from './side-turn-reader';
  *
  * READ-ONLY. No tool, no draft, no offer, no consent, no reminder, and the questions Hale
  * left open stay open. What it writes is what any answer writes: the parent's row and the
- * reply in the thread, the reply's ledger and audit rows, and the answer claim.
+ * reply in the thread, the reply's ledger and audit rows, the answer claim, the question
+ * its own answer leaves open, and the parent's language.
  *
- * NEVER DROPPED. Every side turn ends in exactly one {@link SideTurnOutcome}: answered,
- * and claimed through the same arbiter as every answer, so the text's own job stops at
- * GATE 0; or queued, and that job answers it after the running turn as it always has.
+ * NEVER DROPPED, NEVER TWICE. Every side turn ends in exactly one
+ * {@link SideTurnOutcome}. The answer claim, the arbiter the text's own job reads at
+ * GATE 0, is taken BEFORE the reply is sent, with the parent's row in the thread, so
+ * nothing written after the send can let that job answer the text again. Answered: the
+ * reply went under the claim. Queued: nothing went, and that job answers the text after
+ * the running turn as it always has, with the claim given back when it had been taken.
  *
  * ONE AT A TIME. The running turn holds the parent's key, so it is the only place a side
  * turn can start, and it runs them in sequence. Two or more texts waiting is a burst, and
@@ -79,8 +85,8 @@ export const SIDE_TURN_BUDGET_MS = 45_000;
 /** How much of the end of the thread the side read sees. */
 export const SIDE_TURN_THREAD_ROWS = 12;
 
-/** The ledger name on a side turn's reply (`channel_messages.template_key`). A DATA value. */
-export const SIDE_TURN_TEMPLATE_KEY = 'side_turn';
+/** Every side reply carries it, the flood line's included (turn-ledger.ts). */
+export { SIDE_TURN_TEMPLATE_KEY };
 
 /** The deferred-row reason for a side reply that was threaded and then not sent. DATA. */
 export const SIDE_TURN_UNSENT = 'side_turn_unsent';
@@ -102,14 +108,17 @@ export type SideTurnQueuedWhy =
   | 'reader_unavailable'
   /** Over the parent's hourly budget: their own turn says so, once. */
   | 'over_limit'
+  /** The answer claim was not taken: its write failed, or a claim is already held.
+   * Nothing was written and nothing sent. */
+  | 'unclaimed'
   | 'moment_unwritten'
   /** A question for the family's own facts that the side read had no words for. */
   | 'no_answer'
   | 'timeout'
   /** The running turn's deadline passed before anything was written. */
   | 'turn_over'
-  /** Threaded, and the send failed: recorded as deferred, so its own turn neither
-   * re-threads nor re-counts it. */
+  /** Claimed and threaded, and the send failed: the claim is given back as a deferred
+   * row, so its own turn answers it without threading or counting it again. */
   | 'send_failed';
 
 export type SideTurnOutcome =
@@ -133,17 +142,20 @@ export interface SideTurnPorts {
   budgetMs?: number;
 }
 
-/** One side reply, handed to the router's own send. The router keeps every open question
- * untouched on it (route.ts), so a side turn can never close one. */
+/** One side reply, handed to the router's own send. The router closes no open question on
+ * it (route.ts): a side turn never closes one, and keeps the one its own answer leaves. */
 export interface SideReply {
   route: ReplyRoute;
   body: string;
   job: ChannelMessageReceivedJob;
   conversationId: string;
+  /** Once the transport took the reply: the answered row, under the claim already held. */
   claim: () => Promise<void>;
-  templateKey: string;
+  templateKey: typeof SIDE_TURN_TEMPLATE_KEY;
   medicalSource: MedicalReplySource | null;
   replySource: ReplySource | null;
+  /** The question an off-domain answer left open, as the lane said it. */
+  pendingAsk: PendingAsk | null;
   onSent?: () => Promise<unknown>;
 }
 
@@ -158,9 +170,11 @@ interface SendPlan {
   kind: 'send';
   by: Extract<SideTurnOutcome, { kind: 'answered' }>['by'];
   body: string;
-  templateKey: string;
   medicalSource: MedicalReplySource | null;
   replySource: ReplySource | null;
+  pendingAsk: PendingAsk | null;
+  /** The screen's language tags for the text, when it read one. */
+  language: { seen: string | null; requested: string | null } | null;
   crisis: boolean;
 }
 
@@ -203,6 +217,8 @@ export function watchSideTurns(
       if (!head || !candidate || more.length > 0) continue;
       if (considered.has(candidate.channelMessageId)) continue;
       if (deps.now().getTime() - candidate.createdAt.getTime() < BURST_QUIET_MS) continue;
+      // A stop that landed while it looked: the running turn is over.
+      if (stopped) return;
       considered.add(candidate.channelMessageId);
       const outcome = await runSideTurn(
         deps,
@@ -351,9 +367,10 @@ async function decide(
       kind: 'send',
       by: 'flood_line',
       body: composed.line,
-      templateKey: FLOOD_LINE_TEMPLATE_KEY,
       medicalSource: null,
       replySource: null,
+      pendingAsk: null,
+      language: null,
       crisis: false,
     };
   }
@@ -374,14 +391,19 @@ async function decide(
     );
     return queued('moment_unwritten');
   }
+  const language =
+    typeof verdict.language === 'string' || typeof verdict.languageRequest === 'string'
+      ? { seen: verdict.language ?? null, requested: verdict.languageRequest ?? null }
+      : null;
   if (verdict.status === 'deflected') {
     return {
       kind: 'send',
       by: 'off_domain',
       body: verdict.reply,
-      templateKey: SIDE_TURN_TEMPLATE_KEY,
       medicalSource: verdict.medicalSource,
       replySource: verdict.replySource,
+      pendingAsk: verdict.pendingAsk,
+      language,
       crisis: verdict.crisisReply === true,
     };
   }
@@ -391,9 +413,10 @@ async function decide(
     kind: 'send',
     by: 'side_read',
     body: words,
-    templateKey: SIDE_TURN_TEMPLATE_KEY,
     medicalSource: null,
     replySource: null,
+    pendingAsk: null,
+    language,
     crisis: false,
   };
 }
@@ -417,7 +440,12 @@ async function finished(
   return redactTeenNames(plainText(reply), children, now);
 }
 
-/** Thread the parent's text, then send and claim. */
+/**
+ * Claim, then send. The text's answer claim and the parent's row in the thread commit
+ * together before anything goes (turn-ledger.ts claimAhead). A claim that is not taken
+ * sends nothing. A send that does not go gives the claim back, and the text's own job
+ * answers it once. A write after the send that fails costs nothing more: the claim holds.
+ */
 async function commit(
   deps: ChannelRouterDeps,
   input: {
@@ -431,12 +459,33 @@ async function commit(
 ): Promise<SideTurnOutcome> {
   const { job, plan } = input;
   if (turnSignalAborted()) return queued('turn_over');
+  const text = {
+    familyId: job.family_id,
+    parentUserId: job.parent_user_id,
+    channelMessageId: job.channel_message_id,
+  };
   const providerMessageId = linqMessageEditEnabled() ? input.candidate.providerMessageId : null;
-  await appendMessage(input.conversationId, 'user', input.candidate.body, deps.database, {
-    childId: null,
-    topic: null,
-    ...(providerMessageId ? { providerMessageId } : {}),
-  });
+  let claim: AnswerClaimOutcome;
+  try {
+    claim = await deps.turns.claimAhead({ channelMessageId: job.channel_message_id }, (tx) =>
+      appendMessage(input.conversationId, 'user', input.candidate.body, tx, {
+        childId: null,
+        topic: null,
+        ...(providerMessageId ? { providerMessageId } : {}),
+      }),
+    );
+  } catch (err) {
+    deps.log.warn(
+      {
+        channelMessageId: job.channel_message_id,
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'side turn: the answer claim was not written — nothing sent, the text waits its turn',
+    );
+    return queued('unclaimed');
+  }
+  if (claim === 'already_answered') return queued('unclaimed');
+
   let accepted = false;
   try {
     await send({
@@ -446,53 +495,51 @@ async function commit(
       conversationId: input.conversationId,
       claim: async () => {
         accepted = true;
-        const claim = await deps.turns.recordAnswered({
-          familyId: job.family_id,
-          parentUserId: job.parent_user_id,
-          channelMessageId: job.channel_message_id,
-          folded: [],
-        });
-        if (claim === 'already_answered') {
-          deps.log.warn(
-            { channelMessageId: job.channel_message_id, familyId: job.family_id },
-            'side turn: answer already claimed — this send was a duplicate reply',
-          );
-        }
+        await deps.turns.recordAnsweredAhead(text);
       },
-      templateKey: plan.templateKey,
+      templateKey: SIDE_TURN_TEMPLATE_KEY,
       medicalSource: plan.medicalSource,
       replySource: plan.replySource,
+      pendingAsk: plan.pendingAsk,
       ...(plan.crisis
         ? { onSent: () => noteCrisisReplySent(deps.database, job.provider_message_id, deps.now()) }
         : {}),
     });
-    return { kind: 'answered', by: plan.by };
   } catch (err) {
-    if (accepted) {
-      deps.log.error(
-        {
-          channelMessageId: job.channel_message_id,
-          err: err instanceof Error ? err.name : 'unknown',
-        },
-        'side turn: the reply landed; a receipt after it did not',
+    const code = err instanceof Error ? err.name : 'unknown';
+    if (!accepted) {
+      try {
+        await deps.turns.releaseAhead({ ...text, reason: SIDE_TURN_UNSENT });
+      } catch (releaseErr) {
+        deps.log.error(
+          { channelMessageId: job.channel_message_id, err: code },
+          'side turn: not sent, and its claim was not given back — the text is unanswered',
+        );
+        throw releaseErr;
+      }
+      deps.log.warn(
+        { channelMessageId: job.channel_message_id, err: code },
+        'side turn: not sent — the text goes back to its own turn',
       );
-      return { kind: 'answered', by: plan.by };
+      return queued('send_failed');
     }
-    await deps.turns.recordDeferred({
+    deps.log.error(
+      { channelMessageId: job.channel_message_id, err: code },
+      'side turn: the reply landed; a receipt after it did not',
+    );
+  }
+  if (plan.language) {
+    const observed = await observeParentLanguage(deps.database, {
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
-      channelMessageId: job.channel_message_id,
-      reason: SIDE_TURN_UNSENT,
+      ...plan.language,
     });
-    deps.log.warn(
-      {
-        channelMessageId: job.channel_message_id,
-        err: err instanceof Error ? err.name : 'unknown',
-      },
-      'side turn: not sent — the text goes back to its own turn',
+    deps.log.info(
+      { familyId: job.family_id, outcome: observed.status },
+      'side turn: parent language',
     );
-    return queued('send_failed');
   }
+  return { kind: 'answered', by: plan.by };
 }
 
 /**
@@ -527,7 +574,10 @@ export function productionSideTurnFamily(database: Database): SideTurnPorts['fam
       children: context.children.map((child) => ({
         name: child.name,
         stage: child.stage,
-        ageMonths: child.ageMonths,
+        age:
+          child.ageMonths === null
+            ? null
+            : { years: Math.floor(child.ageMonths / 12), months: child.ageMonths % 12 },
       })),
       city: context.location.city,
       memory: context.memoryBrief.text === '' ? null : context.memoryBrief.text,

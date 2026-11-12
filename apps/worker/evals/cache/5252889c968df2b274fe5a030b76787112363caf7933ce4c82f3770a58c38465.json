@@ -1,8 +1,0 @@
-{
-  "value": {
-    "reasoning": "The new text asks whether the library is open on Remembrance Day, a question about the world that needs outside facts, so it is not answerable from the family data. Per the rules, I say answer and leave reply empty for another reader to write.",
-    "verdict": "answer",
-    "reply": ""
-  },
-  "latencyMs": 1280
-}

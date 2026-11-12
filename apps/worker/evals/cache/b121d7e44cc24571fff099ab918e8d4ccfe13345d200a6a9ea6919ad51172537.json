@@ -1,8 +1,0 @@
-{
-  "value": {
-    "reasoning": "The new text asks a fact about the family that is in memory: Ada's teacher is Ms. Okafor. It is a standalone question needing only words, so it can be answered now.",
-    "verdict": "answer",
-    "reply": "Ada's teacher is Ms. Okafor."
-  },
-  "latencyMs": 1969
-}

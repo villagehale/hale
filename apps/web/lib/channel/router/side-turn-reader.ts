@@ -21,8 +21,13 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 export interface SideTurnFamily {
   /** The end of this parent's 1:1 thread, oldest first. */
   thread: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
-  /** The children as the coach sees them: a teenager is a stage, never a name. */
-  children: ReadonlyArray<{ name: string | null; stage: string; ageMonths: number | null }>;
+  /** The children as the coach sees them: a teenager is a stage, never a name or an age.
+   * An age is given in years and months, so the model reads it rather than works it out. */
+  children: ReadonlyArray<{
+    name: string | null;
+    stage: string;
+    age: { years: number; months: number } | null;
+  }>;
   city: string | null;
   /** The coach's memory brief, or null when there is none. */
   memory: string | null;
