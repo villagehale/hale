@@ -35,6 +35,7 @@ import {
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
@@ -603,6 +604,7 @@ function harness(
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
+    bubbleGapMs?: number;
     floodLine?: FloodLineComposer;
     consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
@@ -692,6 +694,8 @@ function harness(
       floodLine: options.floodLine ?? fakeFloodLine(),
       crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
+      // A test that is not about the pause between bubbles does not wait for it.
+      bubbleGapMs: options.bubbleGapMs ?? 0,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
       turnDeadlineMs: options.turnDeadlineMs,
@@ -4502,6 +4506,10 @@ describe('what the parent stated is written before anything reads it', () => {
  * silently stopped happening is invisible from every other signal in the system.
  */
 describe('a promise worth opening pages for is dispatched at question time', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   function promisingCoach(subject: string): ChannelCoachRuntime {
     return {
       async respond() {
@@ -4516,6 +4524,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
   }
 
   it('mints the commitment AND enqueues the deep pass keyed to it', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const promises: unknown[] = [];
     const dispatched: unknown[] = [];
     const askers: unknown[] = [];
@@ -4548,11 +4557,12 @@ describe('a promise worth opening pages for is dispatched at question time', () 
     expect(askers).toEqual([PARENT]);
   });
 
-  // A subject is never read for keywords to decide this: the promise was made, so it is
-  // researched now. These two named no place and no timetable, and used to wait a day.
+  // A subject is never read for keywords to decide this: lit, the promise was made, so it
+  // is researched now. These two named no place and no timetable, and used to wait a day.
   it.each([['indoor swim lessons'], ['幼儿游泳课']])(
-    'enqueues the deep pass for every recorded promise (%s)',
+    'lit: enqueues the deep pass for every recorded promise (%s)',
     async (subject) => {
+      vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
       const dispatched: unknown[] = [];
       const h = harness({
         coach: promisingCoach(subject),
@@ -4570,6 +4580,96 @@ describe('a promise worth opening pages for is dispatched at question time', () 
 
       expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
       expect(h.logs).toContainEqual([{ dispatch: 'enqueued' }, expect.any(String)]);
+    },
+  );
+
+  // Dark, nothing is queued at question time: the promise is written down and left to the
+  // hourly sweep at its due time, as it was before #1251. The skipped dispatch is counted.
+  it('dark: records the promise, enqueues nothing, and logs why', async () => {
+    const promises: unknown[] = [];
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(1);
+    expect(promises).toHaveLength(1);
+    expect(dispatched).toEqual([]);
+    expect(h.logs).toContainEqual([
+      { dispatch: 'not_enqueued', reason: 'followup_now_dark' },
+      expect.any(String),
+    ]);
+  });
+
+  // The follow-up is written in the language of the ask it answers, and that is the
+  // screen's tag of THIS text — not the parent's stored language, which moves only on a
+  // run of texts. So the tag rides on the promise row for whichever keeper answers it.
+  it.each([
+    ['zh', 'zh'],
+    ['zh-CN', 'zh-cn'],
+    [undefined, null],
+    ['write to me in chinese', null],
+  ])(
+    'records the language the screen read off this text on the promise (%s)',
+    async (read, recordedTag) => {
+      const promises: Array<Record<string, unknown>> = [];
+      const h = harness({
+        coach: promisingCoach('indoor swim lessons'),
+        offDomain: fakeLane({
+          status: 'in_domain',
+          fallback: null,
+          ...(read === undefined ? {} : { language: read }),
+        }),
+        recordActivityPromise: async (_db, input) => {
+          promises.push(input);
+          return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+        },
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(promises).toHaveLength(1);
+      expect(promises[0]?.askLanguage).toBe(recordedTag);
+    },
+  );
+
+  // VIL-572 · a parent who says "write to me in Chinese" in English has asked for Chinese.
+  // The explicit ask is the language of the follow-up, over the tag the text was written in.
+  it.each([
+    ['en', 'zh', 'zh'],
+    ['zh', 'not a tag', 'zh'],
+  ])(
+    'records an explicit language ask on the promise over the text it came in (%s, asked %s)',
+    async (read, requested, recordedTag) => {
+      const promises: Array<Record<string, unknown>> = [];
+      const h = harness({
+        coach: promisingCoach('indoor swim lessons'),
+        offDomain: fakeLane({
+          status: 'in_domain',
+          fallback: null,
+          language: read,
+          languageRequest: requested,
+        }),
+        recordActivityPromise: async (_db, input) => {
+          promises.push(input);
+          return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+        },
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(promises).toHaveLength(1);
+      expect(promises[0]?.askLanguage).toBe(recordedTag);
     },
   );
 
@@ -4599,6 +4699,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
    * thing that changed for the parent is that their answer now takes a day.
    */
   it('leaves the promise standing and COUNTS the failure when the enqueue cannot happen', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const promises: unknown[] = [];
     const h = harness({
       coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
@@ -8557,6 +8658,112 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     ).toEqual(['Swim is Saturday at 10.', 'Bring a towel.', 'Want me to add it to your calendar?']);
   });
 
+  /** Each send and each typing start, in the order the parent's phone would see them. */
+  function phoneEvents(h: ReturnType<typeof harness>) {
+    const events: string[] = [];
+    const at: number[] = [];
+    const send = h.transport.send.bind(h.transport);
+    h.transport.send = async (input) => {
+      events.push(`send:${input.body}`);
+      at.push(Date.now());
+      return send(input);
+    };
+    const log = h.deps.log;
+    h.deps.log = {
+      ...log,
+      warn: (...args: unknown[]) => {
+        if ((args[0] as { phase?: string } | undefined)?.phase === 'start') events.push('typing');
+        log.warn(...args);
+      },
+    };
+    return { events, at };
+  }
+
+  it('paces the bubbles: typing goes up after each one and the next waits the gap', async () => {
+    const GAP_MS = 60;
+    const { h } = bubbleTurn(undefined, { bubbleGapMs: GAP_MS });
+    const { events, at } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      // The turn's own wait: the bubble goes up while the coach thinks.
+      'typing',
+      'send:Swim is Saturday at 10.',
+      'typing',
+      'send:Bring a towel.',
+      'typing',
+      'send:Want me to add it to your calendar?',
+    ]);
+    // Timer and wall clock can disagree by a millisecond or so; contention only adds.
+    expect((at[1] as number) - (at[0] as number)).toBeGreaterThanOrEqual(GAP_MS - 5);
+    expect((at[2] as number) - (at[1] as number)).toBeGreaterThanOrEqual(GAP_MS - 5);
+    expect(JSON.stringify(h.logs)).not.toContain('deadline_near');
+  });
+
+  it('near the turn deadline the rest of the bubbles go without the gap, named', async () => {
+    const { h } = bubbleTurn(undefined, { bubbleGapMs: BUBBLE_GAP_MS, turnDeadlineMs: 10_000 });
+    const { events } = phoneEvents(h);
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(events).toEqual([
+      // The turn's own wait, as above; nothing goes up between the bubbles.
+      'typing',
+      'send:Swim is Saturday at 10.',
+      'send:Bring a towel.',
+      'send:Want me to add it to your calendar?',
+    ]);
+    expect(
+      h.logs.filter((entry) => (entry as [{ outcome?: string }])[0]?.outcome === 'deadline_near'),
+    ).toHaveLength(2);
+  });
+
+  it('a handler that sends several messages on a lit turn sends them as paced bubbles', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const plan: DeterministicHandler = {
+      name: 'plan',
+      detects: async () => false,
+      handle: async (_db, turn) => {
+        await turn.send('Nights 1-3: down drowsy but awake.');
+        await turn.send('Nights 4-7: stretch the wait.');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({ handlers: [plan], context: { body: 'yes', reply: IMESSAGE } });
+    const { events } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      'send:Nights 1-3: down drowsy but awake.',
+      'typing',
+      'send:Nights 4-7: stretch the wait.',
+    ]);
+  });
+
+  it('dark: the same handler sends its messages back to back', async () => {
+    const plan: DeterministicHandler = {
+      name: 'plan',
+      detects: async () => false,
+      handle: async (_db, turn) => {
+        await turn.send('Nights 1-3: down drowsy but awake.');
+        await turn.send('Nights 4-7: stretch the wait.');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({ handlers: [plan], context: { body: 'yes', reply: IMESSAGE } });
+    const { events } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      'send:Nights 1-3: down drowsy but awake.',
+      'send:Nights 4-7: stretch the wait.',
+    ]);
+  });
+
   it('dark: the turn is not lit and a line break in the reply is not split', async () => {
     const coach = seeingCoach({ reply: 'Swim is Saturday at 10.\nhttps://pool.example/swim' });
     const h = harness({ coach, context: { body: 'what is on saturday', reply: IMESSAGE } });
@@ -9284,10 +9491,16 @@ describe('a Linq chat’s service decides bubbles, from the webhook to the send'
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${LINQ_KEY.toString('base64')}`);
     vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    // The typing call between bubbles is a real Linq request under this key: keep it local.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 204 })),
+    );
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   /** The 2026-02-03 message.received a 1:1 chat on the Hale line posts, signed. */

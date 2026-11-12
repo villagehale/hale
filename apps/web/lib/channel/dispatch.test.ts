@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
@@ -48,6 +49,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     parentPhone: async () => null,
     smsConsentLive: async () => true,
     activeDedupe: async () => false,
+    chatService: async () => null,
     record: async (w) => {
       ledger.push(w);
       return `row-${ledger.length}`;
@@ -826,6 +828,121 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       { text: 'see you there', bold: undefined },
       { text: SAME, bold: undefined },
     ]);
+  });
+
+  /** A channel whose texts land in one Linq chat on `transport`, stamped with the clock. */
+  function stampedChannel(transport: 'imessage' | 'sms') {
+    const sends: Array<[number, string]> = [];
+    return {
+      sends,
+      channel: {
+        kind: 'sms' as const,
+        async send(input: { userId: string; rendered: RenderedContent }) {
+          sends.push([Date.now(), input.rendered.text]);
+          return {
+            status: 'sent' as const,
+            providerMessageId: `m-${sends.length}`,
+            transport,
+            providerChatId: 'chat-1',
+          };
+        },
+      },
+    };
+  }
+
+  describe('VIL-682 K5 · paced between bubbles', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    });
+
+    it('lit, a set that went into a chat Linq said is iMessage waits about two seconds before each later text', async () => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const im = stampedChannel('imessage');
+      const asked: Array<[string, string]> = [];
+      const { ports, ledger } = makePorts({
+        renderer: multiRenderer,
+        channels: { sms: im.channel },
+        chatService: async (parentUserId, chatId) => {
+          asked.push([parentUserId, chatId]);
+          return 'iMessage';
+        },
+      });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(im.sends).toEqual([
+        [start, TEXTS[0]],
+        [start + 2_000, TEXTS[1]],
+        [start + 4_000, TEXTS[2]],
+      ]);
+      expect(ledger.map((r) => r.dedupeKey)).toEqual([
+        'reminder:k:sms:0',
+        'reminder:k:sms:1',
+        'reminder:k:sms:2',
+      ]);
+      // Asked once per set, about the chat the first text landed in.
+      expect(asked).toEqual([['user-1', 'chat-1']]);
+    });
+
+    // Linq reports `imessage` for every chat on its line, green-bubble SMS and RCS chats
+    // included, so only the service Linq said carried the parent's texts there decides.
+    it.each([
+      ['dark, on iMessage', 'false', 'imessage', 'iMessage'],
+      ['lit, but the set went as SMS', 'true', 'sms', null],
+      ['lit, Linq transport, but Linq said the chat is SMS', 'true', 'imessage', 'SMS'],
+      ['lit, Linq transport, but Linq said the chat is RCS', 'true', 'imessage', 'RCS'],
+      ['lit, Linq transport, and Linq never said', 'true', 'imessage', null],
+    ] as const)('%s: the texts go back to back', async (_label, flag, transport, service) => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
+      const ch = stampedChannel(transport);
+      const { ports } = makePorts({
+        renderer: multiRenderer,
+        channels: { sms: ch.channel },
+        chatService: async () => service,
+      });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(ch.sends).toEqual(TEXTS.map((text) => [start, text]));
+    });
+
+    // The read only decides the pacing: one that fails costs the gaps, never a text.
+    it('lit, a chat service read that fails: every text still goes, back to back, and the miss is named', async () => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const im = stampedChannel('imessage');
+      const { ports, ledger } = makePorts({
+        renderer: multiRenderer,
+        channels: { sms: im.channel },
+        chatService: async () => {
+          throw new Error('connection reset');
+        },
+      });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(im.sends).toEqual(TEXTS.map((text) => [start, text]));
+      expect(ledger).toHaveLength(TEXTS.length);
+      expect(
+        warn.mock.calls.flatMap(([fields]) =>
+          fields && typeof fields === 'object' && 'outcome' in fields ? [fields.outcome] : [],
+        ),
+      ).toEqual(['pacing_read_failed']);
+      warn.mockRestore();
+    });
   });
 });
 

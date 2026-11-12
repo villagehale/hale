@@ -36,6 +36,7 @@ const DUE: DueCommitment = {
   createdFrom: 'msg-9',
   subjectChildId: null,
   heardFacts: null,
+  askLanguage: null,
   dueAt: new Date('2026-08-21T13:00:00.000Z'),
 };
 
@@ -433,6 +434,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     createdFrom: 'msg-cartwheels',
     subjectChildId: null,
     heardFacts: null,
+    askLanguage: null,
     dueAt: new Date('2026-08-21T16:14:00.000Z'),
   };
 
@@ -736,9 +738,29 @@ describe('a partial answer registers the watch it talks about', () => {
         // The parent was told no day, no time and no price, so a later look that finds
         // none either has nothing to say.
         heardFacts: [],
+        askLanguage: null,
         now: NOW,
       },
     ]);
+  });
+
+  it("the continuation carries the language of the parent's ask, and the resolver is handed the promise", async () => {
+    armed();
+    const zh: DueCommitment = { ...DUE, askLanguage: 'zh' };
+    const h = partialHarness({ due: [zh] });
+    const resolved: unknown[] = [];
+    const deps: ActivityFollowUpDeps = {
+      ...h.deps,
+      resolveRecipient: async (db, promise) => {
+        resolved.push(promise);
+        return h.deps.resolveRecipient(db, promise);
+      },
+    };
+
+    await runActivityFollowUpSweep(database, deps, NOW);
+
+    expect(resolved).toEqual([zh]);
+    expect(h.watched).toEqual([expect.objectContaining({ askLanguage: 'zh' })]);
   });
 
   it('closes the OLD promise before opening the new one - the index permits one', async () => {
