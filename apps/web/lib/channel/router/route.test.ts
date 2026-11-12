@@ -5239,14 +5239,22 @@ describe('an iMessage effect does not send the reply twice', () => {
 
   afterEach(() => {
     effectDecide.mockReset();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
 
   it('does not post a plain copy when Linq accepts and returns no message id', async () => {
     const h = effectTurn();
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.example.test/ops');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     const posts: unknown[] = [];
+    const pages: string[] = [];
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (url === 'https://hooks.example.test/ops') {
+        pages.push((JSON.parse(String(init?.body)) as { text: string }).text);
+        return new Response(null, { status: 200 });
+      }
       if (new URL(url).pathname.endsWith('/messages')) posts.push(JSON.parse(String(init?.body)));
       return Response.json({}, { status: 201 });
     });
@@ -5257,7 +5265,7 @@ describe('an iMessage effect does not send the reply twice', () => {
     expect(posts).toHaveLength(1);
     expect(h.transport.sent).toEqual([]);
     expect(h.turns.answered).toEqual([job().channel_message_id]);
-    // Nobody saw Linq take it: the row says so, for a reconcile to settle later.
+    // Nobody saw Linq take it: the row says so, and ops is paged with that row.
     const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
     expect(out).toEqual([
       expect.objectContaining({
@@ -5270,9 +5278,12 @@ describe('an iMessage effect does not send the reply twice', () => {
     expect(auditRows(h.fake).filter((row) => row.targetId === out[0]?.id)).toEqual([
       expect.objectContaining({ after: { form: 'effect', delivery: 'unknown' } }),
     ]);
+    expect(pages).toEqual([
+      `Hale: ops page. site linq_effect_delivery_unknown. ref ${out[0]?.id}.`,
+    ]);
   });
 
-  it.each([502, 503, 504])(
+  it.each([500, 502, 503, 504, 507])(
     'does not post a plain copy when Linq answers %i, which may already have sent it',
     async (httpStatus) => {
       const h = effectTurn();
@@ -5300,8 +5311,8 @@ describe('an iMessage effect does not send the reply twice', () => {
     },
   );
 
-  /** The lane's own facts about the reply, never its words: a crisis it marked, or a
-   * medical answer it stamped. */
+  /** The lane's own facts about the reply, never its words: a safety moment it marked,
+   * or a medical answer it stamped. */
   const DEFLECTED: OffDomainVerdict = {
     status: 'deflected',
     lane: 'off_domain_general',
@@ -5321,8 +5332,11 @@ describe('an iMessage effect does not send the reply twice', () => {
         lane: 'safety_critical',
         category: 'mental-health',
         reply: 'a written crisis reply',
+        // What the marking lane puts on every crisis reply it wrote.
         crisisReply: true,
+        safetyReply: true,
       },
+      'safety_reply',
     ],
     [
       'a medical answer',
@@ -5335,6 +5349,7 @@ describe('an iMessage effect does not send the reply twice', () => {
         medicalSource: 'web_grounded',
         signal: 'not_applicable',
       },
+      'medical_reply',
     ],
     [
       'the fixed health line',
@@ -5347,10 +5362,12 @@ describe('an iMessage effect does not send the reply twice', () => {
         medicalSource: 'fixed',
         signal: 'not_applicable',
       },
+      'medical_reply',
     ],
-  ] satisfies Array<[string, OffDomainVerdict]>)(
+  ] satisfies Array<[string, OffDomainVerdict, string]>)(
     'never asks for an effect on %s, which goes out plain',
-    async (_name, verdict) => {
+    async (_name, verdict, reason) => {
+      const info = vi.spyOn(console, 'info');
       const h = effectTurn({ offDomain: fakeLane(verdict) });
       const posts: string[] = [];
       vi.stubGlobal('fetch', async (url: string) => {
@@ -5364,6 +5381,12 @@ describe('an iMessage effect does not send the reply twice', () => {
       expect(effectDecide).not.toHaveBeenCalled();
       expect(posts).toEqual([]);
       expect(h.transport.bodies()).toEqual([verdict.reply]);
+      // Its own reason, not the bucket for a reply nothing wired a read for.
+      expect(info).toHaveBeenCalledWith({ reason }, 'linq effect: not considered');
+      expect(info).not.toHaveBeenCalledWith(
+        { reason: 'no_decider' },
+        'linq effect: not considered',
+      );
     },
   );
 
@@ -5376,6 +5399,145 @@ describe('an iMessage effect does not send the reply twice', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(effectDecide).toHaveBeenCalledTimes(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  type MarkingPorts = Parameters<typeof crisisMarkingLane>[1];
+
+  /** Production's marking lane over faked model ports. What it marks comes from the
+   * lane's own reading of the text, never from the reply's words. */
+  function markingLane(
+    database: ChannelRouterDeps['database'],
+    over: Pick<MarkingPorts, 'screen'> & Partial<MarkingPorts>,
+    moments: string[],
+  ): OffDomainLane {
+    return crisisMarkingLane(database, {
+      answer: {
+        compose: async () => {
+          throw new Error('not composed on this path');
+        },
+        continueAsk: async () => ({ status: 'unrelated' }),
+      },
+      moment: {
+        write: async (_text, which) => {
+          moments.push(which);
+          return { status: 'written', reply: 'a written safety reply' };
+        },
+      },
+      today: async () => '2026-10-20',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical text');
+        },
+      },
+      recordUnmetIntent: async () => 'recorded',
+      ...over,
+    });
+  }
+
+  const GENERAL_READING = {
+    lane: 'off_domain_general',
+    category: 'other',
+    fallback: null,
+    language: 'en',
+  } as const;
+
+  it.each([
+    [
+      'the screen read a child hurt, ill or in danger',
+      {
+        screen: {
+          read: async () => ({
+            lane: 'safety_critical',
+            category: 'child-safety',
+            fallback: null,
+            language: 'en',
+          }),
+        },
+      },
+    ],
+    [
+      'the compose read a question about the world as a child in danger',
+      {
+        screen: { read: async () => GENERAL_READING },
+        answer: {
+          compose: async () => ({ status: 'safety', kind: 'child-safety' }),
+          continueAsk: async () => ({ status: 'unrelated' }),
+        },
+      },
+    ],
+    [
+      'the reply to an open question read as a child who is ill',
+      {
+        screen: { read: async () => GENERAL_READING },
+        answer: {
+          compose: async () => {
+            throw new Error('the open question is answered, not a new one');
+          },
+          continueAsk: async () => ({ status: 'safety', kind: 'medical-symptom' }),
+        },
+        pendingAsk: async () => ({
+          status: 'open',
+          ask: { question: 'the weather tomorrow', missing: 'city' },
+        }),
+      },
+    ],
+  ] satisfies Array<[string, Pick<MarkingPorts, 'screen'> & Partial<MarkingPorts>]>)(
+    'never asks for an effect on a safety reply: %s',
+    async (_name, ports) => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      const info = vi.spyOn(console, 'info');
+      const h = effectTurn();
+      const moments: string[] = [];
+      h.deps.offDomain = markingLane(h.deps.database, ports, moments);
+      const posts: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        const path = new URL(url).pathname;
+        if (path.endsWith('/messages')) posts.push(path);
+        return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      // The lane wrote a child-health moment, and that alone kept the effect read away.
+      expect(moments).toEqual(['child_health']);
+      expect(effectDecide).not.toHaveBeenCalled();
+      expect(posts).toEqual([]);
+      expect(h.transport.bodies()).toEqual(['a written safety reply']);
+      expect(info).toHaveBeenCalledWith({ reason: 'safety_reply' }, 'linq effect: not considered');
+    },
+  );
+
+  it('asks for an effect on an answer the same marking lane composed (positive control)', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const h = effectTurn();
+    const moments: string[] = [];
+    h.deps.offDomain = markingLane(
+      h.deps.database,
+      {
+        screen: { read: async () => GENERAL_READING },
+        answer: {
+          compose: async () => ({ status: 'composed', reply: 'Sunny all weekend.' }),
+          continueAsk: async () => ({ status: 'unrelated' }),
+        },
+      },
+      moments,
+    );
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith('/messages')) posts.push(path);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(moments).toEqual([]);
+    expect(effectDecide).toHaveBeenCalledTimes(1);
+    expect(posts).toHaveLength(1);
     expect(h.transport.sent).toEqual([]);
   });
 
@@ -5394,14 +5556,19 @@ describe('an iMessage effect does not send the reply twice', () => {
       },
     };
     const h = effectTurn({ coach });
-    vi.stubGlobal('fetch', async () =>
-      Response.json({ message: { id: 'effect-out' } }, { status: 201 }),
-    );
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.example.test/ops');
+    const called: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      called.push(url);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
 
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('agent_replied');
     expect(h.transport.sent).toEqual([]);
+    // A delivered effect pages nobody (the unknown delivery above does).
+    expect(called).not.toContain('https://hooks.example.test/ops');
     const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
     expect(out).toEqual([
       expect.objectContaining({

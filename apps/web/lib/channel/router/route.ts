@@ -59,6 +59,7 @@ import {
 import {
   LINQ_EFFECT_DELIVERY_UNKNOWN,
   LINQ_EFFECT_TEMPLATE_KEY,
+  type LinqEffectWithheld,
   sharedLinqEffectDecider,
 } from '~/lib/channel/linq/effect';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -150,6 +151,7 @@ import {
 import {
   failurePageCrisisPager,
   noteCrisisReplySent,
+  pageOps,
   reportTurnFailures,
 } from '~/lib/monitoring/failure-page';
 import {
@@ -1253,7 +1255,7 @@ async function routeChannelMessageInner(
     onSent?: () => Promise<unknown>,
     threadSource: schema.MessageSource | null = null,
     voiceMemo = false,
-    crisisReply = false,
+    safetyReply = false,
   ) =>
     sendReply(deps, {
       route,
@@ -1276,15 +1278,18 @@ async function routeChannelMessageInner(
         audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
         parentAttachments: (context.media ?? []).map((part) => part.kind),
       },
-      // A crisis reply or a medical answer never carries an effect, so the read is never
-      // asked: the lane's own facts about the reply decide, not its words.
+      // A medical answer or a safety reply (a crisis among them) never carries an effect,
+      // so the read is never asked: the lane's own facts about the reply decide, not its
+      // words.
       effectRead:
-        medicalSource === null && !crisisReply
-          ? {
-              // A chat Linq did not say is 1:1 might be a group, so it is read as one.
-              audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
-            }
-          : undefined,
+        medicalSource !== null
+          ? { withheld: 'medical_reply' }
+          : safetyReply
+            ? { withheld: 'safety_reply' }
+            : {
+                // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+                audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
+              },
     });
 
   const answerAsker = async (
@@ -1763,7 +1768,7 @@ async function routeChannelMessageInner(
           : undefined,
         null,
         false,
-        verdict.crisisReply === true,
+        verdict.safetyReply === true,
       );
       return done(deps, job, {
         status: 'deflected',
@@ -3332,8 +3337,9 @@ async function sendReply(
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaPart['kind'][];
     };
-    /** What the VIL-473 effect read sees beside the two bodies. Absent: no effect. */
-    effectRead?: { audience: 'direct' | 'group' };
+    /** What the VIL-473 effect read sees beside the two bodies, or why this reply is
+     * withheld from it. Absent: no effect. */
+    effectRead?: { audience: 'direct' | 'group' } | { withheld: LinqEffectWithheld };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -3430,7 +3436,12 @@ async function sendReply(
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
         ...(args.effectRead
-          ? { effect: { decider: sharedLinqEffectDecider(), ...args.effectRead } }
+          ? {
+              effect:
+                'withheld' in args.effectRead
+                  ? args.effectRead
+                  : { decider: sharedLinqEffectDecider(), ...args.effectRead },
+            }
           : {}),
       });
       if (moment.handled === 'effect') {
@@ -3508,7 +3519,7 @@ async function sendReply(
       providerChatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
       // Accepted by the provider, not yet on a phone — the receipt advances it
       // (channel/ledger.ts acceptedStatus, delivery-status.ts). An effect POST nobody saw
-      // Linq take is not "accepted": it stays queued, named, for a reconcile to settle.
+      // Linq take is not "accepted": it stays queued and named, and ops is paged with it.
       ...(effected?.delivery === 'unknown'
         ? { status: 'queued' as const, errorCode: LINQ_EFFECT_DELIVERY_UNKNOWN }
         : { status: acceptedStatus(carriedBy) }),
@@ -3543,6 +3554,15 @@ async function sendReply(
           }
         : {}),
   });
+  if (effected?.delivery === 'unknown') {
+    // Nothing settles this row on its own: no receipt names a message id Hale never saw.
+    const page = await pageOps(deps.database, {
+      site: 'linq_effect_delivery_unknown',
+      facts: {},
+      ref: channelMessageId,
+    });
+    deps.log.warn({ page }, 'channel router: effect reply delivery unknown');
+  }
   noteMessage({
     direction: 'out',
     familyId: args.job.family_id,

@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { strictToolSchema } from '@hale/agent';
 import { schema } from '@hale/db';
@@ -9,11 +10,13 @@ import {
   type LinqEffectDecider,
   type LinqEffectDecision,
   type LinqEffectInput,
+  type LinqEffectReadFailure,
   applyLinqEffect,
   createLinqEffectDecider,
   linqEffectRefusals,
   linqEffectUserMessage,
   linqEffectsEnabled,
+  sharedLinqEffectDecider,
 } from './effect';
 import { considerLinqReply } from './moments';
 import { isLinqMessageEffect } from './transport';
@@ -25,6 +28,17 @@ vi.mock('~/lib/cron/skill', () => ({
     instructions: 'decide',
   }),
 }));
+const budgets = vi.hoisted(() => [] as unknown[]);
+vi.mock('~/lib/pipeline/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/pipeline/client')>();
+  return {
+    ...actual,
+    budgetedAnthropic: (budget: unknown, trace: unknown) => {
+      budgets.push({ budget, trace });
+      return {};
+    },
+  };
+});
 vi.mock('~/lib/channel/outbound-transport', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/lib/channel/outbound-transport')>();
   return { ...actual, sendLinqEffect: vi.fn(actual.sendLinqEffect) };
@@ -48,7 +62,7 @@ const READ: LinqEffectInput = {
 /** A direct chat: the resolver names nobody. */
 const NO_MENTION = async () => undefined;
 
-function decider(decision: LinqEffectDecision | null): LinqEffectDecider & {
+function decider(decision: LinqEffectDecision | LinqEffectReadFailure): LinqEffectDecider & {
   calls: number;
   reads: LinqEffectInput[];
 } {
@@ -174,19 +188,34 @@ describe('VIL-473 Linq message effects', () => {
     ]);
   });
 
-  it("returns the model's decision, and null when the call throws or comes back unusable", async () => {
+  it("returns the model's decision, and names a call that timed out, threw or came back unusable", async () => {
     vi.mocked(forceToolJson).mockResolvedValueOnce({
       value: { effect: { type: 'screen', name: 'confetti' } },
     } as never);
     expect(await createLinqEffectDecider(CLIENT).decide(READ)).toEqual({
       effect: { type: 'screen', name: 'confetti' },
     });
+    vi.mocked(forceToolJson).mockRejectedValueOnce(
+      new Anthropic.APIConnectionTimeoutError({ message: 'Request timed out.' }),
+    );
+    expect(await createLinqEffectDecider(CLIENT).decide(READ)).toEqual({
+      failed: 'model_timeout',
+    });
     vi.mocked(forceToolJson).mockRejectedValueOnce(new Error('boom'));
-    expect(await createLinqEffectDecider(CLIENT).decide(READ)).toBeNull();
+    expect(await createLinqEffectDecider(CLIENT).decide(READ)).toEqual({ failed: 'model_failed' });
     vi.mocked(forceToolJson).mockResolvedValueOnce({
       value: { effect: { type: 'screen', name: 'yay' } },
     } as never);
-    expect(await createLinqEffectDecider(CLIENT).decide(READ)).toBeNull();
+    expect(await createLinqEffectDecider(CLIENT).decide(READ)).toEqual({ failed: 'model_failed' });
+  });
+
+  it('reads on a bounded client: 12 seconds and no retry, so a slow read cannot eat the turn', async () => {
+    budgets.length = 0;
+    vi.mocked(forceToolJson).mockResolvedValueOnce({ value: { effect: null } } as never);
+    await sharedLinqEffectDecider().decide(READ);
+    expect(budgets).toEqual([
+      { budget: { timeout: 12_000, maxRetries: 0 }, trace: { stage: 'reply_intent' } },
+    ]);
   });
 
   it("sends the model's effect with the reply and nothing else", async () => {
@@ -232,7 +261,7 @@ describe('VIL-473 Linq message effects', () => {
     ).toEqual({ status: 'declined' });
     expect(
       await applyLinqEffect({
-        decider: decider(null),
+        decider: decider({ failed: 'model_failed' }),
         chatId: CHAT,
         text: READ.reply,
         replyToMessageId: 'in-1',
@@ -241,6 +270,17 @@ describe('VIL-473 Linq message effects', () => {
         fetch: quiet,
       }),
     ).toEqual({ status: 'not_sent', reason: 'model_failed' });
+    expect(
+      await applyLinqEffect({
+        decider: decider({ failed: 'model_timeout' }),
+        chatId: CHAT,
+        text: READ.reply,
+        replyToMessageId: 'in-1',
+        read: READ,
+        mentionFor: NO_MENTION,
+        fetch: quiet,
+      }),
+    ).toEqual({ status: 'not_sent', reason: 'model_timeout' });
     expect(quiet).not.toHaveBeenCalled();
 
     const refused = await applyLinqEffect({
@@ -312,8 +352,8 @@ describe('VIL-473 Linq message effects', () => {
     expect(missingId).toHaveBeenCalledTimes(1);
   });
 
-  it.each([502, 503, 504])(
-    'names a Linq %i uncertain: the gateway may already have sent it',
+  it.each([500, 501, 502, 503, 504, 507, 599])(
+    'names a Linq %i uncertain: the POST may already have been sent',
     async (httpStatus) => {
       vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
       const upstream = vi.fn(async () =>
@@ -516,7 +556,13 @@ describe('VIL-473 Linq message effects', () => {
 
     const failed = makeFakeDb();
     const quiet = linqFetch();
-    expect(await moment(failed, decider(null), quiet)).toEqual({ handled: false });
+    expect(await moment(failed, decider({ failed: 'model_failed' }), quiet)).toEqual({
+      handled: false,
+    });
+    // A read that timed out falls through to the plain send the same way.
+    expect(await moment(failed, decider({ failed: 'model_timeout' }), quiet)).toEqual({
+      handled: false,
+    });
     expect(quiet).not.toHaveBeenCalled();
     expect(failed.rows(schema.auditLog)).toHaveLength(0);
 

@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import type { Database } from '@hale/db';
@@ -9,7 +10,7 @@ import { sendLinqEffect } from '~/lib/channel/outbound-transport';
 import { assertTurnLive } from '~/lib/channel/router/deadline';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { formatSnapshotLocalNow } from '~/lib/format/datetime';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { LINQ_EFFECT_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqEffectsEnabled } from './config';
 import {
@@ -29,7 +30,8 @@ import {
  * skill reads the parent's message and the reply Hale already wrote, and returns
  * the effect or none. Code never picks an effect and has no fallback one: a
  * failed or unusable read, or a provider that refused the effect, sends the
- * reply as a plain bubble. A send that may already have landed does not.
+ * reply as a plain bubble. A send that may already have landed does not: its row
+ * is named and ops is paged with it (router/route.ts sendReply).
  *
  * Code holds no clock window and no per-chat quota (decision 2026-11-04: the
  * model decides when an effect fits). It hands the model two facts instead:
@@ -42,9 +44,16 @@ export { linqEffectsEnabled };
  * chat's last effect. */
 export const LINQ_EFFECT_TEMPLATE_KEY = 'linq:effect';
 
-/** The error code on an effect reply's row when nobody saw Linq take the POST: the
- * row a reconcile looks for. */
+/** The error code on an effect reply's row when nobody saw Linq take the POST. Nothing
+ * settles it on its own: ops is paged with the row. */
 export const LINQ_EFFECT_DELIVERY_UNKNOWN = 'delivery_unknown';
+
+/**
+ * Why a reply was never offered to the effect read, by the lane's own facts about it:
+ * a medical answer, or a safety moment (someone hurt, ill, in danger or in crisis).
+ * Each is logged by name, apart from a reply nothing wired a read for.
+ */
+export type LinqEffectWithheld = 'medical_reply' | 'safety_reply';
 
 /** Latest effect reply in this chat, from the outbound ledger. */
 export async function lastLinqEffectAt(database: Database, chatId: string): Promise<Date | null> {
@@ -125,9 +134,14 @@ export interface LinqEffectDecision {
   effect: LinqMessageEffect | null;
 }
 
+/** Why the read gave no decision: it ran out of time, or it failed or came back
+ * unusable. The reply goes out plain either way. */
+export interface LinqEffectReadFailure {
+  failed: 'model_timeout' | 'model_failed';
+}
+
 export interface LinqEffectDecider {
-  /** Null: the read failed or came back unusable. The reply goes out plain. */
-  decide(input: LinqEffectInput): Promise<LinqEffectDecision | null>;
+  decide(input: LinqEffectInput): Promise<LinqEffectDecision | LinqEffectReadFailure>;
 }
 
 export const LINQ_EFFECT_TOOL = 'linq_effect';
@@ -228,15 +242,19 @@ export function createLinqEffectDecider(
         const refusals = linqEffectRefusals(decision, input.reply);
         if (refusals.length > 0) {
           console.warn({ refusals }, 'linq effect: reading unusable, reply goes plain');
-          return null;
+          return { failed: 'model_failed' };
         }
         return decision;
       } catch (err) {
+        if (err instanceof Anthropic.APIConnectionTimeoutError) {
+          console.warn({ err: err.name }, 'linq effect: read timed out, reply goes plain');
+          return { failed: 'model_timeout' };
+        }
         console.warn(
           { err: err instanceof Error ? err.name : 'unknown' },
           'linq effect: read failed, reply goes plain',
         );
-        return null;
+        return { failed: 'model_failed' };
       }
     },
   };
@@ -246,7 +264,7 @@ let shared: LinqEffectDecider | null = null;
 
 export function sharedLinqEffectDecider(): LinqEffectDecider {
   shared ??= createLinqEffectDecider(() =>
-    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'reply_intent' }),
+    budgetedAnthropic(LINQ_EFFECT_CLIENT_OPTIONS, { stage: 'reply_intent' }),
   );
   return shared;
 }
@@ -256,8 +274,8 @@ export type LinqEffectOutcome =
   | { status: 'declined' }
   | {
       /**
-       * The POST may already be on the phone: the wait expired, a gateway in
-       * front of Linq answered 502, 503 or 504, or Linq accepted and sent no
+       * The POST may already be on the phone: the wait expired, Linq or a
+       * gateway in front of it answered with a 5xx, or Linq accepted and sent no
        * message id. A second POST would be a second copy of the reply.
        */
       status: 'uncertain';
@@ -266,7 +284,7 @@ export type LinqEffectOutcome =
     }
   | {
       status: 'not_sent';
-      reason: 'model_failed' | 'refused' | 'unreachable' | 'not_configured';
+      reason: LinqEffectReadFailure['failed'] | 'refused' | 'unreachable' | 'not_configured';
       code?: string;
       httpStatus?: number;
     };
@@ -277,9 +295,13 @@ export type LinqEffectOutcome =
  * `network` (see below).
  */
 const AMBIGUOUS_EFFECT_SEND = new Set(['timeout', 'missing_message_id']);
-/** A gateway answered for Linq: the POST may have reached it before the gateway gave
- * up. Read by status, since the body can carry any code. */
-const AMBIGUOUS_EFFECT_HTTP = new Set([502, 503, 504]);
+
+/** Any 5xx: Linq, or a gateway in front of it, failed somewhere after the POST arrived,
+ * and nothing says the message was not sent before it did. Read by status, since the
+ * body can carry any code. */
+function ambiguousEffectHttp(httpStatus: number): boolean {
+  return httpStatus >= 500 && httpStatus <= 599;
+}
 
 /**
  * Ask the model, then send the reply with the effect it chose.
@@ -304,7 +326,7 @@ export async function applyLinqEffect(input: {
   // send, and must not become the plain-text fallback either: the caller sees
   // the deadline and stops.
   assertTurnLive();
-  if (!decision) return { status: 'not_sent', reason: 'model_failed' };
+  if ('failed' in decision) return { status: 'not_sent', reason: decision.failed };
   if (decision.effect === null) return { status: 'declined' };
   const mention = await input.mentionFor();
   assertTurnLive();
@@ -336,7 +358,7 @@ export async function applyLinqEffect(input: {
       console.warn({ code: err.code }, 'linq effect: unreachable, the reply still goes out');
       return { status: 'not_sent', reason: 'unreachable', code: err.code };
     }
-    if (AMBIGUOUS_EFFECT_SEND.has(err.code) || AMBIGUOUS_EFFECT_HTTP.has(err.httpStatus)) {
+    if (AMBIGUOUS_EFFECT_SEND.has(err.code) || ambiguousEffectHttp(err.httpStatus)) {
       console.warn(
         { code: err.code, httpStatus: err.httpStatus },
         'linq effect: delivery uncertain; not sending again',

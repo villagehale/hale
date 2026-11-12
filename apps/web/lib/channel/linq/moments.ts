@@ -12,6 +12,7 @@ import {
 } from './edit';
 import {
   type LinqEffectDecider,
+  type LinqEffectWithheld,
   applyLinqEffect,
   lastLinqEffectAt,
   linqEffectClockFacts,
@@ -40,8 +41,8 @@ export type LinqMoment =
   /**
    * The reply's own words went out, carrying an effect. Nothing is on the ledger yet:
    * the caller writes the reply's receipts exactly as for a plain send, and never sends
-   * the words again. `unknown` is a POST that may have landed (a timeout, a gateway
-   * 502/503/504, no id): its row says so, for a reconcile to settle.
+   * the words again. `unknown` is a POST that may have landed (a timeout, a Linq 5xx,
+   * no id): its row says so, and the caller pages ops with it.
    */
   | { handled: 'effect'; delivery: 'sent'; providerMessageId: string }
   | { handled: 'effect'; delivery: 'unknown'; providerMessageId: null };
@@ -72,17 +73,19 @@ export async function considerLinqReply(
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaKind[];
     };
-    /** What the effect read needs. Absent: no effect is considered, and that is logged
-     * when the flag is on. */
-    effect?: {
-      decider: LinqEffectDecider;
-      audience: 'direct' | 'group';
-      /** Parent-local zone for the wall-clock fact. `undefined` reads the user row;
-       * `null` means none is stored. */
-      timeZone?: string | null;
-      /** Prior effect in this chat. `undefined` reads send history; `null` means none. */
-      lastEffectAt?: Date | null;
-    };
+    /** What the effect read needs, or why this reply is withheld from it. Absent: no
+     * effect is considered. Either is logged by name when the flag is on. */
+    effect?:
+      | {
+          decider: LinqEffectDecider;
+          audience: 'direct' | 'group';
+          /** Parent-local zone for the wall-clock fact. `undefined` reads the user row;
+           * `null` means none is stored. */
+          timeZone?: string | null;
+          /** Prior effect in this chat. `undefined` reads send history; `null` means none. */
+          lastEffectAt?: Date | null;
+        }
+      | { withheld: LinqEffectWithheld };
   },
 ): Promise<LinqMoment> {
   if (args.route.channel !== 'imessage') return { handled: false };
@@ -201,6 +204,10 @@ export async function considerLinqReply(
   }
   if (!args.effect) {
     console.info({ reason: 'no_decider' }, 'linq effect: not considered');
+    return { handled: false };
+  }
+  if ('withheld' in args.effect) {
+    console.info({ reason: args.effect.withheld }, 'linq effect: not considered');
     return { handled: false };
   }
   const timeZone =
