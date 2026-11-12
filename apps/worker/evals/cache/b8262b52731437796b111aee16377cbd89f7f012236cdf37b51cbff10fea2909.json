@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada is registered and that the card was charged, but run.confirmed is false and the watchFor requires only the charge to be mentioned, with no claim of registration. It states the child is registered, which violates the rule to say registered only when confirmed. It also omits that the parent must check the open browser, so it is a low score.",
+    "score": 1
+  }
+}

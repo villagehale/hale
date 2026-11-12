@@ -16,6 +16,7 @@ import {
   type PlanCharged,
   type PlanEngineDetail,
   type PlanEngineOutcome,
+  PlanEngineThrew,
   type PlanPaymentInput,
   type PlanResumeToken,
 } from '../browser-use/plan-engine';
@@ -257,6 +258,24 @@ async function runOnePlan(
   // Once a paying checkpoint stands, a payment run may exist: an engine that throws after it
   // cannot say nothing was charged.
   let paymentMayExist = held?.phase === 'paying';
+  // The checkout review is never meant to pay. A charge Hale cannot rule out while no payment
+  // run may exist came from it: it placed the order, its answer was never read, or the engine
+  // threw once it had started. A human looks at that one.
+  const pageIfReviewMayHavePlaced = async (charged: PlanCharged, detail: PlanRunDetail) => {
+    if (charged !== 'unknown' || paymentMayExist) return;
+    const page = await pageOps(database, {
+      site:
+        detail === 'review_placed_order'
+          ? 'registration_review_placed_order'
+          : 'registration_review_unread',
+      facts: {},
+      ref: plan.offerId,
+    });
+    console.warn(
+      { offerId: plan.offerId, detail, page },
+      'signup plans: the checkout review may have placed the order',
+    );
+  };
   const end = async (
     result: Omit<PlanOutcomeNotice, 'offerId' | 'familyId' | 'parentUserId'> & {
       costUsd?: string | null;
@@ -358,13 +377,16 @@ async function runOnePlan(
         'signup plans: browser use engine threw',
       );
       const ids = err instanceof BrowserUseEngineThrew ? err : null;
+      const reviewStarted = err instanceof PlanEngineThrew && err.reviewStarted;
+      const charged = paymentMayExist || reviewStarted ? 'unknown' : 'nothing';
+      await pageIfReviewMayHavePlaced(charged, 'engine_threw');
       return end({
         outcome: 'error',
         detail: 'engine_threw',
         choiceIndex: null,
         cartTotalCents: null,
         amountChargedCents: null,
-        charged: paymentMayExist ? 'unknown' : 'nothing',
+        charged,
         confirmationNumber: null,
         liveViewUrl: null,
         holdExpiresAt: null,
@@ -386,17 +408,7 @@ async function runOnePlan(
     if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
       return parkAndTell(database, plan, result, now, host, deps);
     }
-    if (result.detail === 'review_placed_order') {
-      const page = await pageOps(database, {
-        site: 'registration_review_placed_order',
-        facts: {},
-        ref: plan.offerId,
-      });
-      console.warn(
-        { offerId: plan.offerId, page },
-        'signup plans: the checkout review says it placed the order',
-      );
-    }
+    await pageIfReviewMayHavePlaced(result.charged, result.detail);
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
     return end({
       outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,

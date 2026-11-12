@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly offers the plan for Ada with opens time, sessions and prices from the facts, asks one question (which sessions, in order), never says Hale pays, and does not claim a spot. It includes the alsoQueueing note as requested. Minor issue: the two-sentence limit and one-ask rule are met; the queue note is a second sentence but allowed by watchFor. Tone is plain and warm. Score high.",
+    "score": 5
+  }
+}

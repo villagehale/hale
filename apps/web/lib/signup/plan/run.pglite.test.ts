@@ -3,15 +3,17 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { OPS_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
-import type {
-  BrowserUsePlanCheckpoint,
-  BrowserUsePlanInput,
-  BrowserUsePlanResult,
-  PlanPayingToken,
-  PlanPaymentInput,
-  PlanResumeToken,
+import {
+  type BrowserUsePlanCheckpoint,
+  type BrowserUsePlanInput,
+  type BrowserUsePlanResult,
+  PlanEngineThrew,
+  type PlanPayingToken,
+  type PlanPaymentInput,
+  type PlanResumeToken,
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import {
@@ -1199,9 +1201,13 @@ describe('a payment already under way when a later sweep picks the plan up', () 
 });
 
 describe('what the parent is told was charged', () => {
+  const LIVE_VIEW = 'https://live.browser-use.com/s/fixture-live-view-token';
   const threw = (): never => {
     throw new Error('engine fell over');
   };
+  /** #ops pages once per site per hour: each paging case starts a fresh window. */
+  const freshPageWindow = () =>
+    db.database.delete(schema.rateLimits).where(eq(schema.rateLimits.route, OPS_PAGE_ROUTE));
 
   it('a paid run carries its cents; a hand-back before the engine carries nothing', async () => {
     const paid = await plannedFamily();
@@ -1249,7 +1255,9 @@ describe('what the parent is told was charged', () => {
     });
   });
 
-  it('a payment an earlier sweep started, read by an engine that throws: unknown', async () => {
+  it('a payment an earlier sweep started, read by an engine that throws: unknown, and no review page', async () => {
+    await freshPageWindow();
+    const posted = stubOpsSlack();
     const family = await payingFamily();
     const { runner } = settling(PAID);
     runner.settlePayment.mockImplementation(async () => threw());
@@ -1259,6 +1267,64 @@ describe('what the parent is told was charged', () => {
       detail: 'engine_threw',
       charged: 'unknown',
     });
+    // A payment run is meant to charge: its unknown is the parent's to check, not a review page.
+    expect(posted).toEqual([]);
+  });
+
+  it('a review whose answer was never read pages #ops and tells the parent the charge is unknown', async () => {
+    await freshPageWindow();
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async () => ({
+        ...PAID,
+        outcome: 'needs_human' as const,
+        detail: 'run_failed' as const,
+        liveViewUrl: LIVE_VIEW,
+        confirmationNumber: null,
+        amountChargedCents: null,
+        sessionCostUsd: null,
+        charged: 'unknown' as const,
+      })),
+    };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'run_failed',
+      charged: 'unknown',
+      liveViewUrl: LIVE_VIEW,
+    });
+    expect(posted).toEqual([
+      `Hale: ops page. site registration_review_unread. ref ${family.offerId}.`,
+    ]);
+  });
+
+  it('an engine that throws once the review started may have charged: unknown, and pages #ops', async () => {
+    await freshPageWindow();
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (): Promise<never> => {
+        throw new PlanEngineThrew(new TypeError('fetch failed'), {
+          runId: 'run-2',
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          sessionCostUsd: null,
+          reviewStarted: true,
+        });
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'unknown',
+    });
+    expect(posted).toEqual([
+      `Hale: ops page. site registration_review_unread. ref ${family.offerId}.`,
+    ]);
   });
 });
 

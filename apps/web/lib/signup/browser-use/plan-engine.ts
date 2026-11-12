@@ -196,6 +196,23 @@ export interface BrowserUsePlanResult extends Omit<BrowserUseSignupResult, 'outc
   charged: PlanCharged;
 }
 
+interface PlanTracker extends BrowserTracker {
+  /** Set before the checkout review run is created: from then on it may have placed the order. */
+  reviewStarted: boolean;
+}
+
+/** The plan engine threw. `reviewStarted`: the checkout review may have placed the order. */
+export class PlanEngineThrew extends BrowserUseEngineThrew {
+  readonly reviewStarted: boolean;
+  constructor(
+    cause: unknown,
+    ids: ConstructorParameters<typeof BrowserUseEngineThrew>[1] & { reviewStarted: boolean },
+  ) {
+    super(cause, ids);
+    this.reviewStarted = ids.reviewStarted;
+  }
+}
+
 /** Only the slots on the consent grant. Every choice label is a `session` slot. */
 export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
   const first = input.choices[0];
@@ -256,12 +273,13 @@ export function settleBrowserUsePlanPayment(
 async function tracked(
   resume: PlanResumeToken | null,
   deps: BrowserUseEngineDeps,
-  drive: (tracker: BrowserTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
+  drive: (tracker: PlanTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  const tracker: BrowserTracker = {
+  const tracker: PlanTracker = {
     browserId: resume?.browserId ?? null,
     runId: resume?.runId ?? null,
     sessionId: resume?.sessionId ?? null,
+    reviewStarted: false,
   };
   let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
   try {
@@ -272,11 +290,12 @@ async function tracked(
       browserId: tracker.browserId,
       sessionId,
     }).catch(() => null);
-    throw new BrowserUseEngineThrew(error, {
+    throw new PlanEngineThrew(error, {
       runId: tracker.runId ?? null,
       sessionId,
       browserId: tracker.browserId,
       sessionCostUsd,
+      reviewStarted: tracker.reviewStarted,
     });
   }
   // The browser holds the family's place in line until a later sweep picks it up.
@@ -296,7 +315,7 @@ export async function releasePlanRun(
 async function drivePlan(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
-  tracker: BrowserTracker,
+  tracker: PlanTracker,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   if (input.resume?.phase === 'paying') return resumePayment(input, deps, tracker, input.resume);
   let runId: string | null = input.resume?.runId ?? null;
@@ -407,6 +426,7 @@ async function drivePlan(
     if (!input.paymentEnabled) return { ...checkout, detail: 'payment_off' };
     if (!ids.sessionId) return checkout;
 
+    tracker.reviewStarted = true;
     const review = await reviewCheckout(input, deps, tracker, ids.sessionId);
     const reviewed: BrowserUsePlanResult = {
       ...checkout,
@@ -430,10 +450,11 @@ async function drivePlan(
       ok: final.ok,
     });
     if (!final.ok) {
-      // A charge may exist: the browser stays on what the provider now shows, so it can be
+      // Only a review answer that was read can rule out a placed order. Placed, or never read,
+      // a charge may exist: the browser stays on what the provider now shows, so it can be
       // checked, and the payment row records an amount not known.
-      if (final.detail === 'review_placed_order') {
-        return reportPayment(input, { ...reviewed, detail: 'review_placed_order' });
+      if (review.kind === 'unread' || final.detail === 'review_placed_order') {
+        return reportPayment(input, { ...reviewed, detail: final.detail });
       }
       return {
         ...reviewed,
@@ -650,8 +671,8 @@ async function resumePayment(
 
 /**
  * The one door for a result where a charge may exist: every payment run's end, a payment
- * whose run id was never stored, and a review that placed the order. It writes the payment
- * row and says what was charged.
+ * whose run id was never stored, and a review that placed the order or was never read. It
+ * writes the payment row and says what was charged.
  */
 async function reportPayment(
   input: Pick<BrowserUsePlanInput, 'onStep'>,

@@ -130,6 +130,26 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       'Says Ada is registered for Preschool Swim Sun 10:00 and $98 was charged. No promise of anything further.',
   },
   {
+    // The payment run read $98 charged but no confirmation: never "registered".
+    id: 'finished-unconfirmed-charged-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'unconfirmed',
+        amountChargedCents: 9800,
+        charged: { cents: 9800 },
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `Says $98 was charged for Sunday 10:00 but Hale could not confirm the registration went through; the parent checks the browser Hale left open at the link that follows. Never says it failed and never says it worked. ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
     id: 'finished-security-code',
     facts: {
       ...BASE,
@@ -290,6 +310,25 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
     watchFor: `Says the site placed the order while Hale was checking the final total; nothing is confirmed; the parent checks the browser Hale left open at the link that follows, and any email from the site, before paying again. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
   },
   {
+    // The checkout review's answer was never read, so it may have placed the order.
+    id: 'finished-review-unread-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'run_failed',
+        charged: 'unknown',
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `Says Hale could not finish at checkout for Sunday 10:00; the parent checks the browser Hale left open at the link that follows. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
     id: 'finished-placed-order-zh',
     facts: {
       ...BASE,
@@ -367,8 +406,18 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
   },
 ];
 
-/** Texts that break the spec. Every one must be caught (code gate or judge). */
+/**
+ * Calibration texts. Every one that `breaks` the spec must be caught (code gate or judge);
+ * one marked `expect: 'pass'` follows it and must pass.
+ */
 export const SIGNUP_PLAN_REPLY_BROKEN = [
+  {
+    id: 'offer-fr-two-places',
+    fixtureId: 'offer-fr',
+    expect: 'pass',
+    text: 'Les inscriptions de natation préscolaire pour Ada ouvrent le mardi 1er décembre à 19 h : samedi 9 h ou dimanche 10 h, 98 $ chacune. Tu veux lesquelles, dans quel ordre ? Si tu fais aussi la file de ton côté, la famille aura deux places dans la file.',
+    allows: 'the two-places note, which alsoQueueing allows',
+  },
   {
     id: 'offer-three-asks',
     fixtureId: 'offer-en',
@@ -416,6 +465,12 @@ export const SIGNUP_PLAN_REPLY_BROKEN = [
     fixtureId: 'finished-placed-order-en',
     text: 'The site went ahead and placed the order, so your card was charged. Check the open browser for the receipt.',
     breaks: 'says the card was charged when nobody knows',
+  },
+  {
+    id: 'unconfirmed-says-registered',
+    fixtureId: 'finished-unconfirmed-charged-en',
+    text: "Done! Ada's registered for Sunday 10:00 swim and $98 went on your card.",
+    breaks: 'says registered when no confirmation was read',
   },
   {
     id: 'unread-says-charged',

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text asks three questions at once (which session first, the maximum, and the waiver), violating the one-ask-at-a-time rule. It otherwise uses facts correctly: opens Tue Dec 1 at 7pm, sessions match, no invented price or registered claim.",
-    "score": 2
-  }
-}

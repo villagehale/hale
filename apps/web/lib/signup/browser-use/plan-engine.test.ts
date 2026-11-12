@@ -5,6 +5,7 @@ import type { BrowserUseEngineDeps } from './engine';
 import {
   type BrowserUsePlanInput,
   type PlanEngineStep,
+  PlanEngineThrew,
   type PlanPayingToken,
   type PlanResumeToken,
   planFacts,
@@ -66,6 +67,8 @@ type Outputs = {
   plan: Record<string, unknown>;
   review?: Record<string, unknown>;
   payment?: Record<string, unknown>;
+  /** The review run ends with no answer: its run fails, Browser Use answers 500, or the network drops. */
+  reviewBreaks?: 'run_failed' | 'api_error' | 'network';
 };
 
 /** `runningUntil`: a run reports `running` until the clock reaches that time (a long queue). */
@@ -92,8 +95,11 @@ function fakeFetch(
       return Response.json({ id: `run-${runs}`, sessionId: 'bu-session-1' });
     }
     const run = /^\/runs\/(run-\d)/.exec(path)?.[1];
+    const review = run !== undefined && skillOf.get(run) === '# skill browser-use-checkout-review';
     if (run && path.endsWith('/status')) {
       const busy = clock.runningUntil?.[run];
+      if (review && outputs.reviewBreaks === 'run_failed')
+        return Response.json({ status: 'failed' });
       return Response.json({
         status: busy !== undefined && clock.now() < busy ? 'running' : 'completed',
       });
@@ -111,6 +117,8 @@ function fakeFetch(
       });
     }
     if (run && path.endsWith('/cancel')) return Response.json({ id: run, status: 'cancelled' });
+    if (review && outputs.reviewBreaks === 'api_error') return new Response('{}', { status: 500 });
+    if (review && outputs.reviewBreaks === 'network') throw new TypeError('fetch failed');
     if (run) {
       const skill = skillOf.get(run);
       const output =
@@ -635,7 +643,7 @@ describe('the final total, read before the saved card is charged', () => {
     expect(cancels(log).map((r) => r.path)).toEqual(['/runs/run-2/cancel']);
     expect(skills(log)).toEqual(PLAN_AND_REVIEW);
     expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
-    expect(steps.at(-1)).toMatchObject({
+    expect(steps.at(-2)).toMatchObject({
       step: 'final_total',
       finalTotalCents: null,
       detail: 'timeout',
@@ -785,6 +793,71 @@ describe('what the run charged, as the engine itself knows it', () => {
       deps,
     );
     expect(result).toMatchObject({ detail: 'unconfirmed', charged: 'unknown' });
+  });
+
+  // The review is told never to place the order, yet once its run exists only an answer read
+  // in full can rule a charge out: one never read is `unknown`, with a payment row of unknown
+  // amount and the browser left on what the provider now shows.
+  it.each([
+    ['a review whose run failed', { reviewBreaks: 'run_failed' }, 'run_failed'],
+    [
+      'a review whose answer cannot be read',
+      { review: { outcome: 'ready_to_place' } },
+      'unreadable_output',
+    ],
+    ['a review Browser Use will not report', { reviewBreaks: 'api_error' }, 'api_error'],
+  ] as const)('%s may have placed the order: unknown', async (_name, outputs, detail) => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID, ...outputs });
+    const { input, steps, checkpoints } = plan();
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail,
+      charged: 'unknown',
+      amountChargedCents: null,
+      liveViewUrl: LIVE,
+    });
+    expect(skills(log)).toEqual(PLAN_AND_REVIEW);
+    expect(checkpoints.map((c) => c.phase)).not.toContain('paying');
+    expect(browserStops(log)).toEqual([]);
+    expect(steps.at(-1)).toEqual({
+      step: 'payment',
+      outcome: 'needs_human',
+      detail,
+      amountChargedCents: null,
+      confirmed: false,
+    });
+  });
+
+  it('a review cancelled at its deadline may have placed the order: unknown', async () => {
+    const { deps } = setup(
+      { plan: CHECKOUT, payment: PAID },
+      { 'run-2': NOW.getTime() + 24 * 60 * MIN },
+    );
+    const { input, steps } = plan({ waitUntil: new Date(NOW.getTime() + 10 * MIN) });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({ detail: 'timeout', charged: 'unknown', liveViewUrl: LIVE });
+    expect(steps.at(-1)).toMatchObject({ step: 'payment', detail: 'timeout', confirmed: false });
+  });
+
+  it('a throw once the review is under way says so; a throw before it does not', async () => {
+    const during = setup({ plan: CHECKOUT, payment: PAID, reviewBreaks: 'network' });
+    const thrown = await runBrowserUsePlanSignup(plan().input, during.deps).catch((e) => e);
+    expect(thrown).toBeInstanceOf(PlanEngineThrew);
+    expect(thrown.reviewStarted).toBe(true);
+
+    const before = setup({ plan: CHECKOUT, payment: PAID });
+    const capDown = plan({
+      checkSpendingCap: async () => {
+        throw new Error('cap store down');
+      },
+    });
+    const early = await runBrowserUsePlanSignup(capDown.input, before.deps).catch((e) => e);
+    expect(early).toBeInstanceOf(PlanEngineThrew);
+    expect(early.reviewStarted).toBe(false);
+    expect(skills(before.log)).toEqual(['# skill browser-use-plan-signup']);
   });
 });
 

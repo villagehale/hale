@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly offers the plan, asks only one question (which session first), and makes no registration or spot claims. However it asks a second question (max price) and a third (waiver) in the same text, violating the one-ask rule. It also omits the alsoQueueing note, which the watchFor says the text may include but does not require. Multiple asks in one text is a low-scoring violation.",
+    "score": 2
+  }
+}
