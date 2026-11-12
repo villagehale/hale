@@ -1196,6 +1196,9 @@ function channelContext(fixture, compact, severed = false) {
     // them over. Empty for every fixture that is not about one, which is also the
     // production shape for a family outside the covered set.
     registrationWindows: fixture.registrationWindows ?? [],
+    // VIL-679: texts the parent sent back to back, answered as one turn — the runtime adds
+    // this only on a burst, so every other fixture keeps the context it was recorded with.
+    ...(fixture.arrivedTogether ? { arrivedTogether: fixture.arrivedTogether } : {}),
   };
 }
 
@@ -1620,6 +1623,13 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
   // the model composed.
   for (const tool of expect.mustNotCall ?? []) {
     if (toolNames.has(tool)) failures.push(`called ${tool} with nothing to call it on`);
+  }
+  // VIL-679: a corrected figure must not reach a tool either.
+  const toolInputs = JSON.stringify([calls, auditLog.map((entry) => entry.after ?? null)]);
+  for (const token of expect.toolInputsMustNotSay ?? []) {
+    if (new RegExp(`\\b${token}\\b`).test(toolInputs)) {
+      failures.push(`a tool input says ${JSON.stringify(token)}, which the parent corrected`);
+    }
   }
   if (expect.turnOffWithin) {
     const stray = calls
@@ -2237,6 +2247,9 @@ async function main() {
               // `undefined`, not `null`, on every turn without one — JSON.stringify
               // drops undefined, so every judge verdict already committed stays valid.
               home: fixture.judgeHome === undefined ? undefined : fixture.judgeHome,
+              // VIL-679: the last N user rows arrived back to back and are one turn.
+              // `undefined` off the burst fixtures, so every committed verdict's key stays.
+              arrivedTogether: fixture.arrivedTogether,
               nearbyCountAppended:
                 fixture.nearby &&
                 nearbyCountWasAppended(

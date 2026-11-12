@@ -1369,6 +1369,38 @@ export const COACH_CHANNEL_FIXTURES = [
       mustMention: ['harbour'],
     },
   },
+  // VIL-679 · back-to-back texts read as one turn (router/burst.ts). Production threads
+  // each text as its own user row before the coach runs and joins their words as the
+  // question, with `arrivedTogether` in the context. These fixtures carry that shape.
+  {
+    id: 'burst-correction-budget',
+    text: '$600 budget for a fall program for Ada\n$900',
+    transcript: [
+      { role: 'user', content: '$600 budget for a fall program for Ada' },
+      { role: 'user', content: '$900' },
+    ],
+    arrivedTogether: 2,
+    note: 'VIL-679. Two texts a second apart, answered as one turn: the second corrects the budget in the first. The reply and every tool input work within $900; the stale $600 appears nowhere.',
+    expect: {
+      mustNotDraft: true,
+      forbidden: ['600'],
+      toolInputsMustNotSay: ['600'],
+    },
+  },
+  {
+    id: 'burst-wait-then-ask',
+    text: 'wait, two more coming\nis swim on thursday',
+    transcript: [
+      { role: 'user', content: 'wait, two more coming' },
+      { role: 'user', content: 'is swim on thursday' },
+    ],
+    arrivedTogether: 2,
+    note: 'VIL-679. An announcement and the one ask that came with it, answered as one turn. The reply answers the swim question from the week and says nothing about the wait.',
+    expect: {
+      mustCall: ['lookup_week'],
+      mustNotDraft: true,
+    },
+  },
 ];
 
 /**
