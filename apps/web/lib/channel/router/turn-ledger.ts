@@ -115,7 +115,10 @@ export type TurnFailureReason =
   | 'notice_unsent'
   /** VIL-581 · the claim reader could not read the composed reply, and neither a drafts
    * receipt nor an apology could be written. Nothing was texted; the turn is claimed. */
-  | 'claim_read_failed';
+  | 'claim_read_failed'
+  /** A text about a sign-up ask could not be marked before its send, so nothing was sent
+   * (signup/store.ts askStamp). The turn is claimed: the coach's writes landed. */
+  | 'ask_order_unmarked';
 
 /**
  * What became of an ANSWERED claim. 'already_answered' means another attempt's claim

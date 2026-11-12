@@ -1,7 +1,22 @@
+import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import {
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  fakeNoOpenQuestions,
+  fakeRadar,
+  fakeSilentAnswerComposer,
+} from '~/lib/channel/intake/fakes';
+import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import type { OptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import { SCRIPTED_STOP_CONFIRMATION } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
+import { type ChannelTransport, FakeTransport } from '~/lib/channel/intake/transport';
+import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { FakeReplyTransport, type ReplySent } from '~/lib/channel/router/reply-route';
@@ -110,7 +125,7 @@ async function household(): Promise<Household> {
  * The minute sweep with its production deliver, over a carrier that records what reached this
  * household, in order: each text by the site it is about, and the login link as `link`.
  */
-function sweep(f: Household, wire: string[]): PlanPrepDeps {
+function sweep(f: Household, wire: string[], options: { afterTaken?: Error } = {}): PlanPrepDeps {
   const transport: ChannelTransport = {
     async send(input) {
       if (input.to === f.phone) {
@@ -118,6 +133,7 @@ function sweep(f: Household, wire: string[]): PlanPrepDeps {
           input.body.includes('/l/') ? 'link' : (input.body.split(' at ')[1] ?? input.body),
         );
       }
+      if (options.afterTaken) throw options.afterTaken;
       return { providerMessageId: `sweep-${f.familyId}-${wire.length}` };
     },
   };
@@ -358,7 +374,7 @@ describe('a bare answer moves the ask whose text reached the parent last', () =>
 });
 
 describe('an offer whose text never reached the parent', () => {
-  it('takes no bare yes: the yes goes to the ask whose text they last got', async () => {
+  it('takes no bare yes, and nor does the older ask: a failed send may still have reached them', async () => {
     const f = await household();
     await parentTexts(f, 'can you sign Ada up for swim', minutes(-60), {
       coachOffer: offering(f, SWIM),
@@ -378,10 +394,12 @@ describe('an offer whose text never reached the parent', () => {
     const kickersId = await offerIdFor(f, KICKERS);
     expect((await offerRow(kickersId)).status).toBe('pending');
 
-    await parentTexts(f, 'yes', minutes(-30), {
+    // The carrier's error does not prove the text never left, so the yes binds nothing.
+    const bare = await parentTexts(f, 'yes', minutes(-30), {
       planReader: readerBy({ 'Little Kickers': APPROVE, 'Preschool Swim': APPROVE }),
     });
-    expect((await offerRow(swimId)).status).toBe('planned');
+    expect(bare.handler).not.toBe('authorized_signup');
+    expect((await offerRow(swimId)).status).toBe('pending');
     expect((await offerRow(kickersId)).status).toBe('pending');
     vi.restoreAllMocks();
   });
@@ -565,5 +583,374 @@ describe('a text that went whose ask number could not be kept', () => {
     });
     expect((await offerRow(kickersId)).status).toBe('planned');
     expect((await offerRow(swimId)).status).toBe('pending');
+  });
+});
+
+/** Every write to the parent's order-uncertain row fails, from now until `marksWork`. */
+async function failMarks() {
+  await db.database.execute(sql`create or replace function ask_order_test_fail_mark() returns trigger as $$
+    begin
+      raise exception 'ask-order.pglite.test: the order-uncertain write fails';
+    end $$ language plpgsql`);
+  await db.database.execute(
+    sql`create trigger ask_order_test_fail_mark before insert or update or delete on authorized_signup_ask_order_uncertain for each row execute function ask_order_test_fail_mark()`,
+  );
+}
+async function marksWork() {
+  await db.database.execute(
+    sql`drop trigger if exists ask_order_test_fail_mark on authorized_signup_ask_order_uncertain`,
+  );
+}
+
+describe('a text whose carrier call failed after the carrier may have taken it', () => {
+  afterEach(async () => {
+    await marksWork();
+    await db.database.execute(
+      sql`drop trigger if exists ask_order_test_fail_stamp on authorized_signup_offers`,
+    );
+    vi.restoreAllMocks();
+  });
+
+  it('a coach offer whose call timed out after Linq took it: the bare yes moves no ask', async () => {
+    const f = await household();
+    await parentTexts(f, 'can you sign Ada up for swim', minutes(-60), {
+      coachOffer: offering(f, SWIM),
+    });
+    const swimId = await offerIdFor(f, SWIM);
+    const wire: string[] = [];
+    const timedOut = new FakeReplyTransport();
+    timedOut.send = async (input) => {
+      wire.push(input.body);
+      throw new LinqSendError('timeout', 0, false);
+    };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await parentTexts(f, 'and kickers on saturdays', minutes(-40), {
+      transport: timedOut,
+      planReader: readerBy({ 'Preschool Swim': UNRELATED }),
+      coachOffer: offering(f, KICKERS),
+    }).catch(() => undefined);
+    // The parent may well have the Kickers offer.
+    expect(wire[0]).toBe('Want me to sign Ada up for Little Kickers?');
+    const kickersId = await offerIdFor(f, KICKERS);
+
+    const bare = await parentTexts(f, 'yes', minutes(-30), {
+      planReader: readerBy({ 'Little Kickers': APPROVE, 'Preschool Swim': APPROVE }),
+    });
+    expect(bare.handler).not.toBe('authorized_signup');
+    expect((await offerRow(swimId)).status).toBe('pending');
+    expect((await offerRow(kickersId)).status).toBe('pending');
+  });
+
+  it('notices whose calls came back 2xx with no message id: the bare no takes nothing back', async () => {
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+    const wire: string[] = [];
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await runDueSignupPlanPrep(
+      db.database,
+      { now: NOW },
+      sweep(f, wire, { afterTaken: new LinqSendError('missing_message_id', 201, false) }),
+    );
+    expect(wire.length).toBeGreaterThan(0);
+
+    await parentTexts(f, 'no', minutes(1), {
+      planReader: readerBy({ 'Little Kickers': TAKE_BACK, 'Preschool Swim': TAKE_BACK }),
+    });
+    for (const offerId of [swimId, kickersId]) {
+      const row = await offerRow(offerId);
+      expect(row.status).toBe('planned');
+      expect(row.planCancelRequestedAt).toBeNull();
+    }
+  });
+
+  it('a coach offer that went, whose keep and every write after it failed: the bare yes moves no ask', async () => {
+    const f = await household();
+    await parentTexts(f, 'can you sign Ada up for swim', minutes(-60), {
+      coachOffer: offering(f, SWIM),
+    });
+    const swimId = await offerIdFor(f, SWIM);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeReplyTransport();
+    const send = transport.send.bind(transport);
+    transport.send = async (input): Promise<ReplySent> => {
+      const sent = await send(input);
+      // Linq took it. From here every write about its number fails.
+      await db.database.execute(sql`create or replace function ask_order_test_fail_stamp() returns trigger as $$
+        begin
+          if new.activity_key = 'kickers-sat' and new.last_asked_seq is distinct from old.last_asked_seq then
+            raise exception 'ask-order.pglite.test: the stamp fails';
+          end if;
+          return new;
+        end $$ language plpgsql`);
+      await db.database.execute(
+        sql`create trigger ask_order_test_fail_stamp before update on authorized_signup_offers for each row execute function ask_order_test_fail_stamp()`,
+      );
+      await failMarks();
+      return sent;
+    };
+    await parentTexts(f, 'and kickers on saturdays', minutes(-40), {
+      transport,
+      planReader: readerBy({ 'Preschool Swim': UNRELATED }),
+      coachOffer: offering(f, KICKERS),
+    });
+    await db.database.execute(
+      sql`drop trigger ask_order_test_fail_stamp on authorized_signup_offers`,
+    );
+    await marksWork();
+    expect(transport.bodies()).toEqual(['Want me to sign Ada up for Little Kickers?']);
+    const kickersId = await offerIdFor(f, KICKERS);
+
+    const bare = await parentTexts(f, 'yes', minutes(-30), {
+      planReader: readerBy({ 'Little Kickers': APPROVE, 'Preschool Swim': APPROVE }),
+    });
+    expect(bare.handler).not.toBe('authorized_signup');
+    expect((await offerRow(swimId)).status).toBe('pending');
+    expect((await offerRow(kickersId)).status).toBe('pending');
+  });
+});
+
+describe('a text about an ask whose mark cannot be written before its send', () => {
+  afterEach(async () => {
+    await marksWork();
+    vi.restoreAllMocks();
+  });
+
+  it('a coach offer: nothing is sent, no apology either, and the turn is closed as failed', async () => {
+    const f = await household();
+    await parentTexts(f, 'can you sign Ada up for swim', minutes(-60), {
+      coachOffer: offering(f, SWIM),
+    });
+    const swimId = await offerIdFor(f, SWIM);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await failMarks();
+    const transport = new FakeReplyTransport();
+    const result = await parentTexts(f, 'and kickers on saturdays', minutes(-40), {
+      transport,
+      planReader: readerBy({ 'Preschool Swim': UNRELATED }),
+      coachOffer: offering(f, KICKERS),
+    });
+    await marksWork();
+    expect(transport.bodies()).toEqual([]);
+    expect(result.status).toBe('agent_failed');
+    const failed = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, f.familyId),
+          eq(schema.auditLog.actionTaken, 'sms_turn_failed'),
+        ),
+      );
+    expect(failed.map((row) => row.after)).toEqual([
+      { lane: 'coach', reason: 'ask_order_unmarked' },
+    ]);
+    const kickersId = await offerIdFor(f, KICKERS);
+    expect((await offerRow(kickersId)).lastAskedSeq).toBeNull();
+
+    // Nothing went, so the order on file is still right: the bare yes is Swim's.
+    await parentTexts(f, 'yes', minutes(-30), {
+      planReader: readerBy({ 'Little Kickers': APPROVE, 'Preschool Swim': APPROVE }),
+    });
+    expect((await offerRow(swimId)).status).toBe('planned');
+    expect((await offerRow(kickersId)).status).toBe('pending');
+  });
+
+  it('a sweep notice: nothing is sent', async () => {
+    const f = await household();
+    await twoApprovedPlans(f);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await failMarks();
+    const wire: string[] = [];
+    await runDueSignupPlanPrep(db.database, { now: NOW }, sweep(f, wire));
+    await marksWork();
+    expect(wire).toEqual([]);
+  });
+});
+
+/**
+ * A parent's text through the door it really comes in by: Linq's signed webhook, the intake
+ * machine (its opt-out read is the shared reader, the scripted one in tests: vitest.setup.ts;
+ * the model's own read of these words is the opt-out-read eval), then every turn the door
+ * hands off, run through the router.
+ */
+describe('a bare stop from a parent with a planned sign-up', () => {
+  const LINQ_KEY = Buffer.alloc(32, 9);
+  beforeEach(() => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${LINQ_KEY.toString('base64')}`);
+    vi.stubGlobal('fetch', async () => new Response(null, { status: 204 }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function webhook(f: Household, text: string, at: Date): Request {
+    const messageId = `in-${f.familyId.slice(-8)}-${at.getTime()}`;
+    const ts = String(Math.floor(at.getTime() / 1000));
+    const body = JSON.stringify({
+      api_version: 'v3',
+      webhook_version: '2026-02-03',
+      event_type: 'message.received',
+      event_id: `evt-${messageId}`,
+      created_at: at.toISOString(),
+      data: {
+        chat: { id: `chat-${f.familyId.slice(-8)}`, is_group: false },
+        id: messageId,
+        direction: 'inbound',
+        sender_handle: { handle: f.phone, is_me: false, service: 'iMessage' },
+        parts: [{ type: 'text', value: text }],
+        sent_at: at.toISOString(),
+        service: 'iMessage',
+      },
+    });
+    const mac = createHmac('sha256', LINQ_KEY)
+      .update(`evt-${messageId}.${ts}.${body}`)
+      .digest('base64');
+    return new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'webhook-id': `evt-${messageId}`,
+        'webhook-timestamp': ts,
+        'webhook-signature': `v1,${mac}`,
+      },
+      body,
+    });
+  }
+
+  async function textsTheDoor(
+    f: Household,
+    text: string,
+    at: Date,
+    options: { planReader: PlanReader; optOutReader?: OptOutReader },
+  ) {
+    const jobs: ChannelMessageReceivedJob[] = [];
+    const intakeTransport = new FakeTransport();
+    const intake: IntakeDeps = {
+      transport: intakeTransport,
+      threadMessage: async () => 'conv-1',
+      extractor: new FakeExtractor([{ children: [], postalCode: null }]),
+      intentReader: new FakeIntentReader([]),
+      radar: fakeRadar,
+      answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
+      identityAsk: new FakeIdentityAsk(),
+      limiter: new FakeRateLimiter(() => at.getTime()),
+      now: at,
+      ...(options.optOutReader ? { optOutReader: options.optOutReader } : {}),
+    };
+    const door = {
+      database: db.database,
+      intake: () => intake,
+      enqueue: async (queued: ChannelMessageReceivedJob) => {
+        jobs.push(queued);
+      },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      now: () => at,
+      markRead: async () => ({ status: 'accepted' as const }),
+      sendGroupText: async () => ({ providerMessageId: 'unused' }),
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
+    const response = await handleLinqInboundRequest(webhook(f, text, at), door);
+    const routerSaid: string[] = [];
+    for (const job of jobs) {
+      const transport = new FakeReplyTransport();
+      await routeChannelMessage(deps(at, { transport, planReader: options.planReader }), job);
+      routerSaid.push(...transport.bodies());
+    }
+    return {
+      outcome: ((await response.json()) as { outcome?: string }).outcome,
+      handedOff: jobs.length,
+      confirmed: intakeTransport.bodies(),
+      routerSaid,
+    };
+  }
+
+  async function revokedAt(f: Household) {
+    const [row] = await db.database
+      .select({ revokedAt: schema.parentChannels.revokedAt })
+      .from(schema.parentChannels)
+      .where(eq(schema.parentChannels.userId, f.parentUserId));
+    return row?.revokedAt ?? null;
+  }
+
+  async function cancelAudits(f: Household) {
+    const rows = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, f.familyId),
+          eq(schema.auditLog.actionTaken, 'authorized_signup_step'),
+        ),
+      );
+    return rows.filter((row) => JSON.stringify(row.after).includes('plan_cancel'));
+  }
+
+  // The plan reader would take either plan back on these words, so only the order the door
+  // runs things in keeps them.
+  const takesBack = readerBy({ 'Little Kickers': TAKE_BACK, 'Preschool Swim': TAKE_BACK });
+
+  it.each(['stop', 'STOP', 'unsubscribe', 'Arrête'])(
+    '%s is the opt-out, read at the door: no turn reaches the router and both plans stand',
+    async (word) => {
+      const f = await household();
+      const { swimId, kickersId } = await twoApprovedPlans(f);
+
+      const turn = await textsTheDoor(f, word, minutes(1), { planReader: takesBack });
+
+      expect(turn.handedOff).toBe(0);
+      expect(turn.routerSaid).toEqual([]);
+      expect(await revokedAt(f)).not.toBeNull();
+      // The reply is the opt-out's own confirmation, never a word about a plan.
+      expect(turn.confirmed).toEqual([SCRIPTED_STOP_CONFIRMATION]);
+      for (const offerId of [swimId, kickersId]) {
+        const row = await offerRow(offerId);
+        expect(row.status).toBe('planned');
+        expect(row.planCancelRequestedAt).toBeNull();
+      }
+      expect(await cancelAudits(f)).toEqual([]);
+    },
+  );
+
+  it('a stop the opt-out read could not read holds the number and takes no plan back', async () => {
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Words no earlier test read, so no cached read of them stands in for this one.
+    const turn = await textsTheDoor(f, 'STOP!!', minutes(1), {
+      planReader: takesBack,
+      optOutReader: { read: async () => null },
+    });
+
+    // The door could not tell, so the turn goes on to the router, held as a possible stop.
+    expect(turn.handedOff).toBe(1);
+    const held = await db.database.select().from(schema.optOutHeldMessages);
+    expect(held).toHaveLength(1);
+    for (const offerId of [swimId, kickersId]) {
+      const row = await offerRow(offerId);
+      expect(row.status).toBe('planned');
+      expect(row.planCancelRequestedAt).toBeNull();
+    }
+    expect(await cancelAudits(f)).toEqual([]);
+    expect(turn.routerSaid).not.toContain('reply for cancelled');
+    await db.database.delete(schema.optOutHeldMessages);
+  });
+
+  it('positive control: a bare no through the same door reaches the router and takes the newest plan back', async () => {
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+
+    const turn = await textsTheDoor(f, 'no', minutes(1), { planReader: takesBack });
+
+    expect(turn.handedOff).toBe(1);
+    expect(await revokedAt(f)).toBeNull();
+    expect(turn.confirmed).toEqual([]);
+    expect((await offerRow(kickersId)).status).toBe('handed_back');
+    expect((await offerRow(swimId)).status).toBe('planned');
+    expect(await cancelAudits(f)).toHaveLength(1);
   });
 });

@@ -9109,6 +9109,41 @@ describe('several bubbles through the production ledger and database', () => {
       expect(await turn.seq(turn.ids.kickers)).not.toBeNull();
     });
 
+    it('sends a set of bubbles that carries it as texts, never as a voice memo the model chose', async () => {
+      const turn = await offerTurn(async () => {}, { voiceMemo: true });
+      expect(turn.voiced).toEqual([]);
+      expect(turn.said).toEqual(['Kickers opens Dec 8 at 7.', OFFER]);
+      expect(await turn.seq(turn.ids.kickers)).not.toBeNull();
+    });
+
+    it('never offers it to a tapback, an edit, a sticker or an effect', async () => {
+      vi.stubEnv('LINQ_API_KEY', 'test-key');
+      vi.stubEnv('VERCEL_ENV', 'preview');
+      vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+      vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+      vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+      effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+      stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: false });
+      const posted: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        posted.push(new URL(url).pathname);
+        return Response.json({ message: { id: 'linq-out' } }, { status: 201 });
+      });
+      try {
+        const turn = await offerTurn(async () => {}, { reply: OFFER });
+        expect(effectDecide).not.toHaveBeenCalled();
+        expect(stickerDecide).not.toHaveBeenCalled();
+        // The typing bubble only: no reaction, no edit, no effect send.
+        expect(posted.filter((path) => !path.endsWith('/typing'))).toEqual([]);
+        expect(turn.said).toEqual([OFFER]);
+        expect(await turn.seq(turn.ids.kickers)).not.toBeNull();
+      } finally {
+        effectDecide.mockReset();
+        stickerDecide.mockReset();
+        vi.unstubAllGlobals();
+      }
+    });
+
     it('leaves it unstamped when the set stops before the bubble that carries its text', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const turn = await offerTurn(async (index) => {

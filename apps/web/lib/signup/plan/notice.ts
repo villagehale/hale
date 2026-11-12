@@ -13,7 +13,7 @@ import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
-import { askStamp } from '../store';
+import { AskOrderUnmarked, type AskedAbout, type SendStamp, askStamp } from '../store';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
@@ -158,11 +158,12 @@ async function deliverDirect(
     console.warn({ offerId: notice.offerId, code }, 'signup plans: notice failed');
     return 'failed';
   };
-  const keep = await askStamp(database, {
+  const keep = await markSend(database, {
     familyId: notice.familyId,
     parentUserId: notice.parentUserId,
     offerIds: [notice.offerId],
-  })();
+  });
+  if (keep instanceof AskOrderUnmarked) return failed(keep.message);
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
     delivered = await deliverFamilyOutbound(database, {
@@ -365,11 +366,12 @@ async function sendPrepText(
     );
     return null;
   };
-  const keep = await askStamp(database, {
+  const keep = await markSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     offerIds: [input.offerId],
-  })();
+  });
+  if (keep instanceof AskOrderUnmarked) return failed(keep.message);
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
     delivered = await deliverFamilyOutbound(database, {
@@ -399,6 +401,22 @@ async function sendPrepText(
     })
     .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
   return { channel: delivered.channel, chatId: delivered.chatId };
+}
+
+/**
+ * Marks a notice's send about its ask before the transport call (`askStamp`). A send that
+ * could not be marked is not made: its named failure comes back in place of the keep.
+ */
+async function markSend(
+  database: Database,
+  asks: AskedAbout,
+): Promise<Awaited<ReturnType<SendStamp>> | AskOrderUnmarked> {
+  try {
+    return await askStamp(database, asks)();
+  } catch (err) {
+    if (err instanceof AskOrderUnmarked) return err;
+    throw err;
+  }
 }
 
 /** Login-ask, account-prep and 30-minute reminder on the same minute cron. */

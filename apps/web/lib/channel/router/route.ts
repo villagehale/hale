@@ -166,7 +166,7 @@ import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
-import { type SendStamp, askStamp } from '~/lib/signup/store';
+import { AskOrderUnmarked, type SendStamp, askStamp } from '~/lib/signup/store';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type InboundBurst, mergeBurstContext } from './burst';
 import {
@@ -410,10 +410,10 @@ export type HandlerVerdict =
       afterSend?: (channelMessageId: string) => Promise<unknown>;
       /**
        * The reply is a text about a sign-up ask (signup/store.ts askStamp). It brackets the
-       * transport call of the first bubble: run right before it, and what it returns once
-       * the transport accepted it. Such a reply goes as plain text, never replaced by a
-       * voice memo, tapback, edit, sticker or effect, so the bracket holds the one call
-       * that carries its words.
+       * transport call of the first bubble: run right before it (a send it could not mark
+       * is not made), and what it returns once the transport accepted it. Such a reply goes
+       * as plain text, never replaced by a voice memo, tapback, edit, sticker or effect, so
+       * the bracket holds the one call that carries its words.
        */
       stamp?: SendStamp;
       /**
@@ -2870,7 +2870,7 @@ async function runAgentTurn(
       // parent a question, and a question that is not written down is the defect VIL-304
       // exists to close.
       await disposition.afterSend?.(channelMessageId);
-    } else if (err instanceof ClaimReadFailed) {
+    } else if (err instanceof ClaimReadFailed || err instanceof AskOrderUnmarked) {
       // Nothing was sent, and the coach's writes landed: claim the turn so a redelivery
       // reads `answered` and never reruns it (#973's rule).
       await args.claimSilent?.();
@@ -3381,6 +3381,19 @@ async function disposeOfFailedTurn(
     };
   }
 
+  // A text about a sign-up ask could not be marked before its send, so it was not sent
+  // (signup/store.ts askStamp). Nothing stands in for it: an apology would be a text the
+  // parent did not ask for, and a deferral would rerun the coach and repeat its tool writes.
+  // The turn is claimed (the caller) and #ops is paged.
+  if (err instanceof AskOrderUnmarked) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'ask_order_unmarked',
+      log: { askOrderUnmarked: true },
+    };
+  }
+
   // VIL-581 · the claim reader failed AFTER the coach ran and its tool writes landed. A
   // deferral would re-drive the turn and repeat them, so this turn is never deferred:
   // the drafts receipt, else the composed apology, else nothing — and the turn is
@@ -3704,7 +3717,10 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
   return channelMessageId;
 }
 
-/** The plain transport call, bracketed by the text's sign-up stamp when it has one. */
+/**
+ * The plain transport call, bracketed by the text's sign-up stamp when it has one: a stamp
+ * that cannot mark the send throws before the call, so nothing goes.
+ */
 async function sendStamped(
   deps: ChannelRouterDeps,
   args: { route: ReplyRoute; body: string; sendKey?: string; stamp?: SendStamp },

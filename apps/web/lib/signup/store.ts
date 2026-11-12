@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { pageOps } from '~/lib/monitoring/failure-page';
 import { redactSignupAudit } from './audit';
 import { signupProviderHost } from './consent';
@@ -197,23 +197,43 @@ export interface AskedAbout {
   offerIds: readonly string[];
 }
 
-/** What keeping a send's ask number came to. Everything but `stamped` is logged by name. */
-export type AskStampOutcome = 'stamped' | 'ask_order_uncertain' | 'ask_order_unmarked';
+/** What keeping a send's ask number came to. `ask_order_uncertain` is logged by name. */
+export type AskStampOutcome = 'stamped' | 'ask_order_uncertain';
+
+/**
+ * The send about a sign-up ask could not be marked before its transport call, so it must not
+ * be made: nothing goes to the parent. Logged and paged as `signup_ask_order_unmarked`.
+ */
+export class AskOrderUnmarked extends Error {
+  constructor(cause: unknown) {
+    super('signup_ask_order_unmarked', { cause });
+    this.name = 'AskOrderUnmarked';
+  }
+}
 
 /**
  * Brackets the one transport call that carries a text about sign-up asks. Run it right
- * before that call; run what it returns once the transport accepted the text, and never
- * when the send failed.
+ * before that call, and send only when it resolved: it throws {@link AskOrderUnmarked} when
+ * the send could not be marked. Run what it returns once the transport accepted the text,
+ * and never when the send failed.
  */
 export type SendStamp = () => Promise<() => Promise<AskStampOutcome>>;
 
 /**
  * The stamp for a text about these asks (the offer, a question back, a notice, a receipt).
- * Before the transport call it draws the next number from `authorized_signup_ask_seq`, so
- * asks rank by when their sends started, never by a clock: a turn and a sweep each carry the
- * time they began, and one sweep texting two asks has one time for both. Once the transport
- * took the text, the number is kept on each ask ({@link keepAskNumber}), so a text that never
- * went cannot take the parent's bare answer.
+ *
+ * Before the transport call, in one transaction, it draws the next number from
+ * `authorized_signup_ask_seq` and marks the parent's order uncertain at that number
+ * (`authorized_signup_ask_order_uncertain`). While the mark stands no bare yes or no binds
+ * any of their asks ({@link loadLastAskedOfferId}). When that write fails the send is not
+ * made. Once the transport took the text, the number is kept on each ask and the mark is
+ * cleared, in one transaction ({@link keepAskNumber}). A send that fails in any way (a
+ * refusal, a timeout after the carrier may have taken the text, a 2xx with no id, a crash)
+ * leaves the mark, so a text the parent may have can never hand their bare answer to an
+ * older ask. The next text about one of their asks that is kept clears it.
+ *
+ * Asks rank by when their sends started, never by a clock: a turn and a sweep each carry the
+ * time they began, and one sweep texting two asks has one time for both.
  *
  * Residual (minor): two sends to one parent whose transport calls overlap rank by which
  * started first, though the carrier may deliver the other first. The window is one carrier
@@ -221,17 +241,47 @@ export type SendStamp = () => Promise<() => Promise<AskStampOutcome>>;
  */
 export function askStamp(database: Database, asks: AskedAbout): SendStamp {
   return async () => {
-    let seq: number | null = null;
-    try {
-      seq = await drawAskNumber(database);
-    } catch (err) {
-      console.error(
-        { outcome: 'signup_ask_number_undrawn', err: err instanceof Error ? err.name : 'unknown' },
-        'signup asks: no ask number before the send',
-      );
-    }
+    const seq = await markAskInFlight(database, asks);
     return () => keepAskNumber(database, asks, seq);
   };
+}
+
+/**
+ * Draws the send's number and marks the parent's order uncertain at it, in one transaction.
+ * The mark only ever rises, so it names the latest send not yet known to be kept. Its
+ * `failures` count starts at 0 and counts keeps that missed ({@link keepMissed}).
+ */
+async function markAskInFlight(database: Database, asks: AskedAbout): Promise<number> {
+  const uncertain = schema.authorizedSignupAskOrderUncertain;
+  try {
+    return await database.transaction(async (rawTx) => {
+      const tx = rawTx as unknown as Database;
+      const seq = await drawAskNumber(tx);
+      await tx
+        .insert(uncertain)
+        .values({
+          familyId: asks.familyId,
+          parentUserId: asks.parentUserId,
+          failedSeq: seq,
+          failures: 0,
+        })
+        .onConflictDoUpdate({
+          target: [uncertain.familyId, uncertain.parentUserId],
+          set: {
+            failedSeq: sql`greatest(${uncertain.failedSeq}, excluded.failed_seq)`,
+            updatedAt: sql`now()`,
+          },
+        });
+      return seq;
+    });
+  } catch (err) {
+    console.error(
+      { outcome: 'signup_ask_order_unmarked', err: err instanceof Error ? err.name : 'unknown' },
+      'signup asks: the send could not be marked - it is not sent',
+    );
+    await pageOps(database, { site: 'signup_ask_order_unmarked', facts: {} });
+    throw new AskOrderUnmarked(err);
+  }
 }
 
 async function drawAskNumber(database: Database): Promise<number> {
@@ -249,109 +299,94 @@ async function drawAskNumber(database: Database): Promise<number> {
 
 /**
  * The text went: keep its number on each ask (never lowering one a later-started send
- * kept), and clear a standing "order uncertain" row older than it, in one transaction.
- * Retried once. When it still fails, or no number was drawn, the order on file is wrong:
- * an older ask would take the bare answer to the text the parent just got. That fails
- * closed ({@link askOrderUncertain}). Never throws: the parent already has the text.
+ * kept) and clear the parent's mark, in one transaction. The mark is cleared only when no
+ * send that started later is still marked (it stands at a higher number then). Retried
+ * once. When it still fails, the mark made before the send holds every bare answer of
+ * theirs until a later number is kept ({@link keepMissed}). Never throws: the parent
+ * already has the text.
  */
 async function keepAskNumber(
   database: Database,
   asks: AskedAbout,
-  seq: number | null,
+  seq: number,
 ): Promise<AskStampOutcome> {
   let failure: unknown = null;
-  if (seq !== null) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        await database.transaction(async (rawTx) => {
-          const tx = rawTx as unknown as Database;
-          const offers = schema.authorizedSignupOffers;
-          const uncertain = schema.authorizedSignupAskOrderUncertain;
-          await tx
-            .update(offers)
-            .set({
-              lastAskedSeq: sql`greatest(${offers.lastAskedSeq}, ${seq}::bigint)`,
-              lastAskedAt: sql`clock_timestamp()`,
-            })
-            .where(
-              and(
-                inArray(offers.id, [...asks.offerIds]),
-                eq(offers.familyId, asks.familyId),
-                eq(offers.parentUserId, asks.parentUserId),
-              ),
-            );
-          await tx
-            .delete(uncertain)
-            .where(
-              and(
-                eq(uncertain.familyId, asks.familyId),
-                eq(uncertain.parentUserId, asks.parentUserId),
-                lt(uncertain.failedSeq, seq),
-              ),
-            );
-        });
-        return 'stamped';
-      } catch (err) {
-        failure = err;
-      }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await database.transaction(async (rawTx) => {
+        const tx = rawTx as unknown as Database;
+        const offers = schema.authorizedSignupOffers;
+        const uncertain = schema.authorizedSignupAskOrderUncertain;
+        await tx
+          .update(offers)
+          .set({
+            lastAskedSeq: sql`greatest(${offers.lastAskedSeq}, ${seq}::bigint)`,
+            lastAskedAt: sql`clock_timestamp()`,
+          })
+          .where(
+            and(
+              inArray(offers.id, [...asks.offerIds]),
+              eq(offers.familyId, asks.familyId),
+              eq(offers.parentUserId, asks.parentUserId),
+            ),
+          );
+        await tx
+          .delete(uncertain)
+          .where(
+            and(
+              eq(uncertain.familyId, asks.familyId),
+              eq(uncertain.parentUserId, asks.parentUserId),
+              lte(uncertain.failedSeq, seq),
+            ),
+          );
+      });
+      return 'stamped';
+    } catch (err) {
+      failure = err;
     }
   }
-  return askOrderUncertain(database, asks, seq, failure);
+  return keepMissed(database, asks, failure);
 }
 
 /**
- * A text about the parent's asks went and its number was not kept. Writes (or bumps) the
- * parent's "order uncertain" row, which holds every bare answer of theirs unbound until a
- * number drawn after this one is kept ({@link loadLastAskedOfferId}). An undrawn number is
- * marked by one drawn now, after the send. A repeat before then pages ops; a row that could
- * not be written pages at once, since nothing then holds their bare answer.
+ * A text about the parent's asks went and its number was not kept. The mark written before
+ * the send already holds their bare answers; this counts the miss on it, and a repeat
+ * before a number is kept pages ops. A count that could not be written leaves the mark as
+ * it was, still holding.
  */
-async function askOrderUncertain(
+async function keepMissed(
   database: Database,
   asks: AskedAbout,
-  seq: number | null,
   failure: unknown,
-): Promise<AskStampOutcome> {
+): Promise<'ask_order_uncertain'> {
   const uncertain = schema.authorizedSignupAskOrderUncertain;
-  const err = failure instanceof Error ? failure.name : seq === null ? 'undrawn' : 'unknown';
-  let failures: number;
+  const err = failure instanceof Error ? failure.name : 'unknown';
+  let failures: number | null = null;
   try {
     const [row] = await database
-      .insert(uncertain)
-      .values({
-        familyId: asks.familyId,
-        parentUserId: asks.parentUserId,
-        failedSeq:
-          seq === null ? sql`nextval(${schema.authorizedSignupAskSeq.seqName}::regclass)` : seq,
-      })
-      .onConflictDoUpdate({
-        target: [uncertain.familyId, uncertain.parentUserId],
-        set: {
-          failedSeq: sql`greatest(${uncertain.failedSeq}, excluded.failed_seq)`,
-          failures: sql`${uncertain.failures} + 1`,
-          updatedAt: sql`now()`,
-        },
-      })
+      .update(uncertain)
+      .set({ failures: sql`${uncertain.failures} + 1`, updatedAt: sql`now()` })
+      .where(
+        and(eq(uncertain.familyId, asks.familyId), eq(uncertain.parentUserId, asks.parentUserId)),
+      )
       .returning({ failures: uncertain.failures });
-    if (!row) throw new Error('signup asks: the order-uncertain row returned nothing');
-    failures = row.failures;
-  } catch (markErr) {
+    failures = row?.failures ?? null;
+  } catch (countErr) {
     console.error(
       {
-        outcome: 'signup_ask_order_unmarked',
-        err,
-        markErr: markErr instanceof Error ? markErr.name : 'unknown',
+        outcome: 'signup_ask_order_miss_uncounted',
+        err: countErr instanceof Error ? countErr.name : 'unknown',
       },
-      'signup asks: a text went, its ask number was not kept, and nothing holds the bare answer',
+      'signup asks: a missed keep was not counted - the mark made before the send still holds',
     );
-    await pageOps(database, { site: 'signup_ask_order_unmarked', facts: {} });
-    return 'ask_order_unmarked';
   }
   console.error(
     { outcome: 'signup_ask_order_uncertain', failures, err },
     'signup asks: a text went and its ask number was not kept - bare answers bind nothing',
   );
-  if (failures > 1) await pageOps(database, { site: 'signup_ask_order_uncertain', facts: {} });
+  if (failures !== null && failures > 1) {
+    await pageOps(database, { site: 'signup_ask_order_uncertain', facts: {} });
+  }
   return 'ask_order_uncertain';
 }
 
@@ -359,8 +394,9 @@ async function askOrderUncertain(
  * The ask whose text reached this parent last, whatever its status now: the offer, or a later
  * question back, notice or receipt about it ({@link AskOrder}). Null when none of Hale's texts
  * about their asks is known to have reached them: an offer whose text never went is not it.
- * Null too while their order is uncertain (a text went whose number was not kept), so no
- * bare answer binds until a later one is. An approved, running or finished ask can be it, so
+ * Null too while their order is marked uncertain (a send about one of their asks is out, or
+ * ended without its number kept: {@link askStamp}), so no bare answer binds until a later
+ * one is kept. An approved, running or finished ask can be it, so
  * a bare yes after its login ask or receipt is never handed to an older ask still waiting on
  * one.
  */

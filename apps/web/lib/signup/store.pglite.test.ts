@@ -1,9 +1,9 @@
 import { schema } from '@hale/db';
-import type { Database } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
+  AskOrderUnmarked,
   askStamp,
   loadLastAskedOfferId,
   loadPendingOffer,
@@ -292,10 +292,22 @@ describe('askStamp: the ask number of a send', () => {
     await db.database.execute(
       sql`drop trigger if exists store_test_fail_stamp on authorized_signup_offers`,
     );
+    await db.database.execute(
+      sql`drop trigger if exists store_test_fail_mark on authorized_signup_ask_order_uncertain`,
+    );
     vi.restoreAllMocks();
   });
 
-  it('ranks asks by when their sends started, and a send that failed keeps nothing', async () => {
+  async function failMarks() {
+    await db.database.execute(sql`create or replace function store_test_fail_mark() returns trigger as $$
+      begin
+        raise exception 'store.pglite.test: the mark fails';
+      end $$ language plpgsql`);
+    await db.database.execute(
+      sql`create trigger store_test_fail_mark before insert or update or delete on authorized_signup_ask_order_uncertain for each row execute function store_test_fail_mark()`,
+    );
+  }
+  it('ranks asks by when their sends started', async () => {
     const { f, gymId, kickersId } = await twoAsks();
     const gymKeep = await askStamp(db.database, about(f, gymId))();
     const kickersKeep = await askStamp(db.database, about(f, kickersId))();
@@ -303,9 +315,36 @@ describe('askStamp: the ask number of a send', () => {
     expect(await kickersKeep()).toBe('stamped');
     expect(await gymKeep()).toBe('stamped');
     expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
+    expect(await uncertainRow(f)).toBeNull();
+  });
 
-    // A later send about Gym that never went is never kept.
-    await askStamp(db.database, about(f, gymId))();
+  it('holds every bare answer while a send is out, and after one whose outcome is unknown', async () => {
+    const { f, gymId, kickersId } = await twoAsks();
+    await (await askStamp(db.database, about(f, gymId))())();
+    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+
+    // The send about Kickers is marked before its transport call. It never reports back
+    // (a timeout after the carrier took the text, a 2xx with no id): its keep never runs.
+    await askStamp(db.database, about(f, kickersId))();
+    expect(await uncertainRow(f)).toMatchObject({ failures: 0 });
+    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await seqOf(kickersId)).toBeNull();
+
+    // The next text about an ask that went clears it.
+    expect(await (await askStamp(db.database, about(f, gymId))())()).toBe('stamped');
+    expect(await uncertainRow(f)).toBeNull();
+    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+  });
+
+  it('a keep clears the mark only when no send that started later is still out', async () => {
+    const { f, gymId, kickersId } = await twoAsks();
+    const gymKeep = await askStamp(db.database, about(f, gymId))();
+    const kickersKeep = await askStamp(db.database, about(f, kickersId))();
+    expect(await gymKeep()).toBe('stamped');
+    expect(await uncertainRow(f)).not.toBeNull();
+    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await kickersKeep()).toBe('stamped');
+    expect(await uncertainRow(f)).toBeNull();
     expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
   });
 
@@ -319,7 +358,7 @@ describe('askStamp: the ask number of a send', () => {
     expect(await seqOf(gymId)).toBe(kept);
   });
 
-  it('fails closed when the number is not kept: no ask is the last asked until a later one is', async () => {
+  it('fails closed when the number is not kept: the mark made before the send holds until a later one is kept', async () => {
     const { f, gymId, kickersId } = await twoAsks();
     await (await askStamp(db.database, about(f, gymId))())();
     expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
@@ -345,7 +384,25 @@ describe('askStamp: the ask number of a send', () => {
     expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
   });
 
-  it('pages ops when the order goes uncertain again before a number is kept', async () => {
+  it('holds when the keep and every write after the send fail: the mark was made before it', async () => {
+    const { f, gymId, kickersId } = await twoAsks();
+    await (await askStamp(db.database, about(f, gymId))())();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const keep = await askStamp(db.database, about(f, kickersId))();
+    // The text went; now the stamp, the clear and the miss count all fail.
+    await failStampsOf(kickersId);
+    await failMarks();
+    expect(await keep()).toBe('ask_order_uncertain');
+    await db.database.execute(sql`drop trigger store_test_fail_stamp on authorized_signup_offers`);
+    await db.database.execute(
+      sql`drop trigger store_test_fail_mark on authorized_signup_ask_order_uncertain`,
+    );
+    expect(await seqOf(kickersId)).toBeNull();
+    expect(await uncertainRow(f)).not.toBeNull();
+    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+  });
+
+  it('pages ops when a keep misses again before a number is kept', async () => {
     const { f, kickersId } = await twoAsks();
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await failStampsOf(kickersId);
@@ -360,22 +417,24 @@ describe('askStamp: the ask number of a send', () => {
     ).toBe(true);
   });
 
-  it('fails closed when no number could be drawn before the send', async () => {
-    const { f, kickersId } = await twoAsks();
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const undrawn = new Proxy(db.database, {
-      get(target, key, receiver) {
-        if (key === 'execute') {
-          return async () => {
-            throw new Error('store.pglite.test: no sequence');
-          };
-        }
-        return Reflect.get(target, key, receiver);
-      },
-    }) as Database;
-    expect(await (await askStamp(undrawn, about(f, kickersId))())()).toBe('ask_order_uncertain');
+  it('refuses the send when the mark cannot be written before it, and the order on file stands', async () => {
+    const { f, gymId, kickersId } = await twoAsks();
+    await (await askStamp(db.database, about(f, gymId))())();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await failMarks();
+    await expect(askStamp(db.database, about(f, kickersId))()).rejects.toBeInstanceOf(
+      AskOrderUnmarked,
+    );
+    await db.database.execute(
+      sql`drop trigger store_test_fail_mark on authorized_signup_ask_order_uncertain`,
+    );
+    expect(await uncertainRow(f)).toBeNull();
     expect(await seqOf(kickersId)).toBeNull();
-    expect(await uncertainRow(f)).toMatchObject({ failures: 1 });
-    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+    expect(
+      errors.mock.calls.some((call) =>
+        String(call[1]).includes('URGENT: signup_ask_order_unmarked'),
+      ),
+    ).toBe(true);
   });
 });

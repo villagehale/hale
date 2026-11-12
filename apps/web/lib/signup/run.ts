@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
@@ -216,6 +217,16 @@ export async function runAuthorizedSignup(
     parentUserId: input.parentUserId,
     now: input.now,
   });
+  // A stop is the opt-out's, read at the door before any turn reaches here. A text of theirs
+  // the opt-out read could not read may be one (opt-out-hold.ts), so until it is read it
+  // moves none of their asks.
+  if (asks.length > 0 && (await isParentHeld(database, input.parentUserId))) {
+    console.warn(
+      { outcome: 'signup_opt_out_unread', asks: asks.length },
+      'signup asks: a text of theirs may be an unread stop - no ask moves',
+    );
+    return { ...UNCLAIMED, outcome: 'opt_out_unread' };
+  }
   for (const ask of asks) {
     const turn =
       ask.lane === 'plan'

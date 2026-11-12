@@ -151,11 +151,13 @@ export type AuthorizedSignupOffer = typeof authorizedSignupOffers.$inferSelect;
 export type NewAuthorizedSignupOffer = typeof authorizedSignupOffers.$inferInsert;
 
 /**
- * A text about one of this parent's sign-up asks went, and its `last_asked_seq` could not be
- * kept: the order on file is wrong. While a row stands, no bare yes or no binds any of the
- * parent's asks. A number kept later, drawn after `failedSeq`, removes it. `failures` counts
- * the misses before that; a repeat pages ops. A number and a count only, never a person,
- * a message body or a link.
+ * Written before every send about one of this parent's sign-up asks, with the number that
+ * send drew (`failedSeq` only rises), and deleted with the keep once the transport took the
+ * text, unless a later send is marked. A send that failed in any way, or whose keep failed,
+ * leaves it: the parent may have that text. While a row stands, no bare yes or no binds any
+ * of the parent's asks. A number kept later, drawn at or after `failedSeq`, removes it.
+ * `failures` counts keeps that missed before that; a repeat pages ops. A number and a count
+ * only, never a person, a message body or a link.
  */
 export const authorizedSignupAskOrderUncertain = pgTable(
   'authorized_signup_ask_order_uncertain',
