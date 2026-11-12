@@ -58,6 +58,14 @@ export interface ChannelMessageReceivedJob {
    * unknown can never be run on the sender's 1:1 thread.
    */
   in_group: boolean | undefined;
+  /**
+   * The door's opt-out read could not read this text, so it may be a stop: the router
+   * moves no sign-up ask on this turn, whether or not the door's hold row was written.
+   * The door always says it, and the row keeps it for a re-drive and for a turn that
+   * reads several texts as one. Absent on a job queued before it existed, which runs as
+   * before (the hold row alone).
+   */
+  opt_out_unread?: boolean;
 }
 
 export interface InboundRouteDeps {
@@ -196,7 +204,7 @@ export async function routeInboundText(
     if (outcome.status === 'rate_limited') return 'rate_limited';
     if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
       await typing.stop();
-      return handOffToConversation(deps, inbound);
+      return handOffToConversation(deps, inbound, outcome.optOutUnread === true);
     }
     if (outcome.status === 'ignored') return 'ignored';
     if (outcome.status === 'first_touch_unsent') {
@@ -291,6 +299,7 @@ function keywordOutcome(
 async function handOffToConversation(
   deps: InboundRouteDeps,
   inbound: InboundMessage,
+  optOutUnread: boolean,
 ): Promise<InboundRouteOutcome> {
   const phoneE164 = normalizePhoneE164(inbound.from);
   if (!phoneE164) return 'invalid_number';
@@ -338,6 +347,8 @@ async function handOffToConversation(
       inGroup: inbound.isGroup ?? null,
       // The service Linq said carried it: only a real iMessage chat takes several bubbles.
       providerService: inbound.service ?? null,
+      // In the one write every hand-off needs, so a re-drive and a burst read it too.
+      optOutUnread,
       sentAt: inbound.receivedAt,
     })
     .onConflictDoNothing({
@@ -377,6 +388,7 @@ async function handOffToConversation(
       // As the door said it, and absent when the door did not say: an unknown is not a
       // 1:1 thread (the router's `group_unknown`).
       in_group: inbound.isGroup,
+      opt_out_unread: optOutUnread,
     });
   } catch (err) {
     // The ids an operator can act on, and nothing the parent typed (rule #1).

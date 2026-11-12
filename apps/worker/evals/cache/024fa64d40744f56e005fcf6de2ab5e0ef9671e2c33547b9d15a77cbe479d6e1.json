@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reason": "Clear go-ahead with ordered sessions, price ceiling and waiver consent",
+    "said": "好的，帮我报周日那个，周六的作为备选",
+    "named": null,
+    "verdict": "approve",
+    "choiceIds": [
+      "sun-1000",
+      "sat-0900"
+    ],
+    "maxPriceCents": 12000,
+    "waiverSaid": "豁免条款可以帮我勾上",
+    "waiverAccepted": true,
+    "question": null
+  },
+  "latencyMs": 1608
+}

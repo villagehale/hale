@@ -16,6 +16,7 @@ import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
+import { AskOrderUnmarked, type AskedAbout, type SendStamp, askStamp } from '../store';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
@@ -160,6 +161,20 @@ async function deliverDirect(
     console.warn({ offerId: notice.offerId, code }, 'signup plans: notice failed');
     return 'failed';
   };
+  const keep = await markSend(database, {
+    familyId: notice.familyId,
+    parentUserId: notice.parentUserId,
+    offerIds: [notice.offerId],
+  });
+  if (keep instanceof AskOrderUnmarked) {
+    // The transport was never called. A failed row under this key would make every later
+    // call answer 'sent' above, so the claim is let go and a later call can send it.
+    await database
+      .delete(messages)
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+    console.warn({ offerId: notice.offerId, code: keep.message }, 'signup plans: notice failed');
+    return 'failed';
+  }
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
     delivered = await deliverFamilyOutbound(database, {
@@ -175,6 +190,7 @@ async function deliverDirect(
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
   if (delivered.status !== 'sent') return failed(delivered.reason);
+  await keep();
   await database
     .update(messages)
     .set({
@@ -200,7 +216,8 @@ async function deliverDirect(
  * sends one whose try failed. The login link goes once through {@link sendLinkOnce}, on the
  * chat the bubble before it used: a Linq link card on iMessage, its own text where a card
  * cannot go. A part that does not go stops the notice as `failed`, and the sweep sends the
- * rest next time.
+ * rest next time. Each text bubble that goes stamps the offer as asked (`askStamp`), so
+ * a notice that partly went still counts, and a bubble a retry skips stamps nothing again.
  *
  * Lit for bubbles (VIL-682 K5), a part that follows one this call sent, in a chat Linq said
  * is iMessage, waits the bubble gap with typing up: the model's bubbles and the card alike.
@@ -392,6 +409,12 @@ async function sendPrepText(
     );
     return null;
   };
+  const keep = await markSend(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    offerIds: [input.offerId],
+  });
+  if (keep instanceof AskOrderUnmarked) return failed(keep.message);
   let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
   try {
     delivered = await pace(
@@ -411,6 +434,9 @@ async function sendPrepText(
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
   if (delivered.status !== 'sent') return failed(delivered.reason);
+  // This bubble reached the parent: the ask is now the one whose text they got last, so
+  // their next bare answer is its, even if a later part of the notice does not go.
+  await keep();
   await database
     .update(messages)
     .set({
@@ -422,6 +448,22 @@ async function sendPrepText(
     })
     .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
   return { channel: delivered.channel, chatId: delivered.chatId };
+}
+
+/**
+ * Marks a notice's send about its ask before the transport call (`askStamp`). A send that
+ * could not be marked is not made: its named failure comes back in place of the keep.
+ */
+async function markSend(
+  database: Database,
+  asks: AskedAbout,
+): Promise<Awaited<ReturnType<SendStamp>> | AskOrderUnmarked> {
+  try {
+    return await askStamp(database, asks)();
+  } catch (err) {
+    if (err instanceof AskOrderUnmarked) return err;
+    throw err;
+  }
 }
 
 /** Login-ask, account-prep and 30-minute reminder on the same minute cron. */

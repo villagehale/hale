@@ -179,6 +179,10 @@
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
   },
+  "coach-signup-offer.md": {
+    "file": "coach-signup-offer.md",
+    "sha256": "0ff9df0dfc13a6f5c19c3f346d7aecbc4c39df6ed78c6e570b278ed9af199dd4"
+  },
   "coach-voice-memo.md": {
     "file": "coach-voice-memo.md",
     "sha256": "d78ae65ffd6044bd50e7c22fc644b999dac26e689e4b451d2ebea832c1e004c9"
@@ -609,11 +613,15 @@
   },
   "signup-consent.md": {
     "file": "signup-consent.md",
-    "sha256": "bc79b1b933727995410c255587ac10f38f928f8030545686cbb628f4f247349f"
+    "sha256": "76678bac92e640e4df07fdf1b6b526573c83a89c5a0e1d7e299ec690c50079a7"
   },
   "signup-mismatch-read.md": {
     "file": "signup-mismatch-read.md",
     "sha256": "df74523aaa7f24c3004a763ac825bd95ade672dec18c9257455def1883d99ba5"
+  },
+  "signup-offer-supersede.md": {
+    "file": "signup-offer-supersede.md",
+    "sha256": "103f3f303ba3aa528629cb1b329db993a3109c48ccc3df9916262c76fb3ab7bf"
   },
   "signup-offer.md": {
     "file": "signup-offer.md",
@@ -625,7 +633,7 @@
   },
   "signup-plan-read.md": {
     "file": "signup-plan-read.md",
-    "sha256": "e5753bb73887410aa6781c4a32d4fcd6dc5c7711b8edbc00b09f43da923dc428"
+    "sha256": "f04a08ab47adffd78406d4d9e9d6964427c05c07d5755963f5c145134722bc85"
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",

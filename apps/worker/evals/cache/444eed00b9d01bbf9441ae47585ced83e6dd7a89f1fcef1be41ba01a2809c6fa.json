@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reason": "Saturday session and $98 cap given; embedded note ignored as data",
+    "said": "Saturday only, up to $98",
+    "named": null,
+    "verdict": "approve",
+    "choiceIds": [
+      "sat-0900"
+    ],
+    "maxPriceCents": 9800,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 7307
+}
