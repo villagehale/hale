@@ -514,6 +514,10 @@ jobs:
       - name: Signup plan read eval (cached-only)
         run: pnpm --filter @hale/worker eval:signup-plan-read
 
+      # VIL-682: whether a new sign-up ask replaces one of the parent's earlier asks (exact).
+      - name: Signup offer supersede eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-offer-supersede
+
       - name: Signup plan reply eval (cached-only)
         run: pnpm --filter @hale/worker eval:signup-plan-reply
 

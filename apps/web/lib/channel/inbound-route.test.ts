@@ -408,6 +408,7 @@ describe('handoff to C1', () => {
         channel_message_id: message?.id,
         provider_message_id: 'SM11111111111111111111111111111111',
         received_at: NOW.toISOString(),
+        opt_out_unread: false,
       },
     ]);
   });
@@ -770,6 +771,7 @@ describe('handoff to C1', () => {
           channel_message_id: message?.id,
           provider_message_id: 'SM11111111111111111111111111111111',
           received_at: NOW.toISOString(),
+          opt_out_unread: false,
         },
       ]);
       expect(h.transport.bodies()).toEqual([]);

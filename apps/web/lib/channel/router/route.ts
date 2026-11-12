@@ -165,6 +165,8 @@ import {
 import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
+import { AskOrderUnmarked, type SendStamp, askStamp } from '~/lib/signup/store';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type InboundBurst, mergeBurstContext } from './burst';
 import {
@@ -403,9 +405,18 @@ export type HandlerVerdict =
        * ledger row is minted or closed against the message that made it true, so a turn
        * that acted and then failed to reply leaves the question standing and the re-drive
        * finds it. Only called when a reply was sent — a handler that answers for itself
-       * owns its own ledger writes.
+       * owns its own ledger writes. With several `replies`, it is called once, with the
+       * first bubble's message, as soon as that one is sent.
        */
       afterSend?: (channelMessageId: string) => Promise<unknown>;
+      /**
+       * The reply is a text about a sign-up ask (signup/store.ts askStamp). It brackets the
+       * transport call of the first bubble: run right before it (a send it could not mark
+       * is not made), and what it returns once the transport accepted it. Such a reply goes
+       * as plain text, never replaced by a voice memo, tapback, edit, sticker or effect, so
+       * the bracket holds the one call that carries its words.
+       */
+      stamp?: SendStamp;
       /**
        * The receipt is for the parent who asked, never the group: on a group turn it goes
        * to their phone, outside the group and its thread, as the over-limit line does.
@@ -1270,6 +1281,11 @@ async function routeChannelMessageInner(
     body: context.body,
     ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
     ...(burst.kind === 'anchor' ? { burstSize: burst.members.length } : {}),
+    // The job says it for its own text; a folded text's row says it for that text.
+    ...(job.opt_out_unread === true ||
+    (burst.kind === 'anchor' && burst.members.some((member) => member.optOutUnread))
+      ? { optOutUnread: true as const }
+      : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
     // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {
@@ -1316,6 +1332,7 @@ async function routeChannelMessageInner(
     threadSource: schema.MessageSource | null = null,
     voiceMemo = false,
     safetyReply = false,
+    stamp?: SendStamp,
   ) =>
     sendReply(deps, {
       route,
@@ -1323,6 +1340,7 @@ async function routeChannelMessageInner(
       job,
       conversationId,
       claim: claimAnswer,
+      stamp,
       medicalSource,
       replySource,
       threadSource,
@@ -1357,6 +1375,7 @@ async function routeChannelMessageInner(
     _medicalSource?: MedicalReplySource | null,
     _replySource?: ReplySource | null,
     templateKey: string | null = null,
+    stamp?: SendStamp,
   ) =>
     sendReply(deps, {
       route: { channel: 'sms', to: route.to },
@@ -1364,6 +1383,7 @@ async function routeChannelMessageInner(
       job,
       conversationId: null,
       templateKey,
+      stamp,
       claim: claimAnswer,
       openAsks: { leaves: null },
       beforeSend: stopTyping,
@@ -1378,6 +1398,7 @@ async function routeChannelMessageInner(
     bubbles: readonly string[],
     threadSource: schema.MessageSource | null,
     voiceMemo: boolean,
+    stamps: readonly (SendStamp | undefined)[] | undefined,
   ) => {
     const whole = bubbles.join(REPLY_BUBBLE_BREAK);
     const folded = await withPassport(whole);
@@ -1389,6 +1410,7 @@ async function routeChannelMessageInner(
       route,
       bodies,
       setKey: `turn-reply:${job.channel_message_id}`,
+      stamps,
       job,
       conversationId,
       claim: claimAnswer,
@@ -1414,7 +1436,21 @@ async function routeChannelMessageInner(
     verdict: Extract<HandlerVerdict, { claimed: true }>,
   ): Promise<'delivered' | 'asker_unreachable'> => {
     if (!(verdict.onlyToAsker && inGroup)) {
-      await deliver(verdict, answer);
+      await deliver(verdict, (body, how) =>
+        answer(
+          body,
+          null,
+          null,
+          how.templateKey,
+          how.groupSync,
+          null,
+          undefined,
+          null,
+          false,
+          false,
+          how.stamp,
+        ),
+      );
       return 'delivered';
     }
     if (verdict.reply !== null) {
@@ -1430,7 +1466,9 @@ async function routeChannelMessageInner(
         return 'asker_unreachable';
       }
     }
-    await deliver(verdict, answerAsker);
+    await deliver(verdict, (body, how) =>
+      answerAsker(body, null, null, how.templateKey, how.stamp),
+    );
     return 'delivered';
   };
 
@@ -1895,7 +1933,7 @@ async function routeChannelMessageInner(
       turn,
       answer: (bubbles, threadSource, how) =>
         bubbles.length > 1
-          ? answerBubbles(bubbles, threadSource, how?.voiceMemo === true)
+          ? answerBubbles(bubbles, threadSource, how?.voiceMemo === true, how?.stamps)
           : answer(
               bubbles[0] as string,
               null,
@@ -1906,6 +1944,8 @@ async function routeChannelMessageInner(
               undefined,
               threadSource,
               how?.voiceMemo === true,
+              false,
+              how?.stamps?.[0],
             ),
       hasAnswered: () => answered,
       claimSilent: claimAnswer,
@@ -2264,16 +2304,15 @@ async function resolveNaturalReply(
  *
  * The two halves are ordered and not optional: {@link HandlerVerdict.afterSend} closes
  * ledger rows against the message that closed them, so it may only run once the transport
- * has accepted one. A handler that answered for itself (`reply: null`) owns both halves.
+ * has accepted one. It runs once the first bubble is accepted, before the rest: from then
+ * on the parent has the receipt, so a later bubble that fails cannot leave it undone. A
+ * handler that answered for itself (`reply: null`) owns both halves.
  */
 async function deliver(
   verdict: Extract<HandlerVerdict, { claimed: true }>,
   answer: (
     body: string,
-    medicalSource?: MedicalReplySource | null,
-    replySource?: ReplySource | null,
-    templateKey?: string | null,
-    groupSync?: GroupActivityDecision,
+    how: { templateKey: string | null; groupSync?: GroupActivityDecision; stamp?: SendStamp },
   ) => Promise<string>,
 ): Promise<void> {
   const bodies =
@@ -2282,18 +2321,15 @@ async function deliver(
       : verdict.reply !== null
         ? [verdict.reply]
         : [];
-  if (bodies.length === 0) return;
-  let channelMessageId = '';
-  for (const body of bodies) {
-    channelMessageId = await answer(
-      body,
-      null,
-      null,
-      verdict.templateKey ?? null,
-      verdict.groupSync,
-    );
+  for (const [index, body] of bodies.entries()) {
+    const channelMessageId = await answer(body, {
+      templateKey: verdict.templateKey ?? null,
+      groupSync: verdict.groupSync,
+      // A sign-up stamp brackets the first bubble's send, as afterSend follows it.
+      ...(index === 0 && verdict.stamp ? { stamp: verdict.stamp } : {}),
+    });
+    if (index === 0) await verdict.afterSend?.(channelMessageId);
   }
-  await verdict.afterSend?.(channelMessageId);
 }
 
 /**
@@ -2367,6 +2403,34 @@ async function recordCoachOfferFromReply(
   }
 }
 
+/**
+ * Each bubble's sign-up stamp: an offer is stamped by the bubble that completes its text, so
+ * its number is drawn right before that bubble's transport call and kept once it was
+ * accepted. A set that stops before that bubble leaves the offer unstamped, and an offer
+ * whose text none of the bubbles carries is never stamped.
+ */
+function signupStamps(
+  deps: ChannelRouterDeps,
+  turn: { familyId: string; parentUserId: string },
+  offers: readonly RecordedSignupOffer[],
+  bubbles: readonly string[],
+): (SendStamp | undefined)[] {
+  return bubbles.map((_bubble, index) => {
+    const through = bubbles.slice(0, index + 1).join(REPLY_BUBBLE_BREAK);
+    const before = bubbles.slice(0, index).join(REPLY_BUBBLE_BREAK);
+    const offerIds = offers
+      .filter((offer) => through.includes(offer.text.trim()) && !before.includes(offer.text.trim()))
+      .map((offer) => offer.offerId);
+    return offerIds.length > 0
+      ? askStamp(deps.database, {
+          familyId: turn.familyId,
+          parentUserId: turn.parentUserId,
+          offerIds,
+        })
+      : undefined;
+  });
+}
+
 async function runAgentTurn(
   deps: ChannelRouterDeps,
   args: {
@@ -2379,12 +2443,13 @@ async function runAgentTurn(
      * `threadSource` marks the thread row the answer lands in (VIL-616).
      * `voiceMemo` (VIL-495): the model chose to say it; the send gates decide whether it
      * goes as a memo or as this same text. Several `bubbles` are one answer sent as
-     * several messages, and the id handed back is the LAST bubble's.
+     * several messages, and the id handed back is the LAST bubble's. `stamps` are each
+     * bubble's sign-up stamp, by index (see {@link HandlerVerdict.stamp}).
      */
     answer: (
       bubbles: readonly string[],
       threadSource: schema.MessageSource | null,
-      how?: { voiceMemo: true },
+      how?: { voiceMemo?: true; stamps?: readonly (SendStamp | undefined)[] },
     ) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
@@ -2443,6 +2508,7 @@ async function runAgentTurn(
       enforced,
       emailRead,
       capabilityNotes,
+      signupOffers,
       singleBubble,
     } = await composeReconciledReply(deps, args, view);
     // VIL-616: a reply written after reading an email may repeat the sender's words, so
@@ -2546,8 +2612,12 @@ async function runAgentTurn(
       }
     };
     // A card turn stays text: the card rides beside the words (VIL-495 Design lock).
+    const stamps = signupStamps(deps, args.turn, signupOffers ?? [], bubbles);
     const channelMessageId = await args
-      .answer(bubbles, threadSource, voiceMemo === true && !card ? { voiceMemo: true } : undefined)
+      .answer(bubbles, threadSource, {
+        ...(voiceMemo === true && !card ? { voiceMemo: true as const } : {}),
+        ...(stamps.some((stamp) => stamp !== undefined) ? { stamps } : {}),
+      })
       .catch(async (err: unknown) => {
         if (err instanceof ReplySetIncomplete) {
           if (err.lastSentId !== null) await keepWhatTheAnswerOwes(err.lastSentId);
@@ -2818,7 +2888,7 @@ async function runAgentTurn(
       // parent a question, and a question that is not written down is the defect VIL-304
       // exists to close.
       await disposition.afterSend?.(channelMessageId);
-    } else if (err instanceof ClaimReadFailed) {
+    } else if (err instanceof ClaimReadFailed || err instanceof AskOrderUnmarked) {
       // Nothing was sent, and the coach's writes landed: claim the turn so a redelivery
       // reads `answered` and never reruns it (#973's rule).
       await args.claimSilent?.();
@@ -3139,6 +3209,7 @@ async function composeReconciledReply(
         const unsaid = {
           spotWatch: null,
           capabilityNotes: null,
+          signupOffers: [],
           ...(enforced ? { activityPromise: null, planOffer: null } : {}),
           mints: [],
           attempts,
@@ -3191,6 +3262,10 @@ async function composeReconciledReply(
     regexKinds.has('activity_followup');
   const offerSurvived =
     !enforced || composed.planOffer === null || reply.includes(composed.planOffer.sentence.trim());
+  // A sign-up offer is stamped as asked only while the text it was sent with survived the cut.
+  const signupOffers = (composed.signupOffers ?? []).filter((offer) =>
+    reply.includes(offer.text.trim()),
+  );
   // VIL-303: a cut reply may have lost the sentence a note rides on, and nothing names
   // which sentence that was, so neither note is written. A no left unrecorded owes no
   // correction; a correction left unrecorded is offered again on a later text.
@@ -3198,6 +3273,9 @@ async function composeReconciledReply(
     ackSurvived ? null : ('ack_cut' as const),
     promiseSurvived ? null : ('promise_cut' as const),
     offerSurvived ? null : ('offer_cut' as const),
+    signupOffers.length === (composed.signupOffers ?? []).length
+      ? null
+      : ('signup_offer_cut' as const),
     composed.capabilityNotes ? ('capability_notes_cut' as const) : null,
   ].filter((drop) => drop !== null);
   for (const reason of drops) {
@@ -3213,6 +3291,7 @@ async function composeReconciledReply(
     spotWatch: ackSurvived ? armingAck : null,
     activityPromise: promiseSurvived ? composed.activityPromise : null,
     planOffer: offerSurvived ? composed.planOffer : null,
+    signupOffers,
     capabilityNotes: null,
     mints: enforced
       ? survivingMints(refusedVerdict, enforced.read, enforced.judged, reply)
@@ -3317,6 +3396,19 @@ async function disposeOfFailedTurn(
       reply: null,
       reason: 'notice_unsent',
       log: { gmailDraftNoticeUnsent: true },
+    };
+  }
+
+  // A text about a sign-up ask could not be marked before its send, so it was not sent
+  // (signup/store.ts askStamp). Nothing stands in for it: an apology would be a text the
+  // parent did not ask for, and a deferral would rerun the coach and repeat its tool writes.
+  // The turn is claimed (the caller) and #ops is paged.
+  if (err instanceof AskOrderUnmarked) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'ask_order_unmarked',
+      log: { askOrderUnmarked: true },
     };
   }
 
@@ -3502,6 +3594,9 @@ type SendReplyArgs = {
   /** What the VIL-473 effect read sees beside the two bodies, or why this reply is
    * withheld from it. Absent: no effect. */
   effectRead?: { audience: 'direct' | 'group' } | { withheld: LinqEffectWithheld };
+  /** The text is about sign-up asks ({@link HandlerVerdict.stamp}): it goes plain, and the
+   * stamp brackets its transport call. */
+  stamp?: SendStamp;
 };
 
 async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<string> {
@@ -3529,7 +3624,9 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
     }
     if (left) throw new ChatLeftError();
   }
-  const voiced = await voiceMemoFor(deps, args);
+  // A text about a sign-up ask goes as its own words, so its stamp brackets the one call.
+  const plain = args.stamp !== undefined;
+  const voiced = plain ? null : await voiceMemoFor(deps, args);
   // VIL-473: the reply's own words, already sent with an iMessage effect. Like a voice
   // memo, it is this reply's send: the receipts below are written for it exactly as for
   // a text, and the text is never sent beside it.
@@ -3539,7 +3636,7 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
     channel: 'imessage';
     chatId: string;
   } | null = null;
-  if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+  if (!plain && !voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     let edit:
       | {
           decider: ReturnType<typeof sharedLinqEditDecider>;
@@ -3621,8 +3718,7 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
     // throw away the claim either.
     if (!effected) assertTurnLive();
   }
-  const sent =
-    voiced ?? effected ?? (await deps.transport.send({ route: args.route, body: args.body }));
+  const sent = voiced ?? effected ?? (await sendStamped(deps, args));
   await claimAnswerQuietly(deps, args);
   if (args.onSent) await args.onSent();
   await mirrorActivityDecision(deps, args);
@@ -3637,6 +3733,24 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
 
   await settleOpenAsks(channelMessageId);
   return channelMessageId;
+}
+
+/**
+ * The plain transport call, bracketed by the text's sign-up stamp when it has one: a stamp
+ * that cannot mark the send throws before the call, so nothing goes.
+ */
+async function sendStamped(
+  deps: ChannelRouterDeps,
+  args: { route: ReplyRoute; body: string; sendKey?: string; stamp?: SendStamp },
+): Promise<ReplySent> {
+  const keep = args.stamp ? await args.stamp() : null;
+  const sent = await deps.transport.send({
+    route: args.route,
+    body: args.body,
+    ...(args.sendKey ? { sendKey: args.sendKey } : {}),
+  });
+  if (keep) await keep();
+  return sent;
 }
 
 /**
@@ -3863,10 +3977,17 @@ export class ReplySetIncomplete extends Error {
  */
 async function sendReplySet(
   deps: ChannelRouterDeps,
-  args: Omit<SendReplyArgs, 'body'> & { bodies: readonly string[]; setKey: string },
+  args: Omit<SendReplyArgs, 'body' | 'stamp'> & {
+    bodies: readonly string[];
+    setKey: string;
+    /** Each bubble's sign-up stamp, by index ({@link SendReplyArgs.stamp}). A set with any
+     * goes as plain texts. */
+    stamps?: readonly (SendStamp | undefined)[];
+  },
 ): Promise<string> {
   assertTurnLive();
   if (args.beforeSend) await args.beforeSend();
+  const plain = args.stamps?.some((stamp) => stamp !== undefined) === true;
   const keys = args.bodies.map((_body, index) => textDedupeKey(args.setKey, index));
   const ids: Array<string | undefined> = keys.map(() => undefined);
   const onRecord = async (key: string): Promise<boolean> => {
@@ -3883,7 +4004,7 @@ async function sendReplySet(
   };
 
   const spoken = args.bodies.join(' ');
-  const voiced = await voiceMemoFor(deps, { ...args, body: spoken });
+  const voiced = plain ? null : await voiceMemoFor(deps, { ...args, body: spoken });
   if (voiced) {
     await claimAnswerQuietly(deps, args);
     if (args.onSent) await args.onSent();
@@ -3907,6 +4028,7 @@ async function sendReplySet(
   } | null = null;
   const whole = args.bodies.join(REPLY_BUBBLE_BREAK);
   if (
+    !plain &&
     args.route.channel === 'imessage' &&
     args.inboundBody !== undefined &&
     !(await onRecord(keys[0] as string))
@@ -3977,10 +4099,11 @@ async function sendReplySet(
       // Only the first bubble quotes the parent's message; the rest follow it.
       const to: ReplyRoute =
         index === 0 || route.channel !== 'imessage' ? route : { ...route, replyToMessageId: null };
-      const sent = await deps.transport.send({
+      const sent = await sendStamped(deps, {
         route: to,
         body: text,
         sendKey: keys[index] as string,
+        stamp: args.stamps?.[index],
       });
       bubblesSent = index + 1;
       return sent;

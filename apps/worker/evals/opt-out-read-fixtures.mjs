@@ -18,6 +18,12 @@ export const OPT_OUT_FIXTURES = [
     expect: 'stop',
   },
   { id: 'en-lowercase-unsub', text: 'unsub pls', language: 'en', expect: 'stop' },
+  // A bare carrier word, as a parent with a live sign-up plan sends it: the door reads it
+  // before any turn reaches the sign-up lane, which would read it as taking the plan back.
+  { id: 'en-bare-stop', text: 'stop', language: 'en', expect: 'stop' },
+  { id: 'en-bare-stop-caps', text: 'STOP', language: 'en', expect: 'stop' },
+  { id: 'en-bare-unsubscribe', text: 'unsubscribe', language: 'en', expect: 'stop' },
+  { id: 'fr-bare-arret', text: 'ARRÊT', language: 'fr', expect: 'stop' },
   { id: 'fr-stop', text: "Arrêtez de m'écrire s'il vous plaît", language: 'fr', expect: 'stop' },
   { id: 'zh-stop', text: '请不要再给我发短信了', language: 'zh', expect: 'stop' },
   { id: 'ar-stop', text: 'من فضلك توقف عن مراسلتي', language: 'ar', expect: 'stop' },
