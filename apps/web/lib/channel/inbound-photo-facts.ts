@@ -3,6 +3,7 @@ import type { AgentClient, Skill } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { isEnabled } from '@hale/flags';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { carriesLink } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
   PHOTO_FACTS_MAX_TOKENS,
@@ -55,9 +56,9 @@ function readableBlocks(
 }
 
 /**
- * The registration URL this turn's facts add to the links offer_signup and the watch
- * tools treat as seen. A photo is what the parent is looking at. A PDF's URL counts only
- * when the parent typed it too.
+ * The registration URL this turn's facts add to the links offer_signup treats as seen.
+ * A photo is what the parent is looking at, and the offer only asks: it names the host
+ * and waits for their yes. A PDF's URL counts only when the parent typed that whole URL.
  */
 export function photoFactSignupLinks(
   facts: TurnPhotoFacts | undefined,
@@ -65,7 +66,21 @@ export function photoFactSignupLinks(
 ): { title: string; url: string }[] {
   const url = facts?.registrationUrl;
   if (!url) return [];
-  if (facts.readFrom === 'document' && !parentWords.includes(url)) return [];
+  if (facts.readFrom === 'document' && !carriesLink(parentWords, url)) return [];
+  return [{ title: facts.title ?? url, url }];
+}
+
+/**
+ * The registration URL this turn's facts add to the links the watch tools treat as seen.
+ * A watch polls a page and texts the family without asking again, so a photo's URL never
+ * seeds one: only a URL the parent typed whole, whatever the page was.
+ */
+export function photoFactWatchLinks(
+  facts: TurnPhotoFacts | undefined,
+  parentWords: string,
+): { title: string; url: string }[] {
+  const url = facts?.registrationUrl;
+  if (!url || !carriesLink(parentWords, url)) return [];
   return [{ title: facts.title ?? url, url }];
 }
 

@@ -49,6 +49,7 @@ import {
   extractInboundPhotoFacts,
   inboundPhotoFactsEnabled,
   photoFactSignupLinks,
+  photoFactWatchLinks,
 } from '~/lib/channel/inbound-photo-facts';
 import {
   ageFitCorrectionEnabled,
@@ -1153,6 +1154,19 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           ),
         );
       }
+      // Pages a tool put in front of the parent this turn. A photo's registration URL
+      // joins them only for the signup ask, which names the host and waits for a yes; a
+      // watch takes it only when the parent typed it (photoFactWatchLinks).
+      const searchLinks = () => [
+        ...offered.links(),
+        ...offered
+          .read()
+          .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+      ];
+      const watchLinks = () => [
+        ...searchLinks(),
+        ...photoFactWatchLinks(turn.photoFacts, turn.body),
+      ];
       return buildChannelCoachTools({
         familyId: turn.familyId,
         familyCountry,
@@ -1185,11 +1199,12 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           // had its own go (see ACTIVITY_CLIENT_OPTIONS).
           finder: createActivityFinder(activityClient),
         },
-        // The watch verb's three ports. `fetchBody` rather than `fetchPage`: a BookMe4
+        // The watch verb's ports. `fetchBody` rather than `fetchPage`: a BookMe4
         // course keeps its availability in a <script> block the strip deletes, so a
         // watch armed off the stripped page could never see a spot open. The consent
         // port is the outbound gate's own, so a watch cannot be armed for a household
-        // the gate would then refuse to text.
+        // the gate would then refuse to text. The link ports are what the URL must be
+        // one of: the parent's own words, or a page a tool showed them this turn.
         spots: {
           fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
           reader: bindActivityReader(database, productionActivityFamilyReader(), factReader),
@@ -1198,6 +1213,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             anthropicClient(),
             MINT_FETCH_TIMEOUT_MS,
           ),
+          parentWords: turn.body,
+          linksThisTurn: watchLinks,
         },
         onDraft,
         onOffer,
@@ -1244,13 +1261,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               parentUserId: turn.parentUserId,
               conversationId: turn.conversationId,
               parentWords: turn.body,
-              linksThisTurn: () => [
-                ...offered.links(),
-                ...offered
-                  .read()
-                  .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
-                ...photoFactSignupLinks(turn.photoFacts, turn.body),
-              ],
+              linksThisTurn: watchLinks,
             }
           : null,
         signupOffer: signupOfferToolEnabled()
@@ -1261,10 +1272,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               now: turn.now,
               parentWords: turn.body,
               linksThisTurn: () => [
-                ...offered.links(),
-                ...offered
-                  .read()
-                  .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+                ...searchLinks(),
                 ...photoFactSignupLinks(turn.photoFacts, turn.body),
               ],
             }

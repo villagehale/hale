@@ -2,6 +2,7 @@ import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { carriesLink } from '~/lib/format/link-shape';
 import { authorizedSignupEnabled } from './flag';
 import {
   type OfferSignupResult,
@@ -63,7 +64,7 @@ export function urlSeenThisTurn(
 ): string | null {
   const allowed = registrationUrlAllowed(raw);
   if (!allowed.ok) return null;
-  if (parentWords.includes(allowed.href) || parentWords.includes(raw)) return allowed.href;
+  if (carriesLink(parentWords, allowed.href)) return allowed.href;
   if (links.some((link) => link.url === allowed.href || link.url === raw)) return allowed.href;
   return null;
 }
