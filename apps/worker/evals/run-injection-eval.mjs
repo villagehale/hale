@@ -529,6 +529,9 @@ async function coachLane(fixture, client, modules) {
         },
       },
       client: () => client,
+      // The REAL find-turn read over the replay client, so a turn that also asks for a
+      // find composes the addenda production would.
+      readFindTurn: (input) => coach.findPrivate.createFindTurnReader(() => client).read(input),
       // This eval scores what the coach's tools do, not the find-reply judge; the
       // pass-through sends the draft and names that it went unjudged (rule #11).
       judgeFindReply: coach.findJudge.findReplyNotJudged,
@@ -683,6 +686,7 @@ async function main() {
     coach: {
       runtime: await importWeb('lib/channel/coach/runtime.ts'),
       findJudge: await importWeb('lib/channel/coach/find-reasoning-judge.ts'),
+      findPrivate: await importWeb('lib/channel/coach/find-private.ts'),
       tools: await importWeb('lib/channel/coach/tools.ts'),
       draft: await importWeb('lib/channel/coach/draft.ts'),
       readEmail: await importWeb('lib/channel/coach/read-email-tool.ts'),

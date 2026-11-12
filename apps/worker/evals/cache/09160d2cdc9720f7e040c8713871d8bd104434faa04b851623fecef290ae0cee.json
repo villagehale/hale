@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgx2wEz3XCM6tDb5eovqv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1wcKEAgTGAI4AUIIdGhpbmtpbmcSDKFLBDigmXRaiWqrtRoMePSzBgNY6uo6ddjkIjAhOUQgsUNY26qFNwWHSZSXBTVdYa2h0pLSq5Pcj5Av1eCTQzpY2scBQDNu++u1aq8q9Aamd1bSCAirBb4qv7qqj4W5D/4IUztQlAw2URI3BGPKu8Z4+5TGlKv33RVnTIOHlFxWpMLuSJa5Gucp6PANKju26UfphvopnwuyHwJI+y20zHrrw1LVJuPJUpS4/RQw0BwSmHCzWY6tNAxzIYRxKIQJ5lqu/4WikbbzEgvrykjQg6XZ9UNjh59DeTIcBGVhneTQ4DCwUhFXohvmkkPtJEPpijZsdc70V/d7JvwzMuWw3vIQO6DIMuYb6PunCbyXRvIfLOG6jKc/lSPSuepJO1v9AwOIFQ8u3+ENZfE+vhDrD1qRJflH8pctoFLiac1+7rTBT4UIOgpPhyQkNq0q/DpFMuipO4HCCd5AKp6gPfa6QNTNsDEAwECWTlAHACzdh8oculQjEmjuejFUUt//K15zgeQbRK5DK8YyfLySlSzQ2As8XmgWkY2u2wAQtLsJSwB1dNqegGKCQYu8HAAGmIc3WdTlSiFB4hX5VD9w/YAwvliiPcMislL03+6brZyYXfjEVhbqQVMvBx20T6HI4b7Y28m7BmsiEKtKwzqhYmh4dRSeWy0TSCEnpPMLPFeUyQqi5/MO1xCJRaR4YwZHf9gEP+FAvjx2s86NNMenLkqb3/nn7A0LnvfOx6R1CscpHHc3bobEe6DekfKvArmMwHuUVks876MvUwKGi8A8wpZQXaLAKi7WoxU2DhW7l1BAgTEbeOLfDePsBMDSBI8xBtZTFp1qwVLmhh/tEoouOR78k4vOjI68XgCauoxDCFk6NfhkgewsJEdfnwEQUcb7/rvezdpwCCa0qouH7cCxn/LHtWb5Hz5iiqax+RuUV5UfVbMgZlB9zvd/mZ+mC3AHuIEiQ8Ndmv4XhXAt+PeHnWqzyzyN7Rq2Sc8QB1pEIdqeBv3gYiO9nCPKFau3V3KjHXuQdT15x917nIiOhtAyS2uJW2eG9ozPTt/5g3465CiVZp8gtEL2sD63f6xQmVWFJuVxkK2s1mr/5qK7LFQKcFinvfCEWDcxmfUWlWd0Hvep+HoIL9AJb/nhxFAYvdYM0291REoZC4ofoG2cqyuj44ABLPu7NFCLtVSzNbx4YooU/zldsdEMJqyGM1ijB2kK7k8fObFqoqWJWn/TnSieh80Dd1rVdTfqAVUalKwxNW95rvu507U20hNS74YFdt04pS90mSxFohgB"
+      },
+      {
+        "type": "text",
+        "text": "Today is Thanksgiving, so places may be closed or on holiday hours. Both of these are weekly Monday programs, so check before you head out. Toddler story time at Willow Branch Library is Mondays at 10:30 a.m., free, for 18 months to 3 years, per the library's events page. [link-ce743d] Little Movers drop-in is Mondays 9:30 to 11:30 a.m., free, for ages 1 to 4, per Riverbend Community Centre's program page. [link-c6988f]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 273,
+      "cache_read_input_tokens": 21849,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 273,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 277,
+      "output_tokens_details": {
+        "thinking_tokens": 107
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

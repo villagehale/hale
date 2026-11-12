@@ -107,6 +107,7 @@ describe('VIL-439 group privacy scope', () => {
         nearbySaid: async () => null,
         guardDeps: { async writeAudit() {} },
         client: () => ({ messages: {} }) as never,
+        readFindTurn: async () => ({ findTurn: false, reason: 'not_find' }),
         judgeFindReply: findReplyNotJudged,
         runAgent: async (args) => {
           seen.push(JSON.stringify(args.context));
@@ -294,6 +295,7 @@ describe('VIL-439 review: group tools and group history', () => {
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as never,
+      readFindTurn: async () => ({ findTurn: false, reason: 'not_find' }),
       judgeFindReply: findReplyNotJudged,
       runAgent: async (args) => {
         seenTools.push(args.tools.map((t) => t.name));

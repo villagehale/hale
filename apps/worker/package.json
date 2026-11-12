@@ -85,6 +85,8 @@
     "eval:connector-disconnect-read": "node evals/run-connector-disconnect-read-eval.mjs --cached-only",
     "eval:rec-morning-read": "node evals/run-rec-morning-read-eval.mjs --cached-only",
     "eval:find-reasoning-judge": "node evals/run-find-reasoning-judge-eval.mjs --cached-only",
+    "eval:find-turn": "node evals/find-turn-eval.mjs --cached-only",
+    "eval:find-turn:dry": "node evals/find-turn-eval.mjs --dry",
     "eval:crisis-reply": "node evals/run-crisis-reply-eval.mjs --cached-only",
     "eval:said-line": "node evals/run-said-line-eval.mjs --cached-only",
     "eval:said-line-convey": "node evals/run-said-line-convey-eval.mjs --cached-only",

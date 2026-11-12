@@ -131,9 +131,17 @@
     "file": "coach-fact-source.md",
     "sha256": "20e86b9157be89631cfc16276ad8e945042e0e8f1731627b7c1fbd8108b480f4"
   },
+  "coach-find-day.md": {
+    "file": "coach-find-day.md",
+    "sha256": "b959bd6d79cb479579ad54ac239e584c7a75f433dd69ca2ffe7f9663928c0d9b"
+  },
   "coach-find-private.md": {
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
+  },
+  "coach-find-turn.md": {
+    "file": "coach-find-turn.md",
+    "sha256": "2caf87d704110fef35689584caa399f84f4aa16ced1bf4320f9c1caf9c007bd6"
   },
   "coach-group-lists.md": {
     "file": "coach-group-lists.md",

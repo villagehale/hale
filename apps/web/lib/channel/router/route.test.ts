@@ -2025,6 +2025,7 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as AgentClient,
+      readFindTurn: async () => ({ findTurn: true }),
       judgeFindReply: async () => input.gate,
       runAgent: async () => ({
         answer: WITHHELD_DRAFT,

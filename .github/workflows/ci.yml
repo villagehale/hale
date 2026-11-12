@@ -504,6 +504,9 @@ jobs:
       - name: Find reasoning judge eval (cached-only)
         run: pnpm --filter @hale/worker eval:find-reasoning-judge
 
+      - name: Find-turn read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:find-turn
+
       - name: Crisis reply eval (cached-only)
         run: pnpm --filter @hale/worker eval:crisis-reply
 
