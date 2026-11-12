@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { type BubbleGaps, bubbleGaps } from '~/lib/channel/linq/bubble-gap';
+import { type BubbleGaps, readBubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { chatServiceSaid } from '~/lib/channel/messaging-door';
@@ -161,36 +161,41 @@ async function deliverDirect(
     console.warn({ offerId: notice.offerId, code }, 'signup plans: notice failed');
     return 'failed';
   };
-  const keep = await markSend(database, {
-    familyId: notice.familyId,
-    parentUserId: notice.parentUserId,
-    offerIds: [notice.offerId],
-  });
-  if (keep instanceof AskOrderUnmarked) {
+  let delivered: Awaited<ReturnType<typeof deliverStamped>>;
+  try {
+    delivered = await deliverStamped(
+      database,
+      {
+        familyId: notice.familyId,
+        parentUserId: notice.parentUserId,
+        offerIds: [notice.offerId],
+      },
+      {
+        familyId: notice.familyId,
+        body: input.body,
+        to: input.to,
+        legacy: deps.transport,
+        target: { channel: 'legacy' },
+        shareGroupCap: false,
+        now: input.now,
+      },
+    );
+  } catch (err) {
+    return failed(err instanceof Error ? err.constructor.name : 'send_threw');
+  }
+  if (delivered instanceof AskOrderUnmarked) {
     // The transport was never called. A failed row under this key would make every later
     // call answer 'sent' above, so the claim is let go and a later call can send it.
     await database
       .delete(messages)
       .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
-    console.warn({ offerId: notice.offerId, code: keep.message }, 'signup plans: notice failed');
+    console.warn(
+      { offerId: notice.offerId, code: delivered.message },
+      'signup plans: notice failed',
+    );
     return 'failed';
   }
-  let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
-  try {
-    delivered = await deliverFamilyOutbound(database, {
-      familyId: notice.familyId,
-      body: input.body,
-      to: input.to,
-      legacy: deps.transport,
-      target: { channel: 'legacy' },
-      shareGroupCap: false,
-      now: input.now,
-    });
-  } catch (err) {
-    return failed(err instanceof Error ? err.constructor.name : 'send_threw');
-  }
   if (delivered.status !== 'sent') return failed(delivered.reason);
-  await keep();
   await database
     .update(messages)
     .set({
@@ -248,9 +253,9 @@ export function createPlanPrepDeliver(
         const chatId = carried.channel === 'imessage' ? carried.chatId : null;
         gaps =
           lit && chatId
-            ? bubbleGaps({
+            ? await readBubbleGaps({
                 chatId,
-                service: await chatServiceSaid(database, input.parentUserId, chatId),
+                readService: () => chatServiceSaid(database, input.parentUserId, chatId),
                 log: console,
               })
             : null;
@@ -409,34 +414,34 @@ async function sendPrepText(
     );
     return null;
   };
-  const keep = await markSend(database, {
-    familyId: input.familyId,
-    parentUserId: input.parentUserId,
-    offerIds: [input.offerId],
-  });
-  if (keep instanceof AskOrderUnmarked) return failed(keep.message);
-  let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
+  let delivered: Awaited<ReturnType<typeof deliverStamped>>;
   try {
     delivered = await pace(
       () =>
-        deliverFamilyOutbound(database, {
-          familyId: input.familyId,
-          body: input.body,
-          to: input.to,
-          legacy: transport,
-          target: { channel: 'legacy' },
-          shareGroupCap: false,
-          now: input.now,
-        }),
-      (sent) => sent.status === 'sent',
+        deliverStamped(
+          database,
+          {
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+            offerIds: [input.offerId],
+          },
+          {
+            familyId: input.familyId,
+            body: input.body,
+            to: input.to,
+            legacy: transport,
+            target: { channel: 'legacy' },
+            shareGroupCap: false,
+            now: input.now,
+          },
+        ),
+      (sent) => !(sent instanceof AskOrderUnmarked) && sent.status === 'sent',
     );
   } catch (err) {
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
+  if (delivered instanceof AskOrderUnmarked) return failed(delivered.message);
   if (delivered.status !== 'sent') return failed(delivered.reason);
-  // This bubble reached the parent: the ask is now the one whose text they got last, so
-  // their next bare answer is its, even if a later part of the notice does not go.
-  await keep();
   await database
     .update(messages)
     .set({
@@ -451,19 +456,30 @@ async function sendPrepText(
 }
 
 /**
- * Marks a notice's send about its ask before the transport call (`askStamp`). A send that
- * could not be marked is not made: its named failure comes back in place of the keep.
+ * One notice text about its ask, as one call: the stamp (`askStamp`) right before the
+ * transport call, and the number kept once the text went, so the parent's next bare answer
+ * is this ask's even if a later part of the notice does not go. A send that could not be
+ * marked is not made: its named failure comes back in place of the delivery.
+ *
+ * The stamp and the transport call are never apart: a paced notice hands this whole call
+ * to the bubble gap, so the gap comes before the stamp, and a text another sender starts
+ * during the gap ranks below this one, which the parent gets after it.
  */
-async function markSend(
+async function deliverStamped(
   database: Database,
   asks: AskedAbout,
-): Promise<Awaited<ReturnType<SendStamp>> | AskOrderUnmarked> {
+  outbound: Parameters<typeof deliverFamilyOutbound>[1],
+): Promise<Awaited<ReturnType<typeof deliverFamilyOutbound>> | AskOrderUnmarked> {
+  let keep: Awaited<ReturnType<SendStamp>>;
   try {
-    return await askStamp(database, asks)();
+    keep = await askStamp(database, asks)();
   } catch (err) {
     if (err instanceof AskOrderUnmarked) return err;
     throw err;
   }
+  const delivered = await deliverFamilyOutbound(database, outbound);
+  if (delivered.status === 'sent') await keep();
+  return delivered;
 }
 
 /** Login-ask, account-prep and 30-minute reminder on the same minute cron. */

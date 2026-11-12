@@ -15,6 +15,7 @@ import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import type { OptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { SCRIPTED_STOP_CONFIRMATION } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
 import { type ChannelTransport, FakeTransport } from '~/lib/channel/intake/transport';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
@@ -496,6 +497,100 @@ describe('the ask number is drawn when the send starts, not when it was accepted
     const swim = await offerRow(swimId);
     expect(swim.status).toBe('planned');
     expect(swim.planCancelRequestedAt).toBeNull();
+  });
+});
+
+describe('a paced notice draws its ask number after the bubble gap, right before its send', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('a turn texts about Kickers while Swim’s notice waits before its second bubble: a bare no takes back Swim, whose text reached the parent last', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const f = await household();
+    const { swimId, kickersId } = await twoApprovedPlans(f);
+    // The parent's Linq chat, which Linq said is iMessage: the notice's bubbles are paced.
+    await db.database.insert(schema.channelMessages).values({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: `in-imessage-${f.familyId}`,
+      providerChatId: 'chat-1',
+      providerService: 'iMessage',
+      status: 'delivered',
+      body: 'ok',
+      createdAt: minutes(-5),
+      sentAt: minutes(-5),
+    });
+
+    const wire: string[] = [];
+    let gapBegan = () => {};
+    const inTheGap = new Promise<void>((resolve) => {
+      gapBegan = resolve;
+    });
+    // Typing goes up when the gap begins.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        if (String(url).endsWith('/chats/chat-1/typing') && init?.method === 'POST') gapBegan();
+        return new Response(null, { status: 204 });
+      }),
+    );
+    const carrier: ChannelTransport = {
+      async send(input) {
+        wire.push(input.body);
+        return {
+          providerMessageId: `notice-${wire.length}`,
+          transport: 'imessage',
+          chatId: 'chat-1',
+        };
+      },
+    };
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const notice = createPlanPrepDeliver(db.database, { transport: carrier })({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      offerId: swimId,
+      kind: 'login_ask',
+      noticeKey: null,
+      parts: [
+        { type: 'text', body: 'swim notice 1' },
+        { type: 'text', body: 'swim notice 2' },
+      ],
+      now: NOW,
+    });
+    await inTheGap;
+
+    // The whole turn runs inside the gap: the clock does not move until it is done.
+    const turn = new FakeReplyTransport();
+    const send = turn.send.bind(turn);
+    turn.send = async (input): Promise<ReplySent> => {
+      wire.push('kickers question');
+      return send(input);
+    };
+    await parentTexts(f, 'cancel the kickers one', NOW, {
+      transport: turn,
+      planReader: readerBy({
+        'Little Kickers': { verdict: 'take_back', named: 'tokens' },
+        'Preschool Swim': UNRELATED,
+      }),
+    });
+    await vi.advanceTimersByTimeAsync(BUBBLE_GAP_MS);
+    expect(await notice).toBe('sent');
+    vi.useRealTimers();
+    expect(wire).toEqual(['swim notice 1', 'kickers question', 'swim notice 2']);
+
+    await parentTexts(f, 'no', minutes(1), {
+      planReader: readerBy({ 'Little Kickers': TAKE_BACK, 'Preschool Swim': TAKE_BACK }),
+    });
+    expect((await offerRow(swimId)).status).toBe('handed_back');
+    const kickers = await offerRow(kickersId);
+    expect(kickers.status).toBe('planned');
+    expect(kickers.planCancelRequestedAt).toBeNull();
   });
 });
 
