@@ -13,6 +13,7 @@ import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
+import { markLoginLinkSent } from '../login-link/store';
 import { AskOrderUnmarked, type AskedAbout, type SendStamp, askStamp } from '../store';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
@@ -213,7 +214,8 @@ async function deliverDirect(
  * `signup_plan_prep:<noticeKey>:<index>`, so the sweep's retry skips a bubble that went and
  * sends one whose try failed. The login link goes once through {@link sendLinkOnce}, on the
  * chat the bubble before it used: a Linq link card on iMessage, its own text where a card
- * cannot go. A part that does not go stops the notice as `failed`, and the sweep sends the
+ * cannot go. A card that went is stamped sent, so the retry reuses it instead of minting a
+ * second. A part that does not go stops the notice as `failed`, and the sweep sends the
  * rest next time. Each text bubble that goes stamps the offer as asked (`askStamp`), so
  * a notice that partly went still counts, and a bubble a retry skips stamps nothing again.
  */
@@ -276,6 +278,11 @@ export function createPlanPrepDeliver(
           'signup plan prep: the login link went as a text, not a card',
         );
       }
+      await markLoginLinkSent(database, {
+        id: part.loginLinkId,
+        familyId: input.familyId,
+        now: input.now,
+      });
     }
     return 'sent';
   };

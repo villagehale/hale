@@ -1,10 +1,19 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { signupProviderHost } from '../consent';
 import { hashLoginCode, loginLinkExpiresAt, loginLinkUrl, newLoginCode } from './code';
 
 const LOGIN_LINK_KINDS = ['login_ask', 'account_prep', 'password_rejected'] as const;
+
+/**
+ * The words on the card's preview in the thread, written by the notice writer in the
+ * parent's language. Null when the writer wrote none it could keep: the preview is then
+ * the bare provider host, never a fixed sentence.
+ */
+const loginCardTextSchema = z.object({ title: z.string(), description: z.string().nullable() });
+
+export type LoginCardText = z.infer<typeof loginCardTextSchema>;
 
 /**
  * What the card and its page say the login is for: the session and the open in the
@@ -15,6 +24,7 @@ const loginLinkPurposeSchema = z.object({
   kind: z.enum(LOGIN_LINK_KINDS),
   sessionLabel: z.string().nullable(),
   opensAt: z.object({ local: z.string(), timeZone: z.string() }).nullable(),
+  card: loginCardTextSchema.nullable(),
 });
 
 export type LoginLinkPurpose = z.infer<typeof loginLinkPurposeSchema>;
@@ -40,11 +50,16 @@ type MintLoginLinkInput = {
   now: Date;
 };
 
-/** Not exported: every mint goes through {@link mintFreshLoginLink}, so a host has one live card. */
+type MintedLoginLink = { url: string; expiresAt: Date; id: string };
+
+/**
+ * Not exported: every mint goes through {@link mintFreshLoginLink} or
+ * {@link loginLinkForNotice}, inside {@link withHostLock}, after the host's open rows are spent.
+ */
 async function mintLoginLink(
   database: Database,
   input: MintLoginLinkInput,
-): Promise<{ url: string; expiresAt: Date; id: string }> {
+): Promise<MintedLoginLink> {
   const code = newLoginCode();
   const expiresAt = loginLinkExpiresAt(input.now);
   const [row] = await database
@@ -103,7 +118,7 @@ export async function consumeLoginLink(
   return Boolean(row);
 }
 
-/** Whether the host already has a live card: unspent and not expired. */
+/** Whether the parent holds a live card for the host: sent to them, unspent and not expired. */
 export async function hasOpenLoginLink(
   database: Database,
   input: { familyId: string; providerHost: string; now: Date },
@@ -118,10 +133,23 @@ export async function hasOpenLoginLink(
         eq(links.providerHost, signupProviderHost(input.providerHost)),
         isNull(links.consumedAt),
         gt(links.expiresAt, input.now),
+        isNotNull(links.sentAt),
       ),
     )
     .limit(1);
   return Boolean(row);
+}
+
+/** The door stamps a card once it reached the parent's thread, so a retry can reuse it. */
+export async function markLoginLinkSent(
+  database: Database,
+  input: { id: string; familyId: string; now: Date },
+): Promise<void> {
+  const links = schema.providerLoginLinks;
+  await database
+    .update(links)
+    .set({ sentAt: input.now })
+    .where(and(eq(links.id, input.id), eq(links.familyId, input.familyId), isNull(links.sentAt)));
 }
 
 /** A rejected password replaces the old code: every open link for this host is spent. */
@@ -143,15 +171,73 @@ export async function invalidateOpenLoginLinks(
   return rows.length;
 }
 
-/** Invalidate any open code for this host, then mint a fresh one. */
-export async function mintFreshLoginLink(
+/**
+ * One transaction per family and host, serialised on an advisory lock: spending the open
+ * rows and inserting the new card cannot interleave with another mint, and the partial
+ * unique index (one unspent row per host) holds by construction.
+ */
+function withHostLock<T>(
   database: Database,
+  input: { familyId: string; providerHost: string },
+  work: (tx: Database) => Promise<T>,
+): Promise<T> {
+  const key = `provider_login_links:${input.familyId}:${signupProviderHost(input.providerHost)}`;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
+    return work(tx);
+  });
+}
+
+async function replaceOpenLoginLinks(
+  tx: Database,
   input: MintLoginLinkInput,
-): Promise<{ url: string; expiresAt: Date; id: string }> {
-  await invalidateOpenLoginLinks(database, {
+): Promise<MintedLoginLink> {
+  await invalidateOpenLoginLinks(tx, {
     familyId: input.familyId,
     providerHost: input.providerHost,
     now: input.now,
   });
-  return mintLoginLink(database, input);
+  return mintLoginLink(tx, input);
+}
+
+/** Invalidate any open code for this host, then mint a fresh one, in one transaction. */
+export async function mintFreshLoginLink(
+  database: Database,
+  input: MintLoginLinkInput,
+): Promise<MintedLoginLink> {
+  return withHostLock(database, input, (tx) => replaceOpenLoginLinks(tx, input));
+}
+
+/**
+ * The card for one notice the sweep retries until it goes. When this notice's card already
+ * reached the parent and is still live, a retry reuses it (`reused`, no new link to send)
+ * instead of minting a second card. A card that never went, or any other notice's card, is
+ * spent and a fresh one minted.
+ */
+export async function loginLinkForNotice(
+  database: Database,
+  input: MintLoginLinkInput & { offerId: string },
+): Promise<({ status: 'minted' } & MintedLoginLink) | { status: 'reused'; id: string }> {
+  return withHostLock(database, input, async (tx) => {
+    const links = schema.providerLoginLinks;
+    const [open] = await tx
+      .select({ id: links.id, purpose: links.purpose })
+      .from(links)
+      .where(
+        and(
+          eq(links.familyId, input.familyId),
+          eq(links.providerHost, signupProviderHost(input.providerHost)),
+          eq(links.offerId, input.offerId),
+          isNull(links.consumedAt),
+          gt(links.expiresAt, input.now),
+          isNotNull(links.sentAt),
+        ),
+      )
+      .limit(1);
+    if (open && loginLinkPurposeSchema.safeParse(open.purpose).data?.kind === input.purpose.kind) {
+      return { status: 'reused', id: open.id };
+    }
+    return { status: 'minted', ...(await replaceOpenLoginLinks(tx, input)) };
+  });
 }

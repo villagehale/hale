@@ -71,6 +71,7 @@ describe('catalog history cutover', () => {
       '0236_authorized_signup_ask_seq',
       '0237_authorized_signup_ask_order_uncertain',
       '0238_channel_messages_opt_out_unread',
+      '0239_provider_login_links_one_live',
     ]);
   });
 });

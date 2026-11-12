@@ -139,7 +139,12 @@ function sweep(f: Household, wire: string[], options: { afterTaken?: Error } = {
     },
   };
   return {
-    writer: { write: async (facts) => `text for ${facts.kind} at ${facts.host}` },
+    writer: {
+      write: async (facts) => ({
+        bubbles: [`text for ${facts.kind} at ${facts.host}`],
+        card: null,
+      }),
+    },
     deliver: createPlanPrepDeliver(db.database, {
       transport,
       fetch: async () => {

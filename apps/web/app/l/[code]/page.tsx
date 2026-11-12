@@ -4,7 +4,7 @@ import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
 import { db } from '~/lib/db';
 import { providerCredentialsEnabled } from '~/lib/signup/credentials/flag';
 import { CREDENTIAL_RETENTION_MS } from '~/lib/signup/credentials/store';
-import { LOGIN_PAGE_COPY, loginPurposeLine } from '~/lib/signup/login-link/page-copy';
+import { loginPurposeLine } from '~/lib/signup/login-link/page-copy';
 import { lookupLoginLink } from '~/lib/signup/login-link/store';
 import { GoneScreen, ProviderLoginVault } from './vault';
 
@@ -25,14 +25,17 @@ const openLoginLink = cache(async (code: string) => {
 });
 
 /**
- * The card in the thread is this page's preview: the provider in the title, the purpose below.
- * The URL is a bearer code, so no page after this one is told it came from here.
+ * The card in the thread is this page's preview, so its words are the ones the notice writer
+ * wrote for it in the parent's language. Without them the title is the bare provider host and
+ * there is no description: no fixed sentence reaches the thread. The URL is a bearer code, so
+ * no page after this one is told it came from here.
  */
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { code } = await params;
   const looked = await openLoginLink(code);
-  const title = looked ? LOGIN_PAGE_COPY.heading(looked.providerHost) : 'Hale';
-  const description = looked ? loginPurposeLine(looked.purpose) : null;
+  const card = looked?.purpose?.card ?? null;
+  const title = looked ? (card?.title ?? looked.providerHost) : 'Hale';
+  const description = card?.description ?? null;
   return {
     title: { absolute: title },
     description,

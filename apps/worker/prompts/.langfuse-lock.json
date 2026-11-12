@@ -379,6 +379,11 @@
     "version": null,
     "sha256": "6c3d10e0e312ba575a60ebde3729900dde367150fccb847dd974566e2203f3e2"
   },
+  "judges/signup-provider-notice": {
+    "name": "judges/signup-provider-notice",
+    "version": null,
+    "sha256": "9d928ce20aec7ec5ee2b9380f64d0fb16778017bede7239550d921242f7ccb58"
+  },
   "judges/spot-open-voice": {
     "name": "judges/spot-open-voice",
     "version": null,
