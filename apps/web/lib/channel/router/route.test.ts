@@ -35,6 +35,7 @@ import {
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
@@ -586,6 +587,7 @@ function harness(
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
+    bubbleGapMs?: number;
     floodLine?: FloodLineComposer;
     consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
@@ -673,6 +675,8 @@ function harness(
       floodLine: options.floodLine ?? fakeFloodLine(),
       crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
+      // A test that is not about the pause between bubbles does not wait for it.
+      bubbleGapMs: options.bubbleGapMs ?? 0,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
       turnDeadlineMs: options.turnDeadlineMs,
@@ -8495,6 +8499,110 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     ).toEqual(['Swim is Saturday at 10.', 'Bring a towel.', 'Want me to add it to your calendar?']);
   });
 
+  /** Each send and each typing start, in the order the parent's phone would see them. */
+  function phoneEvents(h: ReturnType<typeof harness>) {
+    const events: string[] = [];
+    const at: number[] = [];
+    const send = h.transport.send.bind(h.transport);
+    h.transport.send = async (input) => {
+      events.push(`send:${input.body}`);
+      at.push(Date.now());
+      return send(input);
+    };
+    const log = h.deps.log;
+    h.deps.log = {
+      ...log,
+      warn: (...args: unknown[]) => {
+        if ((args[0] as { phase?: string } | undefined)?.phase === 'start') events.push('typing');
+        log.warn(...args);
+      },
+    };
+    return { events, at };
+  }
+
+  it('paces the bubbles: typing goes up after each one and the next waits the gap', async () => {
+    const GAP_MS = 60;
+    const { h } = bubbleTurn(undefined, { bubbleGapMs: GAP_MS });
+    const { events, at } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      // The turn's own wait: the bubble goes up while the coach thinks.
+      'typing',
+      'send:Swim is Saturday at 10.',
+      'typing',
+      'send:Bring a towel.',
+      'typing',
+      'send:Want me to add it to your calendar?',
+    ]);
+    // Timer and wall clock can disagree by a millisecond or so; contention only adds.
+    expect((at[1] as number) - (at[0] as number)).toBeGreaterThanOrEqual(GAP_MS - 5);
+    expect((at[2] as number) - (at[1] as number)).toBeGreaterThanOrEqual(GAP_MS - 5);
+    expect(JSON.stringify(h.logs)).not.toContain('deadline_near');
+  });
+
+  it('near the turn deadline the rest of the bubbles go without the gap, named', async () => {
+    const { h } = bubbleTurn(undefined, { bubbleGapMs: BUBBLE_GAP_MS, turnDeadlineMs: 10_000 });
+    const { events } = phoneEvents(h);
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(events).toEqual([
+      // The turn's own wait, as above; nothing goes up between the bubbles.
+      'typing',
+      'send:Swim is Saturday at 10.',
+      'send:Bring a towel.',
+      'send:Want me to add it to your calendar?',
+    ]);
+    expect(
+      h.logs.filter((entry) => (entry as [{ outcome?: string }])[0]?.outcome === 'deadline_near'),
+    ).toHaveLength(2);
+  });
+
+  it('a handler that sends several messages on a lit turn sends them as paced bubbles', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const plan: DeterministicHandler = {
+      name: 'plan',
+      handle: async (_db, turn) => {
+        await turn.send('Nights 1-3: down drowsy but awake.');
+        await turn.send('Nights 4-7: stretch the wait.');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({ handlers: [plan], context: { body: 'yes', reply: IMESSAGE } });
+    const { events } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      'send:Nights 1-3: down drowsy but awake.',
+      'typing',
+      'send:Nights 4-7: stretch the wait.',
+    ]);
+  });
+
+  it('dark: the same handler sends its messages back to back', async () => {
+    const plan: DeterministicHandler = {
+      name: 'plan',
+      handle: async (_db, turn) => {
+        await turn.send('Nights 1-3: down drowsy but awake.');
+        await turn.send('Nights 4-7: stretch the wait.');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({ handlers: [plan], context: { body: 'yes', reply: IMESSAGE } });
+    const { events } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      'send:Nights 1-3: down drowsy but awake.',
+      'send:Nights 4-7: stretch the wait.',
+    ]);
+  });
+
   it('dark: the turn is not lit and a line break in the reply is not split', async () => {
     const coach = seeingCoach({ reply: 'Swim is Saturday at 10.\nhttps://pool.example/swim' });
     const h = harness({ coach, context: { body: 'what is on saturday', reply: IMESSAGE } });
@@ -9222,10 +9330,16 @@ describe('a Linq chat’s service decides bubbles, from the webhook to the send'
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${LINQ_KEY.toString('base64')}`);
     vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    // The typing call between bubbles is a real Linq request under this key: keep it local.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 204 })),
+    );
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   /** The 2026-02-03 message.received a 1:1 chat on the Hale line posts, signed. */

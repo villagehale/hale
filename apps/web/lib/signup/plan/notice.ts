@@ -1,9 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { type BubbleGaps, readBubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
+import { chatServiceSaid } from '~/lib/channel/messaging-door';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
@@ -159,36 +162,41 @@ async function deliverDirect(
     console.warn({ offerId: notice.offerId, code }, 'signup plans: notice failed');
     return 'failed';
   };
-  const keep = await markSend(database, {
-    familyId: notice.familyId,
-    parentUserId: notice.parentUserId,
-    offerIds: [notice.offerId],
-  });
-  if (keep instanceof AskOrderUnmarked) {
+  let delivered: Awaited<ReturnType<typeof deliverStamped>>;
+  try {
+    delivered = await deliverStamped(
+      database,
+      {
+        familyId: notice.familyId,
+        parentUserId: notice.parentUserId,
+        offerIds: [notice.offerId],
+      },
+      {
+        familyId: notice.familyId,
+        body: input.body,
+        to: input.to,
+        legacy: deps.transport,
+        target: { channel: 'legacy' },
+        shareGroupCap: false,
+        now: input.now,
+      },
+    );
+  } catch (err) {
+    return failed(err instanceof Error ? err.constructor.name : 'send_threw');
+  }
+  if (delivered instanceof AskOrderUnmarked) {
     // The transport was never called. A failed row under this key would make every later
     // call answer 'sent' above, so the claim is let go and a later call can send it.
     await database
       .delete(messages)
       .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
-    console.warn({ offerId: notice.offerId, code: keep.message }, 'signup plans: notice failed');
+    console.warn(
+      { offerId: notice.offerId, code: delivered.message },
+      'signup plans: notice failed',
+    );
     return 'failed';
   }
-  let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
-  try {
-    delivered = await deliverFamilyOutbound(database, {
-      familyId: notice.familyId,
-      body: input.body,
-      to: input.to,
-      legacy: deps.transport,
-      target: { channel: 'legacy' },
-      shareGroupCap: false,
-      now: input.now,
-    });
-  } catch (err) {
-    return failed(err instanceof Error ? err.constructor.name : 'send_threw');
-  }
   if (delivered.status !== 'sent') return failed(delivered.reason);
-  await keep();
   await database
     .update(messages)
     .set({
@@ -217,6 +225,9 @@ async function deliverDirect(
  * second. A part that does not go stops the notice as `failed`, and the sweep sends the
  * rest next time. Each text bubble that goes stamps the offer as asked (`askStamp`), so
  * a notice that partly went still counts, and a bubble a retry skips stamps nothing again.
+ *
+ * Lit for bubbles (VIL-682 K5), a part that follows one this call sent, in a chat Linq said
+ * is iMessage, waits the bubble gap with typing up: the model's bubbles and the card alike.
  */
 export function createPlanPrepDeliver(
   database: Database,
@@ -235,10 +246,30 @@ export function createPlanPrepDeliver(
       channel: 'sms',
       chatId: null,
     };
+    const lit = coachBubblesEnabled(input.familyId);
+    // Opened at the first part that follows a send, on the chat that send used.
+    let gaps: BubbleGaps | null | undefined;
+    let sentHere = false;
+    const pace: PrepPace = async (send, went) => {
+      if (sentHere && gaps === undefined) {
+        const chatId = carried.channel === 'imessage' ? carried.chatId : null;
+        gaps =
+          lit && chatId
+            ? await readBubbleGaps({
+                chatId,
+                readService: () => chatServiceSaid(database, input.parentUserId, chatId),
+                log: console,
+              })
+            : null;
+      }
+      const out = sentHere && gaps ? await gaps(send, went) : await send();
+      sentHere = true;
+      return out;
+    };
     let textIndex = 0;
     for (const part of input.parts) {
       if (part.type === 'text') {
-        const sent = await sendPrepText(database, deps.transport, {
+        const sent = await sendPrepText(database, deps.transport, pace, {
           ...input,
           to,
           body: part.body,
@@ -252,18 +283,22 @@ export function createPlanPrepDeliver(
         carried = sent;
         continue;
       }
-      const link = await sendLinkOnce({
-        transport: deps.transport,
-        to,
-        channel: carried.channel,
-        chatId: carried.chatId,
-        url: part.url,
-        database,
-        familyId: input.familyId,
-        parentUserId: input.parentUserId,
-        now: input.now,
-        fetch: deps.fetch,
-      });
+      const link = await pace(
+        () =>
+          sendLinkOnce({
+            transport: deps.transport,
+            to,
+            channel: carried.channel,
+            chatId: carried.chatId,
+            url: part.url,
+            database,
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+            now: input.now,
+            fetch: deps.fetch,
+          }),
+        (sent) => sent.status !== 'not_sent',
+      );
       if (link.status === 'not_sent') {
         console.warn(
           { offerId: input.offerId, kind: input.kind, why: link.why, code: link.code },
@@ -353,9 +388,14 @@ async function claimPrepText(
   };
 }
 
+/** Wraps each send of one prep notice: the bubble gap before any after the first.
+ * `went` says whether the result is a part that went. */
+type PrepPace = <T>(send: () => Promise<T>, went: (result: T) => boolean) => Promise<T>;
+
 async function sendPrepText(
   database: Database,
   transport: ChannelTransport,
+  pace: PrepPace,
   input: {
     familyId: string;
     parentUserId: string;
@@ -381,30 +421,34 @@ async function sendPrepText(
     );
     return null;
   };
-  const keep = await markSend(database, {
-    familyId: input.familyId,
-    parentUserId: input.parentUserId,
-    offerIds: [input.offerId],
-  });
-  if (keep instanceof AskOrderUnmarked) return failed(keep.message);
-  let delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
+  let delivered: Awaited<ReturnType<typeof deliverStamped>>;
   try {
-    delivered = await deliverFamilyOutbound(database, {
-      familyId: input.familyId,
-      body: input.body,
-      to: input.to,
-      legacy: transport,
-      target: { channel: 'legacy' },
-      shareGroupCap: false,
-      now: input.now,
-    });
+    delivered = await pace(
+      () =>
+        deliverStamped(
+          database,
+          {
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+            offerIds: [input.offerId],
+          },
+          {
+            familyId: input.familyId,
+            body: input.body,
+            to: input.to,
+            legacy: transport,
+            target: { channel: 'legacy' },
+            shareGroupCap: false,
+            now: input.now,
+          },
+        ),
+      (sent) => !(sent instanceof AskOrderUnmarked) && sent.status === 'sent',
+    );
   } catch (err) {
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
+  if (delivered instanceof AskOrderUnmarked) return failed(delivered.message);
   if (delivered.status !== 'sent') return failed(delivered.reason);
-  // This bubble reached the parent: the ask is now the one whose text they got last, so
-  // their next bare answer is its, even if a later part of the notice does not go.
-  await keep();
   await database
     .update(messages)
     .set({
@@ -419,19 +463,30 @@ async function sendPrepText(
 }
 
 /**
- * Marks a notice's send about its ask before the transport call (`askStamp`). A send that
- * could not be marked is not made: its named failure comes back in place of the keep.
+ * One notice text about its ask, as one call: the stamp (`askStamp`) right before the
+ * transport call, and the number kept once the text went, so the parent's next bare answer
+ * is this ask's even if a later part of the notice does not go. A send that could not be
+ * marked is not made: its named failure comes back in place of the delivery.
+ *
+ * The stamp and the transport call are never apart: a paced notice hands this whole call
+ * to the bubble gap, so the gap comes before the stamp, and a text another sender starts
+ * during the gap ranks below this one, which the parent gets after it.
  */
-async function markSend(
+async function deliverStamped(
   database: Database,
   asks: AskedAbout,
-): Promise<Awaited<ReturnType<SendStamp>> | AskOrderUnmarked> {
+  outbound: Parameters<typeof deliverFamilyOutbound>[1],
+): Promise<Awaited<ReturnType<typeof deliverFamilyOutbound>> | AskOrderUnmarked> {
+  let keep: Awaited<ReturnType<SendStamp>>;
   try {
-    return await askStamp(database, asks)();
+    keep = await askStamp(database, asks)();
   } catch (err) {
     if (err instanceof AskOrderUnmarked) return err;
     throw err;
   }
+  const delivered = await deliverFamilyOutbound(database, outbound);
+  if (delivered.status === 'sent') await keep();
+  return delivered;
 }
 
 /** Login-ask, account-prep and 30-minute reminder on the same minute cron. */
