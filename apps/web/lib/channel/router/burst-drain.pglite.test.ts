@@ -5,7 +5,11 @@ import { and, asc, eq } from 'drizzle-orm';
 import PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { resetPosthogClientsForTests } from '~/lib/analytics/posthog-node';
-import { UNANSWERED_ROUTE, sweepUnansweredMessages } from '~/lib/analytics/unanswered';
+import {
+  UNANSWERED_ROUTE,
+  pageUnansweredParentTexts,
+  sweepUnansweredMessages,
+} from '~/lib/analytics/unanswered';
 import {
   CANARY_ANSWERED_ACTION,
   CANARY_BODY,
@@ -36,6 +40,7 @@ import {
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { aggregateOpsDaily } from '~/lib/monitoring/ops-daily';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -725,7 +730,7 @@ describe('a text a turn already routed is never folded into an older text’s re
   });
 });
 
-describe('a folded text reads as answered to the unanswered sweep and the ops-daily post', () => {
+describe('a folded text reads as answered to the unanswered sweep, the ops-daily post and the #ops page', () => {
   let own: TestDb;
 
   beforeAll(async () => {
@@ -781,5 +786,20 @@ describe('a folded text reads as answered to the unanswered sweep and the ops-da
     expect(report.replies.inbound).toBe(3);
     expect(report.replies.answered).toBe(2);
     expect(report.replies.gaps).toBe(1);
+
+    // The page reads what the real router wrote: the burst is finished, the quiet text is not.
+    const posted: string[] = [];
+    const later = new Date(Date.now() + 60 * 60_000);
+    const post = async (text: string) => {
+      posted.push(text);
+      return 'sent' as const;
+    };
+    const page = await pageUnansweredParentTexts(
+      own.database,
+      failurePageOpsPager(() => own.database, { post, now: later }),
+      later,
+    );
+    expect(page).toEqual({ unanswered: 1, page: 'paged' });
+    expect(posted).toEqual(['Hale: ops page. site parent_text_unanswered. count 1.']);
   });
 });
