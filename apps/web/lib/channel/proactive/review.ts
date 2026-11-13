@@ -21,6 +21,7 @@ import {
   type WeekdayCareContext,
   loadWeekdayCareContext,
 } from '~/lib/care/weekday';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import { recordCheckInAsk } from '~/lib/channel/checkin/cadence';
 import {
   type FamilyTextRecipient,
@@ -54,7 +55,10 @@ import {
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  eventKeyFromWeekdayBreakDedupe,
+} from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
@@ -421,7 +425,7 @@ async function loadOpenItems(
       summary.parentNotInFamily += 1;
       continue;
     }
-    if (laneSwitchedOff(row.kind)) {
+    if (laneSwitchedOff(row.kind, row.templateKey)) {
       // Its lane's kill switch is off: the row is left as it is, neither offered nor
       // settled, and the next review after the switch is back on takes it up.
       continue;
@@ -501,9 +505,16 @@ const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
   'school_break_ask',
 ];
 
-/** A kind whose own lane has a kill switch, and it is off. */
-function laneSwitchedOff(kind: string): boolean {
-  return kind === REGISTRATION_OPENING_KIND && !ownCityRegistrationEnabled();
+/** VIL-685 · the winter-break ask and the break question both stop with SCHOOL_BREAK_ENABLED. */
+const SCHOOL_BREAK_TEMPLATE_KEYS: readonly string[] = [
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+];
+
+/** A row whose own lane has a kill switch, and it is off. */
+function laneSwitchedOff(kind: string, templateKey: string | null): boolean {
+  if (kind === REGISTRATION_OPENING_KIND && !ownCityRegistrationEnabled()) return true;
+  return SCHOOL_BREAK_TEMPLATE_KEYS.includes(templateKey ?? '') && !schoolBreakEnabled();
 }
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {

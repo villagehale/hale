@@ -485,8 +485,11 @@ function nudgeDay(nudge: Nudge, now: Date, timeZone: string): string | null {
       if (!slot) throw new Error(`nudgeWorthlessAfter: no ${nudge.day} in the coming weekend`);
       return slot.date;
     }
-    case 'registration':
     case 'weekday_care':
+      // A verified break's key ends with its first day (nudge-decide checks it): asking
+      // who covers the break is worthless once it has begun. The other prompts have no day.
+      return nudge.ask.prompt === 'verified_break' ? nudge.ask.eventKey.slice(-10) : null;
+    case 'registration':
       return null;
     default:
       return assertNever(nudge);

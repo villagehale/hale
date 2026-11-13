@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { onOfficialHost, officialHostOf } from './host';
+import { onOfficialHost } from './host';
 import { type SchoolBreakExtraction, checkBreakReading, createBreakPageReader } from './read';
 
 /**
@@ -133,6 +133,19 @@ describe('checkBreakReading', () => {
     ).toMatchObject({ name: 'Winter Break' });
   });
 
+  it('refuses a December or January PA day read as the winter break', () => {
+    const page = `${PAGE}\nPA Day: Friday, January 15, 2027`;
+    const pa = 'PA Day: Friday, January 15, 2027';
+    const day = { quote: pa, date_text: 'January 15, 2027', date: '2027-01-15' };
+    expect(
+      checkBreakReading(
+        extraction({ name: 'PA Day', first_day: day, last_day: day }),
+        page,
+        '2026-27',
+      ),
+    ).toEqual({ refused: 'not_winter' });
+  });
+
   it('refuses a name the page does not print', () => {
     expect(checkBreakReading(extraction({ name: 'Holiday Break' }), PAGE, '2026-27')).toEqual({
       refused: 'name_unusable',
@@ -141,9 +154,7 @@ describe('checkBreakReading', () => {
 });
 
 describe('the official host', () => {
-  it('is the school sender domain, and a page on it or a subdomain of it', () => {
-    const host = officialHostOf('Board.Example');
-    expect(host).toBe('board.example');
+  it('is the proven host, and a page on it or a subdomain of it', () => {
     expect(onOfficialHost('https://board.example/calendar', 'board.example')).toBe(true);
     expect(onOfficialHost('https://www.board.example/calendar', 'board.example')).toBe(true);
   });
@@ -153,8 +164,6 @@ describe('the official host', () => {
     expect(onOfficialHost('https://board.example.attacker.test/x', 'board.example')).toBe(false);
     expect(onOfficialHost('http://www.board.example/calendar', 'board.example')).toBe(false);
     expect(onOfficialHost('https://user:pw@board.example/x', 'board.example')).toBe(false);
-    expect(officialHostOf('ca')).toBeNull();
-    expect(officialHostOf('board.example/calendar')).toBeNull();
   });
 });
 

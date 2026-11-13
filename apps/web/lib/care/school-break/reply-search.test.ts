@@ -20,7 +20,9 @@ describe("the parent's reply, checked by code", () => {
   const read = {
     quote: 'dec 21 to jan 1',
     first_day: '2026-12-21',
+    first_day_text: 'dec 21',
     last_day: '2027-01-01',
+    last_day_text: 'jan 1',
     name: 'winter break',
     confidence: 'high',
   };
@@ -51,11 +53,45 @@ describe("the parent's reply, checked by code", () => {
     ).toEqual({ status: 'nothing_stated' });
     expect(
       toSchoolBreakReplyReading(
-        { quote: null, first_day: null, last_day: null, name: null, confidence: 'low' },
+        {
+          quote: null,
+          first_day: null,
+          first_day_text: null,
+          last_day: null,
+          last_day_text: null,
+          name: null,
+          confidence: 'low',
+        },
         "she's at Maple Grove",
         '2026-27',
       ),
     ).toEqual({ status: 'nothing_stated' });
+  });
+
+  it("files nothing when the days are not stated in the parent's own words", () => {
+    const vague = 'not sure, around christmas i think';
+    expect(
+      toSchoolBreakReplyReading(
+        {
+          ...read,
+          quote: 'around christmas',
+          first_day_text: 'around christmas',
+          last_day_text: 'around christmas',
+          first_day: '2026-12-21',
+          last_day: '2027-01-01',
+        },
+        vague,
+        '2026-27',
+      ),
+    ).toEqual({ status: 'nothing_stated' });
+    // A day span that states another day than the one filed.
+    expect(
+      toSchoolBreakReplyReading({ ...read, first_day: '2026-12-18' }, TEXT, '2026-27'),
+    ).toEqual({ status: 'nothing_stated' });
+    // A day span the quote does not carry.
+    expect(toSchoolBreakReplyReading({ ...read, last_day_text: 'jan 4' }, TEXT, '2026-27')).toEqual(
+      { status: 'nothing_stated' },
+    );
   });
 });
 

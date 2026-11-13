@@ -8,9 +8,9 @@ import { onOfficialHost } from './host';
  * VIL-685 · find the calendar page a board publishes its school year on, by live search
  * restricted to the board's own host.
  *
- * The search is told one host — the domain the family's school mail comes from — and the
- * web search tool is limited to it (`allowed_domains`), so nothing off that host can be
- * returned. The model only FINDS pages; the break is read off each page afterwards and
+ * The search is told one host — the board's official site, proven by Wikidata from the
+ * family's school mail (official-board.ts) — and the web search tool is limited to it
+ * (`allowed_domains`), so nothing off that host can be returned. The model only FINDS pages; the break is read off each page afterwards and
  * checked by code (read.ts). A URL the model wrote that no result carried is dropped.
  *
  * What crosses the border to the US search (rule #1) is a public host and a school year.

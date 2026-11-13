@@ -41,10 +41,16 @@ export function lastAskDay(schoolYear: string): string {
   return addDaysToKey(winterBreakBounds(schoolYear).earliest, 14);
 }
 
-/** Both days inside this school year's winter bounds, in order. */
+/**
+ * Both days inside this school year's winter bounds, in order, and the span reaching over
+ * December 25: the winter break is the break around the new year, so a single PA day or
+ * another closure in December or January is never read as it. A shape check on what the
+ * page or the parent said, never a date Hale states or fills in.
+ */
 export function isWinterBreak(schoolYear: string, firstDay: string, lastDay: string): boolean {
   const { earliest, latest } = winterBreakBounds(schoolYear);
-  return firstDay >= earliest && lastDay <= latest && firstDay <= lastDay;
+  const christmas = `${startYear(schoolYear)}-12-25`;
+  return firstDay >= earliest && lastDay <= latest && firstDay <= christmas && christmas <= lastDay;
 }
 
 /** The event key a winter break is asked about under: colon-free, ending in its first
