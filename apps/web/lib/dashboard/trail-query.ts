@@ -120,6 +120,9 @@ export interface LoadTrailOptions {
   includeInternal?: boolean;
   /** Verbs this surface never shows, internal or not (rights/export.ts). */
   exclude?: readonly AuditVerb[];
+  /** Of the excluded verbs, these still show where the row is about this user
+   * (target users/<userId>): a right-to-access copy holds the requester's own rows. */
+  keepOwn?: { userId: string; verbs: readonly AuditVerb[] };
   /**
    * VIL-635. The signed-in / requesting parent. Lit, a row whose audience is set
    * shows only to this adult — even when History would otherwise hide the verb,
@@ -129,12 +132,33 @@ export interface LoadTrailOptions {
   viewerUserId?: string | null;
 }
 
+function isOwnRow(
+  entry: { actionTaken: string; targetTable: string | null; targetId: string | null },
+  keepOwn: LoadTrailOptions['keepOwn'],
+): boolean {
+  return (
+    keepOwn !== undefined &&
+    (keepOwn.verbs as readonly string[]).includes(entry.actionTaken) &&
+    entry.targetTable === 'users' &&
+    entry.targetId === keepOwn.userId
+  );
+}
+
 function trailVerbHide(options: LoadTrailOptions) {
   const internal = options.includeInternal
     ? undefined
     : notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]);
   const excluded = options.exclude?.length
-    ? notInArray(schema.auditLog.actionTaken, [...options.exclude])
+    ? or(
+        notInArray(schema.auditLog.actionTaken, [...options.exclude]),
+        options.keepOwn?.verbs.length
+          ? and(
+              inArray(schema.auditLog.actionTaken, [...options.keepOwn.verbs]),
+              eq(schema.auditLog.targetTable, 'users'),
+              eq(schema.auditLog.targetId, options.keepOwn.userId),
+            )
+          : undefined,
+      )
     : undefined;
   return { internal, excluded };
 }
@@ -154,17 +178,26 @@ function trailAudienceWhere(options: LoadTrailOptions) {
 }
 
 function trailRowVisible(
-  actionTaken: string,
-  after: unknown,
-  audience: string | null,
+  entry: {
+    actionTaken: string;
+    after: unknown;
+    audience: string | null;
+    targetTable: string | null;
+    targetId: string | null;
+  },
   options: LoadTrailOptions,
 ): boolean {
-  if (isAgentToolStep(actionTaken) || isShadowOnlyRow(actionTaken, after)) return false;
+  const { actionTaken } = entry;
+  if (isAgentToolStep(actionTaken) || isShadowOnlyRow(actionTaken, entry.after)) return false;
   if (auditLogAudienceEnabled()) {
-    if (audience !== null) return audience === (options.viewerUserId ?? null);
+    if (entry.audience !== null) return entry.audience === (options.viewerUserId ?? null);
   }
   if (!options.includeInternal && isInternalTrailVerb(actionTaken)) return false;
-  if ((options.exclude as readonly string[] | undefined)?.includes(actionTaken)) return false;
+  if (
+    (options.exclude as readonly string[] | undefined)?.includes(actionTaken) &&
+    !isOwnRow(entry, options.keepOwn)
+  )
+    return false;
   return true;
 }
 
@@ -238,7 +271,7 @@ export async function loadTrailForFamily(
     .limit(50);
   return rows
     .filter((row) =>
-      trailRowVisible(row.entry.actionTaken, row.entry.after, row.entry.audience ?? null, options),
+      trailRowVisible({ ...row.entry, audience: row.entry.audience ?? null }, options),
     )
     .map((row) => {
       const resolvedToEvent = row.teenContent !== null;
