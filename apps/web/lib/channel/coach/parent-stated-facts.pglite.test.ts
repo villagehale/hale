@@ -84,4 +84,32 @@ describe('loadParentStatedFacts (VIL-628)', () => {
       expect(values).not.toContain(phone);
     }
   });
+
+  it('a single-parent family: an inferred fact is still not trusted', async () => {
+    // With no other adult, audience scoping hides nothing, so only the source check
+    // keeps a fact read off an email out.
+    const solo = await seedFamily(db.database, 'Solo Family');
+    await db.database.insert(schema.familyMemoryFacts).values(
+      [
+        ['told_by_parent', '555-0111', 'parent_message'],
+        ['read_off_email', '555-0112', 'inferred'],
+      ].map(([factKey, phone, memorySource]) => ({
+        familyId: solo.familyId,
+        factType: 'preference' as const,
+        factKey: factKey as string,
+        factValue: { summary: `office ${phone}` },
+        confidence: 0.9,
+        validFrom: new Date('2026-10-01T00:00:00.000Z'),
+        memorySource: memorySource as 'parent_message' | 'inferred',
+        ...(memorySource === 'parent_message'
+          ? { sourceAudience: 'one_to_one' as const, sourceUserId: solo.parentUserId }
+          : {}),
+      })),
+    );
+    const port = productionChannelCoachPorts(db.database).loadParentStatedFacts;
+    if (!port) throw new Error('production ports do not wire loadParentStatedFacts');
+    const values = (await port(solo.familyId, solo.parentUserId, NOW)).join('\n');
+    expect(values).toContain('555-0111');
+    expect(values).not.toContain('555-0112');
+  });
 });
