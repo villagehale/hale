@@ -700,6 +700,20 @@ export async function settlePendingAsks(
   if (!generalAnswerSearchEnabled()) return;
   await deletePendingAsksOf(database, input);
   if (input.ask === null) return;
+  await keepPendingAsk(database, { ...input, ask: input.ask });
+}
+
+/**
+ * The question one reply left open, kept beside that reply's row, closing nothing else:
+ * the second half of {@link settlePendingAsks}, and all of it for an answer sent while
+ * another turn is still running (router/side-turn.ts), which reads the questions open as
+ * of its own start.
+ */
+export async function keepPendingAsk(
+  database: Database,
+  input: { familyId: string; channelMessageId: string; ask: PendingAsk },
+): Promise<void> {
+  if (!generalAnswerSearchEnabled()) return;
   if (
     input.ask.question.length > schema.PENDING_ASK_QUESTION_MAX_CHARS ||
     input.ask.missing.length > schema.PENDING_ASK_MISSING_MAX_CHARS
