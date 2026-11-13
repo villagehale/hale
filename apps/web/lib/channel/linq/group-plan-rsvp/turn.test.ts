@@ -36,6 +36,7 @@ function rsvp(
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
+    samePlan: true,
     ...extras,
   };
 }
@@ -93,6 +94,7 @@ async function startPicnic(world = worldWithPicnic()) {
         householdLabel: null,
         coversNames: [],
         confidence: 'high',
+        samePlan: true,
       }),
       composer,
       send: async ({ text }) => {
@@ -264,6 +266,7 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
       },
     );
@@ -363,6 +366,7 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
         composer: fakeGroupPlanRsvpComposer({ fail: true }),
         send: async () => ({ providerMessageId: 'x' }),
@@ -398,6 +402,7 @@ describe('takeGroupPlanRsvpTurn', () => {
       householdLabel: null,
       coversNames: [],
       confidence: 'high',
+      samePlan: true,
     });
     const held = await takeGroupPlanRsvpTurn(ask, {
       store,
@@ -555,6 +560,7 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async ({ text }) => {
@@ -597,6 +603,7 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async () => ({ providerMessageId: 'x' }),
@@ -635,6 +642,7 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async () => ({ providerMessageId: 'x' }),

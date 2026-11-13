@@ -13,6 +13,14 @@ const LIVE_SATURDAY = {
   ],
 };
 
+const LIVE_TIMES = {
+  question: 'zoo when?',
+  options: [
+    { key: 'o1', text: 'Saturday 10' },
+    { key: 'o2', text: 'Sunday 2' },
+  ],
+};
+
 export const GROUP_POLL_READ_FIXTURES = [
   {
     id: 'start-with-options',
@@ -109,6 +117,34 @@ export const GROUP_POLL_READ_FIXTURES = [
       polls: { live: LIVE_SATURDAY },
     },
     accept: ['chatter'],
+  },
+  {
+    id: 'lock-with-pick',
+    situation:
+      'A poll is open between Saturday 10 and Sunday 2. Someone says Sunday it is and asks Hale to lock it in: settle the poll now.',
+    input: {
+      text: 'Sunday it is, lock it in Hale',
+      tapback: null,
+      senderName: 'Bao',
+      plan: null,
+      recent: [],
+      polls: { live: LIVE_TIMES },
+    },
+    accept: ['close_poll'],
+  },
+  {
+    id: 'bare-lock',
+    situation:
+      'A poll is open between Saturday 10 and Sunday 2. Someone asks Hale to lock it in: settle the poll now with what is winning.',
+    input: {
+      text: 'lock it in Hale',
+      tapback: null,
+      senderName: 'Ada',
+      plan: null,
+      recent: [],
+      polls: { live: LIVE_TIMES },
+    },
+    accept: ['close_poll'],
   },
 ];
 

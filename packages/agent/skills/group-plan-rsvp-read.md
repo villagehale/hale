@@ -34,13 +34,14 @@ One JSON object, nothing else:
   "householdLabel": null,
   "coversNames": [],
   "confidence": "high",
+  "samePlan": true,
   "pollQuestion": null,
   "pollOptions": [],
   "pollChoice": null
 }
 ```
 
-`intent` is exactly one of: `start_tracking`, `rsvp`, `edit`, `ask_tally`, `start_poll`, `poll_vote`, `ask_poll`, `chatter`, `unclear`.
+`intent` is exactly one of: `start_tracking`, `rsvp`, `edit`, `ask_tally`, `start_poll`, `poll_vote`, `ask_poll`, `close_poll`, `chatter`, `unclear`.
 
 - `start_tracking` — they want Hale to keep a count for a plan (any plan, not only a birthday), or the group just named a plan and is collecting who is in. Fill `planTitle` from what they said. `startsAt`, `location`, and `deadline` only when they said them.
 - `rsvp` — they are answering for themselves or their household on a live plan, or on the plan they just named. `response` is `yes`, `no`, or `maybe`.
@@ -49,6 +50,7 @@ One JSON object, nothing else:
 - `start_poll` — they want the group to vote between choices ("make a poll", "let's vote", or plainly asking everyone to pick between options). Put the question in `pollQuestion` in their words, or null when they gave none. Put each choice they named in `pollOptions`, in their words and order. Leave `pollOptions` empty when they named fewer than two; do not invent choices.
 - `poll_vote` — they are picking a choice on the open poll (`polls.live`), in any language, wording, or emoji, including changing their pick. `pollChoice` is the `key` of the one option they now stand on.
 - `ask_poll` — they want to know where the open poll stands or what is winning.
+- `close_poll` — they want Hale to settle the open poll now, going with what is winning or with the choice they name in the same breath. Only when `polls.live` is not null.
 - `chatter` — people talking to each other. Not a vote, not an ask, not a new plan. Hale stays silent.
 - `unclear` — you cannot tell. No state change.
 
@@ -59,6 +61,7 @@ One JSON object, nothing else:
 `pollQuestion` and `pollOptions` are only for `start_poll`; otherwise null and empty.
 `pollChoice` is only for `poll_vote`; otherwise null. It must be a `key` from `polls.live.options`.
 `confidence` is `high` or `low`. Low means no state change.
+`samePlan` is null when `plan` is null. When a plan is live, it is true when the message is about that plan, and false when it is about a different event. An answer or a count ask that names no event is about the live plan. A message that names an event other than `plan.title`, or opens a new event while the plan is live, is false.
 
 ## Hard rules
 
@@ -70,3 +73,4 @@ One JSON object, nothing else:
 - When unsure between a vote and chatter, choose `chatter`.
 - A poll pick is the sender's own. Saying what someone else wants, "whatever works", "either is fine", a maybe, or a question about a choice is not a `poll_vote`: use `chatter`.
 - A yes or no about coming to a plan is `rsvp`, not `poll_vote`, unless the open poll's choices are themselves that question.
+- Asking Hale to settle the open poll is `close_poll`, even when the message also names the choice that won.

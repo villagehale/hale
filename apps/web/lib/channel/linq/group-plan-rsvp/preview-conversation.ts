@@ -247,6 +247,7 @@ function startPicnic(): GroupPlanRsvpReading {
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
+    samePlan: true,
   };
 }
 
@@ -301,6 +302,7 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         },
       },
       {
@@ -333,6 +335,7 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         },
       },
       {
@@ -349,6 +352,7 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         },
       },
     ],
@@ -401,6 +405,7 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: 'the Chens',
           coversNames: ['Wei'],
           confidence: 'high',
+          samePlan: true,
         },
       },
     ],
@@ -454,6 +459,7 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         },
       },
     ],

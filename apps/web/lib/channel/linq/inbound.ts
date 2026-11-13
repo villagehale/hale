@@ -654,6 +654,16 @@ async function privateCalendarReply(
   };
 }
 
+/**
+ * One group message's read state across the door. `done`: the group moment already read it.
+ * `lockAsked`: the VIL-442 reader, which runs first, read a lock on the open poll, so the group
+ * moment locks without reading the message again.
+ */
+interface GroupMessageRead {
+  done: boolean;
+  lockAsked?: boolean;
+}
+
 async function runGroupExperience(
   deps: LinqDoorDeps,
   input: {
@@ -662,6 +672,7 @@ async function runGroupExperience(
     text: string;
     messageId: string;
   },
+  read: GroupMessageRead,
 ): Promise<Extract<GroupExperienceTurnOutcome, { handled: true }> | null> {
   if (!groupExperienceTurnEnabled()) return null;
   const covering =
@@ -697,6 +708,7 @@ async function runGroupExperience(
       coveringFamilyId: covering,
       text: input.text,
       messageId: input.messageId,
+      ...(read.lockAsked ? { decided: 'time_lock' as const } : {}),
     },
   );
   return groupExperienceTakesTheTurn(result) ? result : null;
@@ -715,11 +727,11 @@ async function tryGroupExperienceTurn(
     text: string;
     messageId: string;
   },
-  read: { done: boolean },
+  read: GroupMessageRead,
 ): Promise<Response | null> {
   if (read.done) return null;
   read.done = true;
-  const result = await runGroupExperience(deps, input);
+  const result = await runGroupExperience(deps, input, read);
   if (!result) return null;
   deps.log.info({ outcome: result.outcome }, 'linq inbound: group experience');
   await deps.countOutcome(result.count);
@@ -774,6 +786,7 @@ async function tryGroupPlanRsvpTurn(
     tapback: LinqTapback | null;
     tapbackMessageId?: string | null;
   },
+  read?: GroupMessageRead,
 ): Promise<Response | null> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return null;
   const mappedSender = await mapGroupHandlesToFamily(deps.database, {
@@ -801,6 +814,7 @@ async function tryGroupPlanRsvpTurn(
       secretSanta: await secretSantaRunsInChat(deps.database, input.chatId),
     },
   );
+  if (rsvp.handled && rsvp.outcome === 'group_poll_lock_asked' && read) read.lockAsked = true;
   if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
   deps.log.info(
     { outcome: rsvp.outcome },
@@ -888,17 +902,21 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     linqMultiFamilyGroupsEnabled() &&
     secretSantaEnabled() &&
     (await chatHasCollectingDraw(deps.database, message.chatId));
-  const experienceRead = { done: false };
+  const experienceRead: GroupMessageRead = { done: false };
   // A plan ask in a multi-family chat must run before the shared-group reader,
   // or it is handed back as a question and falls into the mixed-family hold.
   const rsvpFirst = santaCollecting
     ? null
-    : await tryGroupPlanRsvpTurn(deps, {
-        chatId: message.chatId,
-        senderHandle: message.senderHandle,
-        text: message.text,
-        tapback: null,
-      });
+    : await tryGroupPlanRsvpTurn(
+        deps,
+        {
+          chatId: message.chatId,
+          senderHandle: message.senderHandle,
+          text: message.text,
+          tapback: null,
+        },
+        experienceRead,
+      );
   if (rsvpFirst) return rsvpFirst;
 
   if (linqMultiFamilyGroupsEnabled()) {
@@ -942,12 +960,16 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
         experience: async () => {
           if (experienceRead.done) return null;
           experienceRead.done = true;
-          const moment = await runGroupExperience(deps, {
-            chatId: message.chatId,
-            senderHandle: message.senderHandle,
-            text: message.text,
-            messageId: message.messageId,
-          });
+          const moment = await runGroupExperience(
+            deps,
+            {
+              chatId: message.chatId,
+              senderHandle: message.senderHandle,
+              text: message.text,
+              messageId: message.messageId,
+            },
+            experienceRead,
+          );
           if (!moment) return null;
           return {
             result: {
@@ -1085,7 +1107,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 async function routeClaimedGroup(
   deps: LinqDoorDeps,
   message: LinqInboundText,
-  experienceRead: { done: boolean } = { done: false },
+  experienceRead: GroupMessageRead = { done: false },
 ): Promise<Response> {
   const stopping = (await optOutIntentOf(message.text)) === 'stop';
   if (!stopping && !linqGroupOnboardingV2Enabled()) {

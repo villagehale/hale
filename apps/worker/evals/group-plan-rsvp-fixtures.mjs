@@ -36,6 +36,7 @@ export const GROUP_PLAN_RSVP_READ_FIXTURES = [
       recent: [],
     },
     accept: ["rsvp"],
+    samePlan: true,
   },
   {
     id: "edit-no",
@@ -53,6 +54,7 @@ export const GROUP_PLAN_RSVP_READ_FIXTURES = [
       recent: [],
     },
     accept: ["edit", "rsvp"],
+    samePlan: true,
   },
   {
     id: "ask-count",
@@ -70,6 +72,7 @@ export const GROUP_PLAN_RSVP_READ_FIXTURES = [
       recent: [],
     },
     accept: ["ask_tally"],
+    samePlan: true,
   },
   {
     id: "banter",
@@ -87,6 +90,63 @@ export const GROUP_PLAN_RSVP_READ_FIXTURES = [
       recent: [],
     },
     accept: ["chatter"],
+  },
+  {
+    id: "other-event-opening",
+    situation:
+      "A picnic is being counted. A parent now asks Hale who is in for a zoo trip on Sunday at 2: a different event, not the picnic.",
+    input: {
+      text: "Hale who's in for the zoo Sunday at 2?",
+      tapback: null,
+      senderName: "Ada",
+      plan: {
+        title: "picnic",
+        deadline: null,
+        yesNames: ["Bao"],
+        waitingNames: ["Ada"],
+      },
+      recent: [],
+    },
+    accept: ["start_tracking"],
+    samePlan: false,
+  },
+  {
+    id: "same-plan-opening",
+    situation:
+      "A Saturday picnic is already being counted. A parent asks Hale to count who is coming to that same picnic.",
+    input: {
+      text: "Hale can you count who's coming to the picnic?",
+      tapback: null,
+      senderName: "Ada",
+      plan: {
+        title: "Saturday picnic",
+        deadline: null,
+        yesNames: [],
+        waitingNames: ["Ada", "Bao"],
+      },
+      recent: [],
+    },
+    accept: ["start_tracking", "ask_tally"],
+    samePlan: true,
+  },
+  {
+    id: "answer-other-event",
+    situation:
+      "A picnic is being counted. Someone says their family is in for the zoo on Sunday: an answer about a different event, not the picnic.",
+    input: {
+      text: "we're in for the zoo on Sunday",
+      tapback: null,
+      senderName: "Bao",
+      plan: {
+        title: "picnic",
+        deadline: null,
+        yesNames: [],
+        waitingNames: ["Ada", "Bao"],
+      },
+      recent: [],
+    },
+    accept: ["rsvp", "start_tracking", "chatter"],
+    samePlan: false,
   },
 ];
 

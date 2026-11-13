@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Ada asks about a new zoo event; reading correctly starts tracking it, marks samePlan false, and does not count her as a picnic yes."
+  }
+}

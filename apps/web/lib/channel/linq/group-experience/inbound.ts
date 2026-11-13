@@ -101,6 +101,7 @@ export async function considerGroupExperience(
     coveringFamilyId: string;
     text: string;
     messageId: string;
+    decided?: 'time_lock';
   },
 ): Promise<GroupExperienceTurnOutcome> {
   if (!groupExperienceTurnEnabled()) return { handled: false };
@@ -119,6 +120,7 @@ export async function considerGroupExperience(
       language: 'en',
       timeZone: await knownHouseholdTimezone(ports.database, askerFamilyId),
       now: ports.now,
+      ...(input.decided ? { decided: input.decided } : {}),
     },
     {
       database: ports.database,

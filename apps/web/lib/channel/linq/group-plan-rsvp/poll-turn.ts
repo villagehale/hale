@@ -70,6 +70,7 @@ export interface GroupPollCardPort {
 export type GroupPollTurnResult = {
   handled: true;
   outcome:
+    | 'group_poll_lock_asked'
     | 'group_poll_spoken'
     | 'group_poll_recorded'
     | 'group_poll_unread'
@@ -200,6 +201,12 @@ export async function takeGroupPollReading(
 
   const poll = context.livePoll;
   if (!poll) return { handled: false };
+
+  // The lock itself is the group moment's (group-experience lockTime): one lock, one line.
+  // This turn only names what the message meant, so the door hands it on unread.
+  if (reading.intent === 'close_poll') {
+    return { handled: true, outcome: 'group_poll_lock_asked', count: 'ignored' };
+  }
 
   if (reading.intent === 'ask_poll') {
     const tally = await deps.store.loadPollTally(poll.id);

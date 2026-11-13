@@ -30,12 +30,13 @@ export const GROUP_PLAN_RSVP_INTENTS = [
   'start_poll',
   'poll_vote',
   'ask_poll',
+  'close_poll',
   'chatter',
   'unclear',
 ] as const;
 export type GroupPlanRsvpIntent = (typeof GROUP_PLAN_RSVP_INTENTS)[number];
 
-export const GROUP_POLL_INTENTS = ['start_poll', 'poll_vote', 'ask_poll'] as const;
+export const GROUP_POLL_INTENTS = ['start_poll', 'poll_vote', 'ask_poll', 'close_poll'] as const;
 export type GroupPollIntent = (typeof GROUP_POLL_INTENTS)[number];
 
 export function isGroupPollIntent(intent: GroupPlanRsvpIntent): intent is GroupPollIntent {
@@ -79,6 +80,11 @@ export interface GroupPlanRsvpReading {
   householdLabel: string | null;
   coversNames: string[];
   confidence: 'high' | 'low';
+  /**
+   * Whether the message is about the live plan: true, false when it is about another event,
+   * null when no plan is live. Only true binds a message to the live plan.
+   */
+  samePlan?: boolean | null;
   /** `start_poll`: the question, in the parent's words, or null when they gave none. */
   pollQuestion?: string | null;
   /** `start_poll`: the choices, in the parent's words and order. */
@@ -102,6 +108,7 @@ const outputSchema = z.object({
   householdLabel: z.string().nullable(),
   coversNames: z.array(z.string()),
   confidence: z.enum(['high', 'low']),
+  samePlan: z.boolean().nullable(),
   pollQuestion: z.string().nullable(),
   pollOptions: z.array(z.string()),
   pollChoice: z.string().nullable(),
@@ -121,6 +128,7 @@ const outputJsonSchema = {
     householdLabel: { type: ['string', 'null'] },
     coversNames: { type: 'array', items: { type: 'string' } },
     confidence: { type: 'string', enum: ['high', 'low'] },
+    samePlan: { type: ['boolean', 'null'] },
     pollQuestion: { type: ['string', 'null'] },
     pollOptions: { type: 'array', items: { type: 'string' } },
     pollChoice: { type: ['string', 'null'] },
@@ -136,6 +144,7 @@ const outputJsonSchema = {
     'householdLabel',
     'coversNames',
     'confidence',
+    'samePlan',
     'pollQuestion',
     'pollOptions',
     'pollChoice',
@@ -183,6 +192,8 @@ export function readingFromTapback(
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
+    // A tapback is a vote on the live plan, as it always was: the protocol, not a reading.
+    samePlan: true,
   };
 }
 

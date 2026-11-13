@@ -37,6 +37,7 @@ function rsvp(
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
+    samePlan: true,
     ...extras,
   };
 }
@@ -148,6 +149,7 @@ async function picnic() {
         householdLabel: null,
         coversNames: [],
         confidence: 'high',
+        samePlan: true,
       }),
       composer: fakeGroupPlanRsvpComposer(),
       send: async ({ text, kind }) => {
@@ -737,6 +739,7 @@ describe('group plan calendar consent', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
         writer,
         consent: consentOf('not_this'),
@@ -885,6 +888,7 @@ describe('group plan calendar consent', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
         consent: consentOf('not_this'),
       }),
@@ -968,6 +972,7 @@ describe('a removal confirmation the model cannot write', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          samePlan: true,
         }),
         consent: consentOf('not_this'),
       }),

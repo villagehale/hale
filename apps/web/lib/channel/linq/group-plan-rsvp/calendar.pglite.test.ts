@@ -280,6 +280,7 @@ describe('postgres household calendar copy', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high' as const,
+            samePlan: true,
           }),
         },
       },
@@ -886,6 +887,7 @@ describe('the private reply and a tapback use the household language', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
+            samePlan: true,
           }),
         },
         oneToOne: {
@@ -992,6 +994,7 @@ describe('the private reply and a tapback use the household language', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
+            samePlan: true,
           }),
         },
         oneToOne: {
@@ -1154,6 +1157,7 @@ describe('a claimed group with no member seat', () => {
       householdLabel: null,
       coversNames: [],
       confidence: 'high' as const,
+      samePlan: true,
     };
     await considerGroupPlanRsvp(
       {
@@ -1498,6 +1502,15 @@ describe('a private reply among calendar asks', () => {
     expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
     expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
 
+    // The reader alone deciding exactly one of the asks, with no plan named, binds nothing.
+    const modelOnly = await considerPrivateCalendarReply(
+      { ...ports, now: new Date(NOW.getTime() + 100_000) },
+      { senderUserId: priya.userId, senderName: 'Priya', chatId: PRIVATE_CHAT, text: 'yes please' },
+    );
+    expect(modelOnly.handled).toBe(true);
+    expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
+    expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
+
     const chosen = await considerPrivateCalendarReply(
       { ...ports, now: new Date(NOW.getTime() + 120_000) },
       {
@@ -1528,6 +1541,7 @@ describe('a multi-family chat with no covering family', () => {
       householdLabel: null,
       coversNames: [] as string[],
       confidence: 'high' as const,
+      samePlan: true,
     };
   }
 
@@ -1593,6 +1607,7 @@ describe('a multi-family chat with no covering family', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
+            samePlan: true,
           }),
         },
         consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
