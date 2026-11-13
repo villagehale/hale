@@ -320,7 +320,10 @@ describe('runProactiveReview', () => {
     await enqueue('nudge:weather:w41');
     await runProactiveReview(db.database, harness(sendAll).deps, THURSDAY_EVENING);
     const rows = await db.database
-      .select({ templateKey: schema.channelMessages.templateKey, body: schema.channelMessages.body })
+      .select({
+        templateKey: schema.channelMessages.templateKey,
+        body: schema.channelMessages.body,
+      })
       .from(schema.channelMessages)
       .where(eq(schema.channelMessages.familyId, familyId));
     expect(rows.map((row) => [row.templateKey, row.body]).sort()).toEqual(
