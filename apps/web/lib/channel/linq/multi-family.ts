@@ -54,7 +54,7 @@ import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shar
 import { reactionAsVote, sharedGroupReader } from './shared-group-reading';
 import type { SharedGroupComposer } from './shared-group-voice';
 import { composeSharedGroupLine } from './shared-group-voice';
-import { LinqSendError } from './transport';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-456 — Hale in an existing multi-family group.
@@ -986,6 +986,33 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
 
 type PersonRow = typeof schema.linqSharedGroupPeople.$inferSelect;
 
+type ParticipantRead = Awaited<ReturnType<ListChatHandles>>;
+
+/** Linq's participant list for the chat, or null when it could not be asked. */
+async function participantsOf(chatId: string): Promise<ParticipantRead | null> {
+  try {
+    return await listLinqParticipantHandles({ chatId });
+  } catch (err) {
+    if (err instanceof LinqSendError) return null;
+    throw err;
+  }
+}
+
+/**
+ * VIL-687: true only when Linq's participant list was read and every handle on it is a
+ * number seated in this chat. An Apple ID email, a number nobody seated, or a failed read
+ * leaves someone Hale cannot place, and the shared list then hides every hidden gift.
+ * Linq's list already leaves out people who left or were removed (readLinqChatHandles).
+ */
+function everyoneSeated(live: readonly PersonRow[], listed: ParticipantRead | null): boolean {
+  if (listed?.status !== 'ok') return false;
+  const seated = new Set(live.map((row) => row.phoneE164Hash));
+  return listed.handles.every((handle) => {
+    const phone = normalizePhoneE164(handle);
+    return phone !== null && (haleLine(phone) || seated.has(phoneBlindIndex(phone)));
+  });
+}
+
 async function peopleInChat(database: Database, chatId: string): Promise<PersonRow[]> {
   const rows = await database.select().from(schema.linqSharedGroupPeople);
   return rows.filter((row) => row.chatId === chatId);
@@ -1547,12 +1574,10 @@ export async function takeMultiFamilyTurn(
     await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
   }
 
-  if (wired.listHandles) {
-    const listed = await wired.listHandles({ chatId: input.chatId });
-    if (listed.status === 'ok') {
-      for (const handle of listed.handles) {
-        await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
-      }
+  const participants = wired.listHandles ? await wired.listHandles({ chatId: input.chatId }) : null;
+  if (participants?.status === 'ok') {
+    for (const handle of participants.handles) {
+      await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
     }
   }
 
@@ -1625,7 +1650,11 @@ export async function takeMultiFamilyTurn(
           text: input.text,
           language: wired.language ?? null,
           speaker: me,
-          ...(await sharedListAudience(database, live)),
+          ...(await sharedListAudience(
+            database,
+            live,
+            everyoneSeated(live, participants ?? (await participantsOf(input.chatId))),
+          )),
         }
       : null;
   const listModel = listContext ? (wired.listTurn ?? sharedListTurnModel()) : null;
@@ -1904,16 +1933,22 @@ export async function takeMultiFamilyTurn(
             send: wired.send,
           })
         : 'declined';
-      // Counts and the line's fate only: no item text, owner or kid, so a hidden gift
-      // never reaches a family's audit trail.
+      // Every parent's export shows this row, so it holds only what the chat itself showed:
+      // what was written in the open and whether a line went. No item text, owner or kid,
+      // and nothing that tells a turn that met a hidden gift from one with nothing to do.
+      const { held, ...open } = listed.counts;
       await audit(database, {
         familyId,
         actor: userId,
         actionTaken: 'linq_multi_family_list_turn',
         targetTable: 'shared_group_list_items',
         targetId: me.id,
-        after: { ...listed.counts, line: listed.lineWhy, notice },
+        after: { ...open, line: listed.lineWhy === 'model' ? 'model' : 'quiet', notice },
       });
+      console.info(
+        { outcome: 'shared_list_turn', line: listed.lineWhy, held: held ?? 0 },
+        'linq multi-family: list turn',
+      );
       // A withheld line may be a secret gift: the 1:1 aside, which drafts from the group
       // text, stays quiet too.
       const aside = listed.lineWhy === 'withheld' ? undefined : await runAside();

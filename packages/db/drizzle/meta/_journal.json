@@ -1597,6 +1597,13 @@
       "when": 1794365240000,
       "tag": "0241_shared_group_list_items",
       "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1794365270000,
+      "tag": "0243_shared_list_hidden_by_number",
+      "breakpoints": true
     }
   ]
 }
