@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "The camp is $120, with details at https://park.example/camp.",
+    "options": [],
+    "why": "link_facts: public price from the posted link only; login and payment details excluded."
+  },
+  "latencyMs": 1127,
+  "usage": {
+    "input_tokens": 117,
+    "output_tokens": 64,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Uses only the facts given: $120 for two sessions, 4 spots left, and the link. Correctly reads the price as covering both sessions, with no login, payment step, or ask. Short, plain, specific to this moment, and reads like a friend passing along details.",
+    "score": 5
+  }
+}

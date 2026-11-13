@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "Thanks for that. I'll text you directly about it.",
+    "options": [],
+    "why": "private_hold: someone asked something private, so Hale redirects to a 1:1 without naming the topic."
+  },
+  "latencyMs": 1155,
+  "usage": {
+    "input_tokens": 57,
+    "output_tokens": 72,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

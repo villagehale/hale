@@ -1,0 +1,14 @@
+{
+  "value": {
+    "send": true,
+    "line": "Got it, I'm tracking the Saturday picnic now. Priya, Sam and Maya, are you all still in?",
+    "why": "tracking_started"
+  },
+  "latencyMs": 1408,
+  "usage": {
+    "input_tokens": 178,
+    "output_tokens": 61,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1269
+  }
+}

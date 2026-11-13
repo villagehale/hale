@@ -1,0 +1,14 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday picnic so far: Priya and Sam are in, Maya can't make it, and Dev is still waiting to hear back. Answers are due Friday.",
+    "why": "tally"
+  },
+  "latencyMs": 1679,
+  "usage": {
+    "input_tokens": 181,
+    "output_tokens": 71,
+    "cache_read_input_tokens": 1269,
+    "cache_creation_input_tokens": 0
+  }
+}

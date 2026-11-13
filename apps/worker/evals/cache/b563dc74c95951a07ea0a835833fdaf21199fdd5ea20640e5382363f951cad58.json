@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "I can help you with this sign-up here. Here's the link to the camp page.",
+    "options": [],
+    "why": "registration_1to1"
+  },
+  "latencyMs": 1860,
+  "usage": {
+    "input_tokens": 76,
+    "output_tokens": 52,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}
