@@ -1,11 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
+import {
+  FRIEND_MARKS_FIXTURES,
+  everyReplyMisses,
+  friendMarksMisses,
+} from './friend-marks-fixtures.mjs';
 
 const join = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'coparent-yes-join');
 const zh = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-zh');
 const fr = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-fr');
 
 const map = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'find-show-two-groups');
+
+describe('everyReplyMisses', () => {
+  const full = {
+    asks: true,
+    asksCount: 1,
+    asksName: false,
+    speaksAsParent: false,
+    joinInProse: false,
+    parentPlainYes: false,
+    parentLoneName: null,
+  };
+
+  it('passes a reply with every field, and names each one left out or mistyped', () => {
+    expect(everyReplyMisses(full)).toEqual([]);
+    const { asksCount: _count, ...noCount } = full;
+    expect(everyReplyMisses(noCount)).toEqual(['asksCount:omitted']);
+    expect(everyReplyMisses({ ...full, asksCount: 1.5, parentLoneName: 3 })).toEqual([
+      'asksCount:omitted',
+      'parentLoneName:omitted',
+    ]);
+  });
+
+  it('fails an asks that disagrees with the count', () => {
+    expect(everyReplyMisses({ ...full, asks: false })).toEqual(['asksCount:1_vs_asks:false']);
+    expect(everyReplyMisses({ ...full, asks: false, asksCount: 0 })).toEqual([]);
+  });
+});
 
 describe('friendMarksMisses', () => {
   it('passes a map with a kept bubble per group, and fails one with a group dropped', () => {

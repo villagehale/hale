@@ -22,7 +22,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
-import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
+import {
+  FRIEND_MARKS_FIXTURES,
+  everyReplyMisses,
+  friendMarksMisses,
+} from './friend-marks-fixtures.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -268,13 +272,16 @@ async function record() {
         })
       : null;
     if (meaning?.dry) continue;
-    const misses = friendMarksMisses(fixture, result.value, {
-      keptGroupBubbles: kept,
-      judged,
-      meaning,
-      meaningMin: JUDGE_MIN,
-      sent,
-    });
+    const misses = [
+      ...friendMarksMisses(fixture, result.value, {
+        keptGroupBubbles: kept,
+        judged,
+        meaning,
+        meaningMin: JUDGE_MIN,
+        sent,
+      }),
+      ...everyReplyMisses(result.value),
+    ];
     if (misses.length > 0) failed += 1;
     console.info(
       `${(misses.length === 0 ? 'PASS' : 'FAIL').padEnd(5)} ${fixture.id.padEnd(24)} ${misses.join(' ')}`,

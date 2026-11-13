@@ -549,6 +549,23 @@ const EVERY_REPLY_EMITS = [
 ];
 
 /**
+ * The fields code reads on every reply that the model left out or mistyped, and an
+ * `asks` that disagrees with `asksCount`. Empty is a pass.
+ */
+export function everyReplyMisses(value) {
+  const misses = EVERY_REPLY_EMITS.filter(
+    (field) => !value || !(field in value) || !FIELD_TYPE[field](value[field]),
+  ).map((field) => `${field}:omitted`);
+  // The two question fields are one fact: a reply that asks has a count above zero.
+  if (typeof value?.asks === 'boolean' && Number.isInteger(value?.asksCount)) {
+    if (value.asks !== value.asksCount > 0) {
+      misses.push(`asksCount:${value.asksCount}_vs_asks:${value.asks}`);
+    }
+  }
+  return misses;
+}
+
+/**
  * The fields this fixture needed and the model left out or mistyped. Empty is a pass.
  * `keptGroupBubbles` is how many map bubbles friend-voice kept from this reply.
  */
@@ -582,15 +599,9 @@ export function friendMarksMisses(
   if (fixture.groupBubbles != null && keptGroupBubbles < fixture.groupBubbles) {
     misses.push(`groupBubbles:${keptGroupBubbles}`);
   }
-  for (const field of [...fixture.emits, ...EVERY_REPLY_EMITS]) {
+  for (const field of fixture.emits) {
     if (!value || !(field in value) || !FIELD_TYPE[field](value[field])) {
       misses.push(`${field}:omitted`);
-    }
-  }
-  // The two question fields are one fact: a reply that asks has a count above zero.
-  if (typeof value?.asks === 'boolean' && Number.isInteger(value?.asksCount)) {
-    if (value.asks !== value.asksCount > 0) {
-      misses.push(`asksCount:${value.asksCount}_vs_asks:${value.asks}`);
     }
   }
   if ('offersOther' in fixture) {
