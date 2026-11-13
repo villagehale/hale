@@ -380,6 +380,32 @@ describe('forceToolJson — a garbled answer is asked for once more', () => {
     warn.mockRestore();
   });
 
+  it('after a thinking-off re-ask, the garbled re-ask repeats the thinking-off request', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const thoughtOut = message(
+      [{ type: 'thinking', thinking: '', signature: 'sig' }],
+      'max_tokens',
+    );
+    const { client, create } = fakeClient(thoughtOut, GARBLED, CLEAN);
+    const result = await forceToolJson({
+      client,
+      lane: pickLane('classify'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: TEXT_JSON_SCHEMA,
+      schema: TEXT_SCHEMA,
+      maxTokens: 20,
+    });
+    expect(create).toHaveBeenCalledTimes(3);
+    const [first, second, third] = create.mock.calls.map(([req]) => req);
+    expect(second).not.toEqual(first);
+    expect(third).toEqual(second);
+    expect(result.value.texts[1]).toBe('Natation préscolaire sam. 9h00');
+    warn.mockRestore();
+  });
+
   it('does not re-ask honest multilingual text (positive control)', async () => {
     const { client, create } = fakeClient(
       texts('周六上午九点。', 'درس السباحة يوم السبت', 'À samedi 🏊‍♀️ « ok »'),

@@ -428,6 +428,27 @@ describe('runAgent asks once more for a garbled answer (VIL-683)', () => {
     warn.mockRestore();
   });
 
+  it('does not re-ask a step that calls a tool, garbled text beside it or not', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const client = fakeClient([
+      textAndToolUseMessage(
+        GARBLED,
+        'tu-1',
+        'get_child_profile',
+        { childId: 'kid-1' },
+        usage(100, 20),
+      ),
+      textMessage(CLEAN, usage(100, 20)),
+    ]);
+    const result = await run(client);
+    const create = client.messages.create as Mock;
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1]?.[0]).not.toEqual(create.mock.calls[0]?.[0]);
+    expect(JSON.stringify(create.mock.calls[1]?.[0].messages)).toContain('tool_result');
+    expect(result.answer).toBe(CLEAN);
+    warn.mockRestore();
+  });
+
   it('does not re-ask honest multilingual text (positive control)', async () => {
     const client = fakeClient([
       textMessage('周六上午九点 · درس السباحة · À samedi 🏊‍♀️ « ok »', usage(100, 20)),

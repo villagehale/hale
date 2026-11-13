@@ -6,7 +6,11 @@ import {
   SCRIPTED_STOP_CONFIRMATION,
 } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
-import { LinqSendError, createLinqTextTransport } from '~/lib/channel/linq/transport';
+import {
+  LinqSendError,
+  createLinqPhoneTransport,
+  createLinqTextTransport,
+} from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
@@ -1261,5 +1265,68 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
         transport: refusingTransport(new LinqSendError('20500', 503, false)),
       }),
     ).rejects.toBeInstanceOf(LinqSendError);
+  });
+});
+
+/**
+ * VIL-683 · an onboarding reply the send seam refuses as garbled. The refusal comes from
+ * the REAL Linq door (createLinqPhoneTransport, fetch spied), not a stipulated throw.
+ */
+describe('intake · a garbled reply sends nothing (VIL-683)', () => {
+  // Each apostrophe as UTF-8 read back in windows-1252, the most common shape.
+  const garble = (reply: string) => reply.replaceAll("'", 'â€™');
+
+  function linqDoor() {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ chat: { id: 'chat-1', message: { id: 'msg-1' } } }, { status: 201 }),
+    );
+    return { fetchSpy, transport: createLinqPhoneTransport({ fetch: fetchSpy as typeof fetch }) };
+  }
+
+  const garbling: IntakeDeps['friendVoice'] = {
+    async compose(input, options) {
+      const composed = await scriptedFriendVoice.compose(input, options);
+      return { ...composed, reply: garble(composed.reply) };
+    },
+  };
+
+  it('ends the turn by name: no send, no webhook failure, logged by code only', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps } = harness({});
+    const door = linqDoor();
+
+    const result = await text(fake, transport, deps, 'hi', {
+      ...deps,
+      transport: door.transport,
+      friendVoice: garbling,
+    });
+
+    expect(result).toEqual({ status: 'reply_garbled' });
+    expect(door.fetchSpy).not.toHaveBeenCalled();
+    const lines = JSON.stringify(warn.mock.calls);
+    expect(lines).toContain('garbled_text');
+    expect(lines).not.toContain('postal');
+  });
+
+  it('the same reply spelled right goes out through the same door (positive control)', async () => {
+    const { fake, transport, deps } = harness({});
+    const door = linqDoor();
+
+    const result = await text(fake, transport, deps, 'hi', {
+      ...deps,
+      transport: door.transport,
+      friendVoice: {
+        async compose(input, options) {
+          const composed = await scriptedFriendVoice.compose(input, options);
+          return { ...composed, reply: composed.reply.replaceAll("'", '’') };
+        },
+      },
+    });
+
+    expect(result).toEqual({ status: 'first_touch', step: 'place_asked' });
+    expect(door.fetchSpy).toHaveBeenCalled();
   });
 });
