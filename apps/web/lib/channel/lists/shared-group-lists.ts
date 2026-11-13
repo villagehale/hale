@@ -38,7 +38,7 @@ import { foldListText } from './tools';
  *   group wants a gift kept from the child's family. Once that is written, every read is
  *   for an audience, and an item hidden from anyone in it is left out before the model
  *   sees the list. A turn that touches such an item sends nothing. There is no read
- *   without an audience.
+ *   without an audience, and an audience Hale cannot fully place hides every hidden item.
  * - THE MODEL'S LINE MUST MATCH WHAT HAPPENED. The line is written from the list the model
  *   saw. If a write came out differently (someone claimed it a moment earlier), the turn
  *   is read once more from the fresh list; a second miss sends nothing.
@@ -56,11 +56,18 @@ export const SHARED_LIST_READ_MAX = 60;
 
 export type SharedListPerson = Pick<
   schema.LinqSharedGroupPerson,
-  'id' | 'familyId' | 'firstName' | 'inferredKidName'
+  'id' | 'familyId' | 'firstName' | 'inferredKidName' | 'phoneE164Hash'
 >;
 
 type ItemRow = schema.SharedGroupListItem;
-type Hiding = Pick<ItemRow, 'hiddenForKid' | 'hiddenFromPersonIds' | 'hiddenFromFamilyIds'>;
+type Hiding = Pick<
+  ItemRow,
+  | 'hiddenForKid'
+  | 'hiddenFromPersonIds'
+  | 'hiddenFromPhoneHashes'
+  | 'hiddenFromFamilyIds'
+  | 'hiddenClearedPhoneHashes'
+>;
 
 /**
  * First word, folded without accents, possessives or punctuation, so "Zoé Chen", " zoe",
@@ -90,11 +97,18 @@ export interface SharedListAudience {
    * still her child's family.
    */
   haleKids: ReadonlyMap<string, readonly string[]>;
+  /**
+   * True only when the provider's participant list was read and everyone on it is one of
+   * `people`. Anyone Hale cannot place may be the child's family, so a false here hides
+   * every item that is hidden from anyone.
+   */
+  everyonePlaced: boolean;
 }
 
 export async function sharedListAudience(
   database: Database,
   people: readonly SharedListPerson[],
+  everyonePlaced: boolean,
 ): Promise<SharedListAudience> {
   const familyIds = [
     ...new Set(people.flatMap((person) => (person.familyId ? [person.familyId] : []))),
@@ -112,28 +126,58 @@ export async function sharedListAudience(
     if (names) names.push(row.name);
     else haleKids.set(row.familyId, [row.name]);
   }
-  return { people, haleKids };
+  return { people, haleKids, everyonePlaced };
+}
+
+function hidesAnything(item: Hiding): boolean {
+  return (
+    item.hiddenForKid !== null ||
+    item.hiddenFromPersonIds.length > 0 ||
+    item.hiddenFromPhoneHashes.length > 0 ||
+    item.hiddenFromFamilyIds.length > 0
+  );
 }
 
 /**
- * True when anyone in `audience` is the hidden child's family: a person the model named,
- * someone in one of their Hale families, someone whose Hale family has a child of that
- * name, or someone who said in the chat they are that child's parent.
+ * True when `person` is the hidden child's family: a person the model named (by their row
+ * or their number), someone in one of their Hale families, someone whose Hale family has a
+ * child of that name, or someone who said in the chat they are that child's parent.
+ */
+function isKidFamily(
+  item: Hiding,
+  person: SharedListPerson,
+  haleKids: SharedListAudience['haleKids'],
+): boolean {
+  const kid = kidKey(item.hiddenForKid);
+  const isKid = (name: string | null) => kid !== null && kidKey(name) === kid;
+  return (
+    item.hiddenFromPersonIds.includes(person.id) ||
+    item.hiddenFromPhoneHashes.includes(person.phoneE164Hash) ||
+    isKid(person.inferredKidName) ||
+    (person.familyId !== null &&
+      (item.hiddenFromFamilyIds.includes(person.familyId) ||
+        (haleKids.get(person.familyId)?.some(isKid) ?? false)))
+  );
+}
+
+/**
+ * True when `audience` may not see a hidden item. Fails closed: anyone Hale cannot place
+ * hides it, anyone who is the child's family hides it, and once someone it was hidden from
+ * is gone (they may come back on another seat, or another number), anyone who was not in
+ * the chat when it was hidden hides it.
  */
 export function hiddenFromAudience(item: Hiding, audience: SharedListAudience): boolean {
-  const kid = kidKey(item.hiddenForKid);
-  const people = new Set(item.hiddenFromPersonIds);
-  const families = new Set(item.hiddenFromFamilyIds);
-  if (!kid && people.size === 0 && families.size === 0) return false;
-  const isKid = (name: string | null) => kid !== null && kidKey(name) === kid;
-  return audience.people.some(
-    (person) =>
-      people.has(person.id) ||
-      isKid(person.inferredKidName) ||
-      (person.familyId !== null &&
-        (families.has(person.familyId) ||
-          (audience.haleKids.get(person.familyId)?.some(isKid) ?? false))),
-  );
+  if (!hidesAnything(item)) return false;
+  if (!audience.everyonePlaced) return true;
+  if (audience.people.some((person) => isKidFamily(item, person, audience.haleKids))) return true;
+  const ids = new Set(audience.people.map((person) => person.id));
+  const numbers = new Set(audience.people.map((person) => person.phoneE164Hash));
+  const namedAway =
+    item.hiddenFromPersonIds.some((id) => !ids.has(id)) ||
+    item.hiddenFromPhoneHashes.some((hash) => !numbers.has(hash));
+  if (!namedAway) return false;
+  const cleared = new Set(item.hiddenClearedPhoneHashes);
+  return audience.people.some((person) => !cleared.has(person.phoneE164Hash));
 }
 
 export interface SharedListItemView {
@@ -179,10 +223,7 @@ export async function readSharedListForAudience(
       text: row.text,
       textKey: row.textKey,
       ownerPersonId: row.ownerPersonId,
-      secret:
-        row.hiddenForKid !== null ||
-        row.hiddenFromPersonIds.length > 0 ||
-        row.hiddenFromFamilyIds.length > 0,
+      secret: hidesAnything(row),
       forKid: row.hiddenForKid,
     })),
   };
@@ -492,6 +533,14 @@ function uuidArray(ids: readonly string[]): SQL {
   )}]::uuid[]`;
 }
 
+function textArray(values: readonly string[]): SQL {
+  if (values.length === 0) return sql`'{}'::text[]`;
+  return sql`ARRAY[${sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )}]::text[]`;
+}
+
 const keyOf = (listKey: string, textKey: string) => `${listKey}\u0000${textKey}`;
 
 interface Applied {
@@ -523,28 +572,45 @@ async function applyOnce(
     if (id) touched.add(id);
   };
   const hidePeople = decision.hide?.personIds ?? [];
+  const named = context.people.filter((person) => hidePeople.includes(person.id));
   const hideFamilies = [
     ...new Set(
-      context.people
-        .filter((person) => hidePeople.includes(person.id) && person.familyId)
-        .map((person) => person.familyId as string),
+      named.filter((person) => person.familyId).map((person) => person.familyId as string),
     ),
   ];
+  // A number outlives the presence row, which a leave and rejoin replaces.
+  const hideNumbers = [...new Set(named.map((person) => person.phoneE164Hash))];
+  const hiding: Hiding = {
+    hiddenForKid: decision.hide?.forKid ?? null,
+    hiddenFromPersonIds: hidePeople,
+    hiddenFromPhoneHashes: hideNumbers,
+    hiddenFromFamilyIds: hideFamilies,
+    hiddenClearedPhoneHashes: [],
+  };
+  const cleared = context.people
+    .filter((person) => !isKidFamily(hiding, person, context.haleKids))
+    .map((person) => person.phoneE164Hash);
   const hideValues = decision.hide
     ? {
         hiddenForKid: decision.hide.forKid,
         hiddenFromPersonIds: uuidArray(hidePeople),
+        hiddenFromPhoneHashes: textArray(hideNumbers),
         hiddenFromFamilyIds: uuidArray(hideFamilies),
+        hiddenClearedPhoneHashes: textArray(cleared),
       }
     : {};
   const hideExisting = async (id: string) => {
     if (!decision.hide) return;
+    const alreadyHidden = sql`(${items.hiddenForKid} IS NOT NULL OR cardinality(${items.hiddenFromPersonIds}) > 0 OR cardinality(${items.hiddenFromPhoneHashes}) > 0 OR cardinality(${items.hiddenFromFamilyIds}) > 0)`;
     await database
       .update(items)
       .set({
         hiddenForKid: sql`coalesce(${items.hiddenForKid}, ${decision.hide.forKid})`,
         hiddenFromPersonIds: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromPersonIds} || ${uuidArray(hidePeople)}))`,
+        hiddenFromPhoneHashes: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromPhoneHashes} || ${textArray(hideNumbers)}))`,
         hiddenFromFamilyIds: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromFamilyIds} || ${uuidArray(hideFamilies)}))`,
+        // Hidden twice, only someone cleared both times is cleared.
+        hiddenClearedPhoneHashes: sql`CASE WHEN ${alreadyHidden} THEN ARRAY(SELECT unnest(${items.hiddenClearedPhoneHashes}) INTERSECT SELECT unnest(${textArray(cleared)})) ELSE ${textArray(cleared)} END`,
       })
       .where(eq(items.id, id));
   };
@@ -733,6 +799,8 @@ export async function applySharedListTurn(
       for (const id of applied.touched) touched.add(id);
     }
   }
+  // A write that met an item this chat may not see says nothing, in the group or 1:1.
+  if (counts.held) return { handled: true, line: null, lineWhy: 'withheld', counts };
   if (!applied.matched) {
     console.warn({ outcome: 'shared_list_race' }, 'shared list: list moved under the line');
     return { handled: true, line: null, lineWhy: 'race', counts };
