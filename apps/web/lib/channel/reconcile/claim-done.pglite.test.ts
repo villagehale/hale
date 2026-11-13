@@ -421,6 +421,22 @@ describe('a cancelled sign-up counts only once it is over', () => {
     expect(await sweep(ids.familyId, CANCELLED_SWIM, cancelled)).toEqual(['no_cancel_record']);
   });
 
+  it('a take-back while a queue run is still going is only a request: refused', async () => {
+    const ids = await seed();
+    const offerId = await signupOffer(ids, 'submitting', {
+      planResume: { phase: 'signup', runId: 'run-queue', sessionId: 'session-q', browserId: null },
+    });
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId,
+        familyId: ids.familyId,
+        actor: ids.primary,
+        now: at(-0.1),
+      }),
+    ).toBe('cancel_requested');
+    expect(await sweep(ids.familyId, CANCELLED_SWIM, cancelled)).toEqual(['no_cancel_record']);
+  });
+
   it('a take-back before the run started is a cancellation: backed', async () => {
     const ids = await seed();
     const offerId = await signupOffer(ids, 'planned');

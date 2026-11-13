@@ -533,7 +533,7 @@ async function sendReceiptRows(
  * What backs "I cancelled it" / "it's off your calendar": within the window, a household
  * calendar row removed (its title through the same teen/sensitive redaction), a booking
  * the provider called off, a page Hale stopped watching, a signup plan the parent took
- * back that has ended without a payment starting.
+ * back that has ended without a payment starting and with nothing charged on record.
  */
 async function cancellationRows(
   database: Database,
@@ -600,6 +600,10 @@ async function cancellationRows(
           eq(schema.authorizedSignupOffers.status, 'handed_back'),
           gte(schema.authorizedSignupOffers.planCancelRequestedAt, since),
           sql`coalesce(${schema.authorizedSignupOffers.planResume}->>'phase', '') <> 'paying'`,
+          // The phase is not evidence: the checkout review runs before the take-back is
+          // read and can place the order. Only a recorded "nothing charged" backs it — a
+          // take-back before any run, or a run whose end says so.
+          sql`exists (select 1 from ${schema.auditLog} where ${schema.auditLog.familyId} = ${schema.authorizedSignupOffers.familyId} and ${schema.auditLog.targetId} = ${schema.authorizedSignupOffers.id}::text and ${schema.auditLog.actionTaken} = 'authorized_signup_step' and (${schema.auditLog.after}->>'step' = 'plan_cancelled' or (${schema.auditLog.after}->>'step' = 'plan_finished' and ${schema.auditLog.after}->>'charged' = 'nothing')))`,
         ),
       )
       .orderBy(desc(schema.authorizedSignupOffers.planCancelRequestedAt))
