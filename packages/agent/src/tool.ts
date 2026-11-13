@@ -23,7 +23,8 @@ import type { z } from 'zod';
 export interface ToolDefinition<TInput, TOutput> {
   name: string;
   description: string;
-  inputSchema: z.ZodType<TInput>;
+  /** Input is `unknown`: it parses whatever the model sent, so a field may normalise first. */
+  inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
   /**
    * Spends money → the spending-cap hook gates it (rule #7). REQUIRED, and `false`
    * must be written out: an unstated flag would read as "safe" and route around the
