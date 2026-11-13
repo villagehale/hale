@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single item asks for the winter break start and end dates for this school year. The text covers exactly that: it asks when break starts and when the kids are back, which maps to start and end. It adds no unsupported links, times, prices, or places. It asks the parent for one thing only, the dates, and does not ask for a reply keyword or present a list or template. The tone is casual and friendly ('Hey!', 'sneaking up'), reading like a parent friend texting. No parentRequested note is present, so brevity expectations are not triggered. This is a clean, complete message.",
+    "score": 5
+  }
+}

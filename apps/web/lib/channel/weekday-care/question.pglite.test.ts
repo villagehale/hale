@@ -9,7 +9,11 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { weekdayCareDedupeKey } from './key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  schoolBreakAskDedupeKey,
+  weekdayCareDedupeKey,
+} from './key';
 import { WEEKDAY_CARE_QUESTION_TTL_MS, weekdayCareQuestion } from './question';
 
 /**
@@ -68,7 +72,12 @@ async function seedFamily(externalId = 'sms:weekday'): Promise<Seeded> {
 
 async function seedAsk(
   seeded: Seeded,
-  overrides: { createdAt?: Date; status?: 'queued' | 'failed'; dedupeKey?: string } = {},
+  overrides: {
+    createdAt?: Date;
+    status?: 'queued' | 'failed';
+    dedupeKey?: string;
+    templateKey?: string;
+  } = {},
 ): Promise<void> {
   await db.database.insert(schema.channelMessages).values({
     familyId: seeded.familyId,
@@ -76,7 +85,7 @@ async function seedAsk(
     channel: 'sms',
     direction: 'out',
     category: 'nudge',
-    templateKey: WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+    templateKey: overrides.templateKey ?? WEEKDAY_CARE_ASK_TEMPLATE_KEY,
     dedupeKey:
       overrides.dedupeKey ??
       weekdayCareDedupeKey(seeded.familyId, seeded.childId, seeded.parentUserId),
@@ -244,6 +253,24 @@ describe('weekdayCareAnswerTarget, as the router builds it', () => {
       prompt: 'weekend_fallback',
       eventKey: null,
     });
+  });
+
+  it('VIL-685 · opens the winter-break dates ask as break_dates, with its school year', async () => {
+    const seeded = await seedFamily('sms:weekday-break-dates');
+    await seedAsk(seeded, {
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      dedupeKey: schoolBreakAskDedupeKey(seeded.familyId, '2026-27', seeded.parentUserId),
+    });
+    const inboundChannelMessageId = await inbound(seeded, 'sms');
+
+    const target = await channelRouterDeps(db.database).weekdayCareAnswerTarget(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      inboundChannelMessageId,
+      now: SAME_DAY,
+    });
+
+    expect(target).toEqual({ status: 'open', scope: 'break_dates', schoolYear: '2026-27' });
   });
 
   it('refuses an email answer to a question Hale put on a phone', async () => {

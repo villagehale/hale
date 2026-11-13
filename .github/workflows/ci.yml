@@ -429,6 +429,9 @@ jobs:
       - name: Own-city registration lookup eval (broken calibration)
         run: pnpm --filter @hale/worker eval:city-registration:broken
 
+      - name: School winter-break eval (cached-only)
+        run: pnpm --filter @hale/worker eval:school-break
+
       - name: Spot-opened text eval (cached-only)
         run: pnpm --filter @hale/worker eval:spot-open-voice
 

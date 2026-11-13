@@ -1646,6 +1646,13 @@
       "when": 1794365540000,
       "tag": "0252_city_registration_readings",
       "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1794365610000,
+      "tag": "0254_school_break_readings",
+      "breakpoints": true
     }
   ]
 }

@@ -102,6 +102,9 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own
     // Live searches and city page reads on the deploy's model key, and tells queued for
     // real families: never on Preview.
     'city-registration': 'skip',
+    // Live searches and board page reads on the deploy's model key, and asks queued for
+    // real families: never on Preview.
+    'school-break': 'skip',
     'watched-spots': 'skip',
     'failure-page': 'skip',
     unanswered: 'skip',

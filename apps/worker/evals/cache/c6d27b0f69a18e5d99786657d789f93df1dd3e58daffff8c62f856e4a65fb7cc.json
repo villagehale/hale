@@ -1,0 +1,10 @@
+{
+  "value": {
+    "quote": null,
+    "first_day": null,
+    "last_day": null,
+    "name": null,
+    "confidence": "low"
+  },
+  "latencyMs": 1763
+}

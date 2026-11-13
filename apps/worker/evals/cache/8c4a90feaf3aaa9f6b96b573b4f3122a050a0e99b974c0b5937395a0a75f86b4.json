@@ -1,0 +1,10 @@
+{
+  "value": {
+    "quote": "dec 18 to jan 4",
+    "first_day": "2026-12-18",
+    "last_day": "2027-01-04",
+    "name": "winter break",
+    "confidence": "high"
+  },
+  "latencyMs": 5769
+}

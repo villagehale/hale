@@ -7,7 +7,7 @@ import {
 } from '~/lib/care/weekday';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-ask';
-import { parseWeekdayAskKey } from './key';
+import { SCHOOL_BREAK_ASK_TEMPLATE_KEY, parseWeekdayAskKey } from './key';
 
 /**
  * IS THE WEEKDAY-CARE QUESTION STILL OPEN? — derived, with no row and no column of its
@@ -48,6 +48,13 @@ export type WeekdayCareQuestion =
       scope: 'search';
       prompt: WeekdaySearchPrompt;
       eventKey: string | null;
+    }
+  | {
+      id: string;
+      askedAt: Date;
+      /** VIL-685 · "when is your winter break?" — the one ask when no page has the days. */
+      scope: 'break_dates';
+      schoolYear: string;
     };
 
 /** Per PARENT, not per family: the question went to one phone, and a co-parent who
@@ -72,6 +79,7 @@ export async function weekdayCareQuestion(
           WEEKDAY_CARE_ASK_TEMPLATE_KEY,
           WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
           WEEKDAY_BREAK_TEMPLATE_KEY,
+          SCHOOL_BREAK_ASK_TEMPLATE_KEY,
         ]),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
@@ -98,6 +106,14 @@ export async function weekdayCareQuestion(
 
   const parsed = parseWeekdayAskKey(ask.dedupeKey);
   if (parsed === null) return null;
+  if (parsed.scope === 'break_dates') {
+    return {
+      id: ask.id,
+      askedAt: ask.createdAt,
+      scope: 'break_dates',
+      schoolYear: parsed.schoolYear,
+    };
+  }
   if (parsed.scope === 'search') {
     return {
       id: ask.id,

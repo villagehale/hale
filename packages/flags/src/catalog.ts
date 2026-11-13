@@ -215,6 +215,10 @@ export const FLAGS = [
     default: true,
   }),
   trimmed('own-city-registration', 'OWN_CITY_REGISTRATION_ENABLED'),
+  exact('school-break', 'SCHOOL_BREAK_ENABLED', {
+    parser: 'trimmed-not-false',
+    default: true,
+  }),
   exact('linq-group-coparent', 'LINQ_GROUP_COPARENT', {
     parser: 'trimmed-not-off',
     default: true,

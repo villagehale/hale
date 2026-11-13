@@ -34,6 +34,8 @@ const ALLOWED: Record<string, string> = {
   'apps/web/lib/memory/timeline/replay.ts': 'the timeline eval harness, not production',
   'apps/web/lib/care/weekday.ts':
     'the writer-pinned weekday-care logistic, which R7 shares with every adult',
+  'apps/web/lib/care/school-break/facts.ts':
+    'the writer-pinned winter-break logistic (VIL-685), which R7 shares with every adult',
   'apps/web/lib/health/reply.ts':
     'the writer-pinned checkpoint receipt, a suppression predicate; never prompt text',
   'apps/web/lib/channel/coparent/duty/asks.ts': 'the household duty board: logistics, shared by R7',
