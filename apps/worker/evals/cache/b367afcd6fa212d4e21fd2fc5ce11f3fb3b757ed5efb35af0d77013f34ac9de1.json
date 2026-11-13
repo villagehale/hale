@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The text names exactly one event: the Thursday swim at 5:15pm, East pool. Hale drafted the cancel and confirms it in one plain question. Every detail traces to the week, there is no keyword demand, no greeting, and nothing extra.",
+    "reason": "The text names exactly one event: the Thursday swim at 5:15pm at East pool. Hale drafted the cancel and asks in an ordinary sentence whether to go ahead. Every detail traces to the week, there is no greeting and no YES keyword, and it stops.",
     "score": 5
   }
 }

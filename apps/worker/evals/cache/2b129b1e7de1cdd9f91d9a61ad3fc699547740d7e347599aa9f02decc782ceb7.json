@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked, in Spanish, that Hale stop sending emails without asking. Autonomy for send_email and reply_to_email was turned off this turn, so the reply's claim is true. It answers in the parent's language, confirms the change in one plain sentence and stops. Opening with \"Listo, Sam\" is acknowledgement plus the parent's name, not a padded greeting.",
-    "score": 5
-  }
-}

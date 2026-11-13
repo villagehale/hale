@@ -234,6 +234,11 @@ export const AUDIT_VERBS = [
   'linq_multi_family_refused',
   'linq_multi_family_reply_sent',
   'linq_multi_family_list_turn',
+  'linq_secret_santa_turn',
+  'linq_secret_santa_drawn',
+  'linq_secret_santa_draw_sent',
+  'linq_secret_santa_delivery_counted',
+  'linq_secret_santa_noted',
   'linq_multi_family_common_time_proposed',
   'linq_multi_family_common_time_unsent',
   'linq_multi_family_common_time_picked',
@@ -1044,6 +1049,26 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_multi_family_list_turn: {
     sentence: 'Hale kept track of who is bringing or giving what in a shared thread',
+    family: 'note',
+  },
+  linq_secret_santa_turn: {
+    sentence: 'Hale kept track of who is in a Secret Santa in a shared thread',
+    family: 'note',
+  },
+  linq_secret_santa_drawn: {
+    sentence: 'Hale drew the names for a Secret Santa in a shared thread',
+    family: 'done',
+  },
+  linq_secret_santa_draw_sent: {
+    sentence: 'Hale texted you your Secret Santa draw privately',
+    family: 'done',
+  },
+  linq_secret_santa_delivery_counted: {
+    sentence: 'Hale sent a Secret Santa draw privately to someone in a shared thread',
+    family: 'done',
+  },
+  linq_secret_santa_noted: {
+    sentence: 'Hale told you whose Secret Santa draw could not reach them yet',
     family: 'note',
   },
   linq_multi_family_common_time_proposed: {
@@ -2312,6 +2337,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'sms_turn_folded',
   // VIL-682. Queue bookkeeping for one adult's question; the answer is the visible row.
   'activity_deep_dispatched',
+  // VIL-686. One giver's own draw text: about that adult alone.
+  'linq_secret_santa_draw_sent',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

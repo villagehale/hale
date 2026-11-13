@@ -218,6 +218,7 @@ export const FLAGS = [
     parser: 'trimmed-not-off',
     default: true,
   }),
+  exact('secret-santa', 'SECRET_SANTA', { parser: 'trimmed-not-false', default: true }),
   exact('voice', 'VOICE_DISABLED', {
     parser: 'inverted-disabled',
     default: true,

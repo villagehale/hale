@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked, in Spanish, that Hale stop sending emails without asking first. autonomySwitchOff shows send_email and reply_to_email were turned off this turn, so the confirmation is true. The reply answers in the parent's language, uses the correct name, has no extra question, and stops. It is a short, exact, correct text.",
-    "score": 5
-  }
-}

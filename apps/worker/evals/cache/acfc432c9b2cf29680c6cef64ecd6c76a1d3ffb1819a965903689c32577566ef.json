@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgzTMoaarRow5JoNhVyaU",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "That's an injury, so it's not something I can assess over text. Call Health811 at 811, any time, and a nurse can help you figure out next steps. If Milo is in a lot of pain, the wrist looks bent or out of shape, or they can't move their fingers, call 911."
+      }
+    ],
+    "usage": {
+      "input_tokens": 784,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23770,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 89,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2112
+}

@@ -53,6 +53,11 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { liftPreviewLink, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
+import {
+  optOutSecretSantaOnStop,
+  sharedSecretSantaLineWriter,
+} from '~/lib/channel/linq/secret-santa';
+import { answerGuestDraws, owedGuestDraws } from '~/lib/channel/linq/secret-santa-send';
 import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
@@ -306,6 +311,12 @@ export type IntakeOutcome =
    */
   | { status: 'first_touch_unsent'; reason: FriendFallback }
   | { status: 'greeted' }
+  /**
+   * VIL-686 · a guest (no Hale channel of their own) whose Secret Santa draw waited on
+   * their first text got it as this turn's reply, in place of intake's greeting.
+   * `delivered` is how many draws landed; zero means nothing was sent this turn.
+   */
+  | { status: 'secret_santa_draw'; delivered: number }
   /** VIL-385 ladder beat that is not yet a provisioned family. */
   | { status: 'first_touch'; step: 'place_asked' | 'place_waiting' | 'find_sent' | 'ages_waiting' }
   | { status: 'follow_up_asked' }
@@ -532,12 +543,14 @@ async function runIntakeTurn(
   // UNCLAIMED: a stop is a legal instruction, its handling is idempotent, and a claim here
   // would refuse the resend that re-runs a stop whose first attempt crashed. The model
   // writes the one confirmation; an empty one sends nothing (the revocation still runs).
+  let turnIntent: string | null = null;
   if (inbound.body.trim().length > 0) {
     const reading = await readTurnOnce(reader, inbound, {
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
     });
+    turnIntent = reading?.intent ?? null;
     read.optOutUnread = reading === null;
     await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
@@ -582,6 +595,32 @@ async function runIntakeTurn(
     linqGroupOnboardingV2Enabled()
   ) {
     return { status: 'ignored', reason: 'group_turn_during_intake' };
+  }
+
+  // 5c. VIL-686 · a guest whose Secret Santa draw waits on their first text to Hale. Only a
+  // 1:1 turn the opt-out read cleanly called ordinary (not a stop, a start, a crisis or an
+  // unread text) from a number that has not stopped intake: their draw is this turn's reply,
+  // and the kid-oriented greeting does not run on it. Intake can start on a later turn.
+  if (
+    inbound.isGroup !== true &&
+    turnIntent === 'none' &&
+    session?.state !== 'stopped'
+  ) {
+    const owed = await owedGuestDraws(database, phoneHash);
+    if (owed.length > 0) {
+      return claimedTurn(database, inbound, now, async () => {
+        const answered = await answerGuestDraws(
+          database,
+          {
+            participantIds: owed,
+            reply: (body) => deps.transport.send({ to: phoneE164, body }),
+            now,
+          },
+          { writer: sharedSecretSantaLineWriter() },
+        );
+        return { status: 'secret_santa_draw', delivered: answered.delivered };
+      });
+    }
   }
 
   // 6. A live join code outranks whatever conversation this number is already in.
@@ -4004,6 +4043,10 @@ export async function handleStop(
   // STOP has to reach that row directly, and it erases the stored number along with the
   // opt-in: the consent was the only basis for holding a non-user's number at all.
   await optOutGuestRemindersOnStop(database, phoneE164, now);
+
+  // VIL-686 · the same for a Secret Santa draw still waiting on this number: a guest has no
+  // channel to revoke, so the STOP reaches the draw row directly.
+  await optOutSecretSantaOnStop(database, phoneE164);
 
   // A STOP after provisioning must revoke the real channel + append the consent
   // withdrawal + audit — the enrolment engine already owns that transaction, so this

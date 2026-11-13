@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked Hale to stop sending email on its own, and `turn_off_autonomy` was applied this turn for send_email and reply_to_email. The reply confirms exactly that in one plain sentence, in the parent's language. It invents nothing, says nothing about machinery, and stops. The one gap is that it does not mention replies to email, which were also switched off, but the parent did not ask about those.",
-    "score": 5
-  }
-}

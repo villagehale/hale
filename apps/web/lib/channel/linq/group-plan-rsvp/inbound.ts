@@ -209,6 +209,8 @@ export async function considerGroupPlanRsvp(
     text: string;
     tapback: LinqTapback | null;
     tapbackMessageId?: string | null;
+    /** VIL-686: Secret Santa runs in this chat. */
+    secretSanta?: boolean;
   },
 ): Promise<GroupPlanRsvpTurnOutcome> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return { handled: false };
@@ -234,6 +236,7 @@ export async function considerGroupPlanRsvp(
       text: input.text,
       tapback: input.tapback,
       tapbackMessageId: input.tapbackMessageId,
+      secretSanta: input.secretSanta,
       language: 'en',
       calendarLanguage: await calendarHouseholdLanguage(
         ports.database,

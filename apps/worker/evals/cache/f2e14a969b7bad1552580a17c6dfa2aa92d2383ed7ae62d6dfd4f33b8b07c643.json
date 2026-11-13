@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The parent's \"that gymnastics class\" resolves to the one Hale named earlier in the thread: Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13. That is recall, not invention. The reply drafts the add, names it in full with its day and time, and asks in a plain sentence whether to go ahead. One question, no fluff.",
+    "reason": "The parent's \"that gymnastics class\" points to the one Hale itself named earlier in the thread (Tiny Gym at Cartwheels, Sundays 9:30, starting Sept 13), so the reference is resolved. Hale drafted the add and asks in an ordinary sentence whether to go ahead. Sept 13, 2026 is a Sunday, and every detail traces to the thread. The \"am\" is a natural reading of 9:30. The text is short, has one question, no greeting and no YES keyword.",
     "score": 5
   }
 }

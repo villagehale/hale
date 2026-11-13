@@ -74,6 +74,7 @@ describe('catalog history cutover', () => {
       '0239_provider_login_links_one_live',
       '0240_agent_commitments_ask_language',
       '0241_shared_group_list_items',
+      '0245_secret_santa',
     ]);
   });
 });

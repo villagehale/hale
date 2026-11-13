@@ -65,12 +65,12 @@ const LINK_TEMPLATE = 'linq:connect_link_1to1';
 const QUIET_TEMPLATE = 'linq:group_quiet_notice';
 const PROVIDERS = ['gcal', 'gmail'] as const;
 
-type OneToOneSent =
+export type OneToOneSent =
   | { outcome: 'sent'; chatId: string | null; rowId: string; providerMessageId: string | null }
   | { outcome: 'already_sent' }
   | { outcome: 'not_sent'; code: string; permanent: boolean };
 
-async function sendOneToOne(
+export async function sendOneToOne(
   database: Database,
   input: {
     familyId: string;

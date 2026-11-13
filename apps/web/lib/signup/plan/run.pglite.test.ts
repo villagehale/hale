@@ -1,8 +1,13 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadClaimShadowContext } from '~/lib/channel/reconcile/candidate-rows';
+import { createClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
+import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
 import {
@@ -1428,6 +1433,166 @@ describe('a parent takes back a plan that is already running', () => {
       outcome: 'completed',
       amountChargedCents: 9800,
     });
+  });
+});
+
+describe('what a take-back during a run lets Hale tell the parent', () => {
+  const NO_CHARGE = "I cancelled the swim sign-up, so you won't be charged.";
+  const noShadow: ClaimShadow = {
+    sweep: () => 'off',
+    coachTurn: () => 'off',
+    dispatch: () => 'off',
+  };
+  /** The real claim gate on the family's real rows; only the reader's answer is scripted. */
+  const claimGate = (familyId: string) =>
+    refuseUnbackedSend(
+      db.database,
+      { familyId, body: NO_CHARGE, now: NOW, lane: 'activity_followup' },
+      noShadow,
+      createClaimEnforcer({
+        enforces: () => true,
+        reader: scriptedClaimReader(() => [{ segment: 0, kind: 'cancelled', row: 'x1' }]),
+        loadContext: loadClaimShadowContext,
+      }),
+    );
+
+  /** The parent takes the plan back while this sweep's run is in the town queue, then `ends`. */
+  function takenBackMidRun(
+    family: { offerId: string; familyId: string; parentUserId: string },
+    ends: (input: BrowserUsePlanInput) => Promise<BrowserUsePlanResult>,
+  ) {
+    return {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        await input.onCheckpoint(QUEUED);
+        expect(
+          await cancelSignupPlan(db.database, {
+            offerId: family.offerId,
+            familyId: family.familyId,
+            actor: family.parentUserId,
+            now: NOW,
+          }),
+        ).toBe('cancel_requested');
+        return ends(input);
+      }),
+    };
+  }
+
+  it('a review that placed the order after the take-back backs no "you won\'t be charged"', async () => {
+    stubOpsSlack();
+    const family = await plannedFamily();
+    const runner = takenBackMidRun(family, async () => ({
+      ...PAID,
+      outcome: 'needs_human' as const,
+      detail: 'review_placed_order' as const,
+      confirmationNumber: null,
+      amountChargedCents: null,
+      charged: 'unknown' as const,
+    }));
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('handed_back');
+    expect(row?.planResume?.phase).toBe('signup');
+    expect(notices.find((n) => n.offerId === family.offerId)?.charged).toBe('unknown');
+    expect(await claimGate(family.familyId)).toEqual(['no_cancel_record']);
+  });
+
+  it('an engine that threw once the review started backs no "you won\'t be charged"', async () => {
+    stubOpsSlack();
+    const family = await plannedFamily();
+    const runner = takenBackMidRun(family, async () => {
+      throw new PlanEngineThrew(new TypeError('fetch failed'), {
+        runId: 'run-queue',
+        sessionId: 'bu-session-queue',
+        browserId: null,
+        sessionCostUsd: null,
+        reviewStarted: true,
+      });
+    });
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    expect(notices.find((n) => n.offerId === family.offerId)?.charged).toBe('unknown');
+    expect(await claimGate(family.familyId)).toEqual(['no_cancel_record']);
+  });
+
+  it('a sweep killed during the review, then a take-back: the next sweep says a charge may exist', async () => {
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const { runner: finish } = engineLike(PAID);
+    let reachedReview: () => void = () => undefined;
+    const inReview = new Promise<void>((resolve) => {
+      reachedReview = resolve;
+    });
+    const runner = {
+      ...finish,
+      // What the engine does up to the review: the run checkpointed, the checks passed and
+      // the review's start stored. Then the platform kills the sweep, so this never resolves.
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        if (input.correlationId !== family.offerId) return finish.run(input);
+        await input.onCheckpoint(QUEUED);
+        await input.onStep({ step: 'checkout', choiceIndex: 1, cartTotalCents: 9800 });
+        await input.onStep({ step: 'spending_cap', amountCents: 9800, ok: true });
+        expect(await input.stillAuthorized()).toBe(true);
+        await input.onCheckpoint({ ...QUEUED, reviewStarted: true });
+        reachedReview();
+        return new Promise<never>(() => undefined);
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    void runDueSignupPlans(db.database, { now: NOW }, d);
+    await inReview;
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        now: NOW,
+      }),
+    ).toBe('cancel_requested');
+
+    const late = new Date(NOW.getTime() + PLAN_LEASE_MS + MIN);
+    const result = await runDueSignupPlans(db.database, { now: late }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'total_unread',
+    });
+    // No second review on a cart the first one may already have paid for.
+    expect(runner.run.mock.calls.filter(([i]) => i.correlationId === family.offerId)).toHaveLength(
+      1,
+    );
+    expect(runner.release).toHaveBeenCalledWith({ ...QUEUED, reviewStarted: true });
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    expect((await steps(family.offerId)).at(-1)).toMatchObject({
+      step: 'plan_finished',
+      charged: 'unknown',
+    });
+    expect(notices.find((n) => n.offerId === family.offerId)?.charged).toBe('unknown');
+    expect(posted).toContain(
+      `Hale: ops page. site registration_review_unread. ref ${family.offerId}.`,
+    );
+    expect(await claimGate(family.familyId)).toEqual(['no_cancel_record']);
+  });
+
+  it('a run that stopped before paying, and recorded nothing charged, backs it', async () => {
+    const family = await plannedFamily();
+    const runner = takenBackMidRun(family, (input) => engineLike(PAID).runner.run(input));
+    const { deps: d } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+    });
+    expect((await steps(family.offerId)).at(-1)).toMatchObject({
+      step: 'plan_finished',
+      charged: 'nothing',
+    });
+    expect(await claimGate(family.familyId)).toEqual([]);
   });
 });
 

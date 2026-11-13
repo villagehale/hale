@@ -362,6 +362,16 @@ function checkFixture(fixture, output) {
       );
   }
 
+  // A secret the fixture says no family-visible fact may carry (VIL-686: a Secret Santa
+  // receiver named in the giver's own reply).
+  if (Array.isArray(e.forbidTerms) && e.forbidTerms.length) {
+    for (const fact of facts) {
+      const text = factText(fact).toLowerCase();
+      const hit = e.forbidTerms.find((t) => text.includes(String(t).toLowerCase()));
+      if (hit) failures.push(`fact '${fact.fact_key}' carries a secret: ${JSON.stringify(hit)}`);
+    }
+  }
+
   for (const fact of facts) {
     if (!FACT_TYPES.includes(fact.fact_type)) {
       failures.push(`fact_type '${fact.fact_type}' not in enum`);

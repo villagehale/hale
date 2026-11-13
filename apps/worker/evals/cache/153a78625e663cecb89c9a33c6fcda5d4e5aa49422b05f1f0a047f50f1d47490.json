@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The text names exactly one event: the Thursday swim at 5:15pm at East pool. Hale drafted the cancel and asks in a plain sentence whether to go ahead, without demanding a YES. Every detail traces to the week, it is one question and nothing else, and it is short and exact.",
+    "reason": "The text names exactly one event, the Thursday swim, so the reference is resolved. Hale drafted the cancel and asks in a plain sentence whether to go ahead, with the time and venue taken from the week. It is short and exact, with no greeting and no YES keyword.",
     "score": 5
   }
 }

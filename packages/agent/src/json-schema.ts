@@ -189,6 +189,14 @@ function compileNode(
       return compileNode(defOf(schema).innerType, path, state);
     case 'ZodNullable':
       return asNullable(compileNode(defOf(schema).innerType, path, state));
+    case 'ZodEffects':
+      // A preprocess only normalises what arrives (a blank `area` → omitted) before the
+      // target schema validates it, so the model is shown the target. A refine or a
+      // transform still has no wire form and falls through to the throw below.
+      if (defOf(schema).effect?.type === 'preprocess') {
+        return compileNode(defOf(schema).schema, path, state);
+      }
+      break;
     case 'ZodDefault':
       return {
         ...compileNode(defOf(schema).innerType, path, state),
@@ -221,11 +229,10 @@ function compileNode(
       // request is valid rather than a 400.
       state.strictSafe = false;
       return decorate({});
-    default:
-      throw new Error(
-        `compileToolSchema: ${typeName} at '${path}' has no strict-mode JSON Schema form. Express the tool input with a supported type, or the model would be sent a schema it cannot satisfy.`,
-      );
   }
+  throw new Error(
+    `compileToolSchema: ${typeName} at '${path}' has no strict-mode JSON Schema form. Express the tool input with a supported type, or the model would be sent a schema it cannot satisfy.`,
+  );
 }
 
 function compileObject(

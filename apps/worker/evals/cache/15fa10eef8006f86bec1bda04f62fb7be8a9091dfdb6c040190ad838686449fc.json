@@ -1,0 +1,19 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": null,
+    "leaveSelf": false,
+    "draw": true,
+    "cancel": false,
+    "language": "zh",
+    "reply": "好嘞，这就开抽！抽到谁大家各自私下收到，群里不公布哦 🎁"
+  },
+  "latencyMs": 2316,
+  "usage": {
+    "input_tokens": 214,
+    "output_tokens": 97,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

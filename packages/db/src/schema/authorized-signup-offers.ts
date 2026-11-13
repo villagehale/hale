@@ -34,10 +34,18 @@ export interface AuthorizedSignupSession {
  * VIL-558 · where a plan's Browser Use run stands when a sweep ends before the run does.
  * Browser Use ids, the cart total and the choice rank only; never a person or a link.
  * `paying` is written before the payment run is created, so a resume that finds it with
- * no run id never creates a second one.
+ * no run id never creates a second one. `reviewStarted` is written before the checkout
+ * review run is created: a resume that finds it cannot read what the review did, and the
+ * review can place the order, so a charge may exist.
  */
 export type AuthorizedSignupPlanResume =
-  | { phase: 'signup'; runId: string | null; sessionId: string | null; browserId: string | null }
+  | {
+      phase: 'signup';
+      runId: string | null;
+      sessionId: string | null;
+      browserId: string | null;
+      reviewStarted?: true;
+    }
   | {
       phase: 'paying';
       runId: string | null;

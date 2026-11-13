@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The text names exactly one event, Thursday's swim lesson at 5:15pm, so drafting the move was correct. The reply is in the parent's language, names the change with the old time drawn from the week, and asks in an ordinary sentence whether to go ahead. It has no greeting, no YES keyword and only one question.",
+    "reason": "The text names exactly one event, the Thursday swim at 5:15, and Hale drafted the move and asks in an ordinary sentence whether to go ahead. It answers in the parent's French, and the original time is traceable to the week. It is short and exact, with no keyword demand and no padding.",
     "score": 5
   }
 }

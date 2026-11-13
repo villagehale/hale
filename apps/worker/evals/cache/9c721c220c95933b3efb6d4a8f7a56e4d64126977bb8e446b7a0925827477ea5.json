@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Bonjour Hélène, c'est Hale, du groupe de discussion ! Je t'écris en direct pour te dire que tu es le Père Noël secret de Priya. Garde ça pour toi, c'est un secret ! Et si tu veux que j'arrête de t'écrire, dis-le-moi à tout moment."
+  },
+  "latencyMs": 2255,
+  "usage": {
+    "input_tokens": 87,
+    "output_tokens": 116,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

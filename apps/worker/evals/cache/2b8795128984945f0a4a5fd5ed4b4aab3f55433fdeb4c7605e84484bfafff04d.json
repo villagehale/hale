@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent pasted a course link, so watching it is the right move, and \"I'll text you within about ten minutes\" matches the capability. Two problems. First, \"or the next morning if it opens overnight\" adds a quiet-hours behaviour that nothing in `knows` supports, so it is an untraceable detail. Second, the waitlist caution is speculation about this program's policy and pads the reply past what was needed.",
-    "score": 3
-  }
-}

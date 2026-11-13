@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply answers the parent's question directly from the empty weekRead, saying the week is free, which is a valid fact. It is in English, matching the parent's text. It is a single bubble with one thought, so it is not over-split or under-split. It contains one question-like offer at the end ('tell me and I'll put it in') but no question mark, so it stays within the one-question limit. No bubble is a heading or count, and nothing is invented.",
-    "score": 5
-  }
-}

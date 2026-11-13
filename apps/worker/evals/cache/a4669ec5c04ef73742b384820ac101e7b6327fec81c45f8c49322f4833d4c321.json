@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzUQ3xSc1Vnn57xCgRpP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2wcKEAgTGAI4AUIIdGhpbmtpbmcSDCsZQcvyJ+7j9+sucxoMuxza60+PG8sE1eCCIjDsSoZqkmWGnPnaR5SRWBSPLw/kRmtg3e5c1O7KF8x4N8YoEWSuRr4FzOeY7bPPqW8q+AbOZe2vao5aJR0KszyjSkgrMvVix9OHQnWH+a9nhw78j/g2gZuvD4DwnoLCh5sG0d3wtUjf1yuRFpqCb+m6ZSKkAbXuBjOkcoUELexkCzfvtqvZws0R8bolMI7qnEZ2VqQ28tl6HD/AwkP6VYIO70nU4AnNkB2HyagbO0Y105kRdLlWUVZuR6+WweoPI2wLoTXGV2F5kebYLnNm7Hm0gJiQ62ldXErZi3rhgMZenvclRZWH5pdFQ3s0bTbJ2lPOiHZpBgWGBE2+sYP0+tPczsQAydSNiippCH3ZXoTt/XbBxTZI7ClPHsXnm+W1WaFD4qaNBxRNsirek0FLFxvX3KeLEMUsp/WwaPkVOcyO44sYmatYQc9+NL8bU4yiOM+JbFa7aVXTGARF34rdD0mN/4b6BvIwlg2MOQ96hBistaEWNVwtvOv1Vt+ehmMUPmKegcC5wto5WTQ1u5brVrjo9ybrtOLGmAju4mPAZkL5hfgsnikYWt/CAJlPxDyfkJHDZPEVTIFh3a9Ebj6qKt8KOevG/y5M4oZ2pItF9GrNFZlFua9W3Cqj6vWSdjs7+ZFbn6sVJ3vKqe2Nw+A2gVZ29sixJpfva2xgcPZNVf8ghvgwhjaG7VUE2LUDk48eeGZx2L34jeaplbSeHHmgpeccgu1ftP1KhfVW6SAw5QmIjCzhU6fLSE4c/jLOqueoHEy+0+0KJfmRw8RVMxvgV3u/ayGxSR3mhjtYmj0WcJqhyqjfhUerF/I+n+ufjf7J2alENE08QriNIUaJliYxo1mQWE/LFwxq69uExtX0X/wqxu3Brrwt0DBHTifdfP7sEj9H+M3EjoAcr8I+1xjbBqseN+CQzyH+IA2Y/OtRvvLTfFrqN31qGfWY7OYMSzRGU4IR+AaePouRgroM1PVjPlXeN7W9uRtT+qS9m8L8tjiWgluRFc99pLJ/j+ThZ0tkmwHKmxmaIEKQTwZqm3yLrmnPApp50N/qrnutUqrkaB9eUtJhIhpKf/ZqXSZtyvIYCF9BR5gOiLHg10HDa+aWBPnWj2hmEIIhQCbE9IwggxWeJ1jmcnpKaA4f9ZEsaSFBBgzSWvENHpubqZwgdiRzHVeJg7qEKslFJNAj3jd5ibh+2pUwqxpgzeW1cqnfPZB1/X4aztJXqLZ8vbFLpGYi7sNNe50+AIVtG1QeKZIYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Poor kiddo. A hurt wrist isn't something I can assess over text, so call Health811 at 811 any time. If it looks bent or swollen, they're not using the hand, or you're worried at all, call 911."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1587,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18193,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 212,
+      "output_tokens_details": {
+        "thinking_tokens": 140
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

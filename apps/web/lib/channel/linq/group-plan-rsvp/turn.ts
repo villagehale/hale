@@ -124,6 +124,8 @@ export interface GroupPlanRsvpTurnInput {
   /** The asking household's zone, so the reader can place a time. Null or absent: unknown. */
   timeZone?: string | null;
   now: Date;
+  /** VIL-686: Secret Santa runs in this chat; its asks are not a plan. */
+  secretSanta?: boolean;
 }
 
 export interface GroupPlanRsvpTurnDeps {
@@ -250,6 +252,7 @@ export async function takeGroupPlanRsvpTurn(
       : null,
     recent: [],
     ...(pollsOn ? { polls: { live: livePoll ? pollReadView(livePoll) : null } } : {}),
+    ...(input.secretSanta ? { secretSanta: true as const } : {}),
     clock: input.timeZone ? { now: input.now.toISOString(), timeZone: input.timeZone } : null,
   });
 
