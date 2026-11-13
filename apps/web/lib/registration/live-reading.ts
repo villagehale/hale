@@ -219,10 +219,12 @@ export function normalizeExtractedRegistration(
     partialDates: readonly PartialRegistrationDate[] = [],
   ): LiveRegistrationReading => ({ ...base, status: 'unverified', reason, partialDates });
 
+  // The floor first: a shaky "not out yet" is no more an answer than a shaky date, and the
+  // own-city lane takes a known date back on the page's "not out" (city/lookup.ts).
+  if (!(extracted.confidence >= MIN_VERIFY_CONFIDENCE)) return unverified('low_confidence');
   if (!extracted.found) {
     return unverified(extracted.reason === null ? 'no_reason_given' : extracted.reason);
   }
-  if (!(extracted.confidence >= MIN_VERIFY_CONFIDENCE)) return unverified('low_confidence');
 
   const slots = [
     ['preview', extracted.preview],
