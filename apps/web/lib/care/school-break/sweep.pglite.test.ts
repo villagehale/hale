@@ -5,7 +5,11 @@ import { ZodError } from 'zod';
 import { loadWeekdayCareContext, recordWeekdayCare } from '~/lib/care/weekday';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
-import { SCHOOL_BREAK_ASK_TEMPLATE_KEY, parseWeekdayAskKey } from '~/lib/channel/weekday-care/key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  parseWeekdayAskKey,
+  schoolBreakAskDedupeKey,
+} from '~/lib/channel/weekday-care/key';
 import { loadAgentContext } from '~/lib/coach/context';
 import { CONNECTOR_SCOPES } from '~/lib/integrations/google-oauth';
 import type { GoogleFetch } from '~/lib/integrations/sync';
@@ -1041,6 +1045,64 @@ describe('the winter-break sweep: bounds', () => {
     expect(await loadSchoolBreak(db.database, lonely.familyId, '2026-27')).toMatchObject({
       boardHost: 'lonely.example',
     });
+  });
+});
+
+describe('the winter-break sweep: one ask per school year, each check pinned on its own', () => {
+  const LATER = new Date(NOW.getTime() + 25 * HOUR);
+
+  it('reads no mail and checks no sender for a family already asked this year with nothing on file', async () => {
+    const { familyId } = await seedFamily({ mail: [BOARD] });
+    const first = await runSchoolBreakSweep(
+      db.database,
+      deps(scripted({ read: (url) => ({ status: 'not_published', sourceUrl: url }) }).lookup),
+      NOW,
+    );
+    expect(first).toMatchObject({ queued: 1 });
+    // Positive control: the first run did read the mail.
+    expect(gmailReads).toHaveLength(1);
+    await alertFrom(familyId, OTHER_BOARD);
+    gmailReads.length = 0;
+
+    const script = scripted();
+    const again = await runSchoolBreakSweep(db.database, deps(script.lookup), LATER);
+
+    expect(again).toMatchObject({ asked: 1, queued: 0 });
+    expect(gmailReads).toEqual([]);
+    expect(script.senders).toEqual([]);
+    expect(script.searches).toEqual([]);
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('never asks a second parent when a break on file falls to a disagreeing school after the household was asked', async () => {
+    const { familyId, parentIds } = await seedFamily({ mail: [BOARD], parents: 2 });
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      boardHost: BOARD,
+    });
+    // This year's ask already went to the co-parent: the household has been asked.
+    const coParent = parentIds[1] as string;
+    await queueCheckInForDecider(db.database, {
+      familyId,
+      parentUserId: coParent,
+      kind: SCHOOL_BREAK_ASK_KIND,
+      category: 'nudge',
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      what: 'winter break 2026-27',
+      why: 'school_break_ask year=2026-27',
+      sourceUrl: null,
+      worthlessAfter: new Date('2026-12-15T17:00:00.000Z'),
+      parentRequested: false,
+      dedupeKey: schoolBreakAskDedupeKey(familyId, '2026-27', coParent),
+    });
+    await alertFrom(familyId, OTHER_BOARD);
+
+    const result = await runSchoolBreakSweep(db.database, deps(scripted().lookup), LATER);
+
+    expect(result).toMatchObject({ disagreed: 1, retired: 1, queued: 0, asked: 1 });
+    const [only, ...more] = await asks(familyId);
+    expect(more).toEqual([]);
+    expect(only?.parentUserId).toBe(coParent);
   });
 });
 
