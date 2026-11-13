@@ -207,6 +207,13 @@ export async function routeInboundText(
       return handOffToConversation(deps, inbound, outcome.optOutUnread === true);
     }
     if (outcome.status === 'ignored') return 'ignored';
+    if (outcome.status === 'secret_santa_draw' && outcome.delivered === 0) {
+      deps.log.error(
+        { providerMessageId: inbound.providerId },
+        "inbound: a guest's Secret Santa turn sent nothing",
+      );
+      return 'intake_unsent';
+    }
     if (outcome.status === 'first_touch_unsent') {
       deps.log.error(
         { providerMessageId: inbound.providerId, reason: outcome.reason },

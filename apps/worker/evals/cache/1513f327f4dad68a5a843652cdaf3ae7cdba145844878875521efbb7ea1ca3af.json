@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The group_done line reveals every pairing (Priya → Ana, Ben → Hélène, Ana → Priya, Hélène → Ben) in the shared group chat, which is the exact secret that must never be disclosed, and it names people after the draw. This is a total secrecy failure. It also adds names not present in the facts.",
+    "score": 1
+  }
+}

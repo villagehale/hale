@@ -119,6 +119,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `REGISTRATION_ASSISTED_RUN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:22` | `true` | OFF | empty, or `false` | Barton |
 | `REGISTRATION_PLAN_RUN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:10` | `true` | OFF | empty, or `false` | Barton |
 | `SAME_ACTIVITY_MEET_ENABLED` | `apps/web/lib/channel/same-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
+| `SECRET_SANTA` | `apps/web/lib/channel/linq/secret-santa.ts` (`secretSantaEnabled`; parsed `trimmed-not-false` in `packages/flags/src/catalog.ts`) | unset (anything except `false`) | ON | `false` | Noah |
 | `SIGNUP_BROWSER_RUNTIME` | `apps/web/lib/signup/runtime/acquire.ts:80` (`local`, `vercel_sandbox` or `browserbase`, exact, at :81) | `local`, `vercel_sandbox`, or `browserbase` | no runtime chosen | unset | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `apps/web/lib/signup/runtime/flag.ts:19` | `true` | OFF | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `apps/web/lib/social/flag.ts:12` | `on` (no trim) | OFF | empty, or `off` | Noah |
@@ -322,6 +323,7 @@ Each parser is on when the variable is unset. There is nothing to light; the kil
 | --- | --- | --- | --- | --- |
 | `GCAL_PAST_CLASSIFY_SKIP` | Calendar items that already ended skip the classifier. | A jump in classify volume or Anthropic spend after a calendar connect. | `false` | Noah |
 | `LINQ_GROUP_COPARENT` | Co-parent seating and calendar notices stay in the Linq group. | Group `channel_messages` with status `failed`. | `off` | Noah |
+| `SECRET_SANTA` | In a multi-family group, "let's do Secret Santa" collects who is in, draws once, and texts each giver their draw 1:1 (never the group). Needs `LINQ_MULTI_FAMILY_GROUPS_ENABLED`. Retention in `delete-sweep` runs whatever it says. | `secret_santa_participants` rows with `held_reason` piling up, or `linq:secret_santa_draw` rows with status `failed`. | `false` | Noah |
 | `VOICE_DISABLED` | Unset, voice compose runs when `ANTHROPIC_API_KEY` is set. | Odd parent-visible wording on composed sends, and `sms_turn_failed` on those turns. | `true` | Sloane |
 
 ### Light last
