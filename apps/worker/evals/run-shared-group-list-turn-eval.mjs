@@ -273,8 +273,10 @@ async function main() {
           text: fixture.text,
           language: null,
           speaker: people[fixture.speaker],
-          // The fixture's people are the whole chat.
-          ...(await lists.sharedListAudience(testDb.database, people, true)),
+          // The fixture's people are the whole chat: all seated before this turn, all reading.
+          ...lists.sharedListAudience(people, new Set(people.map((p) => p.id)), async () =>
+            people.map((p) => p.phoneE164Hash),
+          ),
         };
         const read = await lists.readSharedListTurn(testDb.database, context, model);
         const result = await lists.applySharedListTurn(testDb.database, context, read, {

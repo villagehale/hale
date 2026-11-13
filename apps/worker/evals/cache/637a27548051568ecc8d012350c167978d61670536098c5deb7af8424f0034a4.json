@@ -1,0 +1,13 @@
+{
+  "value": {
+    "intent": "stop_me",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidNames": [],
+    "confidence": "high",
+    "ruledOut": [],
+    "picked": null,
+    "planTitle": null
+  },
+  "latencyMs": 1266
+}

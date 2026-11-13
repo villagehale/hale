@@ -153,9 +153,15 @@ async function item(
 
 const items = () => db.database.select().from(schema.sharedGroupListItems);
 
-/** The list as these people may see it, through the production audience loader. */
+/** These people are the whole chat: all seated before this turn, and all reading it. */
+const audienceOf = (people: readonly SharedListPerson[]) =>
+  sharedListAudience(people, new Set(people.map((person) => person.id)), async () =>
+    people.map((person) => person.phoneE164Hash),
+  );
+
+/** The list as these people may see it, through the production audience. */
 const visibleTo = async (...people: SharedListPerson[]) =>
-  readSharedListForAudience(db.database, CHAT, await sharedListAudience(db.database, people, true));
+  readSharedListForAudience(db.database, CHAT, audienceOf(people));
 
 function context(speaker: SharedListPerson, people: SharedListPerson[], text = 'msg') {
   return {
@@ -163,9 +169,7 @@ function context(speaker: SharedListPerson, people: SharedListPerson[], text = '
     text,
     language: null,
     speaker,
-    people,
-    haleKids: new Map(),
-    everyonePlaced: true,
+    ...audienceOf(people),
   } satisfies SharedListTurnContext;
 }
 
@@ -818,7 +822,7 @@ describe('in a multi-family group turn', () => {
   describe('a Hale parent who never said whose parent she is', () => {
     /**
      * Priya adds an open cake, then Mei claims a secret Lego for Mia before Ada is here.
-     * With `adaAtHide` Ada is already in the chat, so anyone new cannot be what hides it:
+     * With `adaAtHide` Ada was seated before the hide, so being new cannot be what hides it:
      * only whether her Hale child's name matches decides.
      */
     async function secretBeforeAda(adaKid: string, forKid: string, adaAtHide = false) {
@@ -831,7 +835,7 @@ describe('in a multi-family group turn', () => {
         PRIYA,
         'we still need a cake',
         'in-cake',
-        [MEI, PRIYA],
+        adaAtHide ? [MEI, PRIYA, ADA] : [MEI, PRIYA],
         () => decision({ list: 'Party', add: ['cake'], reply: null }),
         wire,
       );
@@ -963,6 +967,9 @@ describe('in a multi-family group turn', () => {
           ? `On the list: ${input.items.map((i) => i.text).join(', ')}`
           : 'Nothing on the list yet.',
       });
+    /** A turn nobody answers. It seats everyone Linq lists before anything is hidden. */
+    const hello = (handles: readonly string[], wire: ReturnType<typeof sender>) =>
+      say(PRIYA, 'hi all', 'in-hello', handles, () => decision({ listTurn: false }), wire);
     const secretLego = (kidFamily: string[]) =>
       decision({
         list: 'Gifts for Mia',
@@ -994,6 +1001,7 @@ describe('in a multi-family group turn', () => {
         })
         .returning();
       const wire = sender();
+      await hello([MEI, PRIYA, GWEN], wire);
       await say(
         MEI,
         "I'll get Mia the Lego, don't tell Gwen",
@@ -1068,6 +1076,7 @@ describe('in a multi-family group turn', () => {
         joinedAt: NOW,
       });
       const wire = sender();
+      await hello([MEI, PRIYA], wire);
       await say(
         MEI,
         "I'll get Mia the Lego, shh",
@@ -1144,6 +1153,7 @@ describe('in a multi-family group turn', () => {
       });
       const wire = sender();
       const here = [MEI, PRIYA, ADA];
+      await hello(here, wire);
       // Ada is a guest nobody has placed yet, so the model hides the Lego from no one by name.
       await say(MEI, "I'll get Mia the Lego, shh", 'in-lego', here, () => secretLego([]), wire);
       const open = await say(PRIYA, "what's left?", 'in-open', here, whatsLeft, wire);
@@ -1234,15 +1244,33 @@ describe('in a multi-family group turn', () => {
       expect(wire.texts.join(' ')).not.toContain('Lego');
     });
 
-    const linqAnswers = (body: string) => {
+    const linqAnswers = (body: string, status = 200) => {
       vi.stubEnv('LINQ_API_KEY', 'test-key-not-real');
       const calls: string[] = [];
       vi.stubGlobal('fetch', async (url: string) => {
         calls.push(String(url));
-        return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
+        return new Response(body, { status, headers: { 'content-type': 'application/json' } });
       });
       return calls;
     };
+    const linqTimesOut = () => {
+      vi.stubEnv('LINQ_API_KEY', 'test-key-not-real');
+      vi.stubGlobal('fetch', async () => {
+        throw new DOMException('The operation timed out.', 'TimeoutError');
+      });
+    };
+    const linqLists = (...handles: string[]) =>
+      linqAnswers(
+        JSON.stringify({
+          chat: {
+            is_group: true,
+            handles: [
+              ...handles.map((handle) => ({ handle, status: 'active' })),
+              { handle: FROM, is_me: true },
+            ],
+          },
+        }),
+      );
 
     const unreadable: [string, () => ListChatHandles | 'production'][] = [
       ['a list with nobody on it', () => listOf([])],
@@ -1266,6 +1294,20 @@ describe('in a multi-family group turn', () => {
         'a 200 edge page',
         () => {
           linqAnswers('<html>ok</html>');
+          return 'production';
+        },
+      ],
+      [
+        'a 503',
+        () => {
+          linqAnswers(JSON.stringify({ error: 'overloaded' }), 503);
+          return 'production';
+        },
+      ],
+      [
+        'nothing before the timeout',
+        () => {
+          linqTimesOut();
           return 'production';
         },
       ],
@@ -1389,6 +1431,334 @@ describe('in a multi-family group turn', () => {
       const [heldLine, idleLine] = exported.map(({ id, time, date, dayKey, ...rest }) => rest);
       expect(heldLine).toEqual(idleLine);
     }, 30_000);
+
+    describe('the allow-list: only people here, seated and cleared at the hide see it', () => {
+      const RAJ = '+16415550606';
+      const peopleRows = () => db.database.select().from(schema.linqSharedGroupPeople);
+      const seatOf = async (phone: string) =>
+        (await peopleRows()).find((row) => row.phoneE164Hash === phoneBlindIndex(phone));
+
+      async function seatPerson(
+        phone: string,
+        extra: Partial<typeof schema.linqSharedGroupPeople.$inferInsert> = {},
+      ) {
+        const [row] = await db.database
+          .insert(schema.linqSharedGroupPeople)
+          .values({
+            chatId: CHAT,
+            phoneE164Encrypted: encryptString(phone),
+            phoneE164Hash: phoneBlindIndex(phone),
+            ...extra,
+          })
+          .returning();
+        if (!row) throw new Error('seat insert');
+        return row;
+      }
+
+      /**
+       * Mei and Priya are Hale parents and Ada a guest, all seated before anything is hidden.
+       * Mei's family brought Hale in, so a guest's message has a host.
+       */
+      async function chatBeforeTheHide() {
+        vi.stubEnv('GROUP_BRING_LIST_ENABLED', 'true');
+        const mei = await parent(MEI, 'Mei');
+        const priya = await parent(PRIYA, 'Priya');
+        await db.database.insert(schema.linqMultiFamilyJoins).values({
+          chatId: CHAT,
+          familyId: mei.familyId,
+          joinedByUserId: mei.userId,
+          joinedAt: NOW,
+        });
+        await seatPerson(MEI, { familyId: mei.familyId, userId: mei.userId, firstName: 'Mei' });
+        await seatPerson(PRIYA, {
+          familyId: priya.familyId,
+          userId: priya.userId,
+          firstName: 'Priya',
+        });
+        const ada = await seatPerson(ADA, { firstName: 'Ada' });
+        return { mei, priya, ada, wire: sender(), here: [MEI, PRIYA, ADA] };
+      }
+
+      /** The chat above, with the Lego for Mia hidden while all three were here. */
+      async function hiddenWithAdaHere() {
+        const chat = await chatBeforeTheHide();
+        await say(
+          MEI,
+          "I'll get Mia the Lego, shh",
+          'in-lego',
+          chat.here,
+          () => secretLego([]),
+          chat.wire,
+        );
+        // Positive control: Ada was here, seated and not Mia's family when it was hidden.
+        const open = await say(PRIYA, "what's left?", 'in-open', chat.here, whatsLeft, chat.wire);
+        expect(shown(open.seen)).toEqual([LEGO]);
+        expect(chat.wire.texts).toEqual(['Nice, the Lego is yours.', `On the list: ${LEGO}`]);
+        chat.wire.texts.length = 0;
+        return chat;
+      }
+
+      const quiet = () => decision({ listTurn: false });
+      const adaSays = (
+        text: string,
+        id: string,
+        here: readonly string[],
+        wire: ReturnType<typeof sender>,
+        reader: SharedGroupReader,
+      ) => say(ADA, text, id, here, quiet, wire, { reader });
+      const adaIsMomOf = (...kidNames: string[]) =>
+        reading('who_i_am', { role: 'parent', kidName: kidNames[0] ?? null, kidNames });
+
+      it('hole 1: a cleared guest who leaves and comes back on a new seat no longer sees it', async () => {
+        const { wire, here, ada } = await hiddenWithAdaHere();
+        await forgetAda();
+        await say(ADA, 'back again!', 'in-ada-back', here, quiet, wire);
+        expect((await seatOf(ADA))?.id).not.toBe(ada.id);
+        const later = await say(PRIYA, "what's left?", 'in-later', here, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it('hole 2: a number Linq lists that has no seat here hides every hidden item', async () => {
+        const { wire } = await hiddenWithAdaHere();
+        linqLists(MEI, PRIYA, ADA, NEWCOMER);
+        const out = await say(PRIYA, "what's left?", 'in-unseated', 'production', whatsLeft, wire);
+        expect(out.out).toMatchObject({ handled: true, outcome: 'shared_list' });
+        expect(await seatOf(NEWCOMER)).toBeUndefined();
+        expect(shown(out.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it('hole 4: someone first listed on the turn that hides a gift is seated by it but never cleared', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        const withNewcomer = [...here, NEWCOMER];
+        await say(
+          MEI,
+          "I'll get Mia the Lego, shh",
+          'in-lego',
+          withNewcomer,
+          () => secretLego([]),
+          wire,
+        );
+        expect(await seatOf(NEWCOMER)).toBeDefined();
+        expect((await items())[0]?.hiddenClearedPhoneHashes.sort()).toEqual(
+          [MEI, PRIYA, ADA].map(phoneBlindIndex).sort(),
+        );
+        const later = await say(PRIYA, "what's left?", 'in-later', withNewcomer, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it('hole 5: a cleared person who stops Hale but stays in the chat hides it', async () => {
+        const { wire, here } = await hiddenWithAdaHere();
+        await adaSays('stop', 'in-ada-stop', here, wire, reading('stop_me'));
+        expect((await seatOf(ADA))?.stoppedAt).not.toBeNull();
+        const later = await say(PRIYA, "what's left?", 'in-later', here, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it('hole 5: a seat stopped before the hide is never cleared', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await adaSays('stop', 'in-ada-stop', here, wire, reading('stop_me'));
+        await say(MEI, "I'll get Mia the Lego, shh", 'in-lego', here, () => secretLego([]), wire);
+        expect((await items())[0]?.hiddenClearedPhoneHashes.sort()).toEqual(
+          [MEI, PRIYA].map(phoneBlindIndex).sort(),
+        );
+      });
+
+      it('hole 7: naming two children takes clearance off the hidden gifts for both, in any wording', async () => {
+        const { wire, here } = await hiddenWithAdaHere();
+        await say(
+          MEI,
+          'and a kite for Leo, also secret',
+          'in-kite',
+          here,
+          () =>
+            decision({
+              list: 'Gifts for Leo',
+              claim: [{ item: null, text: 'Kite for Leo' }],
+              gift: { forKid: 'Leo', keepFromKidFamily: true, kidFamily: [] },
+              reply: null,
+            }),
+          wire,
+        );
+        const both = await say(PRIYA, "what's left?", 'in-both', here, whatsLeft, wire);
+        expect(shown(both.seen).sort()).toEqual(['Kite for Leo', LEGO]);
+        wire.texts.length = 0;
+        await adaSays(
+          'soy la mamá de Mia y Leo',
+          'in-ada-two',
+          here,
+          wire,
+          adaIsMomOf('Mia', 'Leo'),
+        );
+        const later = await say(PRIYA, "what's left?", 'in-later', here, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toMatch(/Lego|Kite/);
+        for (const row of await items()) {
+          expect(row.hiddenClearedPhoneHashes).not.toContain(phoneBlindIndex(ADA));
+        }
+      });
+
+      it('hole 7: a parent claim that names no child takes her clearance off every hidden gift, now and later', async () => {
+        const { wire, here } = await hiddenWithAdaHere();
+        await adaSays("I'm the birthday girl's mom!", 'in-ada-vague', here, wire, adaIsMomOf());
+        const later = await say(PRIYA, "what's left?", 'in-later', here, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        // A gift hidden after she said it does not clear her either.
+        await say(
+          PRIYA,
+          'I got Mia a puzzle, secret',
+          'in-puzzle',
+          here,
+          () =>
+            decision({
+              list: 'Gifts for Mia',
+              claim: [{ item: null, text: 'Puzzle for Mia' }],
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [] },
+              reply: 'Puzzle is yours.',
+            }),
+          wire,
+        );
+        for (const row of await items()) {
+          expect(row.hiddenClearedPhoneHashes).not.toContain(phoneBlindIndex(ADA));
+        }
+        expect(wire.texts.join(' ')).not.toMatch(/Lego|Puzzle/);
+      });
+
+      it('hole 8: a later claim never drops an earlier one, so a gift hidden after both stays hidden from her', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await adaSays("hi, I'm Mia's mom", 'in-ada-mia', here, wire, adaIsMomOf('Mia'));
+        await adaSays("and Leo's too", 'in-ada-leo', here, wire, adaIsMomOf('Leo'));
+        expect((await seatOf(ADA))?.inferredKidName).toBe('Leo');
+        wire.texts.length = 0;
+        await say(MEI, "I'll get Mia the Lego, shh", 'in-lego', here, () => secretLego([]), wire);
+        expect((await items())[0]?.hiddenClearedPhoneHashes).not.toContain(phoneBlindIndex(ADA));
+        const later = await say(PRIYA, "what's left?", 'in-later', here, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it("hole 9: a whose-parent claim that lands while a turn is read keeps the gift out of that turn's line", async () => {
+        const { wire, here } = await hiddenWithAdaHere();
+        const racing = await say(
+          PRIYA,
+          "what's left?",
+          'in-race',
+          here,
+          async (input) => {
+            await adaSays("oh I'm Mia's mom", 'in-ada-mid', here, wire, adaIsMiasMom);
+            return whatsLeft(input);
+          },
+          wire,
+        );
+        // The read began before her claim, so the model saw it; the line it wrote is held.
+        expect(shown(racing.seen)).toEqual([LEGO]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it('hole 9: a whose-parent claim that lands while the hide is read keeps her off the cleared list', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await say(
+          MEI,
+          "I'll get Mia the Lego, shh",
+          'in-lego',
+          here,
+          async () => {
+            await adaSays("oh I'm Mia's mom", 'in-ada-mid', here, wire, adaIsMiasMom);
+            return secretLego([]);
+          },
+          wire,
+        );
+        expect((await items())[0]?.hiddenClearedPhoneHashes).not.toContain(phoneBlindIndex(ADA));
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it("hole 10: a cleared person's number leaves every hidden gift when they leave and when their family is erased", async () => {
+        const { here, wire } = await hiddenWithAdaHere();
+        const ids = () => items().then((rows) => rows[0]?.hiddenClearedPhoneHashes.sort());
+        expect(await ids()).toEqual([MEI, PRIYA, ADA].map(phoneBlindIndex).sort());
+        await adaSays("I'm Leo's mom", 'in-ada-leo', here, wire, adaIsMomOf('Leo'));
+        await forgetAda();
+        expect(await ids()).toEqual([MEI, PRIYA].map(phoneBlindIndex).sort());
+        expect(await seatOf(ADA)).toBeUndefined();
+        await db.database
+          .update(schema.families)
+          .set({ scheduledDeletionAt: new Date(NOW.getTime() - 60_000) })
+          .where(eq(schema.families.displayName, 'Priya'));
+        await runDeletionSweep(db.database, NOW, async () => {});
+        expect(await ids()).toEqual([phoneBlindIndex(MEI)]);
+      }, 30_000);
+
+      it("hole 11: clearance is a number, not a family: a cleared parent's co-parent who joins later does not see it", async () => {
+        const { wire, here, priya } = await hiddenWithAdaHere();
+        const [raj] = await db.database
+          .insert(schema.users)
+          .values({ externalAuthId: `imessage:raj-${RAJ}`, name: 'Raj' })
+          .returning({ id: schema.users.id });
+        await db.database
+          .insert(schema.familyMembers)
+          .values({ familyId: priya.familyId, userId: raj?.id as string, role: 'co_parent' });
+        await db.database.insert(schema.parentChannels).values({
+          userId: raj?.id as string,
+          familyId: priya.familyId,
+          kind: 'sms',
+          phoneE164Encrypted: encryptString(RAJ),
+          phoneE164Hash: phoneBlindIndex(RAJ),
+          verifiedAt: NOW,
+        });
+        const withRaj = [...here, RAJ];
+        await say(RAJ, 'hi all', 'in-raj', withRaj, quiet, wire);
+        expect((await seatOf(RAJ))?.familyId).toBe(priya.familyId);
+        const later = await say(PRIYA, "what's left?", 'in-later', withRaj, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it('hole 12: asks Linq who is here only while the chat holds a hidden item', async () => {
+        const { wire } = await chatBeforeTheHide();
+        const calls = linqLists(MEI, PRIYA, ADA);
+        await say(
+          PRIYA,
+          'we need a cake',
+          'in-cake',
+          'production',
+          () => decision({ list: 'Party', add: ['cake'] }),
+          wire,
+        );
+        const open = await say(PRIYA, "what's left?", 'in-open', 'production', whatsLeft, wire);
+        expect(shown(open.seen)).toEqual(['cake']);
+        expect(calls).toEqual([]);
+        await say(
+          MEI,
+          "I'll get Mia the Lego, shh",
+          'in-lego',
+          'production',
+          () => secretLego([]),
+          wire,
+        );
+        expect(calls).toHaveLength(1);
+        const later = await say(PRIYA, "what's left?", 'in-later', 'production', whatsLeft, wire);
+        expect(calls).toHaveLength(2);
+        expect(shown(later.seen).sort()).toEqual([LEGO, 'cake']);
+      });
+
+      it('hole 12: a hide whose line needs the participant list, and cannot read it, says nothing', async () => {
+        const { wire } = await chatBeforeTheHide();
+        linqAnswers('', 503);
+        await say(
+          MEI,
+          "I'll get Mia the Lego, shh",
+          'in-lego',
+          'production',
+          () => secretLego([]),
+          wire,
+        );
+        expect((await items()).map((row) => row.text)).toEqual([LEGO]);
+        expect(wire.texts).toEqual([]);
+      });
+    });
   });
 
   it('does not read lists while the flag is off', async () => {

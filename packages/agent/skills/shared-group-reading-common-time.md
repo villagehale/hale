@@ -28,7 +28,7 @@ One JSON object, nothing else:
   "intent": "question",
   "role": "parent",
   "familyLabel": null,
-  "kidName": null,
+  "kidNames": [],
   "confidence": "high",
   "ruledOut": [],
   "picked": null,
@@ -56,7 +56,7 @@ Non-null only when they claimed a role for themselves, or `who_i_am` is the inte
 
 `familyLabel` is the family they named in their own words (a surname, "Lily's family"), or null. Never an id. Never copy a family from `people` unless they said it.
 
-`kidName` is a child's first name only when they said it in this message. Otherwise null.
+`kidNames` is every child they named in this message as theirs, or as the child they are with: first names only, one child per entry, however they were joined and in any language ("Mia and Leo", "Mia, Leo", "Mia & Leo", "Mia y Leo" are `["Mia", "Leo"]`). Empty when they named no child.
 
 `ruledOut` lists the times this message (or `recent`) says do not work for someone here, each as `{ "start": ISO, "end": ISO }` with the offset of `clock.timeZone`. "Not Saturday morning" is that Saturday from 08:00 to 12:00; "Tuesday is out" is all of that Tuesday; "only after 5 on weekdays" is each weekday in the next week before 17:00. A "no" to a day Hale proposed rules out that whole day, not only the hour Hale named. Read them from what people said, never from a guess. Empty when nobody ruled anything out, when there is no `clock`, and for every intent other than `find_time`.
 

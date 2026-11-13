@@ -3,6 +3,8 @@
  * VIL-459 — a find-time ask. `covers` are instants the chat ruled out (some span must
  * hold each); `open` are instants nobody ruled out (no span may hold them). `titled`: the
  * reading names what the group is planning. `picked`: the offered start a pick must name.
+ * VIL-687 — `kids`: the exact children (any order, any case) the reading must name; a hidden
+ * gift for each stops being shown to that person, so a missed name is a leak.
  */
 export const SHARED_GROUP_READING_FIXTURES = [
   {
@@ -33,6 +35,7 @@ export const SHARED_GROUP_READING_FIXTURES = [
   {
     id: 'who-i-am-any-wording',
     accept: ['who_i_am'],
+    kids: ['Leo'],
     input: {
       text: 'hey I am Ada, Leo is my kid',
       reaction: null,
@@ -235,6 +238,54 @@ export const SHARED_GROUP_READING_FIXTURES = [
       people: [{ firstName: 'Mei', knownCustomer: true, familyLinked: true }],
       recent: [],
       clock: { now: '2026-10-28T11:00:00-04:00', timeZone: 'America/New_York' },
+    },
+  },
+  {
+    id: 'who-i-am-two-kids-and',
+    accept: ['who_i_am'],
+    kids: ['Mia', 'Leo'],
+    input: {
+      text: "hi everyone! I'm Mia and Leo's mom",
+      reaction: null,
+      language: 'en',
+      people: [{ firstName: null, knownCustomer: false, familyLinked: false }],
+      recent: [],
+    },
+  },
+  {
+    id: 'who-i-am-two-kids-spanish',
+    accept: ['who_i_am'],
+    kids: ['Mia', 'Leo'],
+    input: {
+      text: 'hola, soy la mamá de Mia y Leo',
+      reaction: null,
+      language: 'es',
+      people: [{ firstName: null, knownCustomer: false, familyLinked: false }],
+      recent: [],
+    },
+  },
+  {
+    id: 'who-i-am-three-kids-comma-amp',
+    accept: ['who_i_am'],
+    kids: ['Mia', 'Leo', 'Ana'],
+    input: {
+      text: 'dad of Mia, Leo & Ana here 👋',
+      reaction: null,
+      language: 'en',
+      people: [{ firstName: null, knownCustomer: false, familyLinked: false }],
+      recent: [],
+    },
+  },
+  {
+    id: 'who-i-am-unnamed-kid',
+    accept: ['who_i_am'],
+    kids: [],
+    input: {
+      text: "hi! I'm the birthday girl's mom",
+      reaction: null,
+      language: 'en',
+      people: [{ firstName: null, knownCustomer: false, familyLinked: false }],
+      recent: [],
     },
   },
 ];
