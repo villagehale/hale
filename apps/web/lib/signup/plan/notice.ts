@@ -197,17 +197,18 @@ async function deliverDirect(
     );
     return 'failed';
   }
-  if (delivered.status !== 'sent') return failed(delivered.reason);
+  if (delivered.delivered.status !== 'sent') return failed(delivered.delivered.reason);
   await database
     .update(messages)
     .set({
-      channel: delivered.channel,
-      status: acceptedStatus(delivered.channel),
-      providerMessageId: delivered.providerMessageId,
-      providerChatId: delivered.chatId,
+      channel: delivered.delivered.channel,
+      status: acceptedStatus(delivered.delivered.channel),
+      providerMessageId: delivered.delivered.providerMessageId,
+      providerChatId: delivered.delivered.chatId,
       sentAt: input.now,
     })
     .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+  await delivered.keep(row.id);
   await threadProactiveMessage(database, {
     familyId: notice.familyId,
     parentUserId: notice.parentUserId,
@@ -443,31 +444,35 @@ async function sendPrepText(
             now: input.now,
           },
         ),
-      (sent) => !(sent instanceof AskOrderUnmarked) && sent.status === 'sent',
+      (sent) => !(sent instanceof AskOrderUnmarked) && sent.delivered.status === 'sent',
     );
   } catch (err) {
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
   if (delivered instanceof AskOrderUnmarked) return failed(delivered.message);
-  if (delivered.status !== 'sent') return failed(delivered.reason);
+  const went = delivered.delivered;
+  if (went.status !== 'sent') return failed(went.reason);
   await database
     .update(messages)
     .set({
-      channel: delivered.channel,
-      status: acceptedStatus(delivered.channel),
-      providerMessageId: delivered.providerMessageId,
-      providerChatId: delivered.chatId,
+      channel: went.channel,
+      status: acceptedStatus(went.channel),
+      providerMessageId: went.providerMessageId,
+      providerChatId: went.chatId,
       sentAt: input.now,
     })
     .where(and(eq(messages.id, claim.id), eq(messages.familyId, input.familyId)));
-  return { channel: delivered.channel, chatId: delivered.chatId };
+  await delivered.keep(claim.id);
+  return { channel: went.channel, chatId: went.chatId };
 }
 
 /**
  * One notice text about its ask, as one call: the stamp (`askStamp`) right before the
- * transport call, and the number kept once the text went, so the parent's next bare answer
- * is this ask's even if a later part of the notice does not go. A send that could not be
- * marked is not made: its named failure comes back in place of the delivery.
+ * transport call, and the keep it owes. The caller runs `keep` with the text's ledger row
+ * once that row recorded the send, so the parent's next bare answer is this ask's even if a
+ * later part of the notice does not go, and the text is dated by that row (VIL-302). A send
+ * that could not be marked is not made: its named failure comes back in place of the
+ * delivery.
  *
  * The stamp and the transport call are never apart: a paced notice hands this whole call
  * to the bubble gap, so the gap comes before the stamp, and a text another sender starts
@@ -477,7 +482,13 @@ async function deliverStamped(
   database: Database,
   asks: AskedAbout,
   outbound: Parameters<typeof deliverFamilyOutbound>[1],
-): Promise<Awaited<ReturnType<typeof deliverFamilyOutbound>> | AskOrderUnmarked> {
+): Promise<
+  | {
+      delivered: Awaited<ReturnType<typeof deliverFamilyOutbound>>;
+      keep: Awaited<ReturnType<SendStamp>>;
+    }
+  | AskOrderUnmarked
+> {
   let keep: Awaited<ReturnType<SendStamp>>;
   try {
     keep = await askStamp(database, asks)();
@@ -485,9 +496,7 @@ async function deliverStamped(
     if (err instanceof AskOrderUnmarked) return err;
     throw err;
   }
-  const delivered = await deliverFamilyOutbound(database, outbound);
-  if (delivered.status === 'sent') await keep();
-  return delivered;
+  return { delivered: await deliverFamilyOutbound(database, outbound), keep };
 }
 
 /** Login-ask, account-prep and 30-minute reminder on the same minute cron. */

@@ -1618,6 +1618,13 @@
       "when": 1794365305000,
       "tag": "0247_messages_author_user_id",
       "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1794365400000,
+      "tag": "0249_asks_one_send_clock",
+      "breakpoints": true
     }
   ]
 }

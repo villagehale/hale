@@ -2,6 +2,7 @@ import { type IncomingMessage, type ServerResponse, createServer } from 'node:ht
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sentSignupText } from '~/lib/signup/sent-text.fixture';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { playwrightSignupBrowser } from './browser';
 import { runAuthorizedSignup } from './run';
@@ -332,7 +333,7 @@ describe('authorized signup sandbox', () => {
       parentUserId: seeded.parentUserId,
       offerIds: [stored.id],
     })();
-    await keep();
+    await keep(await sentSignupText(db.database, seeded));
     return seeded;
   }
 

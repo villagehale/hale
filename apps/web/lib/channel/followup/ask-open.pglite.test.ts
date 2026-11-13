@@ -83,6 +83,9 @@ async function seedAsk(
     templateKey: 'followup:activity',
     status: options.status ?? 'queued',
     createdAt: options.createdAt ?? ASKED_AT,
+    // As the send records it; the router dates the ask by `send_recorded_at` (VIL-302).
+    sentAt: options.createdAt ?? ASKED_AT,
+    sendRecordedAt: options.createdAt ?? ASKED_AT,
   });
 }
 

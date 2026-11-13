@@ -34,6 +34,7 @@ function offerFor(checkpointId = 'well_baby_18_months'): OpenCheckupOffer {
     childId: 'child-1',
     summary: 'Whether to put booking this on your week',
     askedAt: new Date('2026-08-20T14:00:00.000Z'),
+    askedVia: 'msg-1',
   };
 }
 

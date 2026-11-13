@@ -145,9 +145,11 @@ export interface OpenEmailAlertOffer {
   messageId: string;
   /** The event this offer already placed, or null — see the column's own note. */
   eventId: string | null;
-  /** When the alert that carried the offer went out. The open-question reader's recency
-   * fact, and it is the ledger row's own mint time because the row is written at send. */
+  /** When the offer row was minted, after the alert that carried it was sent. */
   askedAt: Date;
+  /** The outbound row that carried the alert: the router dates the ask by its recorded
+   * send (VIL-302, channel/ledger.ts `sendRecordedAt`). */
+  askedVia: string;
 }
 
 /**
@@ -192,6 +194,7 @@ export async function loadOpenEmailAlertOffers(
     messageId: row.messageId,
     eventId: row.eventId,
     askedAt: row.createdAt,
+    askedVia: row.channelMessageId,
   }));
 }
 

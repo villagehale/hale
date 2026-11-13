@@ -1,6 +1,8 @@
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ASK_TIE_WINDOW_MS } from '~/lib/channel/router/open-questions';
+import { sentSignupText } from '~/lib/signup/sent-text.fixture';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { loadLiveAsks } from './asks';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from './flag';
@@ -259,6 +261,8 @@ describe('askStamp: the ask number of a send', () => {
     parentUserId: f.parentUserId,
     offerIds: [offerId],
   });
+  /** The ledger row of a text that went to this parent. */
+  const sent = (f: { familyId: string; parentUserId: string }) => sentSignupText(db.database, f);
   /** The ask whose text reached the parent last, or why none is. */
   async function lastAskedId(f: { familyId: string; parentUserId: string }) {
     const last = await loadLastAsked(db.database, f);
@@ -320,15 +324,15 @@ describe('askStamp: the ask number of a send', () => {
     const gymKeep = await askStamp(db.database, about(f, gymId))();
     const kickersKeep = await askStamp(db.database, about(f, kickersId))();
     // Kickers' send was accepted first; Gym's started first.
-    expect(await kickersKeep()).toBe('stamped');
-    expect(await gymKeep()).toBe('stamped');
+    expect(await kickersKeep(await sent(f))).toBe('stamped');
+    expect(await gymKeep(await sent(f))).toBe('stamped');
     expect(await lastAskedId(f)).toBe(kickersId);
     expect(await uncertainRow(f)).toBeNull();
   });
 
   it('holds every bare answer while a send is out, and after one whose outcome is unknown', async () => {
     const { f, gymId, kickersId } = await twoAsks();
-    await (await askStamp(db.database, about(f, gymId))())();
+    await (await askStamp(db.database, about(f, gymId))())(await sent(f));
     expect(await lastAskedId(f)).toBe(gymId);
 
     // The send about Kickers is marked before its transport call. It never reports back
@@ -339,7 +343,7 @@ describe('askStamp: the ask number of a send', () => {
     expect(await seqOf(kickersId)).toBeNull();
 
     // The next text about an ask that went clears it.
-    expect(await (await askStamp(db.database, about(f, gymId))())()).toBe('stamped');
+    expect(await (await askStamp(db.database, about(f, gymId))())(await sent(f))).toBe('stamped');
     expect(await uncertainRow(f)).toBeNull();
     expect(await lastAskedId(f)).toBe(gymId);
   });
@@ -348,10 +352,10 @@ describe('askStamp: the ask number of a send', () => {
     const { f, gymId, kickersId } = await twoAsks();
     const gymKeep = await askStamp(db.database, about(f, gymId))();
     const kickersKeep = await askStamp(db.database, about(f, kickersId))();
-    expect(await gymKeep()).toBe('stamped');
+    expect(await gymKeep(await sent(f))).toBe('stamped');
     expect(await uncertainRow(f)).not.toBeNull();
     expect(await lastAskedId(f)).toBe('uncertain');
-    expect(await kickersKeep()).toBe('stamped');
+    expect(await kickersKeep(await sent(f))).toBe('stamped');
     expect(await uncertainRow(f)).toBeNull();
     expect(await lastAskedId(f)).toBe(kickersId);
   });
@@ -360,21 +364,21 @@ describe('askStamp: the ask number of a send', () => {
     const { f, gymId } = await twoAsks();
     const first = await askStamp(db.database, about(f, gymId))();
     const second = await askStamp(db.database, about(f, gymId))();
-    await second();
+    await second(await sent(f));
     const kept = await seqOf(gymId);
-    await first();
+    await first(await sent(f));
     expect(await seqOf(gymId)).toBe(kept);
   });
 
   it('fails closed when the number is not kept: the mark made before the send holds until a later one is kept', async () => {
     const { f, gymId, kickersId } = await twoAsks();
-    await (await askStamp(db.database, about(f, gymId))())();
+    await (await askStamp(db.database, about(f, gymId))())(await sent(f));
     expect(await lastAskedId(f)).toBe(gymId);
     const before = await askStamp(db.database, about(f, gymId))(); // started before the miss
 
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await failStampsOf(kickersId);
-    expect(await (await askStamp(db.database, about(f, kickersId))())()).toBe(
+    expect(await (await askStamp(db.database, about(f, kickersId))())(await sent(f))).toBe(
       'ask_order_uncertain',
     );
     await db.database.execute(sql`drop trigger store_test_fail_stamp on authorized_signup_offers`);
@@ -384,23 +388,25 @@ describe('askStamp: the ask number of a send', () => {
     expect(errors.mock.calls.some((call) => String(call[1]).includes('URGENT'))).toBe(false);
 
     // A number drawn before the miss, kept after it, does not settle the order.
-    expect(await before()).toBe('stamped');
+    expect(await before(await sent(f))).toBe('stamped');
     expect(await lastAskedId(f)).toBe('uncertain');
     // One drawn after it does.
-    expect(await (await askStamp(db.database, about(f, kickersId))())()).toBe('stamped');
+    expect(await (await askStamp(db.database, about(f, kickersId))())(await sent(f))).toBe(
+      'stamped',
+    );
     expect(await uncertainRow(f)).toBeNull();
     expect(await lastAskedId(f)).toBe(kickersId);
   });
 
   it('holds when the keep and every write after the send fail: the mark was made before it', async () => {
     const { f, gymId, kickersId } = await twoAsks();
-    await (await askStamp(db.database, about(f, gymId))())();
+    await (await askStamp(db.database, about(f, gymId))())(await sent(f));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const keep = await askStamp(db.database, about(f, kickersId))();
     // The text went; now the stamp, the clear and the miss count all fail.
     await failStampsOf(kickersId);
     await failMarks();
-    expect(await keep()).toBe('ask_order_uncertain');
+    expect(await keep(await sent(f))).toBe('ask_order_uncertain');
     await db.database.execute(sql`drop trigger store_test_fail_stamp on authorized_signup_offers`);
     await db.database.execute(
       sql`drop trigger store_test_fail_mark on authorized_signup_ask_order_uncertain`,
@@ -414,9 +420,9 @@ describe('askStamp: the ask number of a send', () => {
     const { f, kickersId } = await twoAsks();
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await failStampsOf(kickersId);
-    await (await askStamp(db.database, about(f, kickersId))())();
+    await (await askStamp(db.database, about(f, kickersId))())(await sent(f));
     expect(errors.mock.calls.some((call) => String(call[1]).includes('URGENT'))).toBe(false);
-    await (await askStamp(db.database, about(f, kickersId))())();
+    await (await askStamp(db.database, about(f, kickersId))())(await sent(f));
     expect(await uncertainRow(f)).toMatchObject({ failures: 2 });
     expect(
       errors.mock.calls.some((call) =>
@@ -427,7 +433,7 @@ describe('askStamp: the ask number of a send', () => {
 
   it('refuses the send when the mark cannot be written before it, and the order on file stands', async () => {
     const { f, gymId, kickersId } = await twoAsks();
-    await (await askStamp(db.database, about(f, gymId))())();
+    await (await askStamp(db.database, about(f, gymId))())(await sent(f));
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await failMarks();
     await expect(askStamp(db.database, about(f, kickersId))()).rejects.toBeInstanceOf(
@@ -462,7 +468,8 @@ describe('the sign-up asks, ranked with the open questions', () => {
     const gym = await record(f, GYM_URL, 'Gym Tots', 0);
     if (!gym.ok) throw new Error('set-up offer');
     const about = { familyId: f.familyId, parentUserId: f.parentUserId, offerIds: [gym.id] };
-    expect(await (await askStamp(db.database, about)())()).toBe('stamped');
+    const carried = await sentSignupText(db.database, f);
+    expect(await (await askStamp(db.database, about)())(carried)).toBe('stamped');
     const last = await loadLastAsked(db.database, f);
     if (last.status !== 'asked' || last.askedAt === null) throw new Error('set-up stamp');
     return { f, gymId: gym.id, about, askedAt: last.askedAt };
@@ -477,11 +484,52 @@ describe('the sign-up asks, ranked with the open questions', () => {
         .map((ask) => ask.offerId);
 
     expect(await newest([])).toEqual([gymId]);
-    expect(await newest([{ askedAt: at(-1000) }])).toEqual([gymId]);
-    expect(await newest([{ askedAt: at(1000) }])).toEqual([]);
+    expect(await newest([{ askedAt: at(-ASK_TIE_WINDOW_MS) }])).toEqual([gymId]);
+    expect(await newest([{ askedAt: at(ASK_TIE_WINDOW_MS) }])).toEqual([]);
+    // Inside the tie window either way, or at the same time: a tie, and no sign-up ask binds.
+    expect(await newest([{ askedAt: at(-ASK_TIE_WINDOW_MS + 1) }])).toEqual([]);
+    expect(await newest([{ askedAt: at(ASK_TIE_WINDOW_MS - 1) }])).toEqual([]);
     expect(await newest([{ askedAt }])).toEqual([]);
-    // Recency across the lanes cannot be established: the lane's own order stands.
-    expect(await newest([{ askedAt: at(1000) }, { askedAt: null }])).toEqual([gymId]);
+    // Recency across the lanes cannot be established: no sign-up ask binds a bare answer.
+    expect(await newest([{ askedAt: at(-60_000) }, { askedAt: null }])).toEqual([]);
+  });
+
+  it('is dated by the row that carried its last text, and that time never pairs with a lower number', async () => {
+    const { f, gymId, about } = await askedGym();
+    const datedAt = async (id: string, at: Date) =>
+      db.database
+        .update(schema.channelMessages)
+        .set({ sendRecordedAt: at })
+        .where(eq(schema.channelMessages.id, id));
+    const offer = async () => {
+      const [row] = await db.database
+        .select()
+        .from(schema.authorizedSignupOffers)
+        .where(eq(schema.authorizedSignupOffers.id, gymId));
+      return row;
+    };
+    // Two sends about Gym overlap: the second started later and its row recorded it first;
+    // the first's row recorded its send later.
+    const earlier = await askStamp(db.database, about)();
+    const later = await askStamp(db.database, about)();
+    const laterRow = await sentSignupText(db.database, f);
+    await datedAt(laterRow, new Date(NOW.getTime() + 1_000));
+    expect(await later(laterRow)).toBe('stamped');
+    const kept = await offer();
+    const earlierRow = await sentSignupText(db.database, f);
+    await datedAt(earlierRow, new Date(NOW.getTime() + 2_000));
+    expect(await earlier(earlierRow)).toBe('stamped');
+
+    expect(await offer()).toMatchObject({
+      lastAskedSeq: kept?.lastAskedSeq,
+      lastAskedMessageId: laterRow,
+      lastAskedAt: new Date(NOW.getTime() + 1_000),
+    });
+    expect(await loadLastAsked(db.database, f)).toEqual({
+      status: 'asked',
+      offerId: gymId,
+      askedAt: new Date(NOW.getTime() + 1_000),
+    });
   });
 
   it("hands the router Hale's last text: its time, unknown while a send is out, nothing before one", async () => {
