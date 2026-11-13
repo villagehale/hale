@@ -382,7 +382,7 @@
   "judges/signup-plan-reply": {
     "name": "judges/signup-plan-reply",
     "version": null,
-    "sha256": "1f3df67267abb90c71687b7f47b44cefc02751d597e86e66cdfab63f1c13d112"
+    "sha256": "6c3d10e0e312ba575a60ebde3729900dde367150fccb847dd974566e2203f3e2"
   },
   "judges/signup-provider-notice": {
     "name": "judges/signup-provider-notice",
