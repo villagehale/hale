@@ -10,6 +10,7 @@ import { writeFact } from '~/lib/memory/facts';
 import { schoolYearOf, winterBreakEventKey } from './school-break/cycle';
 import { type SchoolBreakFact, loadSchoolBreak } from './school-break/facts';
 import { schoolBreakEnabled } from './school-break/flag';
+import { type BoardBreakStanding, boardBreakStanding } from './school-break/standing';
 
 /**
  * HOW THIS HOUSEHOLD'S WEEKDAYS ARE COVERED — the fact, its flag, and its one
@@ -89,13 +90,19 @@ const BREAK_SOURCE = {
   parent: 'parent_said',
 } as const satisfies Record<SchoolBreakFact['source'], VerifiedSchoolBreak['source']>;
 
-/** Why there is no break to name: the lane is switched off, or no source has the dates. */
-export type NoVerifiedBreakReason = 'school_break_off' | 'no_verified_school_calendar';
+/** Why there is no break to name: the lane is switched off, no source has the dates, or
+ * the school's break on file no longer applies to this family (school-break/standing.ts). */
+export type NoVerifiedBreakReason =
+  | 'school_break_off'
+  | 'no_verified_school_calendar'
+  | Exclude<BoardBreakStanding, 'stands'>;
 
 /**
  * This winter's break for this family, from the one writer-pinned fact
- * (school-break/facts.ts), or the named reason there is none. Absence is the result,
- * never a guessed date.
+ * (school-break/facts.ts), or the named reason there is none. A school's break is
+ * checked against what is true now, not when it was filed, so a parent's "that's mine"
+ * or "she's at daycare" stops it being named before the sweep retires it. Absence is the
+ * result, never a guessed date.
  */
 export async function loadVerifiedSchoolBreak(
   database: Database,
@@ -109,6 +116,12 @@ export async function loadVerifiedSchoolBreak(
     schoolYearOf(dayKeyOf(now, DEFAULT_TIMEZONE)),
   );
   if (fact === null) return { break: null, reason: 'no_verified_school_calendar' };
+  const standing = await boardBreakStanding(
+    database,
+    fact,
+    await loadWeekdayCare(database, familyId),
+  );
+  if (standing !== 'stands') return { break: null, reason: standing };
   return {
     break: {
       eventKey: winterBreakEventKey(fact.firstDay),
