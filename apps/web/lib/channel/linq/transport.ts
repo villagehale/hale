@@ -841,6 +841,40 @@ export function readLinqChatHandles(payload: unknown): string[] {
   return out;
 }
 
+/** A Linq timestamp, or null when it is absent or not one. */
+function linqTime(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** When Linq says each present handle (as readLinqChatHandles reads them) joined the chat,
+ * on Linq's clock, the one a message's sent_at is on. Null when it cannot say: no readable
+ * `joined_at`, or a `left_at` that is not before it (added back on a record that kept an
+ * earlier join) or cannot be read. A handle listed more than once is null unless every
+ * present record gives a time, and then the latest. */
+export function readLinqChatJoinedAt(payload: unknown): Map<string, Date | null> {
+  const out = new Map<string, Date | null>();
+  if (!isRecord(payload)) return out;
+  const chat = isRecord(payload.chat) ? payload.chat : payload;
+  const handles = Array.isArray(chat.handles) ? chat.handles : [];
+  for (const record of handles) {
+    if (!isRecord(record) || record.is_me === true) continue;
+    if (record.status === 'left' || record.status === 'removed') continue;
+    if (typeof record.handle !== 'string') continue;
+    const joined = linqTime(record.joined_at);
+    const neverLeft = record.left_at === undefined || record.left_at === null;
+    const left = linqTime(record.left_at);
+    const at = joined && (neverLeft || (left && left < joined)) ? joined : null;
+    const before = out.get(record.handle);
+    out.set(
+      record.handle,
+      before === undefined ? at : before && at ? (before > at ? before : at) : null,
+    );
+  }
+  return out;
+}
+
 function readLinqChatIsGroup(payload: unknown): boolean | null {
   if (!isRecord(payload)) return null;
   const chat = isRecord(payload.chat) ? payload.chat : payload;
@@ -932,13 +966,20 @@ export async function setLinqChatBackground(input: {
   });
 }
 
-/** GET the chat and return the other participants' handles and whether Linq says it
- * is a group (null when the payload does not say). A miss is named. */
+/** GET the chat and return the other participants' handles, when Linq says each joined,
+ * and whether Linq says it is a group (null when the payload does not say). A miss is
+ * named. `joinedAt` is optional for callers that only count who is here; a handle missing
+ * from it is one whose join time is unknown. */
 export async function listLinqParticipantHandles(input: {
   chatId: string;
   fetch?: typeof fetch;
 }): Promise<
-  | { status: 'ok'; handles: string[]; isGroup: boolean | null }
+  | {
+      status: 'ok';
+      handles: string[];
+      isGroup: boolean | null;
+      joinedAt?: ReadonlyMap<string, Date | null>;
+    }
   | Exclude<LinqEffectResult, { status: 'accepted' }>
 > {
   try {
@@ -959,6 +1000,7 @@ export async function listLinqParticipantHandles(input: {
       status: 'ok',
       handles: readLinqChatHandles(result.payload),
       isGroup: readLinqChatIsGroup(result.payload),
+      joinedAt: readLinqChatJoinedAt(result.payload),
     };
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {

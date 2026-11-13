@@ -38,6 +38,8 @@ import {
  */
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-11-20T15:00:00.000Z');
+/** Before anything in a test happens: when Linq says everyone it lists joined, by default. */
+const EARLIER = new Date(NOW.getTime() - 3_600_000);
 const CHAT = 'chat-party-gifts';
 
 let db: TestDb;
@@ -167,9 +169,10 @@ async function audienceOf(people: readonly SharedListPerson[]) {
       .from(schema.linqSharedGroupPeople)
       .where(eq(schema.linqSharedGroupPeople.chatId, CHAT))
   ).filter((seat) => !ids.has(seat.id));
-  return sharedListAudience([...people, ...others], ids, async () =>
-    people.map((person) => person.phoneE164Hash),
-  );
+  return sharedListAudience([...people, ...others], ids, async () => {
+    const hashes = people.map((person) => person.phoneE164Hash);
+    return { hashes, presentAtSend: new Set(hashes) };
+  });
 }
 
 /** The list as these people may see it, through the production audience. */
@@ -444,6 +447,7 @@ describe('hidden gifts', () => {
     const { ada, sam, priya } = await partyChat();
     await item(sam.id, 'Lego for Mia', {
       ownerPersonId: sam.id,
+      hidden: true,
       hiddenForKid: 'Mia',
       hiddenFromPersonIds: [ada.id],
     });
@@ -460,6 +464,7 @@ describe('hidden gifts', () => {
       listKey: 'gifts for mia',
       textKey: 'lego for mia',
       ownerPersonId: sam.id,
+      hidden: true,
       hiddenForKid: 'Mia',
       hiddenFromPersonIds: [ada.id],
     });
@@ -611,6 +616,29 @@ describe('retention', () => {
       ['plates', mei.id, mei.id],
     ]);
   });
+
+  it('erasure wipes what a stopped seat said about whose family it is, keeping only the stop', async () => {
+    const erasedFamily = await family('Erased', new Date(NOW.getTime() - 24 * 60 * 60 * 1000));
+    const stopped = await person({
+      familyId: erasedFamily,
+      stoppedAt: NOW,
+      inferredKidName: 'Mia',
+      inferredKidNames: ['Mia', 'Leo'],
+      claimsUnnamedKid: true,
+    });
+    await runDeletionSweep(db.database, NOW, async () => {});
+    const [tombstone] = await db.database
+      .select()
+      .from(schema.linqSharedGroupPeople)
+      .where(eq(schema.linqSharedGroupPeople.id, stopped.id));
+    expect(tombstone?.stoppedAt).toEqual(NOW);
+    expect(tombstone).toMatchObject({
+      familyId: null,
+      inferredKidName: null,
+      inferredKidNames: [],
+      claimsUnnamedKid: false,
+    });
+  }, 30_000);
 });
 
 describe('in a multi-family group turn', () => {
@@ -630,7 +658,12 @@ describe('in a multi-family group turn', () => {
 
   const listOf =
     (handles: readonly string[]): ListChatHandles =>
-    async () => ({ status: 'ok', handles: [...handles], isGroup: true });
+    async () => ({
+      status: 'ok',
+      handles: [...handles],
+      isGroup: true,
+      joinedAt: new Map(handles.map((handle) => [handle, EARLIER])),
+    });
 
   function reading(
     intent: SharedGroupReading['intent'],
@@ -676,9 +709,13 @@ describe('in a multi-family group turn', () => {
     return { familyId, userId };
   }
 
+  /** Each message is sent a minute after the one before, so a seat one wrote has settled by the next. */
+  let sentAt = NOW.getTime();
+
   beforeEach(() => {
     vi.stubEnv('LINQ_FROM_E164', FROM);
     vi.stubEnv('LINQ_MULTI_FAMILY_GROUPS_ENABLED', 'true');
+    sentAt = NOW.getTime();
   });
 
   async function claimTurn(
@@ -774,6 +811,8 @@ describe('in a multi-family group turn', () => {
         return answer(input);
       },
     };
+    sentAt += 60_000;
+    const at = new Date(sentAt);
     const out = await takeMultiFamilyTurn(
       db.database,
       {
@@ -781,8 +820,8 @@ describe('in a multi-family group turn', () => {
         senderHandle: from,
         text,
         providerMessageId: id,
-        receivedAt: extra.receivedAt ?? NOW,
-        now: extra.now ?? NOW,
+        receivedAt: extra.receivedAt ?? at,
+        now: extra.now ?? at,
         send: wire.send,
         ...(extra.privateAside ? { privateAside: extra.privateAside } : {}),
         ...(extra.otherHandles ? { otherHandles: extra.otherHandles } : {}),
@@ -1288,7 +1327,11 @@ describe('in a multi-family group turn', () => {
           chat: {
             is_group: true,
             handles: [
-              ...handles.map((handle) => ({ handle, status: 'active' })),
+              ...handles.map((handle) => ({
+                handle,
+                status: 'active',
+                joined_at: EARLIER.toISOString(),
+              })),
               { handle: FROM, is_me: true },
             ],
           },
@@ -1405,6 +1448,48 @@ describe('in a multi-family group turn', () => {
       expect(wire.texts).toEqual([]);
     });
 
+    it('a held turn and a turn with nothing to do take the same 1:1 aside decision', async () => {
+      const { wire } = await secretWhileMiaFamilyAway();
+      await parent(ADA, 'Ada', 'Mia');
+      const here = [MEI, PRIYA, ADA];
+      let asideReads = 0;
+      const privateAside = {
+        model: {
+          async read() {
+            asideReads += 1;
+            return [];
+          },
+          async draft() {
+            return null;
+          },
+        },
+        sendOneToOne: async () => 'failed' as const,
+      };
+      const blind = await say(
+        PRIYA,
+        'I can get Mia a Lego',
+        'in-blind',
+        here,
+        () =>
+          decision({
+            list: 'Gifts for Mia',
+            claim: [{ item: null, text: LEGO }],
+            reply: 'Lego is yours.',
+          }),
+        wire,
+        { privateAside },
+      );
+      const heldReads = asideReads;
+      const idle = await say(PRIYA, 'sounds good', 'in-idle', here, () => decision({}), wire, {
+        privateAside,
+      });
+      expect([blind.out, idle.out]).toMatchObject([
+        { handled: true, outcome: 'shared_list' },
+        { handled: true, outcome: 'shared_list' },
+      ]);
+      expect(asideReads - heldReads).toBe(heldReads);
+    });
+
     it("leaves the speaker's family audit and export the same as a turn with nothing to do", async () => {
       const { wire, priya } = await secretWhileMiaFamilyAway();
       const { familyId, userId } = priya;
@@ -1473,7 +1558,7 @@ describe('in a multi-family group turn', () => {
             chatId: CHAT,
             phoneE164Encrypted: encryptString(phone),
             phoneE164Hash: phoneBlindIndex(phone),
-            seatedAt: NOW,
+            seatedAt: EARLIER,
             ...extra,
           })
           .returning();
@@ -1818,7 +1903,11 @@ describe('in a multi-family group turn', () => {
                 chat: {
                   is_group: true,
                   handles: [
-                    ...listed.map((handle) => ({ handle, status: 'active' })),
+                    ...listed.map((handle) => ({
+                      handle,
+                      status: 'active',
+                      joined_at: EARLIER.toISOString(),
+                    })),
                     { handle: FROM, is_me: true },
                   ],
                 },
@@ -1942,7 +2031,11 @@ describe('in a multi-family group turn', () => {
             chat: {
               is_group: true,
               handles: [
-                ...present.map((handle) => ({ handle, status: 'active' })),
+                ...present.map((handle) => ({
+                  handle,
+                  status: 'active',
+                  joined_at: EARLIER.toISOString(),
+                })),
                 ...departed.map((handle) => ({
                   handle,
                   status: 'removed',
@@ -2123,6 +2216,190 @@ describe('in a multi-family group turn', () => {
         expect(shown(later.seen)).toEqual([LEGO]);
       });
 
+      /** Mia's dad, a Hale parent, is added through the real webhook after the hide and asks. */
+      const miasDadJoinsAndAsks = async (
+        here: readonly string[],
+        wire: ReturnType<typeof sender>,
+      ) => {
+        await parent(RAJ, 'Raj', 'Mia');
+        await noticeSharedGroupAdded(
+          db.database,
+          { chatId: CHAT, adderHandle: PRIYA, now: NOW, handles: [RAJ] },
+          { send: sender().send, composer: fakeSharedGroupComposer() },
+        );
+        wire.texts.length = 0;
+        return say(RAJ, "what's left?", 'in-raj-left', [...here, RAJ], whatsLeft, wire);
+      };
+
+      it.each([
+        ['names no child', null],
+        ['names a child as only spaces', '   '],
+        ['names a child longer than the bound', 'M'.repeat(101)],
+      ])(
+        'a keep-secret verdict that %s and no person still hides the gift',
+        async (_label, forKid) => {
+          const { wire, here } = await chatBeforeTheHide();
+          await say(
+            MEI,
+            "I'll get the birthday girl a Lego, shh",
+            'in-lego',
+            here,
+            () =>
+              decision({
+                list: 'Gifts',
+                claim: [{ item: null, text: 'Lego' }],
+                gift: { forKid, keepFromKidFamily: true, kidFamily: [] },
+                reply: null,
+              }),
+            wire,
+          );
+          // Positive control: the people here at the hide see it.
+          const open = await say(PRIYA, "what's left?", 'in-open', here, whatsLeft, wire);
+          expect(shown(open.seen)).toEqual(['Lego']);
+          const later = await miasDadJoinsAndAsks(here, wire);
+          expect(shown(later.seen)).toEqual([]);
+          expect(wire.texts.join(' ')).not.toContain('Lego');
+          expect((await items())[0]?.hiddenClearedPhoneHashes.sort()).toEqual(
+            here.map(phoneBlindIndex).sort(),
+          );
+        },
+      );
+
+      it('an add of something already on the list in the open hides it when the speaker asks', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await say(
+          PRIYA,
+          'add Lego for Mia',
+          'in-open-add',
+          here,
+          () => decision({ list: 'Gifts for Mia', add: [LEGO] }),
+          wire,
+        );
+        await say(
+          MEI,
+          "add Lego for Mia, and keep it secret from Mia's family",
+          'in-hide-add',
+          here,
+          () =>
+            decision({
+              list: 'Gifts for Mia',
+              add: [LEGO],
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [] },
+            }),
+          wire,
+        );
+        const later = await miasDadJoinsAndAsks(here, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it("a claim on someone else's open item hides it when the speaker asks, and keeps its owner", async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await say(
+          PRIYA,
+          'I got the Lego for Mia',
+          'in-open-claim',
+          here,
+          () => decision({ list: 'Gifts for Mia', claim: [{ item: null, text: LEGO }] }),
+          wire,
+        );
+        await say(
+          MEI,
+          "Priya has the Lego, keep it secret from Mia's family",
+          'in-hide-claim',
+          here,
+          (input) => {
+            const lego = input.items.find((entry) => entry.text === LEGO)?.ref;
+            if (!lego) throw new Error('the model was not shown the Lego');
+            return decision({
+              claim: [{ item: lego, text: null }],
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [] },
+            });
+          },
+          wire,
+        );
+        const priyaSeat = await seatOf(PRIYA);
+        expect(priyaSeat).toBeDefined();
+        expect((await items())[0]?.ownerPersonId).toBe(priyaSeat?.id);
+        const later = await miasDadJoinsAndAsks(here, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it.each([
+        [
+          'a new join time',
+          { joined_at: '2026-11-20T15:00:30.000Z', left_at: '2026-11-20T14:59:50.000Z' },
+        ],
+        [
+          'her old join time and a later leave',
+          { joined_at: EARLIER.toISOString(), left_at: '2026-11-20T14:59:50.000Z' },
+        ],
+        ['no join time', { left_at: '2026-11-20T14:59:50.000Z' }],
+      ])(
+        'a hide Hale takes late never clears someone Linq says was away when it was sent (%s)',
+        async (_label, adaRecord) => {
+          const { wire } = await chatBeforeTheHide();
+          // Ada left just before Mei's hide was sent at NOW and was added back after it. Hale
+          // takes the hide on a late retry, before her leave webhook, so her old seat is live.
+          linqAnswers(
+            JSON.stringify({
+              chat: {
+                is_group: true,
+                handles: [
+                  { handle: MEI, status: 'active', joined_at: EARLIER.toISOString() },
+                  { handle: PRIYA, status: 'active', joined_at: EARLIER.toISOString() },
+                  { handle: ADA, status: 'active', ...adaRecord },
+                  { handle: FROM, is_me: true },
+                ],
+              },
+            }),
+          );
+          await say(
+            MEI,
+            "I'll get Mia the Lego, shh",
+            'in-lego',
+            'production',
+            () => secretLego([]),
+            wire,
+            { receivedAt: NOW, now: new Date(NOW.getTime() + 120_000) },
+          );
+          expect((await items())[0]?.hiddenClearedPhoneHashes.sort()).toEqual(
+            [MEI, PRIYA].map(phoneBlindIndex).sort(),
+          );
+        },
+      );
+
+      it("never clears a seat Hale wrote within the clock-skew margin of the message's sent time", async () => {
+        const { wire, here, ada } = await chatBeforeTheHide();
+        const sent = new Date(NOW.getTime() + 600_000);
+        // Linq's clock may run ahead of Hale's: a seat written a second before Linq's sent_at
+        // may have been written after the message really went out.
+        await db.database
+          .update(schema.linqSharedGroupPeople)
+          .set({ seatedAt: new Date(sent.getTime() - 1_000) })
+          .where(eq(schema.linqSharedGroupPeople.id, ada.id));
+        await say(MEI, "I'll get Mia the Lego, shh", 'in-lego', here, () => secretLego([]), wire, {
+          receivedAt: sent,
+          now: sent,
+        });
+        expect((await items())[0]?.hiddenClearedPhoneHashes.sort()).toEqual(
+          [MEI, PRIYA].map(phoneBlindIndex).sort(),
+        );
+      });
+
+      it('a cleared guest whose seat is later linked to a Hale family with the child no longer sees it', async () => {
+        const { wire, here } = await hiddenWithAdaHere();
+        await parent(ADA, 'Ada', 'Mia');
+        await say(ADA, 'hi all', 'in-ada-linked', here, quiet, wire);
+        expect((await seatOf(ADA))?.familyId).not.toBeNull();
+        // Linking is not a kid claim: her number is still on the cleared list.
+        expect((await items())[0]?.hiddenClearedPhoneHashes).toContain(phoneBlindIndex(ADA));
+        const later = await say(PRIYA, "what's left?", 'in-later', here, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
       describe('the chat lock', () => {
         // A witness, test-only: a write that can change who is cleared, made without this
         // chat's advisory lock held in the same transaction, is refused by the database.
@@ -2212,14 +2489,26 @@ describe('in a multi-family group turn', () => {
 describe('migration 0243 over rows written before it', () => {
   const MIGRATION = '0243_shared_list_hidden_cleared.sql';
 
-  it('clears nobody on an item hidden before it, even run twice, and keeps a family role with no child as a claim', async () => {
+  it('hides and clears nobody on an item hidden before it, even run twice, and keeps a family role with no child as a claim', async () => {
     const parentNoKid = await person({ inferredRole: 'parent' });
     const guest = await person({ inferredRole: 'guest' });
     const miasMom = await person({ inferredRole: 'parent', inferredKidName: 'Mia' });
+    // Before it, a hidden item was one that named someone, and nothing else marked it.
+    await db.exec(
+      'alter table shared_group_list_items drop constraint shared_group_list_items_hidden_marks_every_hide_check',
+    );
     await item(guest.id, 'Lego for Mia', { hiddenForKid: 'Mia' });
+    await item(guest.id, 'cake');
     await db.applyMigration(MIGRATION);
     await db.applyMigration(MIGRATION);
-    expect((await items())[0]?.hiddenClearedPhoneHashes).toEqual([]);
+    const byText = new Map((await items()).map((row) => [row.text, row]));
+    expect(byText.get('Lego for Mia')).toMatchObject({
+      hidden: true,
+      hiddenClearedPhoneHashes: [],
+    });
+    expect(byText.get('cake')?.hidden).toBe(false);
+    // The constraint is back: an item that names a child is always hidden.
+    await expect(item(guest.id, 'Kite for Leo', { hiddenForKid: 'Leo' })).rejects.toThrow();
     const seats = new Map(
       (await db.database.select().from(schema.linqSharedGroupPeople)).map((row) => [row.id, row]),
     );

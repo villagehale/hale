@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
 import { type SQL, and, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import type { ChatReaders } from '~/lib/channel/linq/participant-readers';
 import type { FamilyClaim } from '~/lib/channel/linq/shared-group-reading';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
@@ -25,11 +26,13 @@ import { foldListText } from './tools';
  * - SCOPE IS THE CHAT. Every read and write is bound to `chatId`. Ids the model sees are
  *   per-turn refs (`i1`, `p2`) that code maps back; a ref it did not see is refused.
  * - A HIDDEN GIFT IS SHOWN ONLY ON AN ALLOW-LIST. The model decides whether the group
- *   wants a gift kept from the child's family. Once that is written, the item is shown only
- *   while everyone reading the chat was here, seated and cleared when it was hidden
- *   (SharedListAudience). Everyone else hides it, and clearance is only ever taken away. A
- *   hidden item left out is left out before the model sees the list, and a turn that
- *   touches one sends nothing.
+ *   wants a gift kept from the child's family. Any keep-secret verdict hides the item,
+ *   whether or not it names the child or anyone in their family; once it is hidden, it is
+ *   shown only while everyone reading the chat was here, seated and cleared when it was
+ *   hidden (SharedListAudience). A child or person the model names only takes more people
+ *   off. Everyone else hides it, and clearance is only ever taken away. A hidden item left
+ *   out is left out before the model sees the list, and a turn that touches one sends
+ *   nothing.
  * - THE MODEL'S LINE MUST MATCH WHAT HAPPENED. The line is written from the list the model
  *   saw. If a write came out differently (someone claimed it a moment earlier), the turn
  *   is read once more from the fresh list; a second miss sends nothing.
@@ -60,7 +63,11 @@ export type SharedListPerson = Pick<
 type ItemRow = schema.SharedGroupListItem;
 type Hiding = Pick<
   ItemRow,
-  'hiddenForKid' | 'hiddenFromPersonIds' | 'hiddenFromFamilyIds' | 'hiddenClearedPhoneHashes'
+  | 'hidden'
+  | 'hiddenForKid'
+  | 'hiddenFromPersonIds'
+  | 'hiddenFromFamilyIds'
+  | 'hiddenClearedPhoneHashes'
 >;
 
 /**
@@ -90,10 +97,12 @@ function kidKey(name: string | null): string | null {
  * that item when it was hidden, and who is not, by anything Hale knows now, the child's
  * family. Anyone else (new, unseated, rejoined on any row, stopped, an Apple ID, a number Hale
  * never seated) hides it, and so does a participant list Hale could not read in full.
- * Clearance is written once, at the hide, for the people Linq listed in the chat at that
- * moment on seats that predate the turn (a seat whose person was not listed, such as one
- * written from a webhook that still carries someone who left, is not cleared); afterwards it
- * is only ever taken away (a kid-parent claim, leaving, erasure).
+ * Clearance is written once, at the hide, for the people Linq lists in the chat at that
+ * moment and says joined before the message was sent, on seats that predate the turn (a seat
+ * whose person was not listed, such as one written from a webhook that still carries someone
+ * who left, or one Linq says was added back after the send while Hale has not yet seen them
+ * leave, is not cleared); afterwards it is only ever taken away (a kid-parent claim, leaving,
+ * erasure).
  */
 export interface SharedListAudience {
   /**
@@ -102,32 +111,31 @@ export interface SharedListAudience {
    */
   people: readonly SharedListPerson[];
   /**
-   * Seats that were live before this turn began and were seated no later than the message
-   * was sent. A seat the turn itself wrote (the sender or someone the provider listed), or
-   * one written after the message went out, is never cleared at a hide and never counts as
-   * placed at a read.
+   * Seats that were live before this turn began and were seated, with a margin for clock
+   * skew, before the message was sent. A seat the turn itself wrote (the sender or someone
+   * the provider listed), or one written after the message went out, is never cleared at a
+   * hide and never counts as placed at a read.
    */
   settledIds: ReadonlySet<string>;
   /**
-   * The blind indexes of everyone who can read the chat now, from the provider's
-   * participant list, or null when it could not be read in full (failed, not a group, empty,
-   * without the speaker, or a handle that is not a number). Asked only when an item in the
-   * chat is hidden, and kept until `reask`.
+   * Who can read the chat now, from the provider's participant list, or null when it could
+   * not be read in full (failed, not a group, empty, without the speaker, or a handle that
+   * is not a number). Asked only when an item in the chat is hidden, and kept until `reask`.
    */
-  readers: () => Promise<readonly string[] | null>;
+  readers: () => Promise<ChatReaders | null>;
   /**
    * Asks the provider again if it was asked before, since a list read before the model call
    * is stale by the time the line is checked. Null, asking nothing, when it was never asked.
    */
-  reask: () => Promise<readonly string[] | null> | null;
+  reask: () => Promise<ChatReaders | null> | null;
 }
 
 export function sharedListAudience(
   people: readonly SharedListPerson[],
   settledIds: ReadonlySet<string>,
-  readers: () => Promise<readonly string[] | null>,
+  readers: () => Promise<ChatReaders | null>,
 ): SharedListAudience {
-  let asked: Promise<readonly string[] | null> | null = null;
+  let asked: Promise<ChatReaders | null> | null = null;
   const kept = () => {
     asked ??= readers();
     return asked;
@@ -165,11 +173,7 @@ async function haleKidsOf(
 }
 
 function hidesAnything(item: Hiding): boolean {
-  return (
-    item.hiddenForKid !== null ||
-    item.hiddenFromPersonIds.length > 0 ||
-    item.hiddenFromFamilyIds.length > 0
-  );
+  return item.hidden;
 }
 
 /**
@@ -221,14 +225,14 @@ async function viewersNow(
   chatId: string,
   audience: SharedListAudience,
 ): Promise<Viewers | null> {
-  const hashes = await audience.readers();
-  if (!hashes || hashes.length === 0) return null;
+  const listed = await audience.readers();
+  if (!listed || listed.hashes.length === 0) return null;
   const live = await liveSeats(database, chatId);
   const known = new Set(audience.people.map((person) => person.id));
   if (live.some((seat) => !known.has(seat.id))) return null;
   const seats = new Map(live.map((row) => [row.phoneE164Hash, row]));
   const people: SharedListPerson[] = [];
-  for (const hash of hashes) {
+  for (const hash of listed.hashes) {
     const seat = seats.get(hash);
     if (!seat || !audience.settledIds.has(seat.id)) return null;
     people.push(seat);
@@ -410,7 +414,10 @@ export interface SharedListDecision {
   add: string[];
   claim: SharedListClaim[];
   release: SharedListItemView[];
-  /** Set only when the model chose to keep a gift from the child's family and named them. */
+  /**
+   * Set whenever the model chose to keep a gift from the child's family, whether or not it
+   * named the child (a name it gave that is out of bounds is dropped) or anyone in the family.
+   */
   hide: { forKid: string | null; personIds: string[] } | null;
   reply: string | null;
 }
@@ -473,10 +480,7 @@ export function parseSharedListDecision(
     personIds.push(person.id);
   }
   const forKid = raw.gift.forKid === null ? null : clean(raw.gift.forKid, 100);
-  const hide =
-    raw.gift.keepFromKidFamily && (forKid !== null || personIds.length > 0)
-      ? { forKid, personIds }
-      : null;
+  const hide = raw.gift.keepFromKidFamily ? { forKid, personIds } : null;
   return { listName, add, claim, release, hide, reply: clean(raw.reply, 1000) };
 }
 
@@ -678,16 +682,19 @@ async function applyOnce(
     ),
   ];
   const hiding: Hiding = {
+    hidden: decision.hide !== null,
     hiddenForKid: decision.hide?.forKid ?? null,
     hiddenFromPersonIds: hidePeople,
     hiddenFromFamilyIds: hideFamilies,
     hiddenClearedPhoneHashes: [],
   };
-  // Cleared at the hide: people Linq lists in the chat now, each on a seat that predates this
-  // turn and is still live, read under the chat's lock so a leave or a kid-parent claim that
-  // landed during the model call counts, and not the child's family by anything Hale knows
-  // now. A list Hale could not read clears nobody. Never anyone else, ever after.
-  const present = new Set(decision.hide ? ((await context.readers()) ?? []) : []);
+  // Cleared at the hide: people Linq lists in the chat now and says joined before the message
+  // was sent, each on a seat that predates this turn and is still live, read under the chat's
+  // lock so a leave or a kid-parent claim that landed during the model call counts, and not
+  // the child's family by anything Hale knows now. A list Hale could not read clears nobody.
+  // Never anyone else, ever after.
+  const listed = decision.hide ? await context.readers() : null;
+  const present = listed ? listed.presentAtSend : new Set<string>();
   const settled = decision.hide
     ? (await liveSeats(database, context.chatId)).filter(
         (person) => context.settledIds.has(person.id) && present.has(person.phoneE164Hash),
@@ -707,23 +714,26 @@ async function applyOnce(
   };
   const hideValues = decision.hide
     ? {
+        hidden: true,
         hiddenForKid: decision.hide.forKid,
         hiddenFromPersonIds: uuidArray(hidePeople),
         hiddenFromFamilyIds: uuidArray(hideFamilies),
         hiddenClearedPhoneHashes: cleared,
       }
     : {};
+  // Hiding an item already on the list only ever narrows who sees it, so it applies to any
+  // write the speaker asked to keep secret: an add or claim of it, and a claim someone else won.
   const hideExisting = async (id: string) => {
     if (!decision.hide) return;
-    const alreadyHidden = sql`(${items.hiddenForKid} IS NOT NULL OR cardinality(${items.hiddenFromPersonIds}) > 0 OR cardinality(${items.hiddenFromFamilyIds}) > 0)`;
     await database
       .update(items)
       .set({
+        hidden: true,
         hiddenForKid: sql`coalesce(${items.hiddenForKid}, ${decision.hide.forKid})`,
         hiddenFromPersonIds: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromPersonIds} || ${uuidArray(hidePeople)}))`,
         hiddenFromFamilyIds: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromFamilyIds} || ${uuidArray(hideFamilies)}))`,
         // Hidden twice, only someone cleared both times is cleared.
-        hiddenClearedPhoneHashes: sql`CASE WHEN ${alreadyHidden} THEN ARRAY(SELECT unnest(${items.hiddenClearedPhoneHashes}) INTERSECT SELECT unnest(${cleared})) ELSE ${cleared} END`,
+        hiddenClearedPhoneHashes: sql`CASE WHEN ${items.hidden} THEN ARRAY(SELECT unnest(${items.hiddenClearedPhoneHashes}) INTERSECT SELECT unnest(${cleared})) ELSE ${cleared} END`,
       })
       .where(eq(items.id, id));
   };
@@ -770,7 +780,12 @@ async function applyOnce(
     }
     const row = await existing(listKey, textKey);
     if (!row) throw new Error('shared list: item insert returned no row');
-    note(expected, (await withheldNow(row)) ? 'held' : 'already_on', row.id);
+    if (await withheldNow(row)) {
+      note(expected, 'held', row.id);
+      continue;
+    }
+    await hideExisting(row.id);
+    note(expected, 'already_on', row.id);
   }
 
   for (const entry of decision.claim) {
@@ -840,12 +855,8 @@ async function applyOnce(
       .from(items)
       .where(eq(items.id, id))
       .limit(1);
-    if (after?.owner === speaker) {
-      await hideExisting(id);
-      note(expected, 'already_yours', id);
-    } else {
-      note(expected, 'taken', id);
-    }
+    await hideExisting(id);
+    note(expected, after?.owner === speaker ? 'already_yours' : 'taken', id);
   }
 
   for (const item of decision.release) {

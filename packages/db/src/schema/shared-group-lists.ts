@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { linqSharedGroupPeople } from './linq-multi-family.js';
 
 /**
@@ -14,13 +23,13 @@ import { linqSharedGroupPeople } from './linq-multi-family.js';
  * erased) the item goes with it, unless someone staying has claimed it, and then it passes
  * to that person. An owner who is forgotten only frees the item.
  *
- * Hidden gifts: `hidden_for_kid` (the child the gift is for, as said in the chat),
- * `hidden_from_person_ids` (the people the model named as that child's family) and
- * `hidden_from_family_ids` (their Hale families) mark an item that is never rendered to
- * that child's family. `hidden_cleared_phone_hashes` are the numbers (blind index) that
- * were in the chat when it was hidden, were not that family, and have not left since:
- * anyone else in the chat hides it. Leaving or erasure takes a number off. Code applies it
- * on every read.
+ * Hidden gifts: `hidden` marks an item the chat asked to keep secret, whether or not it
+ * said for whom. `hidden_cleared_phone_hashes` are the numbers (blind index) that were in the
+ * chat when it was hidden, were not the child's family, and have not left since: anyone else
+ * in the chat hides it. Leaving or erasure takes a number off. `hidden_for_kid` (the child
+ * the gift is for, as said in the chat), `hidden_from_person_ids` (the people the model
+ * named as that child's family) and `hidden_from_family_ids` (their Hale families) only take
+ * more people off, and are set only on a hidden item. Code applies it on every read.
  */
 export const sharedGroupListItems = pgTable(
   'shared_group_list_items',
@@ -40,6 +49,7 @@ export const sharedGroupListItems = pgTable(
       onDelete: 'set null',
     }),
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    hidden: boolean('hidden').notNull().default(false),
     hiddenForKid: text('hidden_for_kid'),
     hiddenFromPersonIds: uuid('hidden_from_person_ids')
       .array()
@@ -63,6 +73,10 @@ export const sharedGroupListItems = pgTable(
       table.textKey,
     ),
     chatIdx: index('shared_group_list_items_chat_idx').on(table.chatId, table.addedAt),
+    hiddenMarksEveryHide: check(
+      'shared_group_list_items_hidden_marks_every_hide_check',
+      sql`${table.hidden} OR (${table.hiddenForKid} IS NULL AND cardinality(${table.hiddenFromPersonIds}) = 0 AND cardinality(${table.hiddenFromFamilyIds}) = 0)`,
+    ),
     listNameLength: check(
       'shared_group_list_items_list_name_length_check',
       sql`char_length(${table.listName}) BETWEEN 1 AND 200`,

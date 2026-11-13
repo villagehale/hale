@@ -103,6 +103,7 @@ async function seed(dbm, database, fixture) {
       addedByPersonId: people[item.owner ?? 0].id,
       ownerPersonId: item.owner === null ? null : people[item.owner].id,
       claimedAt: item.owner === null ? null : NOW,
+      hidden: Boolean(item.hidden),
       hiddenForKid: item.hidden?.forKid ?? null,
       hiddenFromPersonIds: hiddenFrom.map((p) => p.id),
       hiddenFromFamilyIds: hiddenFrom.flatMap((p) => (p.familyId ? [p.familyId] : [])),
@@ -127,10 +128,7 @@ async function listState(dbm, database, people) {
     list: row.listName,
     text: row.text,
     owner: nameOf(row.ownerPersonId),
-    secret:
-      row.hiddenForKid !== null ||
-      row.hiddenFromPersonIds.length > 0 ||
-      row.hiddenFromFamilyIds.length > 0,
+    secret: row.hidden,
     forKid: row.hiddenForKid,
     ownerPersonId: row.ownerPersonId,
   }));
@@ -274,9 +272,10 @@ async function main() {
           language: null,
           speaker: people[fixture.speaker],
           // The fixture's people are the whole chat: all seated before this turn, all reading.
-          ...lists.sharedListAudience(people, new Set(people.map((p) => p.id)), async () =>
-            people.map((p) => p.phoneE164Hash),
-          ),
+          ...lists.sharedListAudience(people, new Set(people.map((p) => p.id)), async () => {
+            const hashes = people.map((p) => p.phoneE164Hash);
+            return { hashes, presentAtSend: new Set(hashes) };
+          }),
         };
         const read = await lists.readSharedListTurn(testDb.database, context, model);
         const result = await lists.applySharedListTurn(testDb.database, context, read, {

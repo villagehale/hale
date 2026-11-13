@@ -4,6 +4,17 @@ import type { ListChatHandles } from './roster';
 
 export type ParticipantRead = Awaited<ReturnType<ListChatHandles>>;
 
+/** Who Linq lists in a chat now, as blind indexes. */
+export interface ChatReaders {
+  /** Everyone Linq lists in the chat now. */
+  hashes: readonly string[];
+  /**
+   * Of them, the ones Linq says joined no later than the message was sent, on Linq's own
+   * clock. Anyone whose join time Linq does not give, or gives as after the send, is left out.
+   */
+  presentAtSend: ReadonlySet<string>;
+}
+
 /**
  * VIL-687: the blind indexes of everyone Linq lists in a chat, for deciding who may see a
  * hidden gift, or null when the list does not place everyone: a failed read, a chat Linq
@@ -17,14 +28,24 @@ export function listedReaders(
   listed: ParticipantRead | null,
   speakerHash: string,
   isHaleLine: (phone: string) => boolean,
-): string[] | null {
+  sentAt: Date,
+): ChatReaders | null {
   if (listed?.status !== 'ok' || listed.isGroup === false) return null;
   const hashes = new Set<string>();
+  // A number listed twice (two spellings) counts as present only if every listing does.
+  const notYet = new Set<string>();
   for (const handle of listed.handles) {
     const phone = normalizePhoneE164(handle);
     if (phone === null) return null;
     if (isHaleLine(phone)) continue;
-    hashes.add(phoneBlindIndex(phone));
+    const hash = phoneBlindIndex(phone);
+    hashes.add(hash);
+    const joined = listed.joinedAt?.get(handle);
+    if (!joined || joined > sentAt) notYet.add(hash);
   }
-  return hashes.has(speakerHash) ? [...hashes] : null;
+  if (!hashes.has(speakerHash)) return null;
+  return {
+    hashes: [...hashes],
+    presentAtSend: new Set([...hashes].filter((hash) => !notYet.has(hash))),
+  };
 }

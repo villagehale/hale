@@ -165,6 +165,13 @@ const WHO_TEMPLATE = 'linq:multi_family_who_confirmed';
 const COMMON_TIME_TEMPLATE = 'linq:multi_family_common_time';
 const LIST_TEMPLATE = 'linq:multi_family_list';
 
+/**
+ * VIL-687: how far Linq's clock (a message's sent_at) may run ahead of Hale's (a seat's
+ * seated_at). A seat written less than this before the send may have been written after the
+ * message really went out, so it is never cleared for a gift hidden by it.
+ */
+const SENT_AT_CLOCK_SKEW_MS = 30_000;
+
 function haleLine(phone: string): boolean {
   const from = outboundLineFrom();
   if (!from) return false;
@@ -1589,9 +1596,10 @@ export async function takeMultiFamilyTurn(
   if (!phone) return { handled: false };
 
   const wired: MultiFamilyTurnPorts = { ...ports, send: ports.send ?? input.send };
-  // VIL-687: the seats this turn found, seated by the time the message was sent. Only they
-  // can be cleared for a hidden gift written now, or count as placed when one is read; anyone
-  // the turn seats below, or seated after the message went out (a retried hide), is new.
+  // VIL-687: the seats this turn found, seated by the time the message was sent (allowing for
+  // Linq's clock running ahead). Only they can be cleared for a hidden gift written now, or
+  // count as placed when one is read; anyone the turn seats below, or seated after the message
+  // went out (a retried hide), is new.
   const people = schema.linqSharedGroupPeople;
   const settledIds = new Set(
     (
@@ -1602,7 +1610,7 @@ export async function takeMultiFamilyTurn(
           and(
             eq(people.chatId, input.chatId),
             isNull(people.stoppedAt),
-            lte(people.seatedAt, input.receivedAt),
+            lte(people.seatedAt, new Date(input.receivedAt.getTime() - SENT_AT_CLOCK_SKEW_MS)),
           ),
         )
     ).map((row) => row.id),
@@ -1697,11 +1705,13 @@ export async function takeMultiFamilyTurn(
           speaker: me,
           // Linq is asked who is here only when an item in the chat is hidden, and each time
           // afresh: the list read above, before the model call, is never reused for a line.
+          // Who was here when the message was sent is Linq's to say, on its own clock.
           ...sharedListAudience(live, settledIds, async () =>
             listedReaders(
               await participantsOf(input.chatId, wired.listHandles),
               me.phoneE164Hash,
               haleLine,
+              input.receivedAt,
             ),
           ),
         }
@@ -2076,9 +2086,11 @@ export async function takeMultiFamilyTurn(
         { outcome: 'shared_list_turn', line: listed.lineWhy, held: held ?? 0 },
         'linq multi-family: list turn',
       );
-      // A withheld line may be a secret gift: the 1:1 aside, which drafts from the group
-      // text, stays quiet too.
-      const aside = listed.lineWhy === 'withheld' ? undefined : await runAside();
+      // The 1:1 aside, which drafts from the group text, runs only when the group heard the
+      // list line. A withheld line may be a secret gift, and an aside writes a row to the
+      // family's trail, so a turn that met a hidden gift and a turn with nothing to say take
+      // the same decision.
+      const aside = listed.lineWhy === 'model' ? await runAside() : undefined;
       return {
         handled: true,
         outcome: 'shared_list',
