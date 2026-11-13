@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Thanks for sending that. I've still got the class you sent before, so there's nothing to resend. I didn't open this link again because I only read one course page at a time."
+  },
+  "latencyMs": 1656,
+  "usage": {
+    "input_tokens": 78,
+    "output_tokens": 56,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

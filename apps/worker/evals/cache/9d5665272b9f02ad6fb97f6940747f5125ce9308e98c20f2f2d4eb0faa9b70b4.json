@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with a question (\"Voulez-vous que je lance ce plan ?\"). An approval_card must ask nothing, and only a question there is wrong. The rest is accurate: window, date, time, link, Léa, the three texts with their timings, the statement that Hale never registers, and no course-link tip. The opening line \"Je vous prépare l'inscription\" could also read as Hale preparing the registration, which is slightly off-message.",
+    "score": 2
+  }
+}

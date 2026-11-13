@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je vous prépare l'inscription aux programmes de loisirs de Riverton pour l'automne 2026 pour Léa. Les inscriptions ouvrent samedi 12 septembre 2026 à 9 h 00, pour tout le monde (il n'y a pas de date réservée aux résidents). La page d'inscription est https://rec.example.org/riverton/fall. Riverton ne publie pas de tranche d'âge pour ce programme, donc vérifiez vous-même que Léa correspond à ce qui est demandé. Je vais vous envoyer trois messages : un aperçu une semaine avant, un rappel la veille au soir, et un rappel 15 minutes avant l'ouverture. Je ne m'inscris jamais à votre place. Voulez-vous que je lance ce plan ?"
+  },
+  "latencyMs": 1880,
+  "usage": {
+    "input_tokens": 229,
+    "output_tokens": 279,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

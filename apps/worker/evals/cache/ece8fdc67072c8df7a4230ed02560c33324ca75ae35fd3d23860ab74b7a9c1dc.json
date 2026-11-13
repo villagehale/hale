@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Heads up: Springfield gives you 36 hours from when you told me you were waitlisted, and that runs out tonight at 11:00 p.m. Check your email and the portal for an offer before then."
+  },
+  "latencyMs": 1082,
+  "usage": {
+    "input_tokens": 159,
+    "output_tokens": 70,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I couldn't open that course link because it isn't a secure one (it doesn't start with https). Nothing from it was saved. If you send the course page from Springfield's portal instead, I'll read it from there."
+  },
+  "latencyMs": 1742,
+  "usage": {
+    "input_tokens": 102,
+    "output_tokens": 70,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

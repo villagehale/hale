@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Thanks for telling me the setup on Springfield's portal is done for Max. I've got that from you as your word, and I'll keep it in mind for the morning."
+  },
+  "latencyMs": 1197,
+  "usage": {
+    "input_tokens": 94,
+    "output_tokens": 57,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

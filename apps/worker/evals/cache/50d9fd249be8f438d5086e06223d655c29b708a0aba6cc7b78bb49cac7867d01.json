@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "An already_approved message must say the parent has already said yes and ask nothing. This one says the household already approved, adds the handed promise to run the morning with them, asks no question, makes no invented claims and is in English. It reads naturally, like a short friendly text. \"Your household\" is slightly odd phrasing, but acceptable.",
+    "score": 5
+  }
+}

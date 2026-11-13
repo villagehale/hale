@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "That course page is from another town's portal, and the registration I'm holding for you is in Springfield. I didn't open it. Send the course page from Springfield's portal instead and I'll read that one."
+  },
+  "latencyMs": 1974,
+  "usage": {
+    "input_tokens": 106,
+    "output_tokens": 66,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

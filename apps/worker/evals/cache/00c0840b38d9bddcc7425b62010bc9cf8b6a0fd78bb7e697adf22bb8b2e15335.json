@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je n'ai pas pu lire la page de cours que vous m'avez envoyée, probablement à cause d'un problème temporaire de connexion de mon côté. Rien n'a changé, et la date d'inscription que j'ai déjà pour Riverton reste la même. Si vous pouvez, renvoyez-moi le même lien et je réessaierai."
+  },
+  "latencyMs": 1237,
+  "usage": {
+    "input_tokens": 107,
+    "output_tokens": 126,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

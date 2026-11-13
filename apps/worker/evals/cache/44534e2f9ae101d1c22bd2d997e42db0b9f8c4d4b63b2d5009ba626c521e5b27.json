@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Your household already said yes to this registration morning, so we're all set. I'll run it with you."
+  },
+  "latencyMs": 1744,
+  "usage": {
+    "input_tokens": 23,
+    "output_tokens": 35,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

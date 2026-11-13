@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The note correctly reports waitlist position 12 in Springfield and the 36-hour window. It says the clock started with the parent's message today and gives the right deadline (Tue 11:00 a.m. + 36h = Wed Sept 16, 11:00 p.m.). It promises the handed reminder, asks nothing and reads naturally in English. Two small flaws: \"If a spot opens up, the town gives you 36 hours\" sits awkwardly beside a clock that is already running, and \"that's how an offer would come\" asserts email as the offer channel, which is slightly beyond the facts.",
+    "score": 4
+  }
+}

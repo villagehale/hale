@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with a question (\"Voulez-vous que je lance ce plan ?\"). An approval_card must ask nothing, and only a question there is wrong. The rest is accurate: the date, time, link and three texts with their timings are correct, it says Hale never registers, there is no course-link tip, and it is in French. Two smaller problems: \"Je vous prépare l'inscription\" could suggest Hale is preparing the registration, and \"pour tout le monde\" goes slightly beyond a null residentsFirstDays. The question alone caps the score at 2.",
+    "score": 2
+  }
+}

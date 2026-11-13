@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_throttled with alreadyBound true. It says Hale already has the class and did not open the link again, and that Hale reads one course page at a time. It names no time, asks for no resend and invents nothing. The tone is casual and in English.",
+    "score": 5
+  }
+}

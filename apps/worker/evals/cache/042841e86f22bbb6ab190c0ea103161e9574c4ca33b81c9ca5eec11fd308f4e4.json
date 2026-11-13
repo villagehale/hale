@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits a readiness_answer 'no'. It names all four items (account, both kids with birthdays, address, saved card) and says Hale will ask again the evening before. It asks nothing now, invents nothing and names only the handed children, in natural English. One flaw: it ties the re-ask to 'once you've got' everything set up. That makes the promised evening-before check sound conditional on the parent finishing, which slightly muddles it.",
+    "score": 4
+  }
+}

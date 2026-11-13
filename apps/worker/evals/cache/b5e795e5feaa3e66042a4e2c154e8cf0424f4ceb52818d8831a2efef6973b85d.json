@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Got the course page. I couldn't read the course name, day, or time from it, so I'm going by the registration date only: Springfield opens it Tuesday, September 15 at 7:00 a.m. for residents. The page lists a prerequisite level, so leave yourself some time to check that before the morning of the 15th."
+  },
+  "latencyMs": 1422,
+  "usage": {
+    "input_tokens": 208,
+    "output_tokens": 106,
+    "cache_read_input_tokens": 5057,
+    "cache_creation_input_tokens": 0
+  }
+}

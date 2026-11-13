@@ -1584,9 +1584,8 @@ export const COACH_CHANNEL_FIXTURES = [
 ];
 
 /**
- * VIL-500 · one venue page calls the card; a comparison of venues does not.
- * Opt-in (`VIL_500_CARD_EVAL=1`) so the standing coach corpus and its cache stay put
- * until these two turns are recorded live. `eval:experience-card` sets the flag.
+ * VIL-500 · one venue page calls the card; a comparison of venues does not. Part of the
+ * standing corpus since both turns were recorded (VIL-554).
  */
 export const EXPERIENCE_CARD_FIXTURES = [
   {
@@ -1647,6 +1646,4 @@ export const EXPERIENCE_CARD_FIXTURES = [
   },
 ];
 
-if (process.env.VIL_500_CARD_EVAL === '1') {
-  COACH_CHANNEL_FIXTURES.push(...EXPERIENCE_CARD_FIXTURES);
-}
+COACH_CHANNEL_FIXTURES.push(...EXPERIENCE_CARD_FIXTURES);

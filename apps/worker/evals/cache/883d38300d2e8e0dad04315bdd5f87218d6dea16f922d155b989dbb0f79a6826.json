@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a good outcome_missed message. It responds to the parent missing the window, makes only the handed promise to flag the next window early, asks no question, and is in English. It adds no invented facts, and its tone is friendly.",
+    "score": 5
+  }
+}
