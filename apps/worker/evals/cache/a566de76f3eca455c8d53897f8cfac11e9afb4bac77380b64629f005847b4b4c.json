@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Sender picks the pool option (o2) on the open Saturday poll, and the reading correctly returns poll_vote with pollChoice o2. Matches the situation exactly."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Priya asks for the live tally on the tracked Saturday picnic plan; intent ask_tally with samePlan true matches the situation exactly."
+  }
+}

@@ -65,6 +65,7 @@ export type GroupPlanRsvpTurnOutcome =
         | 'group_plan_spoken'
         | 'group_plan_unread'
         | 'group_plan_line_unsent'
+        | 'group_poll_lock_asked'
         | 'group_poll_spoken'
         | 'group_poll_recorded'
         | 'group_poll_unread'
@@ -294,9 +295,12 @@ export async function takeGroupPlanRsvpTurn(
     return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
   }
 
-  let plan = live;
+  // Only the reader's yes ties a message to the live plan. An opening for another event
+  // opens its own plan (closing the live one); anything else about another event changes nothing.
+  const aboutLive = live !== null && reading.samePlan === true;
+  let plan = aboutLive ? live : null;
   if (reading.intent === 'start_tracking') {
-    if (!plan) {
+    if (!plan && (!live || reading.samePlan === false)) {
       const cover = await deps.store.coveringFamily(input.chatId);
       const familyId = await hostFamilyIdForPlan(deps.households, cover, {
         chatId: input.chatId,
@@ -318,7 +322,10 @@ export async function takeGroupPlanRsvpTurn(
     }
   }
 
-  if (!plan) return { handled: false };
+  if (!plan) {
+    if (!somethingLive) return { handled: false };
+    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+  }
 
   const before = (await deps.store.loadTally(plan.id)).tally;
 
@@ -354,7 +361,7 @@ export async function takeGroupPlanRsvpTurn(
   const householdAnswer = Boolean(reading.householdLabel || reading.coversNames.length > 0);
   const speak = isMeaningfulTallyChange({
     intent: reading.intent,
-    before: live ? before : null,
+    before: aboutLive ? before : null,
     after,
     householdAnswer,
   });

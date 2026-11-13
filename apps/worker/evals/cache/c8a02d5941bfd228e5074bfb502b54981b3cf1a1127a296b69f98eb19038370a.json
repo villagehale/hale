@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Reading correctly identifies an ask_poll intent matching the request for the live picture of the open Saturday poll; no poll fields are invented, which fits the situation."
+  }
+}

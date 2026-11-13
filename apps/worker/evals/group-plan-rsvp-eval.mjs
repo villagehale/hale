@@ -105,6 +105,7 @@ register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const JUDGE_REASON_MAX_CHARS = 160;
+const PLAN_BINDING_INTENTS = ["start_tracking", "rsvp", "edit", "ask_tally"];
 const JUDGE_TOOL_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
 const JUDGE_MAX_TOKENS = 440;
 
@@ -360,11 +361,18 @@ async function main() {
       message: fixture.input,
       reading: value,
     });
+    // Which plan a message binds to is code's to act on, so the field itself is checked.
+    const planOk =
+      fixture.samePlan === undefined ||
+      !PLAN_BINDING_INTENTS.includes(value.intent) ||
+      value.samePlan === fixture.samePlan;
     const ok =
-      verdict.score >= JUDGE_MIN && fixture.accept.includes(value.intent);
+      verdict.score >= JUDGE_MIN &&
+      fixture.accept.includes(value.intent) &&
+      planOk;
     if (!ok) allPass = false;
     console.info(
-      `${ok ? "PASS" : "FAIL"}  read:${fixture.id}  intent=${value.intent} judge:${verdict.score}`,
+      `${ok ? "PASS" : "FAIL"}  read:${fixture.id}  intent=${value.intent} samePlan=${value.samePlan} judge:${verdict.score}`,
     );
     if (!ok) console.info(`      · ${verdict.reason}`);
   }

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "intent": "rsvp",
+    "planTitle": "zoo",
+    "startsAt": "Sunday",
+    "location": "zoo",
+    "deadline": null,
+    "response": "yes",
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "samePlan": false,
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollChoice": null
+  },
+  "latencyMs": 2127
+}

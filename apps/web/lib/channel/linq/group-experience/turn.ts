@@ -70,6 +70,11 @@ export interface GroupExperienceTurnInput {
   /** The asking household's zone, so the reader can place a proposed time. Null: unknown. */
   timeZone: string | null;
   now: Date;
+  /**
+   * The door's first reader (VIL-442) already read this message as a lock on the open poll,
+   * so it is not read again here.
+   */
+  decided?: 'time_lock';
 }
 
 export interface GroupExperienceTurnPorts {
@@ -332,6 +337,10 @@ export async function takeGroupExperienceTurn(
   }
   const store = ports.store ?? createPostgresGroupExperienceStore(ports.database);
   const plans = ports.plans ?? createPostgresGroupPlanRsvpStore(ports.database);
+  if (input.decided === 'time_lock') {
+    if (!allowedKind('time_lock')) return { handled: false };
+    return lockTime(input, ports, store, plans, await denyForChat(ports, input.chatId));
+  }
   const reader = ports.reader ?? productionGroupExperienceReader();
   if (!reader) return { handled: true, outcome: 'group_experience_unread', count: 'ignored' };
 

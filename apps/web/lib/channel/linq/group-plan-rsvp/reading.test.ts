@@ -29,6 +29,7 @@ describe('readingFromTapback', () => {
       householdLabel: null,
       coversNames: [],
       confidence: 'high',
+      samePlan: true,
     });
   });
 
