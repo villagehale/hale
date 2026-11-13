@@ -5,6 +5,8 @@
  * already use; what is under test is the code's handling of that output.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
+import { LINQ_WEBHOOK_TIMEOUT_MS } from '~/lib/channel/linq/signature';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeCollected } from './extract';
@@ -310,4 +312,91 @@ describe('Devin #982 finding 2: stopAsking paired with a question', () => {
     expect(open).not.toBeNull();
     expect(turn.some((body) => body.includes('?'))).toBe(true);
   });
+});
+
+describe('VIL-682 K5: the map bubbles on an iMessage chat arrive paced', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Run the turn on the fake clock, stepping it until the turn settles. */
+  async function onFakeClock<T>(work: Promise<T>): Promise<T> {
+    let settled = false;
+    void work.finally(() => {
+      settled = true;
+    });
+    while (!settled) await vi.advanceTimersByTimeAsync(100);
+    return work;
+  }
+
+  /** Milliseconds between the swim bubble and the storytime bubble of the map, on a Linq
+   * chat Linq said `service` carried. */
+  async function mapGap(
+    flag: 'true' | 'false',
+    service: InboundMessage['service'],
+    /** When Linq stops waiting for the webhook, in ms from the turn's start. */
+    answerWithinMs?: number,
+  ): Promise<number> {
+    vi.useFakeTimers();
+    const answerBy =
+      answerWithinMs === undefined ? {} : { answerBy: new Date(Date.now() + answerWithinMs) };
+    vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
+    const { fake, transport, deps } = harness();
+    const sentAt = new Map<string, number>();
+    const send = transport.send.bind(transport);
+    transport.send = async (input) => {
+      sentAt.set(input.body, Date.now());
+      return send(input);
+    };
+    const first = await onFakeClock(
+      handleInboundSms(
+        fake.db,
+        transport.inbound(PHONE, 'Ada is 4, H0H 0H0', {
+          transport: 'imessage',
+          chatId: 'chat-1',
+          ...(service ? { service } : {}),
+          ...answerBy,
+        }),
+        deps,
+      ),
+    );
+    expect(first).toMatchObject({ status: 'provisioned' });
+    const at = (needle: string) =>
+      [...sentAt].find(([body]) => body.includes(needle))?.[1] ?? Number.NaN;
+    return at('branch library') - at('rec centre');
+  }
+
+  it('lit: the next map bubble waits about two seconds', async () => {
+    expect(await mapGap('true', 'iMessage')).toBe(BUBBLE_GAP_MS);
+  });
+
+  // Inside Linq's webhook: a gap is taken only when it and the bubble's own send both fit
+  // before the moment Linq stops waiting, so pacing never turns an answered webhook into a
+  // timed-out one.
+  it('lit, with less than a gap left before the webhook deadline: back to back', async () => {
+    expect(await mapGap('true', 'iMessage', BUBBLE_GAP_MS - 1)).toBe(0);
+  });
+
+  // Linq's whole response timeout is no more than one gap and one send's timeout, so even a
+  // webhook that has just arrived has no room for a gap.
+  it('lit, with all of Linq’s webhook timeout left: back to back', async () => {
+    expect(await mapGap('true', 'iMessage', LINQ_WEBHOOK_TIMEOUT_MS)).toBe(0);
+  });
+
+  it('positive control: lit, with the webhook deadline far off: the gap is taken', async () => {
+    expect(await mapGap('true', 'iMessage', 60_000)).toBe(BUBBLE_GAP_MS);
+  });
+
+  it('dark: the map bubbles go back to back', async () => {
+    expect(await mapGap('false', 'iMessage')).toBe(0);
+  });
+
+  // Linq relays green-bubble SMS and RCS chats as `imessage` too; only the service it
+  // named on the parent's text says the chat is really iMessage.
+  it.each([['SMS'], ['RCS'], [undefined]] as const)(
+    'lit, on a Linq chat Linq said is %s: the map bubbles go back to back',
+    async (service) => {
+      expect(await mapGap('true', service)).toBe(0);
+    },
+  );
 });

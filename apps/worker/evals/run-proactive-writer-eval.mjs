@@ -32,9 +32,9 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 import { PROACTIVE_WRITER_FIXTURES } from './proactive-writer-fixtures.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'proactive-writer.md');

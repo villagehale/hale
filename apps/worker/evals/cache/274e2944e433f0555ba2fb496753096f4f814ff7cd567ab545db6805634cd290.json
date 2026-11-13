@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text stays in French with tu, offers the plan with correct opening time and session prices, asks one question, and avoids claiming a spot. However, the closing sentence about 'deux places dans la file' is an invented/unsupported claim about queue placement, and it also adds a second implicit ask. Also no max price is asked, which is fine since mode is auto but maxPriceCents is null, so the plan lacks a max; the text does not invent one. Minor factual overreach keeps score below 5.",
+    "score": 3
+  }
+}

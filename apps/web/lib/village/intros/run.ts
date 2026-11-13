@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import type { FamilyStage } from '@hale/types';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
@@ -18,6 +19,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -100,7 +102,7 @@ export const VILLAGE_INTROS_ALLOWLIST_ENV = 'VILLAGE_INTROS_FAMILY_ALLOWLIST';
  * truthiness check reads that as ON.
  */
 export function villageIntrosEnabled(): boolean {
-  return process.env[VILLAGE_INTROS_ENABLED_ENV] === 'true';
+  return isEnabled('village-intros');
 }
 
 export function villageIntrosAllowlist(): Set<string> {
@@ -256,7 +258,6 @@ export interface IntroSweepDeps {
       familyBChildId: string;
       fsa: string;
       stage: FamilyStage;
-      civicSessionId: string | null;
       expiresAt: Date;
     },
   ): Promise<string>;
@@ -417,6 +418,15 @@ interface SendOutcome {
   held?: DeliveryHoldReason;
   /** The scope rail refused (see {@link introScope}). Never silent, and counted. */
   skipped?: 'not_allowlisted';
+  /** VIL-612 · live cadence queued the composed ask for the hourly decider. */
+  queued?: true;
+}
+
+function villageIntroAuditVerb(templateKey: string): string {
+  if (templateKey === 'village_intro:discoverability_ask') return 'village_intro_ask_sent';
+  if (templateKey === INTRO_IDENTITY_ASK_TEMPLATE_KEY) return 'village_intro_identity_asked';
+  if (templateKey === 'village_intro:soft_close') return 'village_intro_closed';
+  return 'village_intro_card_sent';
 }
 
 /**
@@ -478,6 +488,42 @@ async function sendIntroSms(
 
   const composed = typeof input.body === 'string' ? input.body : await input.body();
   if (composed === null) return { sent: false };
+
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { sent: false, queued: true };
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        kind: 'village_intro',
+        category: 'village_intro',
+        templateKey: input.templateKey,
+        what: composed,
+        why: 'village_intro',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+        payload: { auditVerb: villageIntroAuditVerb(input.templateKey) },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await deps.audit(database, {
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: input.familyId,
+      after: { kind: 'village_intro' },
+    });
+    return { sent: false, queued: true };
+  }
+
   const body = withOptOut(composed, verdict.optOut);
 
   const to = await deps.resolveSendablePhone(database, input.parentUserId);
@@ -661,7 +707,6 @@ async function runMatchPhase(
       const anchor = await deps.loadAnchorSession(database, matchAreaFsas(pairing.fsa), now);
       const proposalId = await deps.createProposal(database, {
         ...pairing,
-        civicSessionId: anchor?.id ?? null,
         expiresAt,
       });
       result.proposed += 1;
@@ -1442,7 +1487,6 @@ async function insertProposal(
       fsa: input.fsa,
       stage: input.stage,
       status: 'proposed',
-      civicSessionId: input.civicSessionId,
       expiresAt: input.expiresAt,
     })
     .returning({ id: schema.villageIntroProposals.id });

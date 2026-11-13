@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Reply answers the single question in the parent's Chinese text, with all bubbles in Chinese and the Sunday pick named with its time. Bubble one is the answer itself, bubble two adds a fact from weekRead and the page link at the end. Facts are accurate: 2:00 Toronto time, free, indoor, ages 1 to 3, and the calendar is empty that afternoon. No question, no lead-in bubble, reasonable split. Minor concern: the second bubble mixes the calendar fact with the link, which is slightly more than one thought, but it reads naturally.",
+    "score": 4
+  }
+}

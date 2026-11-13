@@ -5,13 +5,15 @@ import type {
   HandlerContext,
   HandlerVerdict,
 } from '~/lib/channel/router/route';
+import { loadLiveAsks } from './asks';
 import { AUTHORIZED_SIGNUP_TEMPLATE_KEY } from './copy';
+import { authorizedSignupEnabled } from './flag';
 import type { GroupSignupDelivery } from './report';
 import { type SignupRunDeps, runAuthorizedSignup } from './run';
 import type { SignupBrowser } from './types';
 
 export interface AuthorizedSignupHandlerDeps
-  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter'> {
+  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter' | 'planReader' | 'planWriter'> {
   browser?: SignupBrowser | null;
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }
@@ -28,6 +30,16 @@ export function authorizedSignupHandler(
 ): DeterministicHandler {
   return {
     name: 'authorized_signup',
+    // Any live ask of theirs: which one a text answers is the consent model's to read.
+    async detects(database, ctx) {
+      if (!authorizedSignupEnabled()) return false;
+      const asks = await loadLiveAsks(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        now: ctx.now,
+      });
+      return asks.length > 0;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const result = await runAuthorizedSignup(
         database,
@@ -38,6 +50,7 @@ export function authorizedSignupHandler(
           inboundChannelMessageId: ctx.inboundChannelMessageId,
           existingThread: true,
           now: ctx.now,
+          optOutUnread: ctx.optOutUnread === true,
         },
         {
           ...deps,
@@ -54,6 +67,8 @@ export function authorizedSignupHandler(
         claimed: true,
         outcome: result.unsent ?? result.outcome,
         reply: result.deliverOnThread ? result.reply : null,
+        replies: result.deliverOnThread ? result.replies : undefined,
+        stamp: result.deliverOnThread ? result.stamp : undefined,
         templateKey: AUTHORIZED_SIGNUP_TEMPLATE_KEY,
       };
     },

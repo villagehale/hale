@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyNS9EoPKdmndnajoL5E",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/QcKEAgTGAI4AUIIdGhpbmtpbmcSDM9j755nN2IG6DUcZxoMqdFRWym5NVo0fX7aIjAr1Zk0U+mx4w3DqJ4SzLfFUmjSwk3KYSMXEK0q9ARDjnvjSuTw4ypp9hXmWTxqzGEqmgd4NZGkXLJY3xOue1CSuE/UArAuPygdT8sIy8uMa7yUp/+0QqajM7iW3PytDPTAJvCJWbk0AWhWBaXyISZpH7VAQiwKR98xnHwcLJYKis65lZreAG8JU7KBxYstoan98rxe2z4oCQqPA+9JfXeQG2AjLhjdE3IlpicxfEEVtay/dnZDYu06LSp5ZN4wS6/5Ht+qD+QfdQvkd4Ar7mzfbhhfdk0joDGXdnn4KL2aG33HOWdw+0iYTL57wtTTYTAZPs1ZTdXTDvWMSDYcVhQy+vIHfZjzB+rGkk094MPGE+tEE1oRYDR5nOveFLO4+xmhfl6MXQcwLVezcSYyU6wtBwxvCw6bnwT/OpjJjMjC/Z5Eeo97m5kNWJF5Bkt6a7//D0KaGp96TrdebHhXi2fkqAixNIAkYzQuslfxMyHDoIEHMOXwZhF5i/dMPunwrgoBCJcCoyg2rk459gwmrLqB4xSX4p9nHd9ghWIpp5h6c2Vifl2wQlVVd1rpfjKOIj2qun8cgE/R1fG2XqsTPZs7mvayJQcpZ1ykadlCTao2EnoO+DB+0/hPo1eyGCtC0Fwn/gfpq6pDvwhAfwtiM9wEya6qqu2+CcgDYCMp1/BCjilvBDvkauddGiNThirP8hCfoaon7drgkRXaBvmQYx+G0ipGw1mwDBkzuc3pGoYNbGSOTKVimdTjY/oRsSeT4unno2WMj/264FCzsQ8eSFtmJMPcfdmma+BwEPCI/AlgCOymLYO1Hx+GLQyyFPCek+RugLEGoBKs5gzGzZIZyjiW9grhCwUDSntJnDfrJ2KWOrtTjWfmUTNfQ63RyyB/Hp8h5h5WaIr2juxHCHOUqGjk/E74noHyvuRtN/x4gbASMwaxI9pSSxeOSwuaJISSM0sRynmLu9Gecwmf1Bny6PeR7k5C2yEcbFb8+p+iz7zrb3kXChNLIJRBFTbfXis0OwTyskvkJMjYGJ1VG9mYKMYffnqUL13fuTUvheajGycZD6UjWpZdAQ1q5Gyl3CZFBlRMtQ4dztAucqIvKyNJhiENKtAD5zGBBe41ok1TkK48n0KSMYK4pIJE5LyX4q3M4DP2SmXIpjyHuW9NGZQ7ITpdi8GJW2w1L9bdy8nLjbNKlFjR4IM1MsyPxaebbWTIniehhgUZSdGLQT8oe3ELtsb1tQux3we75v6diL4smEUfkvzT+kE42GW4XCsbXF1SW5T81QetNeKj2f+08BLQGAE="
+      },
+      {
+        "type": "text",
+        "text": "Nothing on the swim lesson says either way. Most pools don't hand out towels, so I'd pack one for your kid, plus one for you if you're getting in."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1782,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1782,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 158,
+      "output_tokens_details": {
+        "thinking_tokens": 105
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

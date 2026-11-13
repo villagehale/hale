@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Vous êtes bien dans le Secret Santa, mais j'ai besoin d'un prénom pour vous appeler. Dites-moi comment vous nommer et c'est réglé 🎅"
+  },
+  "latencyMs": 2071,
+  "usage": {
+    "input_tokens": 55,
+    "output_tokens": 73,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "asks to change approved plan order",
+    "said": null,
+    "named": null,
+    "verdict": "unclear",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": "Your approved plan can't be edited. Should I take this plan back so you can set a new one with Saturday first?"
+  },
+  "latencyMs": 1906
+}

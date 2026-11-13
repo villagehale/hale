@@ -36,11 +36,11 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   SIGNUP_OUTCOME_REPLY_BROKEN,
   SIGNUP_OUTCOME_REPLY_FIXTURES,
 } from './signup-outcome-reply-fixtures.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');

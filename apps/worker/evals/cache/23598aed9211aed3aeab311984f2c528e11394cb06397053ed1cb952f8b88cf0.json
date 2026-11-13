@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CgwVXHZnzZrg467Vwt9hX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01Y37RkX3Z2z1Bw4Qi5sfXYt",
+        "name": "add_to_group_list",
+        "input": {
+          "listName": "Groceries",
+          "items": [
+            "milk"
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 565,
+      "cache_read_input_tokens": 19916,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 565,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 80,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

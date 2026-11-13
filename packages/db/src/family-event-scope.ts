@@ -1,4 +1,4 @@
-import { type SQL, and, isNull } from 'drizzle-orm';
+import { type SQL, and, isNotNull, isNull } from 'drizzle-orm';
 import { familyEvents } from './schema/family-events.js';
 
 /**
@@ -10,4 +10,13 @@ import { familyEvents } from './schema/family-events.js';
  */
 export function householdFamilyEvent(): SQL {
   return and(isNull(familyEvents.deletedAt), isNull(familyEvents.googleEventId)) as SQL;
+}
+
+/**
+ * A household row that was removed: soft-deleted, and never a mirror. For a reader that
+ * must see what was taken off the household's calendar (VIL-581: what backs "I took it
+ * off your calendar"); a parent's own Google mirror stays out for the same reason as above.
+ */
+export function householdRemovedFamilyEvent(): SQL {
+  return and(isNotNull(familyEvents.deletedAt), isNull(familyEvents.googleEventId)) as SQL;
 }

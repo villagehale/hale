@@ -1,0 +1,60 @@
+{
+  "response": {
+    "id": "msg_011CgzUY6E67jt6XkDdjE7jn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS4w4KEAgTGAI4AUIIdGhpbmtpbmcSDGr2AxMFu0QHe/54+RoMhDF4zP5etqc6jZ+1IjBts+Ymn4P+2tRFJkzwkHO6RY521pdwLLFVDwCACxebfchc15SwnGqq6vOwKinkk04qgA7+B82qsNU/eA5oMNALiZf+q+qLsGdDSQuFHoD8WzuZ+q7uY4HE58Ae/CTCaDP+wrHIvQVgFmSXNFBs8QVWwfMPxIbX1DJwSXsf67tv4TAoBCGDnvr5maX7YiSC7dQR5wzX7N5BWOyvEAMLg9QV5nRKJY42cdSuG7z3wKsoruzJiFIBMGXi+HV2Fprm9s6xJhGTkEcbdacUg5S8/kVF6Q3morr9eGHzrdhGt3D8AeWc2LF4l1U03nvZWMF+lhB/qlkPJ40t9HNHNahfYYY14K12b3YksHrb0oXgAKn0uxr+cVaio+I4rtitI44Hmsb0KRcEYq0GyGD0Uf6cj9+9x6fbPlsrBj3bVjhIst0BXDQ6UgFQlVFicfozSh74W8Jc9Dgvc0DNB3JdVU1l48jL4mO366Kue3xwjLcVxMIr18OAfKyVwAgS1Z8uENBO9zwWoTcoH94vQ3TPi98E/2HaeIltcfFUzU42NLKQWxh71B0ASzyth6ppglfozj3ol8UyWenp2QijkswL9GlzjByaocRfRO7snZrVKr0CLiDF+Yk5VvEhWnso/aMZvsC0hLaRd+K2G7Lx7gyQKSqvYCZVsmI0P5N1eyOfcjTLYER5aNMfTIRVakMSEcNvikVl7/cvgTJPj/MUcY/QJxTUMGxPsM5GotxEyhBDJipH4uSc8b8+yHjp4cc6YWYgiMayUVg4UUGxXEi0AkiGoCC6OaGXb8sbfpwB7xTCWT5uOD49MYWydKSplXJkCX5dFZI9du7xD7x3GFHy9NQ5hoagwr/MZ4zuaQMIB6h4vIRJf/4GOabDPSZ/zQiYzR/P9eQDpFZkiQ8Nvq/SKXvmG61sNmJYuIsExgEZgjIEL9EvDiC2I0mnYqCFkSNmzvA/LeVHrZT0oHuXcI7oyMDwD9bWaVYQfV2wa3+V7+sVgaELMft5C3KYzQMEQz81DOqzcSfVhUZmIKd8I5hfO7jd+WXuV4/5iXdyox1sN7pzOH0o0VqHC+etjyMCBQ40wZW0nqueCUPEtOMrBpsEctj1Qj0Q6TGV69/dCBZMUWJj/4CIMta8ni7/YoBJPisBiPMcDuL4m6tBpbinAlf1HaMQo8JLg2+jEhCFx8oPSSvPsaDSOJBk1vlTcFptDv/6k8Fni1Exn2CR3twFkDGG2EKqkdRI/ayLjYmKQqOtkp2TAAmGK7AyP0LZlJuf/vj3QB09p6YSedrTaoCN+cYnqj0ybyVEJElt7ZKkwUkD9Uj1gbZBV4ORAQPMn84P/exWJavaylMP8QB+yhvQrlK5m7K45k2pEtC3C+yDcgFb9lGQOqqIu00Cb0fhj91pYyOSS21eMc89m4ukv/PogX24zj0ZGBnqCIFPeW2tYubxvK8YboBGBhrvSr01qUyytEu6JkW7b5lY5y/EnaD4Dy3m43cE/Lfrw6esd2jEqLE8jdkTLhnETu4qo8KfyJi75WRnPJGgg8oJXXd6ZQ54G3NFB5Ro/SwcMlFSweJy73QdyxJB7Jafkg21GbWNHknDagdDY/5pyRQXVLCMd+JmhT4f+vPi+D0/D+B5HAnydj38fd7xjz62eDS3LE0kev8PylCymCsGC/ubWlQi8Unw7morlAJGaZ2iSA0YDBUXiy89ffPtC/FaWpHmS1k9mxm6Gm5rVHK37skeeUOlFIHB14uNxslST5lzO1r4kuao0uqq0wmof7FtI0+DCJ6uCWVmwDSVYHrm7hTNEfKJnnKZWe2KIWVKdrnLef0R9j8LkoONGMR2P9ItJxtHEq/EinyU+tbdNzPhhGLw4DLVao0R9QEmKzQf05K5B/To+ACnBni3BUYPIg9lvy6jnIGwyLgcjxb0SckZ9YhYJYZp4AOGbSgo81DspSp1Axk/gtczO9rgviQtiqdrzF9e7n/g9vYzdQgBfAeoW1wsl+X3qVVBq94jRLLzMQB/WZNyIPjr+gUioDo237dqo96wMdRL4rJn29ufFdjFRSbmBpjrQY6yEGSz7YGEZqth7c2EK76O2PYy5fFc1ubS14EtA/wSp8IxV8uurK69kBYmuHiZhy1DxYs53gI1Ns5WppOMgpX8WBhi9ZIB8vr4Xq8aRyQRwYoiiYSjr/KYKp2muTaZEB7JueD4ro/ukmq3cH+28ZSUFQRlkcFr+v4mIhsiXBKNjL2Sx/vM5q+7XHSPtVD0a1MW5bSZHt2HQ+Anfwgn4THo+kpoyJkVZC2YCbQDMJ5z4Ee4F5nHYfnAlbWel7v4z+DFJKta3OiJmk90Lv28oxJOdvKYmKGH7DR6SmbkqKjuTlrnbTxkv4oF572CiepQvxKnCfEQy6AS2HNNZb2rNeIXFEUmWWCn/4QEJtvs399K0WYhv2AByw0/jgSHcuvKH1N2MDF4gXrHB5B5xLlxgqFXGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MxN4TpgquAeKWPUnprcmZP",
+        "name": "offer_signup",
+        "input": {
+          "child": "Ada",
+          "activity": "Gymnastics Tots, Saturday 10:15",
+          "source": "chat",
+          "registrationUrl": "https://gym.example-rec.test/register/gymnastics-tots-sat-1015",
+          "evidence": "can you get Ada into Gymnastics Tots, the Saturday 10:15 class? registration opens Dec 1 at 7am",
+          "sessions": [
+            {
+              "id": "gymnastics-tots-sat-1015",
+              "label": "Gymnastics Tots, Saturday 10:15",
+              "startsAt": "2026-12-05T10:15:00-05:00",
+              "endsAt": "2026-12-05T11:00:00-05:00",
+              "full": false,
+              "priceCents": null
+            }
+          ],
+          "approvedPriceCents": null,
+          "opensAt": "2026-12-01T07:00:00-05:00"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 477,
+      "cache_creation_input_tokens": 21977,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 21977
+      },
+      "output_tokens": 924,
+      "output_tokens_details": {
+        "thinking_tokens": 502
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

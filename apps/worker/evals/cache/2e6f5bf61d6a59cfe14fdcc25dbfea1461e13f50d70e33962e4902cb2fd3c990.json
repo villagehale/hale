@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale says it is watching the Riverford winter registration morning and will text before it goes live. That is a registration_watch on a season, but the only row is a pending spot watch for a different swim class, so it backs nothing.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2144
+}

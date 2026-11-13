@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
 import { CONSUMED_SEND_STATUSES, SENT_STATUSES } from '~/lib/channel/ledger';
@@ -118,7 +119,7 @@ export const WEEKDAY_CARE_ENABLED_ENV = 'WEEKDAY_CARE_ENABLED';
  * this behaviour exists. The follow-up sweep reads its own third flag on top.
  */
 export function weekdayCareEnabled(): boolean {
-  return process.env[WEEKDAY_CARE_ENABLED_ENV] === 'true';
+  return isEnabled('weekday-care');
 }
 
 function parseFactValue(value: unknown): { care: WeekdayCare; provider: string | null } | null {

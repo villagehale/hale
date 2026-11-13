@@ -1,0 +1,19 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": null,
+    "leaveSelf": true,
+    "draw": false,
+    "cancel": false,
+    "language": "fr",
+    "reply": "Pas de souci Ben, merci de nous avoir prévenus !"
+  },
+  "latencyMs": 2264,
+  "usage": {
+    "input_tokens": 178,
+    "output_tokens": 84,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

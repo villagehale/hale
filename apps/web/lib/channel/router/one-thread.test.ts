@@ -13,6 +13,7 @@ import { createDisambiguationStore } from './disambiguation';
 import { FakeReplyTransport } from './reply-route';
 import type { ChannelCoachRuntime, ChannelRouterDeps } from './route';
 import { routeChannelMessage } from './route';
+import { darkSideTurn } from './side-turn.fixture';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
 
 /**
@@ -106,6 +107,8 @@ describe('one parent, two doors, one conversation', () => {
       coach: coach(reply),
       smokeAlarm: auditSmokeAlarmClaim(db.database),
       turns: auditTurnLedger(db.database),
+      burst: { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
+      sideTurn: darkSideTurn(),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
@@ -204,7 +207,14 @@ describe('one parent, two doors, one conversation', () => {
     expect(transport.sent).toEqual([
       { route: { channel: 'sms', to: PHONE }, body: 'Yes — from 10.' },
       {
-        route: { channel: 'imessage', to: PHONE, chatId: 'chat-direct', replyToMessageId: 'in-1' },
+        route: {
+          channel: 'imessage',
+          to: PHONE,
+          chatId: 'chat-direct',
+          replyToMessageId: 'in-1',
+          // The row has no service: this fixture's door did not say.
+          service: null,
+        },
         body: 'Sunday it opens at 11.',
       },
     ]);
@@ -250,8 +260,20 @@ describe('one parent, two doors, one conversation', () => {
       // The group turn never read the parent's 1:1 history.
       expect(transcripts[1]).toEqual(['Hale what time is pickup?']);
       expect(transport.sent.map((sent) => sent.route)).toEqual([
-        { channel: 'imessage', to: PHONE, chatId: DIRECT, replyToMessageId: 'in-direct' },
-        { channel: 'imessage', to: PHONE, chatId: GROUP, replyToMessageId: 'in-group' },
+        {
+          channel: 'imessage',
+          to: PHONE,
+          chatId: DIRECT,
+          replyToMessageId: 'in-direct',
+          service: null,
+        },
+        {
+          channel: 'imessage',
+          to: PHONE,
+          chatId: GROUP,
+          replyToMessageId: 'in-group',
+          service: null,
+        },
       ]);
     });
 

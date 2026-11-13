@@ -7,6 +7,8 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import type { CrossParentClashLineInput } from './cross-parent-clash';
+import { setCrossParentClashWriter } from './cross-parent-clash-voice';
 import type { GroupConflictLineInput } from './group-conflict';
 import { setGroupConflictWriter } from './group-conflict-voice';
 import type {
@@ -77,6 +79,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   setGroupConflictWriter(null);
+  setCrossParentClashWriter(null);
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
@@ -616,6 +619,207 @@ describe('group clash alerts (VIL-444)', () => {
 
     expect(writer.calls).toEqual([]);
     expect((await sentRows()).some((row) => row.templateKey === 'linq:group_clash')).toBe(false);
+  });
+});
+
+const BARTON_DIRECT = 'chat-clash-barton';
+const SAM_DIRECT = 'chat-clash-sam';
+const BARTON_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${BARTON_DIRECT}/messages`;
+const SAM_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${SAM_DIRECT}/messages`;
+const FAKE_BARTON = 'FAKE barton 1:1 clash line';
+const FAKE_SAM = 'FAKE sam 1:1 clash line';
+
+function fakeCrossParentWriter(
+  text: string | null | ((input: CrossParentClashLineInput) => string | null) = (input) =>
+    input.you.title.includes('recital') ? FAKE_BARTON : FAKE_SAM,
+): { calls: CrossParentClashLineInput[] } {
+  const calls: CrossParentClashLineInput[] = [];
+  setCrossParentClashWriter({
+    async write(input) {
+      calls.push(input);
+      if (typeof text === 'function') return text(input);
+      return text;
+    },
+  });
+  return { calls };
+}
+
+async function grantWatch(seeded: Seeded, userId: string) {
+  await db.database.insert(schema.consentRecords).values({
+    userId,
+    familyId: seeded.familyId,
+    consentType: 'proactive_watch',
+    granted: true,
+    consentScope: WATCH_CONSENT_SCOPE,
+    policyVersion: POLICY_VERSION,
+    evidence: { verbatimReply: 'yes please' },
+  });
+}
+
+async function inboundDirect(seeded: Seeded, who: 'barton' | 'sam', chatId: string) {
+  await db.database.insert(schema.channelMessages).values({
+    familyId: seeded.familyId,
+    parentUserId: who === 'barton' ? seeded.bartonId : seeded.samId,
+    channel: 'imessage',
+    direction: 'in',
+    category: 'reply',
+    providerMessageId: `in-${chatId}`,
+    providerChatId: chatId,
+    status: 'delivered',
+    body: 'hi',
+    inGroup: false,
+    sentAt: DAY,
+  });
+}
+
+async function sameKidTwoParents(seeded: Seeded) {
+  await calendarItem(seeded, 'barton', {
+    eventId: 'recital',
+    title: 'Maya recital',
+    end: AT_4,
+    announced: true,
+  });
+  await calendarItem(seeded, 'sam', {
+    eventId: 'dentist',
+    title: 'Maya dentist',
+    announced: true,
+  });
+  await grantWatch(seeded, seeded.samId);
+  await inboundDirect(seeded, 'barton', BARTON_DIRECT);
+  await inboundDirect(seeded, 'sam', SAM_DIRECT);
+}
+
+describe('cross-parent clash 1:1 (VIL-609)', () => {
+  beforeEach(() => {
+    vi.stubEnv('CROSS_PARENT_CLASH_ENABLED', 'true');
+  });
+
+  it('tells both parents privately, never the group, and only once', async () => {
+    const seeded = await seedFamily();
+    await sameKidTwoParents(seeded);
+    const group = fakeWriter();
+    const writer = fakeCrossParentWriter();
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(group.calls).toEqual([]);
+    expect(line.urls()).not.toContain(GROUP_MESSAGES);
+    expect(line.urls().sort()).toEqual([BARTON_MESSAGES, SAM_MESSAGES].sort());
+    expect(line.bodies()).toContain(FAKE_BARTON);
+    expect(line.bodies()).toContain(FAKE_SAM);
+    expect(writer.calls).toHaveLength(2);
+    expect(writer.calls.map((call) => call.kid).every((kid) => kid === 'Maya')).toBe(true);
+    const youTitles = writer.calls.map((call) => call.you.title).sort();
+    expect(youTitles).toEqual(['Maya dentist', 'Maya recital']);
+    const outbound = (await sentRows()).filter(
+      (row) => row.templateKey === 'linq:cross_parent_clash',
+    );
+    expect(outbound).toEqual(
+      expect.arrayContaining([
+        {
+          parentUserId: seeded.bartonId,
+          channel: 'imessage',
+          providerChatId: BARTON_DIRECT,
+          templateKey: 'linq:cross_parent_clash',
+          status: 'sent',
+        },
+        {
+          parentUserId: seeded.samId,
+          channel: 'imessage',
+          providerChatId: SAM_DIRECT,
+          templateKey: 'linq:cross_parent_clash',
+          status: 'sent',
+        },
+      ]),
+    );
+    expect(outbound).toHaveLength(2);
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 15 * 60 * 1000),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(2);
+    expect(line.urls().sort()).toEqual([BARTON_MESSAGES, SAM_MESSAGES].sort());
+    expect(
+      (await sentRows()).filter((row) => row.templateKey === 'linq:cross_parent_clash'),
+    ).toHaveLength(2);
+  });
+
+  it('sends nothing when the model cannot write the line', async () => {
+    const seeded = await seedFamily();
+    await sameKidTwoParents(seeded);
+    fakeWriter();
+    const writer = fakeCrossParentWriter(null);
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls).toHaveLength(2);
+    expect(line.urls()).toEqual([]);
+    expect(
+      (await sentRows()).filter((row) => row.templateKey === 'linq:cross_parent_clash'),
+    ).toEqual([]);
+    expect((await sentRows()).some((row) => row.templateKey === 'linq:group_clash')).toBe(false);
+  });
+
+  it('does not send on SMS, and never posts the clash in the group', async () => {
+    const seeded = await seedFamily();
+    await calendarItem(seeded, 'barton', {
+      eventId: 'recital',
+      title: 'Maya recital',
+      end: AT_4,
+      announced: true,
+    });
+    await calendarItem(seeded, 'sam', {
+      eventId: 'dentist',
+      title: 'Maya dentist',
+      announced: true,
+    });
+    await grantWatch(seeded, seeded.samId);
+    fakeWriter();
+    fakeCrossParentWriter();
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(line.urls()).toEqual([]);
+    expect(
+      (await sentRows()).filter((row) => row.templateKey === 'linq:cross_parent_clash'),
+    ).toEqual([]);
+    expect((await sentRows()).some((row) => row.templateKey === 'linq:group_clash')).toBe(false);
+  });
+
+  it('stays dark when the flag is off: two parents covering one child is not a clash', async () => {
+    vi.stubEnv('CROSS_PARENT_CLASH_ENABLED', 'yes');
+    const seeded = await seedFamily();
+    await sameKidTwoParents(seeded);
+    const group = fakeWriter();
+    const writer = fakeCrossParentWriter();
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls).toEqual([]);
+    expect(group.calls).toEqual([]);
+    expect(line.urls()).toEqual([]);
   });
 });
 

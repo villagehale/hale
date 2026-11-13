@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and turn_off_autonomy was applied this turn for both send_email and reply_to_email. The reply confirms that plainly, in the parent's own language, in one short sentence. Saying 'send' rather than 'send or reply to' is within the spirit of the request. There is no greeting, sign-off or invented detail.",
+    "score": 5
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "find",
+    "reason": "parent asks Hale to find something to do nearby with no prior context"
+  },
+  "latencyMs": 1674
+}

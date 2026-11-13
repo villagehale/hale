@@ -61,6 +61,51 @@ describe('the plan reply gate', () => {
     expect(planReplyViolations(text)).toEqual([]);
   });
 
+  it('refuses a draft whose accents came out garbled, and sends the same text written right', () => {
+    // A recorded Sonnet 5.5 draw: UTF-8 "é" read back in windows-1250.
+    const garbled = "Le total est de 98 $, donc je n'ai pas payĂ©. Rien n'a Ă©tĂ© dĂ©bitĂ©.";
+    expect(planReplyViolations(garbled)).toContain(
+      'garbled characters: an accented letter came out as two or three other characters',
+    );
+    expect(
+      planReplyViolations("Le total est de 98 $, donc je n'ai pas payé. Rien n'a été débité."),
+    ).toEqual([]);
+  });
+
+  it('refuses a made-up max the listing facts never stated', () => {
+    const invented = 'Swim opens at 7:00 a.m. The most I can pay is $86.22.';
+    expect(planReplyViolations(invented, FACTS)).toContain(
+      'invented figure: a price or limit that is not in the facts',
+    );
+    expect(planReplyViolations('Swim opens at 7:00 a.m. Which day first?', FACTS)).toEqual([]);
+  });
+
+  it('refuses a clock time that is not in the facts', () => {
+    expect(planReplyViolations('I will text you at 6:30.', FACTS)).toContain(
+      'invented figure: a time that is not in the facts',
+    );
+    expect(planReplyViolations('It opens at 7:00 a.m. Which day first?', FACTS)).toEqual([]);
+  });
+
+  it('allows a fee that is in the bound listing facts', () => {
+    const withFee: PlanReplyFacts = {
+      ...FACTS,
+      sessions: [
+        {
+          label: 'Preschool Swim Sat 9:00',
+          startsAt: '2027-01-09T14:00:00.000Z',
+          endsAt: '2027-01-09T14:45:00.000Z',
+          priceCents: 9800,
+        },
+      ],
+      maxPriceCents: 10000,
+    };
+    expect(planReplyViolations('Saturday is $98. Up to $100.', withFee)).toEqual([]);
+    expect(planReplyViolations('The max is $86.22.', withFee)).toContain(
+      'invented figure: a price or limit that is not in the facts',
+    );
+  });
+
   it('a page-sourced label or question holding a host never reaches the model', () => {
     const message = planReplyUserMessage(
       {
@@ -82,6 +127,7 @@ describe('the plan reply gate', () => {
           sessionLabel: 'Swim https://evil.example.test/x Sat',
           cartTotalCents: 9800,
           amountChargedCents: null,
+          charged: 'nothing',
           liveBrowser: true,
           holdMinutes: 10,
         },

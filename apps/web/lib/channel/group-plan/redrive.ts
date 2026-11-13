@@ -221,6 +221,7 @@ function endedBy(report: CalendarInviteReport): Ended {
   if (report.status !== 'group_reported') return 'errored';
   switch (report.outcome) {
     case 'sent':
+    case 'queued':
       return 'sent';
     case 'already_sent':
       return 'alreadySent';

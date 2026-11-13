@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgxM9m9hG8En1BXYbdNdx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2AkKEAgTGAI4AUIIdGhpbmtpbmcSDI2tm3r20WZBAcpk/RoMedCOxnKR8fj0B24vIjDpS4a5eYKGOsU0JnD4dGjor8vg1vVFioo/RAGcIOQru/41BE3s0F15lLAZXnHBAj0q9Qg2Di1jiAAwhx+u9uqZxoYel5cBcU3aO7RPKuLvN8brfq+z4GRWBcfmWXcmkn+onQe667NRl2OqpXW4eP1vi/x0EdkOLEwyUjtKRhDJKPr80pXnj38aRbnJYXVOEV6pen4av9yJqqavBrKnVpvVYvkU3rOIpm6F9nGzT7eQCmqJbvJsod00yiXLS+rrpzeICcVyX2Gf7kAnyTZM83l2JVNFDuOBGTx5vJaqZxRm62i5L5ZtBpAevfOZqkIbLxjVKmya4McHgO3wQJcCJ8C66woNlDDSJCd7Fm4CjCv5MDBqYeGme45MZebkyJk9NrLtY8WwsQDO1S0E0MVBIKjnKCQW6oQmk/hy/39YbqV9fRbdwqhoeAQCeN3pn2V6nXavQJpT6KWjc3CH0f/cPLlT9C/Z4DpgNwQC/4svkxNNAKblpzX9x1QooFDNmBY7rMZLU1RaqqdLAb5YngURUBeXQY/7IQ4KvyFiu55jT20RKi8rdCPS0H6k/gj20PqXVYg99VZmyZ877LfmGJ/IF4g0o1LhWpNCjrEncaZ4NdSsxIvLBvGHWJNetlJ8weyiVlsbzT4j7WwbL5PxZl/Ms3Hc01FgjTQzT4nOKFMlakcRh6n/h9R6DlR53/Zq/ikdBoCM+JzPe8QirpLzQaMPAVIMlUupeDqNoKHKEuDwPSc2h3n2ndYF0pwhaKCr1vQbUHBRwcfmHwgpHCPQLMf+TBy4A96cn1hjf1aEu1wNZL5ICJ8Aei0LhJ56yR9NUmsqRGMKYXU+HJvLv9aZOv3uN1tElnXXHkQBviNzeDNwQHvHw+W6Rl7ULPMGqSwWX71V22GmHspfrc+CUUXxw1qVx8zzxwSJaBnjYc6m20jcu7ZTtnRjCibQqohz3v4/oLE/LhFkKpb0ZD74isub3qs0YnpqGMtDlXTlPpUUWhh4+OVW7IN7QqBYWx8mXgJFG6F+vscDk35TNVsUOtlQ9pDTX7eAPv4iX/oOOdyMSKM2TbNzL4fa4vyWTjcif0QNGxQRYd5tctk15UPrRlkzRERRc8+ZMWrlNi8ZhfUpYbDl0/nd+wjLA8R4vFmhQo/LspP6x8U88iEIN9YAX+nolwszPNY85Ce44islNuLy+iAg46KcXEkDzVkc6z/Wwz8wZXxbB/rup4lCaej3kzwmzpo0z/EqA7p6QCITXMA1mzgun1HqB2gDYevO9pfUYzXOTqYNxRW93D3+9UdJsh5VNo1ljMr2IAaIH8WNJtvLGswrbeUklkuagpdH4oa8KrkH2JAuEbrhG0c9hvsGNfuG2PO574cXqSIaxzfyU/jWREhNLVZxTspin/9sjK+qDsKuSI1aGFoezaCJXoK1WI0JukouBuXC2IdUCLDNeorzCsKEL896bblS9uMJ3WhC+YNk7Vp3h1c+PuoJUpwADXHXAbG28aeinqfc6W8sq2n1eZ/SEatxZiR6mKFvpEdA5oLiIT/CcfXQn9z9yXkEW9AwDUv93T82xMnJ0j7T4T4xHARcUYY05cDWA6IfB8c1GAE="
+      },
+      {
+        "type": "text",
+        "text": "Nothing's on for the rest of this week. The week of Nov 16 looks like this:\n\nMon: daycare pickup 4:30pm\nTue: swim lesson 5:00pm\nWed: pediatrician checkup 9:15am, daycare pickup 4:30pm\nThu: music class 6:00pm\nSat: birthday party 1:00pm\n\nWednesday is the one to plan work around, since the 9:15 checkup comes before a 4:30 pickup. Want me to move anything?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22553,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 471,
+      "output_tokens_details": {
+        "thinking_tokens": 303
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

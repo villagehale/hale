@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking how to translate a swimming class term to read a flyer; family schedule/class-related, not general trivia",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2264
+}

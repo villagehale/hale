@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the card wasn't charged, but run.charged is \"unknown\", so this asserts a charge outcome the facts do not support. It also omits that the registration status is unknown, and the watchFor requires saying plainly that Hale does not know whether the card was charged or the child registered. Otherwise the tone and single ask are fine.",
+    "score": 1
+  }
+}

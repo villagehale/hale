@@ -113,6 +113,7 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
     ],
     maxPriceCents: 10000,
     waiverAccepted: true,
+    paymentEnabled: true,
     providerSession: {
       storageState: { cookies: [], origins: [] },
       browserUseProfileId: 'profile-seeded',
