@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private question about a child's peanut allergy, so the correct kind is private_question. The reading has kind 'none', which is the wrong moment. The rubric says 'none' for a private question scores 1.",
+    "score": 1
+  }
+}

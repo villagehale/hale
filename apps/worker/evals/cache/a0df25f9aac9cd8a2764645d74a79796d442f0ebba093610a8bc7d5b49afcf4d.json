@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message uses a form/bot voice ('Thank you for your message') and tells the reader what to type ('Reply YES, NO or MAYBE'), both explicitly disqualifying. It also omits the link and the offer to help with this sign-up.",
+    "score": 1
+  }
+}

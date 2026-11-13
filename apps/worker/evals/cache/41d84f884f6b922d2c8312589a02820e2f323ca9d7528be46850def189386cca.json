@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks about another family's calendar entry, so it is a private question. The reading's kind is private_question, and every other field is empty, so no private detail is copied into a field.",
+    "score": 5
+  }
+}

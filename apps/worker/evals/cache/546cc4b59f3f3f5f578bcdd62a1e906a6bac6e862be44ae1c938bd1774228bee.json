@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a child's date of birth, which is a private question, and the reading's kind is private_question. No fields carry the private detail or any invented values. Everything is correct for this moment.",
+    "score": 5
+  }
+}

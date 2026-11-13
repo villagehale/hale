@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "An RSVP for the Saturday picnic is already open in live, and the parent is asking where things stand, which is a request for the tally of answers. The reading is rsvp_tally with no response, option, or starts fields set, which is correct for a tally request.",
+    "score": 5
+  }
+}

@@ -94,7 +94,7 @@ export const GROUP_PLAN_RSVP_READ_FIXTURES = [
   {
     id: "other-event-opening",
     situation:
-      "A picnic is being counted. A parent now asks Hale who is in for a zoo trip on Sunday at 2: a different event, not the picnic.",
+      "A picnic is being counted. A parent now asks Hale who is in for a zoo trip on Sunday at 2: a different event, not the picnic. Today is Thursday, November 12.",
     input: {
       text: "Hale who's in for the zoo Sunday at 2?",
       tapback: null,
@@ -106,9 +106,11 @@ export const GROUP_PLAN_RSVP_READ_FIXTURES = [
         waitingNames: ["Ada"],
       },
       recent: [],
+      clock: { now: "2026-11-12T11:00:00-05:00", timeZone: "America/Toronto" },
     },
     accept: ["start_tracking"],
     samePlan: false,
+    startsAt: "2026-11-15T14:00:00-05:00",
   },
   {
     id: "same-plan-opening",

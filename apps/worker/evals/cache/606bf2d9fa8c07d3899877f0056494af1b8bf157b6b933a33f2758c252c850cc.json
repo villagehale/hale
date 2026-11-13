@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks the group to choose between Saturday 10 and Sunday 10 for the park; nothing is open in live, so opening a time poll is the right moment. Title is the park, options match the proposed times, and starts correctly resolve to Nov 14 and Nov 15 10:00 in Toronto time from the Thursday Nov 12 clock.",
+    "score": 5
+  }
+}

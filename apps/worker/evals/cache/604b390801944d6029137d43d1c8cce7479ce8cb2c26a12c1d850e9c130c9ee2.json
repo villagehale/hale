@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent clearly asks Hale to open a time poll for Saturday 10 or Sunday 10, and nothing is open in live, so the correct reading is a time poll opening with two options and starts. The reading returned kind none, which is the wrong moment, so the score is 1.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks who is coming to the Saturday picnic, which is a request to see RSVP responses, but nothing is open in live (rsvp is null). Opening a new RSVP collection to find out who is in is the appropriate moment, and the title matches the event named. samePlan is null, which is reasonable since no plan is open in live. Fields are correct and contain no private details.",
+    "score": 4
+  }
+}

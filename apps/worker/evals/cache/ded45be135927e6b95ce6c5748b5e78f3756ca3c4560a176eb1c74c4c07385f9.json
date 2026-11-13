@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks for a time poll for the zoo outing, which is a different event from the open picnic RSVP, so the correct reading is a time poll opening with samePlan false, options Saturday 10 and Sunday 2 with starts on clock. The reading given is kind none, which is the wrong moment.",
+    "score": 1
+  }
+}

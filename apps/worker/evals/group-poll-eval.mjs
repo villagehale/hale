@@ -288,11 +288,37 @@ async function main() {
       getClient,
       cost,
     });
-    const verdict = await readJudge(fixture.id, { situation: fixture.situation, reading: value });
-    const ok = verdict.score >= JUDGE_MIN && fixture.accept.includes(value.intent);
+    const verdict = await readJudge(fixture.id, {
+      situation: fixture.situation,
+      message: fixture.input,
+      reading: value,
+    });
+    // Which choice a lock names, which plan a poll is about and where its choices place it are
+    // code's to act on, so those fields are checked themselves.
+    const fieldMisses = [
+      ...(fixture.pollChoice !== undefined && value.pollChoice !== fixture.pollChoice
+        ? [`pollChoice=${value.pollChoice}`]
+        : []),
+      ...(fixture.samePlan !== undefined && value.samePlan !== fixture.samePlan
+        ? [`samePlan=${value.samePlan}`]
+        : []),
+      ...(fixture.pollStarts &&
+      !(
+        value.pollStarts?.length === fixture.pollStarts.length &&
+        fixture.pollStarts.every(
+          (want, i) => value.pollStarts[i] && Date.parse(value.pollStarts[i]) === Date.parse(want),
+        )
+      )
+        ? [`pollStarts=${JSON.stringify(value.pollStarts)}`]
+        : []),
+    ];
+    const ok =
+      verdict.score >= JUDGE_MIN &&
+      fixture.accept.includes(value.intent) &&
+      fieldMisses.length === 0;
     if (!ok) allPass = false;
     console.info(
-      `${ok ? 'PASS' : 'FAIL'}  read:${fixture.id}  intent=${value.intent} judge:${verdict.score}`,
+      `${ok ? 'PASS' : 'FAIL'}  read:${fixture.id}  intent=${value.intent} judge:${verdict.score}${fieldMisses.length ? ` ${fieldMisses.join(' ')}` : ''}`,
     );
     if (!ok) console.info(`      · ${verdict.reason}`);
   }
