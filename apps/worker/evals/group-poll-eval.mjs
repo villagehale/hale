@@ -6,7 +6,7 @@
 // A judge scores meaning, 1-5. No word-matching gate.
 //
 // This file is not named run-*.mjs, so the Monday eval sweep does not pick it up.
-// It is not in ci.yml. A cached-only miss must not spend.
+// ci.yml replays it cached-only (`eval:group-poll`). A cached-only miss must not spend.
 //
 //   node evals/group-poll-eval.mjs --dry
 //   node evals/group-poll-eval.mjs --cached-only
