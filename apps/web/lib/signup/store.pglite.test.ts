@@ -2,10 +2,13 @@ import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { loadLiveAsks } from './asks';
+import { AUTHORIZED_SIGNUP_ENABLED_ENV } from './flag';
+import { authorizedSignupHandler } from './handler';
 import {
   AskOrderUnmarked,
   askStamp,
-  loadLastAskedOfferId,
+  loadLastAsked,
   loadPendingOffer,
   loadPendingOffers,
   recordSignupOffer,
@@ -256,6 +259,11 @@ describe('askStamp: the ask number of a send', () => {
     parentUserId: f.parentUserId,
     offerIds: [offerId],
   });
+  /** The ask whose text reached the parent last, or why none is. */
+  async function lastAskedId(f: { familyId: string; parentUserId: string }) {
+    const last = await loadLastAsked(db.database, f);
+    return last.status === 'asked' ? last.offerId : last.status;
+  }
   async function seqOf(offerId: string) {
     const [row] = await db.database
       .select({ seq: schema.authorizedSignupOffers.lastAskedSeq })
@@ -314,26 +322,26 @@ describe('askStamp: the ask number of a send', () => {
     // Kickers' send was accepted first; Gym's started first.
     expect(await kickersKeep()).toBe('stamped');
     expect(await gymKeep()).toBe('stamped');
-    expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
+    expect(await lastAskedId(f)).toBe(kickersId);
     expect(await uncertainRow(f)).toBeNull();
   });
 
   it('holds every bare answer while a send is out, and after one whose outcome is unknown', async () => {
     const { f, gymId, kickersId } = await twoAsks();
     await (await askStamp(db.database, about(f, gymId))())();
-    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+    expect(await lastAskedId(f)).toBe(gymId);
 
     // The send about Kickers is marked before its transport call. It never reports back
     // (a timeout after the carrier took the text, a 2xx with no id): its keep never runs.
     await askStamp(db.database, about(f, kickersId))();
     expect(await uncertainRow(f)).toMatchObject({ failures: 0 });
-    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await lastAskedId(f)).toBe('uncertain');
     expect(await seqOf(kickersId)).toBeNull();
 
     // The next text about an ask that went clears it.
     expect(await (await askStamp(db.database, about(f, gymId))())()).toBe('stamped');
     expect(await uncertainRow(f)).toBeNull();
-    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+    expect(await lastAskedId(f)).toBe(gymId);
   });
 
   it('a keep clears the mark only when no send that started later is still out', async () => {
@@ -342,10 +350,10 @@ describe('askStamp: the ask number of a send', () => {
     const kickersKeep = await askStamp(db.database, about(f, kickersId))();
     expect(await gymKeep()).toBe('stamped');
     expect(await uncertainRow(f)).not.toBeNull();
-    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await lastAskedId(f)).toBe('uncertain');
     expect(await kickersKeep()).toBe('stamped');
     expect(await uncertainRow(f)).toBeNull();
-    expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
+    expect(await lastAskedId(f)).toBe(kickersId);
   });
 
   it('never lowers a number a later-started send already kept', async () => {
@@ -361,7 +369,7 @@ describe('askStamp: the ask number of a send', () => {
   it('fails closed when the number is not kept: the mark made before the send holds until a later one is kept', async () => {
     const { f, gymId, kickersId } = await twoAsks();
     await (await askStamp(db.database, about(f, gymId))())();
-    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+    expect(await lastAskedId(f)).toBe(gymId);
     const before = await askStamp(db.database, about(f, gymId))(); // started before the miss
 
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -372,16 +380,16 @@ describe('askStamp: the ask number of a send', () => {
     await db.database.execute(sql`drop trigger store_test_fail_stamp on authorized_signup_offers`);
     expect(await seqOf(kickersId)).toBeNull();
     expect(await uncertainRow(f)).toMatchObject({ failures: 1 });
-    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await lastAskedId(f)).toBe('uncertain');
     expect(errors.mock.calls.some((call) => String(call[1]).includes('URGENT'))).toBe(false);
 
     // A number drawn before the miss, kept after it, does not settle the order.
     expect(await before()).toBe('stamped');
-    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await lastAskedId(f)).toBe('uncertain');
     // One drawn after it does.
     expect(await (await askStamp(db.database, about(f, kickersId))())()).toBe('stamped');
     expect(await uncertainRow(f)).toBeNull();
-    expect(await loadLastAskedOfferId(db.database, f)).toBe(kickersId);
+    expect(await lastAskedId(f)).toBe(kickersId);
   });
 
   it('holds when the keep and every write after the send fail: the mark was made before it', async () => {
@@ -399,7 +407,7 @@ describe('askStamp: the ask number of a send', () => {
     );
     expect(await seqOf(kickersId)).toBeNull();
     expect(await uncertainRow(f)).not.toBeNull();
-    expect(await loadLastAskedOfferId(db.database, f)).toBeNull();
+    expect(await lastAskedId(f)).toBe('uncertain');
   });
 
   it('pages ops when a keep misses again before a number is kept', async () => {
@@ -430,11 +438,71 @@ describe('askStamp: the ask number of a send', () => {
     );
     expect(await uncertainRow(f)).toBeNull();
     expect(await seqOf(kickersId)).toBeNull();
-    expect(await loadLastAskedOfferId(db.database, f)).toBe(gymId);
+    expect(await lastAskedId(f)).toBe(gymId);
     expect(
       errors.mock.calls.some((call) =>
         String(call[1]).includes('URGENT: signup_ask_order_unmarked'),
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * VIL-302 · one newest-ask rule across lanes. The sign-up lane's newest ask takes a bare
+ * answer only while Hale's last text about it is the newest of all the parent's asks, open
+ * questions included (`newestAsks`); the router is handed that same text to rank.
+ */
+describe('the sign-up asks, ranked with the open questions', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function askedGym() {
+    const f = await family();
+    const gym = await record(f, GYM_URL, 'Gym Tots', 0);
+    if (!gym.ok) throw new Error('set-up offer');
+    const about = { familyId: f.familyId, parentUserId: f.parentUserId, offerIds: [gym.id] };
+    expect(await (await askStamp(db.database, about)())()).toBe('stamped');
+    const last = await loadLastAsked(db.database, f);
+    if (last.status !== 'asked' || last.askedAt === null) throw new Error('set-up stamp');
+    return { f, gymId: gym.id, about, askedAt: last.askedAt };
+  }
+
+  it('the last-asked sign-up ask is the newest only when no open question was asked after it', async () => {
+    const { f, gymId, askedAt } = await askedGym();
+    const at = (ms: number) => new Date(askedAt.getTime() + ms);
+    const newest = async (openQuestions: readonly { askedAt: Date | null }[]) =>
+      (await loadLiveAsks(db.database, { ...f, now: NOW, openQuestions }))
+        .filter((ask) => ask.place.newest)
+        .map((ask) => ask.offerId);
+
+    expect(await newest([])).toEqual([gymId]);
+    expect(await newest([{ askedAt: at(-1000) }])).toEqual([gymId]);
+    expect(await newest([{ askedAt: at(1000) }])).toEqual([]);
+    expect(await newest([{ askedAt }])).toEqual([]);
+    // Recency across the lanes cannot be established: the lane's own order stands.
+    expect(await newest([{ askedAt: at(1000) }, { askedAt: null }])).toEqual([gymId]);
+  });
+
+  it("hands the router Hale's last text: its time, unknown while a send is out, nothing before one", async () => {
+    vi.stubEnv(AUTHORIZED_SIGNUP_ENABLED_ENV, 'on');
+    const handler = authorizedSignupHandler();
+    const ctx = (f: { familyId: string; parentUserId: string }) => ({
+      ...f,
+      body: 'yes',
+      now: NOW,
+      openQuestions: async () => [],
+      inboundChannelMessageId: null,
+    });
+
+    const unasked = await family();
+    if (!(await record(unasked, GYM_URL, 'Gym Tots', 0)).ok) throw new Error('set-up offer');
+    expect(await handler.offListAsks?.(db.database, ctx(unasked))).toEqual([]);
+
+    const { f, about, askedAt } = await askedGym();
+    expect(await handler.offListAsks?.(db.database, ctx(f))).toEqual([{ askedAt }]);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    await askStamp(db.database, about)();
+    expect(await handler.offListAsks?.(db.database, ctx(f))).toEqual([{ askedAt: null }]);
   });
 });

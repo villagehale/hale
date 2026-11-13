@@ -22,7 +22,8 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { type InboundBurst, createInboundBurst } from '~/lib/channel/router/burst';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { FakeReplyTransport, type ReplySent } from '~/lib/channel/router/reply-route';
-import type { ChannelRouterDeps } from '~/lib/channel/router/route';
+import type { OpenQuestion } from '~/lib/channel/router/open-questions';
+import type { ChannelRouterDeps, DeterministicHandler } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
 import { darkSideTurn } from '~/lib/channel/router/side-turn.fixture';
 import {
@@ -36,6 +37,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { introAskDedupeKey, introCardDedupeKey } from '~/lib/village/intros/run';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
 import { authorizedSignupHandler } from '../handler';
 import { recordSignupOffer } from '../store';
@@ -205,6 +207,8 @@ function deps(
     planReader?: PlanReader;
     coachOffer?: CoachOffer;
     burst?: InboundBurst;
+    introOwner?: DeterministicHandler;
+    replyResolver?: ChannelRouterDeps['replyResolver'];
   },
 ): ChannelRouterDeps {
   return {
@@ -212,6 +216,7 @@ function deps(
     loadContext: loadInboundContext,
     transport: options.transport,
     handlers: [
+      ...(options.introOwner ? [options.introOwner] : []),
       authorizedSignupHandler({
         planReader: options.planReader ?? readerBy({}),
         planWriter,
@@ -244,7 +249,9 @@ function deps(
       status: 'recorded',
       commitmentId: '77777777-7777-4777-8777-777777777777',
     }),
-    replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+    replyResolver: options.replyResolver ?? {
+      read: async () => ({ status: 'unresolved', reason: 'no_target' }),
+    },
     calendarOffers: calendarOffersIdle,
     weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
     schoolBreakReplyReader: { read: async () => ({ status: 'nothing_stated' as const }) },
@@ -280,7 +287,13 @@ async function parentTexts(
   f: Household,
   body: string,
   at: Date,
-  options: { transport?: FakeReplyTransport; planReader?: PlanReader; coachOffer?: CoachOffer },
+  options: {
+    transport?: FakeReplyTransport;
+    planReader?: PlanReader;
+    coachOffer?: CoachOffer;
+    introOwner?: DeterministicHandler;
+    replyResolver?: ChannelRouterDeps['replyResolver'];
+  },
 ) {
   const providerMessageId = `SM-${f.familyId}-${at.getTime()}`;
   const [row] = await db.database
@@ -1229,5 +1242,152 @@ describe('a bare stop from a parent with a planned sign-up', () => {
     expect((await offerRow(kickersId)).status).toBe('handed_back');
     expect((await offerRow(swimId)).status).toBe('planned');
     expect(await cancelAudits(f)).toHaveLength(1);
+  });
+});
+
+/**
+ * VIL-302 · one newest-ask rule across the open questions and the sign-up asks. The intro
+ * asks are dated by the router's real reader off their delivered ledger rows; the sign-up
+ * offer by Hale's last kept text about it. Whichever Hale texted last is what a bare yes
+ * answers: the router narrows to a newer open question, and the sign-up lane takes the yes
+ * only when its ask is the newest of them all. The reply resolver is a stand-in following
+ * the reply-resolver skill's contract (one answerable question and a bare yes: that
+ * question; several: ambiguous); the plan read is stipulated.
+ */
+describe('a bare yes with intro asks and a sign-up offer both open', () => {
+  async function introAsks(f: Household, optInAt: Date, cardAt: Date) {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'village_intro',
+      status: 'sent',
+      dedupeKey: introAskDedupeKey(f.familyId),
+      sentAt: optInAt,
+    });
+    const other = await seedFamily(db.database, 'Other');
+    const askedIsA = f.familyId < other.familyId;
+    const [row] = await db.database
+      .insert(schema.villageIntroProposals)
+      .values({
+        fsa: 'A1A',
+        status: 'proposed',
+        stage: 'toddler',
+        familyAId: askedIsA ? f.familyId : other.familyId,
+        familyBId: askedIsA ? other.familyId : f.familyId,
+        familyAAskedAt: cardAt,
+        familyBAskedAt: cardAt,
+        expiresAt: new Date(NOW.getTime() + 7 * 86_400_000),
+      })
+      .returning({ id: schema.villageIntroProposals.id });
+    await db.database.insert(schema.channelMessages).values({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'village_intro',
+      status: 'sent',
+      dedupeKey: introCardDedupeKey(row?.id as string, askedIsA ? 'a' : 'b'),
+      sentAt: cardAt,
+    });
+  }
+
+  function skillContract(lists: string[][]): ChannelRouterDeps['replyResolver'] {
+    return {
+      read: async ({ text, questions }: { text: string; questions: readonly OpenQuestion[] }) => {
+        lists.push(questions.map((q) => q.kind));
+        if (text !== 'yes') return { status: 'unresolved', reason: 'no_target' };
+        const [only] = questions;
+        if (questions.length !== 1 || !only) return { status: 'unresolved', reason: 'ambiguous' };
+        return {
+          status: 'resolved',
+          questionId: only.id,
+          kind: only.kind,
+          polarity: 'yes',
+          confidence: 'high',
+        };
+      },
+    };
+  }
+
+  function introOwner(seen: string[]): DeterministicHandler {
+    return {
+      name: 'intro_owner',
+      resolves: new Set(['intro_optin', 'intro_proposal'] as const),
+      detects: async () => false,
+      async handle(_database, ctx) {
+        if (!ctx.resolved) return { claimed: false };
+        seen.push(ctx.resolved.kind);
+        return { claimed: true, outcome: 'accepted', reply: 'Introduced.' };
+      },
+    };
+  }
+
+  /** The swim offer, texted by a coach turn. Its kept text is dated `at`: the keep stamps
+   * the database clock, which this file's fixed NOW does not move. */
+  async function swimOffered(f: Household, at: Date) {
+    await parentTexts(f, 'can you sign Ada up for swim', at, { coachOffer: offering(f, SWIM) });
+    const swimId = await offerIdFor(f, SWIM);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ lastAskedAt: at })
+      .where(eq(schema.authorizedSignupOffers.id, swimId));
+    expect((await offerRow(swimId)).lastAskedSeq).not.toBeNull();
+    return swimId;
+  }
+
+  it('sign-up offer texted first, intro asks after: the yes is the intro card, and no registration is planned', async () => {
+    const f = await household();
+    const swimId = await swimOffered(f, minutes(-300));
+    await introAsks(f, minutes(-200), minutes(-150));
+    const lists: string[][] = [];
+    const seen: string[] = [];
+
+    await parentTexts(f, 'yes', minutes(-50), {
+      planReader: readerBy({ 'Preschool Swim': APPROVE }),
+      introOwner: introOwner(seen),
+      replyResolver: skillContract(lists),
+    });
+
+    expect(lists).toEqual([['intro_optin', 'intro_proposal'], ['intro_proposal']]);
+    expect(seen).toEqual(['intro_proposal']);
+    expect((await offerRow(swimId)).status).toBe('pending');
+  });
+
+  it('sign-up offer texted first, two intro asks in one later message: the sign-up lane takes nothing', async () => {
+    const f = await household();
+    const swimId = await swimOffered(f, minutes(-300));
+    await introAsks(f, minutes(-150), minutes(-150));
+    const lists: string[][] = [];
+    const seen: string[] = [];
+
+    await parentTexts(f, 'yes', minutes(-50), {
+      planReader: readerBy({ 'Preschool Swim': APPROVE }),
+      introOwner: introOwner(seen),
+      replyResolver: skillContract(lists),
+    });
+
+    expect(lists).toEqual([['intro_optin', 'intro_proposal']]);
+    expect(seen).toEqual([]);
+    expect((await offerRow(swimId)).status).toBe('pending');
+  });
+
+  it('positive control: intro asks first, sign-up offer texted last: the yes plans the sign-up', async () => {
+    const f = await household();
+    await introAsks(f, minutes(-200), minutes(-150));
+    const swimId = await swimOffered(f, minutes(-60));
+    const lists: string[][] = [];
+    const seen: string[] = [];
+
+    await parentTexts(f, 'yes', minutes(-50), {
+      planReader: readerBy({ 'Preschool Swim': APPROVE }),
+      introOwner: introOwner(seen),
+      replyResolver: skillContract(lists),
+    });
+
+    expect(lists).toEqual([['intro_optin', 'intro_proposal']]);
+    expect(seen).toEqual([]);
+    expect((await offerRow(swimId)).status).toBe('planned');
   });
 });
