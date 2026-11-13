@@ -986,7 +986,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         ]);
         return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.askedAt } : null;
       },
-      introProposal: async (database, familyId, now) => {
+      introProposal: async (database, familyId, parentUserId, now) => {
         // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
         // returns cards this family has already answered (so a repeat can be told from a
         // card that never existed), and offering one of those to the resolver would invite
@@ -996,9 +996,15 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // Open only once the card reached this side, and dated by its row. The proposal's
         // own per-side stamp is written when the provider accepts the send, and a receipt
         // can still say it never arrived.
+        //
+        // ASKED THIS PARENT, for the same reason as the opt-in above: the card is keyed
+        // per side, but texted to one parent, and a co-parent who never saw it must not
+        // agree to an introduction with another family on the household's behalf.
         const side = proposal.familyAId === familyId ? 'a' : 'b';
         const card = await deliveredAsk(database, introCardDedupeKey(proposal.id, side));
-        return card && { id: proposal.id, askedAt: card.askedAt };
+        return card?.parentUserId === parentUserId
+          ? { id: proposal.id, askedAt: card.askedAt }
+          : null;
       },
       planOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
