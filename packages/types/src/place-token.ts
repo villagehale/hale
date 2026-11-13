@@ -19,15 +19,16 @@
  * comma has at most four digits after it, and a thousands group has three on each side.
  *
  * EVERY PATTERN READS ONE SHAPE OF THE TEXT ({@link oneShape}): a full-width or other
- * script's digit is the digit, any dash is a hyphen, and a zero-width character is not
- * there at all. A ZIP typed one digit at a time with one space, dot or dash between
- * ("9 8 1 0 1") is still a ZIP, so is one split once by a space into three and two or two
- * and three ("981 01"; one and four is a date, "March 3 2027"), and so is one
- * glued to a word ("near98101"). A whole Canadian code is the same: glued to a word on
- * either side ("nearK7L 3N6", "K7L3N6please") or typed one character at a time ("K 7 L 3
- * N 6"). A bare forward sortation area is three characters, which ordinary words and ids
- * hold, so it is read only standing alone. What is handed on is the text as it was typed,
- * less what a pattern took out.
+ * script's digit is the digit, an accented letter is the letter, any space is a space,
+ * any dash is a hyphen, and a zero-width character is not there at all. A ZIP typed one
+ * digit at a time with one space, dot or dash between ("9 8 1 0 1") is still a ZIP, so
+ * is one split once by a space into three and two or two and three ("981 01"; one and
+ * four is a date, "March 3 2027"), and so is one glued to a word ("near98101"). A whole
+ * Canadian code is the same: glued to a word on either side ("nearK7L 3N6",
+ * "K7L3N6please") or typed one character at a time ("K 7 L 3 N 6"). A bare forward
+ * sortation area is three characters, which ordinary words and ids hold, so it is read
+ * only standing alone. What is handed on is the text as it was typed, less what a
+ * pattern took out.
  *
  * An email address and a phone number are read the same way ({@link CONTACT_TOKENS}).
  *
@@ -72,11 +73,13 @@ export const PLACE_TOKENS: readonly RegExp[] = [
 export const CONTACT_TOKENS: readonly RegExp[] = [
   /[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi,
   /\+?\d[\d\s.-]{7,}\d/g,
+  /(?<!\d)\(\d{3}\)[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g, // North American, area code in brackets
 ];
 
 const ANY_DASH = /[\p{Dash_Punctuation}−]/gu;
 const ANY_DIGIT = /\p{Decimal_Number}/gu;
-const NOT_SEEN = /\p{Format}/gu;
+const ANY_SPACE = /\s/gu;
+const NOT_SEEN = /[\p{Format}\p{Mark}]/gu;
 
 /**
  * A decimal digit of any script as the ordinary one. Unicode lays each script's digits out
@@ -94,16 +97,19 @@ function ordinaryDigit(digit: string): string {
 }
 
 /**
- * One character as every pattern reads it: its compatibility form (Unicode NFKC, so a
- * full-width digit is the digit and a no-break space is a space), with any dash or minus
- * sign as a hyphen and a digit of any script as the ordinary one. A character that is
- * never seen (a zero-width space or joiner, a soft hyphen) has no shape at all, so one
- * typed inside a number does not split it.
+ * One character as every pattern reads it: its compatibility form without its accents
+ * (Unicode NFKD less every mark, so a full-width digit is the digit, Ź is Z, and a keycap
+ * 9 is 9), with any space as a space, any dash or minus sign as a hyphen, and a digit of
+ * any script as the ordinary one. A character that is never seen (a zero-width space or
+ * joiner, a soft hyphen, a combining accent typed on its own) has no shape at all, so one
+ * typed inside a code does not split it. Case is left as typed: every place and contact
+ * pattern reads either case.
  */
 function oneShape(char: string): string {
   return char
-    .normalize('NFKC')
+    .normalize('NFKD')
     .replace(NOT_SEEN, '')
+    .replace(ANY_SPACE, ' ')
     .replace(ANY_DASH, '-')
     .replace(ANY_DIGIT, ordinaryDigit);
 }
