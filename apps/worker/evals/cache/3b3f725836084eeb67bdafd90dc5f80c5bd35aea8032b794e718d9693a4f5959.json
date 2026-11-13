@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "C'est confirmé — il est inscrit pour sam. 9 h 30."
+  },
+  "latencyMs": 1679,
+  "usage": {
+    "input_tokens": 114,
+    "output_tokens": 33,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}
