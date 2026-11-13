@@ -1065,7 +1065,7 @@ async function routeChannelMessageInner(
     sendReply(deps, {
       ...reply,
       openAsks: pendingAsk === null ? 'untouched' : { keeps: pendingAsk },
-    }),
+    }).then((sent) => sent.channelMessageId),
   );
 
   const loaded = await deps.loadContext(deps.database, job);
