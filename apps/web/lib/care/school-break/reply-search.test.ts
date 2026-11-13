@@ -23,6 +23,8 @@ describe("the parent's reply, checked by code", () => {
     first_day_text: 'dec 21',
     last_day: '2027-01-01',
     last_day_text: 'jan 1',
+    back_day: null,
+    back_day_text: null,
     name: 'winter break',
     confidence: 'high',
   };
@@ -59,10 +61,45 @@ describe("the parent's reply, checked by code", () => {
           first_day_text: null,
           last_day: null,
           last_day_text: null,
+          back_day: null,
+          back_day_text: null,
           name: null,
           confidence: 'low',
         },
         "she's at Maple Grove",
+        '2026-27',
+      ),
+    ).toEqual({ status: 'nothing_stated' });
+  });
+
+  it('files the day before the day they are back, when that is the day the parent gave', () => {
+    const back = 'dec 19, and they go back jan 5';
+    const reading = {
+      ...read,
+      quote: back,
+      first_day: '2026-12-19',
+      first_day_text: 'dec 19',
+      last_day: null,
+      last_day_text: null,
+      back_day: '2027-01-05',
+      back_day_text: 'jan 5',
+    };
+    expect(toSchoolBreakReplyReading(reading, back, '2026-27')).toEqual({
+      status: 'read',
+      firstDay: '2026-12-19',
+      lastDay: '2027-01-04',
+      name: 'winter break',
+      quote: back,
+    });
+    // The day back is held to the same grammar: its words must state exactly that day.
+    expect(
+      toSchoolBreakReplyReading({ ...reading, back_day: '2027-01-04' }, back, '2026-27'),
+    ).toEqual({ status: 'nothing_stated' });
+    // Two answers for the end of the break is no answer.
+    expect(
+      toSchoolBreakReplyReading(
+        { ...reading, last_day: '2027-01-01', last_day_text: 'jan 5' },
+        back,
         '2026-27',
       ),
     ).toEqual({ status: 'nothing_stated' });

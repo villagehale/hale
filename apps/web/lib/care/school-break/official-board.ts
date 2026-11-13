@@ -6,18 +6,28 @@ import { z } from 'zod';
  * A school email names a domain, and a domain alone proves nothing: a coach writes from
  * gmail.com, a newsletter goes out through a vendor, a club has its own site. So a sender
  * domain becomes an official host only when Wikidata says it is the official website
- * (P856) of an educational institution (P31/P279* Q2385804): a school board, a school
- * district, a school. The host Hale then reads calendars on is that website's host, so a
- * shared host (google.com, a mail vendor) is never an institution and never a host. No
- * hand-kept list of boards or domains, and the same kind of proof the own-city lookup
- * uses (VIL-684).
+ * (P856) of a school board, a school district or a primary or secondary school, and of no
+ * higher education institution. "Educational institution" is not enough: a university, a
+ * college or a conservatory sends kids' camp, lesson and exam mail too, and its calendar
+ * is not the kid's school's. The host Hale then reads calendars on is that website's host,
+ * so a shared host (google.com, a mail vendor) is never a school and never a host. No
+ * hand-kept list of boards or domains (the classes are Wikidata's own), and the same kind
+ * of proof the own-city lookup uses (VIL-684).
  *
  * What crosses to the source is a domain an email came from: never an address, a name, a
  * family or a message.
  */
 
-/** Wikidata's "educational institution": schools, school boards and districts sit under it. */
-export const EDUCATIONAL_INSTITUTION_QID = 'Q2385804';
+/**
+ * The Wikidata classes a kid's own school or board is an instance of (P31/P279*): school
+ * district (school districts of Canada and of the US sit under it), board of education,
+ * primary school, secondary school. Live (2026-11-13), every Ontario board probed is the
+ * first or the second, and private K-12 schools are secondary schools.
+ */
+export const K12_CLASS_QIDS = ['Q398141', 'Q399541', 'Q9842', 'Q159334'] as const;
+/** Higher education institution: universities, colleges, polytechnics and conservatories
+ * sit under it (a conservatory is also a school), so it rules an entity out. */
+export const HIGHER_EDUCATION_QID = 'Q38723';
 export const WIKIDATA_SPARQL_URL = 'https://query.wikidata.org/sparql';
 /** An infra bound on one source request; a slow answer leaves the domain unproven. */
 export const BOARD_SITE_TIMEOUT_MS = 10_000;
@@ -72,7 +82,8 @@ function siteHost(url: URL): string {
 
 /**
  * The query: entities whose official website is exactly the root of one of these hosts,
- * and which are educational institutions. Hosts are checked to be plain hosts first, so
+ * which are a school board, district or K-12 school, and which are no higher education
+ * institution. Hosts are checked to be plain hosts first, so
  * nothing from an email reaches the query text unchecked.
  */
 export function boardSiteQuery(hosts: readonly string[]): string {
@@ -87,7 +98,8 @@ export function boardSiteQuery(hosts: readonly string[]): string {
     'SELECT DISTINCT ?item ?site WHERE {',
     `  VALUES ?site { ${sites.join(' ')} }`,
     '  ?item wdt:P856 ?site .',
-    `  FILTER EXISTS { ?item wdt:P31/wdt:P279* wd:${EDUCATIONAL_INSTITUTION_QID} }`,
+    `  FILTER EXISTS { VALUES ?k12 { ${K12_CLASS_QIDS.map((qid) => `wd:${qid}`).join(' ')} } ?item wdt:P31/wdt:P279* ?k12 }`,
+    `  FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* wd:${HIGHER_EDUCATION_QID} }`,
     '}',
   ].join('\n');
 }

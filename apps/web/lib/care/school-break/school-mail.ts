@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, notExists } from 'drizzle-orm';
 import { googleGetFetch } from '~/lib/cron/connector-sync';
 import { integrationAccessToken } from '~/lib/integrations/gmail-draft-service';
 import { CONNECTOR_SCOPES } from '~/lib/integrations/google-oauth';
@@ -12,6 +12,9 @@ import { senderDomainOf } from './official-board';
  * The mail is the email alerts Hale already sent this family (`email_alert_offers`): mail
  * from a parent's own connected Gmail that the sentinel read as about the kids and Hale
  * told them about. A 13+ child's mail writes no offer row, so it is never here (rule #1).
+ * Mail since called the parent's own (the parent's "that's mine", or the kid check's
+ * `adult` verdict) is not school mail either: withdrawing its offer only ends the offer's
+ * answerable window, so the verdict is what leaves it out.
  * Only the From header of those messages is fetched, from a connection that is still
  * active and readable. The address is reduced to its domain in memory and never written;
  * whether that domain is a board's own site is official-board.ts's question.
@@ -100,16 +103,33 @@ export function productionSchoolMailPorts(
   database: Database,
   googleFetch: GoogleFetch = googleGetFetch,
 ): SchoolMailPorts {
+  const offers = schema.emailAlertOffers;
+  const verdicts = schema.kidRelevanceVerdicts;
   return {
     alertedMail: async (familyId) =>
       database
-        .select({
-          integrationId: schema.emailAlertOffers.integrationId,
-          messageId: schema.emailAlertOffers.messageId,
-        })
-        .from(schema.emailAlertOffers)
-        .where(eq(schema.emailAlertOffers.familyId, familyId))
-        .orderBy(desc(schema.emailAlertOffers.createdAt))
+        .select({ integrationId: offers.integrationId, messageId: offers.messageId })
+        .from(offers)
+        .where(
+          and(
+            eq(offers.familyId, familyId),
+            notExists(
+              database
+                .select({ id: verdicts.id })
+                .from(verdicts)
+                .where(
+                  and(
+                    eq(verdicts.familyId, offers.familyId),
+                    eq(verdicts.source, 'gmail'),
+                    eq(verdicts.integrationId, offers.integrationId),
+                    eq(verdicts.itemKey, offers.messageId),
+                    eq(verdicts.verdict, 'adult'),
+                  ),
+                ),
+            ),
+          ),
+        )
+        .orderBy(desc(offers.createdAt))
         .limit(MAX_ALERTED_MESSAGES),
     readable: async (familyId, integrationId) => {
       const [row] = await database

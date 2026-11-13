@@ -1,12 +1,14 @@
 {
   "value": {
-    "quote": "dec 18 to jan 4",
+    "quote": "I think it's dec 18 to jan 4 for us this year",
     "first_day": "2026-12-18",
     "first_day_text": "dec 18",
     "last_day": "2027-01-04",
     "last_day_text": "jan 4",
+    "back_day": null,
+    "back_day_text": null,
     "name": "winter break",
     "confidence": "high"
   },
-  "latencyMs": 2453
+  "latencyMs": 5067
 }

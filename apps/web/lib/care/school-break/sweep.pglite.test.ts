@@ -235,6 +235,62 @@ async function seedFamily(
   return { familyId, parentIds };
 }
 
+/** One more email alert for a family already seeded with Gmail, from `senderDomain`. */
+async function alertFrom(familyId: string, senderDomain: string) {
+  const [gmail] = await db.database
+    .select({ id: schema.integrations.id, userId: schema.integrations.userId })
+    .from(schema.integrations)
+    .where(eq(schema.integrations.familyId, familyId));
+  seq += 1;
+  const messageId = `msg-${seq}`;
+  inbox.set(messageId, `School Office <office@${senderDomain}>`);
+  const [message] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId,
+      parentUserId: gmail?.userId as string,
+      channel: 'sms',
+      direction: 'out',
+      category: 'alert',
+      status: 'sent',
+      sentAt: NOW,
+    })
+    .returning({ id: schema.channelMessages.id });
+  await db.database.insert(schema.emailAlertOffers).values({
+    familyId,
+    parentUserId: gmail?.userId as string,
+    integrationId: gmail?.id as string,
+    messageId,
+    kind: 'new_event',
+    title: 'Curriculum night',
+    startsAt: NOW,
+    channelMessageId: message?.id as string,
+    expiresAt: NOW,
+  });
+  return messageId;
+}
+
+const OTHER_PAGE = 'https://www.other-board.example/calendar';
+const EARLIER: BreakPageReading = {
+  status: 'verified',
+  sourceUrl: OTHER_PAGE,
+  name: 'Winter Break',
+  firstDay: { date: '2026-12-19', quote: 'Winter break: December 19 to January 3' },
+  lastDay: { date: '2027-01-03', quote: 'Winter break: December 19 to January 3' },
+};
+
+/** Each board's own page: BOARD's says WINTER, OTHER_BOARD's says `other`. */
+function twoBoards(other: BreakPageReading): BoardLookupDeps {
+  return {
+    search: async (host) => ({
+      outcome: 'pages',
+      boardName: 'Example District School Board',
+      urls: [host === BOARD ? PAGE : OTHER_PAGE],
+    }),
+    read: async ({ url }) => (url === PAGE ? WINTER : other),
+  };
+}
+
 async function asks(familyId: string) {
   return db.database
     .select()
@@ -490,6 +546,50 @@ describe('the winter-break sweep', () => {
     expect(await asks(familyId)).toHaveLength(1);
   });
 
+  it("reads no mail the parent or the kid check called the parent's own", async () => {
+    const { familyId } = await seedFamily({ senders: [BOARD] });
+    const [offer] = await db.database
+      .select({
+        integrationId: schema.emailAlertOffers.integrationId,
+        messageId: schema.emailAlertOffers.messageId,
+      })
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, familyId));
+    await db.database.insert(schema.kidRelevanceVerdicts).values({
+      familyId,
+      source: 'gmail',
+      integrationId: offer?.integrationId as string,
+      itemKey: offer?.messageId as string,
+      inputHash: 'parent',
+      verdict: 'adult',
+      decidedBy: 'parent',
+    });
+    const script = scripted();
+    await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+    expect(gmailReads).toEqual([]);
+    expect(script.searches).toEqual([]);
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it("lists only the family's own alerts, and reads only its own active connection that holds the read scope", async () => {
+    const one = await seedFamily({ senders: [BOARD] });
+    const two = await seedFamily({ senders: [OTHER_BOARD] });
+    const ports = productionSchoolMailPorts(db.database, fakeGmail);
+    const mine = await ports.alertedMail(one.familyId);
+    expect(mine).toHaveLength(1);
+    const [theirs] = await ports.alertedMail(two.familyId);
+    expect(theirs?.integrationId).not.toBe(mine[0]?.integrationId);
+
+    const integrationId = mine[0]?.integrationId as string;
+    expect(await ports.readable(one.familyId, integrationId)).toBe(true);
+    expect(await ports.readable(two.familyId, integrationId)).toBe(false);
+    await db.database
+      .update(schema.integrations)
+      .set({ scopes: ['openid'] })
+      .where(eq(schema.integrations.id, integrationId));
+    expect(await ports.readable(one.familyId, integrationId)).toBe(false);
+  });
+
   it('asks rather than waits when the mail cannot be read, and names it', async () => {
     const { familyId } = await seedFamily({ senders: [BOARD] });
     const failing: GoogleFetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
@@ -540,6 +640,72 @@ describe('the winter-break sweep', () => {
     const nextDay = new Date(NOW.getTime() + 25 * 60 * 60_000);
     await runSchoolBreakSweep(db.database, deps(scripted().lookup), nextDay);
     expect(gmailReads).toHaveLength(2);
+  });
+
+  it('files no break and asks the parent once when two proven schools disagree on the days', async () => {
+    const { familyId } = await seedFamily({ senders: [BOARD, OTHER_BOARD] });
+    const result = await runSchoolBreakSweep(db.database, deps(twoBoards(EARLIER)), NOW);
+    expect(result).toMatchObject({ verified: 2, recorded: 0, queued: 1 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('files the break when two proven schools give the same days', async () => {
+    const { familyId } = await seedFamily({ senders: [BOARD, OTHER_BOARD] });
+    const same: BreakPageReading = { ...WINTER, sourceUrl: OTHER_PAGE };
+    const result = await runSchoolBreakSweep(db.database, deps(twoBoards(same)), NOW);
+    expect(result).toMatchObject({ verified: 2, recorded: 1, queued: 0 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      firstDay: '2026-12-21',
+      lastDay: '2027-01-01',
+      boardHost: BOARD,
+    });
+  });
+
+  it('reads the mail again the next day with a board break on file, and asks when a second proven school disagrees', async () => {
+    const { familyId, parentIds } = await seedFamily({ senders: [BOARD], parents: 2 });
+    await runSchoolBreakSweep(db.database, deps(twoBoards(EARLIER)), NOW);
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      boardHost: BOARD,
+    });
+    expect(gmailReads).toHaveLength(1);
+
+    await alertFrom(familyId, OTHER_BOARD);
+    const nextDay = new Date(NOW.getTime() + 25 * 60 * 60_000);
+    const result = await runSchoolBreakSweep(db.database, deps(twoBoards(EARLIER)), nextDay);
+
+    expect(gmailReads).toHaveLength(3);
+    expect(result).toMatchObject({ disagreed: 1, recorded: 0, queued: 1 });
+    expect(await asks(familyId)).toHaveLength(1);
+
+    // Still disagreeing a day later, with another parent first: still one ask this year.
+    const dayAfter = new Date(NOW.getTime() + 50 * 60 * 60_000);
+    const onlySecond = deps(twoBoards(EARLIER), {
+      recipients: async () => [
+        { parentUserId: parentIds[1] as string, timeZone: 'America/Toronto', role: 'co_parent' },
+      ],
+    });
+    const again = await runSchoolBreakSweep(db.database, onlySecond, dayAfter);
+    expect(again).toMatchObject({ disagreed: 1, asked: 1, queued: 0 });
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('reads no more mail in a run once Wikidata has not answered, and asks Wikidata once', async () => {
+    for (let i = 0; i < 7; i++) await seedFamily({ senders: [BOARD] });
+    wikidata.fail = true;
+    const result = await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect(wikidata.queries).toHaveLength(1);
+    expect(gmailReads).toHaveLength(1);
+    expect(result).toMatchObject({ mailRead: 1, waiting: 1, deferred: 6, queued: 0 });
+  });
+
+  it('counts a child in junior kindergarten from the school year they turn four', async () => {
+    const jk = await seedFamily({ dateOfBirth: '2022-11-15' });
+    const notYet = await seedFamily({ dateOfBirth: '2023-01-10' });
+    const result = await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect(result).toMatchObject({ noSchoolChild: 1, queued: 1 });
+    expect(await asks(jk.familyId)).toHaveLength(1);
+    expect(await asks(notYet.familyId)).toEqual([]);
   });
 
   it("asks once a school year even when the household's first parent changes", async () => {

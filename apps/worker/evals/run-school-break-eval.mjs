@@ -105,6 +105,13 @@ const REPLY_CASES = [
     expect: { status: 'read', firstDay: '2026-12-18', lastDay: '2027-01-04' },
   },
   {
+    // Asked when the kids are back, a parent gives the day back: the last day off is the
+    // day before it.
+    id: 'parent-gives-day-back',
+    text: 'dec 19, and they go back jan 5',
+    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-04' },
+  },
+  {
     // A rough time is not a day: nothing is filed, and Hale never names a guessed break.
     id: 'parent-says-around-christmas',
     text: 'not sure, around christmas i think',

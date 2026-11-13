@@ -1,6 +1,7 @@
 import { type AgentClient, forceToolJson, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { addDaysToKey } from '~/lib/plan/spine';
 import { dateSpanRefusal, normalizeQuote } from '~/lib/registration/verify-window';
 import { isWinterBreak } from './cycle';
 import { usableBreakName } from './read';
@@ -12,7 +13,9 @@ import { usableBreakName } from './read';
  * wrong read is a break Hale later names as fact, so anything short of a high-confidence
  * reading of both days, quoted from the parent's own words, each day printed there and
  * stating exactly that day (the board pages' date grammar), inside this school year's
- * winter, is `nothing_stated`. The coach still replies.
+ * winter, is `nothing_stated`. The coach still replies. A parent asked when the kids are
+ * back answers with the day back, not the last day off: that day is read as said, and
+ * the last day off is the day before it, by calendar arithmetic.
  *
  * A missing client, a missing skill, or a model failure is the same outcome, and the log
  * names which. The parent's text is never in that line (rule #1, rule #11).
@@ -42,9 +45,18 @@ export const SCHOOL_BREAK_REPLY_SCHEMA = {
       type: ['string', 'null'],
       description: 'The characters of `quote` that state the last day, copied exactly.',
     },
+    back_day: {
+      type: ['string', 'null'],
+      description: 'YYYY-MM-DD, the first day back, when that is what the parent gave instead.',
+    },
+    back_day_text: {
+      type: ['string', 'null'],
+      description: 'The characters of `quote` that state the day back, copied exactly.',
+    },
     name: {
       type: ['string', 'null'],
-      description: "What the break is called, in the parent's words or language.",
+      description:
+        "What the break is called, in the parent's words or language. Given whenever the days are.",
     },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
   },
@@ -54,6 +66,8 @@ export const SCHOOL_BREAK_REPLY_SCHEMA = {
     'first_day_text',
     'last_day',
     'last_day_text',
+    'back_day',
+    'back_day_text',
     'name',
     'confidence',
   ],
@@ -65,6 +79,8 @@ export const schoolBreakReplyParse = z.object({
   first_day_text: z.string().nullable(),
   last_day: z.string().nullable(),
   last_day_text: z.string().nullable(),
+  back_day: z.string().nullable(),
+  back_day_text: z.string().nullable(),
   name: z.string().nullable(),
   confidence: z.string(),
 });
@@ -93,16 +109,24 @@ export function toSchoolBreakReplyReading(
   schoolYear: string,
 ): SchoolBreakReplyReading {
   if (raw.confidence !== 'high') return { status: 'nothing_stated' };
-  const { quote, first_day: firstDay, last_day: lastDay } = raw;
-  if (quote === null || firstDay === null || lastDay === null) return { status: 'nothing_stated' };
-  if (!ISO_DAY.test(firstDay) || !ISO_DAY.test(lastDay)) return { status: 'nothing_stated' };
+  const { quote, first_day: firstDay } = raw;
+  // The break's end, as the parent gave it: the last day off, or the day back. One of them.
+  const end =
+    raw.last_day !== null && raw.back_day === null
+      ? { date: raw.last_day, text: raw.last_day_text }
+      : raw.back_day !== null && raw.last_day === null
+        ? { date: raw.back_day, text: raw.back_day_text }
+        : null;
+  if (quote === null || firstDay === null || end === null) return { status: 'nothing_stated' };
+  if (!ISO_DAY.test(firstDay) || !ISO_DAY.test(end.date)) return { status: 'nothing_stated' };
+  const lastDay = raw.back_day === null ? end.date : addDaysToKey(end.date, -1);
   const said = normalizeQuote(quote);
   if (said === '' || !normalizeQuote(text).includes(said)) return { status: 'nothing_stated' };
   // Each day is printed in the parent's own words and states exactly that day, read by
   // the same date grammar the board pages are held to: "around christmas" states no day.
   for (const [date, span] of [
     [firstDay, raw.first_day_text],
-    [lastDay, raw.last_day_text],
+    [end.date, end.text],
   ] as const) {
     if (span === null || span.trim() === '' || !said.includes(normalizeQuote(span))) {
       return { status: 'nothing_stated' };
