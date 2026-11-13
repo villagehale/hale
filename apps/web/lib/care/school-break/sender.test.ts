@@ -197,9 +197,44 @@ describe('alignedSenderHost, against text the sender controls inside Gmail’s o
     });
   });
 
+  /**
+   * Gmail's stamp for a message whose envelope sender is `mailfrom`: its SPF comment
+   * repeats the envelope sender as given, so whatever the sender put in a quoted local
+   * part lands inside that comment, unescaped.
+   */
+  function gmailStampFor(mailfrom: string, spf = 'pass'): string {
+    return [
+      'mx.google.com',
+      `spf=${spf} (google.com: domain of ${mailfrom} designates 192.0.2.1 as permitted sender) smtp.mailfrom=${mailfrom}`,
+      realFail,
+    ].join(';\r\n       ');
+  }
+
   it.each([
-    ['Gmail’s plain stamp', gmailStamp('board.example')],
-    ['a quoted header.from', 'mx.google.com; dmarc=pass header.from="board.example"'],
+    [
+      'a quoted local part that closes Gmail’s SPF comment and writes a dmarc pass',
+      gmailStampFor('"x);dmarc=pass header.from=board.example;("@evil.example'),
+    ],
+    [
+      'the same local part under an SPF softfail',
+      gmailStampFor('"x);dmarc=pass header.from=board.example;("@evil.example', 'softfail'),
+    ],
+    [
+      'a quoted local part that closes Gmail’s SPF comment and writes a dkim pass',
+      gmailStampFor('"x);dkim=pass header.d=board.example;("@evil.example'),
+    ],
+    [
+      'two dmarc results for one message, the pass first',
+      'mx.google.com; dmarc=pass header.from=board.example; dmarc=fail header.from=board.example',
+    ],
+    [
+      'two dmarc results for one message, the fail first',
+      'mx.google.com; dmarc=fail header.from=board.example; dmarc=pass header.from=board.example',
+    ],
+    [
+      'a quoted header.from (a quote anywhere in the stamp names nothing)',
+      'mx.google.com; dmarc=pass header.from="board.example"',
+    ],
     [
       'a real pass after a quoted local part that holds a semicolon',
       'mx.google.com; spf=pass smtp.mailfrom="o;ffice"@board.example; dmarc=pass header.from=board.example',
@@ -207,6 +242,26 @@ describe('alignedSenderHost, against text the sender controls inside Gmail’s o
     [
       'a real pass after a comment that holds a quote',
       'mx.google.com; spf=pass (google.com: "odd) smtp.mailfrom=x@board.example; dmarc=pass header.from=board.example',
+    ],
+  ])('names nothing for %s, fail closed', (_case, stamp) => {
+    expect(alignedSenderHost(message('office@board.example', stamp))).toEqual({
+      status: 'unaligned',
+      reason: 'ambiguous_stamp',
+    });
+  });
+
+  it.each([
+    ['Gmail’s plain stamp', gmailStamp('board.example')],
+    [
+      'Gmail’s stamp with its SPF comment for a plain envelope sender',
+      gmailStampFor('bounce+a1=b2@board.example').replace(
+        realFail,
+        'dmarc=pass (p=NONE) header.from=board.example',
+      ),
+    ],
+    [
+      'two dkim results, the vendor’s failing and the school’s passing',
+      'mx.google.com; dkim=fail header.d=mailer.example header.s=s1; dkim=pass header.d=board.example header.s=s2; spf=neutral',
     ],
   ])('still names the school for %s (positive control)', (_case, stamp) => {
     expect(alignedSenderHost(message('office@board.example', stamp))).toEqual({

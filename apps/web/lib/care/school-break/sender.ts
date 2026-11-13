@@ -12,6 +12,11 @@ import SUFFIXES from '~/lib/channel/off-domain/public-suffix/suffixes.json';
  * above every header the message arrived with, so the first `Authentication-Results`
  * is Gmail's and any lower one, which the sender could have written, is never read.
  *
+ * Gmail's own stamp still repeats sender text unescaped: its SPF comment names the
+ * envelope sender as given, so a quoted local part holding `)` and `;` closes that
+ * comment early and writes a result of its own. A local part can carry those only inside
+ * quotes, so a stamp holding any `"`, or more than one `dmarc` result, names nothing.
+ *
  * The school is then the From domain's REGISTRABLE domain under the Public Suffix List,
  * private section included: `office@mail.board.example` is `board.example`, while a
  * school on shared hosting (`a-school.github.io`) stays its own and never becomes the
@@ -176,7 +181,12 @@ export type SenderReading =
   | { status: 'aligned'; host: string }
   | {
       status: 'unaligned';
-      reason: 'no_from' | 'not_gmail_stamped' | 'not_aligned' | 'not_registrable';
+      reason:
+        | 'no_from'
+        | 'not_gmail_stamped'
+        | 'ambiguous_stamp'
+        | 'not_aligned'
+        | 'not_registrable';
     };
 
 /** A message's headers, in the order the message carries them. */
@@ -199,6 +209,9 @@ export function alignedSenderHost(headers: MessageHeaders): SenderReading {
   const parsed = stamp ? parseAuthenticationResults(stamp.value) : null;
   if (parsed === null || parsed.authservId !== GMAIL_AUTHSERV_ID) {
     return { status: 'unaligned', reason: 'not_gmail_stamped' };
+  }
+  if (stamp?.value.includes('"') || parsed.results.filter((r) => r.method === 'dmarc').length > 1) {
+    return { status: 'unaligned', reason: 'ambiguous_stamp' };
   }
   const site = registrableDomain(fromDomain);
   if (site === null) return { status: 'unaligned', reason: 'not_registrable' };
