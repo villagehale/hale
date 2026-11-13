@@ -200,6 +200,17 @@ export const OPS_PAGE_VOCABULARY = {
   linq_effect_delivery_unknown: {},
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
+  parent_text_unanswered: {},
+  inbound_canary_failed: {
+    stage: [
+      'not_configured',
+      'household',
+      'injection',
+      'not_landed',
+      'never_answered',
+      'unexpected',
+    ],
+  },
 } as const satisfies Record<string, Readonly<Record<string, readonly string[]>>>;
 
 type OpsPageVocabulary = typeof OPS_PAGE_VOCABULARY;
@@ -225,11 +236,14 @@ type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 
 /** A page's facts, from its site's vocabulary: never a body, phone or name. `ref` is the
  * id of the one row ops resolves the page from; anything but a row id travels as
- * `redacted`. */
+ * `redacted`. `count` is how many of the site's subject there are; anything but a short
+ * whole number travels as `redacted`. */
 export type OpsPage = {
-  [S in OpsPageSite]: { site: S; facts: OpsPageFacts<S> } & (S extends OpsPagePerRefSite
-    ? { ref: string }
-    : { ref?: string });
+  [S in OpsPageSite]: {
+    site: S;
+    facts: OpsPageFacts<S>;
+    count?: number;
+  } & (S extends OpsPagePerRefSite ? { ref: string } : { ref?: string });
 }[OpsPageSite];
 
 function isPerRefPage(page: OpsPage): page is Extract<OpsPage, { site: OpsPagePerRefSite }> {
@@ -521,11 +535,18 @@ function opsPageFacts(page: OpsPage): Array<[string, string]> {
   return redacted > 0 ? [...shown, [REDACTED_FACTS_KEY, String(redacted)]] : shown;
 }
 
+/** A whole number short of a phone-length digit run (the {@link failureCategory} rule). */
+function opsPageCount(value: number): string {
+  const digits = String(value);
+  return /^\d{1,6}$/.test(digits) ? digits : 'redacted';
+}
+
 export function composeOpsPageAlert(page: OpsPage): string {
   return [
     'Hale: ops page.',
     `site ${failureCategory(page.site)}.`,
     ...opsPageFacts(page).map(([key, value]) => `${key} ${value}.`),
+    ...(page.count === undefined ? [] : [`count ${opsPageCount(page.count)}.`]),
     ...(page.ref === undefined ? [] : [`ref ${uuidOr(page.ref, 'redacted')}.`]),
   ].join(' ');
 }
@@ -2189,7 +2210,11 @@ export async function pageOps(
   const post = deps.post ?? ((text: string) => postOpsSlack(text));
   const site = failureCategory(page.site);
   console.error(
-    { ...Object.fromEntries(opsPageFacts(page)), page: site },
+    {
+      ...Object.fromEntries(opsPageFacts(page)),
+      ...(page.count === undefined ? {} : { count: opsPageCount(page.count) }),
+      page: site,
+    },
     `URGENT: ${site} - paging #ops`,
   );
   const text = composeOpsPageAlert(page);
