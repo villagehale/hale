@@ -30,8 +30,8 @@ import {
   readCityPage,
   readDidNotFinish,
 } from './lookup';
-import { cachedOfficialSite, wikidataSource } from './official-site';
-import { familyOpening, openingInstant, opensForSomeone } from './opening';
+import { cachedOfficialSite, onOfficialSite, wikidataSource } from './official-site';
+import { familyOpening, opensForSomeone } from './opening';
 import { type CityPlace, type OwnCity, cityKey, readOwnCity } from './place';
 import { searchRegistrationPages } from './search';
 import {
@@ -296,7 +296,16 @@ async function refreshCity(
     return prior;
   };
   let knownPageSaysNotOut = false;
-  if (prior?.status === 'verified') {
+  // A known page is trusted only while it is on the city's official site as it stands now:
+  // a page read under a host the source has since dropped (a reverted edit) is not re-read,
+  // and its date gives way. A source that did not answer says nothing either way.
+  const site = prior?.status === 'verified' ? await lookup.officialSite(place, now) : null;
+  const knownPageOffSite =
+    prior?.status === 'verified' &&
+    site !== null &&
+    site.status !== 'retry' &&
+    (site.status === 'not_found' || !onOfficialSite(prior.sourceUrl, site));
+  if (prior?.status === 'verified' && !knownPageOffSite) {
     const again = await readCityPage(
       lookup.read,
       { place, cycleLabel, municipality: prior.municipality, sourceUrl: prior.sourceUrl },
@@ -328,6 +337,13 @@ async function refreshCity(
   if (found.status === 'verified' || prior?.status !== 'verified') {
     if (found.status === 'retry') return keep(found.reason);
     outcome = found;
+  } else if (knownPageOffSite) {
+    outcome = {
+      status: 'not_found',
+      reason: 'known_page_off_official_site',
+      municipality: prior.municipality,
+      tried: [{ url: prior.sourceUrl, outcome: 'not_official_site' }],
+    };
   } else if (knownPageSaysNotOut) {
     outcome = {
       status: 'not_found',
@@ -353,19 +369,20 @@ async function refreshCity(
 /** Every family's opening on the stored reading has come and gone: there is nothing left
  * to tell this season, and a page past its opening can no longer confirm it (a yearless
  * date pins only a future day), so the city is not looked up again until the next. A
- * family with no opening on the page keeps the city due. */
+ * family with no opening on the page keeps the city due, and so does one in doubt whose
+ * residents' morning has passed but everyone's has not. */
 function openingPassed(
   places: readonly OwnCity[],
+  cycleLabel: string,
   reading: StoredCityReading | null,
   now: Date,
 ): boolean {
   if (reading?.status !== 'verified') return false;
-  return places.every((place) => {
-    const opening = familyOpening(reading.reading, place);
-    return (
-      opening !== null && openingInstant(reading.reading, opening.own).getTime() <= now.getTime()
-    );
-  });
+  return places.every(
+    (place) =>
+      familyOpening(reading.reading, place) !== null &&
+      cityOpeningFacts(place, cycleLabel, reading.reading, now) === null,
+  );
 }
 
 /** The city a family's place is in, as one reading serves it: no residency. */
@@ -440,6 +457,7 @@ export async function runCityRegistrationSweep(
         (nextAt === null || nextAt.getTime() <= now.getTime()) &&
         !openingPassed(
           families.map((family) => family.place),
+          cycleLabel,
           reading,
           now,
         );

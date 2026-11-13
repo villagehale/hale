@@ -1,7 +1,13 @@
 import type { Database } from '@hale/db';
+import { type FamilyCountry, postalCountryOf } from '@hale/types';
 import type { PlaceUnknown } from '~/lib/channel/off-domain/answer';
 import { matchPostalToken, readPlaceRow, searchPlaceOf } from '~/lib/channel/off-domain/place';
-import { type TorontoDistrict, districtForFsa, municipalitiesForFsa } from '../fsa-municipalities';
+import {
+  DISTRICT_REGISTRATION_CITY,
+  type TorontoDistrict,
+  districtForFsa,
+  municipalitiesForFsa,
+} from '../fsa-municipalities';
 
 /**
  * VIL-684 · the city a family's registration dates are looked up for: wherever they
@@ -16,8 +22,13 @@ import { type TorontoDistrict, districtForFsa, municipalitiesForFsa } from '../f
  *   - `district` — Toronto registers by district on different mornings, and the FSA
  *     table knows which one an M code is in. Absent everywhere else.
  *   - `residencyKnown` — false where the GTA table records the FSA as straddling two
- *     towns (Thornhill). The national table names one city for it, but a resident-first
- *     date is claimed only where residency is not in doubt, the matcher's own rule.
+ *     towns (Thornhill), and for every US family: the US table names a ZIP's postal city,
+ *     not the municipality it lies in (postal-cities/README.md). A resident-first date is
+ *     claimed only where residency is not in doubt, the matcher's own rule.
+ *
+ * A family placed in the city that registers by district (Toronto) with no district of
+ * its own (no postal code, or a parent who texted the city's name) is `no_district`: any
+ * one morning on that page is another district's.
  */
 export interface OwnCity {
   city: string;
@@ -33,7 +44,7 @@ export type CityPlace = Omit<OwnCity, 'residencyKnown'>;
 
 export type OwnCityRead =
   | { status: 'known'; place: OwnCity }
-  | { status: 'unknown'; reason: PlaceUnknown };
+  | { status: 'unknown'; reason: PlaceUnknown | 'no_district' };
 
 type PlaceRow = Parameters<typeof searchPlaceOf>[0];
 
@@ -50,27 +61,41 @@ export function cityKey(place: Pick<OwnCity, 'city' | 'provinceOrState' | 'count
 }
 
 /** The district a Toronto FSA names, and whether residency is in doubt, from one row. */
-function refinements(row: PlaceRow): Pick<OwnCity, 'district' | 'residencyKnown'> {
+function refinements(
+  row: PlaceRow,
+  country: FamilyCountry | undefined,
+): Pick<OwnCity, 'district' | 'residencyKnown'> {
   const postal = row.postalCode?.trim() || row.areaCoarse?.trim();
   const token = postal ? matchPostalToken(postal) : null;
-  if (token?.country !== 'CA') return { district: null, residencyKnown: true };
-  return {
-    district: districtForFsa(token.areaKey),
-    residencyKnown: municipalitiesForFsa(token.areaKey).length <= 1,
-  };
+  if (country === 'CA' && token?.country === 'CA') {
+    return {
+      district: districtForFsa(token.areaKey),
+      residencyKnown: municipalitiesForFsa(token.areaKey).length <= 1,
+    };
+  }
+  return { district: null, residencyKnown: country !== 'US' };
 }
 
 export async function ownCityOfRow(row: PlaceRow): Promise<OwnCityRead> {
   const place = await searchPlaceOf(row);
   if (place.status === 'unknown') return place;
   if (place.city === undefined) return { status: 'unknown', reason: 'unmapped' };
+  const country = postalCountryOf(place.country);
+  const refined = refinements(row, country);
+  if (
+    country === 'CA' &&
+    refined.district === null &&
+    folded(place.city) === folded(DISTRICT_REGISTRATION_CITY)
+  ) {
+    return { status: 'unknown', reason: 'no_district' };
+  }
   return {
     status: 'known',
     place: {
       city: place.city,
       provinceOrState: place.provinceOrState ?? null,
       country: place.country,
-      ...refinements(row),
+      ...refined,
     },
   };
 }

@@ -72,6 +72,33 @@ async function markhamOnFile(): Promise<void> {
   );
 }
 
+const SUDBURY_PAGE =
+  'https://www.greatersudbury.ca/play/pools/swimming-lessons/program-registration-dates/';
+
+async function onFile(
+  place: Parameters<typeof recordCityReading>[1],
+  sourceUrl: string,
+  timeZone: string,
+  dates: LiveRegistrationDate[],
+): Promise<void> {
+  const reading: VerifiedRegistrationReading = {
+    sourceUrl,
+    checkedAt: NOW,
+    reader: 'ai',
+    status: 'verified',
+    timeZone,
+    dates,
+    partialDates: [],
+  };
+  await recordCityReading(
+    db.database,
+    place,
+    'Winter 2027',
+    { status: 'verified', municipality: place.city, sourceUrl, reading },
+    NOW,
+  );
+}
+
 /** The intake model reads the ask as a program date; a live search would name Dec 5. */
 function programDatesClient() {
   let searches = 0;
@@ -125,6 +152,68 @@ describe('the signup door answers from the own-city reading the family is told',
     const outcome = await composer.compose(ask);
 
     expect(outcome).toEqual({ status: 'answered', body: `${RESIDENTS}. ${NON_RESIDENTS}.` });
+    expect(searches()).toBe(0);
+  });
+
+  it('answers from the reading for any program-dates wording, not only one the hand matcher takes', async () => {
+    await markhamOnFile();
+    const { client, searches } = programDatesClient();
+    const composer = createIntakeAnswerComposer(client, (postal, now) =>
+      postalOwnCityQuotes(db.database, postal, now),
+    );
+
+    const outcome = await composer.compose({
+      ...ask,
+      parentWords: 'when do winter programs open for sign up in my town?',
+    });
+
+    expect(outcome).toEqual({ status: 'answered', body: `${RESIDENTS}. ${NON_RESIDENTS}.` });
+    expect(searches()).toBe(0);
+  });
+
+  it('answers a town outside the GTA from its own reading', async () => {
+    const quote = 'Winter Session 2027 Registration Date: December 16, 2026 at 8 a.m.';
+    await onFile(
+      { city: 'Greater Sudbury', provinceOrState: 'Ontario', country: 'Canada', district: null },
+      SUDBURY_PAGE,
+      'America/Toronto',
+      [{ kind: 'unclassified_open', date: '2026-12-16', time: '08:00', evidence: [quote] }],
+    );
+    const { client, searches } = programDatesClient();
+    const composer = createIntakeAnswerComposer(client, (postal, now) =>
+      postalOwnCityQuotes(db.database, postal, now),
+    );
+
+    const outcome = await composer.compose({
+      ...ask,
+      postalCode: 'P3A 1A1',
+      parentWords: 'when does winter swim registration open?',
+    });
+
+    expect(outcome).toEqual({ status: 'answered', body: quote });
+    expect(searches()).toBe(0);
+  });
+
+  it("answers a US ZIP from its town's reading, with both mornings: a ZIP is not residency", async () => {
+    const residents = 'Winter registration for City residents: December 1, 2026 at 9 a.m.';
+    const everyone = 'Non-residents: December 8, 2026 at 9 a.m.';
+    await onFile(
+      { city: 'Fairfax', provinceOrState: 'Virginia', country: 'United States', district: null },
+      'https://www.fairfaxva.gov/recreation/registration',
+      'America/New_York',
+      [
+        { kind: 'resident_open', date: '2026-12-01', time: '09:00', evidence: [residents] },
+        { kind: 'general_open', date: '2026-12-08', time: '09:00', evidence: [everyone] },
+      ],
+    );
+    const { client, searches } = programDatesClient();
+    const composer = createIntakeAnswerComposer(client, (postal, now) =>
+      postalOwnCityQuotes(db.database, postal, now),
+    );
+
+    const outcome = await composer.compose({ ...ask, postalCode: '22030' });
+
+    expect(outcome).toEqual({ status: 'answered', body: `${residents} ${everyone}` });
     expect(searches()).toBe(0);
   });
 
