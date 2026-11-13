@@ -373,6 +373,12 @@ function cityOf({ residencyKnown: _, ...city }: OwnCity): CityPlace {
   return city;
 }
 
+/** The fault class only, as a short name: a postgres-js message can carry a row's values. */
+function faultName(err: unknown): string {
+  const name = err instanceof Error ? err.name : typeof err;
+  return /^[A-Za-z0-9_]{1,40}$/.test(name) ? name : 'other';
+}
+
 /** A family the sweep tells, with its own place: its residency is its own. */
 interface OwnFamily {
   familyId: string;
@@ -441,7 +447,28 @@ export async function runCityRegistrationSweep(
       else if (due && lookupsLeft === 0) result.deferred += 1;
       else if (due && deps.lookup !== null) {
         lookupsLeft -= 1;
-        reading = await refreshCity(database, deps.lookup, place, cycleLabel, reading, now, result);
+        try {
+          reading = await refreshCity(
+            database,
+            deps.lookup,
+            place,
+            cycleLabel,
+            reading,
+            now,
+            result,
+          );
+        } catch (err) {
+          // A lookup that threw finished no more than one that timed out: it waits its
+          // turn the same way (store.ts), so a bug never holds a lookup every hour.
+          await recordUnfinishedLookup(
+            database,
+            place,
+            cycleLabel,
+            `lookup_threw:${faultName(err)}`,
+            now,
+          );
+          throw err;
+        }
       }
 
       for (const family of families) {
@@ -449,11 +476,7 @@ export async function runCityRegistrationSweep(
       }
     } catch (err) {
       result.failed += 1;
-      // The fault class only: a postgres-js message can carry a row's values.
-      console.error(
-        { fault: err instanceof Error ? err.name : typeof err },
-        'own-city registration: city failed',
-      );
+      console.error({ fault: faultName(err) }, 'own-city registration: city failed');
     }
   }
   if (result.queued > 0 || result.superseded > 0) {
