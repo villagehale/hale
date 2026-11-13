@@ -479,35 +479,55 @@ export function newestSolicitedKind(questions: readonly OpenQuestion[]): OpenQue
  * a bare yes is answering the last thing Hale asked, so when the whole open list cannot
  * place their words (`ambiguous`), the router reads them again against this subset.
  *
+ * `offList` is Hale's last text about each lane whose asks are not on this list (the
+ * sign-up lane's: DeterministicHandler.offListAsks). They are ranked with the open
+ * questions by the one rule, {@link newestAsks}: when one of them is the newest, or ties
+ * it, no open question is preferred and the answer reaches that lane, which takes it only
+ * by the same rule.
+ *
  * Every ask on the top tie is kept, so two offers in one message still reach the reader
- * together and a bare yes between them is ambiguous: Hale asks which. Null when any open
- * question is undated (an approval draft is: its draft time is not when it was put to the
- * parent), when nothing is older than the newest, because then there is nothing to prefer
- * it over, and when the newest ask and an older one are both consequential: a household
- * disclosure and a calendar write are not picked between by which came last, so Hale asks.
+ * together and a bare yes between them is ambiguous: Hale asks which. Null when any ask
+ * is undated (an approval draft is: its draft time is not when it was put to the
+ * parent), when nothing on the list is older than the newest, because then there is
+ * nothing to prefer it over, and when the newest ask and an older one are both
+ * consequential: a household disclosure and a calendar write are not picked between by
+ * which came last, so Hale asks.
  */
-export function latestAsked(questions: readonly OpenQuestion[]): readonly OpenQuestion[] | null {
-  const newest = newestAsks(questions);
-  if (!newest || newest.length === questions.length) return null;
+export function latestAsked(
+  questions: readonly OpenQuestion[],
+  offList: readonly Asked[],
+): readonly OpenQuestion[] | null {
+  const newest = newestAsks<Asked>([...questions, ...offList]);
+  if (!newest || newest.some((ask) => offList.includes(ask))) return null;
+  const top = questions.filter((question) => newest.includes(question));
+  if (top.length === questions.length) return null;
   const consequential = (question: OpenQuestion) => GRADE[question.kind] === 'consequential';
   const olderConsequential = questions.some(
-    (question) => !newest.includes(question) && consequential(question),
+    (question) => !top.includes(question) && consequential(question),
   );
-  if (olderConsequential && newest.some(consequential)) return null;
-  return newest;
+  if (olderConsequential && top.some(consequential)) return null;
+  return top;
 }
 
-/** Every question tied at the newest ask time, or null when the list is empty or any ask
- * time is unknown. Recency that cannot be established is not recency. */
-function newestAsks(questions: readonly OpenQuestion[]): OpenQuestion[] | null {
-  if (questions.length === 0) return null;
+/** Anything Hale asked a parent, with when it was put to them. Null: not known. */
+export interface Asked {
+  readonly askedAt: Date | null;
+}
+
+/**
+ * VIL-302 · THE NEWEST-ASK RULE, the one every lane ranks by: every ask tied at the newest
+ * ask time, or null when the list is empty or any ask time is unknown. Recency that cannot
+ * be established is not recency.
+ */
+export function newestAsks<T extends Asked>(asks: readonly T[]): T[] | null {
+  if (asks.length === 0) return null;
   const times: number[] = [];
-  for (const question of questions) {
-    if (question.askedAt === null) return null;
-    times.push(question.askedAt.getTime());
+  for (const ask of asks) {
+    if (ask.askedAt === null) return null;
+    times.push(ask.askedAt.getTime());
   }
   const newest = Math.max(...times);
-  return questions.filter((_, index) => times[index] === newest);
+  return asks.filter((_, index) => times[index] === newest);
 }
 
 /**

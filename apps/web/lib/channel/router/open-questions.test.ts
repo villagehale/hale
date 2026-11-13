@@ -112,16 +112,16 @@ describe('latestAsked — the ask a bare reply answers (VIL-302)', () => {
   it('picks the newer of two standing offers', () => {
     const intro = question('intro_optin', { id: 'intro', askedAt: T0 });
     const search = question('email_alert_add', { id: 'search', askedAt: T1 });
-    expect(latestAsked([intro, search])?.map((q) => q.id)).toEqual(['search']);
+    expect(latestAsked([intro, search], [])?.map((q) => q.id)).toEqual(['search']);
     // Order on the list must not matter: oldest-first selection would pick the intro.
-    expect(latestAsked([search, intro])?.map((q) => q.id)).toEqual(['search']);
+    expect(latestAsked([search, intro], [])?.map((q) => q.id)).toEqual(['search']);
   });
 
   it('prefers nothing when the newest ask and an older one are both consequential', () => {
     const card = question('intro_proposal', { id: 'card', askedAt: T0 });
     const search = question('email_alert_add', { id: 'search', askedAt: T1 });
-    expect(latestAsked([card, search])).toBeNull();
-    expect(latestAsked([search, card])).toBeNull();
+    expect(latestAsked([card, search], [])).toBeNull();
+    expect(latestAsked([search, card], [])).toBeNull();
   });
 
   it('still prefers the newest when only one side of the gap is consequential', () => {
@@ -130,30 +130,51 @@ describe('latestAsked — the ask a bare reply answers (VIL-302)', () => {
     const search = question('email_alert_add', { id: 'search', askedAt: T1 });
     const plan = question('plan_offer', { id: 'plan', askedAt: T1 });
     // Consequential newest, ordinary older.
-    expect(latestAsked([optIn, search])?.map((q) => q.id)).toEqual(['search']);
+    expect(latestAsked([optIn, search], [])?.map((q) => q.id)).toEqual(['search']);
     // Ordinary newest, consequential older.
-    expect(latestAsked([card, plan])?.map((q) => q.id)).toEqual(['plan']);
+    expect(latestAsked([card, plan], [])?.map((q) => q.id)).toEqual(['plan']);
   });
 
   it('keeps every ask that ties at the top, so the model can still say which', () => {
     const older = question('intro_optin', { id: 'intro', askedAt: T0 });
     const a = question('email_alert_add', { id: 'a', askedAt: T2 });
     const b = question('email_alert_add', { id: 'b', askedAt: T2 });
-    expect(latestAsked([older, a, b])?.map((q) => q.id)).toEqual(['a', 'b']);
+    expect(latestAsked([older, a, b], [])?.map((q) => q.id)).toEqual(['a', 'b']);
   });
 
   it('prefers nothing when recency cannot be established', () => {
     const draft = question('approval', { id: 'draft' });
     const search = question('email_alert_add', { id: 'search', askedAt: T1 });
-    expect(latestAsked([draft, search])).toBeNull();
+    expect(latestAsked([draft, search], [])).toBeNull();
   });
 
   it('prefers nothing when there is nothing to prefer over', () => {
     const search = question('email_alert_add', { id: 'search', askedAt: T1 });
-    expect(latestAsked([search])).toBeNull();
-    expect(latestAsked([])).toBeNull();
+    expect(latestAsked([search], [])).toBeNull();
+    expect(latestAsked([], [])).toBeNull();
     const twin = question('email_alert_add', { id: 'twin', askedAt: T1 });
-    expect(latestAsked([search, twin])).toBeNull();
+    expect(latestAsked([search, twin], [])).toBeNull();
+  });
+
+  // The sign-up lane's asks are off this list. Hale's last text about one is ranked against
+  // the open questions by the same rule, so the newest of them all is what a bare yes answers.
+  it('narrows past an off-list ask Hale texted before the newest open question', () => {
+    const intro = question('intro_optin', { id: 'intro', askedAt: T1 });
+    const search = question('email_alert_add', { id: 'search', askedAt: T2 });
+    expect(latestAsked([intro, search], [{ askedAt: T0 }])?.map((q) => q.id)).toEqual(['search']);
+  });
+
+  it('prefers no open question when an off-list ask was texted last, or at the same time', () => {
+    const intro = question('intro_optin', { id: 'intro', askedAt: T0 });
+    const search = question('email_alert_add', { id: 'search', askedAt: T1 });
+    expect(latestAsked([intro, search], [{ askedAt: T2 }])).toBeNull();
+    expect(latestAsked([intro, search], [{ askedAt: T1 }])).toBeNull();
+  });
+
+  it('prefers nothing when an off-list ask has no known time', () => {
+    const intro = question('intro_optin', { id: 'intro', askedAt: T0 });
+    const search = question('email_alert_add', { id: 'search', askedAt: T1 });
+    expect(latestAsked([intro, search], [{ askedAt: null }])).toBeNull();
   });
 });
 

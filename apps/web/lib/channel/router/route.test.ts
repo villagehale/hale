@@ -3838,55 +3838,62 @@ describe('natural reply resolution', () => {
     });
 
     /**
-     * The sign-up lane's asks are not on the open-question list. Each is ranked by the
-     * sequence number its text drew when the send started (signup/store.ts askStamp), and
-     * no open question's ask time can be compared with that number. Narrowing to the
-     * newest open question would bind a bare yes to the search offer even when Hale's last
-     * text was a sign-up offer, so while a sign-up ask is live the router does not narrow:
-     * the answer stays unplaced and reaches the sign-up lane, which acts only on its own
-     * newest ask.
+     * The sign-up lane's asks are not on the open-question list. Hale's last text about one
+     * of them is ranked against the open questions by the one newest-ask rule
+     * (`newestAsks`): when it is the newest, nothing is narrowed and the answer reaches the
+     * sign-up lane unplaced; when an open question was asked after it, the bare yes is that
+     * question's. `none`: no text about a sign-up ask is known to have reached the parent.
      */
-    function signupLane(live: boolean) {
+    function signupLane(lastAsked: Date | null | 'none') {
       const seen: unknown[] = [];
       return {
         seen,
         handler: {
           name: 'authorized_signup',
-          ownsAsksOffList: true,
-          detects: async () => live,
+          detects: async () => lastAsked !== 'none',
+          offListAsks: async () => (lastAsked === 'none' ? [] : [{ askedAt: lastAsked }]),
           async handle(_db: unknown, ctx: { resolved?: unknown }) {
             seen.push(ctx.resolved);
-            if (!live) return { claimed: false };
+            if (lastAsked === 'none') return { claimed: false };
             return { claimed: true, outcome: 'approved', reply: 'Booked for the open.' };
           },
         } as unknown as DeterministicHandler,
       };
     }
 
-    it('does not narrow past a live sign-up ask: the bare yes reaches the sign-up lane', async () => {
-      const introOwner = owningHandler('intro_optin');
+    it.each([
+      ['texted after the newest open question', new Date(NOW.getTime() - 30 * 1000)],
+      ['texted at an unknown time (its order is uncertain)', null],
+    ])(
+      'does not narrow past a sign-up ask %s: the bare yes reaches the sign-up lane',
+      async (_label, lastAsked) => {
+        const introOwner = owningHandler('intro_optin');
+        const offerOwner = owningHandler('email_alert_add');
+        const signup = signupLane(lastAsked);
+        const r = readers();
+        const h = harness({
+          context: { body: 'yes' },
+          handlers: [introOwner.handler, offerOwner.handler, signup.handler],
+          questions: fakeQuestions([datedOptIn(), searchOffer()]),
+          replyResolver: r.replyResolver,
+          calendarOffers: r.calendarOffers,
+        });
+
+        const result = await routeChannelMessage(h.deps, job());
+
+        expect(result).toMatchObject({ status: 'handled', handler: 'authorized_signup' });
+        expect(offerOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+        expect(introOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+        expect(r.lists).toEqual([['opt-in', 'search-offer']]);
+      },
+    );
+
+    it.each([
+      ['a sign-up ask Hale texted before every open question', new Date(EARLIER.getTime() - 1000)],
+      ['a sign-up lane with no ask texted', 'none' as const],
+    ])('narrows past %s', async (_label, lastAsked) => {
       const offerOwner = owningHandler('email_alert_add');
-      const signup = signupLane(true);
-      const r = readers();
-      const h = harness({
-        context: { body: 'yes' },
-        handlers: [introOwner.handler, offerOwner.handler, signup.handler],
-        questions: fakeQuestions([datedOptIn(), searchOffer()]),
-        replyResolver: r.replyResolver,
-        calendarOffers: r.calendarOffers,
-      });
-
-      const result = await routeChannelMessage(h.deps, job());
-
-      expect(result).toMatchObject({ status: 'handled', handler: 'authorized_signup' });
-      expect(offerOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
-      expect(introOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
-      expect(r.lists).toEqual([['opt-in', 'search-offer']]);
-    });
-
-    it('still narrows when the sign-up lane has no live ask', async () => {
-      const offerOwner = owningHandler('email_alert_add');
-      const signup = signupLane(false);
+      const signup = signupLane(lastAsked);
       const r = readers();
       const h = harness({
         context: { body: 'yes' },
@@ -3901,6 +3908,62 @@ describe('natural reply resolution', () => {
       expect(result).toMatchObject({ status: 'resolved', handler: 'owner_email_alert_add' });
       expect(signup.seen).toEqual([]);
       expect(r.lists).toEqual([['opt-in', 'search-offer'], ['search-offer']]);
+    });
+
+    /**
+     * A narrowed read that cannot place the reply for any reason but `ambiguous` says
+     * nothing the whole read did not, so the whole read's `ambiguous` stands and the answer
+     * stays unplaced. Here that is visible as the tapback: an unplaced answer never lets a
+     * reaction stand alone (reaction-plan.ts), so the coach's words go out beside it.
+     */
+    it('keeps the answer unplaced when the narrowed read cannot place it', async () => {
+      vi.stubEnv('LINQ_REACTIONS_ENABLED', 'true');
+      vi.stubEnv('LINQ_API_KEY', 'test-key');
+      vi.stubGlobal('fetch', async () => new Response(null, { status: 204 }));
+      const offerOwner = owningHandler('email_alert_add');
+      const r = readers((text, questions) =>
+        questions.length === 1
+          ? { status: 'unresolved', reason: 'not_answerable' }
+          : skillContract(text, questions),
+      );
+      const h = harness({
+        context: {
+          body: 'yes',
+          reply: {
+            channel: 'imessage',
+            to: PHONE,
+            chatId: 'chat-1',
+            replyToMessageId: 'in-1',
+            service: 'iMessage',
+          },
+        },
+        coach: {
+          async respond() {
+            return {
+              reply: 'Which one did you mean?',
+              planOffer: null,
+              activityPromise: null,
+              spotWatch: null,
+              reaction: { reaction: { type: 'like' as const }, alone: true, otherToolCalls: 0 },
+            };
+          },
+        },
+        handlers: [offerOwner.handler],
+        questions: fakeQuestions([datedOptIn(), searchOffer()]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      try {
+        await routeChannelMessage(h.deps, job());
+      } finally {
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+      }
+
+      expect(r.lists).toEqual([['opt-in', 'search-offer'], ['search-offer']]);
+      expect(offerOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+      expect(h.transport.sent.map((sent) => sent.body)).toEqual(['Which one did you mean?']);
     });
 
     /**

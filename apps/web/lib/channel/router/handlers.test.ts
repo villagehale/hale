@@ -826,13 +826,13 @@ describe('the shipped order', () => {
     const { defaultHandlers } = await import('./wiring');
     const chain = defaultHandlers();
     names = chain.map((handler) => handler.name);
-    offList = chain.filter((handler) => handler.ownsAsksOffList).map((handler) => handler.name);
+    offList = chain.filter((handler) => handler.offListAsks).map((handler) => handler.name);
   });
 
-  // VIL-302 · the router narrows a bare answer to the newest open question only while no
-  // handler ranking its own asks off that list would take the text. The sign-up lane's
-  // asks are ranked by `last_asked_seq`; if it stopped declaring so, the newest open
-  // question would capture a yes meant for the sign-up offer Hale texted last.
+  // VIL-302 · the router ranks Hale's last text about the sign-up lane's asks with the open
+  // questions before it narrows a bare answer to the newest of them. If the lane stopped
+  // reporting it, the newest open question would capture a yes meant for the sign-up offer
+  // Hale texted last.
   it('marks the sign-up lane, and only it, as ranking its asks off the open-question list', () => {
     expect(offList).toEqual(['authorized_signup']);
   });

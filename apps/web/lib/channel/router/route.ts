@@ -196,6 +196,7 @@ import {
   holdingLineRead,
 } from './holding-line';
 import {
+  type Asked,
   type OpenQuestion,
   type OpenQuestionKind,
   type OpenQuestionReader,
@@ -466,14 +467,15 @@ export interface DeterministicHandler {
    */
   readonly resolves?: ReadonlySet<OpenQuestionKind>;
   /**
-   * True for a handler whose asks are not on the open-question list and are ranked by an
-   * order of its own (the sign-up lane: `last_asked_seq`, signup/store.ts askStamp). No
-   * open question's ask time compares with that order, so while {@link detects} says this
-   * handler would take the text, the router does not narrow a bare answer to the newest
-   * open question (VIL-302, `latestAsked`): the answer stays unplaced and reaches this
-   * handler, which binds it by its own order.
+   * For a handler whose asks are not on the open-question list (the sign-up lane): Hale's
+   * last text about any of this parent's asks, as one {@link Asked} (null `askedAt`: one
+   * may have gone at a time not known). Empty when no text about one is known to have
+   * reached them. The router ranks it with the open questions by the one newest-ask rule
+   * (VIL-302, `latestAsked`): when it is the newest, nothing is narrowed and the answer
+   * reaches this handler unplaced. The handler takes a bare answer only by the same rule.
+   * Reads only, like {@link detects}.
    */
-  readonly ownsAsksOffList?: true;
+  offListAsks?(database: Database, ctx: HandlerDetectContext): Promise<readonly Asked[]>;
   handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict>;
   /**
    * Would {@link handle} take this text? Its own matcher, run with no claim and no side
@@ -2271,14 +2273,20 @@ async function resolveNaturalReply(
   // ask: a bare "yes" after a search offer is the search. Narrowing first is unsafe: shown
   // only the newest ask, the real model put a decline of an older intro on the newest
   // offer (the `vil-302-declines-*` eval fixtures). If the newest ask is itself two
-  // offers, the second read is still `ambiguous`, and Hale asks which. A live ask ranked
-  // off this list (the sign-up lane's) means the newest open question may not be the last
-  // thing Hale asked, so nothing is narrowed and the answer reaches that lane unplaced.
+  // offers, the second read is still `ambiguous`, and Hale asks which. An ask ranked off
+  // this list (the sign-up lane's) that Hale texted last means nothing is narrowed and the
+  // answer reaches that lane unplaced. A narrowed read that cannot place the reply for
+  // another reason says nothing the whole read did not, so the whole read stands.
   const whole = await readOpenQuestions(deps, turn, questions);
-  const narrowable =
-    whole.status === 'unresolved' && whole.reason === 'ambiguous' ? latestAsked(questions) : null;
-  const latest = narrowable && !(await offListAskLive(deps, turn)) ? narrowable : null;
-  const read = latest ? await readOpenQuestions(deps, turn, latest) : whole;
+  const latest =
+    whole.status === 'unresolved' && whole.reason === 'ambiguous'
+      ? latestAsked(questions, await offListAsks(deps, turn))
+      : null;
+  const narrowed = latest ? await readOpenQuestions(deps, turn, latest) : null;
+  const read =
+    narrowed && (narrowed.status === 'resolved' || warrantsClarifying(narrowed.reason))
+      ? narrowed
+      : whole;
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
   const reading = approvalForCalendarYes(questions, read);
@@ -2383,13 +2391,14 @@ async function resolveNaturalReply(
   };
 }
 
-/** Whether a handler that ranks its own asks off the open-question list would take this
- * text ({@link DeterministicHandler.ownsAsksOffList}). */
-async function offListAskLive(deps: ChannelRouterDeps, turn: HandlerContext): Promise<boolean> {
+/** Hale's last text about each lane's asks that are off the open-question list
+ * ({@link DeterministicHandler.offListAsks}). */
+async function offListAsks(deps: ChannelRouterDeps, turn: HandlerContext): Promise<Asked[]> {
+  const asks: Asked[] = [];
   for (const handler of deps.handlers) {
-    if (handler.ownsAsksOffList && (await handler.detects(deps.database, turn))) return true;
+    if (handler.offListAsks) asks.push(...(await handler.offListAsks(deps.database, turn)));
   }
-  return false;
+  return asks;
 }
 
 /**
