@@ -72,6 +72,7 @@ describe('groupPlanRsvpUserMessage', () => {
         waitingNames: ['Sam'],
       },
       recent: [{ from: 'member', text: 'museum Saturday?' }],
+      clock: null,
     });
     expect(payload.polls).toBeUndefined();
   });

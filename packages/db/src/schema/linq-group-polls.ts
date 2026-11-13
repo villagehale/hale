@@ -18,6 +18,8 @@ export interface LinqGroupPollOptionJson {
   text: string;
   /** Linq's option id when the choice is on a native poll card, otherwise null. */
   providerOptionId: string | null;
+  /** Choosing this option places that group plan at that instant (ISO), when the poll is about it. */
+  places?: { planId: string; startsAt: string } | null;
 }
 
 export interface LinqGroupPollExpectedJson {

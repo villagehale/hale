@@ -75,6 +75,10 @@ export interface GroupExperienceTurnInput {
    * so it is not read again here.
    */
   decided?: 'time_lock';
+  /** With `decided`: the open poll's option key the lock named in the same message. */
+  lockChoice?: string;
+  /** The door's first reader did not tie this message to the open plan. */
+  otherEvent?: true;
 }
 
 export interface GroupExperienceTurnPorts {
@@ -125,6 +129,8 @@ export interface SettleCalendarInput {
   displayName: string;
   response: PlanRsvpResponse;
   parentWords: string | null;
+  /** Hale starts this ask (a lock someone else sent): by day only. */
+  proactive?: true;
 }
 
 async function settleCalendar(
@@ -363,6 +369,8 @@ export async function takeGroupExperienceTurn(
 
   if (reading.kind === 'rsvp_open') return openRsvp(input, ports, store, plans, reading, deny);
   if (reading.kind === 'rsvp_vote' && reading.response) {
+    // Only an answer both readers tie to the open plan is counted there.
+    if (reading.samePlan !== true || input.otherEvent) return { handled: false };
     return voteRsvp(input, ports, store, plans, reading.response, deny);
   }
   if (reading.kind === 'rsvp_tally') return tallyRsvp(input, ports, plans, deny);
@@ -727,39 +735,49 @@ async function lockTime(
       notice: { skipped: 'not_sent' },
     };
   }
-  // The poll's own plan, fixed when it opened, and only while that plan is still the chat's
-  // open plan. A label is never parsed into a date: no placed instant, no plan time.
   const planId = typeof live.payload.planId === 'string' ? live.payload.planId : null;
-  const placed = typeof won?.startsAt === 'string' ? new Date(won.startsAt) : null;
-  const openPlanNow = planId ? await plans.loadLivePlan(input.chatId, input.now) : null;
-  if (
-    planId &&
-    openPlanNow?.id === planId &&
-    placed &&
-    !Number.isNaN(placed.getTime()) &&
-    (await plans.setPlanStart(planId, placed, input.senderUserId, input.now))
-  ) {
-    await moveCalendar(ports, input, planId);
-    const { rows } = await plans.loadTally(planId);
-    for (const yes of await plans.listYesRsvps(planId)) {
-      await settleCalendar(ports, input, {
-        planId,
-        userId: yes.userId,
-        memberKey: yes.memberKey,
-        displayName: rows.find((row) => row.memberKey === yes.memberKey)?.displayName ?? 'someone',
-        response: 'yes',
-        parentWords: null,
-      });
-    }
-  }
+  const startsAt = typeof won?.startsAt === 'string' ? won.startsAt : null;
+  if (planId && startsAt) await placePlan(input, ports, plans, planId, startsAt);
   await store.close(live.id, input.now);
   return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
 }
 
 /**
- * VIL-471 owns the chat's open poll: a lock names its single leader and closes it. Its
- * choices carry no placed instant and no plan, so no plan time moves and no calendar step
- * runs. A tie, or no votes yet, locks nothing.
+ * A locked choice places the poll's own plan, fixed when the poll opened, and only while that
+ * plan is still the chat's open plan. A label is never parsed into a date: no placed instant,
+ * no plan time. Households whose copy Hale wrote get it moved; yes households get the OK ask.
+ */
+async function placePlan(
+  input: GroupExperienceTurnInput,
+  ports: GroupExperienceTurnPorts,
+  plans: GroupPlanRsvpStore,
+  planId: string,
+  startsAt: string,
+): Promise<void> {
+  const placed = new Date(startsAt);
+  if (Number.isNaN(placed.getTime())) return;
+  const openPlanNow = await plans.loadLivePlan(input.chatId, input.now);
+  if (openPlanNow?.id !== planId) return;
+  if (!(await plans.setPlanStart(planId, placed, input.senderUserId, input.now))) return;
+  await moveCalendar(ports, input, planId);
+  const { rows } = await plans.loadTally(planId);
+  for (const yes of await plans.listYesRsvps(planId)) {
+    await settleCalendar(ports, input, {
+      planId,
+      userId: yes.userId,
+      memberKey: yes.memberKey,
+      displayName: rows.find((row) => row.memberKey === yes.memberKey)?.displayName ?? 'someone',
+      response: 'yes',
+      parentWords: null,
+      proactive: true,
+    });
+  }
+}
+
+/**
+ * VIL-471 owns the chat's open poll: a lock names the choice the message named, else the single
+ * leader, and closes the poll. A choice placed on the open plan when the poll opened moves that
+ * plan and its written copies. A tie with no choice named, or no votes yet, locks nothing.
  */
 async function lockGroupPoll(
   input: GroupExperienceTurnInput,
@@ -770,8 +788,14 @@ async function lockGroupPoll(
   const poll = await plans.loadLivePoll(input.chatId);
   if (!poll) return { handled: false };
   const tally = await plans.loadPollTally(poll.id);
-  const winner = tally.leaders.length === 1 ? tally.leaders[0] : null;
-  if (!winner) return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
+  const top = Math.max(0, ...tally.options.map((option) => option.votes));
+  const leaders = top > 0 ? tally.options.filter((option) => option.votes === top) : [];
+  const wonKey =
+    poll.options.find((option) => option.key === input.lockChoice)?.key ??
+    (leaders.length === 1 ? leaders[0]?.key : undefined);
+  const won = poll.options.find((option) => option.key === wonKey);
+  if (!won) return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
+  const winner = won.text;
   const spoken = await speak(ports, input, 'time_lock', { winner }, 0, 'group', deny);
   if (spoken.status !== 'composed') {
     return {
@@ -791,6 +815,7 @@ async function lockGroupPoll(
     };
   }
   await plans.closePoll(poll.id, input.senderUserId, input.now);
+  if (won.places) await placePlan(input, ports, plans, won.places.planId, won.places.startsAt);
   return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
 }
 

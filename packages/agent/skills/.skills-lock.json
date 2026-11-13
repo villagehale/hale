@@ -313,11 +313,11 @@
   },
   "group-experience-read.md": {
     "file": "group-experience-read.md",
-    "sha256": "f58d3e7bd404920c18c67e68423b6b79e0b2ac6a9111fc0970764e420ecc41a6"
+    "sha256": "11e4d640dfb0e6b8a2af984d91601a38c07e2800794a322c0420b22f111cbc8d"
   },
   "group-experience-voice.md": {
     "file": "group-experience-voice.md",
-    "sha256": "bdac4db59ff12566dce8968e0b739e6be7f9d848f7666afad338440399376559"
+    "sha256": "9e62ae1723a72ad6fa712702add5d3b0d390de65e4b2654d6edd2a589d9a908c"
   },
   "group-mention-read.md": {
     "file": "group-mention-read.md",
@@ -353,7 +353,7 @@
   },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",
-    "sha256": "c3ee131d9c7c3b571053dcc9f259293e088bd5fd823012a8c48a104e91ebacf3"
+    "sha256": "69e1cddb623bfcd00f76dcad1e1dc40d6cfc0096536784d4dfaff3a6d5395201"
   },
   "group-plan-rsvp-voice.md": {
     "file": "group-plan-rsvp-voice.md",
@@ -369,7 +369,7 @@
   },
   "group-poll-voice.md": {
     "file": "group-poll-voice.md",
-    "sha256": "550287356dac32b81cfb0fb6c33b6a4c3c4c457f917d28bf78f7e97d07469b84"
+    "sha256": "093a8227cb8626c420d64eaf77695224085dc8d360b9162ff81f9d67c3c8a515"
   },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",

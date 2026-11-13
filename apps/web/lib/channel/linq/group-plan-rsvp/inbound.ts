@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { namesFacts } from '~/lib/signup/parent-quote';
 import {
@@ -239,6 +240,7 @@ export async function considerGroupPlanRsvp(
         input.chatId,
         input.senderUserId ?? null,
       ),
+      timeZone: hostFamilyId ? await knownHouseholdTimezone(ports.database, hostFamilyId) : null,
       now: ports.now,
     },
     {
@@ -304,12 +306,30 @@ export async function settleGroupPlanCalendarAfterRsvp(
     displayName: string;
     response: PlanRsvpResponse;
     parentWords: string | null;
+    /** Hale starts this ask (a lock someone else sent): this household hears it by day only. */
+    proactive?: true;
   },
 ): Promise<CalendarEffect | undefined> {
   if (!linqGroupPlanRsvpEnabled() || !linqGroupPlanRsvpCalendarEnabled()) return undefined;
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const plan = await store.loadLivePlan(input.chatId, ports.now);
   if (!plan || plan.id !== input.planId) return undefined;
+  if (input.proactive) {
+    const home = input.userId
+      ? await postgresGroupPlanHouseholds(ports.database).resolve({
+          chatId: input.chatId,
+          userId: input.userId,
+        })
+      : null;
+    const zone = home?.status === 'one' ? await store.householdTimeZone(home.familyId) : null;
+    if (zone === null || inProactiveQuietHours(ports.now, zone)) {
+      console.info(
+        { outcome: 'group_plan_calendar_ask_held_quiet', zoneKnown: zone !== null },
+        'group plan calendar: an ask Hale would start waits; not sent outside the daytime',
+      );
+      return undefined;
+    }
+  }
   return settleCalendarAfterAnswer(
     {
       chatId: input.chatId,

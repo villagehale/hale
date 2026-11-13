@@ -1,4 +1,5 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { placedInstant } from '../group-experience/reading';
 import type { GroupHoldReason } from '../group-audience';
 import { type GroupPollVoiceKind, groupPollLineInput } from './poll-facts';
 import type { GroupPollRecord, NativeCardOption } from './poll-store';
@@ -79,6 +80,8 @@ export type GroupPollTurnResult = {
   notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' | GroupHoldReason };
   card?: 'sent' | { skipped: GroupPollCardSkip };
   pollTally?: GroupPollTally;
+  /** `group_poll_lock_asked`: the open poll's option key the lock named, when it named one. */
+  lockChoice?: string;
 };
 
 export interface GroupPollTurnDeps {
@@ -110,17 +113,21 @@ function expectedOf(seated: readonly ExpectedPerson[]) {
   return seated.map((person) => ({ memberKey: person.memberKey, displayName: person.displayName }));
 }
 
-/** The model's choices, trimmed and de-duplicated as returned. At most six. */
-function choicesOf(reading: GroupPlanRsvpReading): string[] {
-  const out: string[] = [];
-  for (const raw of reading.pollOptions ?? []) {
+/**
+ * The model's choices, trimmed and de-duplicated as returned, each with the instant the reader
+ * placed it at (or null). At most six.
+ */
+function choicesOf(reading: GroupPlanRsvpReading): { text: string; startsAt: string | null }[] {
+  const out: { text: string; startsAt: string | null }[] = [];
+  for (const [index, raw] of (reading.pollOptions ?? []).entries()) {
     const text = raw.trim();
-    if (!text || out.includes(text)) continue;
-    out.push(text);
+    if (!text || out.some((choice) => choice.text === text)) continue;
+    out.push({ text, startsAt: placedInstant(reading.pollStarts?.[index]) });
     if (out.length === GROUP_POLL_MAX_OPTIONS) break;
   }
   return out;
 }
+
 
 async function speakPoll(
   deps: GroupPollTurnDeps,
@@ -192,6 +199,8 @@ export async function takeGroupPollReading(
     language: ReplyLanguage;
     now: Date;
     livePoll: GroupPollRecord | null;
+    /** The chat's open plan: a poll the reader ties to it places its choices on it. */
+    livePlanId?: string | null;
     seated: readonly ExpectedPerson[];
     voter: GroupPollVoter;
   },
@@ -205,7 +214,13 @@ export async function takeGroupPollReading(
   // The lock itself is the group moment's (group-experience lockTime): one lock, one line.
   // This turn only names what the message meant, so the door hands it on unread.
   if (reading.intent === 'close_poll') {
-    return { handled: true, outcome: 'group_poll_lock_asked', count: 'ignored' };
+    const named = poll.options.find((option) => option.key === reading.pollChoice)?.key;
+    return {
+      handled: true,
+      outcome: 'group_poll_lock_asked',
+      count: 'ignored',
+      ...(named ? { lockChoice: named } : {}),
+    };
   }
 
   if (reading.intent === 'ask_poll') {
@@ -242,6 +257,7 @@ async function startPoll(
     chatId: string;
     language: ReplyLanguage;
     now: Date;
+    livePlanId?: string | null;
     seated: readonly ExpectedPerson[];
   },
   deps: GroupPollTurnDeps,
@@ -265,11 +281,13 @@ async function startPoll(
     return spokenOrUnsent(said, tally);
   }
 
-  const options = choices.map((text, index) => ({
+  const options = choices.map((choice, index) => ({
     key: optionKeyAt(index),
-    text,
+    text: choice.text,
     providerOptionId: null,
   }));
+  // Only the reader's yes ties the poll to the open plan; only then may a choice place it.
+  const planId = reading.samePlan === true ? (context.livePlanId ?? null) : null;
   const opening = tallyGroupPoll(options, [], expected);
   const cardPlanned = deps.card?.enabled() ?? false;
   const said = await speakPoll(deps, {
@@ -286,7 +304,11 @@ async function startPoll(
     chatId: context.chatId,
     familyId: cover.familyId,
     question,
-    options: choices.map((text) => ({ text, providerOptionId: null })),
+    options: choices.map((choice) => ({
+      text: choice.text,
+      providerOptionId: null,
+      ...(planId && choice.startsAt ? { places: { planId, startsAt: choice.startsAt } } : {}),
+    })),
     expected,
     origin: 'parent',
     providerMessageId: null,

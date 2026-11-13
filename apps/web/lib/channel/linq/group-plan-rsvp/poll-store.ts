@@ -27,7 +27,11 @@ export interface CreatePollInput {
   familyId: string;
   question: string | null;
   /** Choice texts in order, or native card options when adopting a card. */
-  options: readonly { text: string; providerOptionId: string | null }[];
+  options: readonly {
+    text: string;
+    providerOptionId: string | null;
+    places?: { planId: string; startsAt: string } | null;
+  }[];
   expected: readonly GroupPollExpectedRow[];
   origin: GroupPollOrigin;
   providerMessageId: string | null;
@@ -84,12 +88,13 @@ function flag(value: boolean): 'true' | 'false' {
 }
 
 export function pollOptionsFrom(
-  options: readonly { text: string; providerOptionId: string | null }[],
+  options: CreatePollInput['options'],
 ): GroupPollOption[] {
   return options.map((option, index) => ({
     key: optionKeyAt(index),
     text: option.text,
     providerOptionId: option.providerOptionId,
+    ...(option.places ? { places: option.places } : {}),
   }));
 }
 

@@ -61,6 +61,7 @@ export type GroupPlanRsvpTurnOutcome =
       handled: true;
       outcome:
         | 'group_plan_chatter'
+        | 'group_plan_other_event'
         | 'group_plan_recorded'
         | 'group_plan_spoken'
         | 'group_plan_unread'
@@ -80,6 +81,8 @@ export type GroupPlanRsvpTurnOutcome =
       calendar?: CalendarEffect;
       card?: 'sent' | { skipped: GroupPollCardSkip };
       pollTally?: GroupPollTally;
+      /** `group_poll_lock_asked`: the open poll's option key the lock named, when it named one. */
+      lockChoice?: string;
     };
 
 /** Banter and a missed read stay quiet without stealing the rest of the group door. */
@@ -118,6 +121,8 @@ export interface GroupPlanRsvpTurnInput {
    * stored. Absent means the tests' turn language. Null is not English.
    */
   calendarLanguage?: ReplyLanguage | null;
+  /** The asking household's zone, so the reader can place a time. Null or absent: unknown. */
+  timeZone?: string | null;
   now: Date;
 }
 
@@ -245,6 +250,7 @@ export async function takeGroupPlanRsvpTurn(
       : null,
     recent: [],
     ...(pollsOn ? { polls: { live: livePoll ? pollReadView(livePoll) : null } } : {}),
+    clock: input.timeZone ? { now: input.now.toISOString(), timeZone: input.timeZone } : null,
   });
 
   if (!reading || reading.confidence !== 'high') {
@@ -273,6 +279,7 @@ export async function takeGroupPlanRsvpTurn(
         language: input.language,
         now: input.now,
         livePoll,
+        livePlanId: live?.id ?? null,
         seated,
         voter: {
           memberKey: senderKey,
@@ -324,7 +331,9 @@ export async function takeGroupPlanRsvpTurn(
 
   if (!plan) {
     if (!somethingLive) return { handled: false };
-    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+    // Read as about an event other than the open plan, or not tied to it: no later reader of
+    // this message may bind it to the open plan either.
+    return { handled: true, outcome: 'group_plan_other_event', count: 'ignored' };
   }
 
   const before = (await deps.store.loadTally(plan.id)).tally;

@@ -62,6 +62,8 @@ export interface GroupPlanRsvpReadInput {
   recent: readonly { from: 'hale' | 'member'; text: string }[];
   /** Present only while group polls are on. `live` is null when no poll is open. */
   polls?: { live: GroupPollReadView | null };
+  /** The asking household's clock, so the reader can place a time it names. Null: unknown. */
+  clock?: { now: string; timeZone: string } | null;
 }
 
 export interface GroupPlanRsvpReading {
@@ -84,7 +86,9 @@ export interface GroupPlanRsvpReading {
   pollQuestion?: string | null;
   /** `start_poll`: the choices, in the parent's words and order. */
   pollOptions?: string[];
-  /** `poll_vote`: the key of the choice the sender now stands on. */
+  /** `start_poll`: per choice, the instant it names on `clock` (ISO), or null. */
+  pollStarts?: (string | null)[];
+  /** `poll_vote`: the choice the sender now stands on; `close_poll`: the choice the lock names. */
   pollChoice?: string | null;
 }
 
@@ -106,6 +110,7 @@ const outputSchema = z.object({
   samePlan: z.boolean().nullable(),
   pollQuestion: z.string().nullable(),
   pollOptions: z.array(z.string()),
+  pollStarts: z.array(z.string().nullable()),
   pollChoice: z.string().nullable(),
 });
 
@@ -126,6 +131,7 @@ const outputJsonSchema = {
     samePlan: { type: ['boolean', 'null'] },
     pollQuestion: { type: ['string', 'null'] },
     pollOptions: { type: 'array', items: { type: 'string' } },
+    pollStarts: { type: 'array', items: { type: ['string', 'null'] } },
     pollChoice: { type: ['string', 'null'] },
   },
   required: [
@@ -142,6 +148,7 @@ const outputJsonSchema = {
     'samePlan',
     'pollQuestion',
     'pollOptions',
+    'pollStarts',
     'pollChoice',
   ],
 } as const;
@@ -154,6 +161,7 @@ export function groupPlanRsvpUserMessage(input: GroupPlanRsvpReadInput): string 
     plan: input.plan,
     recent: input.recent.slice(-6),
     ...(input.polls ? { polls: input.polls } : {}),
+    clock: input.clock ?? null,
   });
 }
 

@@ -100,7 +100,7 @@ export function groupExperienceUserMessage(input: GroupExperienceReadInput): str
 const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 
 /** An instant the model placed on a clock, or null. A label is never parsed as a date. */
-function placedInstant(value: string | null | undefined): string | null {
+export function placedInstant(value: string | null | undefined): string | null {
   const text = value?.trim();
   if (!text || !ISO_WITH_OFFSET.test(text) || Number.isNaN(Date.parse(text))) return null;
   return text;
