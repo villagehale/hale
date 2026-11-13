@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Parfait, merci Dana. Veux-tu que je démarre un nouveau groupe avec l'autre parent, ou tu préfères m'ajouter au groupe que vous avez déjà ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "fr"
+  },
+  "latencyMs": 1916,
+  "usage": {
+    "input_tokens": 5704,
+    "output_tokens": 453,
+    "cache_read_input_tokens": 6175,
+    "cache_creation_input_tokens": 0
+  }
+}

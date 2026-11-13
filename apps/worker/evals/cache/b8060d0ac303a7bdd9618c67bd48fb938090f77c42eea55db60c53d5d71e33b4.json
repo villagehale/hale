@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Google shares the whole calendar with me, but I only keep and use what's about the kids, and I never change or delete your events. You can disconnect any time. Want to connect your calendar too?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "calendar"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null
+  },
+  "latencyMs": 2018,
+  "usage": {
+    "input_tokens": 646,
+    "output_tokens": 372,
+    "cache_read_input_tokens": 6136,
+    "cache_creation_input_tokens": 0
+  }
+}

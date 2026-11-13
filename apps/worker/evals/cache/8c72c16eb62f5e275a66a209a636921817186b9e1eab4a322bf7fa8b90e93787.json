@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "No worries, I'll leave the name for now. Is there anything else you'd like me to know to get started?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameDeclined": true,
+    "nameConfirmed": false,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1847,
+  "usage": {
+    "input_tokens": 463,
+    "output_tokens": 422,
+    "cache_read_input_tokens": 6174,
+    "cache_creation_input_tokens": 0
+  }
+}

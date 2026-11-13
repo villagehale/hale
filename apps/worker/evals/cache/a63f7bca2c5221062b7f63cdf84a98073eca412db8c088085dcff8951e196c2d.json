@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Great, I'll start a new group chat with Mia's other parent so you both see the same plans and reminders. Nothing private gets shared.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": "new"
+  },
+  "latencyMs": 2067,
+  "usage": {
+    "input_tokens": 5679,
+    "output_tokens": 431,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6175
+  }
+}

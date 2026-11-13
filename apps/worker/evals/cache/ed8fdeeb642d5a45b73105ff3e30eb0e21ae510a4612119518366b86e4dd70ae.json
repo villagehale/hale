@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "That's fine, no problem. If you'd rather, just send the first three characters of your postal code, or the first three digits of your ZIP. That's enough for me to find things in your area, and it doesn't give out your street. What's the first part of it?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 2118,
+  "usage": {
+    "input_tokens": 593,
+    "output_tokens": 438,
+    "cache_read_input_tokens": 6445,
+    "cache_creation_input_tokens": 0
+  }
+}

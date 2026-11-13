@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Totally fair, you don't have to share it. Could you tell me the first three characters of your postal code instead? That's enough for me to find things nearby.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "en"
+  },
+  "latencyMs": 1732,
+  "usage": {
+    "input_tokens": 749,
+    "output_tokens": 431,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3156
+  }
+}

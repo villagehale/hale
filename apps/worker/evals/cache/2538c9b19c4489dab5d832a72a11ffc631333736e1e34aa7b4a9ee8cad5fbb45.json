@@ -1,0 +1,24 @@
+{
+  "value": {
+    "reply": "No calendar for now, that's fine. I can't save Mia's carpool during setup, so it's not on anything yet. Would a group chat with the other parent help, where you both see the same kid plans and reminders and nothing private?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "calendarLater": true
+  },
+  "latencyMs": 1947,
+  "usage": {
+    "input_tokens": 716,
+    "output_tokens": 406,
+    "cache_read_input_tokens": 6136,
+    "cache_creation_input_tokens": 0
+  }
+}

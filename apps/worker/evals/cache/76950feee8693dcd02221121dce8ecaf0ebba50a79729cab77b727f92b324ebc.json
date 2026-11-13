@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "No problem at all, we'll leave the name for now. Next up: would you like me to look at your Gmail for kids' events and school notes?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameDeclined": true,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1946,
+  "usage": {
+    "input_tokens": 536,
+    "output_tokens": 410,
+    "cache_read_input_tokens": 6174,
+    "cache_creation_input_tokens": 0
+  }
+}

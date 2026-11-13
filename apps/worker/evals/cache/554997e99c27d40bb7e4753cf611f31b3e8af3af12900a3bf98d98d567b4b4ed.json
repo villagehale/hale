@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Pas de problème, on n'est pas obligés. Tu peux juste me dire les trois premiers caractères de ton code postal, ça suffit pour trouver des activités près de chez toi. Tu préfères quoi ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "language": "fr",
+    "placeDeclined": false
+  },
+  "latencyMs": 1920,
+  "usage": {
+    "input_tokens": 611,
+    "output_tokens": 460,
+    "cache_read_input_tokens": 6445,
+    "cache_creation_input_tokens": 0
+  }
+}

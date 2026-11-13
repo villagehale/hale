@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reply": "Got it. Before we go on, what should I call you?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": true,
+    "parentLoneName": null
+  },
+  "latencyMs": 2018,
+  "usage": {
+    "input_tokens": 529,
+    "output_tokens": 327,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6136
+  }
+}

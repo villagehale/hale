@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply warmly accepts the no and asks one non-pushy question. Its finding claim depends on getting the code, and it asks for no town or street. But it asks only for the first three characters of a postal code, which is Canadian framing, instead of the US five-digit ZIP that watchFor calls for. That is a real miss, though not a hard failure.",
+    "score": 3
+  }
+}

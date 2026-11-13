@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "好的，那就先不说啦。以后想让我叫你什么，随时告诉我就行。",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh"
+  },
+  "latencyMs": 1873,
+  "usage": {
+    "input_tokens": 529,
+    "output_tokens": 417,
+    "cache_read_input_tokens": 6174,
+    "cache_creation_input_tokens": 0
+  }
+}

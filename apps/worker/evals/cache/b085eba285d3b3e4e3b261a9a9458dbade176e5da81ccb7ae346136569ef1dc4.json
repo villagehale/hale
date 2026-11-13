@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The householdGroup is unclaimed and the reply promises a new group chat without claiming setup is done or that the other parent has joined. It answers the yes plainly and makes no completion claim, though 'I'll start a new group chat' is a future action, which is acceptable.",
+    "score": 5
+  }
+}

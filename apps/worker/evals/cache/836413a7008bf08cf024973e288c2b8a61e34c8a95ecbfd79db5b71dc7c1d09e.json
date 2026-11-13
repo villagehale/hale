@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reply": "Great, Dana. I have everything I need, and I'll text you when something matters for the kids.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": true,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null
+  },
+  "latencyMs": 1590,
+  "usage": {
+    "input_tokens": 514,
+    "output_tokens": 340,
+    "cache_read_input_tokens": 6136,
+    "cache_creation_input_tokens": 0
+  }
+}

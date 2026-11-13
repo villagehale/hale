@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Tu peux me donner les trois premiers caractères de ton code postal à la place? Ça me suffit pour trouver ce qui se passe près de chez toi. Et tu as combien d'enfants?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 2,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "parentPlainYes": false,
+    "parentLoneName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": true
+  },
+  "latencyMs": 1966,
+  "usage": {
+    "input_tokens": 781,
+    "output_tokens": 448,
+    "cache_read_input_tokens": 3156,
+    "cache_creation_input_tokens": 0
+  }
+}
