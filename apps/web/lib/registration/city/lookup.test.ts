@@ -166,6 +166,24 @@ describe('lookupCityRegistration', () => {
     expect(found).toMatchObject({ status: 'not_found', reason: 'unreadable' });
   });
 
+  it('names pages that answered with no opening for this family apart from "not published"', async () => {
+    const found = await lookupCityRegistration(
+      deps(pages([A, B]), {
+        [A]: verified(A, ['preview']),
+        [B]: {
+          ...source(B),
+          status: 'unverified',
+          reason: 'different_cycle_only',
+          partialDates: [],
+        },
+      }),
+      NORTH_YORK,
+      'Winter 2027',
+      NOW,
+    );
+    expect(found).toMatchObject({ status: 'not_found', reason: 'no_opening_for_family' });
+  });
+
   it('asks again later when the search or the reader did not finish', async () => {
     const failed = await lookupCityRegistration(
       deps({ outcome: 'failed', reason: 'search_failed:APIError' }, {}),

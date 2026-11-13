@@ -8,6 +8,7 @@ import {
   type ExtractedWindow,
   MIN_VERIFY_CONFIDENCE,
   type PartialRegistrationDate,
+  type SeasonRegistrationWindow,
   type UnfoundReason,
   corroborationFailure,
   normalizeQuote,
@@ -208,9 +209,9 @@ export function normalizeExtractedRegistration(
   pageText: string,
   source: RegistrationReadSource,
   /** Set only by the own-city lane (VIL-684): pin a yearless date's year by its printed
-   * weekday, for this cycle (`pinYearByWeekday`). Every other reader reads no year a page
-   * does not print. */
-  yearFromWeekday?: { cycleLabel: string },
+   * weekday, inside the days this season registers in (`pinYearByWeekday`). Every other
+   * reader reads no year a page does not print. */
+  yearFromWeekday?: SeasonRegistrationWindow,
 ): LiveRegistrationReading {
   const base = { ...source, reader: 'ai' as const };
   const unverified = (
@@ -236,7 +237,7 @@ export function normalizeExtractedRegistration(
   if (corroborationFailure(pageText, extracted) !== null) return unverified('uncorroborated');
   const pinned = yearFromWeekday
     ? extracted.partialDates.flatMap((partial) => {
-        const at = pinYearByWeekday(partial.quote, source.checkedAt, yearFromWeekday.cycleLabel);
+        const at = pinYearByWeekday(partial.quote, source.checkedAt, yearFromWeekday);
         return at ? [{ ...partial, ...at }] : [];
       })
     : [];

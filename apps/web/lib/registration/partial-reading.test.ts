@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeExtractedRegistration } from './live-reading';
 import { registrationDate } from './read';
-import type { ExtractedWindow } from './verify-window';
+import type { ExtractedWindow, SeasonRegistrationWindow } from './verify-window';
 
 /**
  * A printed date whose year the page does not establish: the reader keeps its quote as a
@@ -93,6 +93,7 @@ describe('a partial date', () => {
 });
 
 describe('a yearless date pinned by the weekday the page prints (own-city lane only)', () => {
+  const WINTER_2027: SeasonRegistrationWindow = { from: '2026-10-01', through: '2027-01-31' };
   // Toronto's register page, 2026-11-12: the district row prints no year.
   const ROW = 'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.';
   const PAGE = `City of Toronto. ${ROW} Winter programs run January 4 to April 2, 2027.`;
@@ -108,7 +109,7 @@ describe('a yearless date pinned by the weekday the page prints (own-city lane o
       }),
       page,
       source,
-      { cycleLabel: 'Winter 2027 (north york)' },
+      WINTER_2027,
     );
 
   it('takes the one year whose calendar puts that weekday on that date', () => {
@@ -162,7 +163,7 @@ describe('a yearless date pinned by the weekday the page prints (own-city lane o
       }),
       PAGE,
       { ...source, checkedAt: new Date('2026-12-10T12:00:00Z') },
-      { cycleLabel: 'Winter 2027 (north york)' },
+      WINTER_2027,
     );
     expect(late).toMatchObject({ status: 'unverified', reason: 'incomplete_date' });
     const offSeason = normalizeExtractedRegistration(
@@ -174,9 +175,25 @@ describe('a yearless date pinned by the weekday the page prints (own-city lane o
       }),
       PAGE,
       source,
-      { cycleLabel: 'Winter 2029' },
+      { from: '2028-10-01', through: '2029-01-31' },
     );
     expect(offSeason).toMatchObject({ status: 'unverified', reason: 'incomplete_date' });
+  });
+
+  it('infers nothing for a date that does not fall in the months this season registers in', () => {
+    // Each fits exactly one of this year and next by its weekday, and each is ahead, but
+    // none is a Winter 2027 registration date: next winter's, a spring and a summer date.
+    const page = `${PAGE} Thursday, December 9, 7 a.m. Wednesday, June 9, 7 a.m. Wednesday, August 11.`;
+    for (const quote of [
+      'Thursday, December 9, 7 a.m.',
+      'Wednesday, June 9, 7 a.m.',
+      'Wednesday, August 11',
+    ]) {
+      expect({ quote, reading: toronto(quote, page) }).toMatchObject({
+        quote,
+        reading: { status: 'unverified', reason: 'incomplete_date' },
+      });
+    }
   });
 
   it('needs the weekday printed with the date, and one clock at most', () => {

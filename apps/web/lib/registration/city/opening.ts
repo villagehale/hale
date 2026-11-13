@@ -6,6 +6,7 @@ import {
   type VerifiedRegistrationReading,
   registrationAnchor,
 } from '../live-reading';
+import { datesPrintedIn, normalizeQuote } from '../verify-window';
 import type { OwnCity } from './place';
 
 /**
@@ -19,8 +20,8 @@ import type { OwnCity } from './place';
  * they cannot is the expensive mistake.
  *
  * A family whose district registers on its own morning (Toronto) takes only a date the
- * page ties to that district: an opening for everyone or an unlabelled one whose own
- * words name the district. Never a residents' morning (Toronto's "eligible residents"
+ * page ties to that district (namesDistrict): an opening for everyone or an unlabelled
+ * one inside a passage that names the district and no other date. Never a residents' morning (Toronto's "eligible residents"
  * early-local morning is not the district's), and never an unlabelled date that names no
  * district (a free-centres morning is not North York's).
  */
@@ -30,11 +31,23 @@ export interface FamilyOpening {
   general: LiveRegistrationDate | null;
 }
 
-/** The date's own page words name every word of the district's name, each as a whole
- * word (the shared whole-word matcher). */
+/**
+ * The page ties this date to the district: one of its quoted passages names every word of
+ * the district's name (each a whole word), holds the date's own quote, and prints no other
+ * date. The reader gives every date the same section quote, so naming the district is not
+ * enough: a Free Centres date is not inside North York's row, and a passage that spans two
+ * district rows ties neither date to either district.
+ */
 export function namesDistrict(date: LiveRegistrationDate, district: TorontoDistrict): boolean {
+  const [own] = date.evidence;
+  if (own === undefined) return false;
   const name = district.split('_');
-  return date.evidence.some((quote) => name.every((word) => namesAny(quote, [word])));
+  return date.evidence.some(
+    (passage) =>
+      name.every((word) => namesAny(passage, [word])) &&
+      normalizeQuote(passage).includes(normalizeQuote(own)) &&
+      datesPrintedIn(passage) === 1,
+  );
 }
 
 export function familyOpening(
@@ -44,9 +57,9 @@ export function familyOpening(
   const of = (kind: LiveRegistrationDate['kind']) => reading.dates.find((d) => d.kind === kind);
   const { district } = place;
   if (district !== null) {
-    const own = [of('general_open'), of('unclassified_open')].find(
-      (date) => date !== undefined && namesDistrict(date, district),
-    );
+    const own = (['general_open', 'unclassified_open'] as const)
+      .flatMap((kind) => reading.dates.filter((date) => date.kind === kind))
+      .find((date) => namesDistrict(date, district));
     return own ? { own, general: null } : null;
   }
   const general = of('general_open') ?? null;

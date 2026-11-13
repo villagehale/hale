@@ -565,6 +565,125 @@ describe('one transient failure never cancels a known date or a waiting tell', (
     ).toHaveLength(1);
   });
 
+  it('only the known page saying "later" takes a date back: no sibling page, no page that said nothing, no reading with no date for this family', async () => {
+    const EARLY_LOCAL = 'https://www.toronto.ca/explore-enjoy/early-local-registration/';
+    const SUDBURY_FALL = 'https://www.greatersudbury.ca/play/recreation/fall-programs/';
+    const unverified = (url: string, reason: string): LiveRegistrationReading =>
+      ({
+        sourceUrl: url,
+        checkedAt: stale,
+        reader: 'ai',
+        status: 'unverified',
+        reason,
+        partialDates: [],
+      }) as LiveRegistrationReading;
+    const cases: Array<{
+      name: string;
+      postal: string;
+      town: string;
+      lookup: () => ReturnType<typeof scripted>;
+    }> = [
+      {
+        name: 'known page unconfirmed + a residents-only page for a district family',
+        postal: 'M2N 0A1',
+        town: 'Toronto',
+        lookup: () =>
+          scripted({
+            search: () => ({
+              outcome: 'pages',
+              municipality: 'City of Toronto',
+              urls: [TORONTO_PAGE, EARLY_LOCAL],
+            }),
+            read: (target) =>
+              target.sourceUrl === TORONTO_PAGE
+                ? unverified(TORONTO_PAGE, 'uncorroborated')
+                : {
+                    ...(verified(
+                      EARLY_LOCAL,
+                      '2026-12-01',
+                      '07:00',
+                    ) as VerifiedRegistrationReading),
+                    dates: [
+                      {
+                        kind: 'resident_open',
+                        date: '2026-12-01',
+                        time: '07:00',
+                        evidence: ['Tuesday, December 1, at 7 a.m. for eligible residents'],
+                      },
+                    ],
+                  },
+          }),
+      },
+      {
+        name: 'known page low confidence + a sibling page about another season',
+        postal: 'P3A 1A1',
+        town: 'Greater Sudbury',
+        lookup: () =>
+          scripted({
+            search: () => ({
+              outcome: 'pages',
+              municipality: 'City of Greater Sudbury',
+              urls: [SUDBURY_PAGE, SUDBURY_FALL],
+            }),
+            read: (target) =>
+              target.sourceUrl === SUDBURY_PAGE
+                ? unverified(SUDBURY_PAGE, 'low_confidence')
+                : unverified(SUDBURY_FALL, 'different_cycle_only'),
+          }),
+      },
+      {
+        name: 'known page said nothing + a search that did not finish',
+        postal: 'P3A 1A1',
+        town: 'Greater Sudbury',
+        lookup: () =>
+          scripted({
+            search: () => ({ outcome: 'failed', reason: 'stopped:pause_turn' }),
+            read: () => unverified(SUDBURY_PAGE, 'no_dates_for_cycle'),
+          }),
+      },
+      {
+        name: 'known page read the same date as a preview this time',
+        postal: 'P3A 1A1',
+        town: 'Greater Sudbury',
+        lookup: () =>
+          scripted({
+            read: () => ({
+              ...(verified(SUDBURY_PAGE, '2026-12-16', '08:00') as VerifiedRegistrationReading),
+              dates: [{ kind: 'preview', date: '2026-12-16', time: '08:00', evidence: ['x'] }],
+            }),
+          }),
+      },
+    ];
+    for (const { name, postal, town, lookup } of cases) {
+      const family = await seedFamily(postal);
+      await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+      await db.database
+        .update(schema.proactiveCandidates)
+        .set({ status: 'held', holdUntil: new Date('2026-12-01T14:00:00Z') })
+        .where(eq(schema.proactiveCandidates.familyId, family.familyId));
+
+      const result = await runCityRegistrationSweep(db.database, deps(lookup()), stale);
+
+      expect({ name, result }).toMatchObject({ name, result: { superseded: 0, notFound: 0 } });
+      expect({ name, statuses: (await tells(family.familyId)).map((row) => row.status) }).toEqual({
+        name,
+        statuses: ['held'],
+      });
+      expect(
+        (await db.database.select().from(schema.cityRegistrationReadings)).map((r) => r.status),
+      ).toEqual(['verified']);
+      expect(
+        await ownCityRegistrationContext(
+          db.database,
+          family.familyId,
+          family.parentIds[0] as string,
+          stale,
+        ),
+      ).toMatchObject([{ town }]);
+      await db.exec('truncate table families, users, city_registration_readings cascade');
+    }
+  });
+
   it('a date the page confirms again after it said "later" is queued again', async () => {
     const family = await seedFamily('P3A 1A1');
     await runCityRegistrationSweep(db.database, deps(scripted()), NOW);

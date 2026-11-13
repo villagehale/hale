@@ -20,14 +20,14 @@ import { type CandidateDraft, queueCheckInForDecider } from '~/lib/channel/proac
 import { boundedLine } from '~/lib/channel/proactive/tools';
 import { createLiveRegistrationReader } from '../read';
 import { REGISTRATION_OPENING_KIND, cityOpeningFacts } from './context';
-import { winterCycleLabel } from './cycle';
+import { winterCycleLabel, winterRegistrationWindow } from './cycle';
 import { ownCityRegistrationEnabled } from './flag';
 import {
   type CityLookup,
   type CityLookupDeps,
   lookupCityRegistration,
   opensForFamily,
-  pageSaysNotYet,
+  pageSaysSeasonNotOut,
   readCityPage,
   readDidNotFinish,
 } from './lookup';
@@ -49,10 +49,9 @@ import { type StoredCityReading, latestCityReading, recordCityReading } from './
  *      a parent reads, and a writer that fails sends nothing.
  *
  * A family the hand-verified radar already covers is left to it, so one season never
- * reaches a parent from two sources. A date that moved, or one a readable official page
- * now says is not out, drops the tell still waiting on the old one. A read that did not
- * finish, or one that could not be verified, drops nothing and keeps the known date: it
- * is asked again next sweep. A date the page confirms again after it was taken back is
+ * reaches a parent from two sources. A date that moved, or one its own page now says is
+ * not out, drops the tell still waiting on the old one. Any other answer drops nothing
+ * and keeps the known date (refreshCity): it is asked again next sweep. A date the page confirms again after it was taken back is
  * queued again.
  */
 
@@ -133,7 +132,7 @@ export function cityLookupDeps(client: AgentClient, database: Database): CityLoo
   return {
     officialSite: (place, now) => cachedOfficialSite(database, source, place, now),
     search: (place, cycleLabel, today) => searchRegistrationPages(client, place, cycleLabel, today),
-    read: createLiveRegistrationReader(client, { yearFromWeekday: true }),
+    read: createLiveRegistrationReader(client, { yearFromWeekday: winterRegistrationWindow }),
   };
 }
 
@@ -259,10 +258,12 @@ async function dropStaleTells(
  * longer verifies, or no page at all, is a fresh lookup. Returns the reading to use,
  * which is the stored one when nothing new could be read.
  *
- * A KNOWN DATE GIVES WAY ONLY TO A READABLE OFFICIAL PAGE THAT SAYS THE SEASON IS NOT
- * OUT. A read that did not finish asks again next sweep and searches nothing; a page that
- * could not be verified (a shaky read, a refusal, a yearless date) is not evidence the
- * date is gone, so it keeps the date too.
+ * A KNOWN DATE GIVES WAY TO TWO THINGS ONLY: a verified opening for this family (from the
+ * known page or another official one), or the known page itself saying, in so many
+ * words, that the season is not out. A read that did not finish asks again next sweep
+ * and searches nothing. Anything else keeps the date: a shaky or refused read, a yearless
+ * date, a page that said nothing for the season, a reading with no date for this family,
+ * and every answer from a page other than the one the date came from.
  */
 async function refreshCity(
   database: Database,
@@ -279,7 +280,7 @@ async function refreshCity(
     console.info({ reason }, 'own-city registration: lookup did not finish');
     return prior;
   };
-  let knownPageSaysNotYet = false;
+  let knownPageSaysNotOut = false;
   if (prior?.status === 'verified') {
     const again = await readCityPage(
       lookup.read,
@@ -305,21 +306,19 @@ async function refreshCity(
     if (readDidNotFinish(again)) {
       return keep(`known_page_unread:${'reason' in again ? again.reason : again.status}`);
     }
-    knownPageSaysNotYet = pageSaysNotYet(again, place);
+    knownPageSaysNotOut = pageSaysSeasonNotOut(again);
   }
   const found = await lookupCityRegistration(lookup, place, cycleLabel, now);
   let outcome: Exclude<CityLookup, { status: 'retry' }>;
   if (found.status === 'verified' || prior?.status !== 'verified') {
     if (found.status === 'retry') return keep(found.reason);
     outcome = found;
-  } else if (found.status === 'not_found' && found.reason === 'not_published') {
-    outcome = found;
-  } else if (knownPageSaysNotYet) {
+  } else if (knownPageSaysNotOut) {
     outcome = {
       status: 'not_found',
       reason: 'not_published',
       municipality: prior.municipality,
-      tried: [{ url: prior.sourceUrl, outcome: 'says_not_yet' }],
+      tried: [{ url: prior.sourceUrl, outcome: 'says_not_out' }],
     };
   } else {
     return keep(found.status === 'retry' ? found.reason : `unconfirmed:${found.reason}`);

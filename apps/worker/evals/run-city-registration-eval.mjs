@@ -67,6 +67,7 @@ const { lookupOfficialSite, wikidataSource } = await importTs(
   join(REGISTRATION, 'city', 'official-site.ts'),
 );
 const { familyOpening } = await importTs(join(REGISTRATION, 'city', 'opening.ts'));
+const { winterRegistrationWindow } = await importTs(join(REGISTRATION, 'city', 'cycle.ts'));
 const { createRegistrationReader } = await importTs(join(REGISTRATION, 'read.ts'));
 const { createRegistrationPageBytesFetch } = await importTs(join(REGISTRATION, 'page.ts'));
 const {
@@ -367,7 +368,7 @@ async function main() {
             },
           },
           // The own-city lane's reader, as production builds it (sweep.ts cityLookupDeps).
-          { yearFromWeekday: true },
+          { yearFromWeekday: winterRegistrationWindow },
         );
     const texts = new Map();
     const readAndKeep = async (target, now) => {
