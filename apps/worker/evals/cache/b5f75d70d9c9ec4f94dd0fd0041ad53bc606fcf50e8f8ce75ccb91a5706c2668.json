@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply answers the one question, is in Chinese, names both classes with day, time and venue, and states the Dec 1 7:00 registration opening. However, the bubbles are not in the language of the parent's text consistently in the sense that the class/venue names are fine, but the second bubble is a single thought and the third bubble correctly closes with the page addresses. The main flaw is that the first bubble packs age range, dates and parent-in-water into one long bubble, which under-splits, and the third bubble mixes the registration fact with the suitability comment and two links. These are stylistic flaws rather than rubric breaks, so the score is 4.",
-    "score": 4
-  }
-}
