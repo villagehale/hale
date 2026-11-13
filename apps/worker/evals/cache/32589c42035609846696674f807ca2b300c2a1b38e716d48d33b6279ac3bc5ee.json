@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Group refusal in French using vous, short, warm, one bubble. No pairing hint, names nobody, no invented facts. It asks for the speaker's name (matches outcome name_needed) with one clear request. \"Vous êtes bien dans le Secret Santa\" is consistent with inAfterThisMessage listing the speaker. No first-text requirement triggered (firstOneToOne absent, and it's a group line). Slightly long-ish for a single bubble but still tight; the emoji is fine. No reply command or filing-style language.",
+    "score": 5
+  }
+}

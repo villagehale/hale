@@ -1597,6 +1597,13 @@
       "when": 1794365240000,
       "tag": "0241_shared_group_list_items",
       "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1794365245000,
+      "tag": "0245_secret_santa",
+      "breakpoints": true
     }
   ]
 }
