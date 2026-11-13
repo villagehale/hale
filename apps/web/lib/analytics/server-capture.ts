@@ -112,7 +112,8 @@ export type AgentErrorLane =
   | 'relay'
   | 'reply_budget'
   | 'commitments'
-  | 'reconcile';
+  | 'reconcile'
+  | 'claim_read';
 
 export type AgentError =
   /** A coach turn that answered nobody; `reason` is a TurnDeferralReason. */
@@ -126,7 +127,9 @@ export type AgentError =
   /** A due promise the sweep could not keep this tick. */
   | { lane: 'commitments'; kind: string; familyId: string }
   /** A claim Hale wrote that no row backed; `reason` is a reconcile RefusalReason. */
-  | { lane: 'reconcile'; reason: string; familyId: string };
+  | { lane: 'reconcile'; reason: string; familyId: string }
+  /** The claim reader could not finish; `reason` is a ClaimEnforceFailure. */
+  | { lane: 'claim_read'; reason: string; familyId: string };
 
 const EVENT_BY_LANE: Record<AgentErrorLane, AnalyticsEvent> = {
   coach: 'agent_turn_failed',
@@ -135,6 +138,7 @@ const EVENT_BY_LANE: Record<AgentErrorLane, AnalyticsEvent> = {
   reply_budget: 'agent_reply_trimmed',
   commitments: 'agent_commitment_failed',
   reconcile: 'agent_claim_refused',
+  claim_read: 'agent_claim_read_failed',
 };
 
 /**
@@ -156,6 +160,7 @@ function classOf(error: AgentError): string {
   switch (error.lane) {
     case 'coach':
     case 'reconcile':
+    case 'claim_read':
       return ENUM_TOKEN.test(error.reason) ? error.reason : 'unclassified';
     case 'relay':
       return ENUM_TOKEN.test(error.reason) ? error.reason : 'unclassified';

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "Sentence 0 only reports the parent's own note, and the quoted text is not a Hale claim. Sentence 1 is an acknowledgement with no claim. No rows exist.",
+    "claims": []
+  },
+  "latencyMs": 1314
+}

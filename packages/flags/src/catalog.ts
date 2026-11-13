@@ -33,6 +33,14 @@ export interface FlagSpec {
   variants?: readonly string[];
   /** Multivariate variant treated as ON for isEnabled and for 100% sync. */
   onVariant?: string;
+  /**
+   * Multivariate kill variant, for one whose default is ON. The env value, trimmed, picks
+   * it, and so does a trimmed `false` (a trailing newline from `vercel env add` must
+   * still kill, and `=false` is the kill switch on every flag), and a kill or a
+   * PostHog flag switched off resolves to it instead of the default. Arming values stay
+   * exact. Unset: the default is the off variant, as before.
+   */
+  offVariant?: string;
   allowlistEnv?: string;
   allowlistMode?: AllowlistMode;
   /** Extra AND on the env path only (e.g. preview-only mentions). */
@@ -222,9 +230,10 @@ export const FLAGS = [
     posthogKey: 'claim-reader-mode',
     type: 'multivariate',
     parser: 'multivariate',
-    default: 'off',
+    default: 'enforce',
     variants: ['off', 'shadow', 'enforce'],
     onVariant: 'enforce',
+    offVariant: 'off',
   },
   {
     key: 'proactive-cadence',
@@ -319,8 +328,18 @@ export function parseEnvBoolean(spec: FlagSpec, env: Record<string, string | und
 
 export function envVariant(spec: FlagSpec, env: Record<string, string | undefined>): string {
   const raw = env[spec.env];
+  // The kill reads like isFlagKilled: trimmed, and `false` as well as the off variant.
+  const trimmed = raw?.trim();
+  if (spec.offVariant !== undefined && (trimmed === spec.offVariant || trimmed === 'false')) {
+    return spec.offVariant;
+  }
   if (raw !== undefined && spec.variants?.includes(raw)) return raw;
   return String(spec.default);
+}
+
+/** The variant a multivariate is OFF at: its kill variant, else its default. */
+export function offVariantOf(spec: FlagSpec): string {
+  return spec.offVariant ?? String(spec.default);
 }
 
 /**
@@ -334,7 +353,7 @@ export function envEnabled(
 ): boolean {
   if (spec.envAlso && env[spec.envAlso.env] !== spec.envAlso.value) return false;
   if (spec.type === 'multivariate') {
-    return envVariant(spec, env) !== spec.default;
+    return envVariant(spec, env) !== offVariantOf(spec);
   }
   const on = parseEnvBoolean(spec, env);
   if (!spec.allowlistEnv || !spec.allowlistMode) return on;

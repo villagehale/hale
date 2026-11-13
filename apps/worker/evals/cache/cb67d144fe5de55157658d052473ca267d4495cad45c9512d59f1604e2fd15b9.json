@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says a well-baby visit is booked, which is a scheduled_event claim. The only row is Toddler Tumble, a different event, so it cannot back the claim. The full gym class is a report about the class, not a claim by Hale.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1689
+}

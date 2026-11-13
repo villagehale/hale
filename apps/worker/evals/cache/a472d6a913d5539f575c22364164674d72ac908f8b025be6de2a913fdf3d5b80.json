@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence says the child is enrolled in the Saturday swimming class. No confirmed registration or parent-stated row backs that, so the registration claim cites none. The calendar row e1 is the same Saturday swimming class and backs the placement claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 3538
+}
