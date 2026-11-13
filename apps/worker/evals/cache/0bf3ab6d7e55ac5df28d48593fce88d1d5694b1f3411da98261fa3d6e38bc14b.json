@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.55,
+    "rationale": "This is a sleep-pattern observation for a 9-year-old, and sleep_pattern_signal is barred for the child stage, so no other event type fits.",
+    "payload": {
+      "trigger": "sleep_observation",
+      "child_age_months": 108,
+      "observation": "shorter overnight sleep and later bedtimes over the past two weeks"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 265,
+    "output": 473
+  }
+}

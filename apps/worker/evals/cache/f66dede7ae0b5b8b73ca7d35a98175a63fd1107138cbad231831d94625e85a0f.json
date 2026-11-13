@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.93,
+    "rationale": "Routine notice from known daycare Maple Grove Childcare asking to take Mia's nap-mat sheets home Friday and return them clean Monday.",
+    "payload": {
+      "sender": "office@maplegrove-childcare.ca",
+      "daycare": "Maple Grove Childcare",
+      "subject": "Mia's nap-mat sheets",
+      "request": "Bring nap-mat sheets home Friday to wash; return clean on Monday"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "11111111-1111-1111-1111-111111111111"
+  },
+  "usage": {
+    "input": 376,
+    "output": 332
+  }
+}

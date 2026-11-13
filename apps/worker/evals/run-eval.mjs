@@ -149,10 +149,20 @@ async function loadFixtures(dir) {
 }
 
 // The user message must match runClassifier's exact serialization shape:
-// { signal: { source, raw_content }, family_context_slice }.
+// { signal: { source, raw_content }, family_context_slice }, with raw_content marked
+// untrusted the way runClassifier marks it (VIL-560).
+const { markUntrusted, untrustedSourceFor } = await tsImport(AGENT_SRC, import.meta.url);
+
 function userMessageFor(fixture) {
   return JSON.stringify({
-    signal: { source: fixture.input.source, raw_content: fixture.input.rawContent },
+    signal: {
+      source: fixture.input.source,
+      raw_content: markUntrusted(
+        untrustedSourceFor(fixture.input.source),
+        'payload',
+        fixture.input.rawContent,
+      ),
+    },
     family_context_slice: fixture.input.familyContextSlice ?? null,
   });
 }

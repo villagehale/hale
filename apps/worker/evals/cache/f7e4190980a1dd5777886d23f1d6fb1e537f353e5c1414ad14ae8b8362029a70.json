@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "school_communication",
+    "confidence": 0.93,
+    "rationale": "School office notice that Grade 3 report cards are posted and parent-teacher conference booking opens via the portal, with no reply required.",
+    "payload": {
+      "sender": "office@elmwood-public.schoolboard.ca",
+      "topic": "report_cards_and_parent_teacher_conferences",
+      "term": "Term 2",
+      "grade": "Grade 3",
+      "teacher": "Ms. Tran",
+      "conference_week_of": "March 10",
+      "booking_method": "parent portal",
+      "action_required": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 314,
+    "output": 327
+  }
+}

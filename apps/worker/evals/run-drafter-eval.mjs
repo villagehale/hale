@@ -111,11 +111,17 @@ export async function loadFixtures(dir) {
 }
 
 // Must match runDrafter's exact serialization:
-// { action_type, event, memory_slice, voice_profile, action_template_hint }.
+// { action_type, event, memory_slice, voice_profile, action_template_hint }, with the
+// event payload marked untrusted the way runDrafter marks it (VIL-560).
+const { markUntrustedTree } = await tsImport(AGENT_SRC, import.meta.url);
+
 export function userMessageFor(fixture) {
   return JSON.stringify({
     action_type: fixture.input.actionType,
-    event: fixture.input.event,
+    event: {
+      ...fixture.input.event,
+      payload: markUntrustedTree('email', fixture.input.event.payload),
+    },
     memory_slice: fixture.input.memorySlice ?? null,
     voice_profile: fixture.input.voiceProfile ?? null,
     action_template_hint: fixture.input.actionTemplateHint ?? null,

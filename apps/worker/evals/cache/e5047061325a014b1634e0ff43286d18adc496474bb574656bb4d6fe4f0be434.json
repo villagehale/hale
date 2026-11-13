@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.88,
+    "rationale": "Ontario government notice about G1 learner's permit eligibility is a licence milestone with administrative weight, one-way and needing no reply.",
+    "payload": {
+      "milestone": "g1_learners_permit_eligibility",
+      "sender": "noreply@ontario.ca",
+      "province": "ON",
+      "requirements": [
+        "vision test",
+        "knowledge test at DriveTest centre",
+        "two pieces of identification"
+      ],
+      "appointment_required": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 316,
+    "output": 317
+  }
+}

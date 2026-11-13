@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "lab_results_ready",
+    "confidence": 0.93,
+    "rationale": "LifeLabs no-reply notice that new lab results for a dependent are available to view online; one-way medical notice.",
+    "payload": {
+      "sender": "no-reply@lifelabs.com",
+      "provider": "LifeLabs",
+      "action_required": "sign in to LifeLabs online account to view results"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 273,
+    "output": 271
+  }
+}

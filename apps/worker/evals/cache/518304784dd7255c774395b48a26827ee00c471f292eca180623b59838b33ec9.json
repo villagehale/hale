@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "Known clinic is proposing a new appointment time and asks the parent to reply with what works.",
+    "payload": {
+      "clinic": "Little Sprout Pediatrics",
+      "provider": "Dr. Okafor",
+      "original_date": "June 23",
+      "proposed_date": "June 25",
+      "proposed_time": "2:00 PM",
+      "reason": "Provider out on original date",
+      "reply_requested": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 307,
+    "output": 315
+  }
+}
