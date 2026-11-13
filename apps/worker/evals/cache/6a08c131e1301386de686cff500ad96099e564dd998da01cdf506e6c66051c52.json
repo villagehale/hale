@@ -1,0 +1,14 @@
+{
+  "value": {
+    "quote": "Dec 19 - Jan 5",
+    "first_day": "2026-12-19",
+    "first_day_text": "Dec 19",
+    "last_day": "2027-01-05",
+    "last_day_text": "Jan 5",
+    "back_day": null,
+    "back_day_text": null,
+    "name": null,
+    "confidence": "high"
+  },
+  "latencyMs": 3239
+}

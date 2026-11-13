@@ -93,7 +93,7 @@ export const PROACTIVE_WRITER_FIXTURES = [
     items: [
       {
         id: 'break-ask',
-        what: "Hale does not know when this family's winter break from school or daycare is this school year. Ask when it starts and ends.",
+        what: 'winter break 2026-27',
         why: 'school_break_ask year=2026-27',
         sourceUrl: null,
         worthlessAfter: '2026-12-15T17:00:00.000Z',

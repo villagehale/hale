@@ -16,7 +16,8 @@ import { isWinterBreak } from './cycle';
 import { onOfficialHost } from './host';
 
 /**
- * VIL-685 · read one school year's winter break off a board's own calendar page.
+ * VIL-685 · read one school year's winter break off a school's own calendar page, or off
+ * the text of an email that school sent (`createTextBreakReader`).
  *
  * The model only READS; code decides whether the reading stands. A break stands when:
  *   - the page was served from the board's official host (`onOfficialHost`);
@@ -278,6 +279,36 @@ export function createBreakPageReader(ports: BreakPageReaderPorts): BreakPageRea
   };
 }
 
+export type TextBreakReading =
+  | ({ status: 'verified' } & VerifiedBreakReading)
+  | { status: 'not_published' }
+  | { status: 'unverified'; reason: BreakRefusal }
+  | { status: 'unreadable'; reason: 'extract_failed' };
+
+/** Reads the break off a school email's own text: the same model reading and the same
+ * code check as a page, so every day stands on the email's words. */
+export type TextBreakReader = (input: {
+  text: string;
+  schoolYear: string;
+}) => Promise<TextBreakReading>;
+
+export function createTextBreakReader(extract: BreakPageReaderPorts['extract']): TextBreakReader {
+  return async ({ text, schoolYear }) => {
+    const bounded = text.slice(0, MAX_PAGE_TEXT_CHARS);
+    let extraction: SchoolBreakExtraction;
+    try {
+      extraction = await extract(schoolYear, bounded);
+    } catch (error) {
+      if (isModelFailure(error)) return { status: 'unreadable', reason: 'extract_failed' };
+      throw error;
+    }
+    const checked = checkBreakReading(extraction, bounded, schoolYear);
+    if (checked === 'not_published') return { status: 'not_published' };
+    if ('refused' in checked) return { status: 'unverified', reason: checked.refused };
+    return { status: 'verified', ...checked };
+  };
+}
+
 /** One extraction call. The skill loads outside any catch: a missing skill is a deploy
  * bug, never "this board publishes nothing". */
 export async function extractSchoolBreak(
@@ -298,6 +329,10 @@ export async function extractSchoolBreak(
     maxTokens: SCHOOL_BREAK_READ_MAX_TOKENS,
   });
   return value;
+}
+
+export function createLiveTextBreakReader(client: AgentClient): TextBreakReader {
+  return createTextBreakReader((schoolYear, text) => extractSchoolBreak(client, schoolYear, text));
 }
 
 /** The one production reader: the DNS-pinned fetcher that never follows a redirect. */

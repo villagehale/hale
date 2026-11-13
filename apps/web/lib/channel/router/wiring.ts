@@ -919,6 +919,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
           status: 'open' as const,
           scope: 'break_dates' as const,
           schoolYear: ask.schoolYear,
+          question: ask.question,
         };
       }
       if (ask.scope === 'search') {

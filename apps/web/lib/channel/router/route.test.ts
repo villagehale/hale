@@ -5568,10 +5568,15 @@ describe('the weekday-care answer', () => {
         status: 'open' as const,
         scope: 'break_dates' as const,
         schoolYear: '2026-27',
+        question: 'When does winter break start, and what day are the kids back?',
       }),
       schoolBreakReplyReader: {
         read: async (input) => {
           expect(input.schoolYear).toBe('2026-27');
+          // The reader hears the reply as an answer to the text Hale sent.
+          expect(input.question).toBe(
+            'When does winter break start, and what day are the kids back?',
+          );
           return {
             status: 'read' as const,
             firstDay: '2026-12-21',
@@ -5620,6 +5625,7 @@ describe('the weekday-care answer', () => {
         status: 'open' as const,
         scope: 'break_dates' as const,
         schoolYear: '2026-27',
+        question: 'When does winter break start, and what day are the kids back?',
       }),
       schoolBreakReplyReader: {
         read: async () => {
@@ -5659,6 +5665,7 @@ describe('the weekday-care answer', () => {
         status: 'open' as const,
         scope: 'break_dates' as const,
         schoolYear: '2026-27',
+        question: 'When does winter break start, and what day are the kids back?',
       }),
       schoolBreakReplyReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       recordSchoolBreak: async (_db, write) => {

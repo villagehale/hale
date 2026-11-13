@@ -1,13 +1,13 @@
 import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 /**
- * VIL-685 · what Hale last read about one school board's winter break for one school
- * year, off that board's own calendar page.
+ * VIL-685 · what Hale last read about one school's or board's winter break for one school
+ * year, off that school's own calendar page.
  *
- * Keyed by the board's OFFICIAL HOST: the email domain the family's school mail comes
- * from, which the page had to be served from. Kept per board so every family whose
- * school writes from that domain costs one lookup, and never shared between boards:
- * two boards in one town are two rows, read separately.
+ * Keyed by the school's HOST: the registrable domain the family's kid mail authenticated
+ * as (Gmail's DKIM/DMARC result), which the page had to be served from. Kept per host so
+ * every family whose school writes from that domain costs one lookup, and never shared
+ * between hosts: two boards in one town are two rows, read separately.
  *
  * Family-AGNOSTIC, like city_registration_readings: a public host, a school year and
  * what a public page said. No family_id, no PII (rule #1).
@@ -15,14 +15,16 @@ import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-cor
  * Append-only. The newest row by `read_at` for a (board_host, school_year) is the
  * reading; an older row is history.
  */
-export const SCHOOL_BREAK_READING_STATUSES = ['verified', 'not_found'] as const;
+/** `retry` logs a lookup that did not finish: not a reading, only counted toward the
+ * bound on tries. */
+export const SCHOOL_BREAK_READING_STATUSES = ['verified', 'not_found', 'retry'] as const;
 export type SchoolBreakReadingStatus = (typeof SCHOOL_BREAK_READING_STATUSES)[number];
 
 export const schoolBreakReadings = pgTable(
   'school_break_readings',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** The board's official host, lowercased: the cache key. */
+    /** The school's host, lowercased: the cache key. */
     boardHost: text('board_host').notNull(),
     /** `2026-27`. */
     schoolYear: text('school_year').notNull(),

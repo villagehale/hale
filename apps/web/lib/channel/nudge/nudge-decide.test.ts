@@ -970,6 +970,23 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       expect(again.nudge).toBeNull();
     });
 
+    it('asks about a break the parent gave no name for, naming none', () => {
+      const nudge = decide({
+        ...READY,
+        weekdayCare: {
+          ...READY.weekdayCare,
+          verifiedBreak: { ...WINTER, label: null, source: 'parent_said' as const },
+          breakOnly: true,
+        },
+      });
+      if (nudge?.kind !== 'weekday_care') throw new Error('expected the break ask');
+      expect(nudge.ask).toEqual({
+        prompt: 'verified_break',
+        eventKey: 'winter-break-2026-12-21',
+        label: null,
+      });
+    });
+
     it('offers no other weekday prompt and no drop-in while weekday care itself is off', () => {
       // Positive control: the same family with weekday care armed hears the fallback.
       expect(decide(READY)?.kind).toBe('weekday_care');

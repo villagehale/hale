@@ -1,0 +1,14 @@
+{
+  "value": {
+    "quote": "our christmas break is dec 21 to jan 1",
+    "first_day": "2026-12-21",
+    "first_day_text": "dec 21",
+    "last_day": "2027-01-01",
+    "last_day_text": "jan 1",
+    "back_day": null,
+    "back_day_text": null,
+    "name": "christmas break",
+    "confidence": "high"
+  },
+  "latencyMs": 1996
+}

@@ -30,12 +30,21 @@ describe("the parent's reply, checked by code", () => {
   };
 
   it('files both days when the parent gave them, quoted from their own words', () => {
-    expect(toSchoolBreakReplyReading(read, TEXT, '2026-27')).toEqual({
+    expect(toSchoolBreakReplyReading(read, TEXT, '2026-27')).toMatchObject({
       status: 'read',
       firstDay: '2026-12-21',
       lastDay: '2027-01-01',
-      name: 'winter break',
       quote: 'dec 21 to jan 1',
+    });
+  });
+
+  it('files the name only when the parent wrote it: none is made up', () => {
+    // The model named it, the parent did not.
+    expect(toSchoolBreakReplyReading(read, TEXT, '2026-27')).toMatchObject({ name: null });
+    const named = 'winter break is dec 21 to jan 1 for us';
+    expect(toSchoolBreakReplyReading(read, named, '2026-27')).toMatchObject({
+      status: 'read',
+      name: 'winter break',
     });
   });
 
@@ -88,7 +97,7 @@ describe("the parent's reply, checked by code", () => {
       status: 'read',
       firstDay: '2026-12-19',
       lastDay: '2027-01-04',
-      name: 'winter break',
+      name: null,
       quote: back,
     });
     // The day back is held to the same grammar: its words must state exactly that day.

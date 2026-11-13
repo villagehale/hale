@@ -8,7 +8,7 @@ import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { writeFact } from '~/lib/memory/facts';
 import { schoolYearOf, winterBreakEventKey } from './school-break/cycle';
-import { loadSchoolBreak } from './school-break/facts';
+import { type SchoolBreakFact, loadSchoolBreak } from './school-break/facts';
 import { schoolBreakEnabled } from './school-break/flag';
 
 /**
@@ -65,14 +65,15 @@ export const WEEKDAY_BREAK_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_bre
 
 /**
  * A school break Hale may name. VIL-685: the family's winter break, read off their own
- * board's calendar page or given by the parent ({@link loadVerifiedSchoolBreak}). There
- * is still no source for a PA day, and none is built: PA days stay out.
+ * school's calendar page or email, or given by the parent ({@link loadVerifiedSchoolBreak}).
+ * There is still no source for a PA day, and none is built: PA days stay out.
  */
 export interface VerifiedSchoolBreak {
   /** Colon-free, and it ends with the verified ISO date (`winter-break-2026-12-21`). */
   eventKey: string;
-  /** The event's own name, as the page printed it or the parent said it. Never invented here. */
-  label: string;
+  /** The event's own name, as the page or the school's email printed it or the parent
+   * said it; null when the parent gave none. Never invented here. */
+  label: string | null;
   /** Family-local day key the source verified: the break's first day. */
   date: string;
   source:
@@ -82,6 +83,12 @@ export interface VerifiedSchoolBreak {
     | 'connected_email'
     | 'known_booking';
 }
+
+const BREAK_SOURCE = {
+  board_page: 'school_calendar',
+  school_email: 'connected_email',
+  parent: 'parent_said',
+} as const satisfies Record<SchoolBreakFact['source'], VerifiedSchoolBreak['source']>;
 
 /** Why there is no break to name: the lane is switched off, or no source has the dates. */
 export type NoVerifiedBreakReason = 'school_break_off' | 'no_verified_school_calendar';
@@ -108,7 +115,7 @@ export async function loadVerifiedSchoolBreak(
       eventKey: winterBreakEventKey(fact.firstDay),
       label: fact.name,
       date: fact.firstDay,
-      source: fact.source === 'parent' ? 'parent_said' : 'school_calendar',
+      source: BREAK_SOURCE[fact.source],
     },
   };
 }

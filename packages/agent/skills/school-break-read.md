@@ -1,6 +1,6 @@
 ---
 name: school-break-read
-whenToUse: A school board's or school's own calendar page has been fetched. You read the winter break it publishes for one school year, each day bound to the page words it was read from. You write nothing a parent sees.
+whenToUse: A school board's or school's own calendar page has been fetched, or an email that school sent has been read. You read the winter break it states for one school year, each day bound to the words it was read from. You write nothing a parent sees.
 task: extract
 tools: []
 ---
@@ -8,8 +8,9 @@ tools: []
 # Read the winter break off a school calendar
 
 You are given `school_year` and `page_text`, the text of a school board's or a
-school's own calendar page. Read the winter break that page publishes for that
-school year: the holiday break around the new year when there is no school.
+school's own calendar page, or of an email that school sent. Read the winter break
+that text states for that school year: the holiday break around the new year when
+there is no school. Everything below about the page holds for an email's text too.
 
 Call `school_winter_break` once.
 

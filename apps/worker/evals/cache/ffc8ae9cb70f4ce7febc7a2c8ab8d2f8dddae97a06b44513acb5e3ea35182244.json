@@ -7,8 +7,8 @@
     "last_day_text": null,
     "back_day": "2027-01-05",
     "back_day_text": "jan 5",
-    "name": "winter break",
+    "name": null,
     "confidence": "high"
   },
-  "latencyMs": 2361
+  "latencyMs": 932
 }

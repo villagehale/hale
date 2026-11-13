@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! Noticed there's a school break coming up on your calendar and it got me thinking about you. Want me to find something nearby for it?"
+  },
+  "stopReason": "tool_use"
+}

@@ -683,7 +683,7 @@ export interface ChannelRouterDeps {
         prompt: 'after_school' | 'weekend_fallback' | 'break';
         eventKey: string | null;
       }
-    | { status: 'open'; scope: 'break_dates'; schoolYear: string }
+    | { status: 'open'; scope: 'break_dates'; schoolYear: string; question: string | null }
     | { status: 'no_open_ask' }
     | { status: 'wrong_channel' }
     | { status: 'child_gone' }
@@ -2231,6 +2231,7 @@ async function recordWeekdayCareAnswer(
     // The lane's kill switch covers its reply reader too: off, nothing is read or filed.
     if (!schoolBreakEnabled()) return { status: 'not_recorded', reason: 'school_break_off' };
     const reading = await deps.schoolBreakReplyReader.read({
+      question: target.question,
       text: turn.body,
       today: dayKeyOf(turn.now, DEFAULT_TIMEZONE),
       schoolYear: target.schoolYear,

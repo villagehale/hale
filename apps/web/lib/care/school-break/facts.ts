@@ -5,22 +5,25 @@ import { HALE_RECORD, writeFact } from '~/lib/memory/facts';
 import type { BreakDay } from './read';
 
 /**
- * VIL-685 · THIS FAMILY'S WINTER BREAK — the fact, its two writers, and its one reader.
+ * VIL-685 · THIS FAMILY'S WINTER BREAK — the fact, its writers, and its one reader.
  *
  * One live row per family: `writeFact`'s identity is (family, no child, logistic, key),
- * so the board's page and the parent's own words supersede each other. The parent wins:
- * the sweep never writes over a parent's answer (their kid may not be at the board Hale
- * read), and a parent's answer always replaces the board's.
+ * so the school's page, the school's email and the parent's own words supersede each
+ * other. The parent wins: the sweep never writes over a parent's answer, and a parent's
+ * answer always replaces the school's.
  *
- * Every row carries its source: the board's page URL and the page words each day stands
- * on, or the parent's own words. A row without one is never written.
+ * Every row carries its source: the school's page URL and the page words each day stands
+ * on, the school email's own words (with the host it authenticated as), or the parent's
+ * own words. A row without one is never written. `name` is the break's name as the page
+ * or the email printed it, or as the parent said it; a parent who gave no name leaves it
+ * null, and nothing here makes one up.
  *
  * WRITER-PINNED, like the weekday-care fact: `fact_key` is free text, so every read
  * matches the writer as well as the key.
  */
 
 export const SCHOOL_BREAK_FACT_KEY = 'school_winter_break';
-/** The sweep, from the board's own calendar page. */
+/** The sweep, from the school's own calendar page or the school's own email. */
 export const SCHOOL_BREAK_BOARD_WRITER = 'school-break-board';
 /** The reply to Hale's one question, from the parent's own words. */
 export const SCHOOL_BREAK_REPLY_WRITER = 'school-break-reply';
@@ -29,10 +32,10 @@ const WRITERS = [SCHOOL_BREAK_BOARD_WRITER, SCHOOL_BREAK_REPLY_WRITER] as const;
 
 const valueSchema = z.object({
   schoolYear: z.string(),
-  name: z.string(),
+  name: z.string().nullable(),
   firstDay: z.string(),
   lastDay: z.string(),
-  source: z.enum(['board_page', 'parent']),
+  source: z.enum(['board_page', 'school_email', 'parent']),
   sourceUrl: z.string().nullable(),
   boardHost: z.string().nullable(),
   quotes: z.array(z.string()).min(1),
@@ -88,11 +91,23 @@ export type SchoolBreakWrite =
       now: Date;
     }
   | {
+      source: 'school_email';
+      familyId: string;
+      schoolYear: string;
+      name: string;
+      firstDay: BreakDay;
+      lastDay: BreakDay;
+      /** The host the email authenticated as. */
+      boardHost: string;
+      now: Date;
+    }
+  | {
       source: 'parent';
       familyId: string;
       parentUserId: string;
       schoolYear: string;
-      name: string;
+      /** The parent's own name for it, or null when they gave none. */
+      name: string | null;
       firstDay: string;
       lastDay: string;
       /** The parent's own words the days were read from. */
@@ -110,14 +125,14 @@ export async function recordSchoolBreak(
   write: SchoolBreakWrite,
 ): Promise<void> {
   const value: SchoolBreakFactValue =
-    write.source === 'board_page'
+    write.source !== 'parent'
       ? {
           schoolYear: write.schoolYear,
           name: write.name,
           firstDay: write.firstDay.date,
           lastDay: write.lastDay.date,
-          source: 'board_page',
-          sourceUrl: write.sourceUrl,
+          source: write.source,
+          sourceUrl: write.source === 'board_page' ? write.sourceUrl : null,
           boardHost: write.boardHost,
           quotes: [...new Set([write.firstDay.quote, write.lastDay.quote])],
         }

@@ -1,10 +1,10 @@
 /**
- * VIL-685 · the code check that a calendar page is the board's own.
+ * VIL-685 · the code check that a calendar page is the school's own.
  *
- * The OFFICIAL HOST is the board's or school's own website host, as Wikidata states it
- * (official-board.ts), reached from the school mail Hale already read. A page served from
- * that host, or from a subdomain of it, is the board's own page. Anything else — a news
- * site, a holiday-listing site, a neighbouring board — is not, whatever it says.
+ * The OFFICIAL HOST is the registrable domain the family's own kid mail authenticated as
+ * (sender.ts, school-mail.ts). A page served from that host, or from a subdomain of it,
+ * is the school's own page. Anything else — a news site, a holiday-listing site, a
+ * neighbouring board — is not, whatever it says.
  */
 
 /** The URL is https and served from `officialHost` or one of its subdomains. */

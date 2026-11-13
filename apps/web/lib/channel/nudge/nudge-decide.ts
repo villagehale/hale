@@ -659,7 +659,10 @@ function upcomingBreak(
 ): { ask: WeekdayFinderAsk } | { skip: 'break_label_unusable' | 'break_not_upcoming' } | null {
   if (verified == null) return null;
   if (verified.date < today) return { skip: 'break_not_upcoming' };
-  if (!BREAK_EVENT_KEY.test(verified.eventKey) || !breakAskFits(verified.label)) {
+  if (
+    !BREAK_EVENT_KEY.test(verified.eventKey) ||
+    (verified.label !== null && !breakAskFits(verified.label))
+  ) {
     return { skip: 'break_label_unusable' };
   }
   if (!verified.eventKey.endsWith(verified.date)) return { skip: 'break_label_unusable' };
