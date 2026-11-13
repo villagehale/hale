@@ -128,16 +128,30 @@ const BROKEN_EXTRACTION = {
   teen_content: false,
 };
 
+// The email's own strings enter both prompts marked untrusted, as triage.ts and extract.ts
+// mark them (VIL-560). Every envelope key is marked so a synthetic messageReference keeps
+// its variant distinct; the corpus envelopes are subject, from, snippet, as in production.
+const { markUntrusted } = await tsImport(AGENT_SRC, import.meta.url);
+
 function triageUserMessage(fixture) {
   return JSON.stringify({
-    envelope: fixture.envelope,
+    envelope: Object.fromEntries(
+      Object.entries(fixture.envelope).map(([field, value]) => [
+        field,
+        markUntrusted('email', field, value),
+      ]),
+    ),
     children: CHILDREN.map((c) => c.name),
   });
 }
 
 function extractUserMessage(fixture) {
   return JSON.stringify({
-    email: { subject: fixture.envelope.subject, from: fixture.envelope.from, body: fixture.body },
+    email: {
+      subject: markUntrusted('email', 'subject', fixture.envelope.subject),
+      from: markUntrusted('email', 'from', fixture.envelope.from),
+      body: markUntrusted('email', 'body', fixture.body),
+    },
     received_at: RECEIVED_AT,
     family_timezone: FAMILY_TIMEZONE,
     children: CHILDREN.map((c) => ({ id: c.id, name: c.name, ageInMonths: c.ageInMonths })),

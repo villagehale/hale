@@ -1,20 +1,20 @@
 {
-  "6d539bb6a71c245da9d447f9938e22c7d3dbe035c9fa1194bb4ef0378acaab8d": {
-    "key": "6d539bb6a71c245da9d447f9938e22c7d3dbe035c9fa1194bb4ef0378acaab8d",
-    "recordedAt": "2026-11-09T05:03:33.180Z",
+  "b543b2008a9de3847701c5f3f646ef1461538177c41759034b9e3d6622a8e4ba": {
+    "key": "b543b2008a9de3847701c5f3f646ef1461538177c41759034b9e3d6622a8e4ba",
+    "recordedAt": "2026-11-13T10:27:01.550Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"envelope\":{\"subject\":\"Registration Confirmation #RC-88214 — Leo Tremblay\",\"from\":\"City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\",\"snippet\":\"Thank you for your registration. Preschool Swim Level 2, Saturdays 9:00 AM, begins August 1. Total paid: $96.00.\"},\"children\":[\"Leo\",\"Maya\"]}"
+      "userMessage": "{\"envelope\":{\"subject\":\"<untrusted source=\\\"email\\\" field=\\\"subject\\\">\\nRegistration Confirmation #RC-88214 — Leo Tremblay\\n</untrusted>\",\"from\":\"<untrusted source=\\\"email\\\" field=\\\"from\\\">\\nCity of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\\n</untrusted>\",\"snippet\":\"<untrusted source=\\\"email\\\" field=\\\"snippet\\\">\\nThank you for your registration. Preschool Swim Level 2, Saturdays 9:00 AM, begins August 1. Total paid: $96.00.\\n</untrusted>\"},\"children\":[\"Leo\",\"Maya\"]}"
     },
     "response": {
       "model": "claude-haiku-5-5",
-      "id": "msg_011CgrmaLNQZ9QEGbAVuU9x3",
+      "id": "msg_011CgzmUhQYWk5SH7SQHVySP",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "text",
-          "text": "{\"child_related\": true, \"confidence\": 0.96, \"rationale\": \"Rec centre registration confirming a child's place in a dated Saturday swim program starting August 1\"}"
+          "text": "{\"child_related\": true, \"confidence\": 0.95, \"rationale\": \"Registration confirmation from rec centre for Leo in dated Saturday swim program starting August 1\"}"
         }
       ],
       "container": null,
@@ -22,55 +22,14 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 147,
-        "cache_creation_input_tokens": 1271,
-        "cache_read_input_tokens": 0,
-        "cache_creation": {
-          "ephemeral_5m_input_tokens": 1271,
-          "ephemeral_1h_input_tokens": 0
-        },
-        "output_tokens": 58,
-        "output_tokens_details": {
-          "thinking_tokens": 0
-        },
-        "service_tier": "standard",
-        "inference_geo": "global",
-        "speed": "standard"
-      },
-      "diagnostics": null
-    }
-  },
-  "54121380aca8d560d6241ee3add1be8e456777077cb74f515103d86b736fde86": {
-    "key": "54121380aca8d560d6241ee3add1be8e456777077cb74f515103d86b736fde86",
-    "recordedAt": "2026-11-09T05:04:20.950Z",
-    "request": {
-      "model": "claude-haiku-5-5",
-      "userMessage": "{\"envelope\":{\"subject\":\"Registration Confirmation #RC-88251 — Nora Okafor\",\"from\":\"City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\",\"snippet\":\"Thank you for your registration. Preschool Swim Level 2, Saturdays 9:00 AM, begins August 1. Total paid: $96.00.\"},\"children\":[\"Leo\",\"Maya\"]}"
-    },
-    "response": {
-      "model": "claude-haiku-5-5",
-      "id": "msg_011CgrmdtNKWWBRY1WYLqMup",
-      "type": "message",
-      "role": "assistant",
-      "content": [
-        {
-          "type": "text",
-          "text": "{\"child_related\": true, \"confidence\": 0.95, \"rationale\": \"Rec centre registration confirmation for a dated Saturday swim program starting August 1, formatted as a receipt\"}"
-        }
-      ],
-      "container": null,
-      "stop_reason": "end_turn",
-      "stop_sequence": null,
-      "stop_details": null,
-      "usage": {
-        "input_tokens": 146,
+        "input_tokens": 239,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 1271,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
           "ephemeral_1h_input_tokens": 0
         },
-        "output_tokens": 64,
+        "output_tokens": 59,
         "output_tokens_details": {
           "thinking_tokens": 0
         },
@@ -81,22 +40,22 @@
       "diagnostics": null
     }
   },
-  "9a3707c416b0930ea5fc6244bf497a1062be9d3e874601874150dc2195170c80": {
-    "key": "9a3707c416b0930ea5fc6244bf497a1062be9d3e874601874150dc2195170c80",
-    "recordedAt": "2026-11-09T06:55:04.052Z",
+  "4512e64dc7408a2b1e638cd454cc6d6f8031c9b7e427ca6efe3c07b8dd0e86f5": {
+    "key": "4512e64dc7408a2b1e638cd454cc6d6f8031c9b7e427ca6efe3c07b8dd0e86f5",
+    "recordedAt": "2026-11-13T10:27:04.617Z",
     "request": {
       "model": "claude-sonnet-5-5",
-      "userMessage": "{\"email\":{\"subject\":\"Registration Confirmation #RC-88214 — Leo Tremblay\",\"from\":\"City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\",\"body\":\"Thank you for your registration.\\n\\nConfirmation number: RC-88214\\nParticipant: Leo Tremblay\\nProgram: Preschool Swim Level 2\\nSessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\\nLocation: Brookfield Leisure Centre, Pool 2\\nTotal paid: $96.00 (Visa ending 4412)\\n\\nPlease arrive ten minutes early for the first class. Withdrawals are accepted up to seven days before the session start.\\n\\nCity of Brookfield Recreation\"},\"received_at\":\"2026-07-20T09:00:00Z\",\"family_timezone\":\"America/Toronto\",\"children\":[{\"id\":\"child-leo\",\"name\":\"Leo\",\"ageInMonths\":60},{\"id\":\"child-maya\",\"name\":\"Maya\",\"ageInMonths\":168}]}"
+      "userMessage": "{\"email\":{\"subject\":\"<untrusted source=\\\"email\\\" field=\\\"subject\\\">\\nRegistration Confirmation #RC-88214 — Leo Tremblay\\n</untrusted>\",\"from\":\"<untrusted source=\\\"email\\\" field=\\\"from\\\">\\nCity of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\\n</untrusted>\",\"body\":\"<untrusted source=\\\"email\\\" field=\\\"body\\\">\\nThank you for your registration.\\n\\nConfirmation number: RC-88214\\nParticipant: Leo Tremblay\\nProgram: Preschool Swim Level 2\\nSessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\\nLocation: Brookfield Leisure Centre, Pool 2\\nTotal paid: $96.00 (Visa ending 4412)\\n\\nPlease arrive ten minutes early for the first class. Withdrawals are accepted up to seven days before the session start.\\n\\nCity of Brookfield Recreation\\n</untrusted>\"},\"received_at\":\"2026-07-20T09:00:00Z\",\"family_timezone\":\"America/Toronto\",\"children\":[{\"id\":\"child-leo\",\"name\":\"Leo\",\"ageInMonths\":60},{\"id\":\"child-maya\",\"name\":\"Maya\",\"ageInMonths\":168}]}"
     },
     "response": {
       "model": "claude-sonnet-5-5",
-      "id": "msg_011Cgrv5TYErCgZz75A4JdmM",
+      "id": "msg_011CgzmUmnEXkPSkfAQdPYHC",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "text",
-          "text": "{\"kind\":\"booking_confirmation\",\"event\":{\"title\":\"Preschool Swim Level 2\",\"child_ref\":\"child-leo\",\"original_time\":null,\"new_time\":\"2026-08-01T09:00:00-04:00\",\"end_time\":\"2026-08-01T09:45:00-04:00\",\"location\":\"Brookfield Leisure Centre, Pool 2\",\"address\":null},\"source_confidence\":0.96,\"quote_evidence\":\"Sessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\",\"teen_content\":false}"
+          "text": "{\"kind\":\"booking_confirmation\",\"event\":{\"title\":\"Preschool Swim Level 2\",\"child_ref\":\"child-leo\",\"original_time\":null,\"new_time\":\"2026-08-01T09:00:00-04:00\",\"end_time\":\"2026-08-01T09:45:00-04:00\",\"location\":\"Brookfield Leisure Centre, Pool 2\",\"address\":null},\"source_confidence\":0.95,\"quote_evidence\":\"Sessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\",\"teen_content\":false}"
         }
       ],
       "container": null,
@@ -104,7 +63,7 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 372,
+        "input_tokens": 461,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 2562,
         "cache_creation": {
@@ -122,16 +81,57 @@
       "diagnostics": null
     }
   },
-  "afe4fc89d38ec8fa5bec5686c614f6efa2471d23457c22c21a1c589e155d1166": {
-    "key": "afe4fc89d38ec8fa5bec5686c614f6efa2471d23457c22c21a1c589e155d1166",
-    "recordedAt": "2026-11-09T06:55:25.766Z",
+  "51951be5a4916423957331ab7fa5edea42b087dd7769928b2f1492ec4742833f": {
+    "key": "51951be5a4916423957331ab7fa5edea42b087dd7769928b2f1492ec4742833f",
+    "recordedAt": "2026-11-13T10:27:18.820Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"envelope\":{\"subject\":\"<untrusted source=\\\"email\\\" field=\\\"subject\\\">\\nRegistration Confirmation #RC-88251 — Nora Okafor\\n</untrusted>\",\"from\":\"<untrusted source=\\\"email\\\" field=\\\"from\\\">\\nCity of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\\n</untrusted>\",\"snippet\":\"<untrusted source=\\\"email\\\" field=\\\"snippet\\\">\\nThank you for your registration. Preschool Swim Level 2, Saturdays 9:00 AM, begins August 1. Total paid: $96.00.\\n</untrusted>\"},\"children\":[\"Leo\",\"Maya\"]}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011CgzmVxaPthLeHkL5HvwiR",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"child_related\": true, \"confidence\": 0.95, \"rationale\": \"Registration confirmation from a rec centre for a dated Saturday swim program starting August 1, formatted as a receipt\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 238,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1271,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 66,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "d2332519900bedfabbcf04970e409274c07250a4509f9f76fea07e098163feef": {
+    "key": "d2332519900bedfabbcf04970e409274c07250a4509f9f76fea07e098163feef",
+    "recordedAt": "2026-11-13T10:27:20.480Z",
     "request": {
       "model": "claude-sonnet-5-5",
-      "userMessage": "{\"email\":{\"subject\":\"Registration Confirmation #RC-88251 — Nora Okafor\",\"from\":\"City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\",\"body\":\"Thank you for your registration.\\n\\nConfirmation number: RC-88251\\nParticipant: Nora Okafor\\nProgram: Preschool Swim Level 2\\nSessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\\nLocation: Brookfield Leisure Centre, Pool 2\\nTotal paid: $96.00 (Mastercard ending 7130)\\n\\nPlease arrive ten minutes early for the first class. Withdrawals are accepted up to seven days before the session start.\\n\\nCity of Brookfield Recreation\"},\"received_at\":\"2026-07-20T09:00:00Z\",\"family_timezone\":\"America/Toronto\",\"children\":[{\"id\":\"child-leo\",\"name\":\"Leo\",\"ageInMonths\":60},{\"id\":\"child-maya\",\"name\":\"Maya\",\"ageInMonths\":168}]}"
+      "userMessage": "{\"email\":{\"subject\":\"<untrusted source=\\\"email\\\" field=\\\"subject\\\">\\nRegistration Confirmation #RC-88251 — Nora Okafor\\n</untrusted>\",\"from\":\"<untrusted source=\\\"email\\\" field=\\\"from\\\">\\nCity of Brookfield Recreation <noreply@recreation.brookfield.example.ca>\\n</untrusted>\",\"body\":\"<untrusted source=\\\"email\\\" field=\\\"body\\\">\\nThank you for your registration.\\n\\nConfirmation number: RC-88251\\nParticipant: Nora Okafor\\nProgram: Preschool Swim Level 2\\nSessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\\nLocation: Brookfield Leisure Centre, Pool 2\\nTotal paid: $96.00 (Mastercard ending 7130)\\n\\nPlease arrive ten minutes early for the first class. Withdrawals are accepted up to seven days before the session start.\\n\\nCity of Brookfield Recreation\\n</untrusted>\"},\"received_at\":\"2026-07-20T09:00:00Z\",\"family_timezone\":\"America/Toronto\",\"children\":[{\"id\":\"child-leo\",\"name\":\"Leo\",\"ageInMonths\":60},{\"id\":\"child-maya\",\"name\":\"Maya\",\"ageInMonths\":168}]}"
     },
     "response": {
       "model": "claude-sonnet-5-5",
-      "id": "msg_011Cgrv77bVQiYbnW3QXMSNE",
+      "id": "msg_011CgzmW3bG7PP2CDqppL48v",
       "type": "message",
       "role": "assistant",
       "content": [
@@ -145,7 +145,7 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 372,
+        "input_tokens": 461,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 2562,
         "cache_creation": {

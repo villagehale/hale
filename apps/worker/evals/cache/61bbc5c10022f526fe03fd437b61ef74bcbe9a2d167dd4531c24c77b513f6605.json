@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.98,
+    "rationale": "Pediatric appointment reminder for Leo on a specific dated slot (Tuesday 2:00 PM)."
+  },
+  "latencyMs": 932,
+  "usage": {
+    "input_tokens": 229,
+    "output_tokens": 65,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

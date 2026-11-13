@@ -134,11 +134,19 @@ if (!fixture) throw new Error(`the sentinel corpus no longer carries ${FIXTURE_I
 // Byte-identical to what apps/web/lib/sentinel/{triage,extract}.ts build. If either
 // projection changes, both keys move and both caches miss loudly.
 const triageUser = JSON.stringify({
-  envelope: fixture.envelope,
+  envelope: {
+    subject: agent.markUntrusted('email', 'subject', fixture.envelope.subject),
+    from: agent.markUntrusted('email', 'from', fixture.envelope.from),
+    snippet: agent.markUntrusted('email', 'snippet', fixture.envelope.snippet),
+  },
   children: CHILDREN.map((c) => c.name),
 });
 const extractUser = JSON.stringify({
-  email: { subject: fixture.envelope.subject, from: fixture.envelope.from, body: fixture.body },
+  email: {
+    subject: agent.markUntrusted('email', 'subject', fixture.envelope.subject),
+    from: agent.markUntrusted('email', 'from', fixture.envelope.from),
+    body: agent.markUntrusted('email', 'body', fixture.body),
+  },
   received_at: RECEIVED_AT,
   family_timezone: FAMILY_TIMEZONE,
   children: CHILDREN.map((c) => ({ id: c.id, name: c.name, ageInMonths: c.ageInMonths })),

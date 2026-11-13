@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.85,
+    "rationale": "Personal invite proposing a dated playdate Saturday 3pm, plausibly child-schedule related"
+  },
+  "latencyMs": 1115,
+  "usage": {
+    "input_tokens": 188,
+    "output_tokens": 61,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

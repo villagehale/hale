@@ -1,0 +1,24 @@
+{
+  "value": {
+    "kind": "unclear",
+    "event": {
+      "title": "Update in Leo's room",
+      "child_ref": "child-leo",
+      "original_time": null,
+      "new_time": null,
+      "end_time": null,
+      "location": null,
+      "address": null
+    },
+    "source_confidence": 0.2,
+    "quote_evidence": "Just wanted to give you a heads up about something happening in Leo's room this week — we'll share more details soon.",
+    "teen_content": false
+  },
+  "latencyMs": 1391,
+  "usage": {
+    "input_tokens": 302,
+    "output_tokens": 131,
+    "cache_read_input_tokens": 2562,
+    "cache_creation_input_tokens": 0
+  }
+}

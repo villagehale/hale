@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.97,
+    "rationale": "Youth soccer practice moved to a new dated day, a clear child-schedule reschedule"
+  },
+  "latencyMs": 1041,
+  "usage": {
+    "input_tokens": 214,
+    "output_tokens": 57,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

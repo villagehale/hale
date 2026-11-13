@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.9,
+    "rationale": "Newsletter subscription confirmation from a parenting publication; 'You're registered' refers to a mailing list, not a dated child program or place."
+  },
+  "latencyMs": 1610,
+  "usage": {
+    "input_tokens": 203,
+    "output_tokens": 72,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.9,
+    "rationale": "Paperless Post invitation to a dated pool party on Sunday, August 2nd at 1:00 PM, matching the invite pattern"
+  },
+  "latencyMs": 934,
+  "usage": {
+    "input_tokens": 200,
+    "output_tokens": 72,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

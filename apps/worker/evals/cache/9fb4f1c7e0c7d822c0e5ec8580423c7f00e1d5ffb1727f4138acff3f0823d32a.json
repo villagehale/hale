@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Promotional meal-kit marketing from a commercial sender with a discount offer; no dated child occasion, despite 'family' wording."
+  },
+  "latencyMs": 873,
+  "usage": {
+    "input_tokens": 193,
+    "output_tokens": 69,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}
