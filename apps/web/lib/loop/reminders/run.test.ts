@@ -794,6 +794,16 @@ describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () 
     expect(result).toMatchObject({ fired: 0, suppressed: 0, heldQuietHours: 1 });
   });
 
+  it('positive control: sends a T-1h due at 20:00 for a 21:00 event, the floor still open', async () => {
+    armed();
+    const { deps, enqueued, marked } = t1h('2026-11-11T04:00:00Z');
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T03:00:00Z'));
+
+    expect(enqueued).toHaveLength(1);
+    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(result).toMatchObject({ fired: 1, suppressed: 0, heldQuietHours: 0 });
+  });
+
   it('positive control: sends a T-1h due at 20:12 for a 21:00 event, the floor still open', async () => {
     armed();
     const { deps, enqueued, marked } = t1h('2026-11-11T04:00:00Z');
