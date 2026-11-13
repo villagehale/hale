@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says registration hasn't opened, gives the Monday Jan 12 7:00 AM opening, the link, and the pack values; it does not claim signup, no spot-hold hint, no promise to retry. Minor issue: it says the parent must sign up themselves at that time, which is an instruction derived from the facts, acceptable. Language zh matches facts. Overall accurate and privacy-correct.",
+    "score": 5
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "J'ai tout rempli jusqu'au paiement pour la session de sam. 9 h 30, mais le paiement, c'est Ă  toi de le faire. Rien n'est payĂ© et aucune place n'est retenue. Voici la fenĂŞtre que j'ai laissĂ©e ouverte sur le site : https://live.browser-use.com/s/fixture-live-view-token. Elle reste ouverte 12 minutes."
+  },
+  "latencyMs": 3117,
+  "usage": {
+    "input_tokens": 164,
+    "output_tokens": 156,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1688
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hale ne peut pas encore finaliser les inscriptions sur ce site, et n'a donc pas essayé de s'y connecter.\nVoici la page d'inscription pour la session du sam. 9 h 30 : https://register.example-rec.test/activity/42\nC'est à vous de faire l'inscription là-bas."
+  },
+  "latencyMs": 2369,
+  "usage": {
+    "input_tokens": 138,
+    "output_tokens": 117,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

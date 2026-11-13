@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hale can't complete sign-ups on this site yet, so the Sat 9:30 AM session is one for you to do yourselves. Here's the registration page: https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 2225,
+  "usage": {
+    "input_tokens": 138,
+    "output_tokens": 73,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

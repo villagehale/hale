@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "报名成功啦,服务商已经确认了:周六上午9:30这一场,孩子的位置已经订好了。"
+  },
+  "latencyMs": 1308,
+  "usage": {
+    "input_tokens": 112,
+    "output_tokens": 47,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}
