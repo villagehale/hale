@@ -14,6 +14,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import {
   WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
   WEEKDAY_BREAK_TEMPLATE_KEY,
@@ -21,7 +22,6 @@ import {
   type WeekdayCareContext,
   loadWeekdayCareContext,
 } from '~/lib/care/weekday';
-import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import { recordCheckInAsk } from '~/lib/channel/checkin/cadence';
 import {
   type FamilyTextRecipient,
@@ -59,6 +59,7 @@ import {
   SCHOOL_BREAK_ASK_TEMPLATE_KEY,
   eventKeyFromWeekdayBreakDedupe,
 } from '~/lib/channel/weekday-care/key';
+import { WEEKDAY_QUESTION_TEMPLATE_KEYS } from '~/lib/channel/weekday-care/question';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
@@ -85,7 +86,6 @@ import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
-import { isVerbatimKind } from './verbatim';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -93,6 +93,7 @@ import {
   loadFamilySnapshot,
 } from './snapshot';
 import { type ToolCandidate, boundedLine } from './tools';
+import { isVerbatimKind } from './verbatim';
 import { volumeIsUnusual } from './volume';
 
 /**
@@ -790,6 +791,48 @@ async function dropClosedAsks(
 }
 
 /**
+ * A parent's reply answers the one weekday question their newest text asked
+ * (weekday-care/question.ts), and every row of one text shares its time. So a text
+ * carries at most one weekday question per parent: the first chosen goes, and any other
+ * waits as the decider's own unchosen items do, offered again the next day or on news.
+ */
+async function holdSecondQuestions(
+  database: Database,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<QueuedItem[]> {
+  const asking = new Set<string>();
+  const kept: QueuedItem[] = [];
+  const waiting: QueuedItem[] = [];
+  for (const item of items) {
+    if (!WEEKDAY_QUESTION_TEMPLATE_KEYS.includes(item.templateKey)) kept.push(item);
+    else if (asking.has(item.parentUserId)) waiting.push(item);
+    else {
+      asking.add(item.parentUserId);
+      kept.push(item);
+    }
+  }
+  if (waiting.length === 0) return kept;
+  const itemIds = waiting.map((item) => item.id);
+  await mark(database, familyId, itemIds, {
+    status: 'held',
+    reason: 'one_question_per_text',
+    decision: null,
+    holdUntil: null,
+    now,
+  });
+  await audit(database, familyId, 'proactive_cadence_held', {
+    reason: 'one_question_per_text',
+    itemIds,
+    mode: 'live',
+  });
+  summary.held += 1;
+  return kept;
+}
+
+/**
  * The seat is read again at send time: a parent can leave between the load and the send,
  * and the gate would not notice (it reads per user, in any family). Their chosen rows are
  * dropped by name, not texted.
@@ -1166,7 +1209,7 @@ async function sendChosen(
   const { familyId, now, summary } = input;
   const seated = await dropUnseated(database, familyId, input.chosen, now, summary);
   const unsent = await dropAlreadySent(database, familyId, seated, now, summary);
-  const { kept: chosen, clocks } = await dropClosedAsks(
+  const { kept: ready, clocks } = await dropClosedAsks(
     database,
     deps,
     familyId,
@@ -1174,6 +1217,7 @@ async function sendChosen(
     now,
     summary,
   );
+  const chosen = await holdSecondQuestions(database, familyId, ready, now, summary);
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.

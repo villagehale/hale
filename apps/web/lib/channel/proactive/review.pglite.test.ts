@@ -2,11 +2,15 @@ import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
-import { WEEKDAY_BREAK_TEMPLATE_KEY, WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
+import {
+  WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+  WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+} from '~/lib/care/weekday';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import {
   NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
   nextDayCheckbackDedupeKey,
@@ -333,6 +337,68 @@ describe('runProactiveReview', () => {
       ].sort(),
     );
   });
+
+  it.each([
+    [
+      'an after-school ask',
+      'after_school_household' as const,
+      WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+      'weekday_after_school',
+    ],
+    [
+      'a weekend-fallback ask',
+      'weekend_fallback' as const,
+      WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+      'weekday_care',
+    ],
+  ])(
+    'VIL-685 · a text carries one weekday question: the winter-break ask chosen beside %s waits for its own text and is answered there',
+    async (_case, prompt, templateKey, why) => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
+      const finder = await enqueue(weekdayFinderDedupeKey(familyId, { prompt }, parentUserId), {
+        templateKey,
+        why,
+        sourceUrl: null,
+      });
+      const breakAsk = await enqueue(schoolBreakAskDedupeKey(familyId, '2026-27', parentUserId), {
+        kind: 'school_break_ask',
+        category: 'nudge',
+        templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+        what: 'winter break 2026-27',
+        why: 'school_break_ask year=2026-27',
+        sourceUrl: null,
+        worthlessAfter: new Date('2026-12-15T17:00:00.000Z'),
+      });
+      const first = harness(sendAll);
+
+      await runProactiveReview(db.database, first.deps, THURSDAY_EVENING);
+
+      expect(first.snapshots.flatMap((s) => s.candidates.map((c) => c.id)).sort()).toEqual(
+        [finder, breakAsk].sort(),
+      );
+      expect(first.transport.sent).toHaveLength(1);
+      expect(await candidate(finder)).toMatchObject({ status: 'sent' });
+      expect(await candidate(breakAsk)).toMatchObject({
+        status: 'held',
+        reason: 'one_question_per_text',
+      });
+
+      const friday = new Date(THURSDAY_EVENING.getTime() + 24 * 3_600_000);
+      const second = harness(sendAll);
+      await runProactiveReview(db.database, second.deps, friday);
+
+      expect(second.transport.sent).toHaveLength(1);
+      expect(await candidate(breakAsk)).toMatchObject({ status: 'sent' });
+      expect(
+        await weekdayCareQuestion(db.database, {
+          familyId,
+          parentUserId,
+          now: new Date(friday.getTime() + 60_000),
+        }),
+      ).toMatchObject({ scope: 'break_dates', schoolYear: '2026-27', question: MESSAGE });
+    },
+  );
 
   it('sends an evening check-in in shadow, and still shadows a nudge', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
