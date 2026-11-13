@@ -1,10 +1,11 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, notExists, or } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { googleGetFetch } from '~/lib/cron/connector-sync';
 import { integrationAccessToken } from '~/lib/integrations/gmail-draft-service';
 import { CONNECTOR_SCOPES } from '~/lib/integrations/google-oauth';
 import type { GoogleFetch } from '~/lib/integrations/sync';
 import { fetchGmailMessageBody } from '~/lib/sentinel/fetch-body';
+import { type MailKey, stillKidMail } from './kept-mail';
 import { type MessageHeaders, alignedSenderHost } from './sender';
 import { isSharedSender } from './shared-senders';
 
@@ -32,9 +33,7 @@ import { isSharedSender } from './shared-senders';
 export const MAX_ALERTED_MESSAGES = 10;
 
 /** One message that authenticated as its own sender's host: a school's, if one wrote it. */
-export interface SchoolMessage {
-  integrationId: string;
-  messageId: string;
+export interface SchoolMessage extends MailKey {
   host: string;
 }
 
@@ -59,7 +58,7 @@ export type SchoolMailText =
 
 export interface SchoolMailPorts {
   /** This family's kept kid-mail alerts, newest first: the connection and the message id. */
-  alertedMail(familyId: string): Promise<Array<{ integrationId: string; messageId: string }>>;
+  alertedMail(familyId: string): Promise<MailKey[]>;
   /** The connection is this family's, active, and still holds the read scope. */
   readable(familyId: string, integrationId: string): Promise<boolean>;
   accessToken(integrationId: string): Promise<string | null>;
@@ -148,35 +147,12 @@ export function productionSchoolMailPorts(
   googleFetch: GoogleFetch = googleGetFetch,
 ): SchoolMailPorts {
   const offers = schema.emailAlertOffers;
-  const verdicts = schema.kidRelevanceVerdicts;
   return {
     alertedMail: async (familyId) =>
       database
         .select({ integrationId: offers.integrationId, messageId: offers.messageId })
         .from(offers)
-        .where(
-          and(
-            eq(offers.familyId, familyId),
-            notExists(
-              database
-                .select({ id: verdicts.id })
-                .from(verdicts)
-                .where(
-                  and(
-                    eq(verdicts.familyId, offers.familyId),
-                    eq(verdicts.source, 'gmail'),
-                    eq(verdicts.integrationId, offers.integrationId),
-                    eq(verdicts.itemKey, offers.messageId),
-                    or(
-                      eq(verdicts.verdict, 'adult'),
-                      eq(verdicts.verdict, 'unsure'),
-                      eq(verdicts.teen, true),
-                    ),
-                  ),
-                ),
-            ),
-          ),
-        )
+        .where(and(eq(offers.familyId, familyId), stillKidMail(database)))
         .orderBy(desc(offers.createdAt))
         .limit(MAX_ALERTED_MESSAGES),
     readable: async (familyId, integrationId) => {

@@ -21,7 +21,13 @@ import {
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { zonedLocalInstant } from '~/lib/plan/spine';
 import { lastAskDay, lastWaitDay, schoolYearOf } from './cycle';
-import { type SchoolBreakFact, loadSchoolBreak, recordSchoolBreak } from './facts';
+import {
+  type SchoolBreakFact,
+  type SchoolBreakRetireReason,
+  loadSchoolBreak,
+  recordSchoolBreak,
+  retireSchoolBreak,
+} from './facts';
 import { schoolBreakEnabled } from './flag';
 import { type BoardLookupDeps, lookupBoardBreak } from './lookup';
 import {
@@ -29,6 +35,7 @@ import {
   createLiveBreakPageReader,
   createLiveTextBreakReader,
 } from './read';
+import type { MailKey } from './kept-mail';
 import {
   type SchoolMailReader,
   type SchoolMessage,
@@ -36,6 +43,7 @@ import {
   schoolMailReader,
 } from './school-mail';
 import { createLiveSchoolSenderReader } from './school-sender';
+import { boardBreakStanding, hasSchoolAgeChild } from './standing';
 import { searchSchoolCalendar } from './search';
 import {
   MAX_LOOKUP_TRIES,
@@ -68,6 +76,11 @@ import {
  *      proposal for the parent to confirm: an email is not filed as fact on its own. The
  *      reply is read in the router (GATE 2c-bis), against the question as sent.
  *
+ * A school's break on file is re-checked every run against what is true now (standing.ts)
+ * and retired, by name, when it stops standing: the mail that named the school was
+ * withdrawn ("that's mine"), the family no longer has a school-age child outside daycare,
+ * or a second school gives other days. Which school was filed first never decides it.
+ *
  * A family waiting on its school's page (a lookup not finished or deferred, no model
  * client) is asked instead once November is over (`lastWaitDay`).
  *
@@ -92,11 +105,6 @@ export const MAIL_REREAD_MS = 24 * 60 * 60_000;
 export const SCHOOL_BREAK_MAIL_SWEEP = 'school_break_mail';
 /** When a family's mail was last read at all, settled or not: who is served next. */
 export const SCHOOL_BREAK_MAIL_SERVED_SWEEP = 'school_break_mail_served';
-/** Junior kindergarten starts in September of the year a child turns four. */
-const JK_START_AGE = 4;
-/** Grade 12 starts in September of the year a child turns seventeen, and they turn
- * eighteen during it: the last school year with a winter break of theirs. */
-const LAST_SCHOOL_YEAR_START_AGE = 17;
 
 export const SCHOOL_BREAK_ASK_KIND = 'school_break_ask' as const;
 
@@ -118,6 +126,9 @@ export interface SchoolBreakSweepResult {
   sharedSender: number;
   /** Authenticated senders whose email a school did not write, by the sender check. */
   notSchool: number;
+  /** A sender's email text or the sender check could not be read this run (Google, the
+   * model): the family waits and the mail is read again next hour. */
+  emailUnread: number;
   lookedUp: number;
   verified: number;
   notFound: number;
@@ -131,6 +142,8 @@ export interface SchoolBreakSweepResult {
   deferred: number;
   /** Facts written or moved to a new reading. */
   recorded: number;
+  /** School breaks on file that stopped standing, or that a second school contradicts. */
+  retired: number;
   /** A school is still waiting on a lookup: no ask yet. */
   waiting: number;
   /** Waiting ran past `lastWaitDay`: the family is asked instead. */
@@ -157,6 +170,7 @@ function emptyResult(skipped: SchoolBreakSweepResult['skipped']): SchoolBreakSwe
     unaligned: 0,
     sharedSender: 0,
     notSchool: 0,
+    emailUnread: 0,
     lookedUp: 0,
     verified: 0,
     notFound: 0,
@@ -166,6 +180,7 @@ function emptyResult(skipped: SchoolBreakSweepResult['skipped']): SchoolBreakSwe
     noClient: 0,
     deferred: 0,
     recorded: 0,
+    retired: 0,
     waiting: 0,
     waitedOut: 0,
     disagreed: 0,
@@ -225,28 +240,6 @@ async function loadFamilies(database: Database): Promise<string[]> {
     .where(inArray(members.role, [...TEXTABLE_ROLES]))
     .orderBy(sql`${marks.sweptAt} asc nulls first`, members.familyId);
   return rows.map((row) => row.familyId);
-}
-
-/** A child of school age this school year whose parent has not said they are at daycare. */
-async function hasSchoolAgeChild(
-  database: Database,
-  familyId: string,
-  schoolYear: string,
-): Promise<boolean> {
-  const children = await database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  const startYear = Number(schoolYear.slice(0, 4));
-  const atDaycare = new Set(
-    (await loadWeekdayCare(database, familyId))
-      .filter((fact) => fact.care === 'daycare')
-      .map((fact) => fact.childId),
-  );
-  return children.some((child) => {
-    const age = startYear - Number(child.dateOfBirth.slice(0, 4));
-    return age >= JK_START_AGE && age <= LAST_SCHOOL_YEAR_START_AGE && !atDaycare.has(child.id);
-  });
 }
 
 /** The family's mail was read and settled within {@link MAIL_REREAD_MS}. */
@@ -334,10 +327,11 @@ async function refreshBoard(
   result.lookedUp += 1;
   const found = await lookupBoardBreak(lookup, host, schoolYear);
   if (found.status === 'retry') {
-    // A stale reading still stands while its page is read again. With none, the tries
-    // are bounded: the families waiting on this host are asked instead.
+    // A stale reading still stands while its page is read again, for a bounded number of
+    // tries in a row; then the host rests as `not_found` until it is due again. Breaks
+    // already filed stand on their own (standing.ts); a family new to the host is asked.
     const tries = 1 + (await unfinishedLookups(database, host, schoolYear, prior?.readAt ?? null));
-    if (prior !== null || tries < MAX_LOOKUP_TRIES) {
+    if (tries < MAX_LOOKUP_TRIES) {
       await recordUnfinishedLookup(database, host, schoolYear, found.reason, now);
       result.retry += 1;
       console.info({ reason: found.reason, tries }, 'school break: lookup did not finish');
@@ -370,6 +364,7 @@ async function refreshBoard(
 interface SchoolEmail {
   host: string;
   text: string;
+  mail: MailKey;
 }
 
 interface FamilyWork {
@@ -377,7 +372,8 @@ interface FamilyWork {
   hosts: string[];
   emails: SchoolEmail[];
   mailRead: boolean;
-  /** Senders not yet checked (no model client): the family waits on them. */
+  /** Senders not yet checked (no model client, or an email or check not read this run):
+   * the family waits on them. */
   pending: boolean;
 }
 
@@ -387,22 +383,32 @@ function newestPerHost(messages: SchoolMessage[]): SchoolMessage[] {
   return messages.filter((message) => !seen.has(message.host) && seen.add(message.host));
 }
 
-/** The messages, of those given, that a school wrote, each with its text. */
+/** The messages, of those given, that a school wrote, each with its text; `unread` when
+ * one of them could not be read or checked this run. */
 async function schoolEmails(
   deps: SchoolBreakSweepDeps,
   lookup: BoardLookupDeps,
   familyId: string,
   messages: SchoolMessage[],
   result: SchoolBreakSweepResult,
-): Promise<SchoolEmail[]> {
+): Promise<{ emails: SchoolEmail[]; unread: boolean }> {
+  let unread = false;
   const read = await Promise.all(
     messages.map(async (message): Promise<SchoolEmail | null> => {
       const text = await deps.schoolMail.text(familyId, message);
       if (text.status === 'unread') {
+        unread = true;
+        result.emailUnread += 1;
         console.info({ reason: text.reason }, 'school break: school email text not read');
         return null;
       }
       const sender = await lookup.readSender({ host: message.host, text: text.text });
+      if (sender.status === 'unreadable') {
+        unread = true;
+        result.emailUnread += 1;
+        console.info({ reason: sender.reason }, 'school break: sender check not read');
+        return null;
+      }
       if (sender.status !== 'school') {
         result.notSchool += 1;
         console.info(
@@ -411,10 +417,11 @@ async function schoolEmails(
         );
         return null;
       }
-      return { host: message.host, text: text.text };
+      const mail = { integrationId: message.integrationId, messageId: message.messageId };
+      return { host: message.host, text: text.text, mail };
     }),
   );
-  return read.filter((email): email is SchoolEmail => email !== null);
+  return { emails: read.filter((email): email is SchoolEmail => email !== null), unread };
 }
 
 export async function runSchoolBreakSweep(
@@ -438,11 +445,19 @@ export async function runSchoolBreakSweep(
       result.f14Dark += 1;
       continue;
     }
-    if (!(await hasSchoolAgeChild(database, familyId, schoolYear))) {
+    const care = await loadWeekdayCare(database, familyId);
+    let fact = await loadSchoolBreak(database, familyId, schoolYear);
+    if (fact !== null) {
+      const standing = await boardBreakStanding(database, fact, care);
+      if (standing !== 'stands') {
+        await retire(database, fact, standing, now, result);
+        fact = null;
+      }
+    }
+    if (!(await hasSchoolAgeChild(database, familyId, schoolYear, care))) {
       result.noSchoolChild += 1;
       continue;
     }
-    const fact = await loadSchoolBreak(database, familyId, schoolYear);
     if (fact?.source === 'parent') {
       result.parentKnown += 1;
       continue;
@@ -495,7 +510,13 @@ export async function runSchoolBreakSweep(
       pending = true;
     } else if (fresh.length > 0 && deps.lookup !== null) {
       try {
-        emails = await schoolEmails(deps, deps.lookup, familyId, fresh, result);
+        ({ emails, unread: pending } = await schoolEmails(
+          deps,
+          deps.lookup,
+          familyId,
+          fresh,
+          result,
+        ));
       } catch (err) {
         result.failed += 1;
         console.error({ fault: faultOf(err) }, 'school break: school email check failed');
@@ -586,17 +607,23 @@ async function settleFamily(
     const reading = readings.get(host) ?? null;
     return reading?.status === 'verified' ? [{ host, reading }] : [];
   });
+  const fact = await loadSchoolBreak(database, familyId, schoolYear);
   // Two schools with different days: Hale cannot tell which one is this family's kid's,
-  // so it files neither and asks.
+  // so it files neither and asks, whichever of them was filed first.
   if (new Set(verified.map(({ reading }) => daysOf(reading))).size > 1) {
     result.disagreed += 1;
+    if (fact?.source === 'board_page')
+      await retire(database, fact, 'schools_disagree', now, result);
     await askOnce(database, deps, gate, familyId, schoolYear, null, now, result);
     return 'settled';
   }
-  const fact = await loadSchoolBreak(database, familyId, schoolYear);
   const board = verified[0];
   if (board) {
     if (sameBreak(fact, 'board_page', board.reading, board.reading.sourceUrl)) return 'settled';
+    const sourceMail = uniqueMail([
+      ...(fact?.source === 'board_page' && fact.boardHost === board.host ? fact.sourceMail : []),
+      ...work.emails.filter((email) => email.host === board.host).map((email) => email.mail),
+    ]);
     await recordSchoolBreak(database, {
       source: 'board_page',
       familyId,
@@ -606,6 +633,7 @@ async function settleFamily(
       lastDay: board.reading.lastDay,
       sourceUrl: board.reading.sourceUrl,
       boardHost: board.host,
+      sourceMail,
       now,
     });
     result.recorded += 1;
@@ -623,6 +651,26 @@ async function settleFamily(
   }
   await askOnce(database, deps, gate, familyId, schoolYear, emailed[0] ?? null, now, result);
   return 'settled';
+}
+
+function uniqueMail(mail: MailKey[]): MailKey[] {
+  const seen = new Set<string>();
+  return mail.filter((key) => {
+    const id = `${key.integrationId}/${key.messageId}`;
+    return !seen.has(id) && seen.add(id);
+  });
+}
+
+async function retire(
+  database: Database,
+  fact: SchoolBreakFact,
+  reason: SchoolBreakRetireReason,
+  now: Date,
+  result: SchoolBreakSweepResult,
+): Promise<void> {
+  const outcome = await retireSchoolBreak(database, fact, reason, now);
+  if (outcome === 'retired') result.retired += 1;
+  console.info({ reason, outcome }, 'school break: a school break on file no longer stands');
 }
 
 /** The breaks the family's school emails state, each read off its own text. */

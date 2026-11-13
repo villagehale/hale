@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { HALE_RECORD, writeFact } from '~/lib/memory/facts';
+import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
+import type { MailKey } from './kept-mail';
 import type { BreakDay } from './read';
+import type { BoardBreakStanding } from './standing';
 
 /**
  * VIL-685 · THIS FAMILY'S WINTER BREAK — the fact, its writers, and its one reader.
@@ -12,7 +14,10 @@ import type { BreakDay } from './read';
  * answer always replaces the school's.
  *
  * Every row carries its source: the school's page URL and the page words each day stands
- * on, or the parent's own words. A row without one is never written. A school's email is
+ * on, or the parent's own words. A row without one is never written. A school's row also
+ * names the emails that named the school (`sourceMail`), and stands only while one of them
+ * is still plain kid mail and the family still has a school-age child (standing.ts); when
+ * either stops being true, or a second school gives other days, it is retired. A school's email is
  * never a source on its own: its days are put to the parent, and what the parent confirms
  * is filed as theirs. `name` is the break's name as the page printed it, or as the parent
  * said it; a parent who gave no name leaves it null, and nothing here makes one up.
@@ -38,12 +43,15 @@ const valueSchema = z.object({
   sourceUrl: z.string().nullable(),
   boardHost: z.string().nullable(),
   quotes: z.array(z.string()).min(1),
+  /** The kid mail that named the school: empty on the parent's own answer. */
+  sourceMail: z.array(z.object({ integrationId: z.string(), messageId: z.string() })),
 });
 
 export type SchoolBreakFactValue = z.infer<typeof valueSchema>;
 
 export interface SchoolBreakFact extends SchoolBreakFactValue {
   factId: string;
+  familyId: string;
 }
 
 /**
@@ -71,7 +79,7 @@ export async function loadSchoolBreak(
   for (const row of rows) {
     const parsed = valueSchema.safeParse(row.factValue);
     if (parsed.success && parsed.data.schoolYear === schoolYear) {
-      return { factId: row.factId, ...parsed.data };
+      return { factId: row.factId, familyId, ...parsed.data };
     }
   }
   return null;
@@ -87,6 +95,8 @@ export type SchoolBreakWrite =
       lastDay: BreakDay;
       sourceUrl: string;
       boardHost: string;
+      /** The kid mail that named this school: at least one. */
+      sourceMail: MailKey[];
       now: Date;
     }
   | {
@@ -113,6 +123,9 @@ export async function recordSchoolBreak(
   database: Database,
   write: SchoolBreakWrite,
 ): Promise<void> {
+  if (write.source === 'board_page' && write.sourceMail.length === 0) {
+    throw new Error('school break: a school is named only by the mail that named it');
+  }
   const value: SchoolBreakFactValue =
     write.source === 'board_page'
       ? {
@@ -124,6 +137,7 @@ export async function recordSchoolBreak(
           sourceUrl: write.sourceUrl,
           boardHost: write.boardHost,
           quotes: [...new Set([write.firstDay.quote, write.lastDay.quote])],
+          sourceMail: write.sourceMail,
         }
       : {
           schoolYear: write.schoolYear,
@@ -134,6 +148,7 @@ export async function recordSchoolBreak(
           sourceUrl: null,
           boardHost: null,
           quotes: [write.quote],
+          sourceMail: [],
         };
   await database.transaction(async (tx) => {
     await tx.insert(schema.auditLog).values({
@@ -162,5 +177,44 @@ export async function recordSchoolBreak(
         write.source === 'parent' ? { in: 'one_to_one', userId: write.parentUserId } : HALE_RECORD,
       validFrom: write.now,
     });
+  });
+}
+
+/** Why a school's break was retired: it stopped standing, or two schools disagree. */
+export type SchoolBreakRetireReason = Exclude<BoardBreakStanding, 'stands'> | 'schools_disagree';
+
+/**
+ * Retire a school's break that no longer applies, with nothing in its place. Audit row and
+ * close in one transaction (rule #6); the audit names the reason and the school's host,
+ * never any mail. A row already closed by a concurrent run closes nothing and writes no
+ * second audit row.
+ */
+export async function retireSchoolBreak(
+  database: Database,
+  fact: SchoolBreakFact,
+  reason: SchoolBreakRetireReason,
+  now: Date,
+): Promise<'retired' | 'already_closed'> {
+  return database.transaction(async (tx) => {
+    const closed = await closeFacts(tx, {
+      factIds: [fact.factId],
+      closedAt: now,
+      supersededBy: null,
+    });
+    if (closed.closedFactIds.length === 0) return 'already_closed';
+    await tx.insert(schema.auditLog).values({
+      familyId: fact.familyId,
+      actor: 'system',
+      actionTaken: 'school_break_retired',
+      targetTable: 'family_memory_facts',
+      targetId: fact.factId,
+      after: {
+        reason,
+        source: fact.source,
+        schoolYear: fact.schoolYear,
+        ...(fact.boardHost ? { boardHost: fact.boardHost } : {}),
+      },
+    });
+    return 'retired';
   });
 }

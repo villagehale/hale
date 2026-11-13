@@ -57,6 +57,17 @@ export const SHARED_SENDER_HOSTS: ReadonlySet<string> = new Set([
   'sportsengine.com',
   'storypark.com',
   'teamsnap.com',
+  // Payment, notification, website and event platforms that send in a school's name.
+  'blackbaud.com',
+  'edlio.com',
+  'eventbrite.com',
+  'finalsite.net',
+  'myschoolapp.com',
+  'powerschool.com',
+  'schoolcashonline.com',
+  'schoolday.com',
+  'synrevoice.com',
+  'veracross.com',
 ]);
 
 /** The registrable domain sends for many people: it names no school. */

@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZodError } from 'zod';
 import { loadWeekdayCareContext, recordWeekdayCare } from '~/lib/care/weekday';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
@@ -398,6 +399,19 @@ const EMAIL_JSON: SchoolBreakExtraction = {
   found: true,
 };
 
+const PLATFORMS = [
+  'schoolcashonline.com',
+  'synrevoice.com',
+  'schoolday.com',
+  'powerschool.com',
+  'finalsite.net',
+  'myschoolapp.com',
+  'edlio.com',
+  'blackbaud.com',
+  'veracross.com',
+  'eventbrite.com',
+];
+
 describe('the winter-break sweep: which school', () => {
   it('reads the break off the page of the host that authenticated kid mail, and files it with its source', async () => {
     const { familyId } = await seedFamily({ mail: [`mail.${BOARD}`] });
@@ -479,15 +493,20 @@ describe('the winter-break sweep: which school', () => {
         { domain: 'classroom.google.com', body: `${EMAIL_RANGE}\n${SCHOOL_WORDS}` },
       ],
     });
+    // Payment, notification and website platforms schools send through.
+    const platforms = await seedFamily({
+      mail: PLATFORMS.map((domain) => ({ domain, body: `${EMAIL_RANGE}\n${SCHOOL_WORDS}` })),
+    });
     const script = scripted({ textJson: () => EMAIL_JSON });
 
     const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
 
-    expect(gmailReads).toHaveLength(3);
+    expect(gmailReads).toHaveLength(3 + PLATFORMS.length);
     expect(bodyReads).toEqual([]);
     expect(script.senders).toEqual([]);
     expect(script.searches).toEqual([]);
-    expect(result).toMatchObject({ sharedSender: 3, recorded: 0, queued: 1 });
+    expect(result).toMatchObject({ sharedSender: 3 + PLATFORMS.length, recorded: 0, queued: 2 });
+    expect(await loadSchoolBreak(db.database, platforms.familyId, '2026-27')).toBeNull();
     expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
     expect((await asks(familyId))[0]?.what).toBe('winter break 2026-27');
   });
@@ -496,7 +515,10 @@ describe('the winter-break sweep: which school', () => {
     const { familyId } = await seedFamily({
       dateOfBirth: '2022-05-01',
       mail: [
-        { domain: 'camp.example', body: `Winter camp runs while school is out: ${EMAIL_RANGE}` },
+        {
+          domain: 'camp.example',
+          body: `Winter camp for ${SCHOOL_WORDS} families runs while school is out: ${EMAIL_RANGE}`,
+        },
         { domain: 'little-sprouts.example', body: `We are closed ${EMAIL_RANGE}` },
         { domain: 'private-school.example', body: 'Join our open house for next fall.' },
       ],
@@ -504,7 +526,12 @@ describe('the winter-break sweep: which school', () => {
     const script = scripted({
       textJson: () => EMAIL_JSON,
       senderJson: (_text, host) =>
-        host === 'little-sprouts.example' ? WROTE_IT.daycare : WROTE_IT.other,
+        host === 'little-sprouts.example'
+          ? WROTE_IT.daycare
+          : host === 'camp.example'
+            ? // The camp's email names the school it serves; a camp still wrote it.
+              { ...WROTE_IT.other, school_words: SCHOOL_WORDS }
+            : WROTE_IT.other,
     });
 
     const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
@@ -739,7 +766,15 @@ describe('the winter-break sweep: which dates', () => {
       new Date(NOW.getTime() + 25 * HOUR),
     );
     expect(gmailReads).toHaveLength(3);
-    expect(result).toMatchObject({ disagreed: 1, recorded: 0, queued: 1 });
+    expect(result).toMatchObject({ disagreed: 1, recorded: 0, retired: 1, queued: 1 });
+    // The school filed first is not kept for being first: neither school's days stand.
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect(
+      (await loadWeekdayCareContext(db.database, familyId, new Date(NOW.getTime() + 25 * HOUR)))
+        .verifiedBreak,
+    ).toBeNull();
+    const [retired] = await audits(familyId, 'school_break_retired');
+    expect(retired?.after).toMatchObject({ reason: 'schools_disagree', boardHost: BOARD });
   });
 
   it("leaves a parent's own answer alone: no lookup, no question, no write over it", async () => {
@@ -1003,6 +1038,158 @@ describe('the winter-break sweep: bounds', () => {
     expect(result.deferred).toBe(1);
     expect(await loadSchoolBreak(db.database, lonely.familyId, '2026-27')).toMatchObject({
       boardHost: 'lonely.example',
+    });
+  });
+});
+
+describe('the winter-break sweep: a filed break stands only on what named it', () => {
+  const LATER = new Date(NOW.getTime() + 25 * HOUR);
+
+  it('retires a board break once the parent says the mail that named the school was theirs, and the break question stops naming it at once', async () => {
+    const { familyId } = await seedFamily({ mail: [BOARD] });
+    const messageId = `msg-${seq}`;
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      boardHost: BOARD,
+    });
+
+    // "That's mine": the shape the untrack writes, landing after the break was filed.
+    await verdictOn(familyId, messageId, 'adult');
+    // Before any sweep runs, the break question already reads no break.
+    expect((await loadWeekdayCareContext(db.database, familyId, NOW)).verifiedBreak).toBeNull();
+
+    const result = await runSchoolBreakSweep(db.database, deps(scripted().lookup), LATER);
+
+    expect(result).toMatchObject({ retired: 1, recorded: 0 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect((await loadWeekdayCareContext(db.database, familyId, LATER)).verifiedBreak).toBeNull();
+    const [retired, ...more] = await audits(familyId, 'school_break_retired');
+    expect(more).toEqual([]);
+    expect(retired?.after).toMatchObject({ reason: 'source_mail_withdrawn', boardHost: BOARD });
+    // With nothing else naming a school, the parent is asked, once.
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('keeps a board break while any mail that named the school is still kept kid mail', async () => {
+    const { familyId } = await seedFamily({ mail: [BOARD, BOARD] });
+    const newest = `msg-${seq}`;
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect((await loadSchoolBreak(db.database, familyId, '2026-27'))?.sourceMail).toHaveLength(1);
+    // The board's older notice is withdrawn; the one the school check read still stands.
+    await verdictOn(familyId, `msg-${seq - 1}`, 'adult');
+    const result = await runSchoolBreakSweep(db.database, deps(scripted().lookup), LATER);
+    expect(result).toMatchObject({ retired: 0 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      boardHost: BOARD,
+      sourceMail: [{ messageId: newest }],
+    });
+  });
+
+  it('retires a board break once the parent says the only school-age child is at daycare, and never asks about a board', async () => {
+    const { familyId, parentIds, childId } = await seedFamily({
+      mail: [BOARD],
+      dateOfBirth: '2022-05-01',
+    });
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      boardHost: BOARD,
+    });
+
+    await recordWeekdayCare(db.database, {
+      familyId,
+      parentUserId: parentIds[0] as string,
+      childId,
+      care: 'daycare',
+      provider: null,
+      now: NOW,
+    });
+    expect((await loadWeekdayCareContext(db.database, familyId, NOW)).verifiedBreak).toBeNull();
+
+    const script = scripted();
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), LATER);
+
+    expect(result).toMatchObject({ noSchoolChild: 1, retired: 1, queued: 0 });
+    expect(script.searches).toEqual([]);
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect((await loadWeekdayCareContext(db.database, familyId, LATER)).verifiedBreak).toBeNull();
+    const [retired] = await audits(familyId, 'school_break_retired');
+    expect(retired?.after).toMatchObject({ reason: 'no_school_child' });
+    expect(await asks(familyId)).toEqual([]);
+  });
+
+  it("leaves the parent's own answer standing whatever the mail or the care later says", async () => {
+    const { familyId, parentIds, childId } = await seedFamily({ dateOfBirth: '2022-05-01' });
+    await recordSchoolBreak(db.database, {
+      source: 'parent',
+      familyId,
+      parentUserId: parentIds[0] as string,
+      schoolYear: '2026-27',
+      name: null,
+      firstDay: '2026-12-18',
+      lastDay: '2027-01-04',
+      quote: 'dec 18 to jan 4',
+      now: NOW,
+    });
+    await recordWeekdayCare(db.database, {
+      familyId,
+      parentUserId: parentIds[0] as string,
+      childId,
+      care: 'daycare',
+      provider: null,
+      now: NOW,
+    });
+    const result = await runSchoolBreakSweep(db.database, deps(scripted().lookup), LATER);
+    expect(result).toMatchObject({ retired: 0 });
+    expect(
+      (await loadWeekdayCareContext(db.database, familyId, LATER)).verifiedBreak,
+    ).toMatchObject({ source: 'parent_said', date: '2026-12-18' });
+  });
+});
+
+describe('the winter-break sweep: transient failures', () => {
+  it('waits, by name, when the sender check or the email text could not be read, and reads it again next hour', async () => {
+    const { familyId } = await seedFamily({ mail: [BOARD] });
+    const failing = scripted({
+      senderJson: () => {
+        throw new ZodError([]);
+      },
+    });
+
+    const result = await runSchoolBreakSweep(db.database, deps(failing.lookup), NOW);
+
+    expect(result).toMatchObject({ emailUnread: 1, notSchool: 0, waiting: 1, queued: 0 });
+    expect(await asks(familyId)).toEqual([]);
+
+    const healed = scripted();
+    const next = await runSchoolBreakSweep(
+      db.database,
+      deps(healed.lookup),
+      new Date(NOW.getTime() + HOUR),
+    );
+    expect(healed.senders).toEqual([BOARD]);
+    expect(next).toMatchObject({ recorded: 1, queued: 0 });
+  });
+
+  it('bounds the lookups of a host whose earlier reading is stale: after the tries run out the families on file keep their break and the host rests', async () => {
+    const { familyId } = await seedFamily({ mail: [BOARD] });
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    const failing = scripted({ search: () => ({ outcome: 'failed', reason: 'search_failed:x' }) });
+    const eightDays = NOW.getTime() + 8 * 24 * HOUR;
+    const outcomes = [];
+    for (let h = 0; h < MAX_LOOKUP_TRIES + 2; h++) {
+      outcomes.push(
+        await runSchoolBreakSweep(
+          db.database,
+          deps(failing.lookup),
+          new Date(eightDays + h * HOUR),
+        ),
+      );
+    }
+    expect(failing.searches).toHaveLength(MAX_LOOKUP_TRIES);
+    expect(outcomes.map((r) => r.retriesExhausted)).toEqual([0, 0, 1, 0, 0]);
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      boardHost: BOARD,
+      firstDay: '2026-12-21',
     });
   });
 });
