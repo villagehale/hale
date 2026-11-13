@@ -15,9 +15,11 @@ import type { OwnCity } from './place';
  * The page is the family's own city's (its host is the municipality's official site), so
  * an opening the page labels for residents is theirs, then the opening for everyone, and
  * only then one the page attaches no eligibility label to: a resident may register on any
- * of them. Where residency is in doubt (an FSA on a town line), only the opening the page
- * labels for everyone is claimed: telling a family they can register a day early when
- * they cannot is the expensive mistake.
+ * of them. Where residency is in doubt (an FSA on a town line), no morning is claimed as
+ * theirs: telling a family they can register a day early when they cannot is the
+ * expensive mistake. Such a family hears one date only when it is the same for residents
+ * and everyone else; where the page gives residents an earlier one, it hears both, each
+ * with who it is for. With no date the page labels for everyone, it hears none.
  *
  * A family whose district registers on its own morning (Toronto) takes only a date the
  * page ties to that district (namesDistrict): an opening for everyone or an unlabelled
@@ -26,9 +28,17 @@ import type { OwnCity } from './place';
  * district (a free-centres morning is not North York's).
  */
 export interface FamilyOpening {
+  /** The earliest morning this family may register on. */
   own: LiveRegistrationDate;
   /** The later opening for everyone else, when it differs from `own`. */
   general: LiveRegistrationDate | null;
+  /** Residency is in doubt and residents open first: `own` is the residents' morning and
+   * `general` everyone else's, and the family is told both, never that `own` is theirs. */
+  residencyInDoubt: boolean;
+}
+
+function sameOpening(a: LiveRegistrationDate, b: LiveRegistrationDate): boolean {
+  return a.date === b.date && a.time === b.time;
 }
 
 /**
@@ -60,14 +70,32 @@ export function familyOpening(
     const own = (['general_open', 'unclassified_open'] as const)
       .flatMap((kind) => reading.dates.filter((date) => date.kind === kind))
       .find((date) => namesDistrict(date, district));
-    return own ? { own, general: null } : null;
+    return own ? { own, general: null, residencyInDoubt: false } : null;
   }
   const general = of('general_open') ?? null;
-  const own = place.residencyKnown
-    ? (of('resident_open') ?? general ?? of('unclassified_open'))
-    : general;
-  if (!own) return null;
-  return { own, general: general !== null && general !== own ? general : null };
+  const residents = of('resident_open') ?? null;
+  if (place.residencyKnown) {
+    const own = residents ?? general ?? of('unclassified_open');
+    if (!own) return null;
+    const later = general !== null && !sameOpening(general, own) ? general : null;
+    return { own, general: later, residencyInDoubt: false };
+  }
+  if (general === null) return null;
+  if (residents === null || sameOpening(residents, general)) {
+    return { own: general, general: null, residencyInDoubt: false };
+  }
+  return { own: residents, general, residencyInDoubt: true };
+}
+
+/** Some family in this city or district has an opening on the page: what makes a page
+ * worth keeping as the city's reading. Residency is a family's, never the city's, so the
+ * page is judged for a resident (the widest claim) and each family's own opening is taken
+ * from it afterwards. */
+export function opensForSomeone(
+  reading: VerifiedRegistrationReading,
+  city: Pick<OwnCity, 'district'>,
+): boolean {
+  return familyOpening(reading, { district: city.district, residencyKnown: true }) !== null;
 }
 
 /** The instant a date opens at, in the page's own zone (the family's city). */

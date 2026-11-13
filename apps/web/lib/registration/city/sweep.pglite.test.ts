@@ -10,7 +10,7 @@ import { ownCityRegistrationContext, postalOwnCityOpens } from './context';
 import { OWN_CITY_REGISTRATION_ENABLED_ENV } from './flag';
 import type { CityLookupDeps } from './lookup';
 import { RECHECK_FOUND_MS, cachedOfficialSite } from './official-site';
-import type { OwnCity } from './place';
+import type { CityPlace } from './place';
 import type { PageSearch } from './search';
 import { REVERIFY_NOT_FOUND_MS, REVERIFY_VERIFIED_MS } from './store';
 import {
@@ -89,7 +89,7 @@ function verified(
 interface Script {
   searches: Array<{ city: string; cycleLabel: string }>;
   reads: RegistrationTarget[];
-  search: (place: OwnCity) => PageSearch;
+  search: (place: CityPlace) => PageSearch;
   read: (target: RegistrationTarget) => LiveRegistrationReading;
 }
 
@@ -164,11 +164,13 @@ function deps(
 async function seedFamily(
   postalCode: string,
   parents = 1,
+  id?: string,
 ): Promise<{ familyId: string; parentIds: string[] }> {
   const [family] = await db.database
     .insert(schema.families)
     // Intake writes both: the full code and its FSA as the coarse area.
     .values({
+      ...(id === undefined ? {} : { id }),
       displayName: 'Test household',
       country: 'Canada',
       postalCode,
@@ -453,7 +455,7 @@ describe('the own-city registration sweep', () => {
     const lookup = scripted();
     const broken = {
       ...lookup,
-      search: async (place: OwnCity, cycleLabel: string, today: string) => {
+      search: async (place: CityPlace, cycleLabel: string, today: string) => {
         if (place.city === 'Greater Sudbury') throw new TypeError('reader bug');
         return lookup.search(place, cycleLabel, today);
       },
@@ -496,6 +498,230 @@ describe('the own-city registration sweep', () => {
     expect(tell?.what).toBe(
       'Greater Sudbury Winter Session 2027 – ten-week session registration opens Dec 16, 8:00 a.m.',
     );
+  });
+});
+
+describe('each family is told the date for its own residency and district', () => {
+  const MARKHAM_PAGE = 'https://www.markham.ca/recreation/registration';
+  const VAUGHAN_PAGE = 'https://www.vaughan.ca/recreation/registration';
+  /** Sorts first and last by id: the sweep loads families in id order. */
+  const FIRST = '00000000-0000-4000-8000-000000000001';
+  const LAST = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  const HOSTS: Record<string, string> = { Markham: 'markham.ca', Vaughan: 'vaughan.ca' };
+
+  type PageDate = LiveRegistrationReading extends infer R
+    ? R extends { status: 'verified'; dates: Array<infer D> }
+      ? D
+      : never
+    : never;
+  const page = (url: string, dates: PageDate[]): LiveRegistrationReading => ({
+    sourceUrl: url,
+    checkedAt: NOW,
+    reader: 'ai',
+    status: 'verified',
+    timeZone: 'America/Toronto',
+    dates,
+    partialDates: [],
+  });
+  /** Markham's Winter 2027 page as read 2026-11-12: residents Dec 1, non-residents Dec 2. */
+  const residents: PageDate = {
+    kind: 'resident_open',
+    date: '2026-12-01',
+    time: '06:30',
+    evidence: ['2027 Winter Registration for residents: December 1, 2026, at 6:30 AM'],
+  };
+  const nonResidents: PageDate = {
+    kind: 'general_open',
+    date: '2026-12-02',
+    time: '06:30',
+    evidence: ['2027 Winter Registration for non-residents: December 2, 2026, at 6:30 AM'],
+  };
+  const vaughan: PageDate = {
+    kind: 'unclassified_open',
+    date: '2026-12-03',
+    time: '09:00',
+    evidence: ['Winter 2027 registration opens December 3, 2026 at 9 a.m.'],
+  };
+
+  function york(markham: PageDate[]): CityLookupDeps & { reads: RegistrationTarget[] } {
+    const reads: RegistrationTarget[] = [];
+    return {
+      reads,
+      officialSite: async (place) => ({
+        status: 'found',
+        host: HOSTS[place.city] ?? 'example.ca',
+        website: `https://www.${HOSTS[place.city] ?? 'example.ca'}/`,
+        source: 'wikidata:Q1',
+      }),
+      search: async (place) =>
+        place.city === 'Markham'
+          ? { outcome: 'pages', municipality: 'City of Markham', urls: [MARKHAM_PAGE] }
+          : { outcome: 'pages', municipality: 'City of Vaughan', urls: [VAUGHAN_PAGE] },
+      read: async (target) => {
+        reads.push(target);
+        return target.sourceUrl === MARKHAM_PAGE
+          ? page(MARKHAM_PAGE, markham)
+          : page(VAUGHAN_PAGE, [vaughan]);
+      },
+    };
+  }
+
+  const whatOf = async (familyId: string) => (await tells(familyId)).map((row) => row.what);
+  const coachOf = async (family: { familyId: string; parentIds: string[] }) =>
+    ownCityRegistrationContext(db.database, family.familyId, family.parentIds[0] as string, NOW);
+
+  for (const order of ['resident first', 'residency in doubt first'] as const) {
+    it(`Markham: a resident, a family whose residency is in doubt and a Vaughan family each hear their own date (${order})`, async () => {
+      const resident = await seedFamily('L3P 1A1', 1, order === 'resident first' ? FIRST : LAST);
+      // L3T (Thornhill) straddles Markham and Vaughan: residency is in doubt.
+      const inDoubt = await seedFamily('L3T 1A1', 1, order === 'resident first' ? LAST : FIRST);
+      // Lives in Vaughan: a Markham non-resident, whose own city is Vaughan.
+      const vaughanFamily = await seedFamily('L6A 1A1');
+      const lookup = york([residents, nonResidents]);
+
+      const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+
+      expect(result).toMatchObject({ lookedUp: 2, verified: 2, queued: 3, notKnown: 0 });
+      expect(lookup.reads.map((target) => target.sourceUrl).sort()).toEqual([
+        MARKHAM_PAGE,
+        VAUGHAN_PAGE,
+      ]);
+      expect(await whatOf(resident.familyId)).toEqual([
+        'Markham Winter 2027 registration opens Dec 1, 6:30 a.m.; everyone else Dec 2, 6:30 a.m.',
+      ]);
+      // Never told Dec 1 is theirs: both mornings, each with who it is for.
+      expect(await whatOf(inDoubt.familyId)).toEqual([
+        'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 2, 6:30 a.m.',
+      ]);
+      expect(await whatOf(vaughanFamily.familyId)).toEqual([
+        'Vaughan Winter 2027 registration opens Dec 3, 9:00 a.m.',
+      ]);
+      // The tell waits until the earliest morning it may be for.
+      expect((await tells(inDoubt.familyId))[0]?.worthlessAfter).toEqual(
+        new Date('2026-12-01T11:30:00Z'),
+      );
+
+      // The coach reads the same date for each family as its tell.
+      expect(await coachOf(resident)).toMatchObject([
+        {
+          town: 'Markham',
+          opensFor: 'Dec 1, 6:30 a.m.',
+          residentsFirst: true,
+          generalOpens: 'Dec 2, 6:30 a.m.',
+        },
+      ]);
+      expect(await coachOf(inDoubt)).toMatchObject([
+        {
+          town: 'Markham',
+          opensFor: 'Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 2, 6:30 a.m.',
+          residentsFirst: false,
+          generalOpens: null,
+        },
+      ]);
+      expect(await coachOf(vaughanFamily)).toMatchObject([
+        { town: 'Vaughan', opensFor: 'Dec 3, 9:00 a.m.', generalOpens: null },
+      ]);
+    });
+  }
+
+  it('a family whose residency is in doubt hears one date when it is the same for both', async () => {
+    const inDoubt = await seedFamily('L3T 1A1');
+    const same = { ...residents, date: '2026-12-02' };
+    await runCityRegistrationSweep(db.database, deps(york([same, nonResidents])), NOW);
+    expect(await whatOf(inDoubt.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 2, 6:30 a.m.',
+    ]);
+  });
+
+  it("a page with no date for everyone keeps the residents' date for residents, and names nothing for a family in doubt", async () => {
+    // The family whose residency is in doubt loads first: it must not decide the city.
+    const inDoubt = await seedFamily('L3T 1A1', 1, FIRST);
+    const resident = await seedFamily('L3P 1A1', 1, LAST);
+    const unlabelled: PageDate = {
+      kind: 'unclassified_open',
+      date: '2026-12-03',
+      time: '06:30',
+      evidence: ['Winter Registration: December 3, 2026, at 6:30 AM'],
+    };
+
+    const result = await runCityRegistrationSweep(
+      db.database,
+      deps(york([residents, unlabelled])),
+      NOW,
+    );
+
+    expect(await readingStatuses()).toEqual(['verified']);
+    expect(result).toMatchObject({ verified: 1, notFound: 0, queued: 1, notKnown: 1, past: 0 });
+    expect(await whatOf(resident.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m.',
+    ]);
+    expect(await coachOf(resident)).toMatchObject([{ opensFor: 'Dec 1, 6:30 a.m.' }]);
+    expect(await whatOf(inDoubt.familyId)).toEqual([]);
+    expect(await coachOf(inDoubt)).toEqual([]);
+  });
+
+  it('Toronto: each district hears its own morning, and none hears the Free Centres one', async () => {
+    const districts = {
+      toronto_east_york: await seedFamily('M4C 1A1'),
+      etobicoke_york: await seedFamily('M9A 1A1'),
+      north_york: await seedFamily('M2N 0A1'),
+      scarborough: await seedFamily('M1B 1A1'),
+    };
+    // Toronto's Winter 2027 table as read 2026-11-12, one passage per row.
+    const toronto = scripted({
+      read: () =>
+        page(TORONTO_PAGE, [
+          {
+            kind: 'unclassified_open',
+            date: '2026-12-01',
+            time: '07:00',
+            evidence: ['Tuesday, December 1, 7 a.m.', 'Free Centres Tuesday, December 1, 7 a.m.'],
+          },
+          {
+            kind: 'unclassified_open',
+            date: '2026-12-08',
+            time: '07:00',
+            evidence: [
+              'Tuesday, December 8, 7 a.m.',
+              'Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.',
+            ],
+          },
+          {
+            kind: 'unclassified_open',
+            date: '2026-12-09',
+            time: '07:00',
+            evidence: [
+              'Wednesday, December 9, 7 a.m.',
+              'North York and Scarborough Wednesday, December 9, 7 a.m.',
+            ],
+          },
+        ]),
+    });
+
+    // Four districts, three lookups a run: the fourth is reached the next hour.
+    await runCityRegistrationSweep(db.database, deps(toronto), NOW);
+    await runCityRegistrationSweep(db.database, deps(toronto), new Date(NOW.getTime() + 3_600_000));
+
+    expect(toronto.reads.map((target) => target.cycleLabel).sort()).toEqual([
+      'Winter 2027 (etobicoke york)',
+      'Winter 2027 (north york)',
+      'Winter 2027 (scarborough)',
+      'Winter 2027 (toronto east york)',
+    ]);
+    const heard = Object.fromEntries(
+      await Promise.all(
+        Object.entries(districts).map(async ([district, family]) => [
+          district,
+          await whatOf(family.familyId),
+        ]),
+      ),
+    );
+    expect(heard).toEqual({
+      toronto_east_york: ['Toronto Winter 2027 registration opens Dec 8, 7:00 a.m.'],
+      etobicoke_york: ['Toronto Winter 2027 registration opens Dec 8, 7:00 a.m.'],
+      north_york: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
+      scarborough: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
+    });
   });
 });
 
@@ -846,14 +1072,18 @@ describe("a lookup that writes no reading still moves the city's next turn", () 
           : { outcome: 'pages', municipality: 'City of Greater Sudbury', urls: [SUDBURY_PAGE] },
     });
     for (let hour = 0; hour < 6; hour++) {
-      await runCityRegistrationSweep(db.database, deps(lookup), new Date(NOW.getTime() + hour * HOUR));
+      await runCityRegistrationSweep(
+        db.database,
+        deps(lookup),
+        new Date(NOW.getTime() + hour * HOUR),
+      );
     }
     expect(lookup.searches.map((s) => s.city)).toContain('Greater Sudbury');
     expect(await tells(quiet.familyId)).toHaveLength(1);
   });
 });
 
-describe('a parent mid-signup: does their postal code\'s town have its own opening', () => {
+describe("a parent mid-signup: does their postal code's town have its own opening", () => {
   it('reads the town off the code, and answers only from a verified opening still ahead', async () => {
     // No reading for the town yet.
     expect(await postalOwnCityOpens(db.database, 'P3A', NOW)).toBe(false);

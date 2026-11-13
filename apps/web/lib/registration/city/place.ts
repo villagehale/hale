@@ -27,6 +27,10 @@ export interface OwnCity {
   residencyKnown: boolean;
 }
 
+/** A city (and Toronto district) as one reading serves every family in it. Residency is
+ * each family's own and is never part of it: the city-level lookup cannot see it. */
+export type CityPlace = Omit<OwnCity, 'residencyKnown'>;
+
 export type OwnCityRead =
   | { status: 'known'; place: OwnCity }
   | { status: 'unknown'; reason: PlaceUnknown };

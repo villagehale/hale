@@ -3,7 +3,7 @@ import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { VerifiedRegistrationReading } from '../live-reading';
 import type { CityLookup } from './lookup';
-import { type OwnCity, cityKey } from './place';
+import { type CityPlace, cityKey } from './place';
 
 /**
  * VIL-684 · the per-city cache: the newest reading of a city's season wins, and every
@@ -89,7 +89,7 @@ export function storedReading(row: CityRegistrationReading): StoredCityReading {
 
 export async function latestCityReading(
   database: Database,
-  place: OwnCity,
+  place: CityPlace,
   cycleLabel: string,
 ): Promise<StoredCityReading | null> {
   const t = schema.cityRegistrationReadings;
@@ -112,7 +112,7 @@ export async function latestCityReading(
  * that lookup wrote a reading. Null when it was never looked up. */
 export async function nextCityLookupAt(
   database: Database,
-  place: OwnCity,
+  place: CityPlace,
   cycleLabel: string,
 ): Promise<Date | null> {
   const t = schema.cityRegistrationReadings;
@@ -129,7 +129,7 @@ export async function nextCityLookupAt(
  * since the last reading, from the next sweep up to the "not found" interval. */
 export async function recordUnfinishedLookup(
   database: Database,
-  place: OwnCity,
+  place: CityPlace,
   cycleLabel: string,
   reason: string,
   now: Date,
@@ -169,7 +169,7 @@ export async function recordUnfinishedLookup(
 /** Append one lookup's reading. A `retry` is not a reading (recordUnfinishedLookup). */
 export async function recordCityReading(
   database: Database,
-  place: OwnCity,
+  place: CityPlace,
   cycleLabel: string,
   lookup: Exclude<CityLookup, { status: 'retry' }>,
   now: Date,

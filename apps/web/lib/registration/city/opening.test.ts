@@ -46,16 +46,49 @@ describe('familyOpening', () => {
     expect(familyOpening(MARKHAM, RESIDENT)).toEqual({
       own: MARKHAM.dates[1],
       general: MARKHAM.dates[2],
+      residencyInDoubt: false,
     });
   });
 
-  it('claims only the opening for everyone where residency is in doubt', () => {
-    expect(familyOpening(MARKHAM, IN_DOUBT)).toEqual({ own: MARKHAM.dates[2], general: null });
+  it('claims neither morning where residency is in doubt and residents open first: both, named', () => {
+    expect(familyOpening(MARKHAM, IN_DOUBT)).toEqual({
+      own: MARKHAM.dates[1],
+      general: MARKHAM.dates[2],
+      residencyInDoubt: true,
+    });
+  });
+
+  it('gives a family in doubt one date when residents and everyone else open together', () => {
+    const together = reading([
+      date('resident_open', '2026-12-02'),
+      date('general_open', '2026-12-02'),
+    ]);
+    const opening = { own: together.dates[1], general: null, residencyInDoubt: false };
+    expect(familyOpening(together, IN_DOUBT)).toEqual(opening);
+    // A resident is not told "everyone else" opens at the same moment, either.
+    expect(familyOpening(together, RESIDENT)).toEqual({ ...opening, own: together.dates[0] });
+  });
+
+  it("names nothing for a family in doubt on a page with only a residents' morning", () => {
+    const page = reading([
+      date('resident_open', '2026-12-01'),
+      date('unclassified_open', '2026-12-03'),
+    ]);
+    expect(familyOpening(page, IN_DOUBT)).toBeNull();
+    expect(familyOpening(page, RESIDENT)).toEqual({
+      own: page.dates[0],
+      general: null,
+      residencyInDoubt: false,
+    });
   });
 
   it("takes an unlabelled opening on the family's own city's page as theirs", () => {
     const sudbury = reading([date('unclassified_open', '2026-12-16', '08:00')]);
-    expect(familyOpening(sudbury, RESIDENT)).toEqual({ own: sudbury.dates[0], general: null });
+    expect(familyOpening(sudbury, RESIDENT)).toEqual({
+      own: sudbury.dates[0],
+      general: null,
+      residencyInDoubt: false,
+    });
     // ...but not where residency is in doubt: it may be a residents-first morning.
     expect(familyOpening(sudbury, IN_DOUBT)).toBeNull();
   });
@@ -69,7 +102,11 @@ describe('familyOpening', () => {
       date('unclassified_open', '2026-12-01', '07:00'),
       date('general_open', '2026-12-09', '07:00'),
     ]);
-    expect(familyOpening(page, RESIDENT)).toEqual({ own: page.dates[1], general: null });
+    expect(familyOpening(page, RESIDENT)).toEqual({
+      own: page.dates[1],
+      general: null,
+      residencyInDoubt: false,
+    });
   });
 });
 
@@ -89,7 +126,11 @@ describe('familyOpening for a family whose district registers on its own morning
 
   it("takes the district's own row, and never an early-local residents' morning", () => {
     const page = reading([EARLY, NORTH_YORK_ROW]);
-    expect(familyOpening(page, NORTH_YORK)).toEqual({ own: NORTH_YORK_ROW, general: null });
+    expect(familyOpening(page, NORTH_YORK)).toEqual({
+      own: NORTH_YORK_ROW,
+      general: null,
+      residencyInDoubt: false,
+    });
   });
 
   it('never takes an unlabelled date the page does not tie to the district', () => {
@@ -99,7 +140,11 @@ describe('familyOpening for a family whose district registers on its own morning
 
   it("takes a labelled opening for everyone only when it is the district's", () => {
     const general = { ...NORTH_YORK_ROW, kind: 'general_open' as const };
-    expect(familyOpening(reading([general]), NORTH_YORK)).toEqual({ own: general, general: null });
+    expect(familyOpening(reading([general]), NORTH_YORK)).toEqual({
+      own: general,
+      general: null,
+      residencyInDoubt: false,
+    });
     expect(
       familyOpening(reading([general]), { residencyKnown: true, district: 'etobicoke_york' }),
     ).toBeNull();

@@ -23,6 +23,8 @@ export interface CityOpeningFacts {
   /** The page's own name for the programs, or the season alone where the page gives
    * none: never a broader label than the page's. */
   programs: string;
+  /** When this family can first register; for a family whose residency is in doubt,
+   * the residents' morning and everyone else's, each with who it is for. */
   opensFor: string;
   opensAt: Date;
   /** The opening's calendar day as the page prints it: what a tell is keyed on, so a
@@ -43,13 +45,19 @@ export function cityOpeningFacts(
   if (opening === null) return null;
   const opensAt = openingInstant(reading, opening.own);
   if (opensAt.getTime() <= now.getTime()) return null;
+  const own = openingPhrase(reading, opening.own, now);
+  const general = opening.general ? openingPhrase(reading, opening.general, now) : null;
   return {
     town: place.city,
     programs: reading.programOnPage ?? cycleLabel,
-    opensFor: openingPhrase(reading, opening.own, now),
+    // Residency in doubt: both mornings in the one field, each with who it is for, so no
+    // reader can keep the earlier one and drop the condition.
+    opensFor: opening.residencyInDoubt
+      ? `${own} if they live in ${place.city}, otherwise ${general}`
+      : own,
     opensAt,
     openingDate: opening.own.date,
-    generalOpens: opening.general ? openingPhrase(reading, opening.general, now) : null,
+    generalOpens: opening.residencyInDoubt ? null : general,
   };
 }
 
