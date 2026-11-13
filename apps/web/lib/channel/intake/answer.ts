@@ -4,7 +4,7 @@ import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
+import { recMorningIntakeAsksOwnTown, writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
@@ -391,7 +391,22 @@ async function answerFromCurrentSource(
     : { status: 'answered', body };
 }
 
-export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
+/** Whether the town a postal code is in has its own-city opening on file (VIL-684). */
+export type IntakeOwnTownOpens = (postal: string, now: Date) => Promise<boolean>;
+
+export function createIntakeAnswerComposer(
+  client: AgentClient,
+  ownTownOpens: IntakeOwnTownOpens,
+): IntakeAnswerComposer {
+  /** VIL-684: once the parent's own town has a date off its own page, a question for that
+   * town's dates is not this lane's hand dataset's to answer ("not posted yet", an older
+   * season): it goes on to the grounded answer below, like any program date. */
+  const ownTownReadingAnswers = async (input: IntakeAnswerInput): Promise<boolean> => {
+    const postal = input.postalCode ?? null;
+    if (postal === null) return false;
+    if (!recMorningIntakeAsksOwnTown({ parentWords: input.parentWords, postal })) return false;
+    return ownTownOpens(postal, new Date());
+  };
   return {
     async compose(input) {
       // FIRST, and with no model in the loop. See the module note: intake has never had
@@ -418,12 +433,14 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
       // VIL-508: reviewed facts, model-written words; a miss falls through, nothing fixed.
-      const recMorning = await writeRecMorningIntakeReply({
-        parentWords: input.parentWords,
-        pendingAsk: input.pendingAsk,
-        postal: input.postalCode,
-        language: input.language ?? null,
-      });
+      const recMorning = (await ownTownReadingAnswers(input))
+        ? null
+        : await writeRecMorningIntakeReply({
+            parentWords: input.parentWords,
+            pendingAsk: input.pendingAsk,
+            postal: input.postalCode,
+            language: input.language ?? null,
+          });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the

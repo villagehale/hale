@@ -12,6 +12,7 @@ export {
   TORONTO_FOLLOW,
   YMCA_FOLLOW,
   recMorningBody,
+  recMorningIntakeAsksOwnTown,
   recMorningIntakeReply,
   recMorningReply,
   writeRecMorningIntakeReply,
@@ -24,7 +25,7 @@ export {
   type RecMorningTopic,
   type RecMorningWhere,
   matchRecMorning,
-  recMorningTopicCity,
+  recMorningAsksOwnTown,
   resolveHelloCity,
   resolveRecMorningWhere,
 } from './match';

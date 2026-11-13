@@ -41,9 +41,8 @@ import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
   type RecMorningPlace,
-  matchRecMorning,
+  recMorningAsksOwnTown,
   recMorningReply,
-  recMorningTopicCity,
   resolveRecMorningWhere,
   writeRecMorningReply,
 } from '~/lib/channel/rec-morning';
@@ -1261,9 +1260,7 @@ async function ownTownReadingAnswers(
   where: ReturnType<typeof resolveRecMorningWhere>,
   ownCity: OwnCityOpeningRead,
 ): Promise<boolean> {
-  if (where === null) return false;
-  const topic = matchRecMorning(ctx.body, where);
-  if (topic === null || recMorningTopicCity(topic) !== where.municipality) return false;
+  if (!recMorningAsksOwnTown(ctx.body, where)) return false;
   return (await ownCity(database, ctx.familyId, ctx.parentUserId, ctx.now)).length > 0;
 }
 

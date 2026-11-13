@@ -124,8 +124,12 @@ const TOPIC_CITY: Readonly<Record<RecMorningTopic, RecHelloCity | null>> = {
   jack_of_sports: null,
 };
 
-export function recMorningTopicCity(topic: RecMorningTopic): RecHelloCity | null {
-  return TOPIC_CITY[topic];
+/** This text asks this lane for the dates of the family's own town (VIL-684): the one
+ * question an own-city reading of that town answers instead. */
+export function recMorningAsksOwnTown(body: string, where: RecMorningWhere | null): boolean {
+  if (where === null) return false;
+  const topic = matchRecMorning(body, where);
+  return topic !== null && TOPIC_CITY[topic] === where.municipality;
 }
 
 function fold(body: string): string {
