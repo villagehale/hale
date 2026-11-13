@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Le paiement n'a pas été approuvé, donc rien n'a été payé.\nTu peux payer ici pour la séance de sam. 9 h 30 : https://live.browser-use.com/s/fixture-live-view-token\nLa fenêtre reste ouverte 5 minutes."
+  },
+  "latencyMs": 2118,
+  "usage": {
+    "input_tokens": 144,
+    "output_tokens": 105,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Il y a un captcha sur le site, et ça, il n'y a que toi qui peux le passer. Je n'ai pas pu inscrire ton enfant pour sam. 9 h 30. J'ai laissé une fenêtre ouverte sur le site, elle ne réserve aucune place : https://live.browser-use.com/s/fixture-live-view-token"
+  },
+  "latencyMs": 2383,
+  "usage": {
+    "input_tokens": 164,
+    "output_tokens": 128,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}
