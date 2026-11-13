@@ -163,6 +163,26 @@ describe('find_activities', () => {
       expect(seen).toMatchObject([{ town: 'Halton Hills' }]);
     });
 
+    it('takes a blank area as no place named, and searches home instead of refusing', async () => {
+      const seen: unknown[] = [];
+      const read: string[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader(TERRACE, read),
+        onPromise: () => {},
+      });
+
+      await call(tool, { subject: 'story time', area: '' });
+      await call(tool, { subject: 'swim lessons', area: ' \t ' });
+
+      expect(read).toEqual([]);
+      expect(seen).toMatchObject([
+        { subject: 'story time', town: 'Halton Hills' },
+        { subject: 'swim lessons', town: 'Halton Hills' },
+      ]);
+    });
+
     it('searches a named place even when the family has no home town on file', async () => {
       const seen: unknown[] = [];
       const tool = findActivitiesTool({

@@ -64,6 +64,14 @@ export interface ActivityToolArgs {
   onLinks?(links: readonly { title: string; url: string }[]): void;
 }
 
+/** The model sometimes fills an optional `area` with "" to mean "none named". That is the
+ * omitted case, so it is read as omitted before validation rather than refused, which
+ * cost the turn a step. The wire schema is unchanged (compileToolSchema). */
+const optionalArea = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 /** The sentence the model reads when a named place cannot be searched. Never echoes the
  * place back, for the reason {@link refusalSentence} never echoes a subject. */
 function areaRefusalSentence(refusal: Exclude<AreaRefusal, 'area_unread'>): string {
@@ -91,7 +99,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       window: z.string().optional(),
       childId: z.string().min(1).optional(),
       /** A town, city, or area the parent named. Omit to search around home. */
-      area: z.string().min(1).optional(),
+      area: optionalArea,
     }),
     // Invented placeholder only — examples are compiled into a cached tool grammar that
     // sits outside the protections message content gets (rule #1; see EXAMPLE_CHILD_ID).

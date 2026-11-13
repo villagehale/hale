@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly hands Sam the referral link from `referralLinkAppended` and tells them to forward it themselves, with no greeting, no app mention and no invented detail. The pitch reads as a forwardable note, which is reasonable. One blemish: \"since I won't be texting them first\" explains Hale's own limits, and the instructions and the forwardable note are mixed together a little loosely, making it slightly wordier than it needed to be.",
-    "score": 4
-  }
-}
