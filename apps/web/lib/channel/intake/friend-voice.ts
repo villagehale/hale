@@ -589,13 +589,17 @@ const replySchema = replyFields.transform((value) => ({
  */
 function readParentQuestion(value: {
   messageIsQuestion?: unknown;
+  messageIsYes?: boolean;
   connectGmail: boolean | null;
   connectCalendar: boolean | null;
   coparentGroup: boolean | null;
 }): boolean {
   if (value.messageIsQuestion === undefined) {
     return (
-      value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true
+      value.connectGmail === true ||
+      value.connectCalendar === true ||
+      value.coparentGroup === true ||
+      value.messageIsYes === true
     );
   }
   return value.messageIsQuestion !== false;
@@ -1618,15 +1622,20 @@ export function judgeFriendReply(
 ): { ok: true } | FriendJudgeRefusal {
   const trimmed = body.trim();
   if (trimmed.length === 0) return { ok: false, reason: 'empty' };
-  const needed = ZERO_QUESTION_STEPS.has(input.step) ? 0 : 1;
+  // After a yes the link is the next step, and a turn that records reminders
+  // confirms them: neither asks anything.
+  const asksNothing =
+    (options.yesToLink === true && LINK_STEPS.has(input.step)) || options.scheduleRecorded === true;
+  const needed = ZERO_QUESTION_STEPS.has(input.step) || asksNothing ? 0 : 1;
   const asked = options.asksCount;
-  const flex =
-    FLEX_QUESTION_STEPS.has(input.step) ||
-    (options.yesToLink === true && LINK_STEPS.has(input.step)) ||
-    options.scheduleRecorded === true;
+  const flex = FLEX_QUESTION_STEPS.has(input.step) && !asksNothing;
   if (typeof asked !== 'number') return { ok: false, reason: 'question' };
   if (asked > 1) return { ok: false, reason: 'question', detail: 'too_many' };
-  if (!flex && asked !== needed) return { ok: false, reason: 'question' };
+  if (!flex && asked !== needed) {
+    return asksNothing
+      ? { ok: false, reason: 'question', detail: 'asks_nothing' }
+      : { ok: false, reason: 'question' };
+  }
   if (options.asksName === true && !NAME_STEPS.has(input.step)) {
     return { ok: false, reason: 'question' };
   }
@@ -2077,13 +2086,16 @@ export async function speakFriend(
                 input.parentWords,
                 settleSchedule(
                   withGroupMode(
-                    withReading(
-                      noYesInAQuestion(
-                        ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                        marks.parentQuestion,
+                    noYesInAQuestion(
+                      ownNameOnly(
+                        withReading(
+                          acceptOnboardingCapture(composed.capture, limits),
+                          input,
+                          composed,
+                        ),
+                        input,
                       ),
-                      input,
-                      composed,
+                      marks.parentQuestion,
                     ),
                     input,
                   ),
@@ -2162,9 +2174,9 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('stop_still_asking') },
         };
       }
-      // After a yes, the link is the next step: the reply points at it and asks nothing.
-      // A turn that records reminders confirms them and asks nothing; the
-      // parent's next message closes the schedule (see settleSchedule).
+      // After a yes to a link, or on a turn that records reminders, the judge
+      // refuses any question; the parent's next message closes the schedule
+      // (see settleSchedule).
       const prose = tidyProse(
         composed.reply,
         input,
@@ -2424,7 +2436,7 @@ export function retryProblem(
     case 'unbacked_claim':
       return 'It promised something Hale does not do from here (an invite, or a change to how Hale texts). Leave that promise out.';
     case 'question':
-      if (input && ZERO_QUESTION_STEPS.has(input.step)) {
+      if (detail === 'asks_nothing' || (input && ZERO_QUESTION_STEPS.has(input.step))) {
         return 'This message asks nothing. No question mark.';
       }
       return detail === 'too_many'

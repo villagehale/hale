@@ -1352,10 +1352,10 @@ describe('speakFriend', () => {
           if (options?.prompt === 'short') {
             return {
               reply:
-                "Both are on as reminders: Mia's Swim Kids Saturdays at 11:00 weekly, Seb's storytime Thursday at 10:30. Anything else from the list?",
+                "Both are on as reminders: Mia's Swim Kids Saturdays at 11:00 weekly, Seb's storytime Thursday at 10:30.",
               // Positive control for the save gate: a save this turn really records goes out.
               claimsSaved: true,
-              ...ONE_ASK,
+              ...NO_ASK,
               capture: {
                 scheduleAdds: [
                   { line: 2, cadence: 'weekly', date: '2026-10-10', time: '11:00' },
@@ -2330,6 +2330,7 @@ describe('a garbled parentQuestion', () => {
       (await composerReplying(input).compose(gmailAsk)).parentQuestion;
     expect(await read({ ...fields, connectGmail: true })).toBe(true);
     expect(await read({ ...fields, connectCalendar: true })).toBe(true);
+    expect(await read({ ...fields, messageIsYes: true })).toBe(true);
     // Positive control: with no yes in the turn, a missing value is no question.
     expect(await read({ ...fields, connectGmail: false })).toBe(false);
     expect(await read({ ...fields, connectGmail: true, messageIsQuestion: false })).toBe(false);
@@ -2439,7 +2440,14 @@ describe('a garbled parentQuestion', () => {
       expect(garbled.capture.connectGmail).not.toBe(true);
 
       const clean = await speakFriend(
-        composerReplying({ ...fields, connectGmail: true, messageIsQuestion: false }),
+        composerReplying({
+          ...fields,
+          reply: 'Good. The link is right below.',
+          asks: false,
+          asksCount: 0,
+          connectGmail: true,
+          messageIsQuestion: false,
+        }),
         blank({ ...gmailAsk, parentWords: 'sure' }),
         { page: async () => undefined, linkFollows: true },
       );
@@ -2775,6 +2783,60 @@ describe('model fields, not ? or word lists (VIL-541)', () => {
     expect(named.capture.parentName).toBe('Dana');
   });
 
+  it('holds no model yes on a message the model marked a question', async () => {
+    const spoken = (parentQuestion: boolean) =>
+      speakFriend(
+        {
+          async compose() {
+            return {
+              reply: 'Only what is about the kids, never the rest. The link is above.',
+              capture: {},
+              parentPlainYes: true,
+              parentQuestion,
+              asksCount: 0,
+              asks: false,
+              connectorsOffered: ['gmail'],
+            };
+          },
+        },
+        blank({
+          step: 'email',
+          parentWords: 'can you see my work emails',
+          checklist: { ...checklist },
+          recentTurns: [{ role: 'hale', body: 'Want me to watch email?', asked: true }],
+        }),
+        { page: async () => undefined, linkAbove: true },
+      );
+    expect((await spoken(true)).capture.connectGmail).toBeNull();
+    expect((await spoken(false)).capture.connectGmail).toBe(true);
+  });
+
+  it('holds a model lone name only when it is in the parent words, sent or not', async () => {
+    const named = (parentWords: string) =>
+      speakFriend(
+        {
+          async compose() {
+            return {
+              reply: 'Nice to meet you, what are the kids called?',
+              capture: {},
+              parentLoneName: 'Zelda',
+              asksCount: 1,
+              asks: true,
+            };
+          },
+        },
+        blank({
+          step: 'names',
+          parentWords,
+          checklist: { ...checklist, name: false },
+          recentTurns: [{ role: 'hale', body: 'What should I call you?', asked: true }],
+        }),
+        { page: async () => undefined, replyDiscardedWhen: () => true },
+      );
+    expect((await named('ok')).capture.parentName).toBeNull();
+    expect((await named('zelda')).capture.parentName).toBe('Zelda');
+  });
+
   it('the judge counts questions from asksCount, not from a mark', () => {
     const place = blank({ step: 'place', parentWords: 'hi' });
     expect(judgeFriendReply("What's your postal code?", place)).toEqual({
@@ -2828,6 +2890,36 @@ describe('model fields, not ? or word lists (VIL-541)', () => {
       reason: 'question',
     });
     expect(retryProblem('question', undefined, place)).not.toContain('more than one');
+  });
+
+  it('a reply without asksCount is refused on a step that allows none or one', () => {
+    const named = blank({ step: 'name_reply', parentWords: 'Dana' });
+    expect(judgeFriendReply('Nice to meet you.', named, { asksCount: 0 })).toEqual({ ok: true });
+    expect(judgeFriendReply('Nice to meet you.', named)).toEqual({
+      ok: false,
+      reason: 'question',
+    });
+  });
+
+  it('a yes to a link, or a turn that records reminders, asks nothing', () => {
+    const email = blank({ step: 'email', parentWords: 'yes' });
+    const linkYes = { yesToLink: true, linkAbove: true, offered: ['gmail' as const] };
+    expect(judgeFriendReply('The link is above.', email, { ...linkYes, asksCount: 0 })).toEqual({
+      ok: true,
+    });
+    const asked = judgeFriendReply('The link is above. Anything else?', email, {
+      ...linkYes,
+      asksCount: 1,
+    });
+    expect(asked).toEqual({ ok: false, reason: 'question', detail: 'asks_nothing' });
+    expect(retryProblem('question', 'asks_nothing', email)).toMatch(/^This message asks nothing/);
+    const schedule = blank({ step: 'schedule', parentWords: 'swim for Mia' });
+    expect(
+      judgeFriendReply('Swim is on for Mia. Anything else?', schedule, {
+        scheduleRecorded: true,
+        asksCount: 1,
+      }),
+    ).toEqual({ ok: false, reason: 'question', detail: 'asks_nothing' });
   });
 
   it('reads the decisions from wire names that do not start the way `parameter` does', () => {
@@ -2886,6 +2978,19 @@ describe('model fields, not ? or word lists (VIL-541)', () => {
       judgeFriendReply('Your calendar is in. Le courriel aussi, plus tard.', wow, {
         asksCount: 0,
         offered: ['gmail'],
+      }),
+    ).toMatchObject({ ok: false, reason: 'invented', kinds: ['other_connector'] });
+    const gmailWow = blank({ step: 'connected', parentWords: 'ok', connector: 'gmail' });
+    expect(
+      judgeFriendReply('Your inbox is in. The calendar can come later.', gmailWow, {
+        asksCount: 0,
+        offered: ['gmail'],
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Your inbox is in. Le calendrier aussi, plus tard.', gmailWow, {
+        asksCount: 0,
+        offered: ['calendar'],
       }),
     ).toMatchObject({ ok: false, reason: 'invented', kinds: ['other_connector'] });
   });
