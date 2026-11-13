@@ -33,7 +33,7 @@ export function linkRef(url: string): string {
 }
 
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
-const REF_MARKER = /\[\s*(link-[0-9a-f]{6})\s*\]/gi;
+export const REF_MARKER = /\[\s*(link-[0-9a-f]{6})\s*\]/gi;
 
 /**
  * Split the model's text into the prose a parent reads and the pages its refs cite.

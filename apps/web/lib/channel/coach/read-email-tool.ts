@@ -204,19 +204,23 @@ export const READS_AFTER_EMAIL: ReadonlySet<string> = new Set([
  * title naming a planted person), and a `tool:<name>` row is in the family export, so
  * it must write no row at all. `emailRead` tells the caller the reply was written after
  * reading one, so the thread row it lands in can say so (memory never learns from it).
+ *
+ * VIL-628 · `emailTexts` is what those reads returned, held for this turn only, so the
+ * reply can be checked for a number, code or host that only the email gave.
  */
 export function taintTurnOnEmailRead(tools: RegisteredTool[]): {
   tools: RegisteredTool[];
   emailRead: () => boolean;
+  emailTexts: () => readonly string[];
 } {
-  let tainted = false;
+  const texts: string[] = [];
   const wrapped = tools.map((tool): RegisteredTool => {
     if (tool.name === READ_EMAIL_TOOL) {
       return {
         ...tool,
         handler: async (input, ctx) => {
           const result = (await tool.handler(input, ctx)) as ReadEmailResult;
-          if (result.read) tainted = true;
+          if (result.read) texts.push(result.body);
           return result;
         },
       };
@@ -225,7 +229,7 @@ export function taintTurnOnEmailRead(tools: RegisteredTool[]): {
     return {
       ...tool,
       untrustedContentGate: () => {
-        if (!tainted) return { ok: true, reason: 'no_email_read' };
+        if (texts.length === 0) return { ok: true, reason: 'no_email_read' };
         console.info(
           { outcome: 'email_tainted', tool: tool.name },
           'coach: tool refused after read_email',
@@ -234,7 +238,7 @@ export function taintTurnOnEmailRead(tools: RegisteredTool[]): {
       },
     };
   });
-  return { tools: wrapped, emailRead: () => tainted };
+  return { tools: wrapped, emailRead: () => texts.length > 0, emailTexts: () => [...texts] };
 }
 
 /** Both or neither: the listed name and the loaded addendum. Null leaves the skill as it is

@@ -13,7 +13,7 @@ import {
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { type FamilyCountry, familyCountryOf } from '@hale/types';
-import type { FactReader } from '@hale/worker/memory-context';
+import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -36,7 +36,7 @@ import {
   groupPlanDraftPort,
   productionRecordGroupPlanOrigin,
 } from '~/lib/channel/group-plan/stamp';
-import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
+import { type HealthLineFacts, type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
 import {
   type InboundMediaPart,
   type ReadInboundMedia,
@@ -98,6 +98,7 @@ import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { POLICY_VERSION } from '~/lib/consent';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -127,6 +128,7 @@ import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { augmentCoachSkillForBubbles } from './bubbles';
 import { draftOriginForTurn, productionChannelDraftPort } from './draft';
+import { dropEmailOnlyTokens } from './email-only-tokens';
 import {
   type ExperienceCardIntent,
   augmentCoachSkillForExperienceCards,
@@ -284,6 +286,11 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** VIL-628 · the values of the facts this parent told Hale (`memory_source =
+   * parent_message`), read only on a turn that read an email: what its reply may repeat.
+   * Optional: absent, the reply may repeat only the parent's words in this thread.
+   * Goes through `factsForContext` so another adult's 1:1 never trusts a token (VIL-599). */
+  loadParentStatedFacts?(familyId: string, parentUserId: string, now: Date): Promise<string[]>;
   /** The family's own IANA time zone, or null when Hale does not know it (VIL-435).
    * Optional: absent or null, the turn carries only the UTC instant, as before. */
   loadTimeZone?(familyId: string): Promise<string | null>;
@@ -778,7 +785,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
               // are busy-only, on every group turn. VIL-615: once read_email returns text,
               // only reads run for the rest of the turn.
-              const { tools, emailRead } = taintTurnOnEmailRead([
+              const { tools, emailRead, emailTexts } = taintTurnOnEmailRead([
                 ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
                 ...(cardsLit
                   ? [
@@ -989,16 +996,43 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
                   : null;
               const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
-              const spoken =
+              const drafted =
                 gmailNotice !== null && gmailNotice.status === 'ready'
                   ? gmailNotice.text
                   : result.answer;
-              if (!spoken) {
+              if (!drafted) {
                 await ports.recordRun(record('failed'));
                 throw failed(
                   'channel coach: gmail draft notice was not sent',
                   new GmailDraftNoticeUnsent(),
                 );
+              }
+              // VIL-628: after read_email, a phone, code or host only the email gave is cut
+              // before the judge reads the draft, so the judge sees what is sent.
+              const emails = emailTexts();
+              const { text: spoken, dropped } = dropEmailOnlyTokens(drafted, {
+                emails,
+                trusted:
+                  emails.length > 0
+                    ? [
+                        ...trustedAfterEmail(turn, transcript, context.helpLines),
+                        ...((await ports.loadParentStatedFacts?.(
+                          turn.familyId,
+                          turn.parentUserId,
+                          now,
+                        )) ?? []),
+                      ]
+                    : [],
+              });
+              if (Object.values(dropped).some((count) => count > 0)) {
+                console.info(
+                  { outcome: 'email_only_tokens_dropped', ...dropped },
+                  'channel coach: reply tokens only the email gave were dropped',
+                );
+              }
+              if (spoken === '') {
+                await ports.recordRun(record('failed'));
+                throw failed('channel coach: reply held only tokens the email gave');
               }
               // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
               // turn whose tools handed over a find (any language). It does not edit the
@@ -1091,6 +1125,47 @@ function augmentCoachSkillForContactCard(skill: Skill, addendum: Skill | null): 
   return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
 }
 
+/**
+ * VIL-628 · what a reply written after read_email may repeat from this turn: the
+ * parent's own words in this 1:1, the app's own origin and the help lines Hale chose for
+ * this family (VIL-589). Hale's earlier turns are not on it, because an alert can quote
+ * the email, and neither is a rejected attempt's claim. Nor is the rest of the family
+ * context: the provider watch and registration windows are read off provider pages, and
+ * memory facts and the brief can be read off an email or a calendar.
+ */
+function trustedAfterEmail(
+  turn: ChannelTurn,
+  transcript: readonly TranscriptMessage[],
+  helpLines: HealthLineFacts['facts'],
+): string[] {
+  return [
+    turn.body,
+    ...transcript.filter((message) => message.role === 'user').map((message) => message.content),
+    appBaseUrl(),
+    JSON.stringify(helpLines),
+  ];
+}
+
+/** Enough for every fact a parent has told Hale; a fact past it is not trusted, so the
+ * bound can only drop a token, never let one through. */
+const PARENT_STATED_FACT_LIMIT = 500;
+
+async function loadParentStatedFactValues(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+  now: Date,
+): Promise<string[]> {
+  const rows = await factsForContext(database, familyId, {
+    now,
+    reader: { adult: parentUserId },
+    limit: PARENT_STATED_FACT_LIMIT,
+  });
+  return rows
+    .filter((row) => row.memorySource === 'parent_message')
+    .map((row) => JSON.stringify({ factKey: row.factKey, factValue: row.factValue }));
+}
+
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
   const group = await loadCronSkill('household-group');
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
@@ -1178,6 +1253,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         );
         return [];
       }),
+    loadParentStatedFacts: (familyId, parentUserId, now) =>
+      loadParentStatedFactValues(database, familyId, parentUserId, now),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(
