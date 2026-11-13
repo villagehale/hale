@@ -50,7 +50,6 @@ import {
   type ProactiveSendKind,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
-  inProactiveQuietHours,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
@@ -59,6 +58,7 @@ import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
+import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
@@ -84,6 +84,7 @@ import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
+import { FLORIDA_OKLAHOMA_QUIET_START } from './quiet';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -525,25 +526,33 @@ async function seatedParents(database: Database, familyId: string): Promise<Set<
  * review at or after it, up to this much later. */
 const REVIEW_INTERVAL_MS = 60 * 60_000;
 
-/** The most recent start of the proactive quiet window at or before `at`, in this zone. */
+/** The quiet window as the earliest any number starts it (a Florida or Oklahoma line's
+ * 20:00, quiet.ts): a hold is for a family, not one number, so it wakes inside every
+ * parent's day. */
+const EARLIEST_QUIET = { start: FLORIDA_OKLAHOMA_QUIET_START, end: PROACTIVE_QUIET_HOURS.end };
+
+function inEarliestQuiet(at: Date, timeZone: string): boolean {
+  return isWithinQuietHours(at, timeZone, EARLIEST_QUIET.start, EARLIEST_QUIET.end);
+}
+
+/** The most recent start of that quiet window at or before `at`, in this zone. */
 function quietStartBefore(at: Date, timeZone: string): Date {
   const today = dayKeyOf(at, timeZone);
-  const start = zonedLocalInstant(today, PROACTIVE_QUIET_HOURS.start, timeZone);
+  const start = zonedLocalInstant(today, EARLIEST_QUIET.start, timeZone);
   if (start.getTime() <= at.getTime()) return start;
-  return zonedLocalInstant(addDaysToKey(today, -1), PROACTIVE_QUIET_HOURS.start, timeZone);
+  return zonedLocalInstant(addDaysToKey(today, -1), EARLIEST_QUIET.start, timeZone);
 }
 
 /**
  * The last moment a held item may wake and still be sent before `worthlessAfter`: the
- * review it wakes at must come before that instant and outside the quiet hours. A tell
- * whose value ends at 6:30 a.m. wakes by 20:00 the evening before, never at 6:30, when
- * the next review could only drop it as expired.
+ * review it wakes at must come before that instant and outside the quiet hours of any
+ * number. A tell whose value ends at 6:30 a.m. wakes by 19:00 the evening before, never
+ * at 6:30, when the next review could only drop it as expired.
  */
 export function lastSendBefore(worthlessAfter: Date, timeZone: string): Date {
   const before = (ms: number) => new Date(worthlessAfter.getTime() - ms);
   const quietInReach =
-    inProactiveQuietHours(before(REVIEW_INTERVAL_MS), timeZone) ||
-    inProactiveQuietHours(before(1), timeZone);
+    inEarliestQuiet(before(REVIEW_INTERVAL_MS), timeZone) || inEarliestQuiet(before(1), timeZone);
   const edge = quietInReach ? quietStartBefore(before(1), timeZone) : worthlessAfter;
   return new Date(edge.getTime() - REVIEW_INTERVAL_MS);
 }

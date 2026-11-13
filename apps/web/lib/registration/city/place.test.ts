@@ -49,6 +49,16 @@ describe('ownCityOfRow', () => {
     expect(thornhill.status === 'known' && thornhill.place.residencyKnown).toBe(false);
   });
 
+  it("claims no residency in a city on file that is not the town the family's FSA is in", async () => {
+    // L4C is Richmond Hill: a family whose saved city says Markham is no Markham resident.
+    const elsewhere = await ownCityOfRow(row({ city: 'Markham', postalCode: 'L4C 1A1' }));
+    expect(elsewhere).toMatchObject({ status: 'known', place: { city: 'Markham' } });
+    expect(elsewhere.status === 'known' && elsewhere.place.residencyKnown).toBe(false);
+    // Positive control: the FSA's own town.
+    const own = await ownCityOfRow(row({ city: 'Richmond Hill', postalCode: 'L4C 1A1' }));
+    expect(own).toMatchObject({ status: 'known', place: { residencyKnown: true } });
+  });
+
   it('places a family in the district city with no district nowhere, so no district morning is theirs', async () => {
     expect(await ownCityOfRow(row({ city: 'Toronto' }))).toEqual({
       status: 'unknown',

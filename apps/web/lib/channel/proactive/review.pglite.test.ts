@@ -651,8 +651,10 @@ describe('runProactiveReview', () => {
 
       await runProactiveReview(db.database, harness(holdPast).deps, asked);
 
-      // The last evening hour before the doors open: Nov 30, 20:00 in the family's zone.
-      const wake = new Date('2026-12-01T01:00:00.000Z');
+      // The last evening hour before the doors open for any number: Nov 30, 19:00 in the
+      // family's zone, so the review it wakes at is still inside the day of a Florida or
+      // Oklahoma number, whose quiet hours start at 20:00.
+      const wake = new Date('2026-12-01T00:00:00.000Z');
       expect((await candidate(id))?.holdUntil?.toISOString()).toBe(wake.toISOString());
       const [decision] = await audits('proactive_cadence_decision');
       expect(decision?.after).toMatchObject({ holdClamped: 'worthless_after' });
@@ -665,8 +667,8 @@ describe('runProactiveReview', () => {
 
     it('is dropped by name when no moment is left to send it before the doors open', async () => {
       vi.stubEnv('PROACTIVE_CADENCE', 'live');
-      // Nov 30, 20:30 in the family's zone: past the last hour it could still be sent.
-      const tooLate = new Date('2026-12-01T01:30:00.000Z');
+      // Nov 30, 19:30 in the family's zone: past the last hour it could still be sent.
+      const tooLate = new Date('2026-12-01T00:30:00.000Z');
       const id = await enqueue('registration-opening:late', opening);
 
       const summary = await runProactiveReview(db.database, harness(holdPast).deps, tooLate);
