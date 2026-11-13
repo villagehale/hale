@@ -123,6 +123,10 @@ export const FLAGS = [
     allowlistEnv: 'INBOUND_BURST_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
   }),
+  exact('inbound-midturn', 'INBOUND_MIDTURN_ENABLED', {
+    parser: 'trimmed-not-false',
+    default: true,
+  }),
   exact('inbound-photo-facts', 'INBOUND_PHOTO_FACTS_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
@@ -171,6 +175,10 @@ export const FLAGS = [
   trimmed('linq-group-turn-ai', 'LINQ_GROUP_TURN_AI_ENABLED'),
   trimmed('linq-multi-family-groups', 'LINQ_MULTI_FAMILY_GROUPS_ENABLED'),
   trimmed('linq-stickers', 'LINQ_STICKERS_ENABLED'),
+  trimmed('linq-reactions', 'LINQ_REACTIONS_ENABLED', {
+    parser: 'trimmed-not-false',
+    default: true,
+  }),
   trimmed('linq-voice-memos', 'LINQ_VOICE_MEMOS_ENABLED'),
   trimmed('linq-experiences', 'LINQ_EXPERIENCES_ENABLED'),
   trimmed('linq-group-leave', 'LINQ_GROUP_LEAVE_ENABLED'),

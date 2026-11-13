@@ -109,6 +109,11 @@
     "version": null,
     "sha256": "da8049cfc09c90ecab0993bc41cc1806ce46de5b725173e5caa2948d93b5fbc9"
   },
+  "judges/coach-reaction": {
+    "name": "judges/coach-reaction",
+    "version": null,
+    "sha256": "c2428a1cda87a42bad2d51ae19e2b2480099685ca1c07f838d07469f7cbb0db2"
+  },
   "judges/common-time": {
     "name": "judges/common-time",
     "version": null,

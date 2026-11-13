@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The text 'yes' answers Hale's pending question about adding Thursday swim to the calendar, so it must be handed back.",
+    "verdict": "hand_back",
+    "reply": ""
+  },
+  "latencyMs": 1527
+}
