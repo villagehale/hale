@@ -50,6 +50,7 @@ import {
   type ProactiveSendKind,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
+  inProactiveQuietHours,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
@@ -520,27 +521,62 @@ async function seatedParents(database: Database, familyId: string): Promise<Set<
   return new Set(rows.map((row) => row.userId));
 }
 
+/** The review runs once an hour (vercel.json): a row held to an instant wakes at the first
+ * review at or after it, up to this much later. */
+const REVIEW_INTERVAL_MS = 60 * 60_000;
+
+/** The most recent start of the proactive quiet window at or before `at`, in this zone. */
+function quietStartBefore(at: Date, timeZone: string): Date {
+  const today = dayKeyOf(at, timeZone);
+  const start = zonedLocalInstant(today, PROACTIVE_QUIET_HOURS.start, timeZone);
+  if (start.getTime() <= at.getTime()) return start;
+  return zonedLocalInstant(addDaysToKey(today, -1), PROACTIVE_QUIET_HOURS.start, timeZone);
+}
+
 /**
- * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
- * items the row would sit in the waiting set (hold.ts), where no signal reopens it. And
- * whatever the items' windows, a hold never reaches past the days the decider could see
+ * The last moment a held item may wake and still be sent before `worthlessAfter`: the
+ * review it wakes at must come before that instant and outside the quiet hours. A tell
+ * whose value ends at 6:30 a.m. wakes by 20:00 the evening before, never at 6:30, when
+ * the next review could only drop it as expired.
+ */
+export function lastSendBefore(worthlessAfter: Date, timeZone: string): Date {
+  const before = (ms: number) => new Date(worthlessAfter.getTime() - ms);
+  const quietInReach =
+    inProactiveQuietHours(before(REVIEW_INTERVAL_MS), timeZone) ||
+    inProactiveQuietHours(before(1), timeZone);
+  const edge = quietInReach ? quietStartBefore(before(1), timeZone) : worthlessAfter;
+  return new Date(edge.getTime() - REVIEW_INTERVAL_MS);
+}
+
+/**
+ * A hold never outlives what it holds. Past the last moment the chosen items can still be
+ * sent (lastSendBefore) the row would wake only to expire, or sit in the waiting set
+ * (hold.ts), where no signal reopens it. When that moment has already gone, nothing can
+ * send it later and the hold is `no_time_left`: the caller drops it by name. And whatever
+ * the items' windows, a hold never reaches past the days the decider could see
  * (`SNAPSHOT_DAYS`), so a far-off clock cannot park the row out of every review.
  */
 function clampHold(
   holdUntil: string | null,
   items: readonly QueuedItem[],
   now: Date,
-): { holdUntil: string | null; clamped: 'worthless_after' | 'snapshot_window' | null } {
+  timeZone: string,
+): {
+  holdUntil: string | null;
+  clamped: 'worthless_after' | 'snapshot_window' | 'no_time_left' | null;
+} {
   if (holdUntil === null) return { holdUntil, clamped: null };
   const bounds = items
     .map((item) => item.worthlessAfter)
     .filter((at): at is string => at !== null)
-    .sort((a, b) => Date.parse(a) - Date.parse(b));
+    .map((at) => lastSendBefore(new Date(at), timeZone).getTime())
+    .sort((a, b) => a - b);
   const earliest = bounds[0];
   const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
-  if (earliest !== undefined && Date.parse(earliest) <= edge.getTime()) {
-    if (Date.parse(holdUntil) <= Date.parse(earliest)) return { holdUntil, clamped: null };
-    return { holdUntil: earliest, clamped: 'worthless_after' };
+  if (earliest !== undefined && earliest <= edge.getTime()) {
+    if (Date.parse(holdUntil) <= earliest) return { holdUntil, clamped: null };
+    if (earliest <= now.getTime()) return { holdUntil: null, clamped: 'no_time_left' };
+    return { holdUntil: new Date(earliest).toISOString(), clamped: 'worthless_after' };
   }
   if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
   return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
@@ -570,6 +606,7 @@ type SettledReason =
   | 'already_sent'
   | 'already_asked'
   | 'requested_drop_after_parent_text'
+  | 'hold_past_last_send'
   | OpenAskClosedReason;
 
 /**
@@ -920,7 +957,7 @@ async function reviewFamily(
 
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
-  const hold = clampHold(decision.holdUntil, chosen, now);
+  const hold = clampHold(decision.holdUntil, chosen, now, context.timeZone);
   const cadence = keptCadence(decision, mode, textAuthors, snapshot.parentTextsWithheld);
   // The decision row is where a cadence preference is kept (preference.ts), and the
   // reason it was not, by name. It also says whose texts it read (snapshot.ts), how many
@@ -998,6 +1035,23 @@ async function reviewFamily(
       now,
     });
     summary.dropped += 1;
+    return;
+  }
+  if (decision.action === 'hold' && hold.clamped === 'no_time_left') {
+    // Held past the last moment it could still be sent: no later review can send it, so it
+    // is settled now under its own name rather than left to expire.
+    await mark(database, familyId, ids, {
+      status: 'dropped',
+      reason: 'hold_past_last_send',
+      decision: 'hold',
+      holdUntil: null,
+      now,
+    });
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: 'hold_past_last_send',
+      itemIds: ids,
+      mode,
+    });
     return;
   }
   if (decision.action === 'hold') {
