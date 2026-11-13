@@ -51,7 +51,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `COLD_START_INTENT_CLASSIFIER_ENABLED` | none on main (#868) | none | no reader on main | none (no reader) | Eugene |
 | `COLD_START_LADDER_COPY_LOCKED` | none on main (#868) | none | no reader on main | none (no reader) | Sloane |
 | `COLD_START_LADDER_ENABLED` | `apps/web/lib/channel/intake/cold-start/flags.ts:18` (`strictTrue` at :11-13) | `true` | OFF | `false` | Noah |
-| `CONNECTOR_CARD_UNSENT_RELEASE_ENABLED` | `apps/web/lib/channel/intake/connector-card-unsent-flag.ts:13` | `true` | OFF | `false` | Noah |
 | `COPARENT_DUTY_ASKS_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:14` | `true` | OFF | `false` | Noah |
 | `COPARENT_DUTY_BURDEN_SURFACE_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:102` | `true` | OFF | `false` | Sloane |
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | `apps/web/lib/channel/coparent/duty/flag.ts:91` | `true` | OFF | `false` | Sloane |
@@ -257,7 +256,6 @@ Code is merged for every row.
 | `CHECK_IN_ANCHOR_ENABLED` | The evening check-in can name that day's activity. The lane still needs F14. | An evening text that names an activity from a different day. | `false` | Sloane |
 | `CLAIM_READER_MODE` | A model reads what each reply claims, in any language, and code checks the cited row. `shadow` reads beside the English regex and only counts the comparison. `enforce` joins the reader's verdict to the regex floor on the coach turn, the gated sweeps, model-written dispatch bodies, and a passport line. A "registered", "sent" or "cancelled" with no row of its own kind is re-asked (coach) or not sent (sweep, dispatch, passport line). `enforce` by default; `false` is the kill (launch rule 11-12). | `agent_claim_read_failed` counts, `reconcile` refusals named `no_registration_record`, `no_send_record`, `no_delivery_record`, `no_cancel_record`, and dispatch rows failed `unbacked_claim`. | `false` | Barton |
 | `COLD_START_LADDER_ENABLED` | A new parent gets the short ladder (find, name, calendar, email, signup offer) instead of the old hello. | Ladder sends in `channel_messages` for families still on the first session. | `false` | Noah |
-| `CONNECTOR_CARD_UNSENT_RELEASE_ENABLED` | A connector card whose link never went is not a sent card. The claim is failed and the family's one-offer key is released so the card can be offered again. | A `link_unsent` claim with a still-held `dedupe_key`, or a second calendar card to a family whose first card never carried its link. | `false` | Noah |
 | `COPARENT_DUTY_ASKS_ENABLED` | Duty replies are parsed. This flag does not send. | `coparent duty shadow` log lines, and parse misses against the duty fixtures. | `false` | Noah |
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | A parent can be told the split looks lopsided. | More than one such note to the same family in a month. | `false` | Sloane |
 | `COPARENT_DUTY_MEMORY_ENABLED` | A recorded duty is written onto the family calendar and the ICS feed. | A duty on the calendar the parent did not confirm. | `false` | Noah |
