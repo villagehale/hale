@@ -152,3 +152,66 @@ describe('alignedSenderHost', () => {
     expect(alignedSenderHost(headers)).toEqual({ status: 'unaligned', reason: 'no_from' });
   });
 });
+
+describe('alignedSenderHost, against text the sender controls inside Gmail’s own stamp', () => {
+  /** Gmail's real verdict for a message from evil.example claiming board.example. */
+  const realFail = 'dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=board.example';
+
+  it.each([
+    [
+      'a quoted local part in smtp.mailfrom carrying ";dmarc=pass"',
+      `mx.google.com; spf=pass smtp.mailfrom="x;dmarc=pass.header.from=board.example"@evil.example; ${realFail}`,
+    ],
+    [
+      'a quoted local part spelling a whole dmarc pass',
+      `mx.google.com; spf=pass smtp.mailfrom="x; dmarc=pass header.from=board.example"@evil.example; ${realFail}`,
+    ],
+    [
+      'a quoted local part in header.i spelling a dkim pass for the school',
+      `mx.google.com; dkim=pass header.i="x; dkim=pass header.d=board.example"@evil.example; ${realFail}`,
+    ],
+    [
+      'an escaped quote that a naive scanner reads as the end of the string',
+      `mx.google.com; spf=pass smtp.mailfrom="x\\"; dmarc=pass header.from=board.example; y=\\""@evil.example; ${realFail}`,
+    ],
+    [
+      'a quote inside a comment, which is comment text and opens nothing',
+      `mx.google.com; spf=pass (google.com: domain of "odd designates 192.0.2.1) smtp.mailfrom="x;dmarc=pass header.from=board.example"@evil.example; ${realFail}`,
+    ],
+    [
+      'an unterminated quote after the real verdict',
+      `mx.google.com; ${realFail}; spf=pass smtp.mailfrom="x; dmarc=pass header.from=board.example`,
+    ],
+    [
+      'a pass written inside a quoted reason',
+      'mx.google.com; dmarc=fail reason="dmarc=pass header.from=board.example" header.from=board.example',
+    ],
+    ['a quoted result', 'mx.google.com; dmarc="pass" header.from=board.example'],
+    [
+      'a nested comment holding a semicolon',
+      `mx.google.com; spf=pass (a (b; dmarc=pass header.from=board.example) c) smtp.mailfrom=x@evil.example; ${realFail}`,
+    ],
+  ])('names nothing for %s', (_case, stamp) => {
+    expect(alignedSenderHost(message('office@board.example', stamp))).toMatchObject({
+      status: 'unaligned',
+    });
+  });
+
+  it.each([
+    ['Gmail’s plain stamp', gmailStamp('board.example')],
+    ['a quoted header.from', 'mx.google.com; dmarc=pass header.from="board.example"'],
+    [
+      'a real pass after a quoted local part that holds a semicolon',
+      'mx.google.com; spf=pass smtp.mailfrom="o;ffice"@board.example; dmarc=pass header.from=board.example',
+    ],
+    [
+      'a real pass after a comment that holds a quote',
+      'mx.google.com; spf=pass (google.com: "odd) smtp.mailfrom=x@board.example; dmarc=pass header.from=board.example',
+    ],
+  ])('still names the school for %s (positive control)', (_case, stamp) => {
+    expect(alignedSenderHost(message('office@board.example', stamp))).toEqual({
+      status: 'aligned',
+      host: 'board.example',
+    });
+  });
+});

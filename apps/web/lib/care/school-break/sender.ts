@@ -69,35 +69,107 @@ interface AuthResult {
   props: Map<string, string>;
 }
 
-/** One `Authentication-Results` value (RFC 8601): its authserv-id and its results. */
+type AuthToken = { kind: 'semi' | 'eq' | 'word' | 'quoted'; text: string; spaced: boolean };
+
+/**
+ * The lexical tokens of one `Authentication-Results` value, or null when a quoted string
+ * or comment never closes, or a comment closes that never opened. Comments are dropped
+ * (nested, with quoted-pairs) and a quoted string is one opaque token, so a `;` or `=`
+ * the sender put inside a quoted local part or a comment never starts a result. Comment
+ * text is scanned as comment text: a `"` in it opens nothing.
+ */
+function authTokens(value: string): AuthToken[] | null {
+  const tokens: AuthToken[] = [];
+  let spaced = false;
+  let i = 0;
+  while (i < value.length) {
+    const c = value[i] as string;
+    if (/\s/.test(c)) {
+      spaced = true;
+      i += 1;
+    } else if (c === '(') {
+      let depth = 0;
+      for (; i < value.length; i += 1) {
+        const d = value[i];
+        if (d === '\\') i += 1;
+        else if (d === '(') depth += 1;
+        else if (d === ')' && --depth === 0) break;
+      }
+      if (i >= value.length) return null;
+      i += 1;
+      spaced = true;
+    } else if (c === '"') {
+      let text = '';
+      for (i += 1; i < value.length && value[i] !== '"'; i += 1) {
+        if (value[i] === '\\') i += 1;
+        text += value[i] ?? '';
+      }
+      if (i >= value.length) return null;
+      i += 1;
+      tokens.push({ kind: 'quoted', text, spaced });
+      spaced = false;
+    } else if (c === ';' || c === '=') {
+      tokens.push({ kind: c === ';' ? 'semi' : 'eq', text: c, spaced });
+      spaced = false;
+      i += 1;
+    } else if (c === ')') {
+      return null;
+    } else {
+      const word = /^[^\s;="()]+/.exec(value.slice(i))?.[0] as string;
+      tokens.push({ kind: 'word', text: word, spaced });
+      spaced = false;
+      i += word.length;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * One `Authentication-Results` value (RFC 8601): its authserv-id and its results. A
+ * result counts only as a `method=result` pair of bare tokens at the head of a resinfo;
+ * a property value is the run of tokens after its `=` with no space between them (a
+ * quoted local part and its `@domain`). An unclosed quote or comment yields no results.
+ */
 export function parseAuthenticationResults(value: string): {
   authservId: string;
   results: AuthResult[];
 } {
-  let text = value;
-  // Comments go first: they may hold `;` or `=`, and they say nothing the result does.
-  for (let before = ''; before !== text; ) {
-    before = text;
-    text = text.replace(/\([^()]*\)/g, ' ');
+  const tokens = authTokens(value);
+  if (tokens === null) return { authservId: '', results: [] };
+  const segments: AuthToken[][] = [[]];
+  for (const token of tokens) {
+    if (token.kind === 'semi') segments.push([]);
+    else segments.at(-1)?.push(token);
   }
-  const [head = '', ...segments] = text.split(';');
+  const [head = [], ...resinfos] = segments;
   const results: AuthResult[] = [];
-  for (const segment of segments) {
-    const match = /^\s*([a-z0-9-]+)\s*=\s*([a-z0-9-]+)(.*)$/is.exec(segment);
-    if (!match) continue;
+  for (const t of resinfos) {
+    const [method, eq, result] = t;
+    if (method?.kind !== 'word' || eq?.kind !== 'eq' || result?.kind !== 'word') continue;
     const props = new Map<string, string>();
-    for (const prop of (match[3] as string).matchAll(
-      /([a-z]+\.[a-z0-9-]+)\s*=\s*("[^"]*"|[^\s"]+)/gi,
-    )) {
-      props.set((prop[1] as string).toLowerCase(), (prop[2] as string).replace(/^"|"$/g, ''));
+    for (let k = 3; k < t.length; k += 1) {
+      const name = t[k] as AuthToken;
+      if (name.kind !== 'word' || t[k + 1]?.kind !== 'eq') continue;
+      let v = k + 2;
+      let pvalue = '';
+      for (; v < t.length; v += 1) {
+        const part = t[v] as AuthToken;
+        if (part.kind === 'eq' || (v > k + 2 && part.spaced)) break;
+        pvalue += part.text;
+      }
+      if (/^[a-z]+\.[a-z0-9-]+$/i.test(name.text) && v > k + 2) {
+        props.set(name.text.toLowerCase(), pvalue);
+      }
+      k = v - 1;
     }
     results.push({
-      method: (match[1] as string).toLowerCase(),
-      result: (match[2] as string).toLowerCase(),
+      method: method.text.toLowerCase(),
+      result: result.text.toLowerCase(),
       props,
     });
   }
-  return { authservId: head.trim().split(/\s+/)[0]?.toLowerCase() ?? '', results };
+  const id = head[0];
+  return { authservId: id?.kind === 'word' ? id.text.toLowerCase() : '', results };
 }
 
 export type SenderReading =
