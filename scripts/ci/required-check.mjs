@@ -4,12 +4,13 @@
 // lint/typecheck/build passed, every workspace test shard passed, AND worker
 // evals either passed or were skipped because the path filter said the diff
 // was site-only. A skip is not success when the filter asked for evals — that
-// is a failed closed gate. The every-eval job is not part of this aggregator.
+// is a failed closed gate. The every-eval cached-only replay must pass on every
+// diff, site-only included: it has no path filter.
 
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export function requiredCheckPasses({ changes, verify, tests, evals, workerEvals }) {
+export function requiredCheckPasses({ changes, verify, tests, evals, workerEvals, everyEval }) {
   if (changes !== 'success') {
     return { ok: false, reason: `path filter ${changes || 'missing'}` };
   }
@@ -18,6 +19,9 @@ export function requiredCheckPasses({ changes, verify, tests, evals, workerEvals
   }
   if (tests !== 'success') {
     return { ok: false, reason: `workspace tests ${tests || 'missing'}` };
+  }
+  if (everyEval !== 'success') {
+    return { ok: false, reason: `every eval suite ${everyEval || 'missing'}` };
   }
   if (workerEvals === 'false') {
     if (evals === 'skipped' || evals === 'success') {
@@ -42,6 +46,7 @@ export function main() {
     tests: readEnv('TEST_RESULT'),
     evals: readEnv('EVALS_RESULT'),
     workerEvals: readEnv('WORKER_EVALS'),
+    everyEval: readEnv('EVERY_EVAL_RESULT'),
   });
   console.info(result.reason);
   if (process.env.GITHUB_STEP_SUMMARY) {

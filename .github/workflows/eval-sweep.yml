@@ -7,8 +7,7 @@ name: Eval sweep
 #
 # Cached-only means zero API calls (a cache miss FAILS LOUDLY instead of spending),
 # so this job needs no secrets. Do not add any — an eval that can reach the API is
-# an eval that can quietly bill on a schedule. Does not set HALE_EVERY_EVAL_KNOWN_OK,
-# so suites that CI currently allows on main still fail here.
+# an eval that can quietly bill on a schedule.
 
 on:
   schedule:
