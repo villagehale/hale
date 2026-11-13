@@ -21,8 +21,6 @@ export interface GroupPollRecord {
   expected: GroupPollExpectedRow[];
   providerMessageId: string | null;
   origin: GroupPollOrigin;
-  /** Member key of the person who asked for the poll; null for an adopted Hale card. */
-  createdByMemberKey: string | null;
 }
 
 export interface CreatePollInput {
@@ -38,8 +36,6 @@ export interface CreatePollInput {
   expected: readonly GroupPollExpectedRow[];
   origin: GroupPollOrigin;
   providerMessageId: string | null;
-  /** Member key of the person who asked for the poll; null for an adopted Hale card. */
-  createdByMemberKey?: string | null;
   now: Date;
 }
 
@@ -134,7 +130,6 @@ function recordOf(row: typeof schema.linqGroupPolls.$inferSelect): GroupPollReco
     expected: [...row.expected],
     providerMessageId: row.providerMessageId,
     origin: row.origin as GroupPollOrigin,
-    createdByMemberKey: row.createdByMemberKey,
   };
 }
 
@@ -205,7 +200,6 @@ export function createPostgresGroupPollStore(database: Database): GroupPollStore
             expected: [...input.expected],
             providerMessageId: input.providerMessageId,
             origin: input.origin,
-            createdByMemberKey: input.createdByMemberKey ?? null,
             createdAt: input.now,
             updatedAt: input.now,
           })

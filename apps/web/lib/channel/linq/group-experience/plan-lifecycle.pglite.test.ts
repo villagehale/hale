@@ -737,9 +737,10 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
     expect(lock.texted).toEqual([]);
   });
 
-  it('positive control: the poll creator may lock it even from another household', async () => {
+  it('a poll filed under another household on the host plan still moves nothing when that household locks it', async () => {
     const { a, b, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
     const plans = createPostgresGroupPlanRsvpStore(db.database);
+    // However such a poll came to exist, only the host household's lock moves the plan.
     await plans.createPoll({
       chatId: CHAT,
       familyId: b.familyId,
@@ -759,12 +760,13 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
       expected: [],
       origin: 'parent',
       providerMessageId: null,
-      createdByMemberKey: phoneBlindIndex(PARENT_B),
       now: NOW,
     });
+    // No votes: B's named pick is no tie-break of B's to make, so Hale asks which.
     const lock = await lockWith(a, { ...b, handle: PARENT_B }, 'o2');
-    expect(lock.facts).toEqual([{ winner: 'Sunday 2' }]);
-    expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SUNDAY_14));
+    expect(lock.group).toEqual(['time_tie?']);
+    expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SATURDAY_10));
+    expect(await plans.loadLivePoll(CHAT)).not.toBeNull();
   });
 
   it('a tie with only an unauthorized pick asks which, in one line, and moves nothing', async () => {

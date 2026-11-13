@@ -193,6 +193,7 @@ describe('takeGroupExperienceTurn', () => {
         privateSlices: async () => [] as FamilyPrivateSlice[],
         deny: async () => [],
         households: async () => [FAMILY],
+        planHouseholds: { resolve: async () => ({ status: 'one', familyId: FAMILY }) },
       },
     );
     expect(result.handled).toBe(true);

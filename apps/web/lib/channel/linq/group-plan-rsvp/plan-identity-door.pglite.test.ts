@@ -11,6 +11,7 @@ import type { PrivateAsideModel } from '../group-private-aside';
 import { handleLinqGroupMessage } from '../inbound';
 import type { SharedGroupReader } from '../shared-group-reading';
 import { fakeSharedGroupComposer } from '../shared-group-voice-fake';
+import { postgresGroupPlanCalendarWriter } from './calendar';
 import { considerGroupPlanRsvp } from './inbound';
 import type { GroupPlanRsvpReading } from './reading';
 import { GROUP_PLAN_RSVP_TEMPLATE, GROUP_POLL_TEMPLATE } from './send';
@@ -36,6 +37,8 @@ const HALE = '+15555550100';
 const PARENT_A = '+15555550111';
 const PARENT_B = '+15555550122';
 const SATURDAY_10 = '2026-11-14T10:00:00-05:00';
+const SUNDAY_14 = '2026-11-15T14:00:00-05:00';
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
@@ -71,6 +74,13 @@ afterEach(async () => {
   );
 });
 
+let consentDecision: 'ok' | 'not_this' = 'not_this';
+let consentReads = 0;
+afterEach(() => {
+  consentDecision = 'not_this';
+  consentReads = 0;
+});
+
 type Call = { method: string; url: string; body: Record<string, unknown> | null };
 
 /** Linq's HTTP answers: the chat's participants on a GET, an accepted id on a POST. */
@@ -101,7 +111,7 @@ function linqWire() {
   return { calls, groupPosts };
 }
 
-async function seedFamily(phone: string, name: string) {
+async function seedFamily(phone: string, name: string, timezone = 'America/Toronto') {
   const [family] = await db.database
     .insert(schema.families)
     .values({ displayName: name, provinceOrState: 'ON' })
@@ -109,7 +119,7 @@ async function seedFamily(phone: string, name: string) {
   const familyId = family?.id as string;
   const [user] = await db.database
     .insert(schema.users)
-    .values({ externalAuthId: `imessage:${name}`, name, timezone: 'America/Toronto' })
+    .values({ externalAuthId: `imessage:${name}`, name, timezone })
     .returning({ id: schema.users.id });
   const userId = user?.id as string;
   await db.database
@@ -199,7 +209,11 @@ function reading(partial: Partial<GroupPlanRsvpReading>): GroupPlanRsvpReading {
 }
 
 /** The production door deps, with only the model's answers stipulated. */
-function productionDoor(rsvp: GroupPlanRsvpReading, seen?: unknown[]) {
+function productionDoor(
+  rsvp: GroupPlanRsvpReading,
+  seen?: unknown[],
+  moment: GroupExperienceReading = noMoment,
+) {
   return {
     ...linqInboundDeps(),
     log: { info: () => {}, warn: () => {}, error: () => {} },
@@ -215,18 +229,28 @@ function productionDoor(rsvp: GroupPlanRsvpReading, seen?: unknown[]) {
       },
     },
     groupPlanRsvpComposer: fakeGroupPlanRsvpComposer(),
-    // A group message is never a household's calendar answer here.
+    // A group message is never a household's calendar answer here, unless a test says the
+    // consent model would (wrongly) take it as one.
     groupPlanCalendarConsentReader: {
-      read: async () => ({ decision: 'not_this' as const, confidence: 'high' as const }),
+      read: async () => {
+        consentReads += 1;
+        return { decision: consentDecision, confidence: 'high' as const };
+      },
     },
-    groupExperienceReader: { read: async () => noMoment },
+    groupExperienceReader: { read: async () => moment },
     groupExperienceComposer: fakeGroupExperienceComposer(),
   } as unknown as Parameters<typeof handleLinqGroupMessage>[0];
 }
 
-async function say(rsvp: GroupPlanRsvpReading, from: string, id: string, text: string) {
+async function say(
+  rsvp: GroupPlanRsvpReading,
+  from: string,
+  id: string,
+  text: string,
+  moment?: GroupExperienceReading,
+) {
   const seen: unknown[] = [];
-  const response = await handleLinqGroupMessage(productionDoor(rsvp, seen), {
+  const response = await handleLinqGroupMessage(productionDoor(rsvp, seen, moment), {
     messageId: id,
     chatId: CHAT,
     senderHandle: from,
@@ -285,7 +309,6 @@ describe('a poll in a chat several families share, with no plan open (gate-3 R4)
     expect(polls).toHaveLength(1);
     expect(polls[0]?.familyId).toBe(a.familyId);
     expect(polls[0]?.closedAt).toBeNull();
-    expect(polls[0]?.createdByMemberKey).toBe(phoneBlindIndex(PARENT_A));
     expect(polls[0]?.options.map((option) => option.places ?? null)).toEqual([null, null]);
     expect(wire.groupPosts()).toHaveLength(1);
     const rows = await ledger(GROUP_POLL_TEMPLATE);
@@ -543,8 +566,9 @@ describe('a chat holds several open plans; each message binds to one only by its
 });
 
 describe('a plan time with no offset is placed on the household clock (start_tracking)', () => {
-  it('"Sunday at 2" read as a wall-clock time lands at 2 pm Toronto, not 2 pm UTC', async () => {
-    await seedFamily(PARENT_A, 'Ada');
+  it('"Sunday at 2" read as a wall-clock time lands at 2 pm on the household clock, never the server one', async () => {
+    // Vancouver is neither UTC (CI) nor Toronto (a laptop): a server-clock parse fails on both.
+    await seedFamily(PARENT_A, 'Ada', 'America/Vancouver');
     await seedFamily(PARENT_B, 'Bao');
     linqWire();
     await say(
@@ -562,7 +586,7 @@ describe('a plan time with no offset is placed on the household clock (start_tra
       .select()
       .from(schema.linqGroupPlans)
       .where(and(eq(schema.linqGroupPlans.chatId, CHAT), eq(schema.linqGroupPlans.title, 'zoo')));
-    expect(zoo?.startsAt?.toISOString()).toBe('2026-11-15T19:00:00.000Z');
+    expect(zoo?.startsAt?.toISOString()).toBe('2026-11-15T22:00:00.000Z');
   });
 
   it('positive control: a time with its own offset is kept as given', async () => {
@@ -582,5 +606,418 @@ describe('a plan time with no offset is placed on the household clock (start_tra
     );
     const [zoo] = await db.database.select().from(schema.linqGroupPlans);
     expect(zoo?.startsAt?.toISOString()).toBe('2026-11-15T19:00:00.000Z');
+  });
+});
+
+/** A calendar copy Hale already wrote for `familyId` on `planId`, at Saturday 10. */
+async function writeCopy(planId: string, familyId: string, userId: string, name: string) {
+  const plans = createPostgresGroupPlanRsvpStore(db.database);
+  const written = await postgresGroupPlanCalendarWriter(db.database).write({
+    planId,
+    chatId: CHAT,
+    familyId,
+    title: 'picnic',
+    startsAt: new Date(SATURDAY_10),
+    location: null,
+  });
+  if (written.status === 'failed') throw new Error('seed: calendar copy not written');
+  await plans.claimCalendarAsk({
+    planId,
+    familyId,
+    memberKey: `key-${userId}`,
+    displayName: name,
+    householdLabel: null,
+    now: NOW,
+  });
+  await plans.markCalendarWritten({
+    planId,
+    familyId,
+    familyEventId: written.familyEventId,
+    actorUserId: userId,
+    now: NOW,
+  });
+  return written.familyEventId;
+}
+
+async function planStart(planId: string) {
+  const [row] = await db.database
+    .select({ startsAt: schema.linqGroupPlans.startsAt })
+    .from(schema.linqGroupPlans)
+    .where(eq(schema.linqGroupPlans.id, planId));
+  return row?.startsAt ?? null;
+}
+
+async function copyStart(familyEventId: string) {
+  const [row] = await db.database
+    .select({ startsAt: schema.familyEvents.startsAt })
+    .from(schema.familyEvents)
+    .where(eq(schema.familyEvents.id, familyEventId));
+  return row?.startsAt ?? null;
+}
+
+const pollOnPicnic = reading({
+  intent: 'start_poll',
+  addressed: true,
+  planKey: 'p1',
+  pollQuestion: 'picnic time?',
+  pollOptions: ['Saturday 10', 'Sunday 2'],
+  pollStarts: [SATURDAY_10, SUNDAY_14],
+});
+
+describe('only the host household ties a poll to its plan, so only it can move the plan (gate R6-1)', () => {
+  it('another household starts a poll on the host plan, votes and locks: neither the plan nor its copy moves', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    const copy = await writeCopy(picnic.id, a.familyId, a.userId, 'Ada');
+    linqWire();
+
+    await say(
+      pollOnPicnic,
+      PARENT_B,
+      'p-1',
+      'Hale vote on the picnic time, Saturday 10 or Sunday 2',
+    );
+    const [poll] = await db.database.select().from(schema.linqGroupPolls);
+    expect(poll?.options.map((option) => option.places ?? null)).toEqual([null, null]);
+    await say(reading({ intent: 'poll_vote', pollChoice: 'o2' }), PARENT_B, 'p-2', 'Sunday');
+    await say(
+      reading({ intent: 'close_poll', pollChoice: 'o2', addressed: true }),
+      PARENT_B,
+      'p-3',
+      'Hale lock in Sunday',
+    );
+
+    expect(await planStart(picnic.id)).toEqual(new Date(SATURDAY_10));
+    expect(await copyStart(copy)).toEqual(new Date(SATURDAY_10));
+    const moved = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_plan_calendar_moved'));
+    expect(moved).toEqual([]);
+  });
+
+  it('positive control: the host starts the same poll, it is tied to the plan, and the host lock moves both', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    const copy = await writeCopy(picnic.id, a.familyId, a.userId, 'Ada');
+    linqWire();
+
+    await say(
+      pollOnPicnic,
+      PARENT_A,
+      'p-1',
+      'Hale vote on the picnic time, Saturday 10 or Sunday 2',
+    );
+    const [poll] = await db.database.select().from(schema.linqGroupPolls);
+    expect(poll?.options.map((option) => option.places?.planId ?? null)).toEqual([
+      picnic.id,
+      picnic.id,
+    ]);
+    await say(reading({ intent: 'poll_vote', pollChoice: 'o2' }), PARENT_B, 'p-2', 'Sunday');
+    await say(
+      reading({ intent: 'close_poll', pollChoice: 'o2', addressed: true }),
+      PARENT_A,
+      'p-3',
+      'Hale lock in Sunday',
+    );
+
+    expect(await planStart(picnic.id)).toEqual(new Date(SUNDAY_14));
+    expect(await copyStart(copy)).toEqual(new Date(SUNDAY_14));
+  });
+
+  it('VIL-399: a time poll another household opens on the host plan is tied to no plan; the host one is', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    linqWire();
+    const timeOpen: GroupExperienceReading = {
+      ...noMoment,
+      kind: 'time_open',
+      title: 'picnic',
+      samePlan: true,
+      options: ['Saturday 10', 'Sunday 2'],
+      starts: [SATURDAY_10, SUNDAY_14],
+    };
+    const livePlanId = async () => {
+      const [row] = await db.database
+        .select()
+        .from(schema.linqGroupExperience)
+        .where(
+          and(
+            eq(schema.linqGroupExperience.chatId, CHAT),
+            eq(schema.linqGroupExperience.kind, 'time_poll'),
+          ),
+        );
+      return row ? (row.payload.planId ?? null) : 'no poll';
+    };
+
+    await say(
+      reading({ intent: 'chatter', planKey: 'p1' }),
+      PARENT_B,
+      't-1',
+      'Hale poll Saturday 10 or Sunday 2 for the picnic',
+      timeOpen,
+    );
+    expect(await livePlanId()).toBeNull();
+
+    await db.exec('truncate table linq_group_experience');
+    await say(
+      reading({ intent: 'chatter', planKey: 'p1' }),
+      PARENT_A,
+      't-2',
+      'Hale poll Saturday 10 or Sunday 2 for the picnic',
+      timeOpen,
+    );
+    expect(await livePlanId()).toBe(picnic.id);
+  });
+
+  it('VIL-399: a new event a parent opens in a shared chat is that parent household plan', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    const b = await seedFamily(PARENT_B, 'Bao');
+    await openPicnic(a.familyId, a.userId);
+    linqWire();
+    await say(
+      reading({ intent: 'chatter', planKey: 'other' }),
+      PARENT_B,
+      't-1',
+      'Hale poll Saturday 10 or Sunday 2 for the zoo',
+      {
+        ...noMoment,
+        kind: 'time_open',
+        title: 'zoo',
+        samePlan: false,
+        options: ['Saturday 10', 'Sunday 2'],
+        starts: [SATURDAY_10, SUNDAY_14],
+      },
+    );
+    const zoo = (await createPostgresGroupPlanRsvpStore(db.database).listOpenPlans(CHAT, NOW)).find(
+      (plan) => plan.title === 'zoo',
+    );
+    expect(zoo?.familyId).toBe(b.familyId);
+  });
+});
+
+describe('a plan with no time closes once nobody has touched it for a while (gate R6-2)', () => {
+  async function untimed(familyId: string, userId: string, title: string, ageMs: number) {
+    return createPostgresGroupPlanRsvpStore(db.database).createPlan({
+      chatId: CHAT,
+      familyId,
+      title,
+      startsAt: null,
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: userId,
+      expected: [],
+      now: new Date(NOW.getTime() - ageMs),
+    });
+  }
+
+  it('a 40-day-old untouched plan closes (audited as idle) and the reader is never shown it', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const old = await untimed(a.familyId, a.userId, 'pizza night', 40 * DAY_MS);
+    await untimed(a.familyId, a.userId, 'movie night', DAY_MS);
+    linqWire();
+
+    const out = await say(
+      reading({ intent: 'rsvp', response: 'yes', planKey: 'p1', addressed: true }),
+      PARENT_B,
+      'r-1',
+      'Hale count us in for movie night',
+    );
+    expect((out.seen[0] as { plans: { title: string }[] }).plans.map((plan) => plan.title)).toEqual(
+      ['movie night'],
+    );
+    const closed = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_plan_closed'));
+    expect(closed.map((row) => [row.targetId, (row.after as { reason: string }).reason])).toEqual([
+      [old.id, 'idle'],
+    ]);
+  });
+
+  it('positive control: an old plan with no time that someone answered yesterday stays open', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const old = await untimed(a.familyId, a.userId, 'pizza night', 40 * DAY_MS);
+    await createPostgresGroupPlanRsvpStore(db.database).upsertRsvp({
+      planId: old.id,
+      memberKey: phoneBlindIndex(PARENT_B),
+      displayName: 'Bao',
+      householdLabel: null,
+      userId: null,
+      haleCustomer: true,
+      response: 'yes',
+      headcount: 1,
+      source: 'text',
+      coversKeys: [],
+      verbatim: null,
+      now: new Date(NOW.getTime() - DAY_MS),
+    });
+    const open = await createPostgresGroupPlanRsvpStore(db.database).listOpenPlans(CHAT, NOW);
+    expect(open.map((plan) => plan.id)).toEqual([old.id]);
+  });
+});
+
+describe('a replace closes a plan only by its id, and only for its host household (gate R6-3, M4)', () => {
+  it('another household naming the host plan as replaced opens its own event; the host plan stays open', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    const b = await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    linqWire();
+    await say(
+      reading({
+        intent: 'start_tracking',
+        planTitle: 'zoo',
+        planKey: 'other',
+        replacesPlanKey: 'p1',
+        addressed: true,
+      }),
+      PARENT_B,
+      'r-1',
+      "Hale forget the picnic, let's do the zoo instead",
+    );
+    const open = await createPostgresGroupPlanRsvpStore(db.database).listOpenPlans(CHAT, NOW);
+    expect(open.map((plan) => [plan.title, plan.familyId])).toEqual([
+      ['zoo', b.familyId],
+      ['picnic', a.familyId],
+    ]);
+    expect(open.some((plan) => plan.id === picnic.id)).toBe(true);
+  });
+
+  it('with two plans open, the host replacing one closes that one only', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const museum = await store.createPlan({
+      chatId: CHAT,
+      familyId: a.familyId,
+      title: 'museum',
+      startsAt: new Date(SUNDAY_14),
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: a.userId,
+      expected: [],
+      now: new Date(NOW.getTime() - 30 * 60 * 1000),
+    });
+    linqWire();
+    // Newest first: p1 = museum, p2 = picnic.
+    await say(
+      reading({
+        intent: 'start_tracking',
+        planTitle: 'zoo',
+        planKey: 'other',
+        replacesPlanKey: 'p2',
+        addressed: true,
+      }),
+      PARENT_A,
+      'r-1',
+      'Hale rain Saturday, the zoo instead of the picnic',
+    );
+    const open = await store.listOpenPlans(CHAT, NOW);
+    expect(open.map((plan) => plan.title)).toEqual(['zoo', 'museum']);
+    expect(open.some((plan) => plan.id === museum.id)).toBe(true);
+    expect(open.some((plan) => plan.id === picnic.id)).toBe(false);
+  });
+});
+
+describe('a tapback binds to the plan of the line it landed on, even an older one (M3b)', () => {
+  it('a like on the picnic line, with the newer zoo open, is an RSVP on the picnic', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    const b = await seedFamily(PARENT_B, 'Bao');
+    linqWire();
+    await say(
+      reading({ intent: 'start_tracking', planTitle: 'picnic', addressed: true }),
+      PARENT_A,
+      'm1',
+      'Hale track the picnic Saturday',
+    );
+    // The picnic is the older plan: the zoo is the newest open one.
+    await db.database
+      .update(schema.linqGroupPlans)
+      .set({ createdAt: new Date(NOW.getTime() - 60 * 60 * 1000) })
+      .where(eq(schema.linqGroupPlans.title, 'picnic'));
+    await say(
+      reading({ intent: 'start_tracking', planTitle: 'zoo', planKey: 'other', addressed: true }),
+      PARENT_A,
+      'm2',
+      'Hale track the zoo Sunday',
+    );
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const open = await store.listOpenPlans(CHAT, NOW);
+    expect(open.map((plan) => plan.title)).toEqual(['zoo', 'picnic']);
+    const picnic = open.find((plan) => plan.title === 'picnic');
+    const lines = await ledger(GROUP_PLAN_RSVP_TEMPLATE);
+    const picnicLine = lines.find((row) => row.dedupeKey?.includes(`:plan:${picnic?.id}:`));
+    expect(picnicLine?.providerMessageId).toBeTruthy();
+
+    await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: NOW,
+        reader: { read: async () => reading({ intent: 'rsvp', response: 'yes' }) },
+        composer: fakeGroupPlanRsvpComposer(),
+        consentReader: { read: async () => ({ decision: 'not_this', confidence: 'high' }) },
+      },
+      {
+        chatId: CHAT,
+        senderHandle: PARENT_B,
+        senderUserId: b.userId,
+        text: '',
+        tapback: 'like',
+        tapbackMessageId: picnicLine?.providerMessageId as string,
+      },
+    );
+    const rsvps = await db.database.select().from(schema.linqGroupPlanRsvps);
+    expect(rsvps.map((row) => [row.planId, row.response])).toEqual([[picnic?.id, 'yes']]);
+    void a;
+  });
+});
+
+describe('a group text answers a household calendar ask only when code knows which plan (pendingAskPlan)', () => {
+  async function pendingOnPicnic() {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    const b = await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    await createPostgresGroupPlanRsvpStore(db.database).claimCalendarAsk({
+      planId: picnic.id,
+      familyId: b.familyId,
+      memberKey: phoneBlindIndex(PARENT_B),
+      displayName: 'Bao',
+      householdLabel: null,
+      now: NOW,
+    });
+    return { a, b, picnic };
+  }
+
+  it('with two plans open, a consent model that would take the text as an OK is never asked', async () => {
+    const { a } = await pendingOnPicnic();
+    await createPostgresGroupPlanRsvpStore(db.database).createPlan({
+      chatId: CHAT,
+      familyId: a.familyId,
+      title: 'zoo',
+      startsAt: new Date(SUNDAY_14),
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: a.userId,
+      expected: [],
+      now: NOW,
+    });
+    consentDecision = 'ok';
+    linqWire();
+    await say(reading({ intent: 'rsvp', response: 'yes', planKey: 'p1' }), PARENT_B, 'c-1', 'yes!');
+    expect(consentReads).toBe(0);
+    expect(await db.database.select().from(schema.familyEvents)).toEqual([]);
+  });
+
+  it('positive control: with the picnic the only plan open, the same text goes to the consent model', async () => {
+    await pendingOnPicnic();
+    linqWire();
+    await say(reading({ intent: 'rsvp', response: 'yes', planKey: 'p1' }), PARENT_B, 'c-1', 'yes!');
+    expect(consentReads).toBe(1);
   });
 });

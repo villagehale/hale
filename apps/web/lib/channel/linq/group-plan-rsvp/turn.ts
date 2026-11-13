@@ -12,6 +12,7 @@ import {
   type GroupPlanCalendarWriter,
   type GroupPlanHouseholdResolver,
   hostFamilyIdForPlan,
+  isPlanHostParent,
 } from './calendar';
 import {
   type CalendarEffect,
@@ -214,7 +215,12 @@ export function instantOnClock(
 
 const WALL_CLOCK = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?$/;
 
-/** The calendar ask, among the open plans, that this household still has to answer: one, or none. */
+/**
+ * The calendar ask a group message may answer, by a plan code resolved: the ask line a reaction
+ * landed on, or, for text, the household's pending ask while its plan is the only one open. With
+ * several plans open, text names no plan code can check, so it answers no ask (the 1:1 thread
+ * where the ask went still does).
+ */
 async function pendingAskPlan(
   deps: GroupPlanRsvpTurnDeps,
   input: { chatId: string; userId: string | null; tapbackMessageId?: string | null },
@@ -224,7 +230,7 @@ async function pendingAskPlan(
     const found = await deps.store.findCalendarAskByMessage(input.tapbackMessageId);
     return found ? (open.find((plan) => plan.id === found.plan.id) ?? null) : null;
   }
-  if (!deps.households || !input.userId) return null;
+  if (open.length !== 1 || !deps.households || !input.userId) return null;
   const home = await deps.households.resolve({ chatId: input.chatId, userId: input.userId });
   if (home.status !== 'one') return null;
   const pending: GroupPlanRecord[] = [];
@@ -387,6 +393,19 @@ export async function takeGroupPlanRsvpTurn(
             },
           )
         : null;
+    // A poll is tied to an open plan only when its asker hosts that plan: only then can its
+    // lock move the plan. Anyone else's poll about it is a poll, and places nothing.
+    const refPlan = ref.status === 'plan' ? open.find((row) => row.id === ref.planId) : undefined;
+    const pollPlanId =
+      reading.intent === 'start_poll' &&
+      refPlan &&
+      (await isPlanHostParent(
+        deps.households,
+        { chatId: input.chatId, userId: input.senderUserId },
+        refPlan,
+      ))
+        ? refPlan.id
+        : null;
     const polled = await takeGroupPollReading(
       reading,
       {
@@ -394,7 +413,7 @@ export async function takeGroupPlanRsvpTurn(
         language: input.language,
         now: input.now,
         livePoll,
-        planId: refPlanId(ref),
+        planId: pollPlanId,
         pollFamilyId,
         seated,
         voter: {
@@ -434,7 +453,18 @@ export async function takeGroupPlanRsvpTurn(
     });
     const title = reading.planTitle?.trim();
     if (!familyId || !title) return { handled: false };
-    const replaces = resolvePlanKey(reading.replacesPlanKey, open);
+    // Only the host household of the plan a new event replaces may close it.
+    const replacedId = refPlanId(resolvePlanKey(reading.replacesPlanKey, open));
+    const replaced = replacedId ? open.find((row) => row.id === replacedId) : undefined;
+    const replacesPlanId =
+      replaced &&
+      (await isPlanHostParent(
+        deps.households,
+        { chatId: input.chatId, userId: input.senderUserId },
+        replaced,
+      ))
+        ? replaced.id
+        : null;
     plan = await deps.store.createPlan({
       chatId: input.chatId,
       familyId,
@@ -445,7 +475,7 @@ export async function takeGroupPlanRsvpTurn(
       createdByUserId: input.senderUserId ?? null,
       expected: seated,
       now: input.now,
-      replacesPlanId: refPlanId(replaces),
+      replacesPlanId,
     });
   }
 

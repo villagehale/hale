@@ -255,6 +255,26 @@ describe('a ride in a shared chat', () => {
   });
 });
 
+describe("a ride another family asked about becomes the driver's family's when someone claims it (M18)", () => {
+  it('A asks who can drive, B says they will: the ride is filed under B, still a shared ride', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    const b = await seedFamily(PARENT_B, 'Bao', 'Mia');
+    await say(
+      'who can drive to soccer Tuesday 5:30?',
+      PARENT_A,
+      'm1',
+      ride({ intent: 'plan_needs_driver', driverIsSender: false }),
+    );
+    const [asked] = await rides();
+    expect(asked?.familyId).toBe(a.familyId);
+    await say("I'll drive soccer Tuesday", PARENT_B, 'm2', ride({}));
+    const all = await rides();
+    expect(all.map((row) => [row.familyId, row.driverUserId, row.chatAudience])).toEqual([
+      [b.familyId, b.userId, 'shared'],
+    ]);
+  });
+});
+
 describe("a shared ride is never another family's private event data", () => {
   const TUESDAY_HOCKEY = new Date('2026-11-17T23:00:00.000Z');
 
@@ -380,6 +400,48 @@ describe("team-schedule reads only the rides in a family's own household chats",
         timeZone: 'America/Toronto',
       }),
     ).toEqual([]);
+  });
+});
+
+describe('team-schedule counts a roster chat as a household chat only by the ride audience rule', () => {
+  it("a roster chat with a live multi-family join is shared: its ride is not the family's", async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    const b = await seedFamily(PARENT_B, 'Bao', 'Mia');
+    const tuesday = new Date('2026-11-17T23:00:00.000Z');
+    // seedFamily already records a live join for both families in CHAT.
+    await db.database.insert(schema.linqGroupRosters).values({
+      chatId: CHAT,
+      familyId: a.familyId,
+      source: 'added_to_existing',
+      status: 'confirmed',
+    });
+    await db.database.insert(schema.linqGroupCarpools).values({
+      chatId: CHAT,
+      familyId: a.familyId,
+      planKey: 'soccer:2026-11-17',
+      eventLabel: 'soccer',
+      pickupAt: tuesday,
+      driverName: 'Bao',
+      driverUserId: b.userId,
+      driverHaleCustomer: 'true',
+      status: 'assigned',
+      reminderStatus: 'pending',
+    });
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({ familyId: a.familyId, title: 'hockey', startsAt: tuesday, source: 'email' })
+      .returning({ id: schema.familyEvents.id });
+    const drivers = () =>
+      loadAffectedDrivers(db.database, {
+        familyId: a.familyId,
+        familyEventId: event?.id as string,
+        originalStartsAt: tuesday,
+        timeZone: 'America/Toronto',
+      });
+    expect(await drivers()).toEqual([]);
+    // Positive control: once every join has ended, the same roster chat is the household's.
+    await db.database.update(schema.linqMultiFamilyJoins).set({ leftAt: NOW });
+    expect(await drivers()).toEqual([{ userId: b.userId }]);
   });
 });
 
@@ -526,5 +588,16 @@ describe('the night-before reminder for a shared ride', () => {
     const out = await remind(row?.reminderFireAt as Date);
     expect(out.group).toEqual([]);
     expect(out.driver).toEqual([]);
+  });
+
+  it("a driver whose family claimed its own household group still hears about this chat's ride 1:1", async () => {
+    const { row, b } = await dueRide(true);
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: 'chat-bao-household' })
+      .where(eq(schema.families.id, b.familyId));
+    const out = await remind(row?.reminderFireAt as Date);
+    expect(out.group).toEqual([]);
+    expect(out.driver).toHaveLength(1);
   });
 });
