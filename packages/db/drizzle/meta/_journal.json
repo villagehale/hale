@@ -1608,8 +1608,15 @@
     {
       "idx": 236,
       "version": "7",
+      "when": 1794365246000,
+      "tag": "0246_opt_out_held_messages_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
       "when": 1794365305000,
-      "tag": "0246_messages_author_user_id",
+      "tag": "0247_messages_author_user_id",
       "breakpoints": true
     }
   ]

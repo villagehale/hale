@@ -309,7 +309,7 @@ export interface MessageScope {
   providerMessageId?: string | null;
   /** What a proactive turn was about (messages.source, 0212). Omitted = null. */
   source?: schema.MessageSource | null;
-  /** Who sent this user turn (messages.author_user_id, 0246). Omitted = null. */
+  /** Who sent this user turn (messages.author_user_id, 0247). Omitted = null. */
   authorUserId?: string | null;
 }
 
