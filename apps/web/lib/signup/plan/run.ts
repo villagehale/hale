@@ -13,8 +13,10 @@ import {
   type BrowserUsePlanInput,
   type BrowserUsePlanResult,
   CHECKOUT_REVIEW_RUN_MAX_COST_USD,
+  type PlanCharged,
   type PlanEngineDetail,
   type PlanEngineOutcome,
+  PlanEngineThrew,
   type PlanPaymentInput,
   type PlanResumeToken,
 } from '../browser-use/plan-engine';
@@ -98,6 +100,8 @@ export interface PlanOutcomeNotice {
   choiceIndex: number | null;
   cartTotalCents: number | null;
   amountChargedCents: number | null;
+  /** What the run charged, from the engine; `unknown` once a payment may exist and none was read. */
+  charged: PlanCharged;
   confirmationNumber: string | null;
   liveViewUrl: string | null;
   holdExpiresAt: Date | null;
@@ -251,6 +255,27 @@ async function runOnePlan(
   // A run an earlier sweep started already holds its allowance.
   let allowanceHeld = held !== null;
   let engineRan = false;
+  // Once a paying checkpoint stands, a payment run may exist: an engine that throws after it
+  // cannot say nothing was charged.
+  let paymentMayExist = held?.phase === 'paying';
+  // The checkout review is never meant to pay. A charge Hale cannot rule out while no payment
+  // run may exist came from it: it placed the order, its answer was never read, or the engine
+  // threw once it had started. A human looks at that one.
+  const pageIfReviewMayHavePlaced = async (charged: PlanCharged, detail: PlanRunDetail) => {
+    if (charged !== 'unknown' || paymentMayExist) return;
+    const page = await pageOps(database, {
+      site:
+        detail === 'review_placed_order'
+          ? 'registration_review_placed_order'
+          : 'registration_review_unread',
+      facts: {},
+      ref: plan.offerId,
+    });
+    console.warn(
+      { offerId: plan.offerId, detail, page },
+      'signup plans: the checkout review may have placed the order',
+    );
+  };
   const end = async (
     result: Omit<PlanOutcomeNotice, 'offerId' | 'familyId' | 'parentUserId'> & {
       costUsd?: string | null;
@@ -333,6 +358,7 @@ async function runOnePlan(
       choiceIndex: null,
       cartTotalCents: null,
       amountChargedCents: null,
+      charged: 'nothing',
       confirmationNumber: null,
       liveViewUrl: null,
       holdExpiresAt: null,
@@ -351,12 +377,16 @@ async function runOnePlan(
         'signup plans: browser use engine threw',
       );
       const ids = err instanceof BrowserUseEngineThrew ? err : null;
+      const reviewStarted = err instanceof PlanEngineThrew && err.reviewStarted;
+      const charged = paymentMayExist || reviewStarted ? 'unknown' : 'nothing';
+      await pageIfReviewMayHavePlaced(charged, 'engine_threw');
       return end({
         outcome: 'error',
         detail: 'engine_threw',
         choiceIndex: null,
         cartTotalCents: null,
         amountChargedCents: null,
+        charged,
         confirmationNumber: null,
         liveViewUrl: null,
         holdExpiresAt: null,
@@ -378,17 +408,7 @@ async function runOnePlan(
     if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
       return parkAndTell(database, plan, result, now, host, deps);
     }
-    if (result.detail === 'review_placed_order') {
-      const page = await pageOps(database, {
-        site: 'registration_review_placed_order',
-        facts: {},
-        ref: plan.offerId,
-      });
-      console.warn(
-        { offerId: plan.offerId, page },
-        'signup plans: the checkout review says it placed the order',
-      );
-    }
+    await pageIfReviewMayHavePlaced(result.charged, result.detail);
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
     return end({
       outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,
@@ -396,6 +416,7 @@ async function runOnePlan(
       choiceIndex: result.choiceIndex,
       cartTotalCents: result.cartTotalCents,
       amountChargedCents: result.amountChargedCents,
+      charged: result.charged,
       confirmationNumber: result.confirmationNumber,
       liveViewUrl: result.liveViewUrl,
       holdExpiresAt: result.holdExpiresAt,
@@ -511,13 +532,16 @@ async function runOnePlan(
       onStep,
       resume: held,
       waitUntil: sweep.waitUntil,
-      onCheckpoint: (resume) =>
-        savePlanResume(database, {
+      onCheckpoint: async (resume) => {
+        const saved = await savePlanResume(database, {
           offerId: plan.offerId,
           familyId: plan.familyId,
           resume,
           letGo: false,
-        }),
+        });
+        if (saved && resume.phase === 'paying') paymentMayExist = true;
+        return saved;
+      },
     }),
   );
 }
@@ -553,22 +577,14 @@ async function parkAndTell(
   }
   // The card names the open only while it is still ahead for the card's whole life; the
   // run has usually reached the open by now, so the card is for finishing the session.
-  const minted = passwordRejected
-    ? await mintFreshLoginLink(database, {
-        familyId: plan.familyId,
-        parentUserId: plan.parentUserId,
-        offerId: plan.offerId,
-        providerHost: host ?? new URL(plan.registrationUrl).hostname,
-        purpose: {
-          kind: 'password_rejected',
-          sessionLabel: firstChoiceLabel(plan.sessions, plan.choiceIds),
-          opensAt:
-            plan.opensAt.getTime() > loginLinkExpiresAt(now).getTime()
-              ? planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId))
-              : null,
-        },
-        now,
-      })
+  const loginCard = passwordRejected
+    ? {
+        sessionLabel: firstChoiceLabel(plan.sessions, plan.choiceIds),
+        opensAt:
+          plan.opensAt.getTime() > loginLinkExpiresAt(now).getTime()
+            ? planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId))
+            : null,
+      }
     : null;
   await parkSignupPlan(database, {
     offerId: plan.offerId,
@@ -607,6 +623,7 @@ async function parkAndTell(
     passwordRule: result.passwordRule ?? null,
     siteChoices: result.siteChoices ?? [],
     askedStart: plan.sessions[0]?.label ?? null,
+    loginCard,
   };
   const sent = await sendSignupPlanNotice(
     database,
@@ -617,7 +634,17 @@ async function parkAndTell(
       providerHost: host ?? new URL(plan.registrationUrl).hostname,
       kind,
       facts,
-      link: minted?.url ?? null,
+      mintLink: loginCard
+        ? (card) =>
+            mintFreshLoginLink(database, {
+              familyId: plan.familyId,
+              parentUserId: plan.parentUserId,
+              offerId: plan.offerId,
+              providerHost: host ?? new URL(plan.registrationUrl).hostname,
+              purpose: { kind: 'password_rejected', ...loginCard, card },
+              now,
+            })
+        : undefined,
       linkAfter: 0,
       now,
     },

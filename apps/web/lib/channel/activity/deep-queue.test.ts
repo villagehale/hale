@@ -133,7 +133,12 @@ describe('dispatchDeepResearch', () => {
 });
 
 describe('dispatchDepthForPromise', () => {
-  it('dispatches every recorded promise, whatever it is about, for the adult who asked', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('lit: dispatches every recorded promise, whatever it is about, for the adult who asked', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const dispatched: Array<{ payload: DeepResearchPayload; askedBy: string }> = [];
     const outcome = await dispatchDepthForPromise(
       async (payload, askedBy) => {
@@ -151,7 +156,37 @@ describe('dispatchDepthForPromise', () => {
     expect(dispatched).toEqual([{ payload: PAYLOAD, askedBy: ASKED_BY }]);
   });
 
+  // Dark, the question-time pass is not queued at all: the promise row is left exactly as
+  // the router wrote it, due in a day, for the hourly sweep — the path before #1251.
+  it.each([
+    ['unset', {}],
+    ['another family on the allowlist', { DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST: 'fam-other' }],
+  ])('dark (%s): a recorded promise is not dispatched, and says why', async (_label, env) => {
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    const dispatch = vi.fn();
+    const outcome = await dispatchDepthForPromise(dispatch, {
+      familyId: 'fam-7',
+      parentUserId: ASKED_BY,
+      recorded: { status: 'recorded', commitmentId: 'commit-7' },
+    });
+    expect(outcome).toEqual({ status: 'not_enqueued', reason: 'followup_now_dark' });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('the allowlist lights the family it names', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', 'fam-other,fam-7');
+    const dispatch = vi.fn(async () => ({ status: 'enqueued' as const }));
+    const outcome = await dispatchDepthForPromise(dispatch, {
+      familyId: 'fam-7',
+      parentUserId: ASKED_BY,
+      recorded: { status: 'recorded', commitmentId: 'commit-7' },
+    });
+    expect(outcome).toEqual({ status: 'enqueued' });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
   it('a promise that never became a row is not dispatched', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const dispatch = vi.fn();
     const outcome = await dispatchDepthForPromise(dispatch, {
       familyId: 'fam-7',

@@ -1,8 +1,10 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasGarbledText } from '~/lib/format/garbled-text';
 import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { PlanCharged } from '~/lib/signup/browser-use/plan-engine';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -39,6 +41,8 @@ export interface PlanRunFacts {
   sessionLabel: string | null;
   cartTotalCents: number | null;
   amountChargedCents: number | null;
+  /** What Hale's run charged, from the engine: `nothing`, `unknown`, or the cents read. */
+  charged: PlanCharged;
   liveBrowser: boolean;
   holdMinutes: number | null;
 }
@@ -86,7 +90,7 @@ const MONEY =
 const CLOCK =
   /\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b|\b(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b|\b(\d{1,2})(a\.?m\.?|p\.?m\.?)\b|\b(\d{1,2})h(\d{2})\b/gi;
 
-function moneyCentsIn(text: string): number[] {
+export function moneyCentsIn(text: string): number[] {
   const out: number[] = [];
   for (const match of text.matchAll(MONEY)) {
     const dollars = Number(match[1] ?? match[3] ?? match[5]);
@@ -107,6 +111,7 @@ function knownCents(facts: PlanReplyFacts): Set<number> {
   for (const session of facts.sessions) add(session.priceCents);
   add(facts.run?.cartTotalCents);
   add(facts.run?.amountChargedCents);
+  if (typeof facts.run?.charged === 'object') add(facts.run.charged.cents);
   return known;
 }
 
@@ -122,7 +127,7 @@ function clockMinutes(hour: number, minute: number, mer: string | undefined): nu
   return h * 60 + minute;
 }
 
-function clocksIn(text: string): number[] {
+export function clocksIn(text: string): number[] {
   const out: number[] = [];
   for (const match of text.matchAll(CLOCK)) {
     if (match[1] !== undefined) {
@@ -163,6 +168,9 @@ export function planReplyViolations(text: string, facts?: PlanReplyFacts): strin
   const tidy = text.trim();
   if (!tidy) out.push('empty');
   if (hasLinkShape(tidy)) out.push('contains a link: Hale adds any link after the text');
+  if (hasGarbledText(tidy)) {
+    out.push('garbled characters: an accented letter came out as two or three other characters');
+  }
   if (facts) {
     const allowedMoney = knownCents(facts);
     if (

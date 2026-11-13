@@ -990,6 +990,10 @@ describe('sweepMessageRetention on a database without migration 0167', () => {
     await before0167.exec(
       'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS provider_service text',
     );
+    // And the door's unread opt-out read (0238), which drizzle names on every ledger row.
+    await before0167.exec(
+      'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS opt_out_unread boolean',
+    );
   });
 
   afterAll(async () => {

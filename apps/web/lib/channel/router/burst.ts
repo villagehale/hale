@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, notExists, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { type InboundMediaPart, inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { resolveNoteConversation } from '~/lib/coach/conversation';
@@ -64,6 +65,8 @@ export interface BurstMember {
   body: string;
   media: readonly InboundMediaPart[];
   createdAt: Date;
+  /** The door's opt-out read could not read this text (its row's `opt_out_unread`). */
+  optOutUnread: boolean;
 }
 
 /** How the grouping was decided: by the reader, or — when it could not answer — by
@@ -119,6 +122,7 @@ const memberColumns = {
   body: schema.channelMessages.body,
   inboundMedia: schema.channelMessages.inboundMedia,
   createdAt: schema.channelMessages.createdAt,
+  optOutUnread: schema.channelMessages.optOutUnread,
 };
 
 function toMember(row: {
@@ -127,6 +131,7 @@ function toMember(row: {
   body: string | null;
   inboundMedia: unknown;
   createdAt: Date;
+  optOutUnread: boolean | null;
 }): BurstMember {
   return {
     channelMessageId: row.channelMessageId,
@@ -136,6 +141,7 @@ function toMember(row: {
     body: withoutLiveViewLinks(row.body ?? ''),
     media: inboundMediaFromStored(row.inboundMedia),
     createdAt: row.createdAt,
+    optOutUnread: row.optOutUnread === true,
   };
 }
 
@@ -167,6 +173,7 @@ export async function pendingBurst(
   if (!row || row.familyId !== anchor.familyId) return [];
 
   const lookback = new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS);
+  const anchorRow = alias(schema.channelMessages, 'anchor');
   const newer = await database
     .select(memberColumns)
     .from(schema.channelMessages)
@@ -175,7 +182,16 @@ export async function pendingBurst(
         // Leads with the cap index's columns (parent_user_id, category, created_at).
         eq(schema.channelMessages.parentUserId, anchor.parentUserId),
         eq(schema.channelMessages.category, 'reply'),
-        gt(schema.channelMessages.createdAt, row.createdAt),
+        // Against the anchor's stored time, never `row.createdAt`: created_at keeps
+        // microseconds and a JS Date keeps milliseconds, so a time read back and sent
+        // again matched the anchor itself, and every lone text folded into itself.
+        gt(
+          schema.channelMessages.createdAt,
+          database
+            .select({ createdAt: anchorRow.createdAt })
+            .from(anchorRow)
+            .where(eq(anchorRow.id, anchor.channelMessageId)),
+        ),
         eq(schema.channelMessages.familyId, anchor.familyId),
         eq(schema.channelMessages.direction, 'in'),
         eq(schema.channelMessages.channel, row.channel),

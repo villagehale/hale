@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { untrustedActivityLabel } from './plan/reader';
 import type { SignupOffer } from './types';
 
 /**
@@ -11,6 +12,11 @@ import type { SignupOffer } from './types';
  * A model reads the message beside the pending offer and its sessions. There
  * is no word list. Only an explicit go-ahead is consent; a hedge or a question
  * about the offer comes back as `unclear` with one clarifying question.
+ *
+ * The model is told which program and site the offer is for, so a yes to another
+ * program is not read as this one's. The program's name came from a page or the
+ * parent, so it is untrusted: it reaches the model marked as such, cleaned and cut
+ * short ({@link untrustedActivityLabel}), as the plan read's does.
  *
  * A missing client, a missing skill, a model failure or an unreadable result
  * is null, and the log names which. The caller treats null as no consent: it
@@ -23,8 +29,11 @@ export type SignupConsentReading =
   | { verdict: 'unclear'; question: string }
   | { verdict: 'unrelated' };
 
+/** The offer the parent is answering, with the public facts that tell it from their others. */
+export type ConsentReadOffer = SignupOffer & { activityLabel: string | null; providerHost: string };
+
 export interface SignupConsentReader {
-  read(input: { text: string; offer: SignupOffer }): Promise<SignupConsentReading | null>;
+  read(input: { text: string; offer: ConsentReadOffer }): Promise<SignupConsentReading | null>;
 }
 
 const MAX_TEXT_CHARS = 1600;
@@ -53,10 +62,12 @@ export const SIGNUP_CONSENT_TOOL_SCHEMA = {
 } as const;
 
 /** The user turn: the offer the parent is answering, then their words. No child data. */
-export function signupConsentUserMessage(input: { text: string; offer: SignupOffer }): string {
+export function signupConsentUserMessage(input: { text: string; offer: ConsentReadOffer }): string {
   return JSON.stringify({
     offer: {
       activityKey: input.offer.activityKey,
+      untrusted_activity_label: untrustedActivityLabel(input.offer.activityLabel),
+      host: input.offer.providerHost,
       registrationUrl: input.offer.registrationUrl,
       approvedPriceCents: input.offer.approvedPriceCents,
       sessions: input.offer.sessions.map((session) => ({

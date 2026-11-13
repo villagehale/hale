@@ -50,6 +50,7 @@ import {
   extractInboundPhotoFacts,
   inboundPhotoFactsEnabled,
   photoFactSignupLinks,
+  photoFactWatchLinks,
 } from '~/lib/channel/inbound-photo-facts';
 import {
   ageFitCorrectionEnabled,
@@ -115,7 +116,12 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
-import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/signup/offer-tool';
+import {
+  type RecordedSignupOffer,
+  augmentCoachSkillForSignupOffer,
+  signupAtOpenEnabled,
+  signupOfferToolEnabled,
+} from '~/lib/signup/offer-tool';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -301,6 +307,8 @@ export interface ChannelCoachPorts {
     onUndo: ((undo: () => Promise<void>) => void) | undefined,
     /** The family row's country, read off the turn's own context (familyCountryOf). */
     familyCountry: FamilyCountry | null,
+    /** Every sign-up offer the turn recorded, which the router stamps after the send. */
+    onSignupOffer: (offer: RecordedSignupOffer) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -437,6 +445,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       let experienceCard: ExperienceCardIntent | null = null;
       // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
       let groupLeave: GroupLeaveIntent | null = null;
+      // Every sign-up offer this turn recorded: several sites can be offered in one reply.
+      const signupOffers: RecordedSignupOffer[] = [];
       // VIL-495: the model chose to say this reply as a voice memo.
       let voiceChosen = false;
       // VIL-447: writes a failed turn must take back (shared-list adds and check-offs), so
@@ -748,6 +758,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   undos.push(undo);
                 },
                 familyCountryOf(familyContext.location.country),
+                (offer) => {
+                  signupOffers.push(offer);
+                },
               );
               // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
               // are busy-only, on every group turn. VIL-615: once read_email returns text,
@@ -1018,6 +1031,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 activityPromise,
                 spotWatch,
                 capabilityNotes,
+                // A Gmail draft notice replaces the answer, and the offer's text with it.
+                signupOffers: noticeReady ? [] : signupOffers,
                 // The title passes the same age-derived teen floor as the answer (rule #1).
                 experienceCard:
                   card && !noticeReady
@@ -1111,6 +1126,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             browserUseWatchEnabled(),
           ),
           signupOfferToolEnabled(),
+          signupAtOpenEnabled() ? await loadCronSkill('coach-signup-offer') : null,
         ),
         (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),
@@ -1160,6 +1176,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       onGmailNotice,
       onUndo,
       familyCountry,
+      onSignupOffer,
     ) => {
       const listJournal = createGroupListJournal();
       const factReader: FactReader =
@@ -1173,6 +1190,19 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           ),
         );
       }
+      // Pages a tool put in front of the parent this turn. A photo's registration URL
+      // joins them only for the signup ask, which names the host and waits for a yes; a
+      // watch takes it only when the parent typed it (photoFactWatchLinks).
+      const searchLinks = () => [
+        ...offered.links(),
+        ...offered
+          .read()
+          .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+      ];
+      const watchLinks = () => [
+        ...searchLinks(),
+        ...photoFactWatchLinks(turn.photoFacts, turn.body),
+      ];
       return buildChannelCoachTools({
         familyId: turn.familyId,
         familyCountry,
@@ -1205,11 +1235,12 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           // had its own go (see ACTIVITY_CLIENT_OPTIONS).
           finder: createActivityFinder(activityClient),
         },
-        // The watch verb's three ports. `fetchBody` rather than `fetchPage`: a BookMe4
+        // The watch verb's ports. `fetchBody` rather than `fetchPage`: a BookMe4
         // course keeps its availability in a <script> block the strip deletes, so a
         // watch armed off the stripped page could never see a spot open. The consent
         // port is the outbound gate's own, so a watch cannot be armed for a household
-        // the gate would then refuse to text.
+        // the gate would then refuse to text. The link ports are what the URL must be
+        // one of: the parent's own words, or a page a tool showed them this turn.
         spots: {
           fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
           reader: bindActivityReader(database, productionActivityFamilyReader(), factReader),
@@ -1218,6 +1249,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             anthropicClient(),
             MINT_FETCH_TIMEOUT_MS,
           ),
+          parentWords: turn.body,
+          linksThisTurn: watchLinks,
         },
         onDraft,
         onOffer,
@@ -1264,13 +1297,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               parentUserId: turn.parentUserId,
               conversationId: turn.conversationId,
               parentWords: turn.body,
-              linksThisTurn: () => [
-                ...offered.links(),
-                ...offered
-                  .read()
-                  .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
-                ...photoFactSignupLinks(turn.photoFacts, turn.body),
-              ],
+              linksThisTurn: watchLinks,
             }
           : null,
         signupOffer: signupOfferToolEnabled()
@@ -1280,13 +1307,12 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               parentUserId: turn.parentUserId,
               now: turn.now,
               parentWords: turn.body,
+              optOutUnread: turn.optOutUnread === true,
               linksThisTurn: () => [
-                ...offered.links(),
-                ...offered
-                  .read()
-                  .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+                ...searchLinks(),
                 ...photoFactSignupLinks(turn.photoFacts, turn.body),
               ],
+              onRecorded: onSignupOffer,
             }
           : null,
       });

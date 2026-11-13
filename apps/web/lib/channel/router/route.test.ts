@@ -2,7 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient, RegisteredTool, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const waitUntil = vi.hoisted(() => vi.fn());
@@ -35,6 +35,7 @@ import {
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
@@ -69,9 +70,10 @@ import {
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { recordSignupOffer } from '~/lib/signup/store';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
   INTRO_REPLY_FACTS,
   type IntroReplySituation,
@@ -390,6 +392,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     async recordFailed(input: { channelMessageId: string; reason: string }) {
       ledger.failed.push({ channelMessageId: input.channelMessageId, reason: input.reason });
     },
+    async recordRouted() {},
   };
   return ledger;
 }
@@ -584,6 +587,7 @@ function harness(
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
+    bubbleGapMs?: number;
     floodLine?: FloodLineComposer;
     consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
@@ -671,6 +675,8 @@ function harness(
       floodLine: options.floodLine ?? fakeFloodLine(),
       crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
+      // A test that is not about the pause between bubbles does not wait for it.
+      bubbleGapMs: options.bubbleGapMs ?? 0,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
       turnDeadlineMs: options.turnDeadlineMs,
@@ -2440,6 +2446,7 @@ describe('back-to-back texts read as one turn', () => {
       body: '$600 budget for a fall program',
       media: [],
       createdAt: NOW,
+      optOutUnread: false,
     },
     {
       channelMessageId: '33333333-3333-4333-8333-000000000002',
@@ -2447,6 +2454,7 @@ describe('back-to-back texts read as one turn', () => {
       body: '$900',
       media: [photo],
       createdAt: NOW,
+      optOutUnread: false,
     },
   ];
   const anchorPlan = (
@@ -2535,6 +2543,41 @@ describe('back-to-back texts read as one turn', () => {
       ['$600 budget for a fall program', 'SM1'],
       ['$900', 'SM2'],
     ]);
+  });
+
+  it('a text the door could not read marks the whole turn: from its own job, or from a folded text', async () => {
+    const lone = capturingCoach();
+    await routeChannelMessage(
+      harness({ burst: fakeBurst({ kind: 'lone', waitedMs: 0, why: 'alone' }), coach: lone.coach })
+        .deps,
+      job({ opt_out_unread: true }),
+    );
+    expect(lone.turns[0]?.optOutUnread).toBe(true);
+
+    const unreadLater: BurstMember[] = [
+      members[0] as BurstMember,
+      { ...(members[1] as BurstMember), optOutUnread: true },
+    ];
+    const folded = capturingCoach();
+    await routeChannelMessage(
+      harness({
+        burst: fakeBurst(anchorPlan({ members: unreadLater, replyTo: unreadLater[1] })),
+        coach: folded.coach,
+        context: { reply: IMESSAGE },
+      }).deps,
+      job({ opt_out_unread: false }),
+    );
+    expect(folded.turns[0]?.optOutUnread).toBe(true);
+
+    // Positive control: every text read, nothing marked.
+    const read = capturingCoach();
+    await routeChannelMessage(
+      harness({ burst: fakeBurst(anchorPlan()), coach: read.coach, context: { reply: IMESSAGE } })
+        .deps,
+      job({ opt_out_unread: false }),
+    );
+    expect(read.turns).toHaveLength(1);
+    expect(read.turns[0]).not.toHaveProperty('optOutUnread');
   });
 
   it('a lone text keeps today’s turn: one thread row, no burst size for the coach', async () => {
@@ -2766,6 +2809,65 @@ describe('a re-driven turn never answers twice', () => {
     expect(h.transport.bodies()).toEqual([]);
     expect(turns.answered).toEqual([]);
     expect(turns.deferred).toEqual([job().channel_message_id]);
+  });
+});
+
+describe('a receipt sent as several bubbles', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A handler whose receipt is two bubbles, recording each afterSend call. */
+  function twoBubbles() {
+    const after: string[] = [];
+    const handler: DeterministicHandler = {
+      name: 'two_bubbles',
+      handle: async () => ({
+        claimed: true,
+        outcome: 'asked',
+        reply: 'Swim opens at 7.',
+        replies: ['Swim opens at 7.', 'https://example.test/l/abc'],
+        afterSend: async (channelMessageId: string) => {
+          after.push(channelMessageId);
+        },
+      }),
+    };
+    return { handler, after };
+  }
+
+  it('runs afterSend once the first bubble reached the parent, though a later one fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { handler, after } = twoBubbles();
+    const h = harness({ context: { body: 'yes' }, handlers: [handler] });
+    const send = h.transport.send.bind(h.transport);
+    h.transport.send = async (input) => {
+      if (input.body.startsWith('https://')) throw new Error('carrier refused');
+      return send(input);
+    };
+
+    await routeChannelMessage(h.deps, job()).catch(() => undefined);
+
+    expect(h.transport.bodies()).toEqual(['Swim opens at 7.']);
+    const outbound = h.fake
+      .rows(schema.channelMessages)
+      .filter((row) => row.direction === 'out')
+      .map((row) => row.id);
+    expect(outbound).toHaveLength(1);
+    expect(after).toEqual(outbound);
+  });
+
+  it('runs afterSend once, for the first bubble, when every bubble goes', async () => {
+    const { handler, after } = twoBubbles();
+    const h = harness({ context: { body: 'yes' }, handlers: [handler] });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Swim opens at 7.', 'https://example.test/l/abc']);
+    const [first] = h.fake
+      .rows(schema.channelMessages)
+      .filter((row) => row.direction === 'out')
+      .map((row) => row.id);
+    expect(after).toEqual([first]);
   });
 });
 
@@ -4351,6 +4453,10 @@ describe('what the parent stated is written before anything reads it', () => {
  * silently stopped happening is invisible from every other signal in the system.
  */
 describe('a promise worth opening pages for is dispatched at question time', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   function promisingCoach(subject: string): ChannelCoachRuntime {
     return {
       async respond() {
@@ -4365,6 +4471,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
   }
 
   it('mints the commitment AND enqueues the deep pass keyed to it', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const promises: unknown[] = [];
     const dispatched: unknown[] = [];
     const askers: unknown[] = [];
@@ -4397,11 +4504,12 @@ describe('a promise worth opening pages for is dispatched at question time', () 
     expect(askers).toEqual([PARENT]);
   });
 
-  // A subject is never read for keywords to decide this: the promise was made, so it is
-  // researched now. These two named no place and no timetable, and used to wait a day.
+  // A subject is never read for keywords to decide this: lit, the promise was made, so it
+  // is researched now. These two named no place and no timetable, and used to wait a day.
   it.each([['indoor swim lessons'], ['幼儿游泳课']])(
-    'enqueues the deep pass for every recorded promise (%s)',
+    'lit: enqueues the deep pass for every recorded promise (%s)',
     async (subject) => {
+      vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
       const dispatched: unknown[] = [];
       const h = harness({
         coach: promisingCoach(subject),
@@ -4419,6 +4527,96 @@ describe('a promise worth opening pages for is dispatched at question time', () 
 
       expect(dispatched).toEqual([{ commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }]);
       expect(h.logs).toContainEqual([{ dispatch: 'enqueued' }, expect.any(String)]);
+    },
+  );
+
+  // Dark, nothing is queued at question time: the promise is written down and left to the
+  // hourly sweep at its due time, as it was before #1251. The skipped dispatch is counted.
+  it('dark: records the promise, enqueues nothing, and logs why', async () => {
+    const promises: unknown[] = [];
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(1);
+    expect(promises).toHaveLength(1);
+    expect(dispatched).toEqual([]);
+    expect(h.logs).toContainEqual([
+      { dispatch: 'not_enqueued', reason: 'followup_now_dark' },
+      expect.any(String),
+    ]);
+  });
+
+  // The follow-up is written in the language of the ask it answers, and that is the
+  // screen's tag of THIS text — not the parent's stored language, which moves only on a
+  // run of texts. So the tag rides on the promise row for whichever keeper answers it.
+  it.each([
+    ['zh', 'zh'],
+    ['zh-CN', 'zh-cn'],
+    [undefined, null],
+    ['write to me in chinese', null],
+  ])(
+    'records the language the screen read off this text on the promise (%s)',
+    async (read, recordedTag) => {
+      const promises: Array<Record<string, unknown>> = [];
+      const h = harness({
+        coach: promisingCoach('indoor swim lessons'),
+        offDomain: fakeLane({
+          status: 'in_domain',
+          fallback: null,
+          ...(read === undefined ? {} : { language: read }),
+        }),
+        recordActivityPromise: async (_db, input) => {
+          promises.push(input);
+          return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+        },
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(promises).toHaveLength(1);
+      expect(promises[0]?.askLanguage).toBe(recordedTag);
+    },
+  );
+
+  // VIL-572 · a parent who says "write to me in Chinese" in English has asked for Chinese.
+  // The explicit ask is the language of the follow-up, over the tag the text was written in.
+  it.each([
+    ['en', 'zh', 'zh'],
+    ['zh', 'not a tag', 'zh'],
+  ])(
+    'records an explicit language ask on the promise over the text it came in (%s, asked %s)',
+    async (read, requested, recordedTag) => {
+      const promises: Array<Record<string, unknown>> = [];
+      const h = harness({
+        coach: promisingCoach('indoor swim lessons'),
+        offDomain: fakeLane({
+          status: 'in_domain',
+          fallback: null,
+          language: read,
+          languageRequest: requested,
+        }),
+        recordActivityPromise: async (_db, input) => {
+          promises.push(input);
+          return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+        },
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      expect(promises).toHaveLength(1);
+      expect(promises[0]?.askLanguage).toBe(recordedTag);
     },
   );
 
@@ -4448,6 +4646,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
    * thing that changed for the parent is that their answer now takes a day.
    */
   it('leaves the promise standing and COUNTS the failure when the enqueue cannot happen', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const promises: unknown[] = [];
     const h = harness({
       coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
@@ -6563,6 +6762,8 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS audience uuid');
       // And the inbound service (0233), which drizzle names on every ledger row.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS provider_service text');
+      // And the door's unread opt-out read (0238), which drizzle names on every ledger row.
+      await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS opt_out_unread boolean');
     });
 
     afterAll(async () => {
@@ -8396,6 +8597,110 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     ).toEqual(['Swim is Saturday at 10.', 'Bring a towel.', 'Want me to add it to your calendar?']);
   });
 
+  /** Each send and each typing start, in the order the parent's phone would see them. */
+  function phoneEvents(h: ReturnType<typeof harness>) {
+    const events: string[] = [];
+    const at: number[] = [];
+    const send = h.transport.send.bind(h.transport);
+    h.transport.send = async (input) => {
+      events.push(`send:${input.body}`);
+      at.push(Date.now());
+      return send(input);
+    };
+    const log = h.deps.log;
+    h.deps.log = {
+      ...log,
+      warn: (...args: unknown[]) => {
+        if ((args[0] as { phase?: string } | undefined)?.phase === 'start') events.push('typing');
+        log.warn(...args);
+      },
+    };
+    return { events, at };
+  }
+
+  it('paces the bubbles: typing goes up after each one and the next waits the gap', async () => {
+    const GAP_MS = 60;
+    const { h } = bubbleTurn(undefined, { bubbleGapMs: GAP_MS });
+    const { events, at } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      // The turn's own wait: the bubble goes up while the coach thinks.
+      'typing',
+      'send:Swim is Saturday at 10.',
+      'typing',
+      'send:Bring a towel.',
+      'typing',
+      'send:Want me to add it to your calendar?',
+    ]);
+    // Timer and wall clock can disagree by a millisecond or so; contention only adds.
+    expect((at[1] as number) - (at[0] as number)).toBeGreaterThanOrEqual(GAP_MS - 5);
+    expect((at[2] as number) - (at[1] as number)).toBeGreaterThanOrEqual(GAP_MS - 5);
+    expect(JSON.stringify(h.logs)).not.toContain('deadline_near');
+  });
+
+  it('near the turn deadline the rest of the bubbles go without the gap, named', async () => {
+    const { h } = bubbleTurn(undefined, { bubbleGapMs: BUBBLE_GAP_MS, turnDeadlineMs: 10_000 });
+    const { events } = phoneEvents(h);
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(events).toEqual([
+      // The turn's own wait, as above; nothing goes up between the bubbles.
+      'typing',
+      'send:Swim is Saturday at 10.',
+      'send:Bring a towel.',
+      'send:Want me to add it to your calendar?',
+    ]);
+    expect(
+      h.logs.filter((entry) => (entry as [{ outcome?: string }])[0]?.outcome === 'deadline_near'),
+    ).toHaveLength(2);
+  });
+
+  it('a handler that sends several messages on a lit turn sends them as paced bubbles', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const plan: DeterministicHandler = {
+      name: 'plan',
+      handle: async (_db, turn) => {
+        await turn.send('Nights 1-3: down drowsy but awake.');
+        await turn.send('Nights 4-7: stretch the wait.');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({ handlers: [plan], context: { body: 'yes', reply: IMESSAGE } });
+    const { events } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      'send:Nights 1-3: down drowsy but awake.',
+      'typing',
+      'send:Nights 4-7: stretch the wait.',
+    ]);
+  });
+
+  it('dark: the same handler sends its messages back to back', async () => {
+    const plan: DeterministicHandler = {
+      name: 'plan',
+      handle: async (_db, turn) => {
+        await turn.send('Nights 1-3: down drowsy but awake.');
+        await turn.send('Nights 4-7: stretch the wait.');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({ handlers: [plan], context: { body: 'yes', reply: IMESSAGE } });
+    const { events } = phoneEvents(h);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(events).toEqual([
+      'send:Nights 1-3: down drowsy but awake.',
+      'send:Nights 4-7: stretch the wait.',
+    ]);
+  });
+
   it('dark: the turn is not lit and a line break in the reply is not split', async () => {
     const coach = seeingCoach({ reply: 'Swim is Saturday at 10.\nhttps://pool.example/swim' });
     const h = harness({ coach, context: { body: 'what is on saturday', reply: IMESSAGE } });
@@ -8952,6 +9257,173 @@ describe('several bubbles through the production ledger and database', () => {
       'Want to go Saturday?\nhttps://www.toronto.ca/riverdale-pool',
     ]);
   });
+
+  describe('a sign-up offer in the answer', () => {
+    const OFFER = 'Want me to sign Ada up for Little Kickers at the open?';
+
+    async function offerTurn(
+      onBubble: (index: number, ids: { swim: string; gym: string }) => Promise<void>,
+      options: { reply?: string; voiceMemo?: true } = {},
+    ) {
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const parent = await seedFamily(db.database);
+      const childId = await seedChild(db.database, parent.familyId, 'Ada', 40);
+      const offer = async (activityKey: string, registrationUrl: string) => {
+        const recorded = await recordSignupOffer(db.database, {
+          ...parent,
+          childId,
+          activityKey,
+          registrationUrl,
+          sessions: [
+            {
+              id: 'sat-0900',
+              label: 'Sat 9:00',
+              startsAt: '2027-01-09T14:00:00.000Z',
+              endsAt: '2027-01-09T14:45:00.000Z',
+              full: false,
+              priceCents: 9800,
+            },
+          ],
+          approvedPriceCents: null,
+          now: new Date(),
+        });
+        if (!recorded.ok) throw new Error(recorded.reason);
+        return recorded.id;
+      };
+      const ids = {
+        swim: await offer('swim-preschool', 'https://swim.example-rec.test/register'),
+        gym: await offer('gym-tots', 'https://gym.example-rec.test/register'),
+        kickers: await offer('kickers-sat', 'https://kickers.example-sport.test/register'),
+      };
+      const coach: ChannelCoachRuntime = {
+        async respond() {
+          return {
+            reply: options.reply ?? `Kickers opens Dec 8 at 7.\n${OFFER}`,
+            planOffer: null,
+            activityPromise: null,
+            spotWatch: null,
+            signupOffers: [{ offerId: ids.kickers, text: OFFER }],
+            ...(options.voiceMemo ? { voiceMemo: true } : {}),
+          };
+        },
+      };
+      const h = harness({ coach, context: { body: 'and kickers?', reply: IMESSAGE } });
+      h.deps.database = db.database;
+      h.deps.turns = auditTurnLedger(db.database);
+      const voiced: string[] = [];
+      h.deps.sendVoiceReply = async (input) => {
+        voiced.push(input.text);
+        return { sent: 'voice_memo', providerMessageId: 'vm-offer' };
+      };
+      const send = h.transport.send.bind(h.transport);
+      h.transport.send = async (input) => {
+        await onBubble(h.transport.sent.length, ids);
+        return send(input);
+      };
+      const [inbound] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          ...parent,
+          channel: 'imessage',
+          providerChatId: IMESSAGE.chatId,
+          direction: 'in',
+          category: 'reply',
+          status: 'delivered',
+          body: 'and kickers?',
+        })
+        .returning({ id: schema.channelMessages.id });
+      const result = await routeChannelMessage(
+        h.deps,
+        job({
+          family_id: parent.familyId,
+          parent_user_id: parent.parentUserId,
+          channel_message_id: inbound?.id as string,
+        }),
+      );
+      const seq = async (offerId: string) => {
+        const [row] = await db.database
+          .select({ seq: schema.authorizedSignupOffers.lastAskedSeq })
+          .from(schema.authorizedSignupOffers)
+          .where(eq(schema.authorizedSignupOffers.id, offerId));
+        return row?.seq ?? null;
+      };
+      return { result, said: h.transport.bodies(), voiced, ids, seq };
+    }
+
+    /** Another send about another ask, starting now: it draws the next number. */
+    const otherSendStarts = (offerId: string) =>
+      db.database.execute(
+        sql`update authorized_signup_offers set last_asked_seq = nextval('authorized_signup_ask_seq') where id = ${offerId}`,
+      );
+
+    it('ranks it by the start of the bubble that carries its text', async () => {
+      const turn = await offerTurn(async (index, ids) => {
+        // Swim's send starts while the first bubble is on the wire, Gym's while the
+        // bubble carrying the offer is.
+        await otherSendStarts(index === 0 ? ids.swim : ids.gym);
+      });
+
+      expect(turn.result.status).toBe('agent_replied');
+      expect(turn.said).toEqual(['Kickers opens Dec 8 at 7.', OFFER]);
+      const swim = (await turn.seq(turn.ids.swim)) as number;
+      const kickers = (await turn.seq(turn.ids.kickers)) as number;
+      const gym = (await turn.seq(turn.ids.gym)) as number;
+      expect(kickers).toBeGreaterThan(swim);
+      expect(gym).toBeGreaterThan(kickers);
+    });
+
+    it('sends it as its own text, never as a voice memo the model chose', async () => {
+      const turn = await offerTurn(async () => {}, { reply: OFFER, voiceMemo: true });
+      expect(turn.voiced).toEqual([]);
+      expect(turn.said).toEqual([OFFER]);
+      expect(await turn.seq(turn.ids.kickers)).not.toBeNull();
+    });
+
+    it('sends a set of bubbles that carries it as texts, never as a voice memo the model chose', async () => {
+      const turn = await offerTurn(async () => {}, { voiceMemo: true });
+      expect(turn.voiced).toEqual([]);
+      expect(turn.said).toEqual(['Kickers opens Dec 8 at 7.', OFFER]);
+      expect(await turn.seq(turn.ids.kickers)).not.toBeNull();
+    });
+
+    it('never offers it to a tapback, an edit, a sticker or an effect', async () => {
+      vi.stubEnv('LINQ_API_KEY', 'test-key');
+      vi.stubEnv('VERCEL_ENV', 'preview');
+      vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+      vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+      vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+      effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+      stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: false });
+      const posted: string[] = [];
+      vi.stubGlobal('fetch', async (url: string) => {
+        posted.push(new URL(url).pathname);
+        return Response.json({ message: { id: 'linq-out' } }, { status: 201 });
+      });
+      try {
+        const turn = await offerTurn(async () => {}, { reply: OFFER });
+        expect(effectDecide).not.toHaveBeenCalled();
+        expect(stickerDecide).not.toHaveBeenCalled();
+        // The typing bubble only: no reaction, no edit, no effect send.
+        expect(posted.filter((path) => !path.endsWith('/typing'))).toEqual([]);
+        expect(turn.said).toEqual([OFFER]);
+        expect(await turn.seq(turn.ids.kickers)).not.toBeNull();
+      } finally {
+        effectDecide.mockReset();
+        stickerDecide.mockReset();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('leaves it unstamped when the set stops before the bubble that carries its text', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const turn = await offerTurn(async (index) => {
+        if (index === 1) throw new Error('carrier refused');
+      });
+      expect(turn.said).toEqual(['Kickers opens Dec 8 at 7.']);
+      expect(await turn.seq(turn.ids.kickers)).toBeNull();
+      vi.restoreAllMocks();
+    });
+  });
 });
 
 /**
@@ -8980,10 +9452,16 @@ describe('a Linq chat’s service decides bubbles, from the webhook to the send'
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${LINQ_KEY.toString('base64')}`);
     vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    // The typing call between bubbles is a real Linq request under this key: keep it local.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 204 })),
+    );
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   /** The 2026-02-03 message.received a 1:1 chat on the Hale line posts, signed. */

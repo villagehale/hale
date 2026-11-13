@@ -512,6 +512,15 @@ async function coachLane(fixture, client, modules) {
             reader,
             watchConsentGranted: async () => true,
             readClassAvailability: coach.availability.createLiveClassAvailabilityReader(client),
+            // Production's link ports: the parent's own words, or a page a tool showed
+            // them this turn. A link only the email carried is not one of them.
+            parentWords: t.body,
+            linksThisTurn: () => [
+              ...offered.links(),
+              ...offered
+                .read()
+                .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+            ],
           },
           onDraft,
           onOffer,

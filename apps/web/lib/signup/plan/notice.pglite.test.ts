@@ -6,7 +6,8 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { recordSignupOffer } from '../store';
+import { lookupLoginLink } from '../login-link/store';
+import { loadLastAskedOfferId, recordSignupOffer } from '../store';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
 import {
   PLAN_NOTICE_TEMPLATE,
@@ -117,6 +118,7 @@ function notice(
     choiceIndex: 0,
     cartTotalCents: 9800,
     amountChargedCents: null,
+    charged: 'nothing',
     confirmationNumber: null,
     liveViewUrl: LIVE,
     holdExpiresAt: new Date(NOW.getTime() + 9 * 60_000),
@@ -143,6 +145,20 @@ function rig(text: string | null = 'Sunday is in your cart, finish in the open b
   return { notify, facts, sent, writer, transport };
 }
 
+/** The ask whose text reached the parent last, as the walk reads it. */
+function lastAsked(f: { familyId: string; parentUserId: string }) {
+  return loadLastAskedOfferId(db.database, f);
+}
+
+/** Where the offer's last delivered text stands in the order texts reached the parent. */
+async function askedSeq(offerId: string) {
+  const [row] = await db.database
+    .select({ seq: schema.authorizedSignupOffers.lastAskedSeq })
+    .from(schema.authorizedSignupOffers)
+    .where(eq(schema.authorizedSignupOffers.id, offerId));
+  return row?.seq ?? null;
+}
+
 async function storedThread(familyId: string) {
   const rows = await db.database
     .select({ content: schema.messages.content })
@@ -165,6 +181,7 @@ describe('the parent notice after a plan run', () => {
     expect(facts[0]?.run).toMatchObject({
       outcome: 'needs_human',
       detail: 'security_code',
+      charged: 'nothing',
       confirmed: false,
       sessionLabel: 'Preschool Swim Sun 10:00',
       liveBrowser: true,
@@ -188,6 +205,8 @@ describe('the parent notice after a plan run', () => {
       );
     expect(ledger).toMatchObject({ direction: 'out', providerMessageId: 'prov-1' });
     expect(ledger?.sentAt).not.toBeNull();
+    // The text is Hale's last word to them about this plan: a bare stop next answers it.
+    expect(await lastAsked(f)).toBe(f.offerId);
   });
 
   it('hands an ActiveNet parent a filled registration on the generic auto path, with the live browser after the text', async () => {
@@ -268,6 +287,34 @@ describe('the parent notice after a plan run', () => {
     const { notify, transport } = rig(null);
     expect(await notify(notice(f))).toBe('failed');
     expect(transport.send).not.toHaveBeenCalled();
+    expect(await lastAsked(f)).toBeNull();
+  });
+
+  it('tells the writer what the run charged, from the engine: unknown is never nothing', async () => {
+    const placed = await plannedFamily();
+    const unknown = rig();
+    await unknown.notify(
+      notice(placed, { detail: 'review_placed_order', charged: 'unknown', cartTotalCents: 9800 }),
+    );
+    expect(unknown.facts[0]?.run).toMatchObject({
+      detail: 'review_placed_order',
+      amountChargedCents: null,
+      charged: 'unknown',
+    });
+
+    const paid = await plannedFamily();
+    const cents = rig();
+    await cents.notify(
+      notice(paid, {
+        outcome: 'completed',
+        detail: 'none',
+        amountChargedCents: 9800,
+        charged: { cents: 9800 },
+        confirmationNumber: 'R-55120',
+        liveViewUrl: null,
+      }),
+    );
+    expect(cents.facts[0]?.run).toMatchObject({ confirmed: true, charged: { cents: 9800 } });
   });
 
   it('a second notice for the same plan is not sent twice', async () => {
@@ -283,7 +330,8 @@ describe('the login card in a prep notice', () => {
   const CARD = 'https://app.villagehale.com/l/AbCdef1234';
   const PARTS = [
     { type: 'text', body: 'Hale needs the swim login for Saturday.' },
-    { type: 'link', url: CARD },
+    // A row id the door stamps once the card goes; these tests read the sends, not the row.
+    { type: 'link', url: CARD, loginLinkId: '7d0c6a52-3f1e-4c55-9a43-2b8f1c9e0a11' },
     { type: 'text', body: 'It takes a minute.' },
   ] as const;
 
@@ -317,6 +365,7 @@ describe('the login card in a prep notice', () => {
     const { transport, bodies } = phoneTransport({ transport: 'imessage', chatId: 'chat-1' });
     const fetchMock = linqFetch();
     const deliver = createPlanPrepDeliver(db.database, { transport, fetch: fetchMock });
+    expect(await lastAsked(f)).toBeNull();
 
     const delivered = await deliver({
       familyId: f.familyId,
@@ -329,6 +378,8 @@ describe('the login card in a prep notice', () => {
     });
 
     expect(delivered).toBe('sent');
+    // The notice reached them: their next bare answer is this plan's.
+    expect(await lastAsked(f)).toBe(f.offerId);
     expect(bodies).toEqual(['Hale needs the swim login for Saturday.', 'It takes a minute.']);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const sentBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
@@ -402,6 +453,8 @@ describe('the login card in a prep notice', () => {
 
     expect(delivered).toBe('failed');
     expect(fetchMock).not.toHaveBeenCalled();
+    // Nothing reached them, so nothing about this plan is the text they got last.
+    expect(await lastAsked(f)).toBeNull();
     const rows = await ledger(f.familyId);
     expect(rows.map((row) => [row.templateKey, row.status, row.errorCode])).toEqual([
       [`${PLAN_PREP_TEMPLATE}:login_ask`, 'failed', '21610'],
@@ -421,7 +474,12 @@ describe('the login card in a prep notice', () => {
       },
     };
     const deps = {
-      writer: { write: async () => ['Hale needs the swim login.', 'It takes a minute.'] },
+      writer: {
+        write: async () => ({
+          bubbles: ['Hale needs the swim login.', 'It takes a minute.'],
+          card: null,
+        }),
+      },
       deliver: createPlanPrepDeliver(db.database, { transport, fetch: linqFetch() }),
     };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -433,11 +491,16 @@ describe('the login card in a prep notice', () => {
     expect(mine(first.notices)).toEqual([
       { offerId: f.offerId, kind: 'login_ask', outcome: 'failed' },
     ]);
+    // Its text reached them before the link failed: the plan is the ask they got last.
+    expect(await lastAsked(f)).toBe(f.offerId);
+    const afterText = await askedSeq(f.offerId);
     refuseLink = false;
     const second = await runDueSignupPlanPrep(db.database, { now: before }, deps);
     expect(mine(second.notices)).toEqual([
       { offerId: f.offerId, kind: 'login_ask', outcome: 'sent' },
     ]);
+    // The bubble that went this time is later than the one that went before.
+    expect(await askedSeq(f.offerId)).toBeGreaterThan(afterText as number);
 
     const toParent = sent.filter((s) => s.to === f.phone).map((s) => s.body);
     expect(toParent).toEqual([
@@ -455,6 +518,66 @@ describe('the login card in a prep notice', () => {
     ]);
     warn.mockRestore();
     error.mockRestore();
+  });
+
+  it('a sweep whose card went but whose next bubble did not sends the rest with that same card, never a second', async () => {
+    const f = await plannedFamily();
+    const sent: { to: string; body: string }[] = [];
+    let refuseSecond = true;
+    const transport: ChannelTransport = {
+      async send(input) {
+        if (refuseSecond && input.body === 'It takes a minute.') {
+          throw new LinqSendError('30003', 400, false);
+        }
+        sent.push({ to: input.to, body: input.body });
+        return { providerMessageId: `prov-${sent.length}` };
+      },
+    };
+    const deps = {
+      writer: {
+        write: async () => ({
+          bubbles: ['Hale needs the swim login.', 'It takes a minute.'],
+          card: { title: 'Swim login', description: 'Preschool Swim Sat 9:00' },
+        }),
+      },
+      deliver: createPlanPrepDeliver(db.database, { transport, fetch: linqFetch() }),
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const before = new Date(OPENS.getTime() - 10 * 60 * 60_000);
+    const mine = (notices: { offerId: string }[]) => notices.filter((n) => n.offerId === f.offerId);
+
+    const first = await runDueSignupPlanPrep(db.database, { now: before }, deps);
+    expect(mine(first.notices)).toEqual([
+      { offerId: f.offerId, kind: 'login_ask', outcome: 'failed' },
+    ]);
+    refuseSecond = false;
+    const second = await runDueSignupPlanPrep(
+      db.database,
+      { now: new Date(before.getTime() + 60_000) },
+      deps,
+    );
+    expect(mine(second.notices)).toEqual([
+      { offerId: f.offerId, kind: 'login_ask', outcome: 'sent' },
+    ]);
+
+    const toParent = sent.filter((s) => s.to === f.phone).map((s) => s.body);
+    expect(toParent).toEqual([
+      'Hale needs the swim login.',
+      expect.stringMatching(/^https:\/\/app\.villagehale\.com\/l\/[0-9A-Za-z]{10}$/),
+      'It takes a minute.',
+    ]);
+    const code = (toParent[1] ?? '').split('/').pop() as string;
+    expect(
+      await lookupLoginLink(db.database, code, new Date(before.getTime() + 60_000)),
+    ).toMatchObject({ ok: true, purpose: { kind: 'login_ask', card: { title: 'Swim login' } } });
+    const cards = await db.database
+      .select({ sentAt: schema.providerLoginLinks.sentAt })
+      .from(schema.providerLoginLinks)
+      .where(eq(schema.providerLoginLinks.offerId, f.offerId));
+    expect(cards).toEqual([{ sentAt: before }]);
+    warn.mockRestore();
+    info.mockRestore();
   });
 
   it('sends a bubble whose first try failed, and a one-off notice every time', async () => {
@@ -495,5 +618,160 @@ describe('the login card in a prep notice', () => {
     expect(await deliver(oneOff)).toBe('sent');
     expect(bodies).toHaveLength(3);
     warn.mockRestore();
+  });
+});
+
+/**
+ * VIL-682 K5 · the model's bubbles and the login card of one prep notice, on a chat Linq
+ * said is iMessage, arrive about two seconds apart with typing up between, the same as
+ * every other multi-bubble send. The pause before the card is a pause before a bubble too.
+ */
+describe('a prep notice on an iMessage chat arrives paced', () => {
+  const CARD = 'https://app.villagehale.com/l/AbCdef1234';
+  const PARTS = [
+    { type: 'text', body: 'Hale needs the swim login for Saturday.' },
+    { type: 'link', url: CARD, loginLinkId: '7d0c6a52-3f1e-4c55-9a43-2b8f1c9e0a11' },
+    { type: 'text', body: 'It takes a minute.' },
+  ] as const;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** The parent's own text on `chat-1`, with the service Linq said carried it. */
+  async function saidOnChat(
+    f: { familyId: string; parentUserId: string },
+    service: 'iMessage' | 'SMS',
+  ) {
+    seq += 1;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: `in-paced-${seq}`,
+      providerChatId: 'chat-1',
+      providerService: service,
+      status: 'delivered',
+      body: 'ok',
+      sentAt: NOW,
+    });
+  }
+
+  /** Run on the fake clock, stepping it until the work settles. */
+  async function onFakeClock<T>(work: Promise<T>): Promise<T> {
+    let settled = false;
+    void work.finally(() => {
+      settled = true;
+    });
+    while (!settled) await vi.advanceTimersByTimeAsync(100);
+    return work;
+  }
+
+  /** Each send of the notice and each typing call, as milliseconds from the first send.
+   * `refuse` makes Linq refuse that part for good, handed back as a value, not thrown. */
+  async function timeline(
+    flag: 'true' | 'false',
+    service: 'iMessage' | 'SMS' | null,
+    refuse?: 'last text' | 'card',
+  ) {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
+    const f = await plannedFamily();
+    if (service) await saidOnChat(f, service);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const start = Date.now();
+    const events: Array<[number, string]> = [];
+    const transport: ChannelTransport = {
+      async send(input) {
+        events.push([Date.now() - start, input.body]);
+        const refused =
+          (refuse === 'last text' && input.body === PARTS[2].body) ||
+          (refuse === 'card' && input.body === CARD);
+        if (refused) throw new LinqSendError('1002', 400, true);
+        return {
+          providerMessageId: `prov-${events.length}`,
+          transport: 'imessage',
+          chatId: 'chat-1',
+        };
+      },
+    };
+    // The login card goes through the deliver's own fetch; typing through Linq's.
+    const card = vi.fn(async () => {
+      events.push([Date.now() - start, 'card']);
+      return refuse === 'card'
+        ? Response.json({ error: { code: 1002 } }, { status: 400 })
+        : Response.json({ message: { id: 'card-1' } }, { status: 201 });
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        if (String(url).endsWith('/chats/chat-1/typing')) {
+          events.push([Date.now() - start, `typing ${init?.method}`]);
+        }
+        return new Response(null, { status: 204 });
+      }),
+    );
+    const deliver = createPlanPrepDeliver(db.database, { transport, fetch: card });
+    const delivered = await onFakeClock(
+      deliver({
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        offerId: f.offerId,
+        kind: 'login_ask',
+        noticeKey: null,
+        parts: PARTS,
+        now: NOW,
+      }),
+    );
+    expect(delivered).toBe(refuse ? 'failed' : 'sent');
+    return events;
+  }
+
+  it('lit, on a chat Linq said is iMessage: text, card, text about two seconds apart, typing up before each later one', async () => {
+    expect(await timeline('true', 'iMessage')).toEqual([
+      [0, 'Hale needs the swim login for Saturday.'],
+      [0, 'typing POST'],
+      [2_000, 'card'],
+      [2_000, 'typing POST'],
+      [4_000, 'It takes a minute.'],
+    ]);
+  });
+
+  // Linq refusing for good comes back as a value (`skipped`, `not_sent`), not a throw.
+  // Typing put up for that part must come down: nothing follows it.
+  it('lit: a last text Linq refused for good takes typing down', async () => {
+    expect(await timeline('true', 'iMessage', 'last text')).toEqual([
+      [0, 'Hale needs the swim login for Saturday.'],
+      [0, 'typing POST'],
+      [2_000, 'card'],
+      [2_000, 'typing POST'],
+      [4_000, 'It takes a minute.'],
+      [4_000, 'typing DELETE'],
+    ]);
+  });
+
+  it('lit: a login card that did not go, nor its text, takes typing down', async () => {
+    expect(await timeline('true', 'iMessage', 'card')).toEqual([
+      [0, 'Hale needs the swim login for Saturday.'],
+      [0, 'typing POST'],
+      [2_000, 'card'],
+      [2_000, CARD],
+      [2_000, 'typing DELETE'],
+    ]);
+  });
+
+  it.each([
+    ['dark, on iMessage', 'false', 'iMessage'],
+    ['lit, but Linq said the chat is SMS', 'true', 'SMS'],
+    ['lit, and Linq never said what the chat is', 'true', null],
+  ] as const)('%s: the parts go back to back, with no typing', async (_label, flag, service) => {
+    expect(await timeline(flag, service)).toEqual([
+      [0, 'Hale needs the swim login for Saturday.'],
+      [0, 'card'],
+      [0, 'It takes a minute.'],
+    ]);
   });
 });

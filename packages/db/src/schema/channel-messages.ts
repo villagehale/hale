@@ -216,6 +216,13 @@ export const channelMessages = pgTable(
      * written before the column existed.
      */
     providerService: text('provider_service').$type<LinqServiceValue>(),
+    /**
+     * INBOUND only (migration 0238): the door's opt-out read could not read this text, so
+     * it may be a stop. Written with the row the hand-off needs, so it cannot be lost the
+     * way a separate hold row can: a re-drive and a turn that reads several texts as one
+     * read it here. Null on outbound rows and on rows written before the column existed.
+     */
+    optOutUnread: boolean('opt_out_unread'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -227,7 +234,8 @@ export const channelMessages = pgTable(
     providerIdx: index('channel_messages_provider_msg_idx').on(table.providerMessageId),
     // One inbound row per provider message, enforced by the DATABASE. The webhook's
     // duplicate guard used to be select-then-insert, which two concurrent deliveries of
-    // the same message id both pass — Linq resends on a 15s timeout, so the resend can
+    // the same message id both pass — Linq resends past its 10s webhook timeout
+    // (LINQ_WEBHOOK_TIMEOUT_MS, apps/web/lib/channel/linq/signature.ts), so the resend can
     // land mid-flight. This index is what makes the insert itself the claim: exactly one
     // request wins it and is the one that enqueues. Partial on direction, because
     // outbound rows legitimately share nothing with this rule.

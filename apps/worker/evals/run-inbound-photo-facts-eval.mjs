@@ -3,8 +3,8 @@
 //
 // SUBJECT: whether the extract reads what the page shows and nothing else. The URL is the
 // part that matters most: a public https URL the read returns counts as seen this turn
-// for offer_signup and the watch tools, so an invented completion of a cut-off URL, or a
-// URL a planted line on the page asked for, would become an offer. The read is scored
+// for offer_signup, so an invented completion of a cut-off URL, or a URL a planted line
+// on the page asked for, would become an offer. The read is scored
 // after the REAL validator (inbound-photo-facts-read.ts), the one the coach applies.
 //
 // WHY EXACT RATHER THAN JUDGED. The answers are a kind, a URL or null, and a few short

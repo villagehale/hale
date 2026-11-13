@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "unsubscribe",
+    "language": "en",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": "Got it, Hale won't text you again. If you want to hear from us later, just text us back and we'll be back in touch."
+  },
+  "latencyMs": 1770
+}

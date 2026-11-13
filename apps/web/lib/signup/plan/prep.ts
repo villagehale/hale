@@ -3,7 +3,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { signupProviderHost } from '../consent';
 import { providerCredentialsEnabled } from '../credentials/flag';
-import { hasOpenLoginLink, mintFreshLoginLink } from '../login-link/store';
+import { type LoginCardText, hasOpenLoginLink, loginLinkForNotice } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
 import type { SignupSession } from '../types';
 import { type PlanNoticePart, asBubbles, withLinkBubbles } from './bubbles';
@@ -24,7 +24,18 @@ export type PlanNoticeKind =
   | 'seats'
   | 'receipt'
   | 'waitlist'
-  | 'ask_dob';
+  | 'ask_dob'
+  /** Recorded by the text that asks the parent whether Hale may tick the plan's waiver. */
+  | 'ask_waiver';
+
+/**
+ * The login card that follows the first bubble: what it is for, as its page and preview
+ * state it. The writer writes the preview's words from these, never from anything else.
+ */
+export interface LoginCardFacts {
+  sessionLabel: string | null;
+  opensAt: { local: string; timeZone: string } | null;
+}
 
 export interface PlanPrepFacts {
   kind: PlanNoticeKind;
@@ -41,10 +52,18 @@ export interface PlanPrepFacts {
   fees?: SiteFees | null;
   confirmed?: boolean;
   joined?: boolean;
+  /** Set when a login card goes with this notice; the writer then writes its preview too. */
+  loginCard?: LoginCardFacts | null;
+}
+
+/** The bubbles, and the card preview's words when one was asked for and passed its gate. */
+export interface PlanPrepDraft {
+  bubbles: readonly string[];
+  card: LoginCardText | null;
 }
 
 export interface PlanPrepWriter {
-  write(facts: PlanPrepFacts): Promise<string | readonly string[] | null>;
+  write(facts: PlanPrepFacts): Promise<PlanPrepDraft | null>;
 }
 
 /** What became of one notice: sent, held back (the parent cannot be texted), or stopped by a failed part. */
@@ -185,11 +204,12 @@ function nextKind(
  * VIL-558 · the three parent texts that must exist before the open: the login
  * ask (with a /l/<code> link), account prep (create the provider account and
  * add the child as a family member), and the 30-minute reminder.
- * One kind per offer per sweep. Model-written; a failed draft sends nothing.
- * The login ask's link replaces any open one for the host. Account prep follows a
- * sweep later and carries a link only when the host has no live card, so the
- * login-ask card is never killed under the parent. Neither ask goes while the run
- * can already sign in.
+ * One kind per offer per sweep. Model-written, the card's preview too; a failed draft
+ * sends nothing. The login ask's link replaces any open one for the host, except on a
+ * retry, which reuses the card the ask already sent. Account prep follows a sweep later
+ * and carries a link only when the parent holds no live card for the host, so the
+ * login-ask card is never killed under the parent. Neither ask goes while the run can
+ * already sign in.
  */
 export async function runDueSignupPlanPrep(
   database: Database,
@@ -230,6 +250,14 @@ export async function runDueSignupPlanPrep(
       offer.planOpensAt,
       await parentTimeZone(database, offer.parentUserId),
     );
+    const carriesCard =
+      kind === 'login_ask' ||
+      (kind === 'account_prep' &&
+        !(await hasOpenLoginLink(database, {
+          familyId: offer.familyId,
+          providerHost: host,
+          now: sweep.now,
+        })));
     const facts: PlanPrepFacts = {
       kind,
       childFirstName: child?.name ?? null,
@@ -240,33 +268,26 @@ export async function runDueSignupPlanPrep(
         parentUserId: offer.parentUserId,
       }),
       sessionLabel,
+      loginCard: carriesCard ? { sessionLabel, opensAt } : null,
     };
-    const written = asBubbles(await deps.writer.write(facts));
-    if (!written) {
+    const draft = await deps.writer.write(facts);
+    const written = draft ? asBubbles(draft.bubbles) : null;
+    if (!draft || !written) {
       console.warn({ offerId: offer.id, kind, code: 'unwritten' }, 'signup plan prep: not sent');
       notices.push({ offerId: offer.id, kind, outcome: 'unwritten' });
       continue;
     }
-    const mints =
-      kind === 'login_ask' ||
-      (kind === 'account_prep' &&
-        !(await hasOpenLoginLink(database, {
+    const card = carriesCard
+      ? await loginLinkForNotice(database, {
           familyId: offer.familyId,
+          parentUserId: offer.parentUserId,
+          offerId: offer.id,
           providerHost: host,
+          purpose: { kind, sessionLabel, opensAt, card: draft.card },
           now: sweep.now,
-        })));
-    const link = mints
-      ? (
-          await mintFreshLoginLink(database, {
-            familyId: offer.familyId,
-            parentUserId: offer.parentUserId,
-            offerId: offer.id,
-            providerHost: host,
-            purpose: { kind, sessionLabel, opensAt },
-            now: sweep.now,
-          })
-        ).url
+        })
       : null;
+    const link = card?.status === 'minted' ? card : null;
     const delivered = await deps.deliver({
       familyId: offer.familyId,
       parentUserId: offer.parentUserId,
@@ -298,7 +319,11 @@ export async function runDueSignupPlanPrep(
   return { notices };
 }
 
-/** One event-driven notice (rejected password, mismatched options). Each part is its own send. */
+/**
+ * One event-driven notice (rejected password, mismatched options). Each part is its own send.
+ * With `mintLink`, the facts carry `loginCard`; the card is minted after the draft, so its
+ * preview holds the words the writer wrote for it.
+ */
 export async function sendSignupPlanNotice(
   database: Database,
   input: {
@@ -308,21 +333,23 @@ export async function sendSignupPlanNotice(
     providerHost: string;
     kind: PlanNoticeKind;
     facts: PlanPrepFacts;
-    link?: string | null;
+    mintLink?: (card: LoginCardText | null) => Promise<{ url: string; id: string }>;
     linkAfter?: number;
     now: Date;
   },
   deps: PlanPrepDeps,
 ): Promise<boolean> {
-  const written = asBubbles(await deps.writer.write(input.facts));
-  if (!written) return false;
+  const draft = await deps.writer.write(input.facts);
+  const written = draft ? asBubbles(draft.bubbles) : null;
+  if (!draft || !written) return false;
+  const link = input.mintLink ? await input.mintLink(draft.card) : null;
   const delivered = await deps.deliver({
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     offerId: input.offerId,
     kind: input.kind,
     noticeKey: null,
-    parts: withLinkBubbles(written, input.link ?? null, input.linkAfter ?? 0),
+    parts: withLinkBubbles(written, link, input.linkAfter ?? 0),
     now: input.now,
   });
   if (delivered !== 'sent') return false;

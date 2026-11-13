@@ -21,6 +21,7 @@ import {
   handleKnownNumberInbound,
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
@@ -40,6 +41,7 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { bubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
@@ -51,6 +53,7 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { liftPreviewLink, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
+import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
   plainTextWithoutLinks,
@@ -379,6 +382,12 @@ export type IntakeOutcome =
       // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
       // nothing of it is answered into the group.
       reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake' | 'opted_out';
+      /**
+       * On the hand-off (`no_open_conversation`) only, set by {@link handleInboundSms}: this
+       * turn's opt-out read failed, so the text may be a stop. It rides to the router with
+       * the text, so no ask moves on it whether or not the hold row was written.
+       */
+      optOutUnread?: true;
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -407,6 +416,10 @@ export interface Inbound {
   chatId?: string;
   /** A Linq group turn. The Name and Photo card is 1:1 only and never shares here. */
   isGroup?: boolean;
+  /** See `InboundMessage.service` (intake/transport.ts): what says the chat is iMessage. */
+  service?: LinqChatService;
+  /** See `InboundMessage.answerBy` (intake/transport.ts). */
+  answerBy?: Date;
   /** See `InboundMessage.budget` (intake/transport.ts). Absent is the sender's. */
   budget?: 'sender' | 'chat';
   /** VIL-348 — the provider already answered this keyword itself; see
@@ -432,6 +445,26 @@ export async function handleInboundSms(
   database: Database,
   inbound: Inbound,
   deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const read = { optOutUnread: false };
+  const outcome = await runIntakeTurn(database, inbound, deps, read);
+  // The hand-off carries a failed opt-out read with the text itself, so the router's guard
+  // never rests on the hold row alone: settleOptOutHold may fail to write it.
+  if (
+    outcome.status === 'ignored' &&
+    outcome.reason === 'no_open_conversation' &&
+    read.optOutUnread
+  ) {
+    return { ...outcome, optOutUnread: true };
+  }
+  return outcome;
+}
+
+async function runIntakeTurn(
+  database: Database,
+  inbound: Inbound,
+  deps: IntakeDeps,
+  read: { optOutUnread: boolean },
 ): Promise<IntakeOutcome> {
   const now = deps.now ?? inbound.receivedAt;
 
@@ -505,6 +538,7 @@ export async function handleInboundSms(
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
     });
+    read.optOutUnread = reading === null;
     await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
       return handleStop(
@@ -785,8 +819,16 @@ interface SendContext {
   phoneE164: string;
   now: Date;
   /** The pipe this turn arrived on. Outbound rows and the transcript replay
-   * record it, so a later receipt can find the Linq chat. */
-  pipe: { channel: 'sms' | 'imessage'; chatId: string | null; isGroup: boolean };
+   * record it, so a later receipt can find the Linq chat. `service` is the one Linq said
+   * carried the text, null when it did not say. `answerBy` is when the webhook it came on
+   * stops waiting, null when none waits. */
+  pipe: {
+    channel: 'sms' | 'imessage';
+    chatId: string | null;
+    isGroup: boolean;
+    service: LinqChatService | null;
+    answerBy: Date | null;
+  };
 }
 
 function messagingPipe(inbound: Inbound): SendContext['pipe'] {
@@ -795,9 +837,11 @@ function messagingPipe(inbound: Inbound): SendContext['pipe'] {
       channel: 'imessage',
       chatId: inbound.chatId ?? null,
       isGroup: inbound.isGroup === true,
+      service: inbound.service ?? null,
+      answerBy: inbound.answerBy ?? null,
     };
   }
-  return { channel: 'sms', chatId: null, isGroup: false };
+  return { channel: 'sms', chatId: null, isGroup: false, service: null, answerBy: null };
 }
 
 /** One in-flight share per session object, so a second bubble in the same turn cannot double-post. */
@@ -860,12 +904,27 @@ async function sendMapBubbles(
   transcript: TranscriptEntry[],
 ): Promise<'delivered' | 'send_failed'> {
   const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  // VIL-682 K5 · lit, on a chat Linq said is iMessage each bubble after the first waits
+  // the bubble gap, none past the moment Linq stops waiting for this webhook.
+  const familyId = ctx.session.familyId;
+  const chatId = ctx.pipe.channel === 'imessage' ? ctx.pipe.chatId : null;
+  const gaps =
+    chatId && familyId && coachBubblesEnabled(familyId)
+      ? bubbleGaps({
+          chatId,
+          service: ctx.pipe.service,
+          answerBy: ctx.pipe.answerBy,
+          log: console,
+        })
+      : null;
   for (const [index, bubble] of toSend.entries()) {
     let landed = false;
     let err: string | null = null;
     try {
-      landed =
-        (await sendAndRecord(database, ctx, bubble, deps, transcript)).channelMessageId != null;
+      const send = () => sendAndRecord(database, ctx, bubble, deps, transcript);
+      const sent =
+        index > 0 && gaps ? await gaps(send, (out) => out.channelMessageId != null) : await send();
+      landed = sent.channelMessageId != null;
     } catch (caught) {
       err = caught instanceof Error ? caught.name : 'unknown';
     }

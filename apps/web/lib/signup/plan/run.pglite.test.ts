@@ -4,15 +4,16 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import type {
-  BrowserUsePlanCheckpoint,
-  BrowserUsePlanInput,
-  BrowserUsePlanResult,
-  PlanPayingToken,
-  PlanPaymentInput,
-  PlanResumeToken,
-} from '../browser-use/plan-engine';
 import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
+import {
+  type BrowserUsePlanCheckpoint,
+  type BrowserUsePlanInput,
+  type BrowserUsePlanResult,
+  PlanEngineThrew,
+  type PlanPayingToken,
+  type PlanPaymentInput,
+  type PlanResumeToken,
+} from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import {
   PROVIDER_ACCOUNT_CREATE_ENABLED_ENV,
@@ -25,6 +26,7 @@ import { lookupLoginLink } from '../login-link/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import type { PlanPrepFacts } from './prep';
 import {
   PLAN_JOIN_LEAD_MS,
   PLAN_LEASE_MS,
@@ -175,6 +177,7 @@ const PAID: BrowserUsePlanResult = {
   costUsd: '0.0500',
   sessionCostUsd: '0.090000',
   browserId: 'browser-1',
+  charged: { cents: 9800 },
 };
 
 /** Reports steps and asks the cap the way the engine does, then returns `result`. */
@@ -189,7 +192,12 @@ function engineLike(result: BrowserUsePlanResult, cartTotalCents = 9800) {
       caps.push(cap);
       await input.onStep({ step: 'spending_cap', amountCents: cartTotalCents, ok: cap.ok });
       if (!cap.ok)
-        return { ...result, outcome: 'needs_human' as const, detail: 'spending_cap' as const };
+        return {
+          ...result,
+          outcome: 'needs_human' as const,
+          detail: 'spending_cap' as const,
+          charged: 'nothing' as const,
+        };
       if (!(await input.stillAuthorized())) {
         return {
           ...result,
@@ -197,6 +205,7 @@ function engineLike(result: BrowserUsePlanResult, cartTotalCents = 9800) {
           detail: 'authorization_lapsed' as const,
           confirmationNumber: null,
           amountChargedCents: null,
+          charged: 'nothing' as const,
         };
       }
       await input.onStep({
@@ -495,6 +504,7 @@ describe('carrying out plans at the open', () => {
           confirmationNumber: null,
           amountChargedCents: null,
           sessionCostUsd: null,
+          charged: 'nothing' as const,
         };
       }),
     };
@@ -532,6 +542,7 @@ describe('carrying out plans at the open', () => {
     expect(JSON.stringify(audit)).not.toContain(live);
     expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
       detail: 'total_unread',
+      charged: 'nothing',
       liveViewUrl: live,
     });
     // Nothing was charged here: no one is paged (the placed-order case below pages).
@@ -571,6 +582,7 @@ describe('carrying out plans at the open', () => {
           confirmationNumber: null,
           amountChargedCents: null,
           sessionCostUsd: null,
+          charged: 'unknown' as const,
         };
       }),
     };
@@ -614,6 +626,7 @@ describe('carrying out plans at the open', () => {
       outcome: 'needs_human',
       detail: 'review_placed_order',
       amountChargedCents: null,
+      charged: 'unknown',
       liveViewUrl: live,
     });
   });
@@ -1095,6 +1108,7 @@ const UNCONFIRMED: BrowserUsePlanResult = {
   confirmationNumber: null,
   amountChargedCents: null,
   runId: null,
+  charged: 'unknown',
 };
 
 const revoke = (family: { parentUserId: string }) =>
@@ -1183,6 +1197,132 @@ describe('a payment already under way when a later sweep picks the plan up', () 
     expect(runner.release).not.toHaveBeenCalled();
     expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
     expect((await offerRow(family.offerId))?.status).toBe('submitting');
+  });
+});
+
+describe('what the parent is told was charged', () => {
+  const LIVE_VIEW = 'https://live.browser-use.com/s/fixture-live-view-token';
+  const threw = (): never => {
+    throw new Error('engine fell over');
+  };
+
+  it('a paid run carries its cents; a hand-back before the engine carries nothing', async () => {
+    const paid = await plannedFamily();
+    const { deps: d, notices } = deps(engineLike(PAID).runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === paid.offerId)).toMatchObject({
+      outcome: 'completed',
+      charged: { cents: 9800 },
+    });
+
+    const noLogin = await plannedFamily({ session: false });
+    const after = deps(engineLike(PAID).runner);
+    await runDueSignupPlans(db.database, { now: NOW }, after.deps);
+    expect(after.notices.find((n) => n.offerId === noLogin.offerId)).toMatchObject({
+      detail: 'no_provider_session',
+      charged: 'nothing',
+    });
+  });
+
+  it('an engine that throws before any payment checkpoint charged nothing', async () => {
+    const family = await plannedFamily();
+    const runner = { ...engineLike(PAID).runner, run: vi.fn(async () => threw()) };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'nothing',
+    });
+  });
+
+  it('an engine that throws once its paying checkpoint is stored may have charged: unknown', async () => {
+    const family = await plannedFamily();
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        expect(await input.onCheckpoint({ ...PAYING, runId: null })).toBe(true);
+        return threw();
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'unknown',
+    });
+  });
+
+  it('a payment an earlier sweep started, read by an engine that throws: unknown, and no review page', async () => {
+    const posted = stubOpsSlack();
+    const family = await payingFamily();
+    const { runner } = settling(PAID);
+    runner.settlePayment.mockImplementation(async () => threw());
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: at(11) }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'unknown',
+    });
+    // A payment run is meant to charge: its unknown is the parent's to check, not a review page.
+    expect(posted).toEqual([]);
+  });
+
+  it('a review whose answer was never read pages #ops for each run and tells the parent the charge is unknown', async () => {
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const other = await plannedFamily();
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async () => ({
+        ...PAID,
+        outcome: 'needs_human' as const,
+        detail: 'run_failed' as const,
+        liveViewUrl: LIVE_VIEW,
+        confirmationNumber: null,
+        amountChargedCents: null,
+        sessionCostUsd: null,
+        charged: 'unknown' as const,
+      })),
+    };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'run_failed',
+      charged: 'unknown',
+      liveViewUrl: LIVE_VIEW,
+    });
+    // Two families in the same hour: each one's possible charge is its own page.
+    expect(posted.sort()).toEqual(
+      [family, other]
+        .map((f) => `Hale: ops page. site registration_review_unread. ref ${f.offerId}.`)
+        .sort(),
+    );
+  });
+
+  it('an engine that throws once the review started may have charged: unknown, and pages #ops', async () => {
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const runner = {
+      ...engineLike(PAID).runner,
+      run: vi.fn(async (): Promise<never> => {
+        throw new PlanEngineThrew(new TypeError('fetch failed'), {
+          runId: 'run-2',
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          sessionCostUsd: null,
+          reviewStarted: true,
+        });
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      detail: 'engine_threw',
+      charged: 'unknown',
+    });
+    expect(posted).toEqual([
+      `Hale: ops page. site registration_review_unread. ref ${family.offerId}.`,
+    ]);
   });
 });
 
@@ -1387,16 +1527,19 @@ describe('parked password rejection and mismatched options', () => {
   ];
 
   function noticePrep() {
-    const facts: { kind: string }[] = [];
+    const facts: PlanPrepFacts[] = [];
     const bodies: string[] = [];
     return {
       facts,
       bodies,
       prep: {
         writer: {
-          write: async (input: { kind: string }) => {
+          write: async (input: PlanPrepFacts) => {
             facts.push(input);
-            return [`bubble for ${input.kind}`, 'second bubble'];
+            return {
+              bubbles: [`bubble for ${input.kind}`, 'second bubble'],
+              card: input.loginCard ? { title: 'Nouveau lien', description: 'Natation' } : null,
+            };
           },
         },
         deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
@@ -1558,7 +1701,13 @@ describe('parked password rejection and mismatched options', () => {
         kind: 'password_rejected',
         sessionLabel: 'Preschool Swim Sat 9:00',
         opensAt: null,
+        card: { title: 'Nouveau lien', description: 'Natation' },
       },
+    });
+    // The writer wrote the preview from the card's own facts, so it never names a passed open.
+    expect(notices.facts[0]?.loginCard).toEqual({
+      sessionLabel: 'Preschool Swim Sat 9:00',
+      opensAt: null,
     });
     expect(loginPurposeLine(looked.ok ? looked.purpose : null)).toBe(
       'to finish signing up for Preschool Swim Sat 9:00',
