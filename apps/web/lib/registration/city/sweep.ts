@@ -26,15 +26,14 @@ import {
   type CityLookup,
   type CityLookupDeps,
   lookupCityRegistration,
-  opensForFamily,
   pageSaysSeasonNotOut,
   readCityPage,
   readDidNotFinish,
 } from './lookup';
 import { cachedOfficialSite, wikidataSource } from './official-site';
-import { type OwnCity, cityKey, readOwnCity } from './place';
+import { familyOpening, openingInstant, opensForSomeone } from './opening';
+import { type CityPlace, type OwnCity, cityKey, readOwnCity } from './place';
 import { searchRegistrationPages } from './search';
-import { familyOpening, openingInstant } from './opening';
 import {
   type StoredCityReading,
   latestCityReading,
@@ -54,6 +53,12 @@ import {
  *      proactive decider. The decider decides whether and when, its writer words it, and
  *      the outbound gate keeps it inside the parent's daytime. Nothing here writes a word
  *      a parent reads, and a writer that fails sends nothing.
+ *
+ * ONE READING PER CITY, ONE OPENING PER FAMILY. The page is the city's (and Toronto
+ * district's), so it is looked up and judged without any family's residency (CityPlace);
+ * which of its mornings is a family's, and how it is said, is worked out for each family
+ * from its own place (opening.ts). A family on a town line never decides what a resident
+ * is told, and the other way round.
  *
  * A family the hand-verified radar already covers is left to it, so one season never
  * reaches a parent from two sources. A date that moved, or one its own page now says is
@@ -277,7 +282,7 @@ async function dropStaleTells(
 async function refreshCity(
   database: Database,
   lookup: CityLookupDeps,
-  place: OwnCity,
+  place: CityPlace,
   cycleLabel: string,
   prior: StoredCityReading | null,
   now: Date,
@@ -297,7 +302,7 @@ async function refreshCity(
       { place, cycleLabel, municipality: prior.municipality, sourceUrl: prior.sourceUrl },
       now,
     );
-    if (again.status === 'verified' && opensForFamily(again, place)) {
+    if (again.status === 'verified' && opensForSomeone(again, place)) {
       await recordCityReading(
         database,
         place,
@@ -345,15 +350,33 @@ async function refreshCity(
   return latestCityReading(database, place, cycleLabel);
 }
 
-/** The family's opening on the stored reading has come and gone: there is nothing left
+/** Every family's opening on the stored reading has come and gone: there is nothing left
  * to tell this season, and a page past its opening can no longer confirm it (a yearless
- * date pins only a future day), so the city is not looked up again until the next. */
-function openingPassed(place: OwnCity, reading: StoredCityReading | null, now: Date): boolean {
+ * date pins only a future day), so the city is not looked up again until the next. A
+ * family with no opening on the page keeps the city due. */
+function openingPassed(
+  places: readonly OwnCity[],
+  reading: StoredCityReading | null,
+  now: Date,
+): boolean {
   if (reading?.status !== 'verified') return false;
-  const opening = familyOpening(reading.reading, place);
-  return (
-    opening !== null && openingInstant(reading.reading, opening.own).getTime() <= now.getTime()
-  );
+  return places.every((place) => {
+    const opening = familyOpening(reading.reading, place);
+    return (
+      opening !== null && openingInstant(reading.reading, opening.own).getTime() <= now.getTime()
+    );
+  });
+}
+
+/** The city a family's place is in, as one reading serves it: no residency. */
+function cityOf({ residencyKnown: _, ...city }: OwnCity): CityPlace {
+  return city;
+}
+
+/** A family the sweep tells, with its own place: its residency is its own. */
+interface OwnFamily {
+  familyId: string;
+  place: OwnCity;
 }
 
 export async function runCityRegistrationSweep(
@@ -372,7 +395,7 @@ export async function runCityRegistrationSweep(
   const cycleLabel = winterCycleLabel(now);
 
   // Who, and where. A family the hand radar covers is not looked up for.
-  const byCity = new Map<string, { place: OwnCity; familyIds: string[] }>();
+  const byCity = new Map<string, { city: CityPlace; families: OwnFamily[] }>();
   for (const familyId of await loadFamilies(database)) {
     result.families += 1;
     if (!deps.f14For(familyId)) {
@@ -393,23 +416,27 @@ export async function runCityRegistrationSweep(
       continue;
     }
     const key = cityKey(own.place);
-    const city = byCity.get(key) ?? { place: own.place, familyIds: [] };
-    city.familyIds.push(familyId);
+    const city = byCity.get(key) ?? { city: cityOf(own.place), families: [] };
+    city.families.push({ familyId, place: own.place });
     byCity.set(key, city);
   }
 
   // Busiest cities first, so a bounded run reaches the most families.
-  const cities = [...byCity.values()].sort((a, b) => b.familyIds.length - a.familyIds.length);
+  const cities = [...byCity.values()].sort((a, b) => b.families.length - a.families.length);
   const gate = deps.buildGate(database);
   let lookupsLeft = MAX_CITY_LOOKUPS_PER_RUN;
-  for (const { place, familyIds } of cities) {
+  for (const { city: place, families } of cities) {
     // One city failing is that city's outcome, counted by name, never the other cities'.
     try {
       let reading = await latestCityReading(database, place, cycleLabel);
       const nextAt = await nextCityLookupAt(database, place, cycleLabel);
       const due =
         (nextAt === null || nextAt.getTime() <= now.getTime()) &&
-        !openingPassed(place, reading, now);
+        !openingPassed(
+          families.map((family) => family.place),
+          reading,
+          now,
+        );
       if (due && deps.lookup === null) result.noClient += 1;
       else if (due && lookupsLeft === 0) result.deferred += 1;
       else if (due && deps.lookup !== null) {
@@ -417,15 +444,8 @@ export async function runCityRegistrationSweep(
         reading = await refreshCity(database, deps.lookup, place, cycleLabel, reading, now, result);
       }
 
-      for (const familyId of familyIds) {
-        await tellFamily(
-          database,
-          deps,
-          gate,
-          { familyId, place, cycleLabel, reading },
-          now,
-          result,
-        );
+      for (const family of families) {
+        await tellFamily(database, deps, gate, { ...family, cycleLabel, reading }, now, result);
       }
     } catch (err) {
       result.failed += 1;
@@ -487,10 +507,13 @@ async function tellFamily(
 ): Promise<void> {
   const { familyId, place, cycleLabel, reading } = input;
   const recipients = await deps.recipients(database, familyId);
-  if (reading?.status !== 'verified') {
+  const noOpening =
+    reading?.status === 'verified' && familyOpening(reading.reading, place) === null;
+  if (reading?.status !== 'verified' || noOpening) {
     result.notKnown += 1;
-    // A page that now says nothing for this season takes back a date still waiting.
-    if (reading?.status === 'not_found') {
+    // A page that now says nothing for this season, or nothing for this family, takes back
+    // a date still waiting.
+    if (reading?.status === 'not_found' || noOpening) {
       for (const { parentUserId } of recipients) {
         result.superseded += await dropStaleTells(
           database,

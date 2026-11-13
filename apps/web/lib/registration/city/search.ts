@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import type { OwnCity } from './place';
+import type { CityPlace } from './place';
 
 /**
  * VIL-684 · find the official page a city publishes its registration dates on, by live
@@ -32,7 +32,7 @@ export type PageSearch =
   | { outcome: 'failed'; reason: string };
 
 /** The user message, built field by field: a place and a season, nothing else. */
-export function pageSearchUserMessage(place: OwnCity, cycleLabel: string, today: string): string {
+export function pageSearchUserMessage(place: CityPlace, cycleLabel: string, today: string): string {
   return JSON.stringify({
     city: place.city,
     province_or_state: place.provinceOrState,
@@ -132,7 +132,7 @@ function failureName(err: unknown): string {
  */
 export async function searchRegistrationPages(
   client: AgentClient,
-  place: OwnCity,
+  place: CityPlace,
   cycleLabel: string,
   today: string,
 ): Promise<PageSearch> {
@@ -160,7 +160,7 @@ export async function searchRegistrationPages(
 /** What a finished search turn found, read with no model involved. */
 export function pageSearchOutcome(
   content: readonly Anthropic.ContentBlock[],
-  place: OwnCity,
+  place: CityPlace,
 ): PageSearch {
   const resultUrls = searchResultUrls(content);
   if (resultUrls.length === 0) return { outcome: 'none', reason: 'no_results' };

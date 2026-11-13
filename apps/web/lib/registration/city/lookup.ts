@@ -1,8 +1,8 @@
 import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
 import { type OfficialSite, onOfficialSite } from './official-site';
-import { familyOpening } from './opening';
-import type { OwnCity } from './place';
+import { opensForSomeone } from './opening';
+import type { CityPlace, OwnCity } from './place';
 import type { PageSearch } from './search';
 
 /**
@@ -26,8 +26,8 @@ export type CityNotFoundReason =
   /** A page was read and said this season's opening is not out yet (announced later, not
    * published). The only answer that takes back a date Hale already had (sweep.ts). */
   | 'not_published'
-  /** Pages answered, but none states an opening for this family: only a preview, another
-   * season, nothing for this season, or no date for this family's district. Not "later". */
+  /** Pages answered, but none states an opening for any family here: only a preview,
+   * another season, nothing for this season, or no date for this district. Not "later". */
   | 'no_opening_for_family'
   /** A page prints this season's opening without its year. The stale-year rule reads no
    * year a page does not state, so it is not a date yet (Toronto's table, 2026-11-12). */
@@ -53,8 +53,8 @@ export type CityLookup =
   | { status: 'retry'; reason: string };
 
 export interface CityLookupDeps {
-  officialSite(place: OwnCity, now: Date): Promise<OfficialSite>;
-  search(place: OwnCity, cycleLabel: string, today: string): Promise<PageSearch>;
+  officialSite(place: CityPlace, now: Date): Promise<OfficialSite>;
+  search(place: CityPlace, cycleLabel: string, today: string): Promise<PageSearch>;
   read: RegistrationReader;
 }
 
@@ -62,15 +62,6 @@ export interface CityLookupDeps {
  * same label the catalog's district rows are read with. */
 export function readCycleLabel(place: Pick<OwnCity, 'district'>, cycleLabel: string): string {
   return place.district ? `${cycleLabel} (${place.district.replaceAll('_', ' ')})` : cycleLabel;
-}
-
-/** A reading with an opening in it for this family (opening.ts): a preview alone is not
- * a registration date, and a district family needs its district's own date. */
-export function opensForFamily(
-  reading: VerifiedRegistrationReading,
-  place: Pick<OwnCity, 'residencyKnown' | 'district'>,
-): boolean {
-  return familyOpening(reading, place) !== null;
 }
 
 function outcomeName(reading: LiveRegistrationReading): string {
@@ -112,7 +103,7 @@ export function readDidNotFinish(reading: LiveRegistrationReading): boolean {
 /** Re-read one known page: the cheap re-verify of a city whose page Hale already has. */
 export async function readCityPage(
   read: RegistrationReader,
-  input: { place: OwnCity; cycleLabel: string; municipality: string; sourceUrl: string },
+  input: { place: CityPlace; cycleLabel: string; municipality: string; sourceUrl: string },
   now: Date,
 ): Promise<LiveRegistrationReading> {
   const target: RegistrationTarget = {
@@ -126,7 +117,7 @@ export async function readCityPage(
 
 export async function lookupCityRegistration(
   deps: CityLookupDeps,
-  place: OwnCity,
+  place: CityPlace,
   cycleLabel: string,
   now: Date,
 ): Promise<CityLookup> {
@@ -166,7 +157,7 @@ export async function lookupCityRegistration(
       now,
     );
     tried.push({ url, outcome: outcomeName(reading) });
-    if (reading.status === 'verified' && opensForFamily(reading, place)) {
+    if (reading.status === 'verified' && opensForSomeone(reading, place)) {
       return { status: 'verified', municipality: search.municipality, sourceUrl: url, reading };
     }
     if (readDidNotFinish(reading)) {
