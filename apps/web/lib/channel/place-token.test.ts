@@ -1,5 +1,6 @@
 import { placeTokensIn, scrubContactTokens, scrubPlaceTokens } from '@hale/types';
 import { describe, expect, it } from 'vitest';
+import { deidentifyActivitySubject } from '~/lib/channel/activity/deidentify';
 import { deidentifyLiveQuery } from '~/lib/channel/intake/live-lookup';
 import { deidentifyOfficialQuery } from '~/lib/channel/intake/official-page';
 import { scrubDirectIdentifiers } from '~/lib/channel/off-domain/answer-request';
@@ -158,6 +159,64 @@ describe.each(CONTACT_SITES)('%s', (_site, scrub) => {
     const out = scrub('swim, call ٥٥٥ ٥٥٥ ٠١٢٣');
     expect(out).toContain('swim');
     expect(out).not.toContain('٠١٢٣');
+  });
+});
+
+/** Every search a family's words reach, each through the one normalising scrub. */
+const SEARCH_SITES: readonly [string, (text: string) => string][] = [
+  ...SITES.slice(0, 4),
+  [
+    'activity and travel searches',
+    (text) => {
+      const gated = deidentifyActivitySubject(text, []);
+      if (!gated.ok) throw new Error(`the activity gate refused: ${gated.refusal}`);
+      return gated.value;
+    },
+  ],
+];
+
+/** The test's own reading of a text, written apart from the scrub's: compatibility form
+ * with accents, zero-width and format characters dropped, any run of space as one space,
+ * lower case. */
+function plainly(text: string): string {
+  return text
+    .normalize('NFKD')
+    .replace(/[\p{M}\p{Cf}]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .toLowerCase();
+}
+
+/** A code or a contact typed so that it reads as itself once normalised, and what of it
+ * must not reach a search. */
+const SEARCH_EVASIONS: readonly [string, string, readonly string[]][] = [
+  ['Canadian code with a combining accent', 'swim near Ź9Z 9Z9', ['z9z', '9z9']],
+  ['Canadian code in accented letters', 'swim near Ź9Ź 9Ź9', ['z9z', '9z9']],
+  ['Canadian code split by a tab', 'swim near Z9Z\t9Z9', ['z9z', '9z9']],
+  ['Canadian code split by an ideographic space', 'swim near Z9Z　9Z9', ['z9z', '9z9']],
+  ['ZIP in keycap emoji', 'swim near 9️⃣9️⃣9️⃣9️⃣9️⃣', ['99999']],
+  ['ZIP with a word joiner inside', 'swim near 999⁠99', ['99999']],
+  ['ZIP in circled digits', 'swim near ⑨⑨⑨⑨⑨', ['99999']],
+  ['ZIP in superscript digits', 'swim near ⁹⁹⁹⁹⁹', ['99999']],
+  ['email with an accented local part', 'swim, write pàt@example.com', ['example', '@']],
+  ['email with a zero-width space in it', 'swim, write pat@exa​mple.com', ['example', '@']],
+  ['phone number in parentheses form', 'swim, call (555) 555-0123', ['555', '0123']],
+  ['phone number with en dashes', 'swim, call 555–555–0123', ['555', '0123']],
+];
+
+describe.each(SEARCH_SITES)('%s, typed to slip past', (_site, scrub) => {
+  it.each(SEARCH_EVASIONS)('takes out a %s', (_label, typed, leaked) => {
+    // Positive control: the test's reading sees every part in the text as typed, so its
+    // absence below is the scrub's doing and not a blind check.
+    for (const part of leaked) expect(plainly(typed)).toContain(part);
+    const out = plainly(scrub(typed));
+    expect(out).toContain('swim');
+    for (const part of leaked) expect(out).not.toContain(part);
+  });
+
+  it('hands on accented words as typed, accents and all', () => {
+    expect(scrub('natation à Montréal, École de danse')).toBe(
+      'natation à Montréal, École de danse',
+    );
   });
 });
 
