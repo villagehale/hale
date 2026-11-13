@@ -184,6 +184,16 @@ export const channelMessages = pgTable(
      * (migration 0103). */
     replySource: text('reply_source').$type<ReplySourceValue>(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
+    /**
+     * OUTBOUND only: the database clock when this row first recorded its send (`sent_at`
+     * went from unset to set), stamped by the `channel_messages_send_recorded_at` trigger
+     * (migration 0249), never by a writer. One clock at one point of every send, whichever
+     * writer recorded it: `sent_at` is each caller's own start time, and `created_at` is
+     * before the send on a row claimed first. It is what every ask a parent may answer is
+     * ranked by (VIL-302, `newestAsks`). Null: no send recorded, or recorded before the
+     * column existed.
+     */
+    sendRecordedAt: timestamp('send_recorded_at', { withTimezone: true }),
     /** INBOUND only: when this text was actually handed to C1's queue. Null means the
      * job does not exist — either the enqueue has not happened yet or it failed. It is a
      * separate question from "does a row exist", and conflating the two is what let a

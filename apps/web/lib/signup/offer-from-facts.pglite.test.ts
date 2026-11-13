@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sentSignupText } from '~/lib/signup/sent-text.fixture';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { SIGNUP_OFFER_SENTENCE_TODO } from './offer-copy';
 import { activityKeyFor, offerSignupFromFacts } from './offer-from-facts';
@@ -324,7 +325,7 @@ describe('offerSignupFromFacts (production caller)', () => {
       parentUserId: seeded.parentUserId,
       offerIds: [offered.offerId],
     })();
-    await keep();
+    await keep(await sentSignupText(db.database, seeded));
 
     const captured = await captureProviderSession(db.database, {
       familyId: seeded.familyId,

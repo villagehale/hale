@@ -65,7 +65,6 @@ export async function sendSignupToGroup(
       await markFailed(database, row.id, input.familyId, delivered.reason);
       return 'failed';
     }
-    await keep();
     await database
       .update(schema.channelMessages)
       .set({
@@ -79,6 +78,8 @@ export async function sendSignupToGroup(
           eq(schema.channelMessages.familyId, input.familyId),
         ),
       );
+    // After the row recorded the send: its recorded time is the text's (VIL-302).
+    await keep(row.id);
     return 'sent';
   } catch (err) {
     const code = err instanceof Error ? err.message : 'send_threw';

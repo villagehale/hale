@@ -94,6 +94,9 @@ async function seedAsk(
       templateKey: overrides.templateKey ?? CHECK_IN_ASK_TEMPLATE_KEY,
       status: overrides.status ?? 'queued',
       createdAt: overrides.createdAt ?? ASKED_AT,
+      // As the send records it; the router dates the ask by `send_recorded_at` (VIL-302).
+      sentAt: overrides.createdAt ?? ASKED_AT,
+      sendRecordedAt: overrides.createdAt ?? ASKED_AT,
     })
     .returning({ id: schema.channelMessages.id });
   return row?.id as string;
