@@ -178,6 +178,7 @@ function offerFrom(ref: string | null): OpenCheckupOffer | null {
     childId: parsed?.childId ?? null,
     summary: 'Whether to put booking this on your week',
     askedAt: new Date('2026-08-20T14:00:00.000Z'),
+    askedVia: 'msg-1',
   };
 }
 
