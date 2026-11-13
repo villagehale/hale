@@ -132,7 +132,11 @@ export function sharedListAudience(
     asked ??= readers();
     return asked;
   };
-  const reask = () => (asked ? (asked = readers()) : null);
+  const reask = () => {
+    if (!asked) return null;
+    asked = readers();
+    return asked;
+  };
   return { people, settledIds, readers: kept, reask };
 }
 
