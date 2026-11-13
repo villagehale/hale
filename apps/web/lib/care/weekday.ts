@@ -8,7 +8,13 @@ import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { writeFact } from '~/lib/memory/facts';
 import { schoolYearOf, winterBreakEventKey } from './school-break/cycle';
-import { type SchoolBreakFact, loadSchoolBreak } from './school-break/facts';
+import {
+  SCHOOL_BREAK_BOARD_WRITER,
+  SCHOOL_BREAK_FACT_KEY,
+  type SchoolBreakFact,
+  loadSchoolBreak,
+  parseSchoolBreakValue,
+} from './school-break/facts';
 import { schoolBreakEnabled } from './school-break/flag';
 import { type BoardBreakStanding, boardBreakStanding } from './school-break/standing';
 
@@ -130,6 +136,32 @@ export async function loadVerifiedSchoolBreak(
       source: BREAK_SOURCE[fact.source],
     },
   };
+}
+
+/**
+ * The memory facts a prompt is given, without a school's break that no longer stands
+ * (school-break/standing.ts): the same check the break question runs, so a "that's mine"
+ * or "she's at daycare" takes a filed break out of what the coach is told the moment it
+ * is written, not at the next sweep. Run whether or not the lane is on: the switch stops
+ * new reads, and must not leave a break that fell standing in the coach's prompt.
+ */
+export async function withoutFallenSchoolBreak<
+  T extends { familyId: string; factKey: string; inferredBy: string | null; factValue: unknown },
+>(database: Database, rows: readonly T[]): Promise<T[]> {
+  const kept: T[] = [];
+  let care: WeekdayCareFact[] | null = null;
+  for (const row of rows) {
+    if (row.factKey !== SCHOOL_BREAK_FACT_KEY || row.inferredBy !== SCHOOL_BREAK_BOARD_WRITER) {
+      kept.push(row);
+      continue;
+    }
+    const value = parseSchoolBreakValue(row.factValue);
+    if (value === null) continue;
+    care ??= await loadWeekdayCare(database, row.familyId);
+    const standing = await boardBreakStanding(database, { familyId: row.familyId, ...value }, care);
+    if (standing === 'stands') kept.push(row);
+  }
+  return kept;
 }
 
 /** The weather swap's row — one of the two D23 anchors. */

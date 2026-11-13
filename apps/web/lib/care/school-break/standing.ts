@@ -49,7 +49,7 @@ export async function hasSchoolAgeChild(
 
 export async function boardBreakStanding(
   database: Database,
-  fact: SchoolBreakFact,
+  fact: Pick<SchoolBreakFact, 'source' | 'familyId' | 'schoolYear' | 'sourceMail'>,
   care: readonly Pick<WeekdayCareFact, 'childId' | 'care'>[],
 ): Promise<BoardBreakStanding> {
   if (fact.source === 'parent') return 'stands';
