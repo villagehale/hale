@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { listLinqParticipantHandles, readLinqChatHandles } from './transport';
+import { listLinqParticipantHandles, readLinqChatHandles, readLinqChatJoinedAt } from './transport';
 
 const CHAT = '3b0c4f1e-6a2d-4c8e-9f17-5d2a7e9b1c40';
 const API_KEY = 'linq_test_key_not_a_secret';
@@ -113,8 +113,77 @@ describe('listLinqParticipantHandles: the GET returns present handles only', () 
       status: 'ok',
       handles: PRESENT,
       isGroup: true,
+      joinedAt: new Map(PRESENT.map((handle) => [handle, null])),
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
+  });
+});
+
+describe('readLinqChatJoinedAt: when Linq says each present participant joined', () => {
+  const JOINED = '2026-11-20T15:00:00.000Z';
+  const BEFORE = '2026-11-20T14:00:00.000Z';
+  const AFTER = '2026-11-20T16:00:00.000Z';
+  const at = (iso: string) => new Date(iso);
+  const joins = (handles: unknown[]) => readLinqChatJoinedAt({ chat: { handles } });
+
+  it('gives the join time of a present record that never left, or left before it joined', () => {
+    expect(
+      joins([
+        { handle: ACTIVE, status: 'active', joined_at: JOINED, left_at: null },
+        { handle: NULL_STATUS, joined_at: JOINED, left_at: BEFORE },
+      ]),
+    ).toEqual(
+      new Map([
+        [ACTIVE, at(JOINED)],
+        [NULL_STATUS, at(JOINED)],
+      ]),
+    );
+  });
+
+  it('cannot say for a record with no join time, a leave at or after it, or a leave it cannot read', () => {
+    expect(
+      joins([
+        { handle: ACTIVE, status: 'active' },
+        { handle: NULL_STATUS, status: 'active', joined_at: JOINED, left_at: AFTER },
+        { handle: NO_STATUS, status: 'active', joined_at: JOINED, left_at: JOINED },
+        { handle: ACTIVE_BUT_LEFT_AT, status: 'active', joined_at: JOINED, left_at: 'soon' },
+        { handle: NULL_STATUS_LEFT_AT, status: 'active', joined_at: 'not a time' },
+      ]),
+    ).toEqual(
+      new Map([
+        [ACTIVE, null],
+        [NULL_STATUS, null],
+        [NO_STATUS, null],
+        [ACTIVE_BUT_LEFT_AT, null],
+        [NULL_STATUS_LEFT_AT, null],
+      ]),
+    );
+  });
+
+  it('leaves out Hale and anyone listed as left or removed', () => {
+    expect(
+      joins([
+        { handle: HALE, is_me: true, joined_at: JOINED },
+        { handle: REMOVED, status: 'removed', joined_at: BEFORE, left_at: JOINED },
+        { handle: LEFT, status: 'left', joined_at: BEFORE },
+      ]),
+    ).toEqual(new Map());
+  });
+
+  it('a handle listed twice gives the later time, or none if either record cannot say', () => {
+    expect(
+      joins([
+        { handle: ACTIVE, status: 'active', joined_at: BEFORE },
+        { handle: ACTIVE, status: 'active', joined_at: JOINED },
+        { handle: NULL_STATUS, status: 'active', joined_at: JOINED },
+        { handle: NULL_STATUS, status: 'active' },
+      ]),
+    ).toEqual(
+      new Map([
+        [ACTIVE, at(JOINED)],
+        [NULL_STATUS, null],
+      ]),
+    );
   });
 });
