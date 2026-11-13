@@ -52,6 +52,7 @@ import { eveningCheckInHandler } from './handlers';
 import type { OpenQuestion } from './open-questions';
 import { FakeReplyTransport } from './reply-route';
 import { type ChannelRouterDeps, type RouterStatus, routeChannelMessage } from './route';
+import { darkSideTurn } from './side-turn.fixture';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
 
 /**
@@ -156,6 +157,7 @@ function routerDeps(
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       log: { info: () => {}, warn: () => {}, error: () => {} },
     }),
+    sideTurn: darkSideTurn(),
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },

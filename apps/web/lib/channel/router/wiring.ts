@@ -127,10 +127,13 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
+import { SIDE_TURN_CLAIM_LEASE_MS, productionSideTurnFamily } from './side-turn';
+import { createSideTurnReader } from './side-turn-reader';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import {
   type InboundTurnLedger,
   TURN_ANSWERED_ACTION,
+  TURN_CLAIMED_AHEAD_ACTION,
   TURN_DEFERRED_ACTION,
   TURN_FAILED_ACTION,
   TURN_FOLDED_ACTION,
@@ -673,9 +676,59 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
         .values({ channelMessageId })
         .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId });
     },
+    claimAhead: async (input, alongside) =>
+      database.transaction(async (tx) => {
+        const claimed = await tx
+          .insert(schema.channelTurnAnswerClaims)
+          .values({ channelMessageId: input.channelMessageId })
+          .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId })
+          .returning({ id: schema.channelTurnAnswerClaims.id });
+        if (claimed.length === 0) return 'already_answered';
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          actionTaken: TURN_CLAIMED_AHEAD_ACTION,
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: input.channelMessageId,
+        });
+        await alongside(tx as unknown as Database);
+        return 'claimed';
+      }),
+    recordAnsweredAhead: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: TURN_ANSWERED_ACTION,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+      });
+    },
+    releaseAhead: async (input) =>
+      database.transaction(async (tx) => {
+        await tx
+          .delete(schema.channelTurnAnswerClaims)
+          .where(eq(schema.channelTurnAnswerClaims.channelMessageId, input.channelMessageId));
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          actionTaken: TURN_DEFERRED_ACTION,
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: input.channelMessageId,
+          after: { reason: input.reason },
+        });
+      }),
+    // A side reply's claim row is read beside the others (claimAhead): taken before its
+    // reply is sent, with no answered row yet, it is held until its lease lapses. Given
+    // back, it has a deferred row at or after it. Only the NEWEST claim is read, and only a
+    // deferred row from its time on gives it back: an older one released an earlier claim
+    // or deferred the text's own turn, and reading it as this claim's would let that turn
+    // answer while the side turn holding the claim is still sending.
     stageOf: async ({ familyId, channelMessageId }) => {
       const rows = await database
-        .select({ actionTaken: schema.auditLog.actionTaken })
+        .select({
+          actionTaken: schema.auditLog.actionTaken,
+          occurredAt: schema.auditLog.occurredAt,
+        })
         .from(schema.auditLog)
         .where(
           and(
@@ -687,11 +740,28 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
               TURN_ANSWERED_ACTION,
               TURN_DEFERRED_ACTION,
               TURN_FOLDED_ACTION,
+              TURN_CLAIMED_AHEAD_ACTION,
             ]),
           ),
         );
       if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
       if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
+      const ahead = rows
+        .filter((row) => row.actionTaken === TURN_CLAIMED_AHEAD_ACTION)
+        .reduce<(typeof rows)[number] | undefined>(
+          (newest, row) => (newest && newest.occurredAt >= row.occurredAt ? newest : row),
+          undefined,
+        );
+      if (
+        ahead &&
+        !rows.some(
+          (row) => row.actionTaken === TURN_DEFERRED_ACTION && row.occurredAt >= ahead.occurredAt,
+        )
+      ) {
+        return Date.now() - ahead.occurredAt.getTime() < SIDE_TURN_CLAIM_LEASE_MS
+          ? 'held'
+          : 'lapsed';
+      }
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
     recordDeferred: async (input) => {
@@ -788,6 +858,14 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       log: console,
     }),
+    // A text that lands while this parent's turn runs, read beside it, on the same lazy
+    // client. On unless INBOUND_MIDTURN_ENABLED=false.
+    sideTurn: {
+      enabled: (familyId) => isEnabled('inbound-midturn', familyId),
+      reader: createSideTurnReader(screenClient),
+      family: productionSideTurnFamily(database),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    },
     // The words a broken turn gets, on the same lazy client the screen and the general
     // answer use — one key, one failure story, resolved only by the turn that needs one.
     apology: createTurnApology(screenClient),

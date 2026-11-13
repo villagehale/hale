@@ -13,6 +13,7 @@ import { createDisambiguationStore } from './disambiguation';
 import { FakeReplyTransport } from './reply-route';
 import type { ChannelCoachRuntime, ChannelRouterDeps } from './route';
 import { routeChannelMessage } from './route';
+import { darkSideTurn } from './side-turn.fixture';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
 
 /**
@@ -107,6 +108,7 @@ describe('one parent, two doors, one conversation', () => {
       smokeAlarm: auditSmokeAlarmClaim(db.database),
       turns: auditTurnLedger(db.database),
       burst: { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
+      sideTurn: darkSideTurn(),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },

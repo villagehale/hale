@@ -42,6 +42,7 @@
     "eval:turn-apology": "node evals/run-turn-apology-eval.mjs --cached-only",
     "eval:holding-line": "node evals/run-holding-line-eval.mjs --cached-only",
     "eval:inbound-burst": "node evals/run-inbound-burst-eval.mjs --cached-only",
+    "eval:inbound-side-turn": "node evals/run-inbound-side-turn-eval.mjs --cached-only",
     "eval:holding-line-judge": "node evals/run-holding-line-judge-eval.mjs --cached-only",
     "eval:holding-line-judge:dry": "node evals/run-holding-line-judge-eval.mjs --dry",
     "eval:flood-line:dry": "node evals/run-flood-line-eval.mjs --dry",
