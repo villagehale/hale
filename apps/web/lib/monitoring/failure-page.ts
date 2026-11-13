@@ -193,6 +193,7 @@ export const OPS_PAGE_VOCABULARY = {
     reason: ['write_failed', 'writer_absent'],
   },
   opt_out_hold_unwritten: {},
+  opt_out_hold_id_collision: {},
   opt_out_unread: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
