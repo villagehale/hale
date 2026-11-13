@@ -370,6 +370,73 @@ interface WireShape {
   output_config?: { effort: string };
 }
 
+describe('runAgent asks once more for a garbled answer (VIL-683)', () => {
+  const GARBLED = "And Lรฉa's Storytime is tomorrow too.";
+  const CLEAN = "And Léa's Storytime is tomorrow too.";
+  const run = (client: AgentClient) =>
+    runAgent({
+      skill,
+      context: { question: 'what is on tomorrow?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: guardDeps().deps,
+    });
+
+  it('re-sends the identical step once and returns the clean answer, usage counted', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const client = fakeClient([
+      textMessage(GARBLED, usage(100, 20)),
+      textMessage(CLEAN, usage(100, 20)),
+    ]);
+    const result = await run(client);
+    const create = client.messages.create as Mock;
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
+    expect(result.answer).toBe(CLEAN);
+    expect(result.usage.completionTokens).toBe(40);
+    expect(warn.mock.calls.map(([line]) => JSON.parse(String(line)).event)).toEqual([
+      'agent_reask_garbled',
+    ]);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Storytime');
+    warn.mockRestore();
+  });
+
+  it('asks only once: a second garbled answer is returned as drawn, for the send seam to refuse', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const client = fakeClient([
+      textMessage(GARBLED, usage(100, 20)),
+      textMessage(GARBLED, usage(100, 20)),
+    ]);
+    const result = await run(client);
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+    expect(result.answer).toBe(GARBLED);
+    warn.mockRestore();
+  });
+
+  it('a re-drawn step that calls a tool runs as an ordinary step', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const client = fakeClient([
+      textMessage(GARBLED, usage(100, 20)),
+      toolUseMessage('tu-1', 'get_child_profile', { childId: 'kid-1' }, usage(100, 20)),
+      textMessage(CLEAN, usage(100, 20)),
+    ]);
+    const result = await run(client);
+    expect(client.messages.create).toHaveBeenCalledTimes(3);
+    expect(result.answer).toBe(CLEAN);
+    warn.mockRestore();
+  });
+
+  it('does not re-ask honest multilingual text (positive control)', async () => {
+    const client = fakeClient([
+      textMessage('周六上午九点 · درس السباحة · À samedi 🏊‍♀️ « ok »', usage(100, 20)),
+    ]);
+    await run(client);
+    expect(client.messages.create).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('runAgent when a step is truncated before it says anything', () => {
   function capturing(script: Anthropic.Message[]) {
     const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];

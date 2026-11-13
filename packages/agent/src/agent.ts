@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
+import { hasGarbledText } from './garbled-text.js';
 import { compileToolSchema } from './json-schema.js';
 import {
   type AgentTask,
@@ -592,6 +593,13 @@ async function handleToolUses(
   return { allOk };
 }
 
+/** A final answer (no tool call) whose text is garbled. */
+function answersGarbled(response: Anthropic.Message): boolean {
+  if (response.content.some((block) => block.type === 'tool_use')) return false;
+  const text = textFrom(response.content);
+  return text !== null && hasGarbledText(text);
+}
+
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const laneConfig = args.lane ?? pickLane(args.skill.meta.task);
   const lane = laneRequestFields(laneConfig) as WireLaneFields;
@@ -626,16 +634,38 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     cacheCreation1hTokens,
   });
 
+  let garbledReasked = false;
+
   while (steps < args.maxSteps) {
     steps += 1;
-    let response = await args.client.messages.create({
-      ...lane,
-      max_tokens: maxTokens,
-      system,
-      ...(tools.length > 0 && { tools }),
-      messages: withHistoryBreakpoint(messages),
-    });
+    const step = () =>
+      args.client.messages.create({
+        ...lane,
+        max_tokens: maxTokens,
+        system,
+        ...(tools.length > 0 && { tools }),
+        messages: withHistoryBreakpoint(messages),
+      });
+    let response = await step();
     meter(response.usage);
+
+    // A GARBLED ANSWER IS A MISSED DRAW (VIL-683): the same step is sent once more per run,
+    // byte-identical, and whatever it draws is handled as this step's response. A second
+    // garbled answer is returned as drawn and logged by name; the send seam
+    // (linq/transport.ts) refuses it, so nothing reaches a parent and nothing stands in.
+    if (!garbledReasked && answersGarbled(response)) {
+      garbledReasked = true;
+      console.warn(
+        JSON.stringify({ event: 'agent_reask_garbled', task: args.skill.meta.task, step: steps }),
+      );
+      response = await step();
+      meter(response.usage);
+      if (answersGarbled(response)) {
+        console.warn(
+          JSON.stringify({ event: 'agent_garbled_again', task: args.skill.meta.task, step: steps }),
+        );
+      }
+    }
 
     // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH THINKING OFF AND NO TOOLS.
     //

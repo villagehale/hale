@@ -246,8 +246,8 @@ describe('the broken arm', () => {
 
 describe('the --dry worst case', () => {
   it('counts every send a structured call can make', () => {
-    expect(maxSends({ thinking: 'adaptive' })).toBe(3);
-    expect(maxSends({ thinking: 'disabled' })).toBe(2);
+    expect(maxSends({ thinking: 'adaptive' })).toBe(4);
+    expect(maxSends({ thinking: 'disabled' })).toBe(3);
   });
 
   it("prices a send at the spend guard's worst case and every attempt and re-ask on top", () => {
@@ -268,7 +268,7 @@ describe('the --dry worst case', () => {
       worstCaseUsd,
     });
     expect(priced.perSend).toBeCloseTo(perSend, 12);
-    expect(priced.ceiling).toBeCloseTo(perSend * 2 * 2, 12);
+    expect(priced.ceiling).toBeCloseTo(perSend * 3 * 2, 12);
   });
 });
 

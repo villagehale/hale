@@ -31,6 +31,7 @@ const ALLOWED = new Set([DOOR, LINQ_TRANSPORT]);
 const READ_ONLY_EXPORTS = new Set([
   'SEND_TIMEOUT_MS',
   'LinqSendError',
+  'GARBLED_TEXT',
   'LINQ_TAPBACKS',
   'readLinqMessageId',
   'readLinqChatId',
