@@ -527,6 +527,9 @@ jobs:
       # VIL-503 reader + voice. Recorded Nov 1; a cache miss fails CI.
       - name: Group plan RSVP calendar eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-plan-rsvp-calendar
+      # VIL-471 poll reader (incl. a lock on the open poll) + voice. A cache miss fails CI.
+      - name: Group poll eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-poll
 
       - name: Connector disconnect read eval (cached-only)
         run: pnpm --filter @hale/worker eval:connector-disconnect-read
