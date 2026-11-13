@@ -12,6 +12,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { sentSignupText } from '~/lib/signup/sent-text.fixture';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { BrowserUseEngineThrew, type BrowserUseSignupResult } from './browser-use/engine';
 import { storeProviderSession } from './browser-use/vault';
@@ -194,7 +195,7 @@ describe('authorized signup runner', () => {
       parentUserId: seeded.parentUserId,
       offerIds: [stored.id],
     })();
-    await keep();
+    await keep(await sentSignupText(db.database, seeded));
     return seeded;
   }
 

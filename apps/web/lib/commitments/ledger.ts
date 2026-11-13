@@ -413,9 +413,11 @@ export async function loadOpenCommitment(
   subjectChildId: string | null;
   subjectFamilyId: string | null;
   dueAt: Date;
-  /** When the promise was minted — which, for an offer, is when its ask went out (every
-   * writer records against the sent message). The open-question reader's recency fact. */
+  /** When the promise was minted, after the message that carried it was sent. */
   createdAt: Date;
+  /** The outbound `channel_messages` row that carried it (provenance text). The router
+   * dates the ask by that row's recorded send (VIL-302, ledger.ts `sendRecordedAt`). */
+  createdFrom: string;
 } | null> {
   const rows = await database
     .select({
@@ -426,6 +428,7 @@ export async function loadOpenCommitment(
       subjectFamilyId: schema.agentCommitments.subjectFamilyId,
       dueAt: schema.agentCommitments.dueAt,
       createdAt: schema.agentCommitments.createdAt,
+      createdFrom: schema.agentCommitments.createdFrom,
     })
     .from(schema.agentCommitments)
     .where(
