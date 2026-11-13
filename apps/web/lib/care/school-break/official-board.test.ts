@@ -44,12 +44,24 @@ describe('domainSuffixes', () => {
 });
 
 describe('boardSiteQuery', () => {
-  it('asks only for root sites of plain hosts, each an educational institution', () => {
+  it('asks only for root sites of plain hosts', () => {
     const query = boardSiteQuery(['board.example', 'x> } DROP {']);
     expect(query).toContain('<https://www.board.example/>');
     expect(query).toContain('<http://board.example>');
     expect(query).not.toContain('DROP');
-    expect(query).toContain('wdt:P31/wdt:P279* wd:Q2385804');
+  });
+
+  // Live Wikidata (2026-11-13): every Ontario board probed is a school district or a board
+  // of education, the private K-12 schools are secondary schools, and the universities,
+  // colleges and the conservatory are higher education institutions. "Educational
+  // institution" holds all of them, so it proves nothing about a kid's own school.
+  it('proves a school board, a school district or a K-12 school, never higher education', () => {
+    const query = boardSiteQuery(['board.example']);
+    expect(query).not.toContain('wd:Q2385804');
+    for (const k12 of ['wd:Q398141', 'wd:Q399541', 'wd:Q9842', 'wd:Q159334']) {
+      expect(query).toContain(k12);
+    }
+    expect(query).toMatch(/FILTER NOT EXISTS \{ \?item wdt:P31\/wdt:P279\* wd:Q38723 \}/);
   });
 });
 

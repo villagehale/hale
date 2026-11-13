@@ -1,6 +1,5 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { ageInMonths } from '@hale/types';
 import { and, eq, gt, inArray } from 'drizzle-orm';
 import { loadWeekdayCare } from '~/lib/care/weekday';
 import { f14EnabledFor } from '~/lib/channel/f14';
@@ -47,7 +46,9 @@ import { type StoredBoardReading, latestBoardReading, recordBoardReading } from 
  *      calendar on that host is looked up (cached per host, `school_break_readings`) and a
  *      verified break is written to the family's fact with its page and quotes. No host
  *      list, and no two boards assumed alike: a host is read on its own page or not at
- *      all. A family's mail is read at most once a day.
+ *      all, and two proven schools that give different days are never settled by picking
+ *      one: the parent is asked. A family's mail is read at most once a day once it
+ *      settles, a board break on file included, so a school seen later is still weighed.
  *   3. Otherwise, ASK ONCE: when no page could give the days, one `school_break_ask`
  *      candidate per family per school year goes to the proactive decider. The decider
  *      decides whether and when, its writer words it, and the outbound gate keeps it in
@@ -61,14 +62,15 @@ import { type StoredBoardReading, latestBoardReading, recordBoardReading } from 
  * search turn and up to three page reads). A board left over is looked up next hour. */
 export const MAX_BOARD_LOOKUPS_PER_RUN = 3;
 /** Families whose mail one run may read (a Gmail read per alert, a Wikidata query per
- * domain): an infra bound on the same wall. A family left over is read next hour. */
+ * domain): an infra bound on the same wall. A family left over is read next hour, and a
+ * read that ended waiting on Wikidata counts too. */
 export const MAX_MAIL_READS_PER_RUN = 5;
 /** A family's mail, once read and settled, is not read again for this long. Freshness of
  * a cache, not a send rule. */
 export const MAIL_REREAD_MS = 24 * 60 * 60_000;
 export const SCHOOL_BREAK_MAIL_SWEEP = 'school_break_mail';
-/** School age: junior kindergarten starts the year a child turns four. */
-const SCHOOL_AGE_MONTHS = 48;
+/** School age: junior kindergarten starts in September of the year a child turns four. */
+const SCHOOL_START_AGE_YEARS = 4;
 
 export const SCHOOL_BREAK_ASK_KIND = 'school_break_ask' as const;
 
@@ -92,8 +94,10 @@ export interface SchoolBreakSweepResult {
   deferred: number;
   /** Board facts written or moved to a new reading. */
   recorded: number;
-  /** A board host is still waiting on a lookup: no ask yet. */
+  /** A board host is still waiting on a lookup, or on Wikidata: no ask yet. */
   waiting: number;
+  /** Two proven schools gave different days: nothing filed, the parent is asked. */
+  disagreed: number;
   /** The ask's window for this school year has passed. */
   tooLate: number;
   asked: number;
@@ -119,6 +123,7 @@ function emptyResult(skipped: SchoolBreakSweepResult['skipped']): SchoolBreakSwe
     deferred: 0,
     recorded: 0,
     waiting: 0,
+    disagreed: 0,
     tooLate: 0,
     asked: 0,
     held: 0,
@@ -170,13 +175,19 @@ async function loadFamilies(database: Database): Promise<string[]> {
   return rows.map((row) => row.familyId);
 }
 
-/** A child four or older, or one the parent said is at daycare. */
-async function hasSchoolChild(database: Database, familyId: string, now: Date): Promise<boolean> {
+/** A child who turns four by the end of this school year's first calendar year, or one
+ * the parent said is at daycare. */
+async function hasSchoolChild(
+  database: Database,
+  familyId: string,
+  schoolYear: string,
+): Promise<boolean> {
   const children = await database
     .select({ dateOfBirth: schema.children.dateOfBirth })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  if (children.some((child) => ageInMonths(child.dateOfBirth, now) >= SCHOOL_AGE_MONTHS)) {
+  const latestBirthYear = Number(schoolYear.slice(0, 4)) - SCHOOL_START_AGE_YEARS;
+  if (children.some((child) => Number(child.dateOfBirth.slice(0, 4)) <= latestBirthYear)) {
     return true;
   }
   return (await loadWeekdayCare(database, familyId)).some((fact) => fact.care === 'daycare');
@@ -209,8 +220,9 @@ async function markMailRead(database: Database, familyId: string, now: Date) {
 
 /**
  * The official hosts the family's school mail proves, sorted, or `wait` when the proof
- * source did not answer (nothing is concluded, and nothing is asked, until it does).
- * Mail that cannot be read is named and gives no host: the family is asked instead.
+ * source did not answer (nothing is concluded, and nothing is asked, until it does; the
+ * first unanswered query ends the read, so one run waits on Wikidata once). Mail that
+ * cannot be read is named and gives no host: the family is asked instead.
  */
 async function hostsFromMail(
   deps: SchoolBreakSweepDeps,
@@ -227,20 +239,18 @@ async function hostsFromMail(
     return [];
   }
   const hosts = new Set<string>();
-  let wait = false;
   for (const domain of mail.domains) {
     let proof = proofs.get(domain);
     if (proof === undefined) {
       proof = await proveBoardSite(deps.boardSite, domain);
-      if (proof.status !== 'retry') proofs.set(domain, proof);
+      if (proof.status === 'retry') {
+        console.info({ reason: proof.reason }, 'school break: board site source did not answer');
+        return 'wait';
+      }
+      proofs.set(domain, proof);
     }
     if (proof.status === 'found') hosts.add(proof.host);
-    if (proof.status === 'retry') {
-      wait = true;
-      console.info({ reason: proof.reason }, 'school break: board site source did not answer');
-    }
   }
-  if (wait) return 'wait';
   return [...hosts].sort();
 }
 
@@ -326,13 +336,15 @@ export async function runSchoolBreakSweep(
   const families: Array<{ familyId: string; hosts: string[]; mailRead: boolean }> = [];
   const proofs = new Map<string, BoardSite>();
   let mailReadsLeft = MAX_MAIL_READS_PER_RUN;
+  // Wikidata did not answer this run: no more mail is read until it does.
+  let sourceDown = false;
   for (const familyId of await loadFamilies(database)) {
     result.families += 1;
     if (!deps.f14For(familyId)) {
       result.f14Dark += 1;
       continue;
     }
-    if (!(await hasSchoolChild(database, familyId, now))) {
+    if (!(await hasSchoolChild(database, familyId, schoolYear))) {
       result.noSchoolChild += 1;
       continue;
     }
@@ -341,36 +353,43 @@ export async function runSchoolBreakSweep(
       result.parentKnown += 1;
       continue;
     }
-    let hosts: string[];
-    let mailRead = false;
-    if (fact?.boardHost) {
-      // A board break on file: its own host is read again when its reading is due.
-      hosts = [fact.boardHost];
-    } else if (await askedThisYear(database, familyId, schoolYear)) {
+    // A board break on file keeps its own host read when its reading is due, and the mail
+    // is still read daily beside it: a school seen later is weighed against it.
+    const onFile = fact?.boardHost ? [fact.boardHost] : [];
+    if (onFile.length === 0 && (await askedThisYear(database, familyId, schoolYear))) {
       result.asked += 1;
       continue;
-    } else if (await mailReadRecently(database, familyId, now)) {
-      hosts = [];
-    } else if (mailReadsLeft === 0) {
-      result.deferred += 1;
-      continue;
-    } else {
-      try {
-        const found = await hostsFromMail(deps, familyId, proofs, result);
-        if (found === 'wait') {
-          result.waiting += 1;
+    }
+    let hosts = onFile;
+    let mailRead = false;
+    if (!(await mailReadRecently(database, familyId, now))) {
+      if (mailReadsLeft === 0 || sourceDown) {
+        if (onFile.length === 0) {
+          result.deferred += 1;
           continue;
         }
-        hosts = found;
-        mailRead = true;
+      } else {
         mailReadsLeft -= 1;
-      } catch (err) {
-        result.failed += 1;
-        console.error(
-          { fault: err instanceof Error ? err.name : typeof err },
-          'school break: school mail failed',
-        );
-        continue;
+        try {
+          const found = await hostsFromMail(deps, familyId, proofs, result);
+          if (found === 'wait') {
+            sourceDown = true;
+            if (onFile.length === 0) {
+              result.waiting += 1;
+              continue;
+            }
+          } else {
+            hosts = [...new Set([...onFile, ...found])].sort();
+            mailRead = true;
+          }
+        } catch (err) {
+          result.failed += 1;
+          console.error(
+            { fault: err instanceof Error ? err.name : typeof err },
+            'school break: school mail failed',
+          );
+          continue;
+        }
       }
     }
     for (const host of hosts) byHost.set(host, [...(byHost.get(host) ?? []), familyId]);
@@ -447,14 +466,29 @@ async function settleFamily(
   result: SchoolBreakSweepResult,
 ): Promise<'settled' | 'waiting'> {
   const { familyId, schoolYear, familyHosts, readings } = input;
-  const verified = familyHosts
-    .map((host) => ({ host, reading: readings.get(host) ?? null }))
-    .flatMap(({ host, reading }) => (reading?.status === 'verified' ? [{ host, reading }] : []))
-    // Two boards (two kids, two schools): the earlier break is the one to plan for first.
-    .sort((a, b) => a.reading.firstDay.date.localeCompare(b.reading.firstDay.date));
+  // A school still waiting on its first reading may yet answer, or disagree: nothing is
+  // filed or asked before it does.
+  if (familyHosts.some((host) => (readings.get(host) ?? null) === null)) {
+    result.waiting += 1;
+    return 'waiting';
+  }
+  const verified = familyHosts.flatMap((host) => {
+    const reading = readings.get(host) ?? null;
+    return reading?.status === 'verified' ? [{ host, reading }] : [];
+  });
+  // Two proven schools with different days: Hale cannot tell which one is this family's
+  // kid's, so it files neither and asks.
+  if (
+    new Set(verified.map(({ reading }) => `${reading.firstDay.date}/${reading.lastDay.date}`))
+      .size > 1
+  ) {
+    result.disagreed += 1;
+    await askOnce(database, deps, gate, { familyId, schoolYear }, now, result);
+    return 'settled';
+  }
+  const fact = await loadSchoolBreak(database, familyId, schoolYear);
   const board = verified[0];
   if (board) {
-    const fact = await loadSchoolBreak(database, familyId, schoolYear);
     if (sameBreak(fact, board.reading)) return 'settled';
     await recordSchoolBreak(database, {
       source: 'board_page',
@@ -470,12 +504,7 @@ async function settleFamily(
     result.recorded += 1;
     return 'settled';
   }
-  if (await loadSchoolBreak(database, familyId, schoolYear)) return 'settled';
-  // A board still waiting on its first reading may yet answer: no question before it does.
-  if (familyHosts.some((host) => (readings.get(host) ?? null) === null)) {
-    result.waiting += 1;
-    return 'waiting';
-  }
+  if (fact) return 'settled';
   await askOnce(database, deps, gate, { familyId, schoolYear }, now, result);
   return 'settled';
 }
@@ -489,6 +518,10 @@ async function askOnce(
   result: SchoolBreakSweepResult,
 ): Promise<void> {
   const { familyId, schoolYear } = input;
+  if (await askedThisYear(database, familyId, schoolYear)) {
+    result.asked += 1;
+    return;
+  }
   const lastDay = lastAskDay(schoolYear);
   if (dayKeyOf(now, DEFAULT_TIMEZONE) > lastDay) {
     result.tooLate += 1;
