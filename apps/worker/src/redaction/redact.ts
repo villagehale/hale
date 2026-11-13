@@ -1,11 +1,12 @@
 /**
- * PII redaction for the shadow eval (rule #1). Strips family PII from an input
+ * PII redaction (rule #1) for the classifier's input (web pipeline/classify.ts, worker
+ * agents/classifier.ts), the Google sync payload it enqueues and events.payload stores
+ * (web integrations/sync.ts), and the shadow eval. Strips family PII from an input
  * before a prompt sees it, and assertNoPII fails CLOSED — if any PII pattern
  * survives, it throws, so the caller drops the input rather than leak it.
  *
- * Deliberately over-redacts: a false positive (a redacted non-PII token) is
- * harmless for a shadow comparison; a false negative (leaked PII) violates rule
- * #1. When in doubt, redact.
+ * Over-redacts free text: a false positive (a redacted non-PII token) costs a
+ * word; a false negative (leaked PII) violates rule #1. When in doubt, redact.
  */
 
 import { placeTokensIn, scrubPlaceTokens } from '@hale/types';
@@ -39,7 +40,20 @@ export function redactText(text: string, knownChildNames: readonly string[]): st
   return scrubPlaceTokens(out, '[POSTAL]');
 }
 
-/** Deep-redact every string value in a payload; non-strings pass through. */
+/**
+ * The top-level key a connector payload carries its provider's id under (Gmail, Calendar,
+ * Drive in integrations/sync.ts). The id is an opaque key the provider minted, not text a
+ * person wrote, and the redacted payload is what events.payload stores. The place matcher
+ * reads a ZIP or a code glued to letters, so it would rewrite part of about one Gmail id
+ * in five, and the Gmail draft path reads the message id back from that row.
+ */
+const PROVIDER_ID_KEY = 'id';
+/** What every one of those ids is made of (URL-safe base64, hex, base32hex). A value with a
+ * space, an @ or any other character is text under that key, and is redacted as text. */
+const OPAQUE_ID = /^[A-Za-z0-9_-]+$/;
+
+/** Deep-redact every string value in a payload, except a top-level provider id;
+ * non-strings pass through. */
 export function redactEventPayload<T>(payload: T, knownChildNames: readonly string[]): T {
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string') return redactText(v, knownChildNames);
@@ -49,6 +63,14 @@ export function redactEventPayload<T>(payload: T, knownChildNames: readonly stri
     }
     return v;
   };
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    return Object.fromEntries(
+      Object.entries(payload).map(([k, val]) => [
+        k,
+        k === PROVIDER_ID_KEY && typeof val === 'string' && OPAQUE_ID.test(val) ? val : walk(val),
+      ]),
+    ) as T;
+  }
   return walk(payload) as T;
 }
 
