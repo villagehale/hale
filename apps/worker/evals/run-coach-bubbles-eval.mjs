@@ -60,6 +60,7 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   DRAWS,
@@ -86,7 +87,7 @@ const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-bubbles');
 
-function contextFor(fixture) {
+function contextFor(fixture, helpLines) {
   const transcript = [...(fixture.transcript ?? []), { role: 'user', content: fixture.text }];
   return {
     parentName: null,
@@ -105,6 +106,7 @@ function contextFor(fixture) {
     nowIso: COACH_BUBBLES_NOW,
     standingQuestions: [],
     registrationWindows: [],
+    helpLines,
   };
 }
 
@@ -386,7 +388,7 @@ async function main() {
     const run = await agent.runAgent({
       skill,
       systemExtras,
-      context: contextFor(fixture),
+      context: contextFor(fixture, await coachHelpLines(fixture.location)),
       tools: toolsFor(agent, linkRef, real, fixture, calls, turn, skill.meta.tools),
       client: cachedAgentClient(`coach-bubbles:${tag}`, cachedOnly, getClient, cost),
       maxSteps: MAX_STEPS,

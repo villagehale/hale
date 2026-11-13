@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks when a scheduled activity (swim) happens, a schedule question",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1712
+}

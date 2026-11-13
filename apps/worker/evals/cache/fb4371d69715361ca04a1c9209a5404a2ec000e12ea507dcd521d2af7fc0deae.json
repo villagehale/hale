@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgyHjxq9Uv8HP1hBJUy7o",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/goKEAgTGAI4AUIIdGhpbmtpbmcSDLFVzpeJo10bh2iXdhoMWRlUC5HXgqnLhV9hIjCf55v4NC8dCyFi3lYN8UQyWe+e/MUIVtCmqMh14ueNhLWTKt/9nIow/Pbw7s4A9uoqmwpM4lDYKOgmromUv6uuNc8tKmdItWwfehjUTKaVqh/Vqy1Lk1AF+gcYxTbmxLQao7z/TW2/LUeHVH+tv4mkpJyJK9W8KGDV9HgSa/+8Hjmx6OSm56efM0nivMl/pJry7P1tQd99qJ7btdUMK+Qh4L766YloONyhfPzetnMv4j6mh6PXQCp56QEpcmrwWtaDyle3rze8BMrtbaiawB61Z5uJbpYBFs29Wh4hEvJeQ6rgFjYh6wfIKcsSpH5v/bUSTjx/hSSqv0mVZaDUDZUc1K0hPb/y6C5cFMLEPkU5Lv6XvDLJ5ftXa5DFaFRuqNWw2KipYCTeZabDddP+RLZWMjUHHpdBfD3NJfgpIKUAhvf1bKqmFSM4oTgp6fFQIRFzFgVbBp1x7Ku4dP1oWPxLntBDSa/le4Y2lfbj8ikJhucLslznKmN353Bt0Eo9EVJNYwqV0r0XE0MV+r4h8AwTmDBWIQDfqMIEMzKiX49AIPpgAKRCPWaF7bUsTGIZM2Kes6RUNJJTBB5c9UA2f3m7MyhrrPNGocfnTIx+SJXp1LMIqhGKrrY7mGd8ZGmargv9ED5c+1HrZDsSX7cY67rgspIDOwIRJhzzbpMbPsOMhm4ByeSpRVvTR69La1q95PDYHR9LMAbS/durFjidrq6iNvQo3KmCqi9eOhs+QQ0BCXAfc4bJB/fIvc51YUTEcVVpaIVjXF5Vm4nhkCtieUvJtyrE3xRGsvl4zAF5T05cAFW5w4qe6HlFKRnEApDicW+GXfRaDv80sVWklKpmx90V4Xb6nLItJNuN7wadsTV4McyqDfLYdkIS0ltXs8216rJNl4RMjuqC8nNEcMoomXBketqlxx9UkxwOnAdrmFcYgOqRE2CfU0ZaEUk6lS25slpU6TTWpRWHyUsmJtTA/+/U+mh9JR7EJAFeyLU043tTplXQlOhZjXwY16POlIo/ZGeg0W9wmh6Azv90YGy5bMLuOdwSU8cCouTjDiIa954198w2ySaFTNs7fFM3A6/gXPA7c9N5rbAcGf01xilYkLf4wi8Ar9PrG/Kjh2WgAdU3MOrjxSG1yJpajbXHYTP9Zu5ZDqgdznL7cO0X6cbpEIz5EzKKIpE0zBp+8w8QtTaZTQ72b8rbkATi1IU8IPX+vsNyDR1HCKpB826VmzLGQ5pcS2BJJTileJxXQPJl5EUk2gXSiQYmkcVqbFm9okr/xixWpwKW8GNxAAsLSXdtVG5T/avVf/R1ZzcYnknk1Uq75+pFipjpWM3GewABACZo2Cr+c9o/TFDIras9TJ/4aJEacs2OjdiAXKPM9O4nj0/6XgQLIE74B8K0Oca7M+EzYEmCvH3GahUDduTl9hJtHQElvJUegUBHvY8jm3eqPsZw3DyygBQgXz+mdzS3iRpHf6nuRw+KjdVjk1AsUHcAyh7esHMbIM/bSgO4nK0OuynfUwFZb1Wmgkw/mZZiH3XDFkYDS9micJg5bZmMASE3v1h1L/OTCtNzl45EJ8bnsvvwxzzsspO27DWISoKJSX1jMmhoi5itvk3EF3MkUwuNOsijlVuxGZ8tnbERjG7eSPwxEsMZu1QDyuz/8eMqqW0WQzeKU25yGDDSiLExVqTRp33ffzHCwUbn53IdHa6qLISnPWolpUAMlRD6Px/Fzo3XDO5hQLf4uLZpOzXWuShRRNTDHjJZxtTmn8HMJmk23vF4kTlKeYth1uHebg3c4QfjJpGZi0UDXwOKQ9FBQbRctxgB"
+      },
+      {
+        "type": "text",
+        "text": "That email was mine, and I'm sorry it had the wrong day. Which swim should it have said: Monday 4:30 at West pool, or Thursday 5:15 at East pool? Once I know, I'll write the correction to the swim school with the right day."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1383,
+      "cache_read_input_tokens": 24134,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1383,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 344,
+      "output_tokens_details": {
+        "thinking_tokens": 262
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4135
+}

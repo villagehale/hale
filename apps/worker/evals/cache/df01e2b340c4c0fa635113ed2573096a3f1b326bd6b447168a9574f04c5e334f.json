@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgzFJM8PRpMsqrPh2q5xj",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2QkKEAgTGAI4AUIIdGhpbmtpbmcSDL+zs+Oa4Ftcnpjd+BoMZFTQ4RSxWl5xiUURIjBqt/c3Er3KxgKuIuUTKRVVMb40SK+PE5ImAvRKaRO/5FWyFW7onCIrxDUjFqSEqsAq9ghPdYn2/nvb9rgBIJiiA/KaikwuOmGGt9oalJ1QV7qcbMRUv52d5B06HsyGXVdIagVZpCu4tnQYrH4VIRPofewGRT1Ao/c618qf7JWTrZDQGa89zUj6YJCaihksZ4QLoL5WpH5U5LF14Kegudsk/JzodTgMjBsegteWXvgiIYTNE2x43DNx28lBuv5tU9aXI7DFrZGlDRjK4eIidEO+WStves+Qv8ZPOueZ2N2eN68pzeZTEC/y3mlrOv0KMdOtdiTWG2x3QVsOdgFgReZFljnVbUsECerajCcc3D6hvd45XXBeVHKVYiy9tfRAP76jrgekvMj41mGERO+KegsK1LiDcJPXmSDw/QKYaTXcjgGSpJ8hGWx+CVUHfK3riSEPgyFFyePaCLRrS6iOjzb+QD+YjJJpxzOMFOuSK576PhfTiclAuN8Abb8lTpq2PrDgTaRXIBpTmLMj2uJAOD+M0u85QpeiCGuwyvWEqXOdFTCSTsFSAuAm90RDtibav5Geu748wjspUDxGSzGT8HK2FuBY3L46spm6xvSAbZj2577iEC0PAN/uZaiRwDD9Cnybh40EBa5Q7tqd6nsFEie0w9+Yc8eBGgSXYZaoRODI4AgkOHjN/mspWBFvK5Jq1Lr1xV9QJ7xUqi6Ng/k7IoZPIG2I9XlIwzAPBQ6U1XJK3VXBJGaoBLr/hXRtHlzx+pr0kOcbkHpSFxUV+IzK/B57+5+yLhxdM4kAnv3+/XBByq9+taJdIIty6jClX6qoSwJgoMQzTQ17srjhIprvk1OnNTnP5PZJPCMkzRB4i6tYNtj7Hqv5dxiTidMGVCVwEnGwhwJK2+qsO0Ktv5Ja3RaST3jiXIlW03TjoBdZS0zCXmNzcbZMKtqIWzyka7IqNQDfcRmOlUN51r90i1IFBw2vTvrHJ8nGkqpXnk5rmh9WD7FZB6ndCkDXGh2NKcurPSbwAVdrW8zvRYGs04itKVzzMouaaV3uKktDTIL51zmivqrqq5D81yDSHIyjsHU78JEAwx7Ws79oTq1C9k46mGaAW5xr8IClSLaaKZEMtPUKLqdQPkR5VmcUwXmixUd39SUNiKoRaU8+U2F0erXZimRofphTPhIKBJWTAdqPejOiCwK6xEiGH+6YBWVK5/RQE1P9EaOIkTVW/SzxrZ42YCgHs6Ql9mMKtIp+vp/qHNuq4fgjqsomTI4XFhC/mI9Uvgznh0qw7s/d6Z/lLz68LOHw5az4uc2Yr1iJr5NGl5tJSZVJBm4n7SiBlc16LjqBKtj+Cl4enDF6a5wLClHGkSjaEAu0j18hnfJ87wwkzyoGb2jDaiPL0YOuz0rnJz+5inkoIFeVRNJc/MzOLqY9v3FrBZmQcd9S+bYB88kEKDVNujWMWvcQJelgYauXEEgos04EuFteE6lH6pYCqU7fvN/pau6G7k6ft3Udz9aUXnmU7gITUvhzlG+ySlOVB6r8ghvaEGiAq81/f/lIMEReUKjO/5SgW4fr9UfdIh7bHjMWrCmOrTSOgMgAGBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Tsy9TJyYdwN9HkE2LwimEP",
+        "name": "note_capability_declined",
+        "input": {
+          "capability": "spot_watch"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 843,
+      "cache_read_input_tokens": 20466,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 843,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 250,
+      "output_tokens_details": {
+        "thinking_tokens": 193
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

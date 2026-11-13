@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CgzLPpz9gBWxSsiAMU34L",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlAYKEAgTGAI4AUIIdGhpbmtpbmcSDL5TeyTCY+pbUDMpGRoM4nUDcCNjtU/s0eXwIjAg7k2o+kN7ryGR+ZAlTPy06OXW/w9QrhK0/Bhst1PGy7JKz0oIeeb0m6kZ1hqCiMUqsQXPyVQm4KA7f2DEJrbyDYwhh6JQ3xEJFhAgPT7dml3LN9DdEJghv5oPjG+Madw6SQMrGbUPjAE1FY815DsDT7vJ3Qz8smVKTwxsJTwcU/5XVeYPJC3S9xjgFImGAKZfTNEfZt+pV5zRq0yGQDYvXYUL7OOJgjAikaU7eRgBF+ue/n5B2n6cct4YVgXTu3WPA/R2CkX0+pAOESg3hkbHRLg9LmshSspiCOhjsvd4o12sUV8houPGW0Q6DgEhzmZ1wngmsMxi5KZEjbtOgPq2kGPen6fd7GYOmde3yvA1fEVuc+XwlVOLwEHJz8avZKV6z13wQXQ7klb3UO0ERu9LXDU+XM2eL2rVzG90ZSDH8HaxxiqZ0Z6OjQLYQcdKg4MrsKx4bxzu6VjIWuGCPRbHmxfT6j86AIY3rcNsr4jsGkXsAEnhU0HV5RC28Pj9aN6vNFi5lWFj5BXgcol9tzwnnEJaV2UahHjbG3st+9WCOkr6b14dL3O5bgEJrArl5XsBZQ81qAajjsVclnCno0/XRquro20X39yLLoclSEOMEWKhlsJeTD7ZCJaHL1VYUKFOOaPoLCHzIVg1chIZAODxYuyoJ60ktajSfrZeBH0fkmIJSbs5egsiFm4NAKSMb/ATFCSniIQdHYjsgP6+D0UpCArQ6oLzJbg2CKP4FwJrtIjzpLOqZW2UAW/jzoQDFZNLdSMMIadY+SNzvBU1t5iWhHJdD8fEWgYkq1SLC41A/4ZL2EeLOjChwgokZZ8Ij0qVuyGn0I7YZ+XeRGYDEj85oaZAnLY2mHFXPAjsuhnmYCxA2lNp1gkbQHxm6aercQcXEpAJuU767bkuqdhrgSk/u+Ktt4vUqIsJ/BlYDs6wnZjyCuy/hniZXiMc/OkOP2J5i6NjAl7EE5fv5+E8DWDQjQVU2hgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0168D4SZ725PXLn2Z9RJfU86",
+        "name": "list_group_lists",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 395,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20212,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 83,
+      "output_tokens_details": {
+        "thinking_tokens": 53
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

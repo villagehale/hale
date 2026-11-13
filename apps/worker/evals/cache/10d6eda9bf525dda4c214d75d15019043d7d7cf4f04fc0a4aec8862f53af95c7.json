@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the web find. It quotes the title whole, attributes it to Markham Museum's site, and says it is unverified without dressing it up as checked. Lin at about 10 fits the 6-12 range, and the URL belongs to the webFind. The empty Sunday and the weather (27, 15%) match the week and forecast, and it asks one question. It is a bit padded, with the 'Lin fits that range' clause and the weather sentence, and it is slightly long for a text.",
+    "score": 4
+  }
+}

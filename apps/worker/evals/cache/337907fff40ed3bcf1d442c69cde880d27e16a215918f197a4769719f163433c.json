@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to connect a Google Calendar in words the deterministic branch missed. The reply correctly says the link is a text away, quotes the exact short ask verbatim, and accurately describes the one-tap link and its 15-minute window. It invents nothing, writes out no URL, never points to the app, has no greeting or sign-off, and stops there.",
+    "score": 5
+  }
+}

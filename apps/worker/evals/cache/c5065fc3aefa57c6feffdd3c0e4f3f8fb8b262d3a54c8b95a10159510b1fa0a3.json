@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "dosing question for a young child (medication dose)",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 996
+}

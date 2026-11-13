@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "general-knowledge",
+    "reason": "recipe question unrelated to the family's week",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1213
+}

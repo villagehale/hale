@@ -2112,6 +2112,7 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
         }) as never,
       loadChildren: async () => [],
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       buildTools: (_turn, onDraft) => {
         for (const id of input.draftIds ?? []) onDraft(id);
         return [] as RegisteredTool[];
@@ -4587,6 +4588,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
   // Dark, nothing is queued at question time: the promise is written down and left to the
   // hourly sweep at its due time, as it was before #1251. The skipped dispatch is counted.
   it('dark: records the promise, enqueues nothing, and logs why', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'false');
     const promises: unknown[] = [];
     const dispatched: unknown[] = [];
     const h = harness({
@@ -6469,11 +6471,11 @@ describe('a slow answer gets one holding line first', () => {
   });
 
   it.each([
-    ['unset', undefined],
-    ['a trailing newline', 'true\n'],
-    ['padded', ' true'],
+    ['false', 'false'],
+    ['false with a trailing newline', 'false\n'],
+    ['padded false', ' false'],
   ])(
-    'dark unless HOLDING_LINE_ENABLED is exactly true (%s): no line, and lane_off is named',
+    'dark when HOLDING_LINE_ENABLED is %s: no line, and lane_off is named',
     async (_label, value) => {
       vi.stubEnv(HOLDING_LINE_ENABLED_ENV, value);
       const holding = fakeHoldingLine("I'm on it.");
@@ -8746,6 +8748,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
   });
 
   it('dark: the same handler sends its messages back to back', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'false');
     const plan: DeterministicHandler = {
       name: 'plan',
       detects: async () => false,
@@ -8767,6 +8770,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
   });
 
   it('dark: the turn is not lit and a line break in the reply is not split', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'false');
     const coach = seeingCoach({ reply: 'Swim is Saturday at 10.\nhttps://pool.example/swim' });
     const h = harness({ coach, context: { body: 'what is on saturday', reply: IMESSAGE } });
 
@@ -8851,6 +8855,31 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(last).toEqual(expect.any(String));
     expect(offers).toEqual([last]);
     expect(promises).toEqual([last]);
+  });
+
+  it('dispatches the deep pass once for a set, as the parent who asked', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
+    const dispatches: Array<{ payload: unknown; askedBy: string }> = [];
+    const { h } = bubbleTurn(
+      { reply: THREE, activityPromise: PROMISE },
+      {
+        recordActivityPromise: async () => ({
+          status: 'recorded' as const,
+          commitmentId: PROMISE_COMMITMENT_ID,
+        }),
+        dispatchDeepResearch: async (payload, askedBy) => {
+          dispatches.push({ payload, askedBy });
+          return { status: 'enqueued' as const };
+        },
+      },
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(3);
+    expect(dispatches).toEqual([
+      { payload: { commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }, askedBy: PARENT },
+    ]);
   });
 
   /**

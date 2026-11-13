@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyAp7qB2KuvexGXsGsgD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjggKEAgTGAI4AUIIdGhpbmtpbmcSDIQ6Q1qKDi+AG590AhoMTm3YXpc1PGQO8J5mIjDLnSzeOkyWpZbt7oJhqX+yEwQxJWzwx0U6O/tknUZF/jcisqjEBFD1c3rpVgumovQqqweYj+oG2UYggQiHwSjt1UpLF8cUj/ITvOcXW9tItXh2D8RXC+xn52yMP6rV9Io3mwkk2qHVdrxDmLpdYpibVFzGDFaWrnjR5q6mBEci3HcsmwzZ5D7bfhx5P2H0nVZS0rwl9GcWLGkd04Gi0WEubPYv2Rq2ny98y+Y0Gn1MewmywrQfx8sZrdekld8z1R9IZJ5RB2KASigZjAZ+2m6AATJkOQh7o4IlJbOypKYFeRwBwTlcxYd2efn+fHYnFKRfY/USOBgnSn4vh/wqoy2dkXm+WSHGIjumtgqzLHY1AkDQfaTBciw3nnS6on3u2owwHJlZeMg9+ZlWgr3GAqAVWgEim8KBXIC9g6Gox3TwqLlzl5pnv5+EN69vwawcahMEfSvdWD7O2qLxQg2YBsF+jqnXtwAxXBYxSKXVQvrp+ae7W89bqI+ofyIgg3cA0/yqNPFlff8kwwBBf3loAu1/UUglYDaKV5sesMLlD7BLmD7Mga924OFJdsuyzGt24KjCXSq1dGWbEVQqZA9dQQV7++aTxbQBOuyA+FlnHLuhl6z+iDSQuEuEBfPs8W7JOHY2czLMwVIRAcMxncSewC0N4R5xKa9Y4e6Ivawi1Uq4lTMwPesN9VPB/AuQSW8s1crVTJLP6QhKN2SqQvd+4/qKVVrZmfuDfZvvmV9eIDYZQaRSlXSXVwK/drYvWPFehRg2k50pdC6nT8R5cspfzG+XVbQfcZqth3KwlQvNQU6CDVhHeX9Xx2vrxaCxdjK6oswVMkogZQG95LAho+AUlbCVpjoDH/GeBKLiOu4RUfQlc9FhHcgH4hwmE0w2PyHVOiYwDGc6f5aEATWE+KBRLPp1K13qOBRjusMoxVwSqkolH1Wuko1TiU2cdW1wzj5OI8dbVcr/Lqi2cAyjFaxVfNXOQJm83Uka4MGku2JBmvNB6HbofU6EtC7hY35LSCWimFPm3yEegZvLbtXOLnDRert/qD29ws3syA4sIYeco0yDV5SNeCUMc3x7WEfhCvWP1w6CV5x6L4zQuYE6dj6NSpHTjiSz1VrbwOWwgt9bIKwTbQSeCPUkC6mbx3A35ZhwcjjIaJ5Yqx6gh7oQMyjPJTDfQVA98X03dsYslwmzHk/15SxOOt5y3RmFuhVDV3yLB0j4u/wvpqeXlwR2lcuMt5yRvfy67iGUEodW5/Ze59woJshWs6kDpyXSYHvhyuGCFw6zWqnqTCpp/agXpmJ77DauWUh3XKeRipF1fiYpukoYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Maple Tree's front office says they can set up a visit. Their director will be the one to arrange a time, so they haven't picked a date yet."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 685,
+      "cache_read_input_tokens": 19076,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 685,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 175,
+      "output_tokens_details": {
+        "thinking_tokens": 129
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

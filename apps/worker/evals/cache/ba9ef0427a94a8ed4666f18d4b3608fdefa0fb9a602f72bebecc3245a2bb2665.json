@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks for a children's activity this week, which is finding something for the family to do",
+    "language": "ar",
+    "language_request": null
+  },
+  "latencyMs": 1388
+}

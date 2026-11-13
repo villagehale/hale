@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgyHrYBGQq18Ln493fMnT",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShQYKEAgTGAI4AUIIdGhpbmtpbmcSDEsNOXmB7UFPiXNZPxoMC+lZDeBeCiMTxOVNIjDUOnWDhRrbX91M7enQkDJ8NnMlvp4uzBX56GAYetVR5c3VcMuo4rZ3XxGpMQtvDDcqogX9HhsCX0n4HZRJwdvyS1/ZTZQwZHz1qBIvcMf3eN6wSn0pacNlsHdRAQGV9MXbvkmZs1F8JKowKziFChWpyxdVB6Y0a8+yB/JmBnSQ6+foGd/J6vWPSMO7Iki5PCyuoqTD2hPEK+AWNeiL7EhZMgBsmQKIrfrL9dcKWYJnikBHk4LWVNDrDArUNAVOFSdAekErK8IZpnJMQAVJV96mRnkRQv6yHaNTHBi1v+kPPRDQWYJBXba6O5axPjezVeSGbiUR55JpBjmw826SyQF1UaSPg6s3WW/EaDLHo8kTbHRrs02mvC69peQNL3KoJWZRYrFMUwZU/8nlg/d7M3Tba+SUeXRVIG53A+jBK/XFqG744bO438XA1Yd4h0TZUJLutS2T7RxK83nHiFugJhHjNQ8sUNyYHEiqIDn9RDiHTx8vnmDdA2hQwnYnam4D9ldpC0n+u3+ZrhxaHYDDvwag87RrMPd6w0yZPn1YmrrDLmVsrjr3y81L3v6Jg5dV1JqM+Y96wIQKhnF3pBySf2nMMTJwBlucPrZa2I0N16qtsJinjNShxcRLVv9As8JcvDCjiFj9wfnYR2Hc1S5ZeIQbplL/LKcUcHRhk9dX+Ke37jq2avnQspxO4TBFXosNnpgFrEpP+/qmqOJbLazPitWm/S1hJ5IQFVGwJ8C58Jqczl0WQo9m7gf7vUc041F3ax9K4ZTKeVTsBgMz1nEz4fFoLwSpBunGUq6XcjHTiAHG9c5g3yl59tWl8MDPuT5JFZaHmz3AcvLkcg0UHRLxvvZlbSVz7gFRSPcucboGxUAEHKGUfqvdseWDE9vGGwNs7A7OCGQFhD8wmpZCLgjtlghUrNamduJZeVN/aGK8h7XF4QcV/L6fbZpv2/lUtwNqHVFvnUjDNxgB"
+      },
+      {
+        "type": "text",
+        "text": "Yes, swim is Thursday at 5:15pm at the East pool. There's also one today (Monday) at 4:30pm at the West pool."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1304,
+      "cache_read_input_tokens": 23580,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1304,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 106,
+      "output_tokens_details": {
+        "thinking_tokens": 57
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2489
+}

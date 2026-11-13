@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands Sam the family's appended referral link and correctly tells them to forward it themselves, which is the right handling. Everything it says is grounded in real features. It runs a bit long, though: the clause about not texting the friend first and the product pitch go past what the answer needed.",
+    "score": 4
+  }
+}

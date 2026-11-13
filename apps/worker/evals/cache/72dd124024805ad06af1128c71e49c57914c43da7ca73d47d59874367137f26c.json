@@ -1,0 +1,56 @@
+{
+  "response": {
+    "id": "msg_011CgyFyrdysKxGnEgcm6Xi1",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSowkKEAgTGAI4AUIIdGhpbmtpbmcSDHSPK6kfB8jibwe1VxoMcY5HKvA757u4jDpwIjD3J8dGqVxpQG/svXKmV+AzYOrTfC5NYBL3yx0CZTcD8lsiZxLW0cW0mcQFp8b0QisqwAjh/Pvccit7Xbn2WCsAX0Du1/9RKGZDla0kdKvk06Yj3svpfvCaak+jboCNLVwW8NYM8xBQGfeoripjUwI/bABr7zE9XcS9gSraFiJiUkLT8pO5tHRqS44fxirF6TDUbKFY3jz/5wL0PH1g93CeLSGd0B394/bHdNiYE6pRt1bE1CFlXGZL3x4hOpdPiYf5QZ3ICbEuvBInR+qjcdZ6POmfbW3hXUk8g5mGeMQEdrLKhG3QvukmX0xji6iWmTVy8wMotYZgzvm6WFkuXLTiS1JslwswOcAONmwq0Gy4e+c+lQTg83JdRyXPVuG88Cl+Wna0/hBhTsccAijqehHkpjr9Fc/0AfBJyoVSbPzfPkgc3zXDc/349gpnx1hp61ARSOSNkOaxVBnBm/Euy4K+MJeu4SUJDYDMcFi2NbLnNf9tm2D/uquwIguEuY2GwdZr9x6VEJi5+2reaD5AAaaUQX+QZ9pVehXSMxnL71U/Qg7jAlexeAW+1xTnnug9iyxoH5QpLoBavr4h3u/tyqdI45tNW/FieY+t5p42bB1SXDKz7aEhKHjAUFgAWOKAzm49mBXD2Ww5+Qq+L1ewkHTNzzdn250MQyJ3C9hronE9Wp7vIIYi3ja12ngaijbL2V5MIAemQgVqEH4SqKvlIr4R9qQ5eA0tKQDm+F5rLoyD5BKdpapI0t1zx/lE6JdpOEva/LJHAiqGTJwt1yiExdOjHe1UfBeYeIokaSvXiRaYcb4Ih5Z8rE8aKGDnJpG3TGSA2bfhLJxL89Vir03lKoZ5T0tGZlNWr25sbvPjoapcW5KUlpCyNSGlFrRKsULuZ6NDpOdPJJTT07pl4s7Vg+lORPwwIGS2RnyVNf+9pJ3lQ0zRyW1KDp5D376mj6bw+gF1qMlRBCdhMA0wpuyMhTrGa2hkGFoK9Vv523SKyTILkVp0/YjLbD47Ieb9YLqBrPVGPVJN/BNORiOZWbgr4EB5WstsNTTFZZ+ALDIpDCncrjLQDcUGxmQSm3ztEMNahOPmQXO0MhFsjvo6ocRx35Ba/P8gi7oyemmdMshuXLBZ3mUH0ytEWnZV8Xyymjpsrr0P5M2IlWlcVO9paOoHtBiT+MISbjem/C88JHbYUmVGDnn+U+9U7LotIqJtOiKgTbfUpmZ+Aci6zMAJUE+op0U0f8mRGS16rALCe0OfuFw46nhDAV/CN4H+B9exktViH9SHSuv7mS9Zi+CeXuH2Sp5dfLhPN0MSjws2DVsO+YJZZ4Q5B+CpYgSoQaXIiE6qZ3YdHPCHiA44Rb4ayV+BfvpWCj/SasTvN8JMaHbpt30IjH6e1NTOgWO+oVTYeuxetf/KzTj4NUTuitZC8fuBco0RKAXyWsMyIk7UWkaGY0gF8UYSns1YWaKRao9W/beeTW0SJJwyKKDhIDMAaw4pNaT521MmsLkPOA79fNl4D4XVlVAaxBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MJN6mu6jJeU4f7mdUAfT4c",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "toddler",
+          "ageMonths": 28
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017KNpN5JpJ5GBuFV29qKanJ",
+        "name": "note_capability_correction",
+        "input": {
+          "capability": "sign_up"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 771,
+      "cache_creation_input_tokens": 20322,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 20322
+      },
+      "output_tokens": 317,
+      "output_tokens_details": {
+        "thinking_tokens": 184
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

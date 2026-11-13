@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "asks to get a named specialty (speech therapist) booked",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1706
+}
