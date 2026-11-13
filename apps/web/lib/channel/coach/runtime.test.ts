@@ -2578,6 +2578,21 @@ describe('a reply written after read_email (VIL-628)', () => {
     }
   });
 
+  it('an email number in another script, or with letters for digits, is dropped through the runtime', async () => {
+    for (const written of ['\u0665\u0665\u0665-\u0660\u0661\u0664\u0662', '555-O142', '555 Ol42']) {
+      const { reply } = await respond({
+        read: true,
+        answer: `The trip is Friday. Call ${written} for the deposit.`,
+      });
+      expect(reply).toBe('The trip is Friday.');
+    }
+  });
+
+  it('positive control: the date and times the parent asked about survive the runtime', async () => {
+    const answer = 'The form is due 2026-11-20, and the trip runs 9:30-11:30. Bring a lunch.';
+    expect((await respond({ read: true, answer })).reply).toBe(answer);
+  });
+
   it("Hale's own site survives a read turn (positive control)", async () => {
     const answer =
       'The trip is Friday. Your settings are at app.villagehale.com and villagehale.com.';

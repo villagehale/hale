@@ -236,9 +236,8 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
     it.each([
       ['a code shaped like a quantity', 'Your code is 482913ab.', 'Enter 482913ab now.'],
       ['a PIN shaped like a year', 'Your PIN is 1987.', 'The PIN is 1987.'],
-      ['a price', 'The fee is $1200.', 'The fee is $1200.'],
-      ['a time range', 'Pickup 4pm-6pm.', 'Pickup is 4pm-6pm.'],
-      ['a date that would read as a phone', 'On 2026-11-13.', 'It is on 2026-11-13.'],
+      ['a price with no currency mark', 'The ref is 1200.', 'The ref is 1200.'],
+      ['a code shaped like a date that is no date', 'Code 48-29-13.', 'Code 48-29-13.'],
     ])('%s', (_label, emailText, reply) => {
       expect(fromEmail(emailText, `Hi. ${reply}`).text).toBe('Hi.');
     });
@@ -338,6 +337,166 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
       const reply = 'Pickup is at 10:30. Swim is 9.45 to 10.15.';
       expect(fromEmail('Pickup 10:30. Swim 9.45 until 10.15.', reply).text).toBe(reply);
     });
+  });
+
+  describe('a real date, clock time or price is never a phone or a code', () => {
+    const fromEmail = (emailText: string, reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [emailText], trusted: [PARENT] });
+
+    it.each([
+      ['a time range', 'The trip runs 9:30-11:30.', 'The field trip runs 9:30-11:30.'],
+      ['an ISO date', 'The form is due 2026-11-20.', 'The form is due 2026-11-20.'],
+      ['a day-month-year date', 'Due 20/11/2026.', 'The form is due 20/11/2026.'],
+      ['a month-day-year date', 'Due 11/20/2026.', 'The form is due 11/20/2026.'],
+      ['a birth-year range', 'Open to kids born 2018-2020.', 'Kids born 2018-2020 can join.'],
+      ['a price of a thousand or more', 'The fee is $1,250.00.', 'The fee is $1,250.00.'],
+      ['a price range', 'Fees $1,200 - $1,500.', 'Fees run $1,200 - $1,500.'],
+      ['a meridiem time range', 'Pickup 10am-12pm.', 'Pickup is 10am-12pm.'],
+      ['a meridiem time range with minutes', 'Swim 9:30am-11:30am.', 'Swim is 9:30am-11:30am.'],
+      ['a clock time read in French', 'Rendez-vous à 10h30.', 'Rendez-vous à 10h30.'],
+      ['a date and a time', 'On 2026-11-20 9:30.', 'It is on 2026-11-20 9:30.'],
+    ])('%s from the email survives', (_label, emailText, reply) => {
+      const out = fromEmail(emailText, `${reply} Bring a lunch.`);
+      expect(out.text).toBe(`${reply} Bring a lunch.`);
+      expect(out.dropped).toEqual({ phone: 0, code: 0, host: 0 });
+    });
+
+    it('a birth-year range the email never gave survives', () => {
+      const reply = 'Kids born 2018-2020 can join. Sam fits.';
+      expect(fromEmail('The camp is in July.', reply).text).toBe(reply);
+    });
+
+    it.each([
+      ['three clock times that dial a phone', '4:16 5:55 01:42'],
+      ['a month past twelve', '13/13/2026'],
+      ['a phone written as a price with no currency mark', '4,165,550,142'],
+      ['a day past the end of its month', '2026-02-30'],
+      ['two years out of order', '2026-1987'],
+      ['a clock time padded with a year', '9:30 2026'],
+      ['a price padded with a clock time', '$41,655 5:01'],
+      ['minutes past the hour', '9:75-11:30'],
+    ])('%s is still a phone', (_label, written) => {
+      const out = fromEmail(`Call ${written}.`, `Hi. Call ${written} today.`);
+      expect(out.text).toBe('Hi.');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('a code glued to a time is still a code', () => {
+      const out = fromEmail('Use AB-10am.', 'Hi. Use AB-10am at the door.');
+      expect(out.text).toBe('Hi.');
+      expect(out.dropped.code).toBe(1);
+    });
+  });
+
+  describe('digits in any script are digits', () => {
+    it.each([
+      ['Arabic-Indic', '٤١٦-٥٥٥-٠١٤٢'],
+      ['Devanagari', '४१६-५५५-०१४२'],
+      ['Adlam', [...'4165550142'].map((d) => String.fromCodePoint(0x1e950 + Number(d))).join('')],
+    ])('a phone in %s digits is dropped', (_label, written) => {
+      const out = drop(`The trip is Friday. Call ${written}.`);
+      expect(out.text).toBe('The trip is Friday.');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('positive control: the parent’s number in Western digits vouches for the same digits', () => {
+      const reply = 'Yes, call ٤١٦-٥٥٥-٠١٤٢.';
+      const out = dropEmailOnlyTokens(reply, { emails: [email], trusted: ['416-555-0142?'] });
+      expect(out.text).toBe(reply);
+    });
+  });
+
+  describe('a letter written for a digit is read as the digit', () => {
+    it.each([
+      ['capital I and O', 'Call 4I6 555 OI42 today.'],
+      ['lower-case l and capital O', 'Call 4l6 555 Ol42 today.'],
+      ['Cyrillic I and O', 'Call 4І6 555 О142 today.'],
+      ['an O inside a dotted phone', 'Call 416.555.O142 today.'],
+    ])('%s: the whole phone goes, never its tail', (_label, written) => {
+      const out = drop(`Hi. ${written}`);
+      expect(out.text).toBe('Hi.');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('positive control: words with those letters and no digit are left alone', () => {
+      const reply = 'Oli and Ilse will go. Old bikes are fine.';
+      expect(drop(reply).text).toBe(reply);
+    });
+  });
+
+  describe('a code split by spaces, slashes or dots is the code the email gave', () => {
+    const fromEmail = (emailText: string, written: string) =>
+      dropEmailOnlyTokens(`Hi. Enter ${written} to keep the spot.`, {
+        emails: [emailText],
+        trusted: [PARENT],
+      });
+
+    it.each([
+      ['spaces', 'AB 12 CD'],
+      ['one space', 'AB 12CD'],
+      ['slashes', 'AB/12/CD'],
+    ])('%s', (_label, written) => {
+      const out = fromEmail('Your code is AB12CD.', written);
+      expect(out.text).toBe('Hi.');
+      expect(out.dropped.code).toBeGreaterThan(0);
+    });
+
+    it('a dot', () => {
+      const out = fromEmail('Your code is AB12CD34.', 'AB12.CD34');
+      expect(out.text).toBe('Hi.');
+    });
+
+    it('positive control: a route or grade the email never wrote as one code survives', () => {
+      const reply = 'Take the TTC 504 bus. Room B 12 is upstairs. Park in lot P 12 B3.';
+      const out = dropEmailOnlyTokens(reply, {
+        emails: ['The trip is Friday.'],
+        trusted: [PARENT],
+      });
+      expect(out.text).toBe(reply);
+    });
+  });
+
+  describe('a trusted host does not carry another host in its path', () => {
+    const only = (reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [email], trusted: [PARENT] });
+
+    it.each([
+      ['in the path', 'villagehale.com/evil-pay.app'],
+      ['in the query', 'https://villagehale.com/r?to=evil-pay.app'],
+    ])('another host %s is dropped', (_label, written) => {
+      const out = only(`Trip is Friday. Open ${written} now.`);
+      expect(out.text).toBe('Trip is Friday.');
+      expect(out.dropped.host).toBe(1);
+    });
+  });
+
+  it('a vanity number with no leading 1 is a phone', () => {
+    const out = drop('Hi. Call 416 REFUNDS today.');
+    expect(out.text).toBe('Hi.');
+    expect(out.dropped.phone).toBe(1);
+  });
+
+  it('Hale’s own find ref is not a code', () => {
+    const reply = 'The trip is Friday. The Saturday swim class [link-1a2b3c] fits.';
+    expect(drop(reply).text).toBe(reply);
+  });
+
+  describe('a CJK reply loses only the sentence that holds the token', () => {
+    it('a Chinese reply keeps the sentence before the phone', () => {
+      const out = drop('旅行是星期五。请拨打416-555-0142。');
+      expect(out.text).toBe('旅行是星期五。');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('a host closed up across a CJK sentence edge drops the whole reply', () => {
+      const out = drop('旅行是星期五。请访问evil。app。');
+      expect(out.text).not.toContain('evil');
+    });
+  });
+
+  it('a cut that leaves no letter or digit sends nothing', () => {
+    const out = drop('Call 555-0199.\n\n👍');
+    expect(out.text).toBe('');
   });
 
   describe('what is sent after a cut', () => {

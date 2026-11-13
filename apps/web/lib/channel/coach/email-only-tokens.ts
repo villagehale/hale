@@ -24,33 +24,43 @@
  * checked again until nothing changes. A cut that would leave a lead-in pointing at what
  * went is a fragment, and a fragment is sent to nobody (VIL-575, `subtractSpans`).
  *
+ * Numbers are read on that reading with every decimal digit, in any script, as its
+ * ASCII digit, and with a letter that stands for a digit (O for 0, I or l for 1, in
+ * Latin, Cyrillic or Greek) read as that digit inside a run that holds a digit.
+ *
  * A phone is seven digits or more with no letter between them, whatever else sits there
  * (a slash, a comma, a line break, a keycap mark), so a separator outside a list never
- * hides one. A phone-shaped match is always a phone: a date never hides it. Four digits
- * or more split the same way are a code, unless they are two groups of two digits or
- * fewer (a clock time or a range). A shape that reads as a year, a price, a quantity, or
- * short groups is let through only when no email carries those digits in that order,
- * however the email split them. Anything the email carries and the trusted text does not
- * is dropped, whatever its shape, so an email's "4pm-6pm" or "1987" goes too. Digits
- * spelled out in words are not read as digits; they stay with the prompt and the eval.
+ * hides one. Four digits or more split the same way are a code, unless they are two
+ * groups of two digits or fewer (a clock time or a range). A match is neither when the
+ * whole of it parses strictly as one or two real dates, clock times, currency amounts or
+ * a year range ("2026-11-20", "9:30-11:30", "$1,250.00", "2018-2020"): hours up to 24,
+ * minutes under 60, days that exist in their month. A prefix or a third part ("20
+ * 2019-2020", "4:16 5:55 01:42") makes it a phone again, so a date never hides a phone.
+ * Any other shape that reads as a year, a price, a quantity, or short groups is let
+ * through only when no email carries those digits in that order, however the email split
+ * them, so an email's PIN "1987" goes. Digits spelled out in words are not read as
+ * digits; they stay with the prompt and the eval.
+ *
+ * Codes in short upper-case groups split by one space, slash or dot ("AB 12 CD") are a
+ * code when an email carries the same letters and digits in that order, so a route
+ * ("TTC 504") the email never wrote as one code is kept. Hale's own find refs
+ * (`[link-1a2b3c]`, which attachLinks always strips) are not codes.
  *
  * Host shape: a word is a host when the shared link check (VIL-613, `hasLinkShape`)
  * says a phone would make a link of it. That check fails closed, so on a read turn
- * "St.Mary" is cut too.
+ * "St.Mary" is cut too. A trusted host is kept only when no part of its path or query
+ * names another host ("villagehale.com/evil.app"). A host written with the word "dot"
+ * is not a link a phone makes, and reading it would need a word list; it stays with the
+ * prompt and the eval.
  *
  * No `~/` imports: the injection eval loads the coach runtime under tsx.
  */
 
-import {
-  asHandsetReads,
-  hasLinkShape,
-  linkHostname,
-  linksOutside,
-  wordSpans,
-} from '../../format/link-shape';
+import { asHandsetReads, hasLinkShape, linkHostname, wordSpans } from '../../format/link-shape';
 import { MARKETING_SITE_URL } from '../../legal-links';
 import { crisisFactsForRegion } from '../crisis-resources';
 import { type Span, segmentSentences, subtractSpans } from '../reconcile/sentences';
+import { REF_MARKER } from './activity-links';
 
 export type EmailOnlyKind = 'phone' | 'code' | 'host';
 
@@ -108,6 +118,12 @@ const DIGIT_GROUPS = /(?<![\p{L}\p{N}])\p{Nd}+(?:[^\p{L}\p{N}]{1,3}\p{Nd}+)*(?![
 const CODE_MIN_DIGITS = 4;
 // '10:30', '9.45', '10-12': two groups of two digits or fewer.
 const CLOCK_GROUP_MAX_DIGITS = 2;
+// Upper-case letters and digits in short groups split by one space, slash or dot
+// ("AB 12 CD", "AB12.CD34"): a code only when an email carries the same letters and
+// digits in that order, since "TTC 504" is a route.
+const SPACED_CODE =
+  /(?<![\p{L}\p{N}])[\p{Lu}\p{Nd}]{1,6}(?:[\s/.·][\p{Lu}\p{Nd}]{1,6}){1,5}(?![\p{L}\p{N}])/gu;
+const SPACED_CODE_MIN_GROUPS = 3;
 // Every digit run in a text with no letter between its digits: how an email carries digits.
 const DIGIT_RUN = /\p{Nd}(?:[^\p{L}\p{Nd}]*\p{Nd})*/gu;
 const YEAR = /^(?:19|20)\d{2}$/;
@@ -120,6 +136,184 @@ const JSON_PUNCTUATION = /["{}[\]]/g;
 /** Whether the year, price, quantity and date shapes may let this exact text off: never
  * when the email carries it. */
 type ShapesExempt = (text: string) => boolean;
+
+interface EmailShapes {
+  shapesExempt: ShapesExempt;
+  /** Whether an email carries these letters and digits in this order, whatever sits
+   * between them. */
+  carries: (alphanumerics: string) => boolean;
+}
+
+const ANY_DIGIT = /\p{Nd}/gu;
+const ONE_DIGIT = /^\p{Nd}$/u;
+const ASCII_DIGIT = /^[0-9]$/;
+const DIGITS_IN_A_SCRIPT = 10;
+const digitValues = new Map<string, string>();
+
+/** A decimal digit's value. Unicode keeps every script's digits as runs of ten from
+ * zero, so the value is how far the digit sits from the start of its run. */
+function asciiDigit(digit: string): string {
+  if (ASCII_DIGIT.test(digit)) return digit;
+  const known = digitValues.get(digit);
+  if (known !== undefined) return known;
+  const point = digit.codePointAt(0) as number;
+  let back = 0;
+  while (ONE_DIGIT.test(String.fromCodePoint(point - back - 1))) back += 1;
+  const value = String(back % DIGITS_IN_A_SCRIPT);
+  digitValues.set(digit, value);
+  return value;
+}
+
+/** The handset reading, with every decimal digit as its ASCII digit. */
+function readOf(text: string): string {
+  return asHandsetReads(text).replace(ANY_DIGIT, asciiDigit);
+}
+
+const ALPHANUMERIC_RUN = /[\p{L}\p{N}]+/gu;
+const DIGIT_LOOKALIKE = /[OoОоΟοIlІіΙӏ]/gu;
+const LOOKALIKE_VALUE: Readonly<Record<string, string>> = {
+  O: '0',
+  o: '0',
+  О: '0',
+  о: '0',
+  Ο: '0',
+  ο: '0',
+  I: '1',
+  l: '1',
+  І: '1',
+  і: '1',
+  Ι: '1',
+  ӏ: '1',
+};
+const WORD_TIME =
+  /(?<![\p{L}\p{N}_])(\d{1,2})(?:[:.](\d{2}))?\s?(?:([ap])\.?m\.?|h(\d{2})?)(?![\p{L}\p{N}_])/giu;
+const DASH = /^[-‐-―−]$/u;
+const ALPHANUMERIC = /^[\p{L}\p{N}]$/u;
+const MERIDIEM_HOURS = 12;
+const DAY_HOURS = 24;
+const HOUR_MINUTES = 60;
+
+/** Where numbers are read: Hale's find refs blanked (attachLinks always strips them), and
+ * a letter standing for a digit read as the digit inside a run that holds a digit, so
+ * "4I6 555 OI42" is the phone it dials. The same length as the reading. */
+function digitReadOf(read: string): string {
+  return read
+    .replace(REF_MARKER, (marker) => ' '.repeat(marker.length))
+    .replace(ALPHANUMERIC_RUN, (run) =>
+      /\d/.test(run)
+        ? run.replace(DIGIT_LOOKALIKE, (letter) => LOOKALIKE_VALUE[letter] as string)
+        : run,
+    );
+}
+
+function isClock(hours: number, minutes: number, maxHours: number): boolean {
+  return minutes < HOUR_MINUTES && (hours < maxHours || (hours === maxHours && minutes === 0));
+}
+
+/** Where codes are read: a clock time written with letters ("10am", "9:30a.m.", "10h30")
+ * blanked, unless a dash glues it to something that is not another such time
+ * ("AB-10am" stays a code). The same length as the reading. */
+function codeReadOf(digitRead: string): string {
+  const times: Array<{ from: number; to: number }> = [];
+  for (const match of digitRead.matchAll(WORD_TIME)) {
+    const hours = Number(match[1]);
+    const minutes = Number(match[2] ?? match[4] ?? 0);
+    const maxHours = match[3] ? MERIDIEM_HOURS : DAY_HOURS;
+    if ((match[3] && hours === 0) || !isClock(hours, minutes, maxHours)) continue;
+    times.push({ from: match.index, to: match.index + match[0].length });
+  }
+  const glued = (at: number, beyond: number) =>
+    DASH.test(digitRead[at] ?? '') && ALPHANUMERIC.test(digitRead[beyond] ?? '');
+  let read = digitRead;
+  times.forEach((time, at) => {
+    const leftOk = !glued(time.from - 1, time.from - 2) || times[at - 1]?.to === time.from - 1;
+    const rightOk = !glued(time.to, time.to + 1) || times[at + 1]?.from === time.to + 1;
+    if (leftOk && rightOk) {
+      read = read.slice(0, time.from) + ' '.repeat(time.to - time.from) + read.slice(time.to);
+    }
+  });
+  return read;
+}
+
+type Item = 'date' | 'time' | 'year' | 'price';
+const ISO_DATE = /((?:19|20)\d{2})([-/.])(\d{1,2})\2(\d{1,2})(?!\d)/y;
+const DAY_MONTH_YEAR = /(\d{1,2})([-/.])(\d{1,2})\2((?:19|20)\d{2}|\d{2})(?!\d)/y;
+const CLOCK = /(\d{1,2})[:.](\d{2})(?!\d)/y;
+const AMOUNT = /([1-9]\d{0,2}(?:,\d{3})+|[1-9]\d*|0)(?:\.\d{2})?(?!\d)/y;
+const CURRENCY_BEFORE = /\p{Sc}\s?$/u;
+const YEAR_AT = /(?:19|20)\d{2}(?!\d)/y;
+const SEPARATORS = /[^\p{L}\p{N}]*/uy;
+const TWO_DIGIT_YEAR_CENTURY = 2000;
+const MONTHS = 12;
+const STRICT_ITEMS_MAX = 2;
+
+function isRealDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > MONTHS || day < 1) return false;
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function stickyAt(pattern: RegExp, read: string, at: number): RegExpExecArray | null {
+  pattern.lastIndex = at;
+  return pattern.exec(read);
+}
+
+/** The strict date, clock time, currency amount or year starting at `at`, if any. */
+function itemAt(read: string, at: number): { kind: Item; end: number; value: number } | null {
+  const iso = stickyAt(ISO_DATE, read, at);
+  if (iso && isRealDate(Number(iso[1]), Number(iso[3]), Number(iso[4]))) {
+    return { kind: 'date', end: at + iso[0].length, value: 0 };
+  }
+  const dmy = stickyAt(DAY_MONTH_YEAR, read, at);
+  if (dmy) {
+    const year = Number(dmy[4]) + ((dmy[4] as string).length === 2 ? TWO_DIGIT_YEAR_CENTURY : 0);
+    const [a, b] = [Number(dmy[1]), Number(dmy[3])];
+    if (isRealDate(year, b, a) || isRealDate(year, a, b)) {
+      return { kind: 'date', end: at + dmy[0].length, value: 0 };
+    }
+  }
+  const clock = stickyAt(CLOCK, read, at);
+  if (clock && isClock(Number(clock[1]), Number(clock[2]), DAY_HOURS)) {
+    return { kind: 'time', end: at + clock[0].length, value: 0 };
+  }
+  const amount = stickyAt(AMOUNT, read, at);
+  if (
+    amount &&
+    CURRENCY_BEFORE.test(read.slice(0, at)) &&
+    digitsOf(amount[1] as string).length < PHONE_MIN_DIGITS
+  ) {
+    return { kind: 'price', end: at + amount[0].length, value: 0 };
+  }
+  const year = stickyAt(YEAR_AT, read, at);
+  if (year) return { kind: 'year', end: at + year[0].length, value: Number(year[0]) };
+  return null;
+}
+
+/**
+ * Whether the whole of read[from, to) is one or two strict dates, clock times or currency
+ * amounts, or a year range: never a phone or a code, whatever the email says. A lone year
+ * is not on it (a PIN can be "1987"), and two parts must be alike (or a date and a time),
+ * so a part never pads a number out.
+ */
+function isDateTimeOrPrice(read: string, from: number, to: number): boolean {
+  const items: Array<{ kind: Item; value: number }> = [];
+  let at = from;
+  while (at < to) {
+    at += (stickyAt(SEPARATORS, read, at) as RegExpExecArray)[0].length;
+    if (at >= to) break;
+    const item = itemAt(read, at);
+    if (item === null || item.end > to || items.length === STRICT_ITEMS_MAX) return false;
+    items.push(item);
+    at = item.end;
+  }
+  const [first, second] = items;
+  if (first === undefined) return false;
+  if (second === undefined) return first.kind !== 'year';
+  if (first.kind === 'year' || second.kind === 'year') {
+    return first.kind === second.kind && second.value >= first.value;
+  }
+  const kinds = new Set([first.kind, second.kind]);
+  return kinds.size === 1 || (kinds.has('date') && kinds.has('time'));
+}
 
 function digitsOf(text: string): string {
   return text.replace(/\D/g, '');
@@ -171,13 +365,18 @@ function isClockOrRange(groups: readonly string[]): boolean {
   return groups.length === 2 && groups.every((group) => group.length <= CLOCK_GROUP_MAX_DIGITS);
 }
 
-/** Phones and codes in a handset reading, where each sits in it. */
-function numbersIn(read: string, shapesExempt: ShapesExempt): Token[] {
+/** Phones and codes in a reading (`readOf`), where each sits in it. */
+function numbersIn(read: string, email: EmailShapes): Token[] {
   const found: Token[] = [];
   const push = (kind: EmailOnlyKind, key: string, from: number, length: number) =>
     found.push({ kind, key, from, to: from + length });
-  for (const match of read.matchAll(PHONE)) {
-    if (isPhone(match[0])) {
+  const overlapsFound = (from: number, to: number) =>
+    found.some((token) => token.from < to && from < token.to);
+  const digitRead = digitReadOf(read);
+  const codeRead = codeReadOf(digitRead);
+  for (const match of digitRead.matchAll(PHONE)) {
+    const to = match.index + match[0].length;
+    if (isPhone(match[0]) && !isDateTimeOrPrice(digitRead, match.index, to)) {
       push('phone', digitsOf(match[0]), match.index, match[0].length);
     }
   }
@@ -194,21 +393,41 @@ function numbersIn(read: string, shapesExempt: ShapesExempt): Token[] {
       push('phone', keypadDigits(match[0]), match.index, match[0].length);
     }
   }
-  for (const match of read.matchAll(CODE)) {
-    if (isCode(match[0], shapesExempt)) {
+  for (const match of codeRead.matchAll(CODE)) {
+    if (isCode(match[0], email.shapesExempt)) {
       push('code', match[0].replace(/[-_]/g, '').toLowerCase(), match.index, match[0].length);
+    }
+  }
+  for (const match of codeRead.matchAll(SPACED_CODE)) {
+    const groups = match[0].split(/[\s/.·]/);
+    const key = groups.join('').toLowerCase();
+    const mixed =
+      groups.length >= SPACED_CODE_MIN_GROUPS ||
+      groups.some((group) => /\p{L}/u.test(group) && /\d/.test(group));
+    if (
+      mixed &&
+      key.length >= CODE_MIN_CHARS &&
+      /\p{L}/u.test(key) &&
+      /\d/.test(key) &&
+      email.carries(key) &&
+      !overlapsFound(match.index, match.index + match[0].length)
+    ) {
+      push('code', key, match.index, match[0].length);
     }
   }
   // Read last, so digits inside a phone or a code are not a second token.
   const taken = [...found];
-  for (const match of read.matchAll(DIGIT_GROUPS)) {
+  for (const match of codeRead.matchAll(DIGIT_GROUPS)) {
     const from = match.index;
     const to = from + match[0].length;
     const groups = digitGroups(match[0]);
     if (digitsOf(match[0]).length < CODE_MIN_DIGITS || isClockOrRange(groups)) continue;
     if (taken.some((token) => token.from < to && from < token.to)) continue;
+    if (isDateTimeOrPrice(codeRead, from, to)) continue;
     const shortGroups = groups.every((group) => group.length < CODE_MIN_DIGITS || YEAR.test(group));
-    if (shapesExempt(match[0]) && (shortGroups || isQuantityOrPrice(read, from, to))) continue;
+    if (email.shapesExempt(match[0]) && (shortGroups || isQuantityOrPrice(codeRead, from, to))) {
+      continue;
+    }
     push('code', digitsOf(match[0]), from, match[0].length);
   }
   return found;
@@ -216,9 +435,11 @@ function numbersIn(read: string, shapesExempt: ShapesExempt): Token[] {
 
 /** Every number trusted text holds, and each run of whole digit groups inside one, so a
  * parent's "555-0101, 555-0102" vouches for either number alone. */
+const EVERY_SHAPE: EmailShapes = { shapesExempt: () => false, carries: () => true };
+
 function trustedNumbersIn(read: string): Token[] {
-  const found = numbersIn(read, () => false);
-  for (const match of read.matchAll(DIGIT_RUN)) {
+  const found = numbersIn(read, EVERY_SHAPE);
+  for (const match of digitReadOf(read).matchAll(DIGIT_RUN)) {
     const groups = digitGroups(match[0]);
     for (let first = 0; first < groups.length; first++) {
       for (let last = first + 1; last <= groups.length; last++) {
@@ -268,6 +489,8 @@ const HALE_OWN: readonly string[] = [
 ];
 
 const CUT_PASSES = 8;
+// A trusted host's path or query can name another host ('villagehale.com/evil.app').
+const PATH_PARTS = /[/?#=&]/;
 const WORD_CONTENT = /[\p{L}\p{N}]/u;
 const NOTHING_DROPPED = (): Record<EmailOnlyKind, number> => ({ phone: 0, code: 0, host: 0 });
 
@@ -277,8 +500,11 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
   const trusted = [...HALE_OWN, ...check.trusted].map((text) =>
     text.replace(JSON_PUNCTUATION, ' '),
   );
-  const trustedReads = trusted.map(asHandsetReads);
+  const trustedReads = trusted.map(readOf);
   const trustedNumbers = trustedReads.flatMap(trustedNumbersIn);
+  const trustedWords = new Set(
+    trustedReads.flatMap(wordSpans).map((span) => span.word.toLowerCase()),
+  );
   const trustedHosts = new Set(
     trustedReads
       .flatMap(wordSpans)
@@ -286,10 +512,11 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
       .map((span) => hostOf(span.word))
       .filter((host) => host !== null),
   );
-  const emailReads = check.emails.map((email) => asHandsetReads(email).toLowerCase());
+  const emailReads = check.emails.map((email) => digitReadOf(readOf(email)).toLowerCase());
   const emailDigits = emailReads.flatMap((email) =>
     [...email.matchAll(DIGIT_RUN)].map((match) => digitsOf(match[0])),
   );
+  const emailAlphanumerics = emailReads.map((email) => email.replace(/[^\p{L}\p{N}]/gu, ''));
   // A shape lets a token off only when no email carries it: neither the same text nor,
   // for four digits or more, the same digits in the same order however they were split.
   const shapesExempt: ShapesExempt = (text) => {
@@ -300,10 +527,14 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
       (digits.length >= CODE_MIN_DIGITS && emailDigits.some((run) => run.includes(digits)))
     );
   };
+  const email: EmailShapes = {
+    shapesExempt,
+    carries: (alphanumerics) => emailAlphanumerics.some((run) => run.includes(alphanumerics)),
+  };
 
   let text = reply;
   for (let pass = 0; pass < CUT_PASSES; pass++) {
-    const once = dropPass(text, { trusted, trustedNumbers, trustedHosts, shapesExempt });
+    const once = dropPass(text, { trustedWords, trustedNumbers, trustedHosts, email });
     dropped.phone += once.dropped.phone;
     dropped.code += once.dropped.code;
     dropped.host += once.dropped.host;
@@ -320,32 +551,33 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
 function dropPass(
   reply: string,
   known: {
-    trusted: readonly string[];
+    trustedWords: ReadonlySet<string>;
     trustedNumbers: readonly Token[];
     trustedHosts: ReadonlySet<string>;
-    shapesExempt: ShapesExempt;
+    email: EmailShapes;
   },
 ): EmailOnlyResult {
   const dropped = NOTHING_DROPPED();
-  const read = asHandsetReads(reply);
-  const untrustedWords = new Set(linksOutside(reply, known.trusted));
-  const hosts: Token[] = wordSpans(read)
-    .filter((span) => hasLinkShape(span.word))
-    .flatMap((span) => {
-      const host = hostOf(span.word);
-      const trustedWord = !untrustedWords.has(span.word.toLowerCase());
-      if (trustedWord || (host !== null && known.trustedHosts.has(host))) return [];
-      return [{ kind: 'host' as const, key: host ?? '', from: span.from, to: span.to }];
-    });
-  const cuts = [
-    ...numbersIn(read, known.shapesExempt).filter(
-      (token) => !trustedHas(token, known.trustedNumbers),
-    ),
-    ...hosts,
+  const trustedHost = (host: string | null) => host !== null && known.trustedHosts.has(host);
+  const cutsIn = (read: string): Token[] => [
+    ...numbersIn(read, known.email).filter((token) => !trustedHas(token, known.trustedNumbers)),
+    ...wordSpans(read)
+      .filter((span) => hasLinkShape(span.word))
+      .flatMap((span) => {
+        const word = span.word.toLowerCase();
+        const host = hostOf(span.word);
+        const carried = span.word.split(PATH_PARTS).slice(1).filter(hasLinkShape).map(hostOf);
+        if (known.trustedWords.has(word) || (trustedHost(host) && carried.every(trustedHost))) {
+          return [];
+        }
+        return [{ kind: 'host' as const, key: host ?? word, from: span.from, to: span.to }];
+      }),
   ];
+  const read = readOf(reply);
+  const cuts = cutsIn(read);
   if (cuts.length === 0) return { text: reply, dropped };
   for (const cut of cuts) dropped[cut.kind] += 1;
-  const spans = sentencesHolding(reply, read, cuts);
+  const spans = sentencesHolding(reply, read, cuts, cutsIn);
   if (spans === null) return { text: '', dropped };
   const left = subtractSpans(reply, spans);
   return { text: left.status === 'cut' ? left.text : '', dropped };
@@ -353,24 +585,38 @@ function dropPass(
 
 /**
  * The sentences of the reply, as written, that hold a cut found in its reading. Each
- * sentence is read on its own; when those readings do not add up to the whole reading
- * (a dot closed up across a sentence edge), no cut can be placed, and null drops it all.
+ * sentence is read on its own. When those readings do not add up to the whole reading (a
+ * CJK full stop read one way at the end of a sentence and another way inside one), the
+ * cuts are found again in the joined readings, and placed there only when every cut of
+ * the whole reading is found again; otherwise (a host closed up across a sentence edge)
+ * no cut can be placed, and null drops it all.
  */
-function sentencesHolding(reply: string, read: string, cuts: readonly Token[]): Span[] | null {
+function sentencesHolding(
+  reply: string,
+  read: string,
+  cuts: readonly Token[],
+  cutsIn: (read: string) => Token[],
+): Span[] | null {
   const sentences = segmentSentences(reply, undefined);
-  const reads = sentences.map((sentence) =>
-    asHandsetReads(reply.slice(sentence.start, sentence.end)),
-  );
   const tiled =
     sentences[0]?.start === 0 &&
     sentences.at(-1)?.end === reply.length &&
     sentences.every((sentence, at) => at === 0 || sentence.start === sentences[at - 1]?.end);
-  if (!tiled || reads.join('') !== read) return null;
+  if (!tiled) return null;
+  const reads = sentences.map((sentence) => readOf(reply.slice(sentence.start, sentence.end)));
+  const joined = reads.join('');
+  let placed = cuts;
+  if (joined !== read) {
+    placed = cutsIn(joined);
+    const foundAgain = (cut: Token) =>
+      placed.some((other) => other.kind === cut.kind && other.key === cut.key);
+    if (!cuts.every(foundAgain)) return null;
+  }
   const holding: Span[] = [];
   let from = 0;
   sentences.forEach((sentence, at) => {
     const to = from + (reads[at] as string).length;
-    if (cuts.some((cut) => cut.from < to && from < cut.to)) {
+    if (placed.some((cut) => cut.from < to && from < cut.to)) {
       holding.push({ start: sentence.start, end: sentence.end });
     }
     from = to;
