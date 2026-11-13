@@ -1008,7 +1008,10 @@ function buildFixtureTools(
       subject: z.string().min(1),
       window: z.string().optional(),
       childId: z.string().min(1).optional(),
-      area: z.string().min(1).optional(),
+      area: z.preprocess(
+        (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+        z.string().min(1).optional(),
+      ),
     }),
     inputExamples: [
       { subject: 'toddler gymnastics', window: 'this fall' },

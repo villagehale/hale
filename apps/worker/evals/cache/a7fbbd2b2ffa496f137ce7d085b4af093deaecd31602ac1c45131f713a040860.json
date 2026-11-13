@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is in Spanish, names both Saturday picks with their own times, and has no count or lead-in bubble. It has no question. It splits into two bubbles, one per event, which fits. One issue: the first bubble's time is given as 10:30 without noting it is the family's clock, but that is acceptable since the facts already give local times. The addresses at the end are placed by code and are correct. Minor stylistic note only: the second bubble carries a description and then a price and age range, which is slightly dense but still one event.",
-    "score": 5
-  }
-}
