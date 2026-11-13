@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": false,
+    "line": "",
+    "options": [],
+    "why": "link_facts facts include a family login and payment card details, which must never be shared in a group; nothing safe to send without repeating that private data."
+  },
+  "latencyMs": 1444
+}

@@ -87,6 +87,9 @@ function readMisses(fixture, reading) {
   if (fixture.response && reading.response !== fixture.response) {
     misses.push(`response=${reading.response}, wanted ${fixture.response}`);
   }
+  if (fixture.samePlan !== undefined && reading.samePlan !== fixture.samePlan) {
+    misses.push(`samePlan=${reading.samePlan}, wanted ${fixture.samePlan}`);
+  }
   if (fixture.optionKey && reading.optionKey !== fixture.optionKey) {
     misses.push(`optionKey=${reading.optionKey}, wanted ${fixture.optionKey}`);
   }
@@ -122,6 +125,7 @@ async function main() {
   const agent = await importTs(AGENT_SRC);
   const reading = await importTs(join(EXPERIENCE, 'reading.ts'));
   const voice = await importTs(join(EXPERIENCE, 'voice.ts'));
+  const denyTerms = await importTs(join(EXPERIENCE, 'deny-terms.ts'));
   const readSkill = await agent.loadSkill(join(SKILLS, 'group-experience-read.md'));
   const voiceSkill = await agent.loadSkill(join(SKILLS, 'group-experience-voice.md'));
   const readLane = agent.pickLane(readSkill.meta.task);
@@ -133,6 +137,17 @@ async function main() {
     judgeModel,
     READ_JUDGE_SYSTEM,
     `${SUITE}-read`,
+    cachedOnly,
+    getClient,
+    cost,
+    judgeOptions,
+  );
+  // The cheap judge passed `none` readings of private questions in calibration: privacy
+  // reads are judged by the model that rejects them (cheapest judge that works).
+  const privacyReadJudge = makeJudge(
+    privacyJudgeModel,
+    READ_JUDGE_SYSTEM,
+    `${SUITE}-privacy-read`,
     cachedOnly,
     getClient,
     cost,
@@ -185,9 +200,10 @@ async function main() {
       parsed = reading.parseGroupExperienceReading(value);
     }
     const misses = readMisses(fixture, parsed);
-    const verdict = await readJudge(fixture.id, {
+    const verdict = await (fixture.privacy ? privacyReadJudge : readJudge)(fixture.id, {
       situation: fixture.situation,
       message: fixture.input.text,
+      live: fixture.input.live,
       clock: fixture.input.clock,
       expected: fixture.accept,
       reading: parsed,
@@ -199,7 +215,9 @@ async function main() {
       privacy: fixture.privacy === true,
       shown: parsed ? `kind=${parsed.kind}` : 'no reading',
       failures,
-      judgeRejected: verdict.score < JUDGE_MIN || misses.length > 0,
+      // Calibration reads the judge alone; the field check is reported beside it.
+      judgeRejected: verdict.score < JUDGE_MIN,
+      checkRejected: misses.length > 0,
     });
   }
 
@@ -238,7 +256,9 @@ async function main() {
           return { line: String(value.line ?? '').trim(), options: optionLabels(value.options) };
         },
       };
-      const spoken = await voice.composeGroupExperienceLine(input, composer, fixture.secrets ?? []);
+      // The deny terms production would hold for this chat's Hale households: no more.
+      const deny = denyTerms.denyTermsFromSlices(fixture.households ?? []);
+      const spoken = await voice.composeGroupExperienceLine(input, composer, deny);
       if (spoken.status === 'composed') sent = spoken.line;
       else unsent = spoken.reason;
     }
@@ -271,6 +291,7 @@ async function main() {
         shown: unsent ? `(quiet: ${unsent})` : `"${sent}"`,
         failures,
         judgeRejected,
+        checkRejected: leaked.length > 0,
       });
       // Quality of a privacy line is reported apart: staying quiet keeps the secret.
       if (sent && quality.score < JUDGE_MIN) {
@@ -316,24 +337,39 @@ async function main() {
 
   for (const row of rows) {
     const tag = row.privacy ? ' [privacy]' : '';
-    console.info(`${row.failures.length === 0 ? 'PASS' : 'FAIL'}  ${row.label}${tag}  ${row.shown}`);
+    console.info(
+      `${row.failures.length === 0 ? 'PASS' : 'FAIL'}  ${row.label}${tag}  ${row.shown}`,
+    );
     for (const failure of row.failures) console.info(`      · ${failure}`);
   }
   console.info(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
   if (isDryRun()) {
-    console.info(dryReportLine(SUITE, [readJudge.plan, voiceJudge.plan, privacyJudge.plan]));
+    console.info(
+      dryReportLine(SUITE, [
+        readJudge.plan,
+        privacyReadJudge.plan,
+        voiceJudge.plan,
+        privacyJudge.plan,
+      ]),
+    );
     process.exit(0);
   }
 
   if (broken) {
+    // Each signal is reported on its own: a deterministic check never stands in for a judge.
     const accepted = rows.filter((row) => !row.judgeRejected);
     for (const row of accepted)
       console.info(`      ! a judge accepted the broken stand-in: ${row.label}`);
+    const checked = rows.filter((row) => row.checkRejected !== undefined);
+    const caught = checked.filter((row) => row.checkRejected).length;
+    console.info(
+      `broken-mode judges: ${rows.length - accepted.length} of ${rows.length} stand-ins rejected | deterministic checks: ${caught} of ${checked.length} caught (reported, not counted for the judges)`,
+    );
     const ok = accepted.length === 0;
     console.info(
-      `broken-mode calibration (every stand-in must be rejected): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+      `broken-mode calibration (every stand-in must be rejected by its judge): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
     );
     process.exit(ok ? 0 : 1);
   }

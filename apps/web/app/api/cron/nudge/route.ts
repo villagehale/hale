@@ -9,6 +9,7 @@ import { sweepDutyAsks } from '~/lib/channel/coparent/duty/asks';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { runFollowupSweep } from '~/lib/channel/followup/run';
 import { runGroupPlanReportRedrive } from '~/lib/channel/group-plan/redrive';
+import { runGroupPlanMovedNoticeRedrive } from '~/lib/channel/linq/group-plan-rsvp/moved-redrive';
 import { productionGroupPlanReportPorts, withGroupPlanReport } from '~/lib/channel/group-plan/send';
 import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inbound-deps';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
@@ -155,6 +156,12 @@ export const GET = cronRoute('nudge', async () => {
       productionGroupPlanReportPorts(db()),
     );
     const groupPlanReports = await runGroupPlanReportRedrive(db(), { sender: calendarInvites });
+    // VIL-689 · a shared-chat plan whose locked time moved a household's calendar copy at
+    // night owes that household its notice now.
+    const groupPlanMovedNotices = await runGroupPlanMovedNoticeRedrive({
+      database: db(),
+      now: new Date(),
+    });
     const reviewCapture = await runReviewCapture(db(), {
       askOpen: activityFollowupAskOpen,
       verdict: createVerdictReader(reviewVerdictClient),
@@ -190,6 +197,7 @@ export const GET = cronRoute('nudge', async () => {
         departureNotices,
         autonomyNotices,
         groupPlanReports,
+        groupPlanMovedNotices,
         reviewCapture,
         midActivityAsks,
         midActivityAnswers,

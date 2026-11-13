@@ -144,8 +144,9 @@ async function sendOneToOne(
 
 /**
  * VIL-457 — the 1:1 door for a shared group's private aside. Sends the model-written text
- * to that family's primary parent only (never the group), with the same claim-first ledger
- * as every other 1:1 line. No sendable parent means nothing is sent.
+ * to that family's primary parent (never the group), with the same claim-first ledger as
+ * every other 1:1 line. A parent of that family who asked the question themselves
+ * (`askerUserId`) hears it instead (VIL-689). No sendable parent means nothing is sent.
  */
 export function privateAsideOneToOne(
   database: Database,
@@ -154,9 +155,13 @@ export function privateAsideOneToOne(
   familyId: string;
   text: string;
   dedupeKey: string;
+  askerUserId?: string | null;
 }) => Promise<'sent' | 'suppressed' | 'failed'> {
   return async (aside) => {
-    const parent = await primaryParentId(database, aside.familyId);
+    const asker = aside.askerUserId
+      ? await parentOfFamily(database, aside.familyId, aside.askerUserId)
+      : null;
+    const parent = asker ?? (await primaryParentId(database, aside.familyId));
     if (!parent) return 'failed';
     const to = await resolveSendablePhone(database, parent);
     if (!to) return 'failed';
@@ -175,6 +180,22 @@ export function privateAsideOneToOne(
     if (out.outcome === 'already_sent') return 'suppressed';
     return 'failed';
   };
+}
+
+/** `userId` when they hold a parent seat in this family, else null. */
+async function parentOfFamily(
+  database: Database,
+  familyId: string,
+  userId: string,
+): Promise<string | null> {
+  const [row] = await database
+    .select({ role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(
+      and(eq(schema.familyMembers.familyId, familyId), eq(schema.familyMembers.userId, userId)),
+    )
+    .limit(1);
+  return row && (row.role === 'primary_parent' || row.role === 'co_parent') ? userId : null;
 }
 
 /**

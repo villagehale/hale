@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent clearly asked Hale to open a time poll for Saturday 10 or Sunday 10 for the park, which is the expected time_open moment. The reading returned kind none with no options, so the request was missed entirely.",
+    "score": 1
+  }
+}

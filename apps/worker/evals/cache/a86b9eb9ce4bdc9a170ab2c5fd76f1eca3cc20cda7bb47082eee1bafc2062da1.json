@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "This camp is $120 for two sessions, with 4 spots left.",
+    "options": [],
+    "why": "link_facts: public price and spots only, no sign-up offer or names, no question."
+  },
+  "latencyMs": 1674
+}

@@ -1,5 +1,4 @@
-import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import type { Database } from '@hale/db';
 import {
   groupLinkCardsEnabled,
   groupPollsEnabled,
@@ -9,13 +8,18 @@ import {
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { optionKeyAt } from '../group-plan-rsvp/poll-tally';
 import {
+  type GroupPlanRecord,
   type GroupPlanRsvpStore,
   createPostgresGroupPlanRsvpStore,
 } from '../group-plan-rsvp/store';
 import { type FamilyPrivateSlice, denyListForChat, presentHouseholds } from '../multi-family';
-import { settleGroupPlanCalendarAfterRsvp } from '../group-plan-rsvp/inbound';
+import {
+  moveGroupPlanCalendarCopies,
+  settleGroupPlanCalendarAfterRsvp,
+} from '../group-plan-rsvp/inbound';
 import type { PlanRsvpResponse } from '../group-plan-rsvp/tally';
-import { GROUP_RSVP_POLL_KIND, GROUP_TIME_POLL_KIND } from './kinds';
+import type { ListChatHandles } from '../roster';
+import { GROUP_EXPERIENCE_TEMPLATE, GROUP_RSVP_POLL_KIND, GROUP_TIME_POLL_KIND } from './kinds';
 import { type ExperiencePollCardPort, postgresExperiencePollCard } from './poll-card';
 import {
   type GroupExperienceKind,
@@ -48,6 +52,8 @@ export type GroupExperienceTurnOutcome =
       count: 'ignored' | 'intake';
       notice?: 'sent' | { skipped: GroupExperienceVoiceSkip | 'not_sent' | 'asker_unknown' };
       card?: 'sent' | { skipped: string };
+      /** Households this turn texted 1:1. */
+      texted?: string[];
     };
 
 export interface GroupExperienceTurnInput {
@@ -58,6 +64,8 @@ export interface GroupExperienceTurnInput {
   senderName: string | null;
   senderFamilyId: string | null;
   text: string;
+  /** The inbound message's provider id: the key a redelivery of it claims again. */
+  messageId: string;
   language: 'en' | 'fr';
   /** The asking household's zone, so the reader can place a proposed time. Null: unknown. */
   timeZone: string | null;
@@ -76,12 +84,26 @@ export interface GroupExperienceTurnPorts {
    * Production: settleGroupPlanCalendarAfterRsvp.
    */
   settleCalendar?: (input: SettleCalendarInput) => Promise<unknown>;
+  /**
+   * A locked time moved a plan: households whose copy Hale already wrote get it moved and
+   * one notice each. Production: moveGroupPlanCalendarCopies.
+   */
+  moveCalendar?: (input: { planId: string; actorUserId: string | null }) => Promise<unknown>;
+  /** The group transport under the ledgered send. Production: Linq. */
   send?: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+  /**
+   * Unit seam replacing the whole ledgered send (no database). The door never passes it:
+   * production and door tests always go through sendGroupExperienceLine.
+   */
+  sendLine?: (input: { chatId: string; text: string; dedupeKey: string }) => Promise<unknown>;
+  listChatHandles?: ListChatHandles;
   sendOneToOne?: (input: {
     familyId: string;
     text: string;
     url?: string | null;
     dedupeKey: string;
+    /** A parent of `familyId` who asked: they hear it, not the household's primary parent. */
+    askerUserId?: string | null;
   }) => Promise<'sent' | 'not_sent'>;
   /** The asking household's own slice, for its 1:1 answer only. */
   privateSlices?: (familyIds: readonly string[]) => Promise<FamilyPrivateSlice[]>;
@@ -115,15 +137,33 @@ async function settleCalendar(
   );
 }
 
+async function moveCalendar(
+  ports: GroupExperienceTurnPorts,
+  input: GroupExperienceTurnInput,
+  planId: string,
+): Promise<void> {
+  if (ports.moveCalendar) {
+    await ports.moveCalendar({ planId, actorUserId: input.senderUserId });
+    return;
+  }
+  await moveGroupPlanCalendarCopies(
+    { database: ports.database, now: input.now },
+    { chatId: input.chatId, planId, actorUserId: input.senderUserId },
+  );
+}
+
 async function liveView(
   store: GroupExperienceStore,
   plans: GroupPlanRsvpStore,
   chatId: string,
+  now: Date,
 ): Promise<GroupExperienceLiveView> {
   const rsvp = await store.loadLive(chatId, 'rsvp_poll');
   const time = await store.loadLive(chatId, 'time_poll');
   const link = await store.loadLive(chatId, 'link_card');
-  const plan = await plans.loadLivePlan(chatId);
+  const plan = await plans.loadLivePlan(chatId, now);
+  // A poll VIL-471 owns is still the chat's open vote: the reader may see a lock on it.
+  const groupPoll = time ? null : await plans.loadLivePoll(chatId);
   return {
     rsvp: rsvp || plan ? { title: plan?.title ?? null } : null,
     time: time
@@ -133,9 +173,51 @@ async function liveView(
             ? (time.payload.options as { key: string; text: string }[])
             : [],
         }
-      : null,
+      : groupPoll
+        ? {
+            question: groupPoll.question,
+            options: groupPoll.options.map((option) => ({ key: option.key, text: option.text })),
+          }
+        : null,
     link: link && typeof link.payload.url === 'string' ? { url: link.payload.url } : null,
   };
+}
+
+/**
+ * The plan a poll or RSVP opening is about. Only the reader's yes ties it to the open plan;
+ * an event the reader names as another one opens its own plan (closing the open one);
+ * anything else binds to no plan.
+ */
+async function planFor(
+  input: GroupExperienceTurnInput,
+  plans: GroupPlanRsvpStore,
+  reading: GroupExperienceReading,
+): Promise<
+  { status: 'live'; plan: GroupPlanRecord } | { status: 'new'; title: string } | { status: 'none' }
+> {
+  const live = await plans.loadLivePlan(input.chatId, input.now);
+  if (live && reading.samePlan === true) return { status: 'live', plan: live };
+  const title = reading.title?.trim();
+  if (title && (!live || reading.samePlan === false)) return { status: 'new', title };
+  return { status: 'none' };
+}
+
+async function openPlan(
+  input: GroupExperienceTurnInput,
+  plans: GroupPlanRsvpStore,
+  title: string,
+): Promise<GroupPlanRecord> {
+  return plans.createPlan({
+    chatId: input.chatId,
+    familyId: input.familyId,
+    title,
+    startsAt: null,
+    location: null,
+    rsvpDeadlineAt: null,
+    createdByUserId: input.senderUserId,
+    expected: await plans.seatedExpected(input.chatId),
+    now: input.now,
+  });
 }
 
 function allowedKind(kind: GroupExperienceKind): boolean {
@@ -186,17 +268,28 @@ async function sendGroup(
   input: GroupExperienceTurnInput,
   text: string,
 ): Promise<'sent' | 'not_sent'> {
+  const dedupeKey = `${GROUP_EXPERIENCE_TEMPLATE}:${input.chatId}:${input.messageId}`;
   try {
-    if (ports.send) {
-      await ports.send({ chatId: input.chatId, text });
+    if (ports.sendLine) {
+      await ports.sendLine({ chatId: input.chatId, text, dedupeKey });
       return 'sent';
     }
-    await sendGroupExperienceLine(ports.database, {
+    const sent = await sendGroupExperienceLine(ports.database, {
       chatId: input.chatId,
       familyId: input.familyId,
       text,
       now: input.now,
+      dedupeKey,
+      ...(ports.send ? { send: ports.send } : {}),
+      ...(ports.listChatHandles ? { listChatHandles: ports.listChatHandles } : {}),
     });
+    if ('duplicate' in sent) {
+      console.info(
+        { outcome: 'group_experience_duplicate' },
+        'group experience: this message already had its group line',
+      );
+      return 'not_sent';
+    }
     return 'sent';
   } catch (err) {
     console.warn(
@@ -243,7 +336,7 @@ export async function takeGroupExperienceTurn(
   if (!reader) return { handled: true, outcome: 'group_experience_unread', count: 'ignored' };
 
   const urls = groupLinkCardsEnabled() ? httpsUrlsIn(input.text) : [];
-  const live = await liveView(store, plans, input.chatId);
+  const live = await liveView(store, plans, input.chatId, input.now);
   const reading = await reader.read({
     text: input.text,
     senderName: input.senderName,
@@ -287,12 +380,20 @@ async function openRsvp(
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
   const card = ports.pollCard ?? postgresExperiencePollCard(ports.database);
-  const livePlan = await plans.loadLivePlan(input.chatId);
+  const target = await planFor(input, plans, reading);
   const spoken = await speak(
     ports,
     input,
     'rsvp_open',
-    { card: card.enabled() && linqPollsEnabled(), title: livePlan?.title ?? reading.title },
+    {
+      card: card.enabled() && linqPollsEnabled(),
+      title:
+        target.status === 'live'
+          ? target.plan.title
+          : target.status === 'new'
+            ? target.title
+            : null,
+    },
     1,
     'group',
     deny,
@@ -314,24 +415,10 @@ async function openRsvp(
       notice: { skipped: 'not_sent' },
     };
   }
-  let plan = livePlan;
-  if (!plan) {
-    const title = reading.title?.trim();
-    if (!title) {
-      return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
-    }
-    plan = await plans.createPlan({
-      chatId: input.chatId,
-      familyId: input.familyId,
-      title,
-      startsAt: null,
-      location: null,
-      rsvpDeadlineAt: null,
-      createdByUserId: input.senderUserId,
-      expected: await plans.seatedExpected(input.chatId),
-      now: input.now,
-    });
+  if (target.status === 'none') {
+    return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
   }
+  const plan = target.status === 'live' ? target.plan : await openPlan(input, plans, target.title);
   const options = spoken.options.map((text, index) => ({
     key: optionKeyAt(index),
     text,
@@ -374,7 +461,7 @@ async function voteRsvp(
   response: 'yes' | 'no' | 'maybe',
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
-  const plan = await plans.loadLivePlan(input.chatId);
+  const plan = await plans.loadLivePlan(input.chatId, input.now);
   if (!plan) return { handled: false };
   const memberKey = await senderMemberKey(
     { handle: input.senderHandle, name: input.senderName },
@@ -416,7 +503,7 @@ async function tallyRsvp(
   deny: readonly string[],
   store?: GroupExperienceStore,
 ): Promise<GroupExperienceTurnOutcome> {
-  const plan = await plans.loadLivePlan(input.chatId);
+  const plan = await plans.loadLivePlan(input.chatId, input.now);
   if (!plan) return { handled: false };
   const { tally } = await plans.loadTally(plan.id);
   const spoken = await speak(
@@ -472,6 +559,7 @@ async function openTime(
 ): Promise<GroupExperienceTurnOutcome> {
   const card = ports.pollCard ?? postgresExperiencePollCard(ports.database);
   const parentOptions = reading.options;
+  const target = await planFor(input, plans, reading);
   const spoken = await speak(
     ports,
     input,
@@ -479,7 +567,12 @@ async function openTime(
     {
       card: card.enabled() && parentOptions.length >= 2,
       options: parentOptions,
-      title: (await plans.loadLivePlan(input.chatId))?.title ?? null,
+      title:
+        target.status === 'live'
+          ? target.plan.title
+          : target.status === 'new'
+            ? target.title
+            : null,
     },
     1,
     'group',
@@ -514,7 +607,12 @@ async function openTime(
     // Only a time the reader placed on the asker's clock; the voice's own labels carry none.
     startsAt: fromParent ? (reading.starts[index] ?? null) : null,
   }));
-  const plan = await plans.loadLivePlan(input.chatId);
+  const plan =
+    target.status === 'live'
+      ? target.plan
+      : target.status === 'new'
+        ? await openPlan(input, plans, target.title)
+        : null;
   const subjectKey = plan?.id ?? `time:${input.chatId}`;
   let cardResult: 'sent' | { skipped: string } = { skipped: 'polls_off' };
   if (card.enabled() && linqPollsEnabled()) {
@@ -576,7 +674,7 @@ async function lockTime(
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
   const live = await store.loadLive(input.chatId, 'time_poll');
-  if (!live) return { handled: false };
+  if (!live) return lockGroupPoll(input, ports, plans, deny);
   const options = Array.isArray(live.payload.options)
     ? (live.payload.options as { key: string; text: string; startsAt?: string | null }[])
     : [];
@@ -620,15 +718,19 @@ async function lockTime(
       notice: { skipped: 'not_sent' },
     };
   }
+  // The poll's own plan, fixed when it opened, and only while that plan is still the chat's
+  // open plan. A label is never parsed into a date: no placed instant, no plan time.
   const planId = typeof live.payload.planId === 'string' ? live.payload.planId : null;
-  // The winner's time is the instant the reader placed when the poll opened. A label is
-  // never parsed into a date: no placed instant, no plan time and no calendar step.
   const placed = typeof won?.startsAt === 'string' ? new Date(won.startsAt) : null;
-  if (planId && placed && !Number.isNaN(placed.getTime())) {
-    await ports.database
-      .update(schema.linqGroupPlans)
-      .set({ startsAt: placed })
-      .where(eq(schema.linqGroupPlans.id, planId));
+  const openPlanNow = planId ? await plans.loadLivePlan(input.chatId, input.now) : null;
+  if (
+    planId &&
+    openPlanNow?.id === planId &&
+    placed &&
+    !Number.isNaN(placed.getTime()) &&
+    (await plans.setPlanStart(planId, placed, input.senderUserId, input.now))
+  ) {
+    await moveCalendar(ports, input, planId);
     const { rows } = await plans.loadTally(planId);
     for (const yes of await plans.listYesRsvps(planId)) {
       await settleCalendar(ports, input, {
@@ -642,6 +744,44 @@ async function lockTime(
     }
   }
   await store.close(live.id, input.now);
+  return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
+}
+
+/**
+ * VIL-471 owns the chat's open poll: a lock names its single leader and closes it. Its
+ * choices carry no placed instant and no plan, so no plan time moves and no calendar step
+ * runs. A tie, or no votes yet, locks nothing.
+ */
+async function lockGroupPoll(
+  input: GroupExperienceTurnInput,
+  ports: GroupExperienceTurnPorts,
+  plans: GroupPlanRsvpStore,
+  deny: readonly string[],
+): Promise<GroupExperienceTurnOutcome> {
+  const poll = await plans.loadLivePoll(input.chatId);
+  if (!poll) return { handled: false };
+  const tally = await plans.loadPollTally(poll.id);
+  const winner = tally.leaders.length === 1 ? tally.leaders[0] : null;
+  if (!winner) return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
+  const spoken = await speak(ports, input, 'time_lock', { winner }, 0, 'group', deny);
+  if (spoken.status !== 'composed') {
+    return {
+      handled: true,
+      outcome: 'group_experience_line_unsent',
+      count: 'ignored',
+      notice: { skipped: spoken.reason },
+    };
+  }
+  const notice = await sendGroup(ports, input, spoken.line);
+  if (notice !== 'sent') {
+    return {
+      handled: true,
+      outcome: 'group_experience_line_unsent',
+      count: 'ignored',
+      notice: { skipped: 'not_sent' },
+    };
+  }
+  await plans.closePoll(poll.id, input.senderUserId, input.now);
   return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
 }
 
@@ -688,19 +828,27 @@ async function speakLink(
     payload: { url },
     now: input.now,
   });
+  const texted: string[] = [];
   if (ports.sendOneToOne) {
     for (const familyId of familyIds) {
       const oneToOne = await speak(ports, input, 'registration_1to1', { url }, 0, 'one_to_one', []);
       if (oneToOne.status !== 'composed') continue;
-      await ports.sendOneToOne({
+      const sent = await ports.sendOneToOne({
         familyId,
         text: oneToOne.line,
         url,
         dedupeKey: `group-link:${input.chatId}:${familyId}:${url}`,
       });
+      if (sent === 'sent') texted.push(familyId);
     }
   }
-  return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
+  return {
+    handled: true,
+    outcome: 'group_experience_spoken',
+    count: 'intake',
+    notice: 'sent',
+    texted,
+  };
 }
 
 async function movePrivate(
@@ -765,6 +913,7 @@ async function movePrivate(
       familyId: targetFamilyId,
       text: oneToOne.line,
       dedupeKey: `group-private:${input.chatId}:${targetFamilyId}:${input.now.toISOString()}`,
+      askerUserId: input.senderUserId,
     });
     return {
       handled: true,

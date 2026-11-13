@@ -139,6 +139,7 @@ function reading(partial: Partial<GroupExperienceReading>): GroupExperienceReadi
   return {
     kind: 'none',
     title: null,
+    samePlan: null,
     response: null,
     optionKey: null,
     options: [],
@@ -182,6 +183,7 @@ const turnInput = (a: { familyId: string; userId: string }) => ({
   senderFamilyId: a.familyId,
   coveringFamilyId: a.familyId,
   text: 'Hale lock it in',
+  messageId: 'm-1',
 });
 
 async function seedTimePoll(planId: string, starts: readonly (string | null)[]) {

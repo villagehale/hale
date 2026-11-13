@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Here's the sign-up page for the camp: https://park.example/camp. Want me to take the registration from here?",
+    "options": [],
+    "why": "registration_1to1"
+  },
+  "latencyMs": 1039
+}

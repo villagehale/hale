@@ -167,7 +167,7 @@ export async function takeGroupPlanRsvpTurn(
   const pollsOn = (deps.pollsEnabled ?? linqGroupPollsEnabled)();
   if (!rsvpOn && !pollsOn) return { handled: false };
 
-  const live = rsvpOn ? await deps.store.loadLivePlan(input.chatId) : null;
+  const live = rsvpOn ? await deps.store.loadLivePlan(input.chatId, input.now) : null;
   const livePoll = pollsOn ? await deps.store.loadLivePoll(input.chatId) : null;
   const reader = deps.reader ?? sharedGroupPlanRsvpReader();
   const seated = await deps.store.seatedExpected(input.chatId);

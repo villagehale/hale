@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks to lock the open time poll on Saturday, and the reading is time_lock with optionKey a, which is Saturday 10. This matches the expected moment and the chosen option.",
+    "score": 5
+  }
+}

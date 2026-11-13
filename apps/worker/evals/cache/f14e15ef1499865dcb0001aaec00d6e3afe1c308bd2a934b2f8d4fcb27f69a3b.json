@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is link_facts because a public camp link with price and sessions was posted. The reading returned kind none, which is not in the expected list, so the meaning is wrong.",
+    "score": 1
+  }
+}

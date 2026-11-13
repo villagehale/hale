@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Expected moment is rsvp_vote; the reading is rsvp_vote with response yes, matching 'we're in! all four of us'. Other fields are null/empty as appropriate for a vote, no private details copied, no invented times.",
+    "score": 5
+  }
+}

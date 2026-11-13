@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": false,
+    "line": "",
+    "options": [],
+    "why": "private_1to1 needs an answer from facts; facts.asked is a question about peanuts and the snack, and no snack or allergen information is provided in facts, so I cannot answer without guessing."
+  },
+  "latencyMs": 1238
+}

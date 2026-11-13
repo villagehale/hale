@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Thanks for telling me about Mira's peanut allergy. I don't have the snack's ingredients on file, so I can't confirm whether there are peanuts. Please check directly with the organizer before the event.",
+    "options": [],
+    "why": "private_1to1: answered from facts; snack ingredients unknown, so said so and deferred to organizer"
+  },
+  "latencyMs": 1396
+}

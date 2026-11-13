@@ -216,7 +216,7 @@ describe('group plan calendar consent', () => {
     expect(outcome.handled && outcome.calendar).toBeUndefined();
     expect(writer.familyIds).toEqual([]);
     expect(texts).toEqual([]);
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
   });
 
@@ -287,7 +287,7 @@ describe('group plan calendar consent', () => {
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask', 'calendar_written']);
     expect(priv.lines.every((line) => line.familyId === 'fam-priya')).toBe(true);
     expect(consent.texts).toEqual(['please do, the kids would love having it there']);
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     const row = await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya');
     expect(row?.status).toBe('written');
     expect(row?.familyEventId).toBe('evt-fam-priya');
@@ -345,7 +345,7 @@ describe('group plan calendar consent', () => {
     expect(unsure.texts).toEqual(['hmm maybe, let me think']);
     expect(writer.familyIds).toEqual([]);
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
   });
 
@@ -520,7 +520,7 @@ describe('group plan calendar consent', () => {
       }),
     );
     expect(writer.familyIds).toEqual(['fam-priya']);
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-sam'))?.status).toBe('asked');
 
     await takeGroupPlanRsvpTurn(
@@ -632,7 +632,7 @@ describe('group plan calendar consent', () => {
     );
     expect(outcome).toMatchObject({ calendar: { status: 'skipped', reason: 'model_failed' } });
     expect(texts).toEqual([]);
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
     expect(writer.familyIds).toEqual([]);
   });
@@ -710,7 +710,7 @@ describe('group plan calendar consent', () => {
         consent: consentOf('not_this'),
       }),
     );
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
     await takeGroupPlanRsvpTurn(
       {
@@ -790,7 +790,7 @@ describe('group plan calendar consent', () => {
         consent: consentOf('decline'),
       }),
     );
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('declined');
 
     const reopened = await takeGroupPlanRsvpTurn(
@@ -900,7 +900,7 @@ describe('group plan calendar consent', () => {
       'calendar_removed',
     ]);
     expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
   });
 });
@@ -1026,7 +1026,7 @@ describe('another parent in the same household', () => {
         consent: consentOf('not_this'),
       }),
     );
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
     expect(writer.removed).toEqual([]);
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
@@ -1139,7 +1139,7 @@ describe('another parent in the same household', () => {
           consent,
         }),
       );
-      const plan = await store.loadLivePlan(CHAT);
+      const plan = await store.loadLivePlan(CHAT, NOW);
       expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe(status);
       expect(writer.familyIds).toEqual(status === 'written' ? ['fam-priya'] : []);
       expect(consent.texts).toEqual([]);
@@ -1193,7 +1193,7 @@ describe('another parent in the same household', () => {
         consent,
       }),
     );
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
     expect(writer.familyIds).toEqual([]);
     expect(consent.texts).toEqual([]);
@@ -1251,7 +1251,7 @@ describe('another parent in the same household', () => {
       },
       calendarDeps({ ...shared, reader: readerOf(rsvp('no')) }),
     );
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('written');
     expect(writer.familyIds).toEqual(['fam-priya']);
     expect(writer.removed).toEqual([]);
@@ -1434,7 +1434,7 @@ describe('the key a calendar ask is kept under', () => {
       },
       calendarDeps({ store, texts, reader: readerOf(rsvp('yes')), writer: writerSpy() }),
     );
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     const ask = await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya');
     const rsvpKeys = (await store.loadTally(plan?.id ?? '')).rows.map((row) => row.memberKey);
     expect(ask?.status).toBe('asked');
@@ -1576,7 +1576,7 @@ describe('why a calendar ask was set aside', () => {
 
   it('records that the plan changed when that is the fact', async () => {
     const { world, store } = await picnic();
-    const plan = await store.loadLivePlan(CHAT);
+    const plan = await store.loadLivePlan(CHAT, NOW);
     await store.claimCalendarAsk({
       planId: plan?.id ?? '',
       familyId: 'fam-priya',

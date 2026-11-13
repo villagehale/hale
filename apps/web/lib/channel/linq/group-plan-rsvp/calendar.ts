@@ -32,6 +32,8 @@ export interface CalendarAskFacts {
   location: string | null;
   displayName: string;
   householdLabel: string | null;
+  /** `calendar_which` only: the plans the reply could be about, each on the parent's clock. */
+  choices?: { title: string; startsAt: string | null }[];
 }
 
 export interface CalendarConsentReadInput {
@@ -151,7 +153,12 @@ export function sharedCalendarConsentReader(): CalendarConsentReader {
   return sharedReader;
 }
 
-export type GroupPlanCalendarVoiceKind = 'calendar_ask' | 'calendar_written' | 'calendar_removed';
+export type GroupPlanCalendarVoiceKind =
+  | 'calendar_ask'
+  | 'calendar_written'
+  | 'calendar_removed'
+  | 'calendar_moved'
+  | 'calendar_which';
 
 /** A private line to one parent. There is no group chat id on this send. */
 export type CalendarPrivateKind = GroupPlanCalendarVoiceKind;
@@ -162,6 +169,8 @@ export interface CalendarPrivateLine {
   userId: string | null;
   text: string;
   kind: CalendarPrivateKind;
+  /** The line's claim key when its sender must be able to find it again (a held notice). */
+  dedupeKey?: string;
 }
 
 export interface CalendarPrivateSender {
@@ -196,7 +205,7 @@ export function groupPlanCalendarLineInput(input: {
     language: input.language,
     parentWords: input.parentWords,
     facts: input.facts,
-    questions: input.kind === 'calendar_ask' ? 1 : 0,
+    questions: input.kind === 'calendar_ask' || input.kind === 'calendar_which' ? 1 : 0,
   };
 }
 

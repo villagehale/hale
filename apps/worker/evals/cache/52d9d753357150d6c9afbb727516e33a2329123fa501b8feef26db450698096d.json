@@ -1,0 +1,13 @@
+{
+  "value": {
+    "kind": "rsvp_open",
+    "title": "the zoo",
+    "samePlan": false,
+    "response": null,
+    "optionKey": null,
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 2495
+}

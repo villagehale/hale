@@ -1,0 +1,19 @@
+{
+  "value": {
+    "kind": "time_open",
+    "title": "the picnic",
+    "samePlan": true,
+    "response": null,
+    "optionKey": null,
+    "options": [
+      "Saturday 10",
+      "Saturday 11"
+    ],
+    "starts": [
+      "2026-11-14T10:00:00-05:00",
+      "2026-11-14T11:00:00-05:00"
+    ],
+    "confidence": "high"
+  },
+  "latencyMs": 2907
+}

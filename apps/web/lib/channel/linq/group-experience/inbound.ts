@@ -3,12 +3,16 @@ import { eq } from 'drizzle-orm';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { groupExperienceTurnEnabled, groupPollsEnabled } from '../config';
 import { type OneToOneSend, privateAsideOneToOne } from '../connect-link-1to1';
-import { settleGroupPlanCalendarAfterRsvp } from '../group-plan-rsvp/inbound';
+import {
+  moveGroupPlanCalendarCopies,
+  settleGroupPlanCalendarAfterRsvp,
+} from '../group-plan-rsvp/inbound';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import type { GroupPlanRsvpComposer } from '../group-plan-rsvp/voice';
 import { readFamilySliceForAudience } from '../multi-family';
 import { lookupLinqPollOption } from '../poll';
+import type { ListChatHandles } from '../roster';
 import { isGroupExperiencePollKind } from './kinds';
 import { postgresExperiencePollCard } from './poll-card';
 import type { GroupExperienceReader } from './reading';
@@ -24,6 +28,7 @@ export interface GroupExperienceInboundPorts {
   database: Database;
   now: Date;
   send?: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+  listChatHandles?: ListChatHandles;
   reader?: GroupExperienceReader;
   composer?: GroupExperienceComposer;
   sendOneToOne?: GroupExperienceTurnPorts['sendOneToOne'];
@@ -43,6 +48,19 @@ function calendarSettle(ports: GroupExperienceInboundPorts, chatId: string) {
         composer: ports.calendarComposer,
       },
       { chatId, ...answer },
+    );
+}
+
+function calendarMove(ports: GroupExperienceInboundPorts, chatId: string) {
+  return (input: { planId: string; actorUserId: string | null }) =>
+    moveGroupPlanCalendarCopies(
+      {
+        database: ports.database,
+        now: ports.now,
+        oneToOne: ports.oneToOne,
+        composer: ports.calendarComposer,
+      },
+      { chatId, ...input },
     );
 }
 
@@ -67,6 +85,7 @@ function productionOneToOne(
       familyId: input.familyId,
       text: input.text,
       dedupeKey: input.dedupeKey,
+      askerUserId: input.askerUserId ?? null,
     });
     return textOut === 'sent' || textOut === 'suppressed' ? 'sent' : 'not_sent';
   };
@@ -81,6 +100,7 @@ export async function considerGroupExperience(
     senderFamilyId?: string | null;
     coveringFamilyId: string;
     text: string;
+    messageId: string;
   },
 ): Promise<GroupExperienceTurnOutcome> {
   if (!groupExperienceTurnEnabled()) return { handled: false };
@@ -95,6 +115,7 @@ export async function considerGroupExperience(
       senderName: await senderNameOf(ports.database, senderUserId),
       senderFamilyId: input.senderFamilyId ?? null,
       text: input.text,
+      messageId: input.messageId,
       language: 'en',
       timeZone: await knownHouseholdTimezone(ports.database, askerFamilyId),
       now: ports.now,
@@ -104,8 +125,10 @@ export async function considerGroupExperience(
       reader: ports.reader,
       composer: ports.composer,
       send: ports.send,
+      ...(ports.listChatHandles ? { listChatHandles: ports.listChatHandles } : {}),
       pollCard: postgresExperiencePollCard(ports.database),
       settleCalendar: calendarSettle(ports, input.chatId),
+      moveCalendar: calendarMove(ports, input.chatId),
       sendOneToOne:
         ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now, ports.oneToOne),
       privateSlices: async (familyIds) => {

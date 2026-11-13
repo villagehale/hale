@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Locked in: Saturday at 10. See you there!",
+    "options": [],
+    "why": "time_lock"
+  },
+  "latencyMs": 916
+}

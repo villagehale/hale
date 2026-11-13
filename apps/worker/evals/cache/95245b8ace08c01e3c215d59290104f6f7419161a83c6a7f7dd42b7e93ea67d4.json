@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected kind is private_question, but the reading's kind is 'none'. That counts as the wrong moment, and the rules say a private question read as none scores 1.",
+    "score": 1
+  }
+}

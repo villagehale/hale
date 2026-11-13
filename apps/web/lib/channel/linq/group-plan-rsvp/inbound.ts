@@ -1,5 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { namesFacts } from '~/lib/signup/parent-quote';
 import {
   linqGroupPlanRsvpCalendarEnabled,
   linqGroupPlanRsvpEnabled,
@@ -15,6 +17,9 @@ import type { LinqTapback } from '../transport';
 import {
   type CalendarConsentReader,
   type CalendarConsentReading,
+  type CalendarPrivateKind,
+  type CalendarPrivateLine,
+  groupPlanCalendarLineInput,
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
   hostFamilyIdForPlan,
@@ -22,7 +27,10 @@ import {
 } from './calendar';
 import {
   type CalendarEffect,
+  type MovedCopyEffect,
   answerPendingCalendarAsk,
+  householdWhen,
+  moveWrittenCopies,
   settleCalendarAfterAnswer,
 } from './calendar-turn';
 import { senderMemberKey } from './member-key';
@@ -36,7 +44,9 @@ import {
 import type { GroupPlanRsvpReader } from './reading';
 import {
   GROUP_PLAN_CALENDAR_ASK_TEMPLATE,
+  GROUP_PLAN_CALENDAR_MOVED_TEMPLATE,
   GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE,
+  GROUP_PLAN_CALENDAR_WHICH_TEMPLATE,
   GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE,
   GROUP_PLAN_RSVP_TEMPLATE,
   GROUP_POLL_TEMPLATE,
@@ -45,7 +55,11 @@ import {
 import { createPostgresGroupPlanRsvpStore } from './store';
 import type { PlanRsvpResponse, PlanTally } from './tally';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
-import type { GroupPlanRsvpComposer } from './voice';
+import {
+  type GroupPlanRsvpComposer,
+  composeGroupPlanRsvpLine,
+  productionGroupPlanRsvpComposer,
+} from './voice';
 
 export interface GroupPlanRsvpInboundPorts {
   database: Database;
@@ -60,7 +74,7 @@ export interface GroupPlanRsvpInboundPorts {
 }
 
 /** The household's stored language. A missing tag stays null so the writer follows their words. */
-async function householdLanguage(database: Database, familyId: string) {
+export async function householdLanguage(database: Database, familyId: string) {
   return familySpeechLanguage(database, familyId);
 }
 
@@ -93,9 +107,11 @@ function groupTemplate(kind: 'plan' | 'poll' | undefined) {
   return kind === 'poll' ? GROUP_POLL_TEMPLATE : GROUP_PLAN_RSVP_TEMPLATE;
 }
 
-function calendarTemplate(kind: 'calendar_ask' | 'calendar_written' | 'calendar_removed'): string {
+function calendarTemplate(kind: CalendarPrivateKind): string {
   if (kind === 'calendar_ask') return GROUP_PLAN_CALENDAR_ASK_TEMPLATE;
   if (kind === 'calendar_written') return GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE;
+  if (kind === 'calendar_moved') return GROUP_PLAN_CALENDAR_MOVED_TEMPLATE;
+  if (kind === 'calendar_which') return GROUP_PLAN_CALENDAR_WHICH_TEMPLATE;
   return GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE;
 }
 
@@ -113,20 +129,16 @@ function ledgeredSend(ports: GroupPlanRsvpInboundPorts) {
 
 function privateCalendarSend(ports: GroupPlanRsvpInboundPorts) {
   return {
-    async send(line: {
-      planId: string;
-      familyId: string;
-      userId: string | null;
-      text: string;
-      kind: 'calendar_ask' | 'calendar_written' | 'calendar_removed';
-    }) {
+    async send(line: CalendarPrivateLine) {
       const templateKey = calendarTemplate(line.kind);
       const result = await sendHouseholdPrivateLine(ports.database, {
         familyId: line.familyId,
         userId: line.userId,
         body: line.text,
         templateKey,
-        dedupeKey: `${templateKey}:${line.planId}:${line.familyId}:${ports.now.toISOString()}`,
+        dedupeKey:
+          line.dedupeKey ??
+          `${templateKey}:${line.planId}:${line.familyId}:${ports.now.toISOString()}`,
         now: ports.now,
         ...(ports.oneToOne ? { send: ports.oneToOne } : {}),
       });
@@ -200,7 +212,9 @@ export async function considerGroupPlanRsvp(
 ): Promise<GroupPlanRsvpTurnOutcome> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return { handled: false };
   const store = createPostgresGroupPlanRsvpStore(ports.database);
-  const live = linqGroupPlanRsvpEnabled() ? await store.loadLivePlan(input.chatId) : null;
+  const live = linqGroupPlanRsvpEnabled()
+    ? await store.loadLivePlan(input.chatId, ports.now)
+    : null;
   const livePoll = linqGroupPollsEnabled() ? await store.loadLivePoll(input.chatId) : null;
   const cover = await store.coveringFamily(input.chatId);
   const hostFamilyId = await hostFamilyIdForPlan(
@@ -241,7 +255,7 @@ export async function considerGroupPlanRsvp(
   );
 }
 
-function calendarPorts(ports: GroupPlanRsvpInboundPorts) {
+export function groupPlanCalendarPorts(ports: GroupPlanRsvpInboundPorts) {
   return {
     households: postgresGroupPlanHouseholds(ports.database),
     calendar: postgresGroupPlanCalendarWriter(ports.database),
@@ -294,7 +308,7 @@ export async function settleGroupPlanCalendarAfterRsvp(
 ): Promise<CalendarEffect | undefined> {
   if (!linqGroupPlanRsvpEnabled() || !linqGroupPlanRsvpCalendarEnabled()) return undefined;
   const store = createPostgresGroupPlanRsvpStore(ports.database);
-  const plan = await store.loadLivePlan(input.chatId);
+  const plan = await store.loadLivePlan(input.chatId, ports.now);
   if (!plan || plan.id !== input.planId) return undefined;
   return settleCalendarAfterAnswer(
     {
@@ -309,7 +323,34 @@ export async function settleGroupPlanCalendarAfterRsvp(
       parentWords: input.parentWords,
       now: ports.now,
     },
-    { store, ...calendarPorts(ports) },
+    { store, ...groupPlanCalendarPorts(ports) },
+  );
+}
+
+/**
+ * VIL-689 — a locked time moved this plan. Households whose copy Hale already wrote get it
+ * moved and one notice each, by day on their own clock (a night notice waits for the
+ * morning re-drive). Off exactly when the calendar step is off.
+ */
+export async function moveGroupPlanCalendarCopies(
+  ports: GroupPlanRsvpInboundPorts,
+  input: { chatId: string; planId: string; actorUserId: string | null },
+): Promise<MovedCopyEffect[] | { status: 'skipped'; reason: string } | undefined> {
+  if (!linqGroupPlanRsvpEnabled() || !linqGroupPlanRsvpCalendarEnabled()) return undefined;
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const plan = await store.loadLivePlan(input.chatId, ports.now);
+  if (!plan || plan.id !== input.planId) return undefined;
+  return moveWrittenCopies(
+    { chatId: input.chatId, plan, actorUserId: input.actorUserId, now: ports.now },
+    {
+      store,
+      ...groupPlanCalendarPorts(ports),
+      daytime: async (familyId) => {
+        const zone = await store.householdTimeZone(familyId);
+        return zone !== null && !inProactiveQuietHours(ports.now, zone);
+      },
+      languageOf: (familyId) => householdLanguage(ports.database, familyId),
+    },
   );
 }
 
@@ -318,8 +359,11 @@ type PrivateCalendarCandidate = Awaited<
 >[number];
 
 /**
- * One ask is that ask. Several asks: the reader keeps the one this message
- * decides, and leaves the turn alone when none or more than one fit.
+ * One ask is that ask. Several asks: a reply binds only an ask its words name, by a whole
+ * word of the plan's title (code-checked), and only when the reader also reads a decision
+ * on it. The model alone never picks among several asks: a decision with no ask named, or
+ * with more than one named, is `ambiguous` and Hale asks which one. No decision on any
+ * ask leaves the turn to the 1:1 door.
  */
 async function pickPrivateCalendarAsk(
   ports: GroupPlanRsvpInboundPorts,
@@ -327,7 +371,7 @@ async function pickPrivateCalendarAsk(
   open: PrivateCalendarCandidate[],
 ): Promise<
   | { kind: 'none' }
-  | { kind: 'ambiguous' }
+  | { kind: 'ambiguous'; candidates: PrivateCalendarCandidate[] }
   | {
       kind: 'one';
       plan: PrivateCalendarCandidate['plan'];
@@ -338,9 +382,12 @@ async function pickPrivateCalendarAsk(
   const only = open[0];
   if (open.length === 0 || !only) return { kind: 'none' };
   if (open.length === 1) return { kind: 'one', plan: only.plan, consent: only.consent };
+  const named = open.filter((item) =>
+    namesFacts(input.text, { activity: item.plan.title, host: '' }),
+  );
   const reader = ports.consentReader ?? sharedCalendarConsentReader();
   const hits: { item: PrivateCalendarCandidate; reading: CalendarConsentReading }[] = [];
-  for (const item of open) {
+  for (const item of named.length > 0 ? named : open) {
     const reading = await reader.read({
       text: input.text,
       tapback: null,
@@ -361,8 +408,82 @@ async function pickPrivateCalendarAsk(
   }
   const hit = hits[0];
   if (!hit) return { kind: 'none' };
-  if (hits.length > 1) return { kind: 'ambiguous' };
-  return { kind: 'one', plan: hit.item.plan, consent: hit.item.consent, decided: hit.reading };
+  if (named.length === 1 && hits.length === 1) {
+    return { kind: 'one', plan: hit.item.plan, consent: hit.item.consent, decided: hit.reading };
+  }
+  return { kind: 'ambiguous', candidates: hits.map((entry) => entry.item) };
+}
+
+/**
+ * The reply could answer more than one ask: one model-written 1:1 question naming those
+ * plans. Each of them then counts that question as its last line, so the parent's next
+ * reply (naming one) is read against them. Nothing is written or withdrawn here.
+ */
+async function askWhichCalendarPlan(
+  ports: GroupPlanRsvpInboundPorts,
+  store: ReturnType<typeof createPostgresGroupPlanRsvpStore>,
+  input: { senderUserId: string; senderName: string | null; text: string },
+  candidates: PrivateCalendarCandidate[],
+): Promise<'sent' | { skipped: string }> {
+  const first = candidates[0];
+  if (!first) return { skipped: 'no_candidates' };
+  const choices = [];
+  for (const item of candidates) {
+    const zone = await store.householdTimeZone(item.consent.familyId);
+    choices.push({
+      title: item.plan.title,
+      startsAt: householdWhen(item.plan.startsAt, zone),
+    });
+  }
+  const spoken = await composeGroupPlanRsvpLine(
+    groupPlanCalendarLineInput({
+      kind: 'calendar_which',
+      language: await householdLanguage(ports.database, first.consent.familyId),
+      parentWords: input.text,
+      facts: {
+        title: first.plan.title,
+        startsAt: null,
+        location: null,
+        displayName: input.senderName ?? first.consent.displayName,
+        householdLabel: null,
+        choices,
+      },
+    }),
+    ports.composer ?? productionGroupPlanRsvpComposer(),
+  );
+  if (spoken.status === 'skipped') {
+    console.warn(
+      { outcome: 'group_plan_calendar_which_unsent', reason: spoken.reason },
+      'group plan calendar: which-plan question not written',
+    );
+    return { skipped: spoken.reason };
+  }
+  const sent = await privateCalendarSend(ports).send({
+    planId: first.plan.id,
+    familyId: first.consent.familyId,
+    userId: input.senderUserId,
+    text: spoken.line,
+    kind: 'calendar_which',
+  });
+  if (sent.status !== 'sent') return { skipped: sent.reason };
+  if (sent.providerMessageId) {
+    for (const item of candidates) {
+      await store.setCalendarAskMessage(
+        item.plan.id,
+        item.consent.familyId,
+        sent.providerMessageId,
+      );
+    }
+  }
+  await ports.database.insert(schema.auditLog).values({
+    familyId: first.consent.familyId,
+    actor: input.senderUserId,
+    actionTaken: 'linq_group_plan_calendar_which_asked',
+    targetTable: 'linq_group_plans',
+    targetId: first.plan.id,
+    after: { plans: candidates.length },
+  });
+  return 'sent';
 }
 
 /**
@@ -403,7 +524,13 @@ export async function considerPrivateCalendarReply(
   const picked = await pickPrivateCalendarAsk(ports, input, open);
   if (picked.kind === 'none') return { handled: false };
   if (picked.kind === 'ambiguous') {
-    return { handled: true, outcome: 'group_plan_calendar_unwritten', count: 'ignored' };
+    const which = await askWhichCalendarPlan(ports, store, input, picked.candidates);
+    return {
+      handled: true,
+      outcome: 'group_plan_calendar_unwritten',
+      count: which === 'sent' ? 'intake' : 'ignored',
+      notice: which === 'sent' ? 'sent' : { skipped: 'not_sent' },
+    };
   }
   const { plan, consent, decided } = picked;
   const answered = await answerPendingCalendarAsk(
@@ -418,7 +545,7 @@ export async function considerPrivateCalendarReply(
       now: ports.now,
       ...(decided ? { decided } : {}),
     },
-    { store, ...calendarPorts(ports) },
+    { store, ...groupPlanCalendarPorts(ports) },
   );
   if (!answered.consumed) return { handled: false };
   const tally = (await store.loadTally(plan.id)).tally;
@@ -451,7 +578,7 @@ export async function considerCalendarTapback(
       language: await householdLanguage(ports.database, found.consent.familyId),
       now: ports.now,
     },
-    { store, ...calendarPorts(ports) },
+    { store, ...groupPlanCalendarPorts(ports) },
   );
   if (!answered.consumed) return { handled: false };
   const tally = (await store.loadTally(found.plan.id)).tally;

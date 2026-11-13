@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is an RSVP acceptance ('we're in! all four of us') for an open plan, which is expected as rsvp_vote with response yes. The reading returned kind 'none', which is not in expected, so the meaning is missed entirely.",
+    "score": 1
+  }
+}

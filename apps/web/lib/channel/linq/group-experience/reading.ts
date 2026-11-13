@@ -41,6 +41,12 @@ export interface GroupExperienceReadInput {
 export interface GroupExperienceReading {
   kind: GroupExperienceKind;
   title: string | null;
+  /**
+   * `rsvp_open` / `time_open`: true when the message is about the plan already open
+   * (`live.rsvp`), false when it is about another event, null when the reader cannot tell.
+   * Only true ties a poll to the open plan.
+   */
+  samePlan: boolean | null;
   response: PlanRsvpResponse | null;
   optionKey: string | null;
   options: string[];
@@ -56,6 +62,7 @@ export interface GroupExperienceReader {
 const readingSchema = z.object({
   kind: z.enum(GROUP_EXPERIENCE_KINDS),
   title: z.string().nullable().optional(),
+  samePlan: z.boolean().nullable().optional(),
   response: z.enum(['yes', 'no', 'maybe']).nullable().optional(),
   optionKey: z.string().nullable().optional(),
   options: z.array(z.string()).optional(),
@@ -69,6 +76,7 @@ export const GROUP_EXPERIENCE_READ_TOOL_SCHEMA = {
   properties: {
     kind: { type: 'string', enum: [...GROUP_EXPERIENCE_KINDS] },
     title: { type: ['string', 'null'] },
+    samePlan: { type: ['boolean', 'null'] },
     response: { type: ['string', 'null'], enum: ['yes', 'no', 'maybe', null] },
     optionKey: { type: ['string', 'null'] },
     options: { type: 'array', items: { type: 'string' } },
@@ -116,6 +124,7 @@ export function parseGroupExperienceReading(value: unknown): GroupExperienceRead
   return {
     kind,
     title: parsed.data.title?.trim() || null,
+    samePlan: parsed.data.samePlan ?? null,
     response: parsed.data.response ?? null,
     optionKey: parsed.data.optionKey?.trim() || null,
     options: kept.map((option) => option.text),

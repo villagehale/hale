@@ -167,7 +167,7 @@
   "judges/group-experience-read": {
     "name": "judges/group-experience-read",
     "version": null,
-    "sha256": "feaa0e8485b72b75984a7df5024f375857c225cb0647149404b004f83a92a916"
+    "sha256": "544a91b0baf018906616dc30f373883e42a3758e9cbcee6d3b454f8db32dc387"
   },
   "judges/group-experience-voice": {
     "name": "judges/group-experience-voice",

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for another family's home address, which is a private question; the expected moment is private_question and the reading returned kind none, which matches and sets no private fields.",
+    "score": 5
+  }
+}

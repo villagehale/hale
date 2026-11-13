@@ -11,6 +11,7 @@ describe('parseGroupExperienceReading', () => {
     ).toEqual({
       kind: 'none',
       title: null,
+      samePlan: null,
       response: null,
       optionKey: null,
       options: [],

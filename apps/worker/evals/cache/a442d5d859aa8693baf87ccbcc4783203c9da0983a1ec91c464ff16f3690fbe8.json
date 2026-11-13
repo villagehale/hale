@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reading is link_facts, which is the expected kind for a public camp link with its price and sessions. No conflicting fields are set and no private details are copied.",
+    "score": 5
+  }
+}

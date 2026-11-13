@@ -309,11 +309,11 @@
   },
   "group-experience-read.md": {
     "file": "group-experience-read.md",
-    "sha256": "a0ad6085907483550774a67ae9bb709515fde864b1f4b02cb4527ebeba9aac07"
+    "sha256": "f58d3e7bd404920c18c67e68423b6b79e0b2ac6a9111fc0970764e420ecc41a6"
   },
   "group-experience-voice.md": {
     "file": "group-experience-voice.md",
-    "sha256": "bb20c0dbbc5fb9476d8562138a57b0e6700fe3c21948dad14dad2c379c5609fe"
+    "sha256": "bdac4db59ff12566dce8968e0b739e6be7f9d848f7666afad338440399376559"
   },
   "group-mention-read.md": {
     "file": "group-mention-read.md",
@@ -345,7 +345,7 @@
   },
   "group-plan-rsvp-calendar-voice.md": {
     "file": "group-plan-rsvp-calendar-voice.md",
-    "sha256": "9212bdc688d722c6492b288ed25693ec7f9b7c7b8b0b54ddab51dd17bc413850"
+    "sha256": "1f6d315cbea4692b6ee01706d9efcffbace2564139e28e76364b8445248d5223"
   },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",

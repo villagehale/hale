@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a child's date of birth, a private detail, and the expected moment is private_question. The reading returned kind private_question with no fields set, which matches exactly and copies no private detail into any field.",
+    "score": 5
+  }
+}

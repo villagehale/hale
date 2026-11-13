@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private payment request; the expected moment is private_question and the reading is kind none, which is correct. No private details like the card number were copied into any field.",
+    "score": 5
+  }
+}
