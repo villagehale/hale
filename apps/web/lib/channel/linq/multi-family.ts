@@ -10,7 +10,6 @@ import {
   type SharedListTurnModel,
   applySharedListTurn,
   forgetSharedListPeople,
-  type KidClaim,
   readSharedListTurn,
   recordKidClaim,
   sharedListAudience,
@@ -55,7 +54,7 @@ import { type ParticipantRead, listedReaders } from './participant-readers';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
-import { kidNamesOf, reactionAsVote, sharedGroupReader } from './shared-group-reading';
+import { familyClaimOf, reactionAsVote, sharedGroupReader } from './shared-group-reading';
 import {
   type SecretSantaLineWriter,
   type SecretSantaTurnModel,
@@ -1038,22 +1037,6 @@ async function participantsOf(chatId: string): Promise<ParticipantRead | null> {
   }
 }
 
-/**
- * VIL-687: what a who_i_am or join reading says about whose family the speaker is. Every
- * child named counts, whatever the role. A family role with no child named ("I'm the
- * birthday girl's mom") is a claim on an unnamed child. A guest or an unclear role with no
- * child is not a claim.
- */
-function kidClaimOf(
-  intent: SharedGroupReading['intent'],
-  reading: SharedGroupReading,
-): KidClaim | null {
-  const kids = kidNamesOf(reading);
-  if (kids.length > 0) return { kids };
-  if (intent !== 'who_i_am' || reading.role === 'guest' || reading.role === 'unclear') return null;
-  return 'unnamed';
-}
-
 async function peopleInChat(database: Database, chatId: string): Promise<PersonRow[]> {
   const rows = await database.select().from(schema.linqSharedGroupPeople);
   return rows.filter((row) => row.chatId === chatId);
@@ -1794,6 +1777,11 @@ export async function takeMultiFamilyTurn(
       };
 
   const intent = opt === 'stop' ? 'stop_me' : reading.intent;
+  // VIL-687: saying whose family you are, in any message, takes clearance off hidden gifts.
+  const familyClaim = familyClaimOf(reading);
+  if (familyClaim) {
+    await recordKidClaim(database, { chatId: input.chatId, seatId: me.id, claim: familyClaim });
+  }
   const language = wired.language ?? 'en';
   const host = (await hostLedger(database, input.chatId, familyId)) ?? {
     familyId,
@@ -1948,8 +1936,6 @@ export async function takeMultiFamilyTurn(
         updatedAt: input.now,
       })
       .where(eq(schema.linqSharedGroupPeople.id, me.id));
-    const claim = kidClaimOf(intent, reading);
-    if (claim) await recordKidClaim(database, { chatId: input.chatId, seatId: me.id, claim });
     // A household joins only on its own parent's words here; nothing joins it for them.
     if (intent === 'join' && channel) {
       const joined = await joinFamilyToSharedGroup(database, {

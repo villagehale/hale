@@ -102,6 +102,12 @@ export interface SharedGroupReading {
    * stop being shown to this person. A reading built without it holds only `kidName`.
    */
   kidNames?: readonly string[];
+  /**
+   * VIL-687: what the model's object said about whose family this person is, on any intent
+   * and at any confidence, kept even when the rest of the reading is downgraded to unclear.
+   * Read it through familyClaimOf.
+   */
+  familyClaim?: FamilyClaim | null;
   confidence: SharedGroupConfidence;
   /** VIL-459: on `find_time`, the times the chat said do not work. Empty otherwise. */
   ruledOut?: readonly RuledOutSpan[];
@@ -175,6 +181,7 @@ const UNCLEAR: SharedGroupReading = {
   familyLabel: null,
   kidName: null,
   kidNames: [],
+  familyClaim: null,
   confidence: 'low',
   ruledOut: [],
   picked: null,
@@ -225,6 +232,40 @@ export function kidNamesOf(reading: Pick<SharedGroupReading, 'kidName' | 'kidNam
   return [...new Set(names.map((name) => name.trim()).filter((name) => name.length > 0))];
 }
 
+/**
+ * Someone saying whose family they are: the children they named, or `unnamed` when they
+ * gave a family role without a child, or named children Hale cannot take as stated (past
+ * the bounds, or at low confidence), so the claim could be about any child.
+ */
+export type FamilyClaim = { kids: readonly string[] } | 'unnamed';
+
+/** Every role but these says the person is a child's family (a nanny included). */
+const NOT_FAMILY_ROLES: ReadonlySet<SharedGroupRole> = new Set(['guest', 'unclear']);
+
+function claimFrom(
+  role: SharedGroupRole,
+  kids: readonly string[],
+  confidence: SharedGroupConfidence,
+): FamilyClaim | null {
+  if (kids.length > 0) {
+    const stated =
+      confidence === 'high' &&
+      kids.length <= KID_NAMES_MAX &&
+      kids.every((name) => name.length <= KID_NAME_MAX);
+    return stated ? { kids } : 'unnamed';
+  }
+  return NOT_FAMILY_ROLES.has(role) ? null : 'unnamed';
+}
+
+/**
+ * VIL-687: whose family a reading says this person is, whatever the intent. A reading built
+ * without `familyClaim` (not from the model's object) is read from its role and children.
+ */
+export function familyClaimOf(reading: SharedGroupReading): FamilyClaim | null {
+  if (reading.familyClaim !== undefined) return reading.familyClaim;
+  return claimFrom(reading.role, kidNamesOf(reading), reading.confidence);
+}
+
 function blankToNull(value: string | null): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -256,13 +297,16 @@ export function parseSharedGroupReading(
   const { intent, role, familyLabel, kidNames, confidence, ruledOut, picked, planTitle } =
     parsed.data;
   const kids = kidNamesOf({ kidName: null, kidNames });
+  // A claim is kept whatever happens to the rest of the reading.
+  const familyClaim = claimFrom(role, kids, confidence);
+  const unclear = { ...UNCLEAR, familyClaim };
   if (kids.length > KID_NAMES_MAX || kids.some((name) => name.length > KID_NAME_MAX)) {
-    return UNCLEAR;
+    return unclear;
   }
-  if (STATE_CHANGE.has(intent) && confidence !== 'high') return UNCLEAR;
-  if (intent === 'unclear') return UNCLEAR;
+  if (STATE_CHANGE.has(intent) && confidence !== 'high') return unclear;
+  if (intent === 'unclear') return unclear;
   const pick = intent === 'pick_time' ? offeredPick(picked, offered) : null;
-  if (intent === 'pick_time' && !pick) return UNCLEAR;
+  if (intent === 'pick_time' && !pick) return unclear;
   const title =
     intent === 'find_time' || intent === 'pick_time' ? blankToNull(planTitle ?? null) : null;
   return {
@@ -271,6 +315,7 @@ export function parseSharedGroupReading(
     familyLabel: blankToNull(familyLabel),
     kidName: kids[0] ?? null,
     kidNames: kids,
+    familyClaim,
     confidence,
     ruledOut: intent === 'find_time' ? spansOf(ruledOut) : [],
     picked: pick,

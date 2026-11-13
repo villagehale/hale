@@ -83,6 +83,26 @@ describe('readLinqChatHandles: present participants only', () => {
   });
 });
 
+describe('readLinqChatHandles: a present participant it cannot read is not dropped', () => {
+  it('returns an unplaceable handle for a present record without a readable handle', () => {
+    const chat = {
+      chat: {
+        is_group: true,
+        handles: [
+          { handle: ACTIVE, status: 'active' },
+          { handle: null, status: 'active' },
+          { status: 'active' },
+          { handle: 42 },
+          'not-a-record',
+          { handle: null, status: 'left' },
+          { handle: null, is_me: true },
+        ],
+      },
+    };
+    expect(readLinqChatHandles(chat)).toEqual([ACTIVE, '', '', '', '']);
+  });
+});
+
 describe('listLinqParticipantHandles: the GET returns present handles only', () => {
   it('reads the docs-shaped payload through the real request', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
