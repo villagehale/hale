@@ -201,6 +201,8 @@ export async function takeGroupPollReading(
     livePoll: GroupPollRecord | null;
     /** The chat's open plan: a poll the reader ties to it places its choices on it. */
     livePlanId?: string | null;
+    /** `start_poll`: the household whose ledger carries a new poll, or null when none. */
+    pollFamilyId?: string | null;
     seated: readonly ExpectedPerson[];
     voter: GroupPollVoter;
   },
@@ -258,12 +260,13 @@ async function startPoll(
     language: ReplyLanguage;
     now: Date;
     livePlanId?: string | null;
+    pollFamilyId?: string | null;
     seated: readonly ExpectedPerson[];
   },
   deps: GroupPollTurnDeps,
 ): Promise<GroupPollTurnResult | { handled: false }> {
-  const cover = await deps.store.coveringFamily(context.chatId);
-  if (!cover) return { handled: false };
+  const familyId = context.pollFamilyId ?? null;
+  if (!familyId) return { handled: false };
   const question = reading.pollQuestion?.trim() || null;
   const choices = choicesOf(reading);
   const expected = expectedOf(context.seated);
@@ -302,7 +305,7 @@ async function startPoll(
 
   const poll = await deps.store.createPoll({
     chatId: context.chatId,
-    familyId: cover.familyId,
+    familyId,
     question,
     options: choices.map((choice) => ({
       text: choice.text,
@@ -324,7 +327,7 @@ async function startPoll(
   } else {
     const sent = await deps.card.send({
       chatId: context.chatId,
-      familyId: cover.familyId,
+      familyId,
       pollId: poll.id,
       options: poll.options.map((option) => ({ key: option.key, text: option.text })),
       now: context.now,

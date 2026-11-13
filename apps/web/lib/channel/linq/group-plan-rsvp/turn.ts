@@ -275,6 +275,19 @@ export async function takeGroupPlanRsvpTurn(
       if (!somethingLive) return { handled: false };
       return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
     }
+    // A poll's ledger household is chosen the way a plan's is: the asker's own household
+    // here, else the family that claimed the chat. A chat several families share has polls.
+    const pollFamilyId =
+      reading.intent === 'start_poll'
+        ? await hostFamilyIdForPlan(
+            deps.households,
+            await deps.store.coveringFamily(input.chatId),
+            {
+              chatId: input.chatId,
+              userId: input.senderUserId,
+            },
+          )
+        : null;
     return takeGroupPollReading(
       reading,
       {
@@ -283,6 +296,7 @@ export async function takeGroupPlanRsvpTurn(
         now: input.now,
         livePoll,
         livePlanId: live?.id ?? null,
+        pollFamilyId,
         seated,
         voter: {
           memberKey: senderKey,

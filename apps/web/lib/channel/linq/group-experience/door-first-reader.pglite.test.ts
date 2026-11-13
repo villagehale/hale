@@ -521,14 +521,10 @@ describe('a lock when VIL-471 owns the poll, through the door (gate REFUTED 2)',
   });
 });
 
-describe('a poll about the open plan carries placed choices, and its lock moves the plan (gate R3, through the door)', () => {
+describe('in a chat several families share, a poll about the open plan carries placed choices, and its lock moves the plan (gate R3/R4, through the door)', () => {
   it('the reader gets the household clock, each choice is placed on the open plan, and "Sunday, lock it in" moves the plan to Sunday', async () => {
     const a = await seedFamily(PARENT_A, 'Ada');
     await seedFamily(PARENT_B, 'Bao');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: CHAT })
-      .where(eq(schema.families.id, a.familyId));
     const picnic = await openPicnic(a.familyId, a.userId);
     const group: string[] = [];
     const rsvpInputs: unknown[] = [];
@@ -556,12 +552,6 @@ describe('a poll about the open plan carries placed choices, and its lock moves 
       { planId: picnic.id, startsAt: SATURDAY_10 },
       { planId: picnic.id, startsAt: SUNDAY_14 },
     ]);
-    // A claimed chat with another family in it holds group lines until its roster is
-    // confirmed; releasing the claim lets this shared chat hear the lock line.
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: null })
-      .where(eq(schema.families.id, a.familyId));
 
     const locked = await send(
       door({
@@ -588,10 +578,6 @@ describe('a poll about the open plan carries placed choices, and its lock moves 
   it('a poll the reader does not tie to the open plan places nothing (control)', async () => {
     const a = await seedFamily(PARENT_A, 'Ada');
     await seedFamily(PARENT_B, 'Bao');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: CHAT })
-      .where(eq(schema.families.id, a.familyId));
     await openPicnic(a.familyId, a.userId);
     await send(
       door({
