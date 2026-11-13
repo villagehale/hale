@@ -1317,6 +1317,116 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
   });
 });
 
+/**
+ * VIL-680 — the model chooses the tapback. Dark: no verb, the same prompt bytes, no
+ * `reaction` key. Lit (a 1:1 turn the router lit): the verb and the addendum ride, and the
+ * choice rides out with how many other tools the turn ran.
+ */
+describe('channelCoachRuntime · a tapback on the parent message (VIL-680)', () => {
+  const LOOKUP = defineTool({
+    name: 'lookup_week',
+    description: 'x',
+    inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
+    handler: async () => ({ events: [] }),
+  });
+
+  type Seen = { tools: string[]; skillTools: string[]; prompt: string };
+  function seeing(
+    seen: Seen[],
+    calls: Array<{ name: string; input: unknown }> = [],
+  ): ChannelCoachPorts['runAgent'] {
+    return async (args) => {
+      seen.push({
+        tools: args.tools.map((t) => t.name),
+        skillTools: [...args.skill.meta.tools],
+        prompt: promptOf(args),
+      });
+      for (const call of calls) {
+        const tool = args.tools.find((t) => t.name === call.name);
+        if (!tool) throw new Error(`no ${call.name}`);
+        await invokeTool(tool, call.input, args.toolContext, args.guardDeps);
+      }
+      return answering('Anytime!')(args);
+    };
+  }
+
+  it('dark: no verb, the same prompt bytes as a plain turn, and no reaction key', async () => {
+    const seen: Seen[] = [];
+    const dark = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn('thanks'), reactions: false },
+      [],
+    );
+    await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(turn('thanks'), []);
+    expect(seen[0]?.tools).not.toContain('react_to_parent_message');
+    expect(seen[0]?.skillTools).not.toContain('react_to_parent_message');
+    expect(seen[0]?.prompt).toBe(seen[1]?.prompt);
+    expect(dark).not.toHaveProperty('reaction');
+  });
+
+  it('a group turn never gets the verb, even when asked to', async () => {
+    const seen: Seen[] = [];
+    await channelCoachRuntime(ports({ runAgent: seeing(seen) }))
+      .respond({ ...turn('thanks'), audience: 'group', reactions: true }, [])
+      .catch(() => undefined);
+    expect(seen[0]?.tools ?? []).not.toContain('react_to_parent_message');
+  });
+
+  it('lit 1:1: the verb and the addendum ride; not calling it is no reaction', async () => {
+    const addendum = (await loadCronSkill('coach-reaction')).instructions;
+    const seen: Seen[] = [];
+    const result = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn('thanks'), reactions: true },
+      [],
+    );
+    expect(seen[0]?.tools).toContain('react_to_parent_message');
+    expect(seen[0]?.skillTools).toContain('react_to_parent_message');
+    expect(seen[0]?.prompt.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(result.reaction).toBeNull();
+    expect(result.reply).toBe('Anytime!');
+  });
+
+  it('lit 1:1: the choice rides out, last call wins, with no other tool counted', async () => {
+    const result = await channelCoachRuntime(
+      ports({
+        runAgent: seeing(
+          [],
+          [
+            { name: 'react_to_parent_message', input: { reaction: 'like', alone: false } },
+            { name: 'react_to_parent_message', input: { reaction: 'love', alone: true } },
+          ],
+        ),
+      }),
+    ).respond({ ...turn('thanks'), reactions: true }, []);
+    expect(result.reaction).toEqual({
+      reaction: { type: 'love' },
+      alone: true,
+      otherToolCalls: 0,
+    });
+  });
+
+  it('lit 1:1: every other tool the turn ran is counted beside the choice', async () => {
+    const result = await channelCoachRuntime(
+      ports({
+        buildTools: () => [LOOKUP],
+        runAgent: seeing(
+          [],
+          [
+            { name: 'lookup_week', input: {} },
+            { name: 'react_to_parent_message', input: { reaction: 'love', alone: true } },
+          ],
+        ),
+      }),
+    ).respond({ ...turn('thanks'), reactions: true }, []);
+    expect(result.reaction).toEqual({
+      reaction: { type: 'love' },
+      alone: true,
+      otherToolCalls: 1,
+    });
+  });
+});
+
 describe('channelCoachRuntime · several bubbles on a 1:1 iMessage turn', () => {
   const TWO_THOUGHTS = 'Swim is Saturday at 10.\n\nWant me to add it to your calendar?';
 

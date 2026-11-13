@@ -160,6 +160,12 @@ import {
 import { familyLocalNow } from './local-now';
 import { appendNoGroupRelaySkill, group1to1NoGroupRelayEnabled } from './no-group-relay';
 import {
+  type ReactionChoice,
+  augmentCoachSkillForReactions,
+  isOtherToolCall,
+  reactToParentMessageTool,
+} from './reaction-tool';
+import {
   type CoachEmailReader,
   READ_EMAIL_SKILL,
   augmentCoachSkillForReadEmail,
@@ -449,6 +455,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const signupOffers: RecordedSignupOffer[] = [];
       // VIL-495: the model chose to say this reply as a voice memo.
       let voiceChosen = false;
+      // VIL-680: the tapback the model chose for the parent's message. LAST CALL WINS.
+      let reactionChoice: ReactionChoice | null = null;
       // VIL-447: writes a failed turn must take back (shared-list adds and check-offs), so
       // the router's "nothing was changed" is true. Run newest first; an undo that fails
       // is logged by fault class and never masks the turn's own failure.
@@ -705,10 +713,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // A 1:1 turn the router lit for several bubbles gets their addendum, last. Every
       // other turn keeps the skill object it already had, and its recordings their keys.
       const bubblesLit = turn.replyBubbles === true && turn.audience === 'direct';
+      // VIL-680: the reaction verb and its addendum ride only a 1:1 turn the router lit.
+      const reactLit = turn.reactions === true && turn.audience === 'direct';
       const skillForTurn = augmentCoachSkillForBubbles(
-        photoFacts
-          ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
-          : coachSkill,
+        augmentCoachSkillForReactions(
+          photoFacts
+            ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
+            : coachSkill,
+          reactLit ? await loadCronSkill('coach-reaction') : null,
+        ),
         bubblesLit ? await loadCronSkill('coach-bubbles') : null,
       );
       if (photoFacts) {
@@ -782,6 +795,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                       replyAsVoiceMemoTool({
                         onChoose: () => {
                           voiceChosen = true;
+                        },
+                      }),
+                    ]
+                  : []),
+                ...(reactLit
+                  ? [
+                      reactToParentMessageTool({
+                        onReact: (choice) => {
+                          reactionChoice = choice;
                         },
                       }),
                     ]
@@ -863,10 +885,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // Every tool call writes its audit row before its handler runs, so a write
               // here means a tool has acted this turn and the loop must not run again.
               let toolActed = false;
+              // VIL-680: the same rows, counted apart from the reaction verb's own.
+              let otherToolCalls = 0;
               const guardDeps: GuardDeps = {
                 ...ports.guardDeps,
                 writeAudit: async (entry) => {
                   toolActed = true;
+                  if (isOtherToolCall(entry.actionTaken)) otherToolCalls += 1;
                   await ports.guardDeps.writeAudit(entry);
                 },
               };
@@ -1025,6 +1050,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               const card = experienceCard as ExperienceCardIntent | null;
               const capabilityNotes: CapabilityNotes | null =
                 declined.length > 0 || corrected.length > 0 ? { declined, corrected } : null;
+              const chosen = reactionChoice as ReactionChoice | null;
               return {
                 reply,
                 planOffer,
@@ -1045,6 +1071,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 voiceMemo: voiceChosen && !noticeReady,
                 draftedActionIds,
                 emailRead: emailRead(),
+                // Absent on a turn not lit for reactions, so its result is today's.
+                ...(reactLit ? { reaction: chosen ? { ...chosen, otherToolCalls } : null } : {}),
               };
             } catch (err) {
               await undoAll();

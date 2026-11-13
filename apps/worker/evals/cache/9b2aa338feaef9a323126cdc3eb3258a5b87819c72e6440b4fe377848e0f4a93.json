@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Hale correctly sent a written reply, not a tapback, because the parent asked for an action Hale cannot perform and needs to be told that plainly. No tapback was used, which is always acceptable here. The reply is honest about the limitation and offers a relevant alternative.",
+    "score": 5
+  }
+}
