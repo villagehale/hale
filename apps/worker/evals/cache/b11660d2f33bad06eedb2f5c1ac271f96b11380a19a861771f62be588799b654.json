@@ -1,0 +1,37 @@
+{
+  "value": {
+    "cycle_on_page": "Fall 2026/Winter 2027 Leisure Guide",
+    "evidence": "Registration for all fall and winter activities (with the exception of winter swimming and skating) begins Tuesday, August 25 at 8 a.m. for Winnipeg residents, and Thursday, August 27 at 8 a.m. for non-residents.",
+    "year_evidence": "Our Fall 2026/Winter 2027 Leisure Guide, Fall Leisure Guide Skating brochure, and Fall Leisure Guide Swimming brochure are now available for viewing online",
+    "time_zone_evidence": "Winnipeg, MB – Our Fall 2026/Winter 2027 Leisure Guide",
+    "time_zone": "America/Winnipeg",
+    "eligibility_evidence": "The page labels the August 25 opening \"for Winnipeg residents\" and the August 27 opening \"for non-residents\": \"begins Tuesday, August 25 at 8 a.m. for Winnipeg residents, and Thursday, August 27 at 8 a.m. for non-residents\". The December 15 winter swimming and skating opening carries no resident or non-resident label.",
+    "preview": null,
+    "resident_open": {
+      "quote": "August 25 at 8 a.m.",
+      "date_text": "August 25",
+      "time_text": "8 a.m.",
+      "date": "2026-08-25",
+      "time": "08:00"
+    },
+    "general_open": {
+      "quote": "August 27 at 8 a.m.",
+      "date_text": "August 27",
+      "time_text": "8 a.m.",
+      "date": "2026-08-27",
+      "time": "08:00"
+    },
+    "unclassified_open": {
+      "quote": "December 15 at 8 a.m.",
+      "date_text": "December 15",
+      "time_text": "8 a.m.",
+      "date": null,
+      "time": "08:00"
+    },
+    "note": "The page prints December 15 for winter swimming and skating registration with no year of its own. It sits under the Winter 2027 guide, but the page does not state which calendar year the December date falls in, so the date is left null. The Winter 2027 swimming and skating brochures are released December 3 (also with no year stated). The August 25 and 27 dates apply to the Fall 2026/Winter 2027 guide activities other than winter swimming and skating.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.85
+  },
+  "latencyMs": 24086
+}

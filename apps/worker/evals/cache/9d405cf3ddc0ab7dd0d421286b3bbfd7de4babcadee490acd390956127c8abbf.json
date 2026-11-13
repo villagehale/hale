@@ -1,0 +1,507 @@
+{
+  "searchinfo": {
+    "search": "Winnipeg"
+  },
+  "search": [
+    {
+      "id": "Q2135",
+      "title": "Q2135",
+      "pageid": 3051,
+      "concepturi": "http://www.wikidata.org/entity/Q2135",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2135",
+      "display": {
+        "label": {
+          "value": "Winnipeg",
+          "language": "en"
+        },
+        "description": {
+          "value": "capital and largest city of the province of Manitoba, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg",
+      "description": "capital and largest city of the province of Manitoba, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg"
+      }
+    },
+    {
+      "id": "Q597656",
+      "title": "Q597656",
+      "pageid": 562433,
+      "concepturi": "http://www.wikidata.org/entity/Q597656",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q597656",
+      "display": {
+        "label": {
+          "value": "Winnipeg",
+          "language": "en"
+        },
+        "description": {
+          "value": "cargo liner built in 1918",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg",
+      "description": "cargo liner built in 1918",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg"
+      }
+    },
+    {
+      "id": "Q1350229",
+      "title": "Q1350229",
+      "pageid": 1289853,
+      "concepturi": "http://www.wikidata.org/entity/Q1350229",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q1350229",
+      "display": {
+        "label": {
+          "value": "1999 Pan American Games",
+          "language": "en"
+        },
+        "description": {
+          "value": "13th edition of the Pan American Games",
+          "language": "en"
+        }
+      },
+      "label": "1999 Pan American Games",
+      "description": "13th edition of the Pan American Games",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Winnipeg 99"
+      },
+      "aliases": [
+        "Winnipeg 99"
+      ]
+    },
+    {
+      "id": "Q139880004",
+      "title": "Q139880004",
+      "pageid": 133330822,
+      "concepturi": "http://www.wikidata.org/entity/Q139880004",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q139880004",
+      "display": {
+        "label": {
+          "value": "Winnipeg",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg"
+      }
+    },
+    {
+      "id": "Q472741",
+      "title": "Q472741",
+      "pageid": 445702,
+      "concepturi": "http://www.wikidata.org/entity/Q472741",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q472741",
+      "display": {
+        "label": {
+          "value": "Winnipeg Jets",
+          "language": "en"
+        },
+        "description": {
+          "value": "hockey team of the National Hockey League",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Jets",
+      "description": "hockey team of the National Hockey League",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Jets"
+      }
+    },
+    {
+      "id": "Q2117549",
+      "title": "Q2117549",
+      "pageid": 2043855,
+      "concepturi": "http://www.wikidata.org/entity/Q2117549",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2117549",
+      "display": {
+        "label": {
+          "value": "Winnipeg Blue Bombers",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian Football Team",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Blue Bombers",
+      "description": "Canadian Football Team",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Blue Bombers"
+      }
+    },
+    {
+      "id": "Q2919415",
+      "title": "Q2919415",
+      "pageid": 2793443,
+      "concepturi": "http://www.wikidata.org/entity/Q2919415",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2919415",
+      "display": {
+        "label": {
+          "value": "Winnipeg the Bear",
+          "language": "en"
+        },
+        "description": {
+          "value": "female black bear that lived at London Zoo from 1915 until her death in 1934",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg the Bear",
+      "description": "female black bear that lived at London Zoo from 1915 until her death in 1934",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg the Bear"
+      }
+    },
+    {
+      "id": "Q1400022",
+      "title": "Q1400022",
+      "pageid": 1339080,
+      "concepturi": "http://www.wikidata.org/entity/Q1400022",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q1400022",
+      "display": {
+        "label": {
+          "value": "Winnipeg River",
+          "language": "en"
+        },
+        "description": {
+          "value": "river in Ontario and Manitoba, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg River",
+      "description": "river in Ontario and Manitoba, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg River"
+      }
+    },
+    {
+      "id": "Q576406",
+      "title": "Q576406",
+      "pageid": 542102,
+      "concepturi": "http://www.wikidata.org/entity/Q576406",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q576406",
+      "display": {
+        "label": {
+          "value": "Winnipeg Jets",
+          "language": "en"
+        },
+        "description": {
+          "value": "former ice hockey team that operated from 1972-1996",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Jets",
+      "description": "former ice hockey team that operated from 1972-1996",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Jets"
+      }
+    },
+    {
+      "id": "Q3569371",
+      "title": "Q3569371",
+      "pageid": 3398128,
+      "concepturi": "http://www.wikidata.org/entity/Q3569371",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3569371",
+      "display": {
+        "label": {
+          "value": "Winnipeg",
+          "language": "en"
+        },
+        "description": {
+          "value": "former federal electoral district in Manitoba, Canada (1882–1917)",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg",
+      "description": "former federal electoral district in Manitoba, Canada (1882–1917)",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg"
+      }
+    },
+    {
+      "id": "Q3813414",
+      "title": "Q3813414",
+      "pageid": 3636867,
+      "concepturi": "http://www.wikidata.org/entity/Q3813414",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3813414",
+      "display": {
+        "label": {
+          "value": "Winnipeg Art Gallery",
+          "language": "en"
+        },
+        "description": {
+          "value": "art museum in Winnipeg, Manitoba, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Art Gallery",
+      "description": "art museum in Winnipeg, Manitoba, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Art Gallery"
+      }
+    },
+    {
+      "id": "Q30599702",
+      "title": "Q30599702",
+      "pageid": 32210421,
+      "concepturi": "http://www.wikidata.org/entity/Q30599702",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q30599702",
+      "display": {
+        "label": {
+          "value": "Winnipeg",
+          "language": "en"
+        },
+        "description": {
+          "value": "former provincial electoral district in Manitoba, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg",
+      "description": "former provincial electoral district in Manitoba, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg"
+      }
+    },
+    {
+      "id": "Q27985640",
+      "title": "Q27985640",
+      "pageid": 29690269,
+      "concepturi": "http://www.wikidata.org/entity/Q27985640",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q27985640",
+      "display": {
+        "label": {
+          "value": "Winnipeg",
+          "language": "en"
+        },
+        "description": {
+          "value": "unincorporated community in the American state of Missouri",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg",
+      "description": "unincorporated community in the American state of Missouri",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg"
+      }
+    },
+    {
+      "id": "Q116166363",
+      "title": "Q116166363",
+      "pageid": 110875939,
+      "concepturi": "http://www.wikidata.org/entity/Q116166363",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q116166363",
+      "display": {
+        "label": {
+          "value": "Winnipeg River Arts Council",
+          "language": "en"
+        },
+        "description": {
+          "value": "arts organization in Manitoba, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg River Arts Council",
+      "description": "arts organization in Manitoba, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg River Arts Council"
+      }
+    },
+    {
+      "id": "Q8025782",
+      "title": "Q8025782",
+      "pageid": 7972028,
+      "concepturi": "http://www.wikidata.org/entity/Q8025782",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q8025782",
+      "display": {
+        "label": {
+          "value": "Winnipeg Railway Museum",
+          "language": "en"
+        },
+        "description": {
+          "value": "railway museum in Manitoba, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Railway Museum",
+      "description": "railway museum in Manitoba, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Railway Museum"
+      }
+    },
+    {
+      "id": "Q4357460",
+      "title": "Q4357460",
+      "pageid": 4163359,
+      "concepturi": "http://www.wikidata.org/entity/Q4357460",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q4357460",
+      "display": {
+        "label": {
+          "value": "Winnipeg–Churchill train",
+          "language": "en"
+        },
+        "description": {
+          "value": "passenger railway line between Winnipeg and Churchill in Manitoba, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg–Churchill train",
+      "description": "passenger railway line between Winnipeg and Churchill in Manitoba, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg–Churchill train"
+      }
+    },
+    {
+      "id": "Q8025773",
+      "title": "Q8025773",
+      "pageid": 7972018,
+      "concepturi": "http://www.wikidata.org/entity/Q8025773",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q8025773",
+      "display": {
+        "label": {
+          "value": "Winnipeg Monarchs",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian senior ice hockey team from Winnipeg, Manitoba",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Monarchs",
+      "description": "Canadian senior ice hockey team from Winnipeg, Manitoba",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Monarchs"
+      }
+    },
+    {
+      "id": "Q8025725",
+      "title": "Q8025725",
+      "pageid": 7971970,
+      "concepturi": "http://www.wikidata.org/entity/Q8025725",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q8025725",
+      "display": {
+        "label": {
+          "value": "Winnipeg (automobile)",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian automobile",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg (automobile)",
+      "description": "Canadian automobile",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg (automobile)"
+      }
+    },
+    {
+      "id": "Q645573",
+      "title": "Q645573",
+      "pageid": 607518,
+      "concepturi": "http://www.wikidata.org/entity/Q645573",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q645573",
+      "display": {
+        "label": {
+          "value": "Winnipeg Free Press",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian newspaper",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Free Press",
+      "description": "Canadian newspaper",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Free Press"
+      }
+    },
+    {
+      "id": "Q27717833",
+      "title": "Q27717833",
+      "pageid": 29434097,
+      "concepturi": "http://www.wikidata.org/entity/Q27717833",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q27717833",
+      "display": {
+        "label": {
+          "value": "Winnipeg Clinic Quarterly",
+          "language": "en"
+        },
+        "description": {
+          "value": "scientific journal",
+          "language": "en"
+        }
+      },
+      "label": "Winnipeg Clinic Quarterly",
+      "description": "scientific journal",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Winnipeg Clinic Quarterly"
+      }
+    }
+  ],
+  "search-continue": 20,
+  "success": 1
+}

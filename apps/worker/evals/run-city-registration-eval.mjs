@@ -188,6 +188,23 @@ const FIXTURES = [
     host: 'vancouver.ca',
   },
   {
+    id: 'winnipeg',
+    why: 'A family in another province whose city site the pinned fetcher reads.',
+    place: place('Winnipeg', 'Manitoba'),
+    expect: 'find',
+    host: 'winnipeg.ca',
+    // Read by hand 2026-11-13, under "Our Fall 2026/Winter 2027 Leisure Guide":
+    // "Registration for all fall and winter activities (with the exception of winter
+    // swimming and skating) begins Tuesday, August 25 at 8 a.m. for Winnipeg residents,
+    // and Thursday, August 27 at 8 a.m. for non-residents." Winter swimming and skating
+    // open on their own, "Tuesday, December 15 at 8 a.m.", with no year printed. The
+    // winter opening has already passed, so Hale tells nobody and looks no further.
+    reference: {
+      'https://www.winnipeg.ca/news/2026-08-13-city-winnipegs-fallwinter-leisure-guide-now-available':
+        { own: ['2026-08-25', '08:00'], general: ['2026-08-27', '08:00'] },
+    },
+  },
+  {
     id: 'invented-town',
     why: 'A town that does not exist has no page: Hale must say it does not know, never guess.',
     place: place('Fernwick Hollow', 'Ontario'),

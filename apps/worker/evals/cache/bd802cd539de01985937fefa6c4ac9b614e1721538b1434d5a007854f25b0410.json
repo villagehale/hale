@@ -1,0 +1,22 @@
+{
+  "head": {
+    "vars": [
+      "item",
+      "site"
+    ]
+  },
+  "results": {
+    "bindings": [
+      {
+        "item": {
+          "type": "uri",
+          "value": "http://www.wikidata.org/entity/Q2135"
+        },
+        "site": {
+          "type": "uri",
+          "value": "https://winnipeg.ca"
+        }
+      }
+    ]
+  }
+}
