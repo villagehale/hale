@@ -33,6 +33,15 @@ import { SCHOOL_BREAK_ASK_TEMPLATE_KEY, parseWeekdayAskKey } from './key';
 
 export const WEEKDAY_CARE_QUESTION_TTL_MS = 48 * 3_600_000;
 
+/** The asks this question reads. It answers to one of them at a time, so one text may
+ * carry at most one of them per parent (proactive/review.ts). */
+export const WEEKDAY_QUESTION_TEMPLATE_KEYS: readonly string[] = [
+  WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+  WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+];
+
 export type WeekdayCareQuestion =
   | {
       /** The ask's own `channel_messages` row — the id the open-question list carries. */
@@ -78,12 +87,7 @@ export async function weekdayCareQuestion(
         eq(schema.channelMessages.familyId, input.familyId),
         eq(schema.channelMessages.parentUserId, input.parentUserId),
         eq(schema.channelMessages.direction, 'out'),
-        inArray(schema.channelMessages.templateKey, [
-          WEEKDAY_CARE_ASK_TEMPLATE_KEY,
-          WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
-          WEEKDAY_BREAK_TEMPLATE_KEY,
-          SCHOOL_BREAK_ASK_TEMPLATE_KEY,
-        ]),
+        inArray(schema.channelMessages.templateKey, [...WEEKDAY_QUESTION_TEMPLATE_KEYS]),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
