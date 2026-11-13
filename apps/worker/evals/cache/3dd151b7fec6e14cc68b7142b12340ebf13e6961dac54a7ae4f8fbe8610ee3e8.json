@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Groups every offerable find by day, as asked, with exact titles, correct dates, and only offerable URLs. One plain question, no greeting. The weather line is grounded in the forecast but is an extra clause the request didn't need, which is a minor blemish.",
+    "score": 4
+  }
+}

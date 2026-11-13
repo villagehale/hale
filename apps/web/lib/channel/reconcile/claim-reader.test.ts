@@ -159,6 +159,9 @@ describe('the output schema', () => {
       ...['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g9', 'g10'],
       ...['q1', 'q2', 'q3', 'q4', 'q5'],
       'w1',
+      ...Array.from({ length: 10 }, (_, i) => `r${i + 1}`),
+      ...Array.from({ length: 10 }, (_, i) => `m${i + 1}`),
+      ...Array.from({ length: 10 }, (_, i) => `x${i + 1}`),
       'p1',
       'p2',
     ];
@@ -170,6 +173,10 @@ describe('the output schema', () => {
       'activity_followup',
       'co_parent_invite',
       'self_referential',
+      'registration_done',
+      'send_done',
+      'send_received',
+      'cancelled',
     ]);
     expect(READ_CLAIM_KINDS).toEqual(item.properties.kind.enum);
   });

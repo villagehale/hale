@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgzF2pXwu4Ko4Qo8tCZ69",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqAYKEAgTGAI4AUIIdGhpbmtpbmcSDAEX1XyfrQ78Z5VM6hoMUHP496MTmGHxZ+DxIjCYbE4CDzfg4XjJSha0oSbJceeh1rwHgEVs//nC++CG85sRVBWd3oX5l1DTnuBwBEgqxQW3dpT4HNQXghD2ijBqXqYkgZrGKDxPT5a7UL4xn+FvrwmgWYmc0WXuDkYa6I35hJla76Or39spySTMoZnShZnkdfBEh+/nW5cEuQsiOgno248vvpISdAAZ8CaGiI1WkD3FnAgoyThdkdOyMCLeu7aByab3RZlMit6P9rXSPotL9yWVXNllycCmJF6d7m0Cz3WDUIkWcBowF3EnrwICmAUFRIKL3mXMeWtlQBB4y13v2RUpk2dtGvketHJiorBYDHjkO246rzcPzYYJYx1lIrnUrwL/0IlcRsOC6did2n1ltjrCrFc52SBDV76F+9gVt/tl4MdUJMyY1s6lC0LtEdaSfMsvzLG/SVz3FATv0LqCuQlisHFWvhkX8Tpt5vAlydMkk/8M1qVV4Qdk7q/cWSKWxon+od4k3Yj8E8mDrEjiRUgHy9jdWwYs/c4UbP/a2Uf0x3Ze7D1HatZwj0pdQt1d2HPftdTMu29ANNRD5WAjIHxp0yGj2nZgfN/Ygg7+12bwqYaNFRQPPpDgihdr777kAGsbZ9AXIFG1JZiiMzDvWTAHZCFJOTP2gnXlKpQrer+4KmSpBH+jtu7vkmfJgGOeCni60zatSY03bNiBnPz6FdSVeIesbshbwUVUTV/rd7MOh20RhES6XSgca6V9L8IiRcNMnfQldCIIAl0DiiwKoKYlDhdtT9yCbws5UUBepyHS6Xo5jexrk9hdm+7/njZ48A8DQb1EviFRbUfndy/3WY8nyvROKfuuoUptuE7gP/fdgKrFTCiM3ZoloNHu/zGqieu1luk8ylUWZLZa6S0LF1W2pEVaupQURXCahWxniqmhVr7FtNtZQwxmxaWHcPNRlN/Z7UvXmt/SnpxQUI+1cV08ZueUBRTSx8k2SoR9k0crcxvVeF2JqtUgucbhXYrqJU0+O/Ir1KbZsGoEGMp6GONHvzkYGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01C6fReaihxh69dYtX6MQx8R",
+        "name": "find_activities",
+        "input": {
+          "subject": "kids ages 7-9 fall session swim, art, soccer, or music",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 195,
+      "cache_read_input_tokens": 25376,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 195,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 122,
+      "output_tokens_details": {
+        "thinking_tokens": 24
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1571
+}

@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CgyAnVPuvmGnMukvJdMzd",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrgkKEAgTGAI4AUIIdGhpbmtpbmcSDMWGBQ45f6ptMu1EAhoMc8VpPjkHKEGlIChWIjCK/nhFoK5loQrWSHlUReq88H+PH1NvXjsDOXA9OxGgu+V7gyvfiz1wf5UTL/PQjTkqywibiUutGRuziL6FnBeMJZVeV4jt+dqqzljayzT+3mWfHrs6EmsOJA03OabLI5pSvr5hT8ACQxvoKvUGpPtUzfSNoDU4IV+6EyGV3E/SPuiITzmQt2LS7EmVtUgABXjzHMOprufgD3en7PQO9F9JS2dGpfTu8HXYFwYnjnB8UWD/8MQXWtrbshvSEYPKwSj/cUaD+TofJHtkYtomAaj379VWylMeP5/a1pWhkNpmiJLpxdjPmmrCTf3t+4LEW9CwbBQGrKfB2QoTatveu4bap6wCXjCW6HCAJyEGeCxn8T9Hocxh7dxzzhFa9p0SlN8Zqj1q0vKWkh875p9zSBiVETXg1LHSL2Mgsylu+N3YKez82aOvMjwqqpVQ+ifRVm5GxyumtaobMJl0pMrzwre3MsU667/5NILOOmucoS+OHmcIYaZfWL0lU19w90dGWGEjJDUPOeyL6Wq3UiiW8EeAv9W6r4Iehz8Wy0lomdpERffLNceGwgIMZTin1lUMKnAV2cDfCMdWD+PbMiTWgZPQDBpG9MswCsnXsZ4+IqhkEMi3CctfLUTESkv43eEba7UoA/1hGv+OsiVrh2mIQ1Se980yaRy9RnQO5nnh3hTB+j+o3bP/PX3oK60I6tkjI4wTnt1PR7yU9lEZ3HH6t+ysoEVXs9MOIoSpV1xTKE8ZxrZ7+P6fq7MYqi//ZK5dBI0TyUs/S88VH5Iw4JYnCDoq5YDMgXvf7pkawZoJGIodCzK/k6yInOizqa+EQMIrvRsC4u7ZjskBP+QIdc9B29Jg6/ct/LVJs0/TCjq4/4FA9YPosSoRvv5XMYOXSWUPeTpn/aX6NU4GgeY+Cymc8G3ghSqEhT4kFQrOoWGCEHGBq/L7OZvqyS/Xr3NOoA9NiwnnyPhdAFU9eBZCAkVPIqpVVf+T51tU3WhgVZ+xMXF1qE6DgWZUy28fbhHOdnLaLZA7GhjjNGMyqz7zjx0jsTvfsWQrOnAfzCOHxxiNObVpkyvXGgpIT/NB4hXVTPkKqqIBBK3bAs9drNUCNAgOiio45VhAnWxOsMmHRGDr+suczLUG+nT4y7+djDGC7d8FOWuJDovS6yDq7pJU+M6YE9iTdZeQ4ZULdIgXDi3lWc+uoRqnHmNZxxpHyc6iof8vppPsYCObXrtL4e/yyyMq9t2yYqScQNXHLHzfvUwMsWrjMqsbITZ3Tq6KSC3yaxqFwwpcobicbpBHvOYZDFRMyAmfszuWv4xGIXS1ytnCo8TMxmm8r2cgrpR7TPkMVbYK3ufLMRuACS/bV8DjtCooykpVB9du0FJ0aSASosCCWjseyJqdnNRAmKHUFTJASnc5MEcZEYncx6Jk8CAEEroWLXqJu3XxuY7SsGTqWDqfwT7oNZVrnndloq/FaXHQdxvrZ9p85oaK488O3grrC//tY6bg6hbbSYXwTiGltJKgY7FLWUkPFyhwj0sOu23VOmGUGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01LMTwqyw1aLK6Z3vgDBfuYv",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 439,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18999,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 226,
+      "output_tokens_details": {
+        "thinking_tokens": 197
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

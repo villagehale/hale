@@ -272,6 +272,9 @@ jobs:
       - name: Inbound burst reader eval (cached-only)
         run: pnpm --filter @hale/worker eval:inbound-burst
 
+      - name: Inbound side-turn reader eval (cached-only)
+        run: pnpm --filter @hale/worker eval:inbound-side-turn
+
       # VIL-540 meaning gate: a promised time or an app/website, in any language.
       # Replays the recorded verdicts; a miss fails the job.
       - name: Holding-line judge (cached-only)
@@ -376,6 +379,10 @@ jobs:
       # One coach answer as several iMessage bubbles. Recorded; a miss fails CI.
       - name: Coach bubbles eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-bubbles
+
+      # The model chooses the tapback (VIL-680). Recorded; a miss fails CI.
+      - name: Coach reaction eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-reaction
 
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "finding a park for the family is Hale's job",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1125
+}

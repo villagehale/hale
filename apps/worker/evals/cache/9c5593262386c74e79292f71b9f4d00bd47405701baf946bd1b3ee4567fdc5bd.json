@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyFjfVsLkVkBrR8z6mut",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuwkKEAgTGAI4AUIIdGhpbmtpbmcSDEZwzM/FZf9o5xv7IRoMuyZdr99oscVQ8D5jIjACIuLqa8TVpJPzvCA3OsrDbZGXk5WV98Ntd7NXpjuYjQWbv9TOCpTKPDqGycc2hjMq2Aj3OZtfXhdb7C2UPlfCY8m90hb8PPlSGXKVUMgnIbgK9HINhmy18HjAJCE/+hdvQP3PZuOlWGp1XmB/aARLu/OzTZREDf2cml46/BlNoIO2x2zOH23P6MYEWGtVWSRtL3BrQBxk28ykVLWxagd38B6vIA/Kx+YAWfzajG0H/cm1Gr+GAoqI6paZWiLvHD1uK9mDoiCoL+Y1A7emibkg5V2BeAfSapG8Trk1/u3kslaYkacwYtj7nmJkoLvgLE9sIZhJlF1Rh2rOMp+oOcmiI+OL2MpcGs/JA7stToFhaqSow6g0c/Q/auLqJhwxPfb1/cqbeaytNtTCbmasGxgFFkTAB8KKayKkW1kTMH7t3GMNToHaqURLH5Q2K9CKKqtjIdlbzeZtBquX7eegBXeLthRZYj6cqZ1+ub16yczRWzPKGq5ifGdmIBUOoyyI/AuAfAaRYAQUsShmaVnu0dGF17kaOkH9jhsDGB9t5YhJ0ZIFGas34YEEz9KpB5gz17l9JUFURp+8RSdQ2aipWaPKMbvRW8GnWJQQYxgjWnVdQPL8JdZzYb2UMmaCXC2srxag6bAaZz6wUqx18UILwOyNbQxn7Sa6tzVaMNNaeZLUw8ZeNFk+oGewJaVSWxaJwhRuzuUamEBFJAUBUN4s0iyO4+2LMJbPiuyNI9gb9OGzK3N+mVdyX/sng5A8ZD6ykkevHQCEDvjR59FmIGFaQCvZnxS4kn09Vq99BK93I7VliNlhEDVNWfeRVYdy96AaYSvFKlP8bl40an0RW8FB30KWqwJRsh7s9mA8Lhn8vS208uKJAbAunsj4JLLfAce/ccgQYkm31t/b4vrql4DZ0dkI30B0a29/cO4WXdELJF2jS+IJQmeQyr30wKzpwzz2jsBQSkbTIyMHL9U/tyFLaSiuQGlS0egveIxr0oHSynJ9cE8BeCvJ3xXXqhCJRhgCSV0HzxfbqfO8LdTc6OYC00OZNQHtHfm7jvK/eb5wk126NwRPnRwhgSg4L2cDNlllkBPLBJs4AD1q3xq+bUkErQ2YVPGYoOnoQx6wqnR+vIC/NbMQyH8sZF/yxQPZjfxQFLp9Ybxpdae/lTJacyxNut6zqTuh8Hm8+KoH8XWl7csP5Kx53deu1noA7N4r3mZGvF/1yfNpIplEJBCsYEqyGniSd1/BnQ4CEAlnAXrEwzg5HK84zHt85hXx+oBR+r8DkIXNN7ELr5A7mKpsemM1swgbFPOyFZoCbKuHXCVxRkmO2XvbyMJK5OMHWd0VNsPSw+jSJUxjBCHbhgi5wI/BWe4iaohzrfzS8+p0oTaa9B+jNeYv0Lkh5Jn0fzKoUXufjo2osuzIxqaJa/SGzHli36GxsGelllgRYDs+jhlVWISnzVLLKq0YTw64yHJp+ajaM4H1vdiWXf8hw44Q8KdoR0R0wo+dU8Ix/LDoY0tWAEfR7ksIfhQYOmwLwCYEBFS0hvjMHCcoVw1GTQ/OSRgB"
+      },
+      {
+        "type": "text",
+        "text": "That one's better picked up in a private text. Want to move over there?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 418,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19027,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 207,
+      "output_tokens_details": {
+        "thinking_tokens": 186
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

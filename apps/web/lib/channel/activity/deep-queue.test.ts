@@ -159,8 +159,11 @@ describe('dispatchDepthForPromise', () => {
   // Dark, the question-time pass is not queued at all: the promise row is left exactly as
   // the router wrote it, due in a day, for the hourly sweep — the path before #1251.
   it.each([
-    ['unset', {}],
-    ['another family on the allowlist', { DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST: 'fam-other' }],
+    ['false', { DEEP_FOLLOWUP_NOW_ENABLED: 'false' }],
+    [
+      'false, with the family on the retired allowlist',
+      { DEEP_FOLLOWUP_NOW_ENABLED: 'false', DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST: 'fam-7' },
+    ],
   ])('dark (%s): a recorded promise is not dispatched, and says why', async (_label, env) => {
     for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
     const dispatch = vi.fn();
@@ -173,8 +176,8 @@ describe('dispatchDepthForPromise', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('the allowlist lights the family it names', async () => {
-    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', 'fam-other,fam-7');
+  it('unset is lit: a recorded promise is dispatched', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', undefined);
     const dispatch = vi.fn(async () => ({ status: 'enqueued' as const }));
     const outcome = await dispatchDepthForPromise(dispatch, {
       familyId: 'fam-7',

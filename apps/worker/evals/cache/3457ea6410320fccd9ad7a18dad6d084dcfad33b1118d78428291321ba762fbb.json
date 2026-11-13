@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child choked and went blue; reported state, happening now",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1706
+}

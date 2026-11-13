@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale cancelled the Saturday swim sign-up, which matches the cancelled row x1 for the same swim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "cancelled",
+        "row": "x1"
+      }
+    ]
+  },
+  "latencyMs": 1070
+}

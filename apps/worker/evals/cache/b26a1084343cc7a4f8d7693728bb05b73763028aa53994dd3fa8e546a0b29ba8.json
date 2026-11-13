@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a connect ask phrased in words the deterministic branch did not catch. The reply says the link is a text away, quotes the plain ask verbatim, and matches the real feature (one-tap link, good for 15 minutes). It writes out no URL, does not send the parent to the app, and stops there. 'Yes, I can.' is a brief, natural opener rather than a greeting.",
+    "score": 5
+  }
+}

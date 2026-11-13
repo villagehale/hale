@@ -36,6 +36,7 @@ import {
   groupPlanDraftPort,
   productionRecordGroupPlanOrigin,
 } from '~/lib/channel/group-plan/stamp';
+import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
 import {
   type InboundMediaPart,
   type ReadInboundMedia,
@@ -71,6 +72,7 @@ import {
   undoGroupListWrites,
 } from '~/lib/channel/lists/tools';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
+import { readHealthPlace } from '~/lib/channel/off-domain/place';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
@@ -157,6 +159,12 @@ import {
 } from './local-day';
 import { familyLocalNow } from './local-now';
 import { appendNoGroupRelaySkill, group1to1NoGroupRelayEnabled } from './no-group-relay';
+import {
+  type ReactionChoice,
+  augmentCoachSkillForReactions,
+  isOtherToolCall,
+  reactToParentMessageTool,
+} from './reaction-tool';
 import {
   type CoachEmailReader,
   READ_EMAIL_SKILL,
@@ -268,6 +276,10 @@ export interface ChannelCoachPorts {
    * ladder is armed for them — Hale's flagship job, made visible to a turn that is
    * being asked about it (see registration-context.ts). */
   loadRegistrationWindows(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
+  /** Where the family is for the health line (VIL-589): a 1:1 turn's `helpLines` are
+   * `healthLineFacts` of it, so 811 reaches only a family placed where 811 is a health
+   * line. Required: a coach that cannot place a family must say so with null. */
+  loadHealthPlace(familyId: string): Promise<HealthPlace | null>;
   /** What Hale's Browser Use watch last read on this family's providers (schedules,
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
@@ -443,6 +455,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const signupOffers: RecordedSignupOffer[] = [];
       // VIL-495: the model chose to say this reply as a voice memo.
       let voiceChosen = false;
+      // VIL-680: the tapback the model chose for the parent's message. LAST CALL WINS.
+      let reactionChoice: ReactionChoice | null = null;
       // VIL-447: writes a failed turn must take back (shared-list adds and check-offs), so
       // the router's "nothing was changed" is true. Run newest first; an undo that fails
       // is logged by fault class and never masks the turn's own failure.
@@ -461,15 +475,25 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [loadedSkill, transcript, children, registrationWindows, timeZone, forecast] =
-        await Promise.all([
-          ports.loadSkill(turn.parentUserId, turn.familyId),
-          ports.loadTranscript(turn.conversationId),
-          ports.loadChildren(turn.familyId),
-          ports.loadRegistrationWindows(turn.familyId, now),
-          ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
-          ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
-        ]);
+      const [
+        loadedSkill,
+        transcript,
+        children,
+        registrationWindows,
+        timeZone,
+        forecast,
+        healthPlace,
+      ] = await Promise.all([
+        ports.loadSkill(turn.parentUserId, turn.familyId),
+        ports.loadTranscript(turn.conversationId),
+        ports.loadChildren(turn.familyId),
+        ports.loadRegistrationWindows(turn.familyId, now),
+        ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
+        ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
+        // A group reply goes to everyone in it, so the province a health line names is not
+        // said there: a group turn is told the lines for a family Hale cannot place.
+        turn.audience === 'group' ? null : ports.loadHealthPlace(turn.familyId),
+      ]);
       const localDay = localDayContext(timeZone ? familyLocalNow(now, timeZone) : null, forecast);
       const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
       // VIL-524 / VIL-567. Only a nearby-find turn gets the find addenda. A model reads
@@ -654,6 +678,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // first, each saying whether Hale's ladder is already on it. Empty for a family
         // outside the covered set — and then the skill has nothing to claim.
         registrationWindows,
+        // The only help lines the reply may name (VIL-589), chosen for where the family is.
+        // 811 is Ontario's nurse line and the call-before-you-dig line in the US.
+        helpLines: healthLineFacts(healthPlace).facts,
         // What the watch last read on this family's providers. Absent when empty, so
         // the ordinary turn's prompt bytes and cache prefix are untouched.
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
@@ -686,10 +713,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // A 1:1 turn the router lit for several bubbles gets their addendum, last. Every
       // other turn keeps the skill object it already had, and its recordings their keys.
       const bubblesLit = turn.replyBubbles === true && turn.audience === 'direct';
+      // VIL-680: the reaction verb and its addendum ride only a 1:1 turn the router lit.
+      const reactLit = turn.reactions === true && turn.audience === 'direct';
       const skillForTurn = augmentCoachSkillForBubbles(
-        photoFacts
-          ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
-          : coachSkill,
+        augmentCoachSkillForReactions(
+          photoFacts
+            ? augmentCoachSkillForPhotoFacts(coachSkill, await loadCronSkill('coach-photo-facts'))
+            : coachSkill,
+          reactLit ? await loadCronSkill('coach-reaction') : null,
+        ),
         bubblesLit ? await loadCronSkill('coach-bubbles') : null,
       );
       if (photoFacts) {
@@ -763,6 +795,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                       replyAsVoiceMemoTool({
                         onChoose: () => {
                           voiceChosen = true;
+                        },
+                      }),
+                    ]
+                  : []),
+                ...(reactLit
+                  ? [
+                      reactToParentMessageTool({
+                        onReact: (choice) => {
+                          reactionChoice = choice;
                         },
                       }),
                     ]
@@ -844,10 +885,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // Every tool call writes its audit row before its handler runs, so a write
               // here means a tool has acted this turn and the loop must not run again.
               let toolActed = false;
+              // VIL-680: the same rows, counted apart from the reaction verb's own.
+              let otherToolCalls = 0;
               const guardDeps: GuardDeps = {
                 ...ports.guardDeps,
                 writeAudit: async (entry) => {
                   toolActed = true;
+                  if (isOtherToolCall(entry.actionTaken)) otherToolCalls += 1;
                   await ports.guardDeps.writeAudit(entry);
                 },
               };
@@ -1006,6 +1050,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               const card = experienceCard as ExperienceCardIntent | null;
               const capabilityNotes: CapabilityNotes | null =
                 declined.length > 0 || corrected.length > 0 ? { declined, corrected } : null;
+              const chosen = reactionChoice as ReactionChoice | null;
               return {
                 reply,
                 planOffer,
@@ -1026,6 +1071,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 voiceMemo: voiceChosen && !noticeReady,
                 draftedActionIds,
                 emailRead: emailRead(),
+                // Absent on a turn not lit for reactions, so its result is today's.
+                ...(reactLit ? { reaction: chosen ? { ...chosen, otherToolCalls } : null } : {}),
               };
             } catch (err) {
               await undoAll();
@@ -1118,6 +1165,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       return householdGroup ? { ...context, householdGroup } : context;
     },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
+    loadHealthPlace: (familyId) => readHealthPlace(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
     loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),

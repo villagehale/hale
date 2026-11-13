@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgyGip9cR9rKKmUPWkrcr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9QYKEAgTGAI4AUIIdGhpbmtpbmcSDLDBEMm9bFepAGKhKBoMg+Nb5110bpBmFGTdIjAFAUQrsK43xcyFCuAwrmSo68PqGaUII6mDtvO0eEXgDzqFBnTPpxDYtpCuCtTtG2sqkgY6DfMjSJ5oL+Yie75dbAYnqJaWJgjJkiB9/YZ/GqyJOsqy2aaEcIQ0ZolYoKPOtjjDE5LD/+LGfidZZgLg8Mc0n78debdSUgIE1YZS9JxgSDZF8xaNKf11P0xMuZheZB4pPP+1DgfBOVFmbxQWftmBdu4n2shLTd1yhJX8dfX/qufEXAFu26pxQux9vjefJ/2HC3n0ztO+UNS3ONq3VrRNvgBJ6wSGmdtYzXGaKA12hVXhMQC8CcGViwwVyMZZJc7aCDJM4uezJ4dRMHBV5GOYeTdND9zM7BDKAwprEcNfBSE36SemE2aXDwEVUi7XAyu27vwKifzoWJsLm5HHbQtwwSVMUfWvcN6P3jhNaqPrDMpcXnnY/7aazVdd+0sKihAsxxk28c0WaKuXaYYszDgs2sKJAT6yD3Mai1p5LKDVwkXs/gjZxrx3sVMabdtr4MFiyLU2cV+qgP+UQPcg00nZ/BhdrG/wPUCdPjCfpczyyYC6orgSHSDFhdAh9JO2BlpOzRhJswwlupsZ984kBCdmCnTxj+7vWBUPlCykXXpYf/RNKkM8Y8IPPGNzTSgfVN16Tpnle01DTNzmhTi2Kr3PNvMRhxqNo0WKdxG8XcqB2VyXzEyuSgOHFoupt4qHhlIxWr0uIPy7CzNSPH9pM4OVq9MtvoqXTC4pJfxIvAtEh1GGN+PYmTWx2dm3GI+tERiRsGy1IVC7ux6xJdCvZr4l9hjvYouTSImWjo+FArv9Prtyu8rw1CfGhn4VhuMVOP6dn6oCTJ5d+Bbq+GPqn9B8oSYv5iPVF3Tz2Zy8FehcXYVnF+Q9ZxCSZqGe8vD23i1VimXGDUFeqDAs0DtquKhaegHy4Xf9SRxY9YWowWgx9SA5C2iVN58nxVp6e9saFV+hvSABvGKQ2LGAjfo6TjLKjCfVtsUtpsFQJ4UT3lla9qMv8ynCZlw5n0z+LLyy95FfpGCKJbKIvk6e8dTEuu99VTAEM1vJ9XXRd9lrC8g3IGy1s0LMhsmQ+u85bPB4JmfvSptL+ddoAJ0HKCBOEUursakYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Okay, Thursday swim stays as is. I haven't changed anything."
+      }
+    ],
+    "usage": {
+      "input_tokens": 776,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23580,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 125,
+      "output_tokens_details": {
+        "thinking_tokens": 99
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2775
+}

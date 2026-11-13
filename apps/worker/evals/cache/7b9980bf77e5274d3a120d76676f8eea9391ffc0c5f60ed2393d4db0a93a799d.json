@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the swimming class is booked, which matches the scheduled swimming row e1. The registration opening time is a statement about the world, not a watch Hale promises, so it is not a claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 3499
+}

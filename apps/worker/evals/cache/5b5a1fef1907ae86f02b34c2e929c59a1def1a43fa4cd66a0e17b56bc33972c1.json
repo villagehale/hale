@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzEzyUuQZ6iLYW15q76b",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnAYKEAgTGAI4AUIIdGhpbmtpbmcSDLENNN2Lp4wQuj0zWhoMNgyf2Squ+3uD8G4YIjDPnP+7n3FS9Mj9oljWm0H3GbKhpEcoSN56PD15jgsimUdtMWVRynDP3+5DDjA1tIYquQV+JWr8FVM2jD4V+vskk6aygAC5Y0uPv9Co3scet6ER1adG+mSadm9aoLBAiZcOhQ1qQDflk77cHRGOIOaC/x0Fk2z6ehrbkA9sAJV8lxIzjnQ663nM9BUBPl3phYHOy1CvpehaGA4K200HEyuiBRUalhDI9NF75bZLlarGI6rk3YODbb4EZZ3w1RAvDoWEs519+uzmCnTB2Bkxn891t0tyzS2WEE3OK4w+ruw4Ouc2FyLmMMSw1XZ2QXuMabegZfgy+0SozsTjvWwnNipPxqduz0Izv966j4E/aLvA6MHdVQzhb1P85zxwOY6pmW54exNVFDQpxF4D60jstV3pQfNzuGGxMoJsNrcldHrpidfyK1Q7nKUSrJe3OeiE+GmBCrRNiHs2xXe6XvEKALxCGU5WsiTteeSFzIbq5SidsvUHQYdNoQqeQvzHe/tztr7c5xG8ioR9jwAiz5Kp1UfAMQCzFsYm41LilHWhOva6aAQxulJjjcSfjB2LhBrMiGlOG89D92H5HFlEaFT2Gp1RwOQ6lmxzSPF6FiITuH/AG1XrPhYP3BOZeZg8YmJwyOpsqN9HskunoVVrTw8UuJ2R7MdKrKMHv3k3sIla81hHSwoGm10S1usvvAx3y5E2DqCZz+pdSbxZ3qUW0kAwM5iGdFjxFsaZIPD8EAw6I/smm3jisljCrqAVbJHdYA+Wn6ZcnG/6VREzVuSnnIEfG+vDcB4KfO0R6rYitJIYqiB/lGhpPtu1tKEuJpmpPLDLeopEJ1I8gKvRgMMYXgniDxDzZr8zqSA4oSOxP+cmapc9dAGn6FqwGanSBNAhuFEJZ8JnwqxZDwuVFmCs10Rsdt8m8iY2ouHjH/XrUyJ99Cf2viNrtOL/ZL3IcccHGgneWGe14f5IhdDGPJF1vn1d2/C0NITt3YsQgjQKI1XCGAE="
+      },
+      {
+        "type": "text",
+        "text": "Harbour Art Studio's email on Jul 28 said Ada has art on Fridays at 4:30. It isn't on this week's calendar, though, and Friday Aug 7 is empty. Want me to add it for Ada this Friday at 4:30?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1346,
+      "cache_read_input_tokens": 23912,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1346,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 146,
+      "output_tokens_details": {
+        "thinking_tokens": 61
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1966
+}

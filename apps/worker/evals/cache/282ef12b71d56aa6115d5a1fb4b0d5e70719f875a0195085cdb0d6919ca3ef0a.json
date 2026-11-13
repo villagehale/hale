@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgyFpp6wb9X2KRh9WijJw",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS7AYKEAgTGAI4AUIIdGhpbmtpbmcSDM+UKXKsdpJJ3xEaFBoMHk3Nae5RHKAjRWGhIjAPC23QMUdkTSvuB2Z6+AEk4F1rU3bErOPzrHsuYcQib5wNl8FahE28Jc1ezViwOBgqiQZG3NuscElLFiYXtc8G8lw5LnRlxSulcvmTjss9l2FmT/4ckQLRhU4oqW8bpL7aYj4+sxohsX1SsRgpnvO20Bd2jHo6djaxYYFyFBSmIZu/2POI0iki8KoL8VuqFRt/hvzIpsrtMiTEnoqmil+0pxIrrD7GWKQM/1uc/niV14V16kbaFmqyOgOjpR+KNUFuozAcrm5ahmvD8/vj1JNeMnEhLyayGrcQ3DU63fJde4VuHSYOBmZoW8iYngba61ut87eczQ54qiDk/ZuRWrc4havw4XUNfJs+vyMzoQVRDEUNWUOad6vlgqn4CrJHIGc2VAfRTl13k7u6p0UoI5A7CkHBAsy+8MZgP/UyAuI+wfHGTe02TZ2Qwcwe3VQMHxnvt+VUibXvuZmj97USG6CiprM7mTtK4nPiRTJThLE/PGBVpWzDeC41YBgyNdgRLm/GcpRwp30o/jQSWgrUSiC7yBLVORayFCXRIsnStIBnq8rCEH7phszRyashVvislLvci3VsczTL+5+hz8QkbI58yWAu6TzjVhAkjkvgd5lYovRMwZeUKPk07eeClH5jpCKRueP4H35879JuuVuVrxz92L7OygA2sXu7PwHaKroDm/j+bNwljhIGdAX6MlFC08mZpJL0VelJHMWT4GGvF8SZOePok7uF6AW9TVr27voRSj0oyjZYVP+TDZBCIGNrFog17hxGiEsrpkU3UB28cTSBuAxkBZf+bgizkzmCGDeOag02NwXpcXCzM5whmjaN77fpRF8f2w4BRQMP+8m0RCxCRM2tlxi2thlED+qyBDKdiKkZfkNcL6gBa2MP510ineoIEj3QIURf3vapxv4DLm4/jEkHkgK4j5KT1Jk92U0/E6cV2oqFpQ0qM9mWaegzh2w/UNRiHuY2QEem0OuShVQJtnZ7wkvOhjer9yRaNYBHEYqSQC2iw8Ylhms950rXgH+QHl0MRDVeYfTRUvHaKzHnlTdXaMaXBXU96ZJv0gZeEHQU06Kzo5jGjwt1QWuHhHYdhvrimEl9oUFXxj8YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Cxnn1aGaJbzTUaZP8JVicw",
+        "name": "find_activities",
+        "input": {
+          "query": "toddler activities this weekend Columbus OH"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 590,
+      "cache_read_input_tokens": 19055,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 590,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 162,
+      "output_tokens_details": {
+        "thinking_tokens": 99
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale posted a message to the group chat, which matches the group-chat text row m1. Nothing says anyone received it, so there is no send_received claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_done",
+        "row": "m1"
+      }
+    ]
+  },
+  "latencyMs": 2200
+}

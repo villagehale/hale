@@ -48,26 +48,32 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     expect(isEnabled('f14', undefined, env)).toBe(false);
   });
 
-  it('keeps inbound-burst dark by default and arms one allowlisted family', () => {
-    expect(isEnabled('inbound-burst', 'fam-a', {})).toBe(false);
-    const env = { INBOUND_BURST_FAMILY_ALLOWLIST: 'fam-a' };
-    expect(isEnabled('inbound-burst', 'fam-a', env)).toBe(true);
-    expect(isEnabled('inbound-burst', 'fam-b', env)).toBe(false);
-    expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true\n' })).toBe(false);
-    expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true' })).toBe(true);
-  });
+  it.each([
+    ['deep-followup-now', 'DEEP_FOLLOWUP_NOW_ENABLED', 'DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST'],
+    ['holding-line', 'HOLDING_LINE_ENABLED', 'HOLDING_LINE_FAMILY_ALLOWLIST'],
+    ['inbound-burst', 'INBOUND_BURST_ENABLED', 'INBOUND_BURST_FAMILY_ALLOWLIST'],
+    ['next-day-checkback', 'NEXT_DAY_CHECKBACK_ENABLED', 'NEXT_DAY_CHECKBACK_FAMILY_ALLOWLIST'],
+    ['coach-bubbles', 'COACH_BUBBLES_ENABLED', 'COACH_BUBBLES_FAMILY_ALLOWLIST'],
+  ])(
+    '%s is a kill switch: unset is ON, false is OFF, no allowlist relights it',
+    (key, env, allowlist) => {
+      expect(isEnabled(key, 'fam-a', {})).toBe(true);
+      expect(isEnabled(key, undefined, {})).toBe(true);
+      expect(isEnabled(key, 'fam-a', { [env]: 'false' })).toBe(false);
+      expect(isEnabled(key, 'fam-a', { [env]: ' false\n' })).toBe(false);
+      expect(isEnabled(key, 'fam-a', { [env]: 'false', [allowlist]: 'fam-a' })).toBe(false);
+      expect(isEnabled(key, 'fam-a', { ...ON, [env]: 'false' })).toBe(false);
+    },
+  );
 
-  it('keeps deep-followup-now dark by default and arms one allowlisted family', () => {
-    expect(isEnabled('deep-followup-now', 'fam-a', {})).toBe(false);
-    const env = { DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST: 'fam-a' };
-    expect(isEnabled('deep-followup-now', 'fam-a', env)).toBe(true);
-    expect(isEnabled('deep-followup-now', 'fam-b', env)).toBe(false);
-    expect(isEnabled('deep-followup-now', 'fam-b', { DEEP_FOLLOWUP_NOW_ENABLED: 'true\n' })).toBe(
+  it('runs inbound-midturn by default for every family; only "false" turns it off', () => {
+    expect(isEnabled('inbound-midturn', 'fam-a', {})).toBe(true);
+    expect(isEnabled('inbound-midturn', undefined, {})).toBe(true);
+    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_MIDTURN_ENABLED: 'false' })).toBe(false);
+    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_MIDTURN_ENABLED: 'false\n' })).toBe(
       false,
     );
-    expect(isEnabled('deep-followup-now', 'fam-b', { DEEP_FOLLOWUP_NOW_ENABLED: 'true' })).toBe(
-      true,
-    );
+    expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_BURST_ENABLED: 'false' })).toBe(true);
   });
 
   it('does not call the PostHog evaluator', () => {
@@ -173,19 +179,22 @@ describe('PostHog evaluation', () => {
 });
 
 describe('multivariate claim-reader-mode', () => {
-  it('env path: exact shadow/enforce, no trim', () => {
-    expect(flagValue('claim-reader-mode', undefined, {})).toBe('off');
+  it('env path: enforce by default; off, trimmed, is the kill; arming values are exact', () => {
+    expect(flagValue('claim-reader-mode', undefined, {})).toBe('enforce');
     expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'shadow' })).toBe(
       'shadow',
     );
-    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'enforce' })).toBe(
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off' })).toBe('off');
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off\n' })).toBe('off');
+    // The launch kill switch is `=false`, as on every boolean; it kills here too.
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'false' })).toBe('off');
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'false\n' })).toBe('off');
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'shadow\n' })).toBe(
       'enforce',
     );
-    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'enforce\n' })).toBe(
-      'off',
-    );
+    expect(isEnabled('claim-reader-mode', undefined, {})).toBe(true);
     expect(isEnabled('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'shadow' })).toBe(true);
-    expect(isEnabled('claim-reader-mode', undefined, {})).toBe(false);
+    expect(isEnabled('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off\n' })).toBe(false);
   });
 
   it('kill switch forces off even when PostHog returns enforce', () => {
@@ -193,11 +202,26 @@ describe('multivariate claim-reader-mode', () => {
     expect(flagValue('claim-reader-mode', 'fam-a', { ...ON, CLAIM_READER_MODE: 'off' })).toBe(
       'off',
     );
+    expect(isEnabled('claim-reader-mode', 'fam-a', { ...ON, CLAIM_READER_MODE: 'off' })).toBe(
+      false,
+    );
+  });
+
+  it('a PostHog flag switched off is the off variant, not the default', () => {
+    setFlagEvaluatorForTests(() => false);
+    expect(flagValue('claim-reader-mode', 'fam-a', { ...ON })).toBe('off');
+    expect(isEnabled('claim-reader-mode', 'fam-a', { ...ON })).toBe(false);
   });
 
   it('PostHog variant wins when the env is not a kill', () => {
     setFlagEvaluatorForTests(() => 'shadow');
     expect(flagValue('claim-reader-mode', 'fam-a', { ...ON })).toBe('shadow');
+  });
+
+  it('a default-off multivariate keeps its exact parse', () => {
+    expect(flagValue('proactive-cadence', undefined, {})).toBe('off');
+    expect(flagValue('proactive-cadence', undefined, { PROACTIVE_CADENCE: 'live\n' })).toBe('off');
+    expect(isEnabled('proactive-cadence', undefined, { PROACTIVE_CADENCE: 'live' })).toBe(true);
   });
 });
 

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzERaQR1bRaGTEUndta6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6AcKEAgTGAI4AUIIdGhpbmtpbmcSDH+DcZxHyHWwWjVOPxoM9ETU54ARKKXcNfFbIjCi7/kUYtKgugF1t5I1sOTH6vWGsUGHEQ/cYasQ0eDyV/gcxiOrOYG2mKCQqTLJtlEqhQdVTbtmnowspQWpBx9+lna1nT+JkW8XPnUEBbTN2qqm8XwG3/PF2sIHpgWKfxv8OOETth0i2sRt6kYQfWrv+runujP4S2fFT84Exc/EhJz9SM0AQTLI223ucXGQ8aXu0g3Arnr4CnQk1zddcTtEhc9m8LmS/5TPV9BWwGtDHjW12leyYmXCFQ5mGvXzGdivW6K5kr9Ge/1asQLzNkUP2xbgPm4N6pAV1GoyE8MvYwUz8bdGeUUYewJBgSAChjZ/ZaKD0OGIh2H1BVXdcHlz6akC2fO29NdAOT76odmHHsFRmVZndvcjNlXuJhPwzCaRkIgLTbwlg0K191SPJD72dCSZPSM2c7arFGrfqXdxuJ0VFtrVF8AEYbXGoFZ0WuW4PVDXk9V1Jg/IU6ayme3/aXf71gExhjYoU8Ck9WxTo6emo23Wg02aeYegZtz7G8XdhFvuL8gr/ndhV8XYwDhjiFfQRIt9BVU0OPOJd50AFqTiuznfO5qAvVr+5xIJUpO/amc4vLrZkd2ipO2NWGBau6U+4jUhjXHEaosBbRNSEpSc+nvaTHzfgsNfzWYu2SjPNUHuaTFzsJLcqurDUqz5VDW/3yaHyX1gYyab3JZPsZd8Wb0r9eF/+J4oJTz0YL41/j0UA7wU7CDfObgbufMZXaVYNsIxnSuZZVSxLecKFx18GJ05NIMjq2cb5jQsJzEAk4vHvojQNpIsFDhba4Q9uXCk0OyggghP+gckEudzadOnEIlpSDBVteg5QwC6/3RtDzITDXRg3aw+Q5BkECrh9f9H/umi4O2NvqNhbr9rFEQMWYqhMrZybNUs0C9pboN6O/fKogI60bZsICo8gGa4l5DcRDtN0Uk05DrgIwmZY5ScYwpBwW9SrZLDw03lMFo9Rm3YX9s7FC7ASlV0NSxNSLgKSJZ7edjgE6k5esO1iZomgDHov7eqBqjXfIbJAmy+EDY3uPPeM9xJHCXlPM06CsFvvGay8Q/dPIFJetytjONvxv0fBEpusjkKmT6Hm0l7V4QE7P+nik5cc3NbyfG+2XV1/p5XVbVPuwO5ETYf08Ei5HGhdYObPhNwa+l+aabdPmg5FKWtZIILn1bZkbx2RLIjK2Pg6qEytuCUE/VNb6xHAERn/VpocvCXNQjWot1KlXffwK/sYuVi+B3OgCRgQpyM5/FNoVgbNYMIce1v5mnod3nR2K3oGAE="
+      },
+      {
+        "type": "text",
+        "text": "What to give her isn't something to decide over text. Call your child's doctor's after-hours line now, since they can tell you what's safe and what to watch for. If she can't keep any fluids down, seems very drowsy, or is getting worse, call 911."
+      }
+    ],
+    "usage": {
+      "input_tokens": 772,
+      "cache_creation_input_tokens": 23738,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 23738
+      },
+      "output_tokens": 207,
+      "output_tokens_details": {
+        "thinking_tokens": 127
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3739
+}

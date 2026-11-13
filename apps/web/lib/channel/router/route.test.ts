@@ -62,6 +62,7 @@ import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import { recordCoachCalendarOffer } from '~/lib/integrations/email-alert-offer';
 import {
   CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_AUDIT_ACTION,
@@ -115,6 +116,7 @@ import {
   TurnDeferred,
   routeChannelMessage,
 } from './route';
+import { darkSideTurn } from './side-turn.fixture';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { TURN_ANSWERED_ACTION, auditTurnLedger, loadInboundContext } from './wiring';
@@ -178,6 +180,9 @@ function claimingHandler(
   const handler = {
     name,
     calls: 0,
+    async detects() {
+      return true;
+    },
     async handle() {
       handler.calls += 1;
       return { claimed: true as const, outcome: `${name}_claimed`, reply };
@@ -192,6 +197,9 @@ function passingHandler(name: string): DeterministicHandler & { calls: number; b
     name,
     calls: 0,
     bodies: [] as string[],
+    async detects() {
+      return false;
+    },
     async handle(_db: unknown, ctx: { body: string }) {
       handler.calls += 1;
       handler.bodies.push(ctx.body);
@@ -370,6 +378,16 @@ function fakeTurnLedger(): InboundTurnLedger & {
     async recordAnswered(input: { channelMessageId: string }) {
       ledger.answered.push(input.channelMessageId);
       return 'claimed' as const;
+    },
+    // A side turn's (side-turn.ts): dark in every test here.
+    async claimAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
+    },
+    async recordAnsweredAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
+    },
+    async releaseAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
     },
     async recordDeferred(input: {
       channelMessageId: string;
@@ -592,6 +610,7 @@ function harness(
     consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
     burst?: InboundBurst;
+    sideTurn?: ChannelRouterDeps['sideTurn'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -670,6 +689,7 @@ function harness(
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
       burst: options.burst ?? fakeBurst(),
+      sideTurn: options.sideTurn ?? darkSideTurn(),
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       floodLine: options.floodLine ?? fakeFloodLine(),
@@ -2092,6 +2112,7 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
         }) as never,
       loadChildren: async () => [],
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       buildTools: (_turn, onDraft) => {
         for (const id of input.draftIds ?? []) onDraft(id);
         return [] as RegisteredTool[];
@@ -2666,6 +2687,36 @@ describe('back-to-back texts read as one turn', () => {
   });
 });
 
+describe('a text behind a running turn (INBOUND_MIDTURN, side-turn.ts)', () => {
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'SM1',
+    service: 'iMessage',
+  };
+
+  it('dark: the turn asks the port once and nothing else is read, slept or sent', async () => {
+    const sideTurn = darkSideTurn();
+    const h = harness({ sideTurn, context: { reply: IMESSAGE } });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(sideTurn.calls).toEqual([`enabled:${job().family_id}`]);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('never watches a group turn, lit or not: the port is not even asked', async () => {
+    const sideTurn = darkSideTurn();
+    const h = harness({ sideTurn, context: { reply: IMESSAGE } });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(sideTurn.calls).toEqual([]);
+  });
+});
+
 describe('a re-driven turn never answers twice', () => {
   it('does nothing at all when this text has already been answered', async () => {
     const turns = fakeTurnLedger();
@@ -2821,6 +2872,7 @@ describe('a receipt sent as several bubbles', () => {
     const after: string[] = [];
     const handler: DeterministicHandler = {
       name: 'two_bubbles',
+      detects: async () => true,
       handle: async () => ({
         claimed: true,
         outcome: 'asked',
@@ -3530,6 +3582,7 @@ describe('natural reply resolution', () => {
     const resolver = fakeResolver({ status: 'unresolved', reason: 'no_target' });
     const claiming: DeterministicHandler = {
       name: 'claims_everything',
+      detects: async () => true,
       handle: async () => ({ claimed: true, outcome: 'ok', reply: 'Filed.' }),
     };
     const h = harness({
@@ -3586,6 +3639,7 @@ describe('natural reply resolution', () => {
     let otherCalls = 0;
     const other: DeterministicHandler = {
       name: 'not_the_owner',
+      detects: async () => false,
       handle: async () => {
         otherCalls += 1;
         return { claimed: false };
@@ -3742,6 +3796,7 @@ describe('natural reply resolution', () => {
     const coach = fakeCoach();
     const declining: DeterministicHandler = {
       name: 'owner_approval',
+      detects: async () => false,
       resolves: new Set(['approval']),
       handle: async () => ({ claimed: false }),
     };
@@ -4413,6 +4468,7 @@ describe('what the parent stated is written before anything reads it', () => {
     // the same words would supersede a fact that was just written.
     const claimer: DeterministicHandler = {
       name: 'claimer',
+      detects: async () => true,
       handle: async () => ({ claimed: true, outcome: 'recorded_done', reply: 'Filed.' }),
     };
     const { h, order } = statefulHarness({ handlers: [claimer], body: 'done' });
@@ -4532,6 +4588,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
   // Dark, nothing is queued at question time: the promise is written down and left to the
   // hourly sweep at its due time, as it was before #1251. The skipped dispatch is counted.
   it('dark: records the promise, enqueues nothing, and logs why', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'false');
     const promises: unknown[] = [];
     const dispatched: unknown[] = [];
     const h = harness({
@@ -5317,6 +5374,7 @@ describe('the weekday-care answer', () => {
     const coach = fakeCoach();
     const offerHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
     };
@@ -5388,6 +5446,7 @@ describe('the weekday-care answer', () => {
     };
     const offerHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
     };
@@ -5414,6 +5473,7 @@ describe('the weekday-care answer', () => {
 
     const yesHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'added', reply: null }),
     };
@@ -6334,6 +6394,7 @@ describe('a slow answer gets one holding line first', () => {
     const holding = fakeHoldingLine("I'm on it.");
     const slowPlan: DeterministicHandler = {
       name: 'plan',
+      detects: async () => true,
       handle: async (_db, turn) => {
         await new Promise((resolve) => setTimeout(resolve, 120));
         await turn.send('the plan, part one');
@@ -6357,6 +6418,7 @@ describe('a slow answer gets one holding line first', () => {
     const holding = fakeHoldingLine("I'm on it.");
     const slowOptOut: DeterministicHandler = {
       name: 'sms_opt_out',
+      detects: async () => true,
       handle: async () => {
         await new Promise((resolve) => setTimeout(resolve, 120));
         return { claimed: true, outcome: 'opted_out', reply: 'opted out' };
@@ -6409,11 +6471,11 @@ describe('a slow answer gets one holding line first', () => {
   });
 
   it.each([
-    ['unset', undefined],
-    ['a trailing newline', 'true\n'],
-    ['padded', ' true'],
+    ['false', 'false'],
+    ['false with a trailing newline', 'false\n'],
+    ['padded false', ' false'],
   ])(
-    'dark unless HOLDING_LINE_ENABLED is exactly true (%s): no line, and lane_off is named',
+    'dark when HOLDING_LINE_ENABLED is %s: no line, and lane_off is named',
     async (_label, value) => {
       vi.stubEnv(HOLDING_LINE_ENABLED_ENV, value);
       const holding = fakeHoldingLine("I'm on it.");
@@ -7135,6 +7197,7 @@ describe('the reply row, written to a real database', () => {
 
       it('a tapback that stood in for the words', async () => {
         lit();
+        vi.stubEnv('LINQ_REACTIONS_ENABLED', 'false');
         vi.stubEnv('LINQ_API_KEY', 'test-key');
         const reacted: string[] = [];
         vi.stubGlobal('fetch', async (url: string) => {
@@ -7681,6 +7744,9 @@ describe('VIL-463 group scope', () => {
   function askerOnlyHandler(onlyToAsker: boolean): DeterministicHandler {
     return {
       name: 'asker_only',
+      async detects() {
+        return true;
+      },
       async handle() {
         return {
           claimed: true as const,
@@ -8662,6 +8728,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
     const plan: DeterministicHandler = {
       name: 'plan',
+      detects: async () => false,
       handle: async (_db, turn) => {
         await turn.send('Nights 1-3: down drowsy but awake.');
         await turn.send('Nights 4-7: stretch the wait.');
@@ -8681,8 +8748,10 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
   });
 
   it('dark: the same handler sends its messages back to back', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'false');
     const plan: DeterministicHandler = {
       name: 'plan',
+      detects: async () => false,
       handle: async (_db, turn) => {
         await turn.send('Nights 1-3: down drowsy but awake.');
         await turn.send('Nights 4-7: stretch the wait.');
@@ -8701,6 +8770,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
   });
 
   it('dark: the turn is not lit and a line break in the reply is not split', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'false');
     const coach = seeingCoach({ reply: 'Swim is Saturday at 10.\nhttps://pool.example/swim' });
     const h = harness({ coach, context: { body: 'what is on saturday', reply: IMESSAGE } });
 
@@ -8785,6 +8855,31 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(last).toEqual(expect.any(String));
     expect(offers).toEqual([last]);
     expect(promises).toEqual([last]);
+  });
+
+  it('dispatches the deep pass once for a set, as the parent who asked', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
+    const dispatches: Array<{ payload: unknown; askedBy: string }> = [];
+    const { h } = bubbleTurn(
+      { reply: THREE, activityPromise: PROMISE },
+      {
+        recordActivityPromise: async () => ({
+          status: 'recorded' as const,
+          commitmentId: PROMISE_COMMITMENT_ID,
+        }),
+        dispatchDeepResearch: async (payload, askedBy) => {
+          dispatches.push({ payload, askedBy });
+          return { status: 'enqueued' as const };
+        },
+      },
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(3);
+    expect(dispatches).toEqual([
+      { payload: { commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY }, askedBy: PARENT },
+    ]);
   });
 
   /**
@@ -9094,6 +9189,338 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
 
     expect(h.transport.bodies()).toEqual(['Riverdale pool has lane swim.', 'Go early']);
     expect(cards).toEqual(['https://pool.example/lanes after 2']);
+  });
+});
+
+/**
+ * VIL-680 · THE MODEL CHOOSES THE TAPBACK, behind LINQ_REACTIONS_ENABLED. Dark is today,
+ * word-list tapback included. Lit, on a 1:1 iMessage chat, the coach's choice is the only
+ * reaction: alone it is the whole answer (claimed, ledgered, audited, no words), beside it
+ * goes with the words, and a turn whose tools ran keeps its words whatever the model asked.
+ */
+describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
+  const ID = job().channel_message_id;
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+    service: 'iMessage',
+  };
+  const LOVE_ALONE = { reaction: { type: 'love' as const }, alone: true, otherToolCalls: 0 };
+
+  function seeingCoach(
+    result: Partial<ChannelTurnResult> & { reply: string },
+  ): ChannelCoachRuntime & { turns: ChannelTurn[] } {
+    const coach = {
+      turns: [] as ChannelTurn[],
+      async respond(turn: ChannelTurn) {
+        coach.turns.push(turn);
+        return { planOffer: null, activityPromise: null, spotWatch: null, ...result };
+      },
+    };
+    return coach;
+  }
+
+  /** Every reaction POST, by path and body. Any other Linq call answers 204 too. */
+  function linq(status = 204) {
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    const reactions: Array<{ path: string; body: unknown }> = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith('/reactions'))
+        reactions.push({ path, body: JSON.parse(String(init?.body)) });
+      return status < 300
+        ? new Response(null, { status })
+        : Response.json({ error: { code: 2029 } }, { status });
+    });
+    return reactions;
+  }
+
+  function reactionTurn(
+    result: Partial<ChannelTurnResult> & { reply: string },
+    options: { route?: ReplyRoute; body?: string; lit?: boolean } = {},
+  ) {
+    vi.stubEnv('LINQ_REACTIONS_ENABLED', options.lit === false ? 'false' : 'true');
+    const coach = seeingCoach(result);
+    const h = harness({
+      coach,
+      context: { body: options.body ?? 'thanks so much!', reply: options.route ?? IMESSAGE },
+    });
+    return { h, coach };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("dark: the turn is not lit, and today's word-list tapback still answers a thanks", async () => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime.' }, { body: 'thanks', lit: false });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]).not.toHaveProperty('reactions');
+    expect(reactions).toEqual([
+      { path: '/api/partner/v3/messages/in-1/reactions', body: { operation: 'add', type: 'like' } },
+    ]);
+    expect(h.transport.sent).toEqual([]);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('lit, alone: the reaction is the whole answer - claimed, ledgered, audited, no words', async () => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]?.reactions).toBe(true);
+    expect(reactions).toEqual([
+      { path: '/api/partner/v3/messages/in-1/reactions', body: { operation: 'add', type: 'love' } },
+    ]);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([ID]);
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out.map((row) => [row.templateKey, row.providerMessageId])).toEqual([
+      ['linq:tapback', 'in-1'],
+    ]);
+    expect(
+      auditRows(h.fake)
+        .filter((row) => row.actionTaken === 'linq_tapback')
+        .map((row) => row.after),
+    ).toEqual([{ outcome: 'agent_reacted' }]);
+    expect(result.status).toBe('agent_reacted');
+  });
+
+  it.each([
+    [
+      'the answered claim',
+      (h: Harness) => {
+        h.turns.recordAnswered = async () => {
+          throw new Error('ledger down');
+        };
+      },
+      'the answer ledger did not',
+    ],
+    [
+      "the tapback's own ledger row",
+      (h: Harness) => {
+        const database = h.deps.database;
+        h.deps.database = new Proxy(database, {
+          get(target, key, receiver) {
+            if (key !== 'insert') return Reflect.get(target, key, receiver);
+            return (table: never) => {
+              const builder = target.insert(table);
+              if (table !== schema.auditLog) return builder;
+              return {
+                values: (row: { actionTaken?: string }) =>
+                  row.actionTaken === 'linq_tapback'
+                    ? Promise.reject(new Error('audit down'))
+                    : builder.values(row as never),
+              };
+            };
+          },
+        });
+      },
+      'reaction_unrecorded',
+    ],
+  ])(
+    'lit, alone: when %s fails after the tapback landed, nothing more is sent',
+    async (_label, fail, outcome) => {
+      const reactions = linq();
+      const { h } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
+      fail(h);
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(reactions).toHaveLength(1);
+      // The tapback answered: not the words beside it, and not an apology.
+      expect(h.transport.sent).toEqual([]);
+      expect(result.status).toBe('agent_reacted');
+      expect(JSON.stringify(h.logs)).toContain(outcome);
+    },
+  );
+
+  it('lit: a turn whose tools ran keeps its words, and the reaction goes beside them', async () => {
+    const reactions = linq();
+    const { h } = reactionTurn(
+      {
+        reply: 'Done, I stopped watching Saturday swim.',
+        reaction: { ...LOVE_ALONE, otherToolCalls: 1 },
+      },
+      { body: 'stop watching saturday swim' },
+    );
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(reactions.map((r) => r.body)).toEqual([{ operation: 'add', type: 'love' }]);
+    expect(h.transport.bodies()).toEqual(['Done, I stopped watching Saturday swim.']);
+  });
+
+  it('lit, alone, refused: nothing is sent at all, and the turn is claimed under its own name', async () => {
+    const reactions = linq(409);
+    const { h } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(reactions).toHaveLength(1);
+    // Not the words, and not an apology for a turn that did not fail.
+    expect(h.transport.sent).toEqual([]);
+    expect(result.status).toBe('agent_reaction_unsent');
+    expect(h.turns.answered).toEqual([ID]);
+    expect(auditRows(h.fake).filter((row) => row.actionTaken === 'linq_tapback')).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('reaction_unsent');
+  });
+
+  it('lit: no reaction chosen means none - the word lists are never read', async () => {
+    const reactions = linq();
+    const { h } = reactionTurn({ reply: 'Anytime.', reaction: null }, { body: 'thanks' });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(reactions).toEqual([]);
+    expect(h.transport.bodies()).toEqual(['Anytime.']);
+  });
+
+  it.each([
+    ['an SMS route', { route: SMS_ROUTE }],
+    [
+      'an iMessage chat Linq relays over SMS',
+      { route: { ...IMESSAGE, service: 'SMS' } as ReplyRoute },
+    ],
+    [
+      'a chat with no parent message to land on',
+      { route: { ...IMESSAGE, replyToMessageId: null } },
+    ],
+  ])('lit, %s is never lit for a reaction', async (_label, options) => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE }, options);
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.turns[0]).not.toHaveProperty('reactions');
+    expect(reactions).toEqual([]);
+    expect(h.transport.bodies()).toEqual(['Anytime!']);
+  });
+
+  it('lit, a group chat is never lit for a reaction', async () => {
+    const reactions = linq();
+    const { h, coach } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(coach.turns).toHaveLength(1);
+    expect(coach.turns[0]?.audience).toBe('group');
+    expect(coach.turns[0]).not.toHaveProperty('reactions');
+    expect(reactions).toEqual([]);
+  });
+
+  /**
+   * Alone, the reply is composed and never sent, so no writer after the send may read it:
+   * an offer in those words would catch the parent's next bare "yes" for a question they
+   * never saw, and expire the one they did see.
+   */
+  describe('alone, through the real database', () => {
+    let db: TestDb;
+    const DAY = 24 * 60 * 60 * 1000;
+
+    beforeAll(async () => {
+      db = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    async function sentRow(
+      parent: { familyId: string; parentUserId: string },
+      direction: 'in' | 'out',
+    ) {
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          ...parent,
+          channel: 'imessage',
+          providerChatId: 'chat-1',
+          direction,
+          category: 'reply',
+          status: direction === 'in' ? 'delivered' : 'sent',
+        })
+        .returning({ id: schema.channelMessages.id });
+      return row?.id as string;
+    }
+
+    it('records no offer from the unsent words, keeps the open one, and remembers no Hale text', async () => {
+      const reactions = linq();
+      const parent = await seedFamily(db.database);
+      const clock = new Date();
+      const earlier = await sentRow(parent, 'out');
+      await expect(
+        recordCoachCalendarOffer(db.database, {
+          ...parent,
+          channelMessageId: earlier,
+          title: 'Swim',
+          startsAt: new Date(clock.getTime() + 2 * DAY),
+          location: null,
+          now: clock,
+        }),
+      ).resolves.toBe('recorded');
+      const inbound = await sentRow(parent, 'in');
+      const { h } = reactionTurn({
+        reply: 'Anytime! Want me to add story time Saturday at 11 to your calendar?',
+        reaction: LOVE_ALONE,
+      });
+      h.deps.database = db.database;
+      h.deps.turns = auditTurnLedger(db.database);
+      h.deps.now = () => clock;
+      const read: string[] = [];
+      h.deps.calendarOffers = {
+        ...calendarOffersIdle,
+        readCoach: async ({ text }) => {
+          read.push(text);
+          return text.includes('calendar')
+            ? {
+                status: 'offer',
+                title: 'Story time',
+                startsAt: new Date(clock.getTime() + 3 * DAY),
+                location: null,
+              }
+            : { status: 'none', reason: 'no_offer' };
+        },
+      };
+      const remembered: string[] = [];
+      h.deps.rememberWorkstream = async (input) => {
+        remembered.push(input.haleText);
+      };
+
+      const result = await routeChannelMessage(
+        h.deps,
+        job({
+          family_id: parent.familyId,
+          parent_user_id: parent.parentUserId,
+          channel_message_id: inbound,
+        }),
+      );
+
+      expect(reactions).toHaveLength(1);
+      expect(h.transport.sent).toEqual([]);
+      expect(read).toEqual([]);
+      const offers = await db.database
+        .select({
+          title: schema.emailAlertOffers.title,
+          channelMessageId: schema.emailAlertOffers.channelMessageId,
+          expiresAt: schema.emailAlertOffers.expiresAt,
+        })
+        .from(schema.emailAlertOffers)
+        .where(eq(schema.emailAlertOffers.familyId, parent.familyId));
+      expect(offers.map(({ title, channelMessageId }) => ({ title, channelMessageId }))).toEqual([
+        { title: 'Swim', channelMessageId: earlier },
+      ]);
+      expect(offers[0]?.expiresAt.getTime()).toBeGreaterThan(clock.getTime());
+      expect(remembered).toEqual(['']);
+      expect(result.status).toBe('agent_reacted');
+    });
   });
 });
 

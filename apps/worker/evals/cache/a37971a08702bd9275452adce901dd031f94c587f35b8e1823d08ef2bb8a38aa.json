@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asks Hale to switch to Chinese for future messages; a language preference, not an off-domain question",
+    "language": "zh",
+    "language_request": "zh"
+  },
+  "latencyMs": 3834
+}
