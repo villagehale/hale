@@ -18,7 +18,8 @@ const REPO_ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../.
 const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages'];
 const READ_SITE =
   /\.from\(\s*schema\.familyEvents\s*\)|Join\(\s*schema\.familyEvents\b|query\.familyEvents\b/g;
-const PREDICATE = /householdFamilyEvent\(\)/g;
+/** A live household row, or a removed one (never a mirror either way). */
+const PREDICATE = /household(?:Removed)?FamilyEvent\(\)/g;
 
 type Door =
   /** Reaches the household (a parent, a feed, MCP, the coach): every read carries the predicate. */

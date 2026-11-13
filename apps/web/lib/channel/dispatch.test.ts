@@ -67,6 +67,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     channels: { sms: fakeChannel('sms') },
     renderer: fakeRenderer,
     claimShadow: { dispatch: () => 'off' },
+    claimEnforce: { enforces: () => false, decide: async () => ({ status: 'off' as const }) },
     ...overrides,
   };
   return { ports, ledger, audits, captures, threaded };
@@ -1001,6 +1002,93 @@ describe('VIL-581 · the claim shadow reads model-written bodies only, and the l
   });
 });
 
+describe('VIL-581 · enforce at the dispatch choke reads model-written bodies only', () => {
+  const MODEL_BODY = 'Votre visite chez le dentiste est réservée.';
+
+  function enforcePorts(
+    decision: Awaited<ReturnType<DispatchPorts['claimEnforce']['decide']>>,
+    modelWritten: boolean,
+    text = MODEL_BODY,
+  ) {
+    const decided: unknown[] = [];
+    const shadowed: DispatchShadowInput[] = [];
+    const run = makePorts({
+      renderer: { render: () => ({ kind: 'sms', text, modelWritten }) },
+      claimShadow: {
+        dispatch: (input) => {
+          shadowed.push(input);
+          return 'started';
+        },
+      },
+      claimEnforce: {
+        enforces: () => true,
+        decide: async (input) => {
+          decided.push(input);
+          return decision;
+        },
+      },
+    });
+    return { ...run, decided, shadowed };
+  }
+
+  it('a clean read sends, and the shadow is not started', async () => {
+    const { ports, decided, shadowed } = enforcePorts({ status: 'clean' }, true);
+    expect((await dispatchLoopMessage(message(), ports)).legs[0]?.outcome).toBe('sent');
+    expect(decided).toHaveLength(1);
+    expect(shadowed).toEqual([]);
+  });
+
+  it('a template body is never read (control)', async () => {
+    const { ports, decided, shadowed } = enforcePorts({ status: 'clean' }, false);
+    expect((await dispatchLoopMessage(message(), ports)).legs[0]?.outcome).toBe('sent');
+    expect(decided).toEqual([]);
+    expect(shadowed).toEqual([]);
+  });
+
+  it('an unbacked read fails the leg the same way the regex floor does', async () => {
+    const { ports, ledger, shadowed } = enforcePorts({ status: 'unbacked' }, true);
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'unbacked_claim']]);
+    expect(shadowed).toEqual([]);
+  });
+
+  it('a retryable read failure throws ChannelRetryableError and writes no row', async () => {
+    const { ports, ledger } = enforcePorts(
+      { status: 'failed', reason: 'unreachable', retry: true },
+      true,
+    );
+    await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(
+      ChannelRetryableError,
+    );
+    expect(ledger).toEqual([]);
+  });
+
+  it('a non-retryable read failure fails the leg as claim_read_failed', async () => {
+    const { ports, ledger } = enforcePorts(
+      { status: 'failed', reason: 'oversize', retry: false },
+      true,
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'failed', reason: 'claim_read_failed' },
+    ]);
+    expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'claim_read_failed']]);
+  });
+
+  it('the regex floor still refuses without spending a read', async () => {
+    const { ports, decided, ledger } = enforcePorts(
+      { status: 'clean' },
+      true,
+      "I'll stop sending the one-sec messages.",
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(decided).toEqual([]);
+    expect(ledger.map((w) => w.errorCode)).toEqual(['unbacked_claim']);
+  });
+});
+
 describe("VIL-581 · each renderer says whether its words are the model's", () => {
   it('reminder, calendar invite and calendar cancel are model-written', async () => {
     const { renderReminderSms } = await import('~/lib/loop/templates/reminder/sms');
@@ -1047,9 +1135,9 @@ describe("VIL-581 · each renderer says whether its words are the model's", () =
 });
 
 describe('VIL-581 · the production dispatch port is bound and does nothing while off', () => {
-  it('buildDispatchPorts wires a claim shadow that answers off with no env and no query', async () => {
+  it('buildDispatchPorts wires a claim shadow that answers off under the kill switch, with no query', async () => {
     const { buildDispatchPorts } = await import('./wiring');
-    vi.stubEnv('CLAIM_READER_MODE', '');
+    vi.stubEnv('CLAIM_READER_MODE', 'off');
     try {
       const noQueries = new Proxy(
         {},
@@ -1069,6 +1157,15 @@ describe('VIL-581 · the production dispatch port is bound and does nothing whil
           claims: [],
         }),
       ).toBe('off');
+      expect(ports.claimEnforce.enforces('fam-1')).toBe(false);
+      await expect(
+        ports.claimEnforce.decide({
+          familyId: 'fam-1',
+          parentUserId: 'user-1',
+          body: MODEL_BODY_FOR_WIRING,
+          now: NOON,
+        }),
+      ).resolves.toEqual({ status: 'off' });
     } finally {
       vi.unstubAllEnvs();
     }
