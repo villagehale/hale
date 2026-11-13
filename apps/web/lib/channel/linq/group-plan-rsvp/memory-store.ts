@@ -12,6 +12,7 @@ import type {
   GroupPlanRsvpStore,
   UpsertRsvpInput,
 } from './store';
+import { GROUP_PLAN_PAST_AFTER_MS } from './store';
 import {
   type PlanExpectedRow,
   type PlanRsvpResponse,
@@ -113,6 +114,14 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
       return poll && poll.providerMessageId === providerMessageId ? copyPoll(poll) : null;
     },
 
+    async closePoll(pollId, _actorUserId, now) {
+      const poll = world.polls.get(pollId);
+      if (!poll || poll.closedAt) return false;
+      poll.closedAt = now;
+      world.audits.push({ actionTaken: 'linq_group_poll_closed', after: { reason: 'locked' } });
+      return true;
+    },
+
     async createPoll(input) {
       const prior = live(input.chatId);
       if (prior) prior.closedAt = input.now;
@@ -203,12 +212,44 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       return world.families.get(chatId) ?? null;
     },
 
-    async loadLivePlan(chatId) {
+    async loadLivePlan(chatId, now) {
+      const pastBefore = now.getTime() - GROUP_PLAN_PAST_AFTER_MS;
+      for (const row of plansById()) {
+        if (row.chatId !== chatId || row.closedAt !== null || !row.startsAt) continue;
+        if (row.startsAt.getTime() >= pastBefore) continue;
+        row.closedAt = now;
+        world.audits.push({ actionTaken: 'linq_group_plan_closed', after: { reason: 'past' } });
+      }
       const plan = plansById().find((row) => row.chatId === chatId && row.closedAt === null);
       return plan ? { ...plan } : null;
     },
 
+    async setPlanStart(planId, startsAt, _actorUserId, _now) {
+      const plan = world.plans.get(planId);
+      if (!plan || plan.closedAt) return false;
+      plan.startsAt = startsAt;
+      world.audits.push({
+        actionTaken: 'linq_group_plan_time_set',
+        after: { startsAt: startsAt.toISOString() },
+      });
+      return true;
+    },
+
+    async listWrittenCalendarConsents(planId) {
+      return [...world.consents.values()].filter(
+        (row) => row.planId === planId && row.status === 'written',
+      );
+    },
+
     async createPlan(input: CreatePlanInput) {
+      for (const old of plansById()) {
+        if (old.chatId !== input.chatId || old.closedAt !== null) continue;
+        old.closedAt = input.now;
+        world.audits.push({
+          actionTaken: 'linq_group_plan_closed',
+          after: { reason: 'superseded' },
+        });
+      }
       const plan: MemoryPlan = {
         id: randomUUID(),
         chatId: input.chatId,
@@ -431,6 +472,14 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         actionTaken: 'linq_group_plan_calendar_declined',
         after: { familyId: input.familyId, restored: true },
       });
+    },
+
+    async noteCalendarMoved(input) {
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_moved',
+        after: { familyEventId: input.familyEventId, startsAt: input.startsAt.toISOString() },
+      });
+      return randomUUID();
     },
 
     async noteCalendarRemoved(input) {

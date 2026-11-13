@@ -1,0 +1,14 @@
+{
+  "value": {
+    "intent": "driver_claim",
+    "driverName": "Ada",
+    "driverIsSender": false,
+    "eventLabel": "soccer",
+    "pickupDate": "2026-11-17",
+    "pickupTime": "17:30",
+    "pickupPlace": null,
+    "kids": null,
+    "confidence": "high"
+  },
+  "latencyMs": 5503
+}

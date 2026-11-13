@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "I can take the sign-up from here. Here's the link so you can get started.",
+    "options": [],
+    "why": "registration_1to1"
+  },
+  "latencyMs": 965
+}

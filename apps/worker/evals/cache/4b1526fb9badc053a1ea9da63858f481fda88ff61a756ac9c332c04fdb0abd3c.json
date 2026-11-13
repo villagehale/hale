@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks about another family's dentist appointment, which is a private question. The expected kind is private_question, and the reading returned kind none, which is not in the expected list. Since the reading must match an expected kind, the score is 1.",
+    "score": 1
+  }
+}

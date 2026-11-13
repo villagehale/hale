@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message clearly votes for the open time option 'Sunday 10' (key b), which is expected as a time_vote. The reading returned kind 'none' with no optionKey, so it missed the vote entirely, a wrong moment.",
+    "score": 1
+  }
+}

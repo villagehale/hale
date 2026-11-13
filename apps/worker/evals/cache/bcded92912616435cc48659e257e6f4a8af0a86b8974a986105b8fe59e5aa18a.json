@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private question about a child's peanut allergy, which the expected moment is private_question. The reading kind is none, which is the expected handling for a private question, and no fields carry any private detail such as the allergy itself. The reading is correct for this moment.",
+    "score": 5
+  }
+}

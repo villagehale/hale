@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks for the status of Saturday's open RSVP, which is the Saturday picnic. The reading is rsvp_tally, which is the expected kind, and it sets no spurious fields: no title, response, options, or starts are invented, and no private detail is copied.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is idle parent chatter with nothing for Hale, and the expected moment is 'none'. The reading returned kind 'rsvp_open', which is not an expected kind, so it is the wrong moment and scores 1.",
+    "score": 1
+  }
+}

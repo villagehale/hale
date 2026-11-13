@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is rsvp_open, but the reading returned rsvp_tally, which is not in the expected list, so the score is 1.",
+    "score": 1
+  }
+}

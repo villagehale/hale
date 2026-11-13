@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly uses only the public facts (price and link), does not repeat the login or card details, and has no question. However, it claims Hale can take sign-ups from here, which is a booking/registration claim the rules prohibit. Voice is otherwise friendly and concise, so it is not a 1, but the booking offer is a clear violation.",
+    "score": 2
+  }
+}

@@ -111,6 +111,7 @@ function experienceReader(kind: GroupExperienceKind) {
         return {
           kind,
           title: null,
+          samePlan: null,
           response: null,
           optionKey: null,
           options: [],

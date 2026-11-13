@@ -608,6 +608,8 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
     santaTurn: deps.secretSantaTurn,
     santaLine: deps.secretSantaLine,
     reader: deps.sharedGroupReader,
+    carpoolReader: deps.carpoolReader,
+    carpoolVoice: deps.carpoolVoice,
   };
 }
 
@@ -658,6 +660,7 @@ async function runGroupExperience(
     chatId: string;
     senderHandle: string;
     text: string;
+    messageId: string;
   },
 ): Promise<Extract<GroupExperienceTurnOutcome, { handled: true }> | null> {
   if (!groupExperienceTurnEnabled()) return null;
@@ -680,6 +683,7 @@ async function runGroupExperience(
       database: deps.database,
       now: deps.now?.() ?? new Date(),
       send: deps.sendGroupText,
+      listChatHandles: deps.listChatHandles,
       reader: deps.groupExperienceReader,
       composer: deps.groupExperienceComposer,
       oneToOne: deps.oneToOne,
@@ -692,6 +696,7 @@ async function runGroupExperience(
       senderFamilyId: mappedSender.status === 'same_family' ? mappedSender.familyId : null,
       coveringFamilyId: covering,
       text: input.text,
+      messageId: input.messageId,
     },
   );
   return groupExperienceTakesTheTurn(result) ? result : null;
@@ -708,6 +713,7 @@ async function tryGroupExperienceTurn(
     chatId: string;
     senderHandle: string;
     text: string;
+    messageId: string;
   },
   read: { done: boolean },
 ): Promise<Response | null> {
@@ -940,6 +946,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
             chatId: message.chatId,
             senderHandle: message.senderHandle,
             text: message.text,
+            messageId: message.messageId,
           });
           if (!moment) return null;
           return {
@@ -951,6 +958,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
             },
             // The asker was already texted 1:1 about their own question: one 1:1, not two.
             privateMove: moment.outcome === 'group_experience_1to1',
+            textedFamilies: moment.texted ?? [],
           };
         },
       },
@@ -1003,6 +1011,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
         chatId: message.chatId,
         senderHandle: message.senderHandle,
         text: message.text,
+        messageId: message.messageId,
       },
       experienceRead,
     );
@@ -1098,6 +1107,7 @@ async function routeClaimedGroup(
         chatId: message.chatId,
         senderHandle: message.senderHandle,
         text: message.text,
+        messageId: message.messageId,
       },
       experienceRead,
     );

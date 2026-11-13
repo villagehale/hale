@@ -58,6 +58,8 @@ export interface GroupPollStore {
   pollForCard(chatId: string, providerMessageId: string): Promise<GroupPollRecord | null>;
   /** Closes the chat's live poll, if any, then opens this one. */
   createPoll(input: CreatePollInput): Promise<GroupPollRecord>;
+  /** Closes this poll (a lock landed on it). False when it was already closed. */
+  closePoll(pollId: string, actorUserId: string | null, now: Date): Promise<boolean>;
   attachCard(
     pollId: string,
     card: { providerMessageId: string; options: readonly NativeCardOption[] },
@@ -143,6 +145,24 @@ export function createPostgresGroupPollStore(database: Database): GroupPollStore
         )
         .limit(1);
       return row ? recordOf(row) : null;
+    },
+
+    async closePoll(pollId, actorUserId, now) {
+      const [closed] = await database
+        .update(schema.linqGroupPolls)
+        .set({ closedAt: now, updatedAt: now })
+        .where(and(eq(schema.linqGroupPolls.id, pollId), isNull(schema.linqGroupPolls.closedAt)))
+        .returning({ id: schema.linqGroupPolls.id, familyId: schema.linqGroupPolls.familyId });
+      if (!closed) return false;
+      await database.insert(schema.auditLog).values({
+        familyId: closed.familyId,
+        actor: actorUserId ?? 'system',
+        actionTaken: 'linq_group_poll_closed',
+        targetTable: 'linq_group_polls',
+        targetId: closed.id,
+        after: { reason: 'locked' },
+      });
+      return true;
     },
 
     async createPoll(input) {

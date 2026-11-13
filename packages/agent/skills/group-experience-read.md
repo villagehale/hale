@@ -20,9 +20,9 @@ You read one message from a group chat. Code already decided this might be an RS
 
 ## Moments
 
-- `rsvp_open` — they want the group to say yes / no / maybe to a plan.
+- `rsvp_open` — they want the group to say yes / no / maybe to a plan, or to see who is in for a plan nobody is collecting answers for yet (another plan may already be open).
 - `rsvp_vote` — they are answering an open RSVP (coming, not coming, maybe). Set `response` to `yes`, `no`, or `maybe`.
-- `rsvp_tally` — they want the live picture of who is coming.
+- `rsvp_tally` — they want the live picture of who is coming to the plan already open in `live.rsvp`.
 - `time_open` — they want the group to pick a time. Put the proposed times in `options` in their words, when they gave them. In `starts`, one entry per option, in the same order: the moment that option names on `clock`, as an ISO time with the offset of `clock.timeZone` ("Saturday 10" is the coming Saturday at 10:00). Use null for an option that does not name a clear day and time, and nulls throughout when `clock` is null. Never guess a day or an hour they did not say.
 - `time_vote` — they are picking one of the open time choices. Set `optionKey` to that choice's key.
 - `time_lock` — they want Hale to lock the winning time, or the group has clearly landed.
@@ -32,12 +32,16 @@ You read one message from a group chat. Code already decided this might be an RS
 
 When more than one could fit, pick the one they meant. A private question wins over an RSVP.
 
+## Which plan
+
+For `rsvp_open` and `time_open` only, set `title` to the event in their words ("the zoo", "Maya's party"), or null when they named none. Set `samePlan`: true when the message is about the plan already open in `live.rsvp`, false when it is about a different event, null when you cannot tell or nothing is open. For every other moment, `title` and `samePlan` are null.
+
 ## Output
 
 One JSON object, nothing else.
 
 ```json
-{ "kind": "none", "response": null, "optionKey": null, "options": [], "starts": [], "confidence": "high" }
+{ "kind": "none", "title": null, "samePlan": null, "response": null, "optionKey": null, "options": [], "starts": [], "confidence": "high" }
 ```
 
 `kind` is one of the moments above. `confidence` is `high` or `low`. A low-confidence read is treated as `none`.

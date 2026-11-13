@@ -1461,9 +1461,11 @@ describe('a private reply among calendar asks', () => {
         link: async () => ({ providerMessageId: 'link' }),
       },
     };
+    const whichComposer = fakeGroupPlanRsvpComposer();
     const both = await considerPrivateCalendarReply(
       {
         ...ports,
+        composer: whichComposer,
         consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
       },
       {
@@ -1476,6 +1478,25 @@ describe('a private reply among calendar asks', () => {
     expect(both).toMatchObject({ handled: true, outcome: 'group_plan_calendar_unwritten' });
     expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
     expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
+    // Nothing named which one: Hale asks, in a model-written line naming both plans.
+    const which = whichComposer.calls.filter((call) => call.input.kind === 'calendar_which');
+    expect(which).toHaveLength(1);
+    expect(
+      (which[0]?.input.facts as { choices?: { title: string }[] }).choices?.map((c) => c.title),
+    ).toEqual(['Saturday picnic', 'Museum Saturday']);
+
+    // A bare yes the reader would give to the newest ask still binds nothing on its own.
+    const bare = await considerPrivateCalendarReply(
+      {
+        ...ports,
+        now: new Date(NOW.getTime() + 90_000),
+        consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
+      },
+      { senderUserId: priya.userId, senderName: 'Priya', chatId: PRIVATE_CHAT, text: 'yes' },
+    );
+    expect(bare.handled).toBe(true);
+    expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
+    expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
 
     const chosen = await considerPrivateCalendarReply(
       { ...ports, now: new Date(NOW.getTime() + 120_000) },
@@ -1549,9 +1570,7 @@ describe('a multi-family chat with no covering family', () => {
     const plans = await db.database
       .select({ familyId: schema.linqGroupPlans.familyId, title: schema.linqGroupPlans.title })
       .from(schema.linqGroupPlans);
-    expect(plans).toEqual([
-      { familyId: priya.familyId, title: 'Riverdale Farm pumpkin walk' },
-    ]);
+    expect(plans).toEqual([{ familyId: priya.familyId, title: 'Riverdale Farm pumpkin walk' }]);
     expect(
       await db.database.select({ id: schema.familyEvents.id }).from(schema.familyEvents),
     ).toEqual([]);

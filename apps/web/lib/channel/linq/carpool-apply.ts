@@ -1,4 +1,5 @@
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
+import { saidAsWholeWords } from './group-experience/privacy';
 import {
   type CarpoolIntent,
   type CarpoolPlanStatus,
@@ -329,6 +330,35 @@ export function applyCarpoolReading(
     previousPickupAt,
     carpoolReminderZone(assigned, sender),
   );
+}
+
+/** A value a chat line already says, in whole words. Null when no line says it. */
+export function saidInChat(value: string | null, lines: readonly string[]): string | null {
+  const text = value?.trim();
+  if (!text) return null;
+  return lines.some((line) => saidAsWholeWords(line, text)) ? text : null;
+}
+
+/**
+ * VIL-689 · a shared chat's reading, keeping only what the chat itself said: kids, event
+ * and place a chat line says in whole words, and a named driver only when a line names
+ * them (or the reader says the sender is driving). Null: the reading names a driver the
+ * chat never named, so there is no ride to record.
+ */
+export function keepWhatTheChatSaid(
+  raw: CarpoolReading,
+  lines: readonly string[],
+): CarpoolReading | null {
+  const namedDriver = raw.driverName?.trim() || null;
+  const driverName = raw.driverIsSender ? namedDriver : saidInChat(namedDriver, lines);
+  if (namedDriver && !driverName) return null;
+  return {
+    ...raw,
+    driverName,
+    kids: saidInChat(raw.kids, lines),
+    eventLabel: saidInChat(raw.eventLabel, lines),
+    pickupPlace: saidInChat(raw.pickupPlace, lines),
+  };
 }
 
 export function markAsked(plan: CarpoolPlanState, at: Date): CarpoolPlanState {

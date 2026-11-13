@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { denyTermsFromSlices } from '../../web/lib/channel/linq/group-experience/deny-terms.ts';
 import {
   FIXED_COPY_LINE,
   GROUP_EXPERIENCE_READ_FIXTURES,
@@ -45,6 +46,20 @@ describe('VIL-399 group experience fixtures', () => {
       // The calibration stand-in really leaks every secret.
       for (const secret of f.secrets) expect(leakingLine(f)).toContain(secret);
     }
+  });
+
+  it("privacy lines get production's deny terms, from the chat's seeded Hale households", () => {
+    for (const f of GROUP_EXPERIENCE_VOICE_FIXTURES.filter((x) => x.privacy)) {
+      expect(Array.isArray(f.households)).toBe(true);
+    }
+    const echo = GROUP_EXPERIENCE_VOICE_FIXTURES.find(
+      (f) => f.id === 'link-other-family-registration',
+    );
+    // That family is no Hale household: production holds no term for them, so the line
+    // itself (the voice, then the judge) is what must keep their registration out.
+    const deny = denyTermsFromSlices(echo.households);
+    expect(deny).toEqual(['Mira', 'peanut_allergy']);
+    for (const secret of echo.secrets) expect(deny).not.toContain(secret);
   });
 
   it('the fixed-copy stand-in carries a reply keyword', () => {

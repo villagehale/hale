@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private payment request, so the expected kind is private_question. The reading is kind 'none', which is not in expected. Treating a private question as 'none' scores 1 under the rubric.",
+    "score": 1
+  }
+}

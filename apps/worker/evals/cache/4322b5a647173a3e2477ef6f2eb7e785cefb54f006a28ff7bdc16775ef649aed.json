@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "The park camp is $120 for two sessions, link here: https://park.example/camp",
+    "options": [],
+    "why": "link_facts: public price and sessions only; the sign-up for a named child is private and omitted."
+  },
+  "latencyMs": 1718
+}

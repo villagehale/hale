@@ -16,7 +16,11 @@
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { CARPOOL_READING_FIXTURES, gradeCarpoolReading } from './carpool-reading-fixtures.mjs';
+import {
+  CARPOOL_READING_FIXTURES,
+  gradeCarpoolReading,
+  gradeSharedKept,
+} from './carpool-reading-fixtures.mjs';
 import {
   PRICE,
   REPO_ROOT,
@@ -103,6 +107,10 @@ async function main() {
     const pickupAt =
       apply.resolveCarpoolPickup(parsed, fixture.input.timeZone)?.toISOString() ?? null;
     const failures = gradeCarpoolReading(fixture.expect, { reading: parsed, pickupAt });
+    if (fixture.shared) {
+      const kept = apply.keepWhatTheChatSaid(parsed, [fixture.input.text]);
+      failures.push(...gradeSharedKept(fixture.expect, kept));
+    }
     console.info(
       `${failures.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(32)} ${parsed.intent} ${parsed.pickupDate ?? '-'} ${parsed.pickupTime ?? '-'} ${pickupAt ?? '-'}`,
     );

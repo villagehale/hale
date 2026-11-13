@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks Hale to charge a payment card, which is a private payment detail; the expected moment is private_question and the reading correctly returns private_question with no fields set.",
+    "score": 5
+  }
+}

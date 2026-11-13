@@ -115,7 +115,7 @@ function askFacts(
  * The start as this household reads it on their own clock. The writer never
  * converts an instant itself; with no known zone it gets no clock time at all.
  */
-function householdWhen(startsAt: Date | null, timeZone: string | null): string | null {
+export function householdWhen(startsAt: Date | null, timeZone: string | null): string | null {
   if (!startsAt || !timeZone) return null;
   try {
     return inviteWhenLabel(startsAt, timeZone);
@@ -151,6 +151,7 @@ async function deliverPrivate(
     /** The parent's own message, or null when this turn has no words. */
     parentWords: string | null;
     kind: CalendarPrivateKind;
+    dedupeKey?: string;
   },
 ): Promise<{ status: 'sent' } | { status: 'skipped'; reason: CalendarSkipReason }> {
   const timeZone = await ports.store.householdTimeZone(input.familyId);
@@ -177,6 +178,7 @@ async function deliverPrivate(
     userId: input.userId,
     text: spoken.line,
     kind: input.kind,
+    ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}),
   });
   if (sent.status === 'skipped') return { status: 'skipped', reason: sent.reason };
   if (input.kind === 'calendar_ask' && sent.providerMessageId) {
@@ -546,4 +548,103 @@ async function removeWrittenCopy(
     );
   }
   return { status: 'removed', familyId, familyEventId: removed.familyEventId };
+}
+
+/** The claim key of the notice one moved copy owes its household: one notice per move. */
+export function movedNoticeDedupeKey(moveAuditId: string): string {
+  return `linq:group_plan_calendar_moved:${moveAuditId}`;
+}
+
+export type MovedCopyEffect =
+  | { familyId: string; status: 'moved'; notice: 'sent' | 'held' | { skipped: CalendarSkipReason } }
+  | { familyId: string; status: 'skipped'; reason: 'write_failed' };
+
+/**
+ * A plan's time moved. Every household whose copy Hale wrote gets that copy moved, then
+ * one model-written 1:1 notice, by day on that household's own clock. A notice owed at
+ * night is held (the move's audit row is the debt) for the morning re-drive. A household
+ * that never wrote the plan is untouched here: its ask, if any, already carries the plan.
+ */
+export async function moveWrittenCopies(
+  input: { chatId: string; plan: GroupPlanRecord; actorUserId: string | null; now: Date },
+  ports: CalendarTurnPorts & {
+    daytime: (familyId: string) => Promise<boolean>;
+    languageOf: (familyId: string) => Promise<ReplyLanguage | null>;
+  },
+): Promise<MovedCopyEffect[] | { status: 'skipped'; reason: 'not_configured' | 'no_start' }> {
+  if (!input.plan.startsAt) return { status: 'skipped', reason: 'no_start' };
+  if (!ports.calendar) {
+    console.warn({ outcome: 'not_configured' }, 'group plan calendar: no writer');
+    return { status: 'skipped', reason: 'not_configured' };
+  }
+  const effects: MovedCopyEffect[] = [];
+  for (const row of await ports.store.listWrittenCalendarConsents(input.plan.id)) {
+    const moved = await ports.calendar.write({
+      planId: input.plan.id,
+      chatId: input.chatId,
+      familyId: row.familyId,
+      title: input.plan.title,
+      startsAt: input.plan.startsAt,
+      location: input.plan.location,
+    });
+    if (moved.status === 'failed') {
+      effects.push({ familyId: row.familyId, status: 'skipped', reason: 'write_failed' });
+      continue;
+    }
+    if (moved.status === 'unchanged') continue;
+    const moveId = await ports.store.noteCalendarMoved({
+      planId: input.plan.id,
+      familyId: row.familyId,
+      familyEventId: moved.familyEventId,
+      startsAt: input.plan.startsAt,
+      actorUserId: input.actorUserId,
+    });
+    if (!(await ports.daytime(row.familyId))) {
+      console.info(
+        { outcome: 'group_plan_calendar_moved_notice_held' },
+        'group plan calendar: moved notice waits for the morning',
+      );
+      effects.push({ familyId: row.familyId, status: 'moved', notice: 'held' });
+      continue;
+    }
+    const notice = await sendMovedNotice(ports, {
+      plan: input.plan,
+      row,
+      moveId,
+      language: await ports.languageOf(row.familyId),
+    });
+    effects.push({ familyId: row.familyId, status: 'moved', notice });
+  }
+  return effects;
+}
+
+/** The one notice a moved copy owes. The re-drive sends a held one through this too. */
+export async function sendMovedNotice(
+  ports: CalendarTurnPorts,
+  input: {
+    plan: GroupPlanRecord;
+    row: CalendarConsentRow;
+    moveId: string;
+    language: ReplyLanguage | null;
+  },
+): Promise<'sent' | { skipped: CalendarSkipReason }> {
+  const sent = await deliverPrivate(ports, {
+    plan: input.plan,
+    familyId: input.row.familyId,
+    userId: null,
+    displayName: input.row.displayName,
+    householdLabel: input.row.householdLabel,
+    language: input.language,
+    parentWords: null,
+    kind: 'calendar_moved',
+    dedupeKey: movedNoticeDedupeKey(input.moveId),
+  });
+  if (sent.status === 'skipped') {
+    console.warn(
+      { outcome: 'group_plan_calendar_moved_notice_unsent', reason: sent.reason },
+      'group plan calendar: moved notice not sent',
+    );
+    return { skipped: sent.reason };
+  }
+  return 'sent';
 }

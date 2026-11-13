@@ -28,6 +28,8 @@ export const GROUP_POLL_TEMPLATE = 'linq:group_poll';
 export const GROUP_PLAN_CALENDAR_ASK_TEMPLATE = 'linq:group_plan_calendar_ask';
 export const GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE = 'linq:group_plan_calendar_written';
 export const GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE = 'linq:group_plan_calendar_removed';
+export const GROUP_PLAN_CALENDAR_MOVED_TEMPLATE = 'linq:group_plan_calendar_moved';
+export const GROUP_PLAN_CALENDAR_WHICH_TEMPLATE = 'linq:group_plan_calendar_which';
 
 export class GroupPlanRsvpHeld extends Error {
   constructor(readonly reason: GroupHoldReason) {

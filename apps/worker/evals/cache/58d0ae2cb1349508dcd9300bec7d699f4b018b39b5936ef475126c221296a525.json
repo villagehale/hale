@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent wants to know who is coming to the Saturday picnic, which maps to opening an RSVP poll; the expected moment is rsvp_open, but the reading returned kind none, which is not an expected moment, so the score is 1.",
+    "score": 1
+  }
+}

@@ -273,14 +273,20 @@ export async function runPrivateAside(
     senderFamilyId: string | null;
     recent: PrivateAsideReadInput['recent'];
     language: string | null;
+    /** Households this message already texted 1:1 (a link's registration line). */
+    exceptFamilies?: readonly string[];
   },
 ): Promise<PrivateAsideOutcome> {
   // Presence, not a join: a household hears about its own facts 1:1 while someone from it
-  // is here, has not stopped Hale here, and its parent has not said it is out.
-  const familyIds = await presentHouseholds(database, input.chatId, {
-    includeStopped: false,
-    includeLeft: false,
-  });
+  // is here, has not stopped Hale here, and its parent has not said it is out. One group
+  // message texts a household 1:1 once: one already texted by it is not asked about again.
+  const except = new Set(input.exceptFamilies ?? []);
+  const familyIds = (
+    await presentHouseholds(database, input.chatId, {
+      includeStopped: false,
+      includeLeft: false,
+    })
+  ).filter((familyId) => !except.has(familyId));
   if (familyIds.length === 0) return { outcome: 'no_families' };
 
   const slices = new Map<string, FamilyPrivateSlice>();

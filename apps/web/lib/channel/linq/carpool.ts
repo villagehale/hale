@@ -26,9 +26,11 @@ import {
   type CarpoolSender,
   applyCarpoolReading,
   carpoolPlanKey,
+  keepWhatTheChatSaid,
   markAsked,
   markReminder,
   resolveCarpoolPickup,
+  saidInChat,
 } from './carpool-apply';
 import { decideCarpoolReminder, decideCarpoolTurn, localMinutesIn } from './carpool-cadence';
 import { type CarpoolReader, readingFromTapback, sharedCarpoolReader } from './carpool-reading';
@@ -36,6 +38,7 @@ import { type CarpoolComposer, createCarpoolComposer } from './carpool-voice';
 import { linqGroupCarpoolEnabled } from './config';
 import { deliverLinqGroupNotice } from './group';
 import { groupMemberByPhone, readGroupMembership } from './group-membership';
+import { groupLineLeaksPrivate } from './group-experience/privacy';
 import type { ListChatHandles } from './roster';
 
 /**
@@ -550,6 +553,183 @@ export async function considerCarpoolTurn(
   return { handled: true, outcome, ...(notice ? { notice } : {}) };
 }
 
+export type SharedCarpoolGroupSend = (line: {
+  text: string;
+  templateKey: string;
+  dedupeKey: string;
+}) => Promise<'sent' | 'already_sent' | 'declined' | 'failed' | string>;
+
+export interface SharedCarpoolTurnInput {
+  chatId: string;
+  /** The family whose ledger carries the ride (the chat's host). */
+  ledgerFamilyId: string;
+  senderHandle: string;
+  /** The sender's own Hale account and family: a guest changes nothing. */
+  senderUserId: string | null;
+  senderFamilyId: string | null;
+  /** The first name the sender gave in this chat, or null. */
+  senderName: string | null;
+  /** First names people gave in this chat. */
+  peopleNames: readonly string[];
+  text: string;
+  messageId: string;
+  now: Date;
+  /** Private terms of every household here (denyListForChat). */
+  deny: () => Promise<readonly string[]>;
+  sendGroup: SharedCarpoolGroupSend;
+  reader?: CarpoolReader;
+  voice?: CarpoolComposer;
+  recent?: readonly { from: 'hale' | 'member'; text: string }[];
+}
+
+/**
+ * VIL-689 · a ride in a chat several families share. Only a Hale family member in the chat
+ * changes a ride. The reader sees the chat text only, never a family's data, and code keeps
+ * a driver, kids, event or place only when a line in the chat says it (or the driver is the
+ * sender). The group hears a line only when Hale asks who drives, written from those facts
+ * and refused if it repeats any household's private term the chat has not said itself. The
+ * night-before reminder goes 1:1 to the driver only (runCarpoolReminders).
+ */
+export async function considerSharedCarpoolTurn(
+  database: Database,
+  input: SharedCarpoolTurnInput,
+): Promise<CarpoolTurnOutcome> {
+  if (!linqGroupCarpoolEnabled()) return { handled: false, outcome: 'flag_off' };
+  if (!input.senderUserId || !input.senderFamilyId) {
+    return { handled: false, outcome: 'unknown_sender' };
+  }
+  const plans = await livePlans(database, input.chatId);
+  const sender = await senderOf(database, {
+    chatId: input.chatId,
+    senderHandle: input.senderHandle,
+    senderUserId: input.senderUserId,
+    senderName: input.senderName,
+  });
+  const recent =
+    input.recent ??
+    (await recentGroupLines(database, {
+      chatId: input.chatId,
+      now: input.now,
+      messageId: input.messageId,
+    }));
+  const lines = [input.text, ...recent.filter((line) => line.from === 'member').map((l) => l.text)];
+  const reader = input.reader ?? sharedCarpoolReader();
+  const raw = await reader.read({
+    text: input.text,
+    senderName: sender.name,
+    memberNames: input.peopleNames,
+    currentDriver: plans.length === 1 ? (plans[0]?.driverName ?? null) : null,
+    now: input.now,
+    timeZone: sender.timezone,
+    recent,
+  });
+  const reading = keepWhatTheChatSaid(raw, lines);
+  // A driver the chat never named is not a ride Hale can record.
+  if (!reading) return { handled: false, outcome: 'unchanged' };
+  const picked = pickCarpoolPlan(plans, reading, sender.timezone);
+  if (picked === 'ambiguous') return { handled: false, outcome: 'unchanged' };
+  if (reading.intent === 'chatter' || reading.intent === 'unclear') {
+    return { handled: false, outcome: 'unchanged' };
+  }
+  const existing = picked;
+  const next = applyCarpoolReading(existing, reading, sender, input.now);
+  if (!next) return { handled: false, outcome: 'unchanged' };
+
+  let turn = decideCarpoolTurn({
+    intent: reading.intent,
+    confidence: reading.confidence,
+    plan: next,
+    addressed: false,
+  });
+  if (turn.speak === 'addressed_status' && !next.driverName && !next.askedForDriverAt) {
+    turn = { speak: 'ask_driver' };
+  }
+  const familyId = existing?.familyId ?? input.ledgerFamilyId;
+  let stored = next;
+  let notice: 'sent' | 'not_sent' | undefined;
+  let outcome: Extract<CarpoolTurnOutcome, { handled: true }>['outcome'] =
+    reading.intent === 'cancel'
+      ? 'carpool_cancelled'
+      : reading.intent === 'driver_swap' ||
+          (reading.intent === 'driver_claim' &&
+            Boolean(existing?.driverName) &&
+            existing?.driverName !== next.driverName)
+        ? 'carpool_swapped'
+        : 'carpool_recorded';
+
+  if (turn.speak === 'ask_driver') {
+    const voice = input.voice ?? createCarpoolComposer({ database, familyId });
+    const line = await voice.compose({ kind: 'ask_driver', facts: voiceFacts(next, null) });
+    const deny = (await input.deny()).filter((term) => !saidInChat(term, lines));
+    const why = !line ? 'model' : groupLineLeaksPrivate(line, deny) ? 'private_leak' : null;
+    if (!line || why) {
+      const id = await persistPlan(database, {
+        chatId: input.chatId,
+        familyId,
+        plan: next,
+        existingId: existing?.id ?? null,
+        askMessageId: existing?.askMessageId ?? null,
+        now: input.now,
+      });
+      await audit(database, familyId, 'group_line_unsent', { kind: 'ask_driver', why }, id);
+      return { handled: true, outcome: 'carpool_line_unsent', notice: 'not_sent' };
+    }
+    const sent = await input.sendGroup({
+      text: line,
+      templateKey: 'linq:carpool_ask_driver',
+      dedupeKey: `linq:carpool_ask_driver:${input.chatId}:${input.messageId}`,
+    });
+    notice = sent === 'sent' || sent === 'already_sent' ? 'sent' : 'not_sent';
+    if (notice === 'sent') {
+      stored = markAsked(next, input.now);
+      outcome = 'carpool_asked';
+    }
+  }
+
+  const id = await persistPlan(database, {
+    chatId: input.chatId,
+    familyId,
+    plan: stored,
+    existingId: existing?.id ?? null,
+    askMessageId: existing?.askMessageId ?? null,
+    now: input.now,
+  });
+  await audit(
+    database,
+    familyId,
+    outcome === 'carpool_cancelled' ? 'linq_carpool_cancelled' : 'linq_carpool_updated',
+    { intent: reading.intent, shared: true, reminderStatus: stored.reminderStatus },
+    id,
+  );
+  return { handled: true, outcome, ...(notice ? { notice } : {}) };
+}
+
+/** A chat some family claimed as its household group. Anything else is a shared chat. */
+async function chatIsHouseholdGroup(database: Database, chatId: string): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** The driver has texted Hale 1:1 before: Hale never opens a 1:1 with someone who has not. */
+async function hasTextedHaleOneToOne(database: Database, userId: string): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, userId),
+        eq(schema.channelMessages.direction, 'in'),
+        eq(schema.channelMessages.inGroup, false),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
 export async function considerCarpoolTapback(
   database: Database,
   input: {
@@ -735,6 +915,38 @@ export async function runCarpoolReminders(
         .where(eq(schema.linqGroupCarpools.id, row.id));
 
     const voice = input.voice ?? createCarpoolComposer({ database, familyId: row.familyId });
+    // VIL-689 · a ride in a shared chat reminds its driver 1:1 only: one family's ride is
+    // never announced to the other families. `reminderGroupSentAt` is that reminder's
+    // generation mark here, as on the household path.
+    if (!(await chatIsHouseholdGroup(database, row.chatId))) {
+      triedDriverThisRun.add(row.id);
+      const driverSkipped = await deliverDriverLeg(database, {
+        rowId: row.id,
+        groupSentAt: input.now,
+        plan,
+        now: input.now,
+        sendDriver,
+        voice,
+        shared: true,
+      });
+      await persistPlan(database, {
+        chatId: row.chatId,
+        familyId: row.familyId,
+        plan: markReminder(plan, 'sent'),
+        existingId: row.id,
+        askMessageId: row.askMessageId,
+        now: input.now,
+      });
+      await audit(
+        database,
+        row.familyId,
+        'linq_carpool_reminder_sent',
+        { driverSkipped, shared: true },
+        row.id,
+      );
+      summary.fired += 1;
+      continue;
+    }
     const facts = voiceFacts(plan, null);
     const groupLine = await voice.compose({ kind: 'night_before_group', facts });
     if (!groupLine) {
@@ -851,8 +1063,15 @@ export async function runCarpoolReminders(
       now: input.now,
       sendDriver,
       voice,
+      shared: !(await chatIsHouseholdGroup(database, row.chatId)),
     });
-    if (driverSkipped === 'claimed_elsewhere' || driverSkipped === 'driver_group_claimed') continue;
+    if (
+      driverSkipped === 'claimed_elsewhere' ||
+      driverSkipped === 'driver_group_claimed' ||
+      driverSkipped === 'driver_never_texted'
+    ) {
+      continue;
+    }
     await audit(
       database,
       row.familyId,
@@ -886,14 +1105,20 @@ async function deliverDriverLeg(
     now: Date;
     sendDriver: CarpoolDriverSend;
     voice: CarpoolComposer;
+    /** A shared chat's ride: the 1:1 is the only leg, so the driver must have texted Hale. */
+    shared?: boolean;
   },
 ): Promise<string | null> {
   const { plan } = input;
   if (!plan.driverHaleCustomer) return 'driver_not_customer';
   if (!plan.driverUserId) return 'no_driver_user';
-  // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
-  // starts a 1:1 with its members. Their driver hears it in the group only.
-  if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
+  if (input.shared) {
+    if (!(await hasTextedHaleOneToOne(database, plan.driverUserId))) {
+      return 'driver_never_texted';
+    }
+  } else if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
+    // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
+    // starts a 1:1 with its members. Their driver hears it in the group only.
     return 'driver_group_claimed';
   }
   const claimAt = input.now;

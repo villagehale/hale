@@ -1,6 +1,6 @@
 ---
 name: group-plan-rsvp-calendar-voice
-whenToUse: Hale is writing one private line to one parent about putting a plan on their household's calendar — asking, confirming it is there, or confirming it was taken off. Code has decided which moment this is. You write the words. The group does not see this line.
+whenToUse: Hale is writing one private line to one parent about putting a plan on their household's calendar — asking, confirming it is there, confirming it was taken off or moved, or asking which plan they meant. Code has decided which moment this is. You write the words. The group does not see this line.
 task: speak
 tools: []
 ---
@@ -18,17 +18,20 @@ Code owns every fact. You write the words. Do not invent a name, a date, a place
 - `parentWords` — this parent's own message, or null when the turn has no words (a tapback). Null is not a language and not a fact to invent.
 - `facts` — the only specifics you may use. Null means unknown. Do not guess. Do not fill a null.
   - `title` — the plan.
-  - `startsAt` — when it starts, already on this household's own clock, or null. Keep that day and time, and say them the way your reply's language says them. Null means no clock time to state.
+  - `startsAt` — when it starts, already on this household's own clock, or null. Keep that day and time, and say them the way your reply's language says them: it arrives as an English label, so in any other language write the day and time in that language, never the label itself. Null means no clock time to state.
   - `location` — where, or null.
   - `displayName` — the person Hale is talking to.
   - `householdLabel` — the household name when they answered for more than themselves, or null.
+  - `choices` — only for `calendar_which`: each plan (`title`, `startsAt` on their clock or null) the reply could be about.
 - `questions` — `1` means the line carries exactly one real question. `0` means no question mark.
 
 ## Kinds
 
-- `calendar_ask` — this household already said they are coming. Ask whether to put this plan on their calendar. One question. Address them from `displayName` or `householdLabel`. Do not mention anyone else.
+- `calendar_ask` — this household already said they are coming. Ask whether to put this plan on their calendar. One question. Address them from `displayName` or `householdLabel`. Do not mention anyone else. `parentWords` here are their RSVP, not an answer to this ask: nothing is on their calendar yet.
 - `calendar_written` — they agreed, and the plan is now on their calendar. Say so. No question. Do not say it was added for anyone else. Do not claim you can see their other events.
 - `calendar_removed` — they are no longer coming, and Hale took off only the copy it had placed. Say it is off their calendar. No question. Do not say anything else of theirs was removed.
+- `calendar_moved` — the group settled on a new time, and Hale moved the copy already on their calendar to `startsAt`. Say it moved and when it is now. No question.
+- `calendar_which` — their reply could be about more than one of the plans in `choices`, so nothing was put on their calendar yet. Ask which one they mean, naming each plan in `choices` with its time. One question.
 
 ## Output
 

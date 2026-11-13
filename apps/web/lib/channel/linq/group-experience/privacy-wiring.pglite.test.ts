@@ -70,6 +70,10 @@ async function seedFamily(phone: string, name: string) {
     userId,
     firstName: name,
   });
+  // A live shared chat: each household joined it (the group-audience floor reads this).
+  await db.database
+    .insert(schema.linqMultiFamilyJoins)
+    .values({ chatId: CHAT, familyId, joinedByUserId: userId, joinedAt: NOW });
   return { familyId, userId };
 }
 
@@ -94,6 +98,7 @@ function reading(partial: Partial<GroupExperienceReading>): GroupExperienceReadi
   return {
     kind: 'none',
     title: null,
+    samePlan: null,
     response: null,
     optionKey: null,
     options: [],
@@ -142,6 +147,7 @@ describe('VIL-399 group lines through the production deny list', () => {
         senderFamilyId: a.familyId,
         coveringFamilyId: a.familyId,
         text: 'this camp https://park.example/camp is $120 for two sessions',
+        messageId: 'm-1',
       },
     );
     return { out, w };
@@ -188,6 +194,7 @@ describe('VIL-399 a private question goes to the asking household only', () => {
         senderFamilyId: sender.familyId,
         coveringFamilyId: a.familyId,
         text: 'what is the address for pickup?',
+        messageId: 'm-2',
       },
     );
     return { out, w, a };
@@ -236,6 +243,7 @@ describe('VIL-399 a private question goes to the asking household only', () => {
         senderFamilyId: fresh.b.familyId,
         coveringFamilyId: fresh.a.familyId,
         text: `is ${CHILD} allergic to anything in the snack?`,
+        messageId: 'm-3',
       },
     );
     expect(out).toMatchObject({ handled: true, outcome: 'group_experience_1to1' });
@@ -246,17 +254,15 @@ describe('VIL-399 a private question goes to the asking household only', () => {
 
 describe('VIL-399 every group line is an audit row', () => {
   it('writes sms_reply_sent with the ledgered body when a group line lands', async () => {
+    // A consented shared group (seedFamily's joins) lets an event_logistics line past the floor.
     const { a } = await twoFamilies();
-    // A consented shared group is what lets an event_logistics line past the floor.
-    await db.database
-      .insert(schema.linqMultiFamilyJoins)
-      .values({ chatId: CHAT, familyId: a.familyId, joinedByUserId: a.userId, joinedAt: NOW });
     const { sendGroupExperienceLine } = await import('./send');
     await sendGroupExperienceLine(db.database, {
       chatId: CHAT,
       familyId: a.familyId,
       text: 'Camp is $120 for two sessions.',
       now: NOW,
+      dedupeKey: 'linq:group_experience:audit-test',
       send: async () => ({ providerMessageId: 'out-audit' }),
       listChatHandles: async () => ({
         status: 'ok',
@@ -323,13 +329,24 @@ describe('VIL-399 each household 1:1 from a group link goes through the audited 
         senderFamilyId: a.familyId,
         coveringFamilyId: a.familyId,
         text: 'this camp https://park.example/camp is $120',
+        messageId: 'm-4',
       },
     );
     expect(texted.sort()).toEqual([PARENT_A, PARENT_B].sort());
-    const rows = await db.database
-      .select()
-      .from(schema.auditLog)
-      .where(eq(schema.auditLog.actionTaken, 'sms_reply_sent'));
+    // The group line is ledgered too (on the chat); the 1:1 rows are the ones off the chat.
+    const oneToOneIds = (
+      await db.database
+        .select({ id: schema.channelMessages.id, chat: schema.channelMessages.providerChatId })
+        .from(schema.channelMessages)
+    )
+      .filter((row) => row.chat !== CHAT)
+      .map((row) => row.id);
+    const rows = (
+      await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'sms_reply_sent'))
+    ).filter((row) => oneToOneIds.includes(row.targetId ?? ''));
     expect(rows.map((row) => [row.familyId, row.actor, row.targetTable]).sort()).toEqual(
       [
         [a.familyId, a.userId, 'channel_messages'],

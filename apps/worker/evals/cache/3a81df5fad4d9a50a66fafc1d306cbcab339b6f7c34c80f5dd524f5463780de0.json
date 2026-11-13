@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is rsvp_tally: the parent wants the headcount for the open Saturday picnic RSVP. The reading returned kind none, which is not in expected, so it is wrong regardless of other fields.",
+    "score": 1
+  }
+}

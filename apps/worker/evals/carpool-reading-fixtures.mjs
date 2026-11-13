@@ -17,6 +17,8 @@ export const CARPOOL_EVAL_CLOCKS = {
   sundayNightToronto: new Date('2026-11-02T03:30:00Z'),
   /** Fri Oct 30 2026, 21:00 in Los Angeles (PDT). UTC is already Saturday. */
   fridayNightLosAngeles: new Date('2026-10-31T04:00:00Z'),
+  /** Thu Nov 12 2026, 11:00 in Toronto (EST). Tuesday is Nov 17. */
+  thursdayMorningToronto: new Date('2026-11-12T16:00:00Z'),
 };
 
 const TORONTO = 'America/Toronto';
@@ -152,6 +154,73 @@ export const CARPOOL_READING_FIXTURES = [
       pickupAt: null,
     },
   },
+  // VIL-689 · a chat several families share. The reader sees the chat text only; the
+  // runtime's `keepWhatTheChatSaid` then keeps only what a chat line says (`kept`).
+  {
+    id: 'shared-other-family-claims',
+    shared: true,
+    input: {
+      text: "I'll drive soccer Tuesday at 5:30, taking Mia and Leo",
+      senderName: 'Bao',
+      memberNames: ['Ada', 'Bao'],
+      currentDriver: null,
+      now: CARPOOL_EVAL_CLOCKS.thursdayMorningToronto,
+      timeZone: TORONTO,
+      recent: [],
+    },
+    expect: {
+      intent: ['driver_claim'],
+      driverName: ['Bao'],
+      driverIsSender: true,
+      pickupDate: '2026-11-17',
+      pickupTime: '17:30',
+      pickupAt: '2026-11-17T22:30:00.000Z',
+      kept: { kids: 'Mia and Leo' },
+    },
+  },
+  {
+    id: 'shared-names-another-driver',
+    shared: true,
+    input: {
+      text: 'Ada is driving soccer Tuesday at 5:30',
+      senderName: 'Bao',
+      memberNames: ['Ada', 'Bao'],
+      currentDriver: null,
+      now: CARPOOL_EVAL_CLOCKS.thursdayMorningToronto,
+      timeZone: TORONTO,
+      recent: [],
+    },
+    expect: {
+      intent: ['driver_claim'],
+      driverName: ['Ada'],
+      driverIsSender: false,
+      pickupDate: '2026-11-17',
+      pickupTime: '17:30',
+      pickupAt: '2026-11-17T22:30:00.000Z',
+      kept: { driverName: 'Ada', kids: null },
+    },
+  },
+  {
+    id: 'shared-needs-driver',
+    shared: true,
+    input: {
+      text: 'can anyone drive the kids to soccer Tuesday 5:30?',
+      senderName: 'Ada',
+      memberNames: ['Ada', 'Bao'],
+      currentDriver: null,
+      now: CARPOOL_EVAL_CLOCKS.thursdayMorningToronto,
+      timeZone: TORONTO,
+      recent: [],
+    },
+    expect: {
+      intent: ['plan_needs_driver'],
+      driverName: null,
+      pickupDate: '2026-11-17',
+      pickupTime: '17:30',
+      pickupAt: '2026-11-17T22:30:00.000Z',
+      kept: { driverName: null },
+    },
+  },
 ].map((fixture) => ({
   ...fixture,
   input: { memberNames: MEMBERS, ...fixture.input },
@@ -182,5 +251,23 @@ export function gradeCarpoolReading(expect, { reading, pickupAt }) {
     failures.push(`pickupTime=${JSON.stringify(reading.pickupTime)}`);
   }
   if (pickupAt !== expect.pickupAt) failures.push(`pickupAt=${pickupAt}`);
+  return failures;
+}
+
+/**
+ * VIL-689 · what the runtime keeps of a shared chat's reading (`keepWhatTheChatSaid`,
+ * passed in as `kept`, null when no ride is recorded), against `expect.kept`: each named
+ * field must equal what was kept. Nothing the chat did not say may survive.
+ */
+export function gradeSharedKept(expect, kept) {
+  if (!expect.kept) return [];
+  if (kept === null) return ['kept=null (no ride recorded)'];
+  const failures = [];
+  for (const [field, want] of Object.entries(expect.kept)) {
+    const got = kept[field] ?? null;
+    const same =
+      want === null ? got === null : got !== null && fold(String(got)) === fold(String(want));
+    if (!same) failures.push(`kept.${field}=${JSON.stringify(got)}`);
+  }
   return failures;
 }
