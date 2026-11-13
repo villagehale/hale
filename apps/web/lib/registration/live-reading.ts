@@ -182,12 +182,12 @@ function quotedTimeZone(extracted: ExtractedWindow, pageText: string): string | 
 /** Text as a run of lower-case words, an HTML entity the strip left behind read as a
  * gap: what a label is compared on, so `&ndash;` on the page meets `–` in the label. */
 function wordRun(text: string): string {
-  const words = text
-    .replace(/&[a-z]+;/gi, ' ')
-    .normalize('NFKC')
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word !== '');
+  const words =
+    text
+      .replace(/&[a-z]+;/gi, ' ')
+      .normalize('NFKC')
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
   return words.length === 0 ? '' : ` ${words.join(' ')} `;
 }
 

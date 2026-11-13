@@ -1,3 +1,4 @@
+import { namesAny } from '@hale/types';
 import { formatCalendarDate, formatWhenPhrase } from '~/lib/format/datetime';
 import type { TorontoDistrict } from '../fsa-municipalities';
 import {
@@ -29,24 +30,11 @@ export interface FamilyOpening {
   general: LiveRegistrationDate | null;
 }
 
-function words(text: string): Set<string> {
-  return new Set(
-    text
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-      .toLowerCase()
-      .split(/[^\p{L}\p{N}]+/u)
-      .filter((word) => word !== ''),
-  );
-}
-
-/** The date's own page words name every word of the district's name. */
+/** The date's own page words name every word of the district's name, each as a whole
+ * word (the shared whole-word matcher). */
 export function namesDistrict(date: LiveRegistrationDate, district: TorontoDistrict): boolean {
   const name = district.split('_');
-  return date.evidence.some((quote) => {
-    const said = words(quote);
-    return name.every((word) => said.has(word));
-  });
+  return date.evidence.some((quote) => name.every((word) => namesAny(quote, [word])));
 }
 
 export function familyOpening(
