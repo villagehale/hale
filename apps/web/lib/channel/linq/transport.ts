@@ -69,15 +69,17 @@ export class LinqSendError extends Error {
 
 /**
  * VIL-683 · THE ONE SEND SEAM FOR GARBLED TEXT. Every text that reaches a parent leaves as a
- * Linq text part (assertParts), an edit or a poll option, and each is checked here before
- * any fetch. A garbled text is a model failure: a permanent refusal named `garbled_text`,
+ * Linq text part (assertParts), an edit, a poll option or an experience card's copy, and
+ * each is checked here before any fetch. A garbled text is a model failure: a permanent refusal named `garbled_text`,
  * so each caller's refusal handling ledgers it and sends nothing in its place. The writer
  * was already asked once more at the model seam (@hale/agent forceToolJson and runAgent).
  * Logged by code only, never the words (rule #1).
  */
 export const GARBLED_TEXT = 'garbled_text';
 
-function refuseGarbledText(text: string): void {
+/** Also called on every text of a set before its first is sent (sendTexts, the router's
+ * reply set, the intake map), so a set with one garbled text sends none of them. */
+export function refuseGarbledText(text: string): void {
   if (!hasGarbledText(text)) return;
   console.warn({ code: GARBLED_TEXT }, 'linq: garbled text refused — not sent');
   throw new LinqSendError(GARBLED_TEXT, 0, true);
@@ -497,6 +499,7 @@ export async function sendLinqExperience(input: {
   if (!input.experience.name || !input.experience.action) {
     throw new LinqSendError('invalid_experience', 400, true);
   }
+  for (const value of Object.values(input.experience.params)) refuseGarbledText(value);
   const message = {
     experience: input.experience,
     ...(cadenceArmed() ? { idempotency_key: linqSendKey(input.sendKey) } : {}),

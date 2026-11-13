@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
@@ -84,6 +85,9 @@ async function sendOnce(
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: code, ...(retryable ? { dedupeKey: null } : {}) })
       .where(eq(schema.channelMessages.id, claimed.id));
+    if (isGarbledRefusal(err)) {
+      await recordGarbledRefusal(database, { familyId: entry.familyId, surface: 'group_reminder' });
+    }
     console.warn(
       { familyId: entry.familyId, templateKey: entry.templateKey, code, retryable },
       'group reminder: the send failed',
