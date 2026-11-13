@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Complet pour le samedi 9 h 30, il ne restait plus de place. Voici la page d'inscription si tu veux jeter un œil : https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 1482,
+  "usage": {
+    "input_tokens": 134,
+    "output_tokens": 71,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}
