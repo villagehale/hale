@@ -22,7 +22,15 @@ import { createLiveRegistrationReader } from '../read';
 import { REGISTRATION_OPENING_KIND, cityOpeningFacts } from './context';
 import { winterCycleLabel } from './cycle';
 import { ownCityRegistrationEnabled } from './flag';
-import { type CityLookupDeps, lookupCityRegistration, readCityPage } from './lookup';
+import {
+  type CityLookup,
+  type CityLookupDeps,
+  lookupCityRegistration,
+  pageSaysNotYet,
+  readCityPage,
+  readDidNotFinish,
+} from './lookup';
+import { cachedOfficialSite, wikidataSource } from './official-site';
 import { type OwnCity, cityKey, readOwnCity } from './place';
 import { searchRegistrationPages } from './search';
 import { type StoredCityReading, latestCityReading, recordCityReading } from './store';
@@ -40,8 +48,11 @@ import { type StoredCityReading, latestCityReading, recordCityReading } from './
  *      a parent reads, and a writer that fails sends nothing.
  *
  * A family the hand-verified radar already covers is left to it, so one season never
- * reaches a parent from two sources. A date that moved, or one the page no longer
- * confirms, drops the tell still waiting on the old one.
+ * reaches a parent from two sources. A date that moved, or one a readable official page
+ * now says is not out, drops the tell still waiting on the old one. A read that did not
+ * finish, or one that could not be verified, drops nothing and keeps the known date: it
+ * is asked again next sweep. A date the page confirms again after it was taken back is
+ * queued again.
  */
 
 /** Lookups one run may start. An infra bound on the function's 300 s wall (one lookup is
@@ -116,18 +127,21 @@ export interface CityRegistrationSweepDeps {
   recipients(database: Database, familyId: string): Promise<FamilyTextRecipient[]>;
 }
 
-export function cityLookupDeps(client: AgentClient): CityLookupDeps {
+export function cityLookupDeps(client: AgentClient, database: Database): CityLookupDeps {
+  const source = wikidataSource();
   return {
+    officialSite: (place, now) => cachedOfficialSite(database, source, place, now),
     search: (place, cycleLabel, today) => searchRegistrationPages(client, place, cycleLabel, today),
-    read: createLiveRegistrationReader(client),
+    read: createLiveRegistrationReader(client, { yearFromWeekday: true }),
   };
 }
 
 export function defaultCityRegistrationSweepDeps(
   client: AgentClient | null,
+  database: Database,
 ): CityRegistrationSweepDeps {
   return {
-    lookup: client ? cityLookupDeps(client) : null,
+    lookup: client ? cityLookupDeps(client, database) : null,
     buildGate: buildOutboundGatePorts,
     queueCandidate: queueCheckInForDecider,
     f14For: f14EnabledFor,
@@ -138,21 +152,29 @@ export function defaultCityRegistrationSweepDeps(
   };
 }
 
-/** One tell per parent per opening, ever: a moved date is a new key. */
+/** One tell per parent per opening, ever: the city, the season and the calendar day. A
+ * moved day is a new key; a re-read that prints (or drops) the time is not. */
 export function registrationOpeningDedupeKey(input: {
   familyId: string;
   parentUserId: string;
+  place: Pick<OwnCity, 'city' | 'provinceOrState' | 'country' | 'district'>;
   cycleLabel: string;
-  opensAt: Date;
+  openingDate: string;
 }): string {
   return [
     REGISTRATION_OPENING_TEMPLATE_KEY,
     input.familyId,
     input.parentUserId,
+    cityKey(input.place),
     input.cycleLabel.replace(/\s+/g, '-'),
-    input.opensAt.toISOString(),
+    input.openingDate,
   ].join(':');
 }
+
+/** The reasons the sweep itself takes a waiting tell back for. A row it dropped is not a
+ * tell the parent had: when the page confirms that date again, it is queued again. A row
+ * the decider dropped, or one already sent, is the decider's and stays. */
+const SWEEP_DROP_REASONS = ['date_unconfirmed', 'date_changed'] as const;
 
 /** The families with a seat Hale texts and at least one child. */
 async function loadFamilies(database: Database): Promise<string[]> {
@@ -172,19 +194,26 @@ async function hasChildren(database: Database, familyId: string): Promise<boolea
   return row !== undefined;
 }
 
-/** This tell was queued before, in any status: once per parent per opening, ever. */
-async function alreadyQueued(
+/** This tell's row, in any status: once per parent per opening, ever. */
+async function existingTell(
   database: Database,
   familyId: string,
   dedupeKey: string,
-): Promise<boolean> {
+): Promise<{ id: string; status: string; reason: string | null } | undefined> {
   const t = schema.proactiveCandidates;
   const [row] = await database
-    .select({ id: t.id })
+    .select({ id: t.id, status: t.status, reason: t.reason })
     .from(t)
     .where(and(eq(t.familyId, familyId), eq(t.dedupeKey, dedupeKey)))
     .limit(1);
-  return row !== undefined;
+  return row;
+}
+
+function droppedBySweep(row: { status: string; reason: string | null }): boolean {
+  return (
+    row.status === 'dropped' &&
+    (SWEEP_DROP_REASONS as readonly (string | null)[]).includes(row.reason)
+  );
 }
 
 /** Drop this parent's open tells other than `keep` (none when `keep` is null). */
@@ -228,6 +257,11 @@ async function dropStaleTells(
  * Bring one city's reading up to date. A known page is re-read first; a page that no
  * longer verifies, or no page at all, is a fresh lookup. Returns the reading to use,
  * which is the stored one when nothing new could be read.
+ *
+ * A KNOWN DATE GIVES WAY ONLY TO A READABLE OFFICIAL PAGE THAT SAYS THE SEASON IS NOT
+ * OUT. A read that did not finish asks again next sweep and searches nothing; a page that
+ * could not be verified (a shaky read, a refusal, a yearless date) is not evidence the
+ * date is gone, so it keeps the date too.
  */
 async function refreshCity(
   database: Database,
@@ -239,6 +273,12 @@ async function refreshCity(
   result: CityRegistrationSweepResult,
 ): Promise<StoredCityReading | null> {
   result.lookedUp += 1;
+  const keep = (reason: string) => {
+    result.retry += 1;
+    console.info({ reason }, 'own-city registration: lookup did not finish');
+    return prior;
+  };
+  let knownPageSaysNotYet = false;
   if (prior?.status === 'verified') {
     const again = await readCityPage(
       lookup.read,
@@ -261,19 +301,34 @@ async function refreshCity(
       result.verified += 1;
       return latestCityReading(database, place, cycleLabel);
     }
+    if (readDidNotFinish(again)) {
+      return keep(`known_page_unread:${'reason' in again ? again.reason : again.status}`);
+    }
+    knownPageSaysNotYet = pageSaysNotYet(again);
   }
   const found = await lookupCityRegistration(lookup, place, cycleLabel, now);
-  if (found.status === 'retry') {
-    result.retry += 1;
-    console.info({ reason: found.reason }, 'own-city registration: lookup did not finish');
-    return prior;
+  let outcome: Exclude<CityLookup, { status: 'retry' }>;
+  if (found.status === 'verified' || prior?.status !== 'verified') {
+    if (found.status === 'retry') return keep(found.reason);
+    outcome = found;
+  } else if (found.status === 'not_found' && found.reason === 'not_published') {
+    outcome = found;
+  } else if (knownPageSaysNotYet) {
+    outcome = {
+      status: 'not_found',
+      reason: 'not_published',
+      municipality: prior.municipality,
+      tried: [{ url: prior.sourceUrl, outcome: 'says_not_yet' }],
+    };
+  } else {
+    return keep(found.status === 'retry' ? found.reason : `unconfirmed:${found.reason}`);
   }
-  await recordCityReading(database, place, cycleLabel, found, now);
-  if (found.status === 'verified') result.verified += 1;
+  await recordCityReading(database, place, cycleLabel, outcome, now);
+  if (outcome.status === 'verified') result.verified += 1;
   else {
     result.notFound += 1;
     console.info(
-      { reason: found.reason, tried: found.tried.map((page) => page.outcome) },
+      { reason: outcome.reason, tried: outcome.tried.map((page) => page.outcome) },
       'own-city registration: no verified opening',
     );
   }
@@ -366,6 +421,33 @@ export async function runCityRegistrationSweep(
   return result;
 }
 
+/** Put a tell the sweep itself took back on the queue again, as a fresh candidate. */
+async function requeueTell(
+  database: Database,
+  id: string,
+  draft: CandidateDraft,
+  now: Date,
+): Promise<'queued' | 'duplicate'> {
+  const t = schema.proactiveCandidates;
+  const revived = await database
+    .update(t)
+    .set({
+      status: 'queued',
+      reason: null,
+      decision: null,
+      holdUntil: null,
+      decidedAt: null,
+      what: draft.what,
+      why: draft.why,
+      sourceUrl: draft.sourceUrl,
+      worthlessAfter: draft.worthlessAfter,
+      createdAt: now,
+    })
+    .where(and(eq(t.id, id), eq(t.status, 'dropped'), inArray(t.reason, [...SWEEP_DROP_REASONS])))
+    .returning({ id: t.id });
+  return revived.length === 0 ? 'duplicate' : 'queued';
+}
+
 async function tellFamily(
   database: Database,
   deps: CityRegistrationSweepDeps,
@@ -404,15 +486,17 @@ async function tellFamily(
     const dedupeKey = registrationOpeningDedupeKey({
       familyId,
       parentUserId,
+      place,
       cycleLabel,
-      opensAt: facts.opensAt,
+      openingDate: facts.openingDate,
     });
     result.superseded += await dropStaleTells(
       database,
       { familyId, parentUserId, keep: dedupeKey, reason: 'date_changed' },
       now,
     );
-    if (await alreadyQueued(database, familyId, dedupeKey)) {
+    const existing = await existingTell(database, familyId, dedupeKey);
+    if (existing !== undefined && !droppedBySweep(existing)) {
       result.duplicate += 1;
       continue;
     }
@@ -426,7 +510,7 @@ async function tellFamily(
       continue;
     }
     const general = facts.generalOpens ? `; everyone else ${facts.generalOpens}` : '';
-    const queued = await deps.queueCandidate(database, {
+    const draft: CandidateDraft = {
       familyId,
       parentUserId,
       kind: 'registration_opening',
@@ -440,7 +524,11 @@ async function tellFamily(
       worthlessAfter: facts.opensAt,
       parentRequested: false,
       dedupeKey,
-    });
+    };
+    const queued =
+      existing === undefined
+        ? await deps.queueCandidate(database, draft)
+        : await requeueTell(database, existing.id, draft, now);
     if (queued === 'duplicate') {
       result.duplicate += 1;
       continue;

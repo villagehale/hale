@@ -150,7 +150,6 @@ export const FLAGS = [
     default: true,
   }),
   exact('orphan-user-sweep', 'ORPHAN_USER_SWEEP_ENABLED'),
-  exact('own-city-registration', 'OWN_CITY_REGISTRATION_ENABLED'),
   exact('parent-calendar-mirror', 'PARENT_CALENDAR_MIRROR_ENABLED'),
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),
   exact('registration-ladder', 'REGISTRATION_LADDER_ENABLED'),
@@ -212,6 +211,10 @@ export const FLAGS = [
     default: true,
   }),
   exact('gcal-past-classify-skip', 'GCAL_PAST_CLASSIFY_SKIP', {
+    parser: 'trimmed-not-false',
+    default: true,
+  }),
+  exact('own-city-registration', 'OWN_CITY_REGISTRATION_ENABLED', {
     parser: 'trimmed-not-false',
     default: true,
   }),

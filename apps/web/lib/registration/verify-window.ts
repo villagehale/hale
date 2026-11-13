@@ -277,52 +277,56 @@ const MONTHS: Readonly<Record<string, number>> = {
   dic: 12,
 };
 
-/** Weekday names and abbreviations a date may lead with. They are read past, not checked. */
-const WEEKDAYS = [
-  'monday',
-  'mon',
-  'tuesday',
-  'tues',
-  'tue',
-  'wednesday',
-  'wed',
-  'thursday',
-  'thurs',
-  'thur',
-  'thu',
-  'friday',
-  'fri',
-  'saturday',
-  'sat',
-  'sunday',
-  'sun',
-  'lundi',
-  'lun',
-  'mardi',
-  'mar',
-  'mercredi',
-  'mer',
-  'jeudi',
-  'jeu',
-  'vendredi',
-  'ven',
-  'samedi',
-  'sam',
-  'dimanche',
-  'dim',
-  'lunes',
-  'martes',
-  'miércoles',
-  'mié',
-  'jueves',
-  'jue',
-  'viernes',
-  'vie',
-  'sábado',
-  'sáb',
-  'domingo',
-  'dom',
-];
+/** Weekday names and abbreviations a date may lead with, and the day of the week each
+ * names (0 is Sunday). Read past by the date grammar; only a weekday-pinned year
+ * (`pinYearByWeekday`) reads which day it is. Where two languages share an abbreviation
+ * (`mar`, `mié`) it names the same day. */
+const WEEKDAY_NUMBER: Readonly<Record<string, number>> = {
+  monday: 1,
+  mon: 1,
+  tuesday: 2,
+  tues: 2,
+  tue: 2,
+  wednesday: 3,
+  wed: 3,
+  thursday: 4,
+  thurs: 4,
+  thur: 4,
+  thu: 4,
+  friday: 5,
+  fri: 5,
+  saturday: 6,
+  sat: 6,
+  sunday: 0,
+  sun: 0,
+  lundi: 1,
+  lun: 1,
+  mardi: 2,
+  mar: 2,
+  mercredi: 3,
+  mer: 3,
+  jeudi: 4,
+  jeu: 4,
+  vendredi: 5,
+  ven: 5,
+  samedi: 6,
+  sam: 6,
+  dimanche: 0,
+  dim: 0,
+  lunes: 1,
+  martes: 2,
+  miércoles: 3,
+  mié: 3,
+  jueves: 4,
+  jue: 4,
+  viernes: 5,
+  vie: 5,
+  sábado: 6,
+  sáb: 6,
+  domingo: 0,
+  dom: 0,
+};
+const WEEKDAYS = Object.keys(WEEKDAY_NUMBER);
 
 const alternation = (words: readonly string[]) =>
   [...words].sort((a, b) => b.length - a.length).join('|');
@@ -396,6 +400,36 @@ function parseDateSpan(span: string): PrintedDate | 'date_unparsed' | 'date_ambi
     return valid ? printed : 'date_unparsed';
   }
   return 'date_unparsed';
+}
+
+/** A date the page prints with its weekday and no year: `Wednesday, December 9`,
+ * `mercredi 9 décembre`. The weekday is required here, not read past. */
+const WEEKDAY_DATE_FORMS: ReadonlyArray<{
+  pattern: RegExp;
+  read: (m: RegExpMatchArray) => [weekday: string, month: string, day: string];
+}> = [
+  {
+    pattern: new RegExp(`^(${alternation(WEEKDAYS)})\\.?,?\\s${MONTH},?\\s?${DAY}$`, 'u'),
+    read: (m) => [m[1] ?? '', m[2] ?? '', m[3] ?? ''],
+  },
+  {
+    pattern: new RegExp(`^(${alternation(WEEKDAYS)})\\.?,?\\s${DAY}\\s(?:de\\s)?${MONTH}$`, 'u'),
+    read: (m) => [m[1] ?? '', m[3] ?? '', m[2] ?? ''],
+  },
+];
+
+function weekdayDateExpression(
+  span: string,
+): { weekday: number; month: number; day: number } | null {
+  for (const { pattern, read } of WEEKDAY_DATE_FORMS) {
+    const match = span.match(pattern);
+    if (match === null) continue;
+    const [weekday, month, day] = read(match);
+    const value = { weekday: WEEKDAY_NUMBER[weekday], month: MONTHS[month], day: Number(day) };
+    if (value.weekday === undefined || value.month === undefined) return null;
+    return { weekday: value.weekday, month: value.month, day: value.day };
+  }
+  return null;
 }
 
 const MERIDIEM = '([ap])\\.?\\s?m\\.?';
@@ -569,6 +603,51 @@ export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | nul
   };
   const refusals = labelled.map(scanRefusal);
   return refusals.includes(null) ? null : (refusals[0] ?? null);
+}
+
+/**
+ * VIL-684 · the year of a date the page prints WITHOUT one, pinned by the weekday it
+ * prints beside it (Toronto's district table: "Wednesday, December 9, 7 a.m."). Decided
+ * by Claude Code under Barton's 11-03 delegation, and narrow on purpose:
+ *   - the quote prints no year and exactly one date, and that date carries its weekday;
+ *   - it prints at most one clock (the time, when there is one);
+ *   - exactly one of this year and next puts that weekday on that month and day (both or
+ *     neither is no year at all);
+ *   - that date is still ahead of `now`;
+ *   - it falls in the season being read: the cycle label's year or the year before it,
+ *     the months a season registers in.
+ * Anything else is null, and the date stays a partial one. The caller marks a pinned date
+ * so it is never mistaken for a year the page printed.
+ */
+export function pinYearByWeekday(
+  quote: string,
+  now: Date,
+  cycleLabel: string,
+): { date: string; time: string | null } | null {
+  const text = normalizeQuote(quote);
+  if (yearsIn(text).size > 0) return null;
+  const dates = expressionsIn(text, dateExpression);
+  const pinned = expressionsIn(text, weekdayDateExpression);
+  const [only] = pinned;
+  if (dates.length !== 1 || pinned.length !== 1 || only === undefined) return null;
+  const clocks = new Set(expressionsIn(text, parseClockSpan).map((clock) => clock.value));
+  if (clocks.size > 1) return null;
+  const time = [...clocks][0] ?? null;
+
+  const seasonYear = Number(cycleLabel.match(/\b(?:19|20)\d{2}\b/)?.[0]);
+  if (!Number.isInteger(seasonYear)) return null;
+  const { weekday, month, day } = only.value;
+  const thisYear = now.getUTCFullYear();
+  const fits = [thisYear, thisYear + 1].filter((year) => {
+    const at = new Date(Date.UTC(year, month - 1, day));
+    return at.getUTCMonth() === month - 1 && at.getUTCDay() === weekday;
+  });
+  const [year] = fits;
+  if (fits.length !== 1 || year === undefined) return null;
+  if (year !== seasonYear && year !== seasonYear - 1) return null;
+  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  if (date <= now.toISOString().slice(0, 10)) return null;
+  return { date, time };
 }
 
 /**

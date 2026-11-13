@@ -61,6 +61,8 @@ import { dayKeyOf } from '~/lib/format/datetime';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
+import { REGISTRATION_OPENING_KIND } from '~/lib/registration/city/context';
+import { ownCityRegistrationEnabled } from '~/lib/registration/city/flag';
 import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
 import { applyCandidateAfterSend, payloadOf } from './after-send';
 import { type WriterResult, composeProactiveBatch } from './compose';
@@ -81,7 +83,6 @@ import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
-import { isVerbatimKind } from './verbatim';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -89,6 +90,7 @@ import {
   loadFamilySnapshot,
 } from './snapshot';
 import { type ToolCandidate, boundedLine } from './tools';
+import { isVerbatimKind } from './verbatim';
 import { volumeIsUnusual } from './volume';
 
 /**
@@ -417,6 +419,11 @@ async function loadOpenItems(
       summary.parentNotInFamily += 1;
       continue;
     }
+    if (laneSwitchedOff(row.kind)) {
+      // Its lane's kill switch is off: the row is left as it is, neither offered nor
+      // settled, and the next review after the switch is back on takes it up.
+      continue;
+    }
     if (!isProactiveSendKind(row.kind)) {
       // The gate has no class for it, so no send of it can be gated: never offered.
       await mark(database, familyId, [row.id], {
@@ -490,6 +497,11 @@ const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
   'registration_opening',
 ];
 
+/** A kind whose own lane has a kill switch, and it is off. */
+function laneSwitchedOff(kind: string): boolean {
+  return kind === REGISTRATION_OPENING_KIND && !ownCityRegistrationEnabled();
+}
+
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);
 }
@@ -510,8 +522,8 @@ async function seatedParents(database: Database, familyId: string): Promise<Set<
 
 /**
  * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
- * items the row would sit in the waiting set (hold.ts), where no signal reopens it. With
- * no `worthlessAfter` at all, a hold never reaches past the days the decider could see
+ * items the row would sit in the waiting set (hold.ts), where no signal reopens it. And
+ * whatever the items' windows, a hold never reaches past the days the decider could see
  * (`SNAPSHOT_DAYS`), so a far-off clock cannot park the row out of every review.
  */
 function clampHold(
@@ -525,13 +537,13 @@ function clampHold(
     .filter((at): at is string => at !== null)
     .sort((a, b) => Date.parse(a) - Date.parse(b));
   const earliest = bounds[0];
-  if (earliest === undefined) {
-    const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
-    if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
-    return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
+  const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
+  if (earliest !== undefined && Date.parse(earliest) <= edge.getTime()) {
+    if (Date.parse(holdUntil) <= Date.parse(earliest)) return { holdUntil, clamped: null };
+    return { holdUntil: earliest, clamped: 'worthless_after' };
   }
-  if (Date.parse(holdUntil) <= Date.parse(earliest)) return { holdUntil, clamped: null };
-  return { holdUntil: earliest, clamped: 'worthless_after' };
+  if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
+  return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
 }
 
 async function audit(

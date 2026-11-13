@@ -91,3 +91,138 @@ describe('a partial date', () => {
     expect(reading.dates).toHaveLength(1);
   });
 });
+
+describe('a yearless date pinned by the weekday the page prints (own-city lane only)', () => {
+  // Toronto's register page, 2026-11-12: the district row prints no year.
+  const ROW = 'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.';
+  const PAGE = `City of Toronto. ${ROW} Winter programs run January 4 to April 2, 2027.`;
+  const NOW = new Date('2026-11-12T20:00:00Z');
+  const source = { sourceUrl: 'https://www.toronto.ca/register/', checkedAt: NOW };
+  const toronto = (quote: string, page = PAGE) =>
+    normalizeExtractedRegistration(
+      extracted({
+        evidence: ROW,
+        partialDates: [{ kind: 'unclassified_open', quote }],
+        timeZone: 'America/Toronto',
+        timeZoneEvidence: 'City of Toronto',
+      }),
+      page,
+      source,
+      { cycleLabel: 'Winter 2027 (north york)' },
+    );
+
+  it('takes the one year whose calendar puts that weekday on that date', () => {
+    expect(toronto('Wednesday, December 9, 7 a.m.')).toEqual({
+      ...source,
+      reader: 'ai',
+      status: 'verified',
+      timeZone: 'America/Toronto',
+      dates: [
+        {
+          kind: 'unclassified_open',
+          date: '2026-12-09',
+          time: '07:00',
+          evidence: ['Wednesday, December 9, 7 a.m.', ROW],
+          yearFrom: 'printed_weekday',
+        },
+      ],
+      partialDates: [],
+    });
+  });
+
+  it('is never inferred for a reader that did not ask (the catalog lanes)', () => {
+    const reading = normalizeExtractedRegistration(
+      extracted({
+        evidence: ROW,
+        partialDates: [{ kind: 'unclassified_open', quote: 'Wednesday, December 9, 7 a.m.' }],
+        timeZone: 'America/Toronto',
+        timeZoneEvidence: 'City of Toronto',
+      }),
+      PAGE,
+      source,
+    );
+    expect(reading).toMatchObject({ status: 'unverified', reason: 'incomplete_date' });
+  });
+
+  it('infers nothing when neither this year nor next fits the weekday', () => {
+    const page = `${PAGE} Friday, December 9, 7 a.m.`;
+    expect(toronto('Friday, December 9, 7 a.m.', page)).toMatchObject({
+      status: 'unverified',
+      reason: 'incomplete_date',
+    });
+  });
+
+  it('infers nothing for a date already past, or outside the season being read', () => {
+    const late = normalizeExtractedRegistration(
+      extracted({
+        evidence: ROW,
+        partialDates: [{ kind: 'unclassified_open', quote: 'Wednesday, December 9, 7 a.m.' }],
+        timeZone: 'America/Toronto',
+        timeZoneEvidence: 'City of Toronto',
+      }),
+      PAGE,
+      { ...source, checkedAt: new Date('2026-12-10T12:00:00Z') },
+      { cycleLabel: 'Winter 2027 (north york)' },
+    );
+    expect(late).toMatchObject({ status: 'unverified', reason: 'incomplete_date' });
+    const offSeason = normalizeExtractedRegistration(
+      extracted({
+        evidence: ROW,
+        partialDates: [{ kind: 'unclassified_open', quote: 'Wednesday, December 9, 7 a.m.' }],
+        timeZone: 'America/Toronto',
+        timeZoneEvidence: 'City of Toronto',
+      }),
+      PAGE,
+      source,
+      { cycleLabel: 'Winter 2029' },
+    );
+    expect(offSeason).toMatchObject({ status: 'unverified', reason: 'incomplete_date' });
+  });
+
+  it('needs the weekday printed with the date, and one clock at most', () => {
+    const page = `${PAGE} Registration opens December 9, 7 a.m. Doors at 7 a.m. or 9 a.m. Wednesday, December 9.`;
+    expect(toronto('December 9, 7 a.m.', page)).toMatchObject({ reason: 'incomplete_date' });
+    expect(toronto('7 a.m. or 9 a.m. Wednesday, December 9', page)).toMatchObject({
+      reason: 'incomplete_date',
+    });
+  });
+});
+
+describe("the page's own name for the programs", () => {
+  const ROW =
+    'Winter Session 2027 &ndash; ten-week session Registration Date: December 16, 2026 at 8 a.m.';
+  const PAGE = `The City of Greater Sudbury. Swimming lessons. ${ROW}`;
+  const read = (cycleOnPage: string) =>
+    normalizeExtractedRegistration(
+      extracted({
+        cycleOnPage,
+        evidence: ROW,
+        yearEvidence: 'Registration Date: December 16, 2026 at 8 a.m.',
+        partialDates: [],
+        unclassifiedOpen: {
+          quote: 'December 16, 2026 at 8 a.m.',
+          dateText: 'December 16, 2026',
+          timeText: '8 a.m.',
+          date: '2026-12-16',
+          time: '08:00',
+        },
+        timeZone: 'America/Toronto',
+        timeZoneEvidence: 'The City of Greater Sudbury',
+      }),
+      PAGE,
+      SOURCE,
+    );
+
+  it('is carried when its words are on the page', () => {
+    expect(read('Winter Session 2027 – ten-week session')).toMatchObject({
+      status: 'verified',
+      programOnPage: 'Winter Session 2027 – ten-week session',
+    });
+  });
+
+  it('is left out when the page does not say it (control)', () => {
+    const reading = read('Winter 2027 Recreation Programs');
+    expect(reading.status).toBe('verified');
+    expect(reading).not.toHaveProperty('programOnPage');
+  });
+});

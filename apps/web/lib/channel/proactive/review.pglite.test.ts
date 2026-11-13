@@ -250,6 +250,34 @@ describe('runProactiveReview', () => {
     expect(prefs?.lastAskedAt).toEqual(THURSDAY_EVENING);
   });
 
+  it('leaves a waiting registration tell untouched while its own lane is switched off', async () => {
+    const opening = {
+      kind: 'registration_opening' as const,
+      category: 'nudge' as const,
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: new Date('2026-12-01T11:30:00.000Z'),
+    };
+    for (const cadence of ['', 'live']) {
+      vi.stubEnv('PROACTIVE_CADENCE', cadence);
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'false');
+      const id = await enqueue(`registration-opening:${cadence || 'off'}`, opening);
+      const off = harness(sendAll);
+      await runProactiveReview(db.database, off.deps, THURSDAY_EVENING);
+      expect({
+        cadence,
+        snapshots: off.snapshots.length,
+        row: (await candidate(id))?.status,
+      }).toEqual({ cadence, snapshots: 0, row: 'queued' });
+
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
+      const on = harness(sendAll);
+      await runProactiveReview(db.database, on.deps, THURSDAY_EVENING);
+      expect({ cadence, row: (await candidate(id))?.status }).toEqual({ cadence, row: 'sent' });
+    }
+  });
+
   it('sends an evening check-in in shadow, and still shadows a nudge', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     const id = await enqueue('evening_check_in:fam:2026-10-08', {
@@ -636,6 +664,31 @@ describe('runProactiveReview', () => {
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({
       holdUntil: edge.toISOString(),
+      holdClamped: 'snapshot_window',
+      askedHoldUntil: asked,
+    });
+  });
+
+  it('never parks an item with a far window past the days the decider can see, either', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue('nudge:weather:w41', {
+      worthlessAfter: new Date('2027-06-01T12:00:00.000Z'),
+    });
+    const asked = '2027-05-01T12:00:00.000Z';
+    const h = harness((snapshot) => ({
+      reason: 'Too early',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: asked,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const edge = new Date(THURSDAY_EVENING.getTime() + SNAPSHOT_DAYS * 24 * 60 * 60_000);
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(edge.toISOString());
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({
       holdClamped: 'snapshot_window',
       askedHoldUntil: asked,
     });

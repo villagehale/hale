@@ -1,18 +1,26 @@
 import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
+import { type OfficialSite, onOfficialSite } from './official-site';
 import type { OwnCity } from './place';
 import type { PageSearch } from './search';
 
 /**
- * VIL-684 · one city's registration opening for one season, looked up live: search for
- * the city's own page, then read the date off that page with the VIL-423 reader. The
- * first page that verifies an opening wins. Nothing here guesses: a city whose page
- * says "later", whose page could not be read, or that has no page Hale could find, is
- * `not_found` with the reason named, and the parent hears Hale does not know yet.
+ * VIL-684 · one city's registration opening for one season, looked up live: establish the
+ * city's official site, search for its registration page, keep only the pages on that
+ * site, then read the date off each with the VIL-423 reader. The first page that
+ * verifies an opening wins. Nothing here guesses: a city whose page says "later", whose
+ * page refuses to be read, or that has no official page Hale could find, is `not_found`
+ * with the reason named, and the parent hears Hale does not know yet.
+ *
+ * A read that did not finish (a timeout, a network error, a server error, a model call
+ * that failed, Hale out of fetch capacity) says nothing about the page: the lookup is a
+ * `retry`, nothing is stored, and the next sweep asks again.
  */
 
 export type CityNotFoundReason =
-  /** The search named no page the municipality publishes for this place. */
+  /** The structured source names no single official website for this place. */
+  | 'no_official_site'
+  /** The search named no page on the municipality's official site for this place. */
   | 'no_official_page'
   /** A page was read and does not publish this season's opening yet. */
   | 'not_published'
@@ -40,6 +48,7 @@ export type CityLookup =
   | { status: 'retry'; reason: string };
 
 export interface CityLookupDeps {
+  officialSite(place: OwnCity, now: Date): Promise<OfficialSite>;
   search(place: OwnCity, cycleLabel: string, today: string): Promise<PageSearch>;
   read: RegistrationReader;
 }
@@ -61,7 +70,7 @@ function outcomeName(reading: LiveRegistrationReading): string {
 
 /** A page that answered and said this season is not out (later, another season only, no
  * date), as opposed to one that could not be read or did not verify. */
-function saysNotYet(reading: LiveRegistrationReading): boolean {
+export function pageSaysNotYet(reading: LiveRegistrationReading): boolean {
   if (reading.status === 'verified') return !hasOpening(reading);
   if (reading.status !== 'unverified') return false;
   return (
@@ -69,6 +78,18 @@ function saysNotYet(reading: LiveRegistrationReading): boolean {
     reading.reason === 'different_cycle_only' ||
     reading.reason === 'not_published' ||
     reading.reason === 'no_dates_for_cycle'
+  );
+}
+
+/** A read that did not finish: it says nothing about the page, so it is asked again. */
+export function readDidNotFinish(reading: LiveRegistrationReading): boolean {
+  if (reading.status === 'busy') return true;
+  return (
+    reading.status === 'unreadable' &&
+    (reading.reason === 'timeout' ||
+      reading.reason === 'network_error' ||
+      reading.reason === 'http_server_error' ||
+      reading.reason === 'extract_failed')
   );
 }
 
@@ -93,6 +114,11 @@ export async function lookupCityRegistration(
   cycleLabel: string,
   now: Date,
 ): Promise<CityLookup> {
+  const site = await deps.officialSite(place, now);
+  if (site.status === 'retry') return { status: 'retry', reason: `official_site:${site.reason}` };
+  if (site.status === 'not_found') {
+    return { status: 'not_found', reason: 'no_official_site', municipality: null, tried: [] };
+  }
   const search = await deps.search(place, cycleLabel, now.toISOString().slice(0, 10));
   if (search.outcome === 'failed') return { status: 'retry', reason: search.reason };
   if (search.outcome === 'none') {
@@ -100,10 +126,23 @@ export async function lookupCityRegistration(
   }
 
   const tried: Array<{ url: string; outcome: string }> = [];
-  let busy = false;
+  const official = search.urls.filter((url) => {
+    const on = onOfficialSite(url, site);
+    if (!on) tried.push({ url, outcome: 'not_official_site' });
+    return on;
+  });
+  if (official.length === 0) {
+    return {
+      status: 'not_found',
+      reason: 'no_official_page',
+      municipality: search.municipality,
+      tried,
+    };
+  }
+  let unfinished: string | null = null;
   let notYet = false;
   let noYear = false;
-  for (const url of search.urls) {
+  for (const url of official) {
     const reading = await readCityPage(
       deps.read,
       { place, cycleLabel, municipality: search.municipality, sourceUrl: url },
@@ -113,11 +152,16 @@ export async function lookupCityRegistration(
     if (reading.status === 'verified' && hasOpening(reading)) {
       return { status: 'verified', municipality: search.municipality, sourceUrl: url, reading };
     }
-    if (reading.status === 'busy') busy = true;
-    if (saysNotYet(reading)) notYet = true;
+    if (readDidNotFinish(reading)) {
+      unfinished ??=
+        reading.status === 'busy' || !('reason' in reading)
+          ? 'reader_busy'
+          : `page_unread:${reading.reason}`;
+    }
+    if (pageSaysNotYet(reading)) notYet = true;
     if (reading.status === 'unverified' && reading.reason === 'incomplete_date') noYear = true;
   }
-  if (busy) return { status: 'retry', reason: 'reader_busy' };
+  if (unfinished !== null) return { status: 'retry', reason: unfinished };
   return {
     status: 'not_found',
     reason: noYear ? 'date_without_year' : notYet ? 'not_published' : 'unreadable',

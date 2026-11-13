@@ -25,3 +25,29 @@ CREATE INDEX IF NOT EXISTS "city_registration_readings_place_cycle_read_idx"
 	ON "city_registration_readings" ("place_key", "cycle_label", "read_at");
 --> statement-breakpoint
 ALTER TABLE "city_registration_readings" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+-- VIL-684. Each municipality's own official website, as a structured public source names
+-- it (Wikidata's "official website", P856), so a registration page is read only when its
+-- host is that site or under it. Family-agnostic public reference data, like the table
+-- above: no family_id and no PII. Append-only; the newest row per municipality wins.
+-- Reversible:
+--   DROP TABLE IF EXISTS "city_official_sites";
+CREATE TABLE IF NOT EXISTS "city_official_sites" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"municipality_key" text NOT NULL,
+	"city" text NOT NULL,
+	"province_or_state" text,
+	"country" text NOT NULL,
+	"status" text NOT NULL,
+	"reason" text,
+	"host" text,
+	"website" text,
+	"source" text,
+	"checked_at" timestamp with time zone NOT NULL,
+	"recheck_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "city_official_sites_key_checked_idx"
+	ON "city_official_sites" ("municipality_key", "checked_at");
+--> statement-breakpoint
+ALTER TABLE "city_official_sites" ENABLE ROW LEVEL SECURITY;

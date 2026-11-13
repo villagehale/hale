@@ -38,6 +38,7 @@ export {
   type RecMorningTopic,
   type RecMorningWhere,
   matchRecMorning,
+  recMorningTopicCity,
   resolveHelloCity,
   resolveRecMorningWhere,
 } from './match';

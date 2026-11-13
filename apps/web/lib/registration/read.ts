@@ -86,9 +86,19 @@ function logReading(target: RegistrationTarget, reading: LiveRegistrationReading
   );
 }
 
+/** How a reader reads. `yearFromWeekday` is the own-city lane's (VIL-684): a yearless
+ * date's year pinned by its printed weekday (`pinYearByWeekday`). Off for every other
+ * reader. */
+export interface RegistrationReaderOptions {
+  yearFromWeekday: boolean;
+}
+
 /** A reader whose cache (bytes and PDF text by URL, readings by target) lives only as
  * long as this reader: one operation. A later send builds a new one. */
-export function createRegistrationReader(ports: RegistrationReaderPorts): RegistrationReader {
+export function createRegistrationReader(
+  ports: RegistrationReaderPorts,
+  options: RegistrationReaderOptions = { yearFromWeekday: false },
+): RegistrationReader {
   const bodies = new Map<string, Promise<RegistrationPageFetch>>();
   const pdfTexts = new Map<string, Promise<RegistrationPdfRead>>();
   const readings = new Map<string, Promise<LiveRegistrationReading>>();
@@ -126,6 +136,15 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
     const fetched = await cached(bodies, url, () => ports.fetchBody(url));
     if (fetched.outcome === 'busy') return busy(fetched.reason);
     if (fetched.outcome === 'redirected') return unreadable('redirected');
+    // A 5xx is the server's trouble, not the page's answer: named apart from a refusal so
+    // a caller can ask again instead of reading it as "this page says nothing".
+    if (
+      fetched.outcome === 'refused' &&
+      fetched.reason === 'http_status' &&
+      fetched.status >= 500
+    ) {
+      return unreadable('http_server_error');
+    }
     if (fetched.outcome !== 'fetched') return unreadable(fetched.reason);
     const body = fetched.body;
 
@@ -163,7 +182,12 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
       if (isModelFailure(error)) return unreadable('extract_failed');
       throw error;
     }
-    return normalizeExtractedRegistration(extracted, pageText, source);
+    return normalizeExtractedRegistration(
+      extracted,
+      pageText,
+      source,
+      options.yearFromWeekday ? { cycleLabel: target.cycleLabel } : undefined,
+    );
   }
 
   return (target, now) => {
@@ -184,11 +208,17 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
 /** The one production reader. The fetch port is the DNS-pinned fetcher that never
  * follows a redirect, built here so no caller can hand in another; the URL check inside
  * the reader is then never the only SSRF guard. The model client is the caller's. */
-export function createLiveRegistrationReader(client: AgentClient): RegistrationReader {
-  return createRegistrationReader({
-    fetchBody: createRegistrationPageBytesFetch(),
-    extract: (cycle, pageText) => extractPublishedWindow(cycle, pageText, { client }),
-  });
+export function createLiveRegistrationReader(
+  client: AgentClient,
+  options?: RegistrationReaderOptions,
+): RegistrationReader {
+  return createRegistrationReader(
+    {
+      fetchBody: createRegistrationPageBytesFetch(),
+      extract: (cycle, pageText) => extractPublishedWindow(cycle, pageText, { client }),
+    },
+    options,
+  );
 }
 
 /** What a catalog window asks the reader. A district row names its district in the

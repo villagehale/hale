@@ -1,19 +1,27 @@
 import { formatCalendarDate, formatWhenPhrase } from '~/lib/format/datetime';
+import type { TorontoDistrict } from '../fsa-municipalities';
 import {
   type LiveRegistrationDate,
   type VerifiedRegistrationReading,
   registrationAnchor,
 } from '../live-reading';
+import type { OwnCity } from './place';
 
 /**
  * VIL-684 · which of a city page's openings is THIS family's, and how it is said.
  *
- * The page is the family's own city's (the search named the municipality the family's
- * place belongs to), so an opening the page labels for residents is theirs, and so is an
- * opening it attaches no eligibility label to: whether that one is for everyone or for
- * residents first, a resident may register on it. Where residency is in doubt (an FSA
- * on a town line), only the opening the page labels for everyone is claimed: telling a
- * family they can register a day early when they cannot is the expensive mistake.
+ * The page is the family's own city's (its host is the municipality's official site), so
+ * an opening the page labels for residents is theirs, then the opening for everyone, and
+ * only then one the page attaches no eligibility label to: a resident may register on any
+ * of them. Where residency is in doubt (an FSA on a town line), only the opening the page
+ * labels for everyone is claimed: telling a family they can register a day early when
+ * they cannot is the expensive mistake.
+ *
+ * A family whose district registers on its own morning (Toronto) takes only a date the
+ * page ties to that district: an opening for everyone or an unlabelled one whose own
+ * words name the district. Never a residents' morning (Toronto's "eligible residents"
+ * early-local morning is not the district's), and never an unlabelled date that names no
+ * district (a free-centres morning is not North York's).
  */
 export interface FamilyOpening {
   own: LiveRegistrationDate;
@@ -21,14 +29,41 @@ export interface FamilyOpening {
   general: LiveRegistrationDate | null;
 }
 
+function words(text: string): Set<string> {
+  return new Set(
+    text
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word !== ''),
+  );
+}
+
+/** The date's own page words name every word of the district's name. */
+export function namesDistrict(date: LiveRegistrationDate, district: TorontoDistrict): boolean {
+  const name = district.split('_');
+  return date.evidence.some((quote) => {
+    const said = words(quote);
+    return name.every((word) => said.has(word));
+  });
+}
+
 export function familyOpening(
   reading: VerifiedRegistrationReading,
-  residencyKnown: boolean,
+  place: Pick<OwnCity, 'residencyKnown' | 'district'>,
 ): FamilyOpening | null {
   const of = (kind: LiveRegistrationDate['kind']) => reading.dates.find((d) => d.kind === kind);
+  const { district } = place;
+  if (district !== null) {
+    const own = [of('general_open'), of('unclassified_open')].find(
+      (date) => date !== undefined && namesDistrict(date, district),
+    );
+    return own ? { own, general: null } : null;
+  }
   const general = of('general_open') ?? null;
-  const own = residencyKnown
-    ? (of('resident_open') ?? of('unclassified_open') ?? general)
+  const own = place.residencyKnown
+    ? (of('resident_open') ?? general ?? of('unclassified_open'))
     : general;
   if (!own) return null;
   return { own, general: general !== null && general !== own ? general : null };
