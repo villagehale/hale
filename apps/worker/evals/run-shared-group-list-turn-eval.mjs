@@ -106,6 +106,10 @@ async function seed(dbm, database, fixture) {
       hiddenForKid: item.hidden?.forKid ?? null,
       hiddenFromPersonIds: hiddenFrom.map((p) => p.id),
       hiddenFromFamilyIds: hiddenFrom.flatMap((p) => (p.familyId ? [p.familyId] : [])),
+      // Everyone else was in the chat when it was hidden and has stayed.
+      hiddenClearedPhoneHashes: item.hidden
+        ? people.filter((p) => !hiddenFrom.includes(p)).map((p) => p.phoneE164Hash)
+        : [],
       addedAt: new Date(NOW.getTime() - 60_000 + index),
     });
   }

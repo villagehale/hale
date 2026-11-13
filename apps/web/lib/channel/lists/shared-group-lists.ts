@@ -62,11 +62,7 @@ export type SharedListPerson = Pick<
 type ItemRow = schema.SharedGroupListItem;
 type Hiding = Pick<
   ItemRow,
-  | 'hiddenForKid'
-  | 'hiddenFromPersonIds'
-  | 'hiddenFromPhoneHashes'
-  | 'hiddenFromFamilyIds'
-  | 'hiddenClearedPhoneHashes'
+  'hiddenForKid' | 'hiddenFromPersonIds' | 'hiddenFromFamilyIds' | 'hiddenClearedPhoneHashes'
 >;
 
 /**
@@ -133,15 +129,14 @@ function hidesAnything(item: Hiding): boolean {
   return (
     item.hiddenForKid !== null ||
     item.hiddenFromPersonIds.length > 0 ||
-    item.hiddenFromPhoneHashes.length > 0 ||
     item.hiddenFromFamilyIds.length > 0
   );
 }
 
 /**
- * True when `person` is the hidden child's family: a person the model named (by their row
- * or their number), someone in one of their Hale families, someone whose Hale family has a
- * child of that name, or someone who said in the chat they are that child's parent.
+ * True when `person` is the hidden child's family: a person the model named, someone in
+ * one of their Hale families, someone whose Hale family has a child of that name, or
+ * someone who said in the chat they are that child's parent.
  */
 function isKidFamily(
   item: Hiding,
@@ -152,7 +147,6 @@ function isKidFamily(
   const isKid = (name: string | null) => kid !== null && kidKey(name) === kid;
   return (
     item.hiddenFromPersonIds.includes(person.id) ||
-    item.hiddenFromPhoneHashes.includes(person.phoneE164Hash) ||
     isKid(person.inferredKidName) ||
     (person.familyId !== null &&
       (item.hiddenFromFamilyIds.includes(person.familyId) ||
@@ -162,22 +156,18 @@ function isKidFamily(
 
 /**
  * True when `audience` may not see a hidden item. Fails closed: anyone Hale cannot place
- * hides it, anyone who is the child's family hides it, and once someone it was hidden from
- * is gone (they may come back on another seat, or another number), anyone who was not in
- * the chat when it was hidden hides it.
+ * hides it, anyone who is the child's family hides it, and so does anyone who has not been
+ * in the chat without a break since it was hidden. Leaving takes a person off the cleared
+ * numbers (forgetSharedListPeople), so what Hale learned about them on their old seat is
+ * never needed to keep it from them on a new one.
  */
 export function hiddenFromAudience(item: Hiding, audience: SharedListAudience): boolean {
   if (!hidesAnything(item)) return false;
   if (!audience.everyonePlaced) return true;
-  if (audience.people.some((person) => isKidFamily(item, person, audience.haleKids))) return true;
-  const ids = new Set(audience.people.map((person) => person.id));
-  const numbers = new Set(audience.people.map((person) => person.phoneE164Hash));
-  const namedAway =
-    item.hiddenFromPersonIds.some((id) => !ids.has(id)) ||
-    item.hiddenFromPhoneHashes.some((hash) => !numbers.has(hash));
-  if (!namedAway) return false;
   const cleared = new Set(item.hiddenClearedPhoneHashes);
-  return audience.people.some((person) => !cleared.has(person.phoneE164Hash));
+  return audience.people.some(
+    (person) => !cleared.has(person.phoneE164Hash) || isKidFamily(item, person, audience.haleKids),
+  );
 }
 
 export interface SharedListItemView {
@@ -578,39 +568,38 @@ async function applyOnce(
       named.filter((person) => person.familyId).map((person) => person.familyId as string),
     ),
   ];
-  // A number outlives the presence row, which a leave and rejoin replaces.
-  const hideNumbers = [...new Set(named.map((person) => person.phoneE164Hash))];
   const hiding: Hiding = {
     hiddenForKid: decision.hide?.forKid ?? null,
     hiddenFromPersonIds: hidePeople,
-    hiddenFromPhoneHashes: hideNumbers,
     hiddenFromFamilyIds: hideFamilies,
     hiddenClearedPhoneHashes: [],
   };
-  const cleared = context.people
+  const clearedNow = context.people
     .filter((person) => !isKidFamily(hiding, person, context.haleKids))
     .map((person) => person.phoneE164Hash);
+  // Only numbers still seated when the row is written: someone who left during the model
+  // call was already taken off, and must not be put back.
+  const people = schema.linqSharedGroupPeople;
+  const cleared = sql`ARRAY(SELECT unnest(${textArray(clearedNow)}) INTERSECT SELECT ${people.phoneE164Hash} FROM ${people} WHERE ${people.chatId} = ${context.chatId})`;
   const hideValues = decision.hide
     ? {
         hiddenForKid: decision.hide.forKid,
         hiddenFromPersonIds: uuidArray(hidePeople),
-        hiddenFromPhoneHashes: textArray(hideNumbers),
         hiddenFromFamilyIds: uuidArray(hideFamilies),
-        hiddenClearedPhoneHashes: textArray(cleared),
+        hiddenClearedPhoneHashes: cleared,
       }
     : {};
   const hideExisting = async (id: string) => {
     if (!decision.hide) return;
-    const alreadyHidden = sql`(${items.hiddenForKid} IS NOT NULL OR cardinality(${items.hiddenFromPersonIds}) > 0 OR cardinality(${items.hiddenFromPhoneHashes}) > 0 OR cardinality(${items.hiddenFromFamilyIds}) > 0)`;
+    const alreadyHidden = sql`(${items.hiddenForKid} IS NOT NULL OR cardinality(${items.hiddenFromPersonIds}) > 0 OR cardinality(${items.hiddenFromFamilyIds}) > 0)`;
     await database
       .update(items)
       .set({
         hiddenForKid: sql`coalesce(${items.hiddenForKid}, ${decision.hide.forKid})`,
         hiddenFromPersonIds: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromPersonIds} || ${uuidArray(hidePeople)}))`,
-        hiddenFromPhoneHashes: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromPhoneHashes} || ${textArray(hideNumbers)}))`,
         hiddenFromFamilyIds: sql`ARRAY(SELECT DISTINCT unnest(${items.hiddenFromFamilyIds} || ${uuidArray(hideFamilies)}))`,
         // Hidden twice, only someone cleared both times is cleared.
-        hiddenClearedPhoneHashes: sql`CASE WHEN ${alreadyHidden} THEN ARRAY(SELECT unnest(${items.hiddenClearedPhoneHashes}) INTERSECT SELECT unnest(${textArray(cleared)})) ELSE ${textArray(cleared)} END`,
+        hiddenClearedPhoneHashes: sql`CASE WHEN ${alreadyHidden} THEN ARRAY(SELECT unnest(${items.hiddenClearedPhoneHashes}) INTERSECT SELECT unnest(${cleared})) ELSE ${cleared} END`,
       })
       .where(eq(items.id, id));
   };
@@ -834,7 +823,9 @@ export type SharedListForgetReason = 'left' | 'erased';
  * and the items they held reopen. On leaving, an item they added that someone staying has
  * claimed passes to that person; on erasure it goes too, since its text is what the erased
  * person typed. A stopped person's row is kept as a tombstone, so the cascade alone would
- * not reach their items; an item passed on first is out of the cascade's reach.
+ * not reach their items; an item passed on first is out of the cascade's reach. Their
+ * numbers come off every hidden gift's cleared numbers in that chat, so coming back on a
+ * new seat counts as new, and no number is kept past the seat it belonged to.
  */
 export async function forgetSharedListPeople(
   database: Database,
@@ -843,7 +834,25 @@ export async function forgetSharedListPeople(
 ): Promise<void> {
   if (personIds.length === 0) return;
   const items = schema.sharedGroupListItems;
+  const people = schema.linqSharedGroupPeople;
   const ids = [...personIds];
+  const seats = await database
+    .select({ chatId: people.chatId, hash: people.phoneE164Hash })
+    .from(people)
+    .where(inArray(people.id, ids));
+  for (const seat of seats) {
+    await database
+      .update(items)
+      .set({
+        hiddenClearedPhoneHashes: sql`array_remove(${items.hiddenClearedPhoneHashes}, ${seat.hash})`,
+      })
+      .where(
+        and(
+          eq(items.chatId, seat.chatId),
+          sql`${seat.hash} = ANY(${items.hiddenClearedPhoneHashes})`,
+        ),
+      );
+  }
   if (reason === 'left') {
     await database
       .update(items)

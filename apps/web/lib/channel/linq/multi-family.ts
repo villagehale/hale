@@ -999,18 +999,30 @@ async function participantsOf(chatId: string): Promise<ParticipantRead | null> {
 }
 
 /**
- * VIL-687: true only when Linq's participant list was read and every handle on it is a
- * number seated in this chat. An Apple ID email, a number nobody seated, or a failed read
- * leaves someone Hale cannot place, and the shared list then hides every hidden gift.
+ * VIL-687: true only when Linq's participant list was read, is a group's, names the
+ * speaker, and every handle on it is a number seated in this chat. An Apple ID email, a
+ * number nobody seated, or a failed read leaves someone Hale cannot place, and the shared
+ * list then hides every hidden gift. A list without the speaker is not this chat as it is
+ * now (an empty one included, which is what a 200 with no or unreadable body parses to).
  * Linq's list already leaves out people who left or were removed (readLinqChatHandles).
  */
-function everyoneSeated(live: readonly PersonRow[], listed: ParticipantRead | null): boolean {
-  if (listed?.status !== 'ok') return false;
+function everyoneSeated(
+  live: readonly PersonRow[],
+  speaker: PersonRow,
+  listed: ParticipantRead | null,
+): boolean {
+  if (listed?.status !== 'ok' || listed.isGroup === false) return false;
   const seated = new Set(live.map((row) => row.phoneE164Hash));
-  return listed.handles.every((handle) => {
+  const listedHashes = new Set<string>();
+  for (const handle of listed.handles) {
     const phone = normalizePhoneE164(handle);
-    return phone !== null && (haleLine(phone) || seated.has(phoneBlindIndex(phone)));
-  });
+    if (phone === null) return false;
+    if (haleLine(phone)) continue;
+    const hash = phoneBlindIndex(phone);
+    if (!seated.has(hash)) return false;
+    listedHashes.add(hash);
+  }
+  return listedHashes.has(speaker.phoneE164Hash);
 }
 
 async function peopleInChat(database: Database, chatId: string): Promise<PersonRow[]> {
@@ -1653,7 +1665,7 @@ export async function takeMultiFamilyTurn(
           ...(await sharedListAudience(
             database,
             live,
-            everyoneSeated(live, participants ?? (await participantsOf(input.chatId))),
+            everyoneSeated(live, me, participants ?? (await participantsOf(input.chatId))),
           )),
         }
       : null;

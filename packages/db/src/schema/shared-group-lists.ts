@@ -15,12 +15,12 @@ import { linqSharedGroupPeople } from './linq-multi-family.js';
  * to that person. An owner who is forgotten only frees the item.
  *
  * Hidden gifts: `hidden_for_kid` (the child the gift is for, as said in the chat),
- * `hidden_from_person_ids` (the people the model named as that child's family),
- * `hidden_from_phone_hashes` (their numbers' blind index, which outlives a leave and a
- * rejoin) and `hidden_from_family_ids` (their Hale families) mark an item that is never
- * rendered to that child's family. `hidden_cleared_phone_hashes` are the numbers that were
- * in the chat when it was hidden and are not that family: once someone it is hidden from is
- * gone, nobody else may see it. Code applies it on every read.
+ * `hidden_from_person_ids` (the people the model named as that child's family) and
+ * `hidden_from_family_ids` (their Hale families) mark an item that is never rendered to
+ * that child's family. `hidden_cleared_phone_hashes` are the numbers (blind index) that
+ * were in the chat when it was hidden, were not that family, and have not left since:
+ * anyone else in the chat hides it. Leaving or erasure takes a number off. Code applies it
+ * on every read.
  */
 export const sharedGroupListItems = pgTable(
   'shared_group_list_items',
@@ -45,10 +45,6 @@ export const sharedGroupListItems = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::uuid[]`),
-    hiddenFromPhoneHashes: text('hidden_from_phone_hashes')
-      .array()
-      .notNull()
-      .default(sql`'{}'::text[]`),
     hiddenClearedPhoneHashes: text('hidden_cleared_phone_hashes')
       .array()
       .notNull()
