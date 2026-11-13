@@ -315,12 +315,15 @@ const weekday = z.enum(WEEKDAYS);
 
 /**
  * How far ahead a text may reach. Zero is the week the parent is standing in, one is
- * the next — the two weeks "move swim to Tuesday" can possibly mean. A bounded offset
- * rather than the ticket's `week_start` string on purpose: a model-authored date that
- * lands on an empty week is exactly the moment a model starts inventing, and there is
- * no date it can write here that resolves to nothing.
+ * the next — the two weeks "move swim to Tuesday" can possibly mean — and the reach runs
+ * to eight, about two months, so "who has the kids over the break" asked in November
+ * reads the break (VIL-688). A bounded offset rather than the ticket's `week_start`
+ * string on purpose: a model-authored date that lands on an empty week is exactly the
+ * moment a model starts inventing, and there is no date it can write here that resolves
+ * to nothing. The `days` it returns are how the model checks it read the right week.
  */
-const weekOffset = z.number().int().min(0).max(1).optional();
+const LOOKUP_WEEK_MAX_OFFSET = 8;
+const weekOffset = z.number().int().min(0).max(LOOKUP_WEEK_MAX_OFFSET).optional();
 
 /**
  * The parent-facing label for an instant, in their own week: "Thu 5:15pm".
@@ -500,7 +503,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and the week's items merged from Hale's calendar and the connected Google Calendar, de-duplicated and sorted. A family event has an `eventId` — the ONLY handle the propose_* tools accept. A kid-related Google block has a title and no `eventId` (you cannot move or cancel it). Any other Google block is `kind: \"busy\"` with no title: never invent a name, and never mention attendees or notes. `calendarSync` and `mail.sync` are `connected`, `paused`, or `not_connected`. When one is `connected`, you HAVE that access — an empty list is an empty week, not a missing connection, and you must not say you cannot see the calendar or email. When `mail.sync` is `paused`, say that mail sync is currently paused (`mail.note`). `mail.items` are activities and trips already extracted from mail; `mail.processedCount` and `mail.since` are how many Gmail messages have been processed. Name only what this result contains. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and the week's items merged from Hale's calendar and the connected Google Calendar, de-duplicated and sorted. A family event has an `eventId` — the ONLY handle the propose_* tools accept. A kid-related Google block has a title and no `eventId` (you cannot move or cancel it). Any other Google block is `kind: \"busy\"` with no title: never invent a name, and never mention attendees or notes. `calendarSync` and `mail.sync` are `connected`, `paused`, or `not_connected`. When one is `connected`, you HAVE that access — an empty list is an empty week, not a missing connection, and you must not say you cannot see the calendar or email. When `mail.sync` is `paused`, say that mail sync is currently paused (`mail.note`). `mail.items` are activities and trips already extracted from mail; `mail.processedCount` and `mail.since` are how many Gmail messages have been processed. Name only what this result contains. weekOffset 0 is the current week, 1 is next week, and so on up to 8: for a date further out than next week, read the week that holds it, and check `days` to see you have.",
     inputSchema: z.object({ weekOffset }),
     inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,

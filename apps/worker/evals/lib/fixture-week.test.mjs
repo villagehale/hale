@@ -82,12 +82,12 @@ describe('the coach-bubbles lookup_week stub', () => {
     ]);
   });
 
-  it('agrees with the production tool on every case with a calendar, this week and next', async () => {
+  it('agrees with the production tool on every case with a calendar, this week to eight ahead', async () => {
     const withCalendar = COACH_BUBBLES_FIXTURES.filter((fixture) => fixture.events);
     expect(withCalendar.map((fixture) => fixture.id)).toContain('fr-move-swim');
     for (const fixture of withCalendar) {
       const lookupWeek = productionLookupWeek(fixture);
-      for (const input of [{}, { weekOffset: 0 }, { weekOffset: 1 }]) {
+      for (const input of [{}, { weekOffset: 0 }, { weekOffset: 1 }, { weekOffset: 8 }]) {
         const stub = await fixtureWeek(fixture.events, input, CLOCK);
         const real = await lookupWeek.handler(lookupWeek.inputSchema.parse(input), {});
         expect(
@@ -100,7 +100,7 @@ describe('the coach-bubbles lookup_week stub', () => {
 
   it('refuses a week the production tool refuses', async () => {
     const lookupWeek = productionLookupWeek({ events: [] });
-    for (const input of [{ weekOffset: 2 }, { weekOffset: -1 }, { weekOffset: '1' }]) {
+    for (const input of [{ weekOffset: 9 }, { weekOffset: -1 }, { weekOffset: '1' }]) {
       expect(lookupWeek.inputSchema.safeParse(input).success, JSON.stringify(input)).toBe(false);
       await expect(fixtureWeek([], input, CLOCK), JSON.stringify(input)).rejects.toThrow();
     }

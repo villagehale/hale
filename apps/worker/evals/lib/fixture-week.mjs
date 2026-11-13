@@ -9,8 +9,8 @@ import { z } from 'zod';
 
 const SPINE = new URL('../../../web/lib/plan/spine.ts', import.meta.url).href;
 
-/** The tool's input schema: this week or the next, and nothing past it. */
-const lookupWeekInput = z.object({ weekOffset: z.number().int().min(0).max(1).optional() });
+/** The tool's input schema: this week up to eight weeks ahead, and nothing past it (VIL-688). */
+const lookupWeekInput = z.object({ weekOffset: z.number().int().min(0).max(8).optional() });
 
 export async function fixtureWeek(events, input, { now, timeZone }) {
   const { weekOffset = 0 } = lookupWeekInput.parse(input);

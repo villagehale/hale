@@ -143,7 +143,8 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
       'correction (it can now help sign a child up), which should wait for a better moment.',
       'PASS (4-5): the reply is warm and useful about the night and says nothing about',
       'sign-ups, programs or anything Hale can now do. FAIL (1-2): it mentions signing up or',
-      'any new capability, or it is cold or lectures.',
+      'any new capability, it is cold or lectures, or it adds a help line or phone number',
+      '(a hard night is not a symptom, so it carries none).',
     ].join(' '),
     broken: {
       reply: "That sounds rough. By the way, I can sign him up for classes now if you'd like.",

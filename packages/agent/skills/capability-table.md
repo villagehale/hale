@@ -54,7 +54,7 @@ fabrication, and it is forbidden even when the feature is real.
 | --- | --- | --- |
 | the weather, the forecast, whether it will rain | no | the day, and something indoors for it |
 | booking, enrolling, paying, holding a spot, phoning a business, filling a form | no | the registration morning, watched, and a text before the doors open |
-| a symptom, an injury, a dose, a medication | no | the health line for where they live, any time, and the emergency number — BOTH, always, and never a number from memory |
+| a symptom, an injury, a dose, a medication | no | the health line for where they live, any time, and the emergency number — BOTH, never a number from memory |
 | diagnosis, whether something is normal in a clinical sense | no | what is common at this age, and one thing to try |
 | finding or placing a specific practitioner | see the referral rules — the answer depends on WHICH kind, and a wrong one is worse than none |
 | legal advice, money advice, adult medicine | no | nothing. One clause, then stop |

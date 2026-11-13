@@ -121,6 +121,7 @@ import {
   FIXTURE_COURSE_ID,
   FIXTURE_DAY_TRUTH,
   FIXTURE_EVENTS,
+  FIXTURE_FAR_EVENTS,
   FIXTURE_FORECAST,
   FIXTURE_NOW,
   FIXTURE_TIMEZONE,
@@ -701,6 +702,12 @@ function isPrivate(event) {
 
 /** The week exactly as `lookup_week` renders it — what the agent saw, and therefore the
  * only thing the judge may hold it to. */
+/** The later weeks lookup_week returned rows for this turn; absent (and key-neutral) when none. */
+function laterWeeksSeen(toolOutputs) {
+  const laterWeeks = toolOutputs.filter((output) => output?.laterWeek).map((o) => o.laterWeek);
+  return laterWeeks.length > 0 ? { laterWeeks } : {};
+}
+
 function redactedWeek() {
   return FIXTURE_EVENTS.map((event) => ({
     what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
@@ -720,6 +727,12 @@ function redactedWeek() {
  * REPLICATED from apps/web/lib/channel/coach/tools.ts — the seven dates of the week with
  * the weekday each one is, so the model READS a date instead of computing one (VIL-295).
  */
+function addDaysToKey(key, days) {
+  const at = new Date(`${key}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}
+
 function weekDaysFrom(startKey, timeZone) {
   return Array.from({ length: 7 }, (_, i) => {
     const at = new Date(`${startKey}T12:00:00Z`);
@@ -858,27 +871,38 @@ function buildFixtureTools(
   const lookupWeek = agent.defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week, and so on up to 8: for a date further out than next week, read the week that holds it, and check `days` to see you have.",
     inputSchema: passthrough(),
     handler: async (input) => {
       record('lookup_week');
-      // The fixture week is week 0; a next-week lookup is honestly empty rather than a
-      // second copy of the same events, which is what production would return.
-      const empty = (input.weekOffset ?? 0) !== 0;
-      return {
-        weekStart: FIXTURE_WEEK_START,
+      const offset = input.weekOffset ?? 0;
+      // REPLICATED bound: tools.ts LOOKUP_WEEK_MAX_OFFSET (VIL-688).
+      if (!Number.isInteger(offset) || offset < 0 || offset > 8) {
+        throw new Error('weekOffset must be a whole number from 0 to 8');
+      }
+      // The fixture week is week 0 and FIXTURE_FAR_EVENTS sit further out; any other week
+      // is honestly empty, which is what production would return.
+      const weekStart = addDaysToKey(FIXTURE_WEEK_START, offset * 7);
+      const rows =
+        offset === 0
+          ? FIXTURE_EVENTS
+          : FIXTURE_FAR_EVENTS.filter((event) => event.weekOffset === offset);
+      const result = {
+        weekStart,
         timeZone: FIXTURE_TIMEZONE,
-        days: weekDaysFrom(FIXTURE_WEEK_START, FIXTURE_TIMEZONE),
-        summary: empty ? null : FIXTURE_WEEK_SUMMARY,
-        events: empty
-          ? []
-          : FIXTURE_EVENTS.map((event) => ({
-              eventId: event.eventId,
-              what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
-              when: localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE),
-              where: isPrivate(event) ? null : event.location,
-            })),
+        days: weekDaysFrom(weekStart, FIXTURE_TIMEZONE),
+        summary: offset === 0 ? FIXTURE_WEEK_SUMMARY : null,
+        events: rows.map((event) => ({
+          eventId: event.eventId,
+          what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
+          when: localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE),
+          where: isPrivate(event) ? null : event.location,
+        })),
       };
+      // A later week that held rows is what the model saw beyond the fixture week, so it
+      // grounds the reply and goes to the judge with the week (VIL-688).
+      if (offset !== 0 && rows.length > 0) toolOutputs.push({ laterWeek: result });
+      return result;
     },
   });
 
@@ -1597,7 +1621,7 @@ function groundedHay(fixture, toolResults) {
   }
   // Both forms of every day the schedule actually touches: the tools emit "Thu", the
   // model may write "Thursday", and neither is a fabrication.
-  for (const event of FIXTURE_EVENTS) {
+  for (const event of [...FIXTURE_EVENTS, ...FIXTURE_FAR_EVENTS]) {
     const label = localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE);
     const short = label.slice(0, 3).toLowerCase();
     const full = DAY_NAMES.find(([, abbr]) => abbr === short)?.[0];
@@ -2325,7 +2349,7 @@ async function main() {
     const hay = groundedHay(fixture, [
       toolResults,
       toolOutputs,
-      FIXTURE_EVENTS.filter((e) => !isPrivate(e)).map((e) => ({
+      [...FIXTURE_EVENTS, ...FIXTURE_FAR_EVENTS].filter((e) => !isPrivate(e)).map((e) => ({
         what: e.title,
         where: e.location,
         when: localWhen(new Date(e.startsAt), FIXTURE_TIMEZONE),
@@ -2347,6 +2371,8 @@ async function main() {
       // out of the hay, which is what keeps "a URL Hale was not handed is a URL it
       // invented" a real gate rather than a blanket exemption for one domain.
       calls.some((call) => call.tool === 'share_referral_link') ? FIXTURE_REFERRAL_LINK : null,
+      // The help lines the context handed this turn (VIL-589): "Health811" is quoted, not made up.
+      turnContext.helpLines,
       // The web pick, on the same terms: only a turn that actually called
       // find_activities was handed it, and on every other turn naming it is invention.
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
@@ -2499,7 +2525,11 @@ async function main() {
                   }
                 : undefined,
             },
-            week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
+            week: {
+              summary: FIXTURE_WEEK_SUMMARY,
+              events: redactedWeek(),
+              ...laterWeeksSeen(toolOutputs),
+            },
             // The thread the model was handed, on the same terms as everything else in
             // `knows`: a judge that cannot see the message a "Yes, please" is answering
             // is scoring the reply half-blind, and this harness has already paid for
