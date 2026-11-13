@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply honestly says it only has the alert that a message arrived and not its contents, which matches the rule. It does not invent any details of the email. It does add an unrequested offer to add a tour to the plan, which is slightly beyond the rule's suggested check-the-email guidance, but it does not fabricate anything, so it still meets the rule well.",
-    "score": 4
-  }
-}

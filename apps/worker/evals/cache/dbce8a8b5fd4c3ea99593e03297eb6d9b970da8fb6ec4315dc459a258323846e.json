@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text matches two events (Mon and Thu swims), so asking which one, with nothing drafted, is the correct shape. Both times come straight from the week. It asks one question and has no padding.",
-    "score": 5
-  }
-}

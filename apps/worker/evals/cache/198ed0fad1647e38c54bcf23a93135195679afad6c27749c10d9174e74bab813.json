@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply answers the one question with a single bubble in Chinese, names the Sunday pick with its time, and states it is indoor, free, and suits the child's age. It has no question, no lead-in or count bubble, and the page address sits at the end. The time is given as Sun, Nov 15, 2:00 on the family's clock, which is correct. Minor flaw: the time format and English day abbreviation sit inside a Chinese sentence, which is a slight stylistic roughness but keeps the Chinese language rule.",
-    "score": 4
-  }
-}
