@@ -212,6 +212,10 @@ describe('resolveFollowUpRecipient: the thread, dark', () => {
   });
 });
 
+/**
+ * THE LANGUAGE THE ANSWER IS WRITTEN IN. The family is French and the parent has set
+ * Spanish, so every wrong source gives a different answer from the ask's own Chinese.
+ */
 describe('resolveFollowUpRecipient: the language', () => {
   async function multilingual(): Promise<SeededFamily> {
     const seeded = await seedFamily(db.database);
