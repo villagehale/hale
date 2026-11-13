@@ -815,6 +815,38 @@ export async function applySharedListTurn(
   return { handled: true, line, lineWhy: 'model', counts };
 }
 
+/**
+ * Someone who says in the chat whose parent they are loses their clearance for every hidden
+ * gift for that child, so a later message that puts another child's name on their seat
+ * cannot clear them again.
+ */
+export async function unclearKidFamily(
+  database: Database,
+  input: { chatId: string; phoneE164Hash: string; kidName: string },
+): Promise<void> {
+  const kid = kidKey(input.kidName);
+  if (!kid) return;
+  const items = schema.sharedGroupListItems;
+  const rows = await database
+    .select({ id: items.id, hiddenForKid: items.hiddenForKid })
+    .from(items)
+    .where(
+      and(
+        eq(items.chatId, input.chatId),
+        isNotNull(items.hiddenForKid),
+        sql`${input.phoneE164Hash} = ANY(${items.hiddenClearedPhoneHashes})`,
+      ),
+    );
+  const ids = rows.filter((row) => kidKey(row.hiddenForKid) === kid).map((row) => row.id);
+  if (ids.length === 0) return;
+  await database
+    .update(items)
+    .set({
+      hiddenClearedPhoneHashes: sql`array_remove(${items.hiddenClearedPhoneHashes}, ${input.phoneE164Hash})`,
+    })
+    .where(inArray(items.id, ids));
+}
+
 /** Why presence rows are forgotten: they or Hale left the chat, or their family was erased. */
 export type SharedListForgetReason = 'left' | 'erased';
 
