@@ -1,0 +1,49 @@
+{
+  "response": {
+    "id": "msg_011CgzSjsyFHQnXmMzckzpEv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS0wcKEAgTGAI4AUIIdGhpbmtpbmcSDKRTY4MfMCXQarVdpRoM9jOzT8SYjG5CituZIjCRqaTNT39XPeObWItPFAABIz8H272mwYj05kZ3R82/Um96RrlDMNDtMbNt68hSWqwq8AaIitizRBbz0HVOpameegj+vBQHSSXIWEoQDGOS7z1C8m6TuZIjGuvjy6s7RFn7HAvo6G5tjKSbNwA8tAKyAGVWESkjWJLHTO8KGZqmd8NrmBmO7QILiucGdxrfEsEYdfDI6dfn288Wkvjr4uop583Oalv6AVx4oWJd9HfR77Jilq1EdNfv6lkoSCsiODJ45vByn5gulEBYopBE1P8ozDbMvZ4gloOFFzAuJHazbcB+O6GLEUD+GqtE3wnpRzKeKP6UjQ/Jgynh294QABye/lYpZOfumBDpnDunxzqm7iIAxYE0DPiH+TNsmydee2KgsxYGs2XTipdVKgEbJQHx575QDdfrH4qzP7mrSuclvH0NoPPj77z2s04/ePXv+1aw5isy4gHalXVW6zOaBzWTIOCk9IlIlQJeeqw/EO8gq/pCxIArk+bVV22nuojGuhZl+i3m4cP2Zj0g8Gbjana3RT+Q2Ccr8+LPwR+UrtpStiKfV8hKBoJa0AZ+cZjTPTUllJlgayKfVfcM0RMKgyAIXPynr/YBGqTfN4pSk8vXDplvf4+oB81Dp1dssqVU0MW0Pka+ew2qGNJCewQejTTThGZ66Bh7htU0pX10SfOoN9wt7hiUmBrIoaMeg32wQXzLzmwacjcwXOttIJhT2zl8TKqJ2cfnwG1Xc8tkcY2UrnKaaG4LztRda9kV3Ckl4KK/+z4LYYQ03uqq4veM+CmlYdNkxSBwZmVppSGrd/NR9G9PLffdBGQYsTke2ejlzP6rhK9l+f57tTZRFt9DmxthGqGUNk0tbFHexeQW48ujCh5x+V+AYWR5+Ac6WtJk91+2r63SCnO6LUQ1UP+Lm8WMH3H5zwYo2VMd9G1mPiT0vAJdhCzsllE/aFweY7vHshZIRQxElSBrAPq4VidHSpKKnQQ4HRSNsHPAjaH0GLrw/X0y+oLrmfIPbCY9fzN85Wp6r6CYIS9ZkGquChtNUf7D4jFtLIwjagn+uWAPw+Fu4BcAXgjIa2tS7SlQzM1PVwKPQ64Tb2tnS0GJrWnE6CHre5BtjZVmCluUt3oQ4E2YeKw4lBDs2YzdkkAy+2YQ3qdP1D31zd5VcJiy+4nbGG24vygl+O3nPomaAdAvf1PwHbK1T3UPkv8j1T/LvG4rtdR+RhkigxOBIYoHYqM0+oc+y7mSGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01TdqkT7m1CSmA4gFkRQqDke",
+        "name": "propose_calendar_move",
+        "input": {
+          "eventId": "evt-swim-sat",
+          "date": "2026-11-15",
+          "weekday": "Sunday",
+          "startsAt": "2026-11-15T15:00:00.000Z",
+          "endsAt": "2026-11-15T15:45:00.000Z",
+          "time": "10:00"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1993,
+      "cache_read_input_tokens": 20788,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1993,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 401,
+      "output_tokens_details": {
+        "thinking_tokens": 186
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

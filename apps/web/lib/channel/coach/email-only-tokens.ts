@@ -205,6 +205,7 @@ const HALE_OWN: readonly string[] = [
 ];
 
 const CUT_PASSES = 8;
+const WORD_CONTENT = /[\p{L}\p{N}]/u;
 
 export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): EmailOnlyResult {
   const dropped: Record<EmailOnlyKind, number> = { phone: 0, code: 0, host: 0 };
@@ -234,10 +235,12 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
     dropped.phone += once.dropped.phone;
     dropped.code += once.dropped.code;
     dropped.host += once.dropped.host;
-    if (once.text === text) return { text, dropped };
+    if (once.text === text) break;
     text = once.text;
   }
-  return { text, dropped };
+  // A cut that leaves no letter or digit left only its punctuation: empty, so the caller
+  // sends nothing rather than a fragment.
+  return { text: text !== reply && !WORD_CONTENT.test(text) ? '' : text, dropped };
 }
 
 function dropPass(

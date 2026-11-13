@@ -143,6 +143,8 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('F14_ENABLED', 'true');
+    // Dark, nothing is queued at question time and this whole arc is the sweep's a day later.
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
 
     const [family] = await database
@@ -537,6 +539,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         },
       }),
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       loadTranscript: async () => [],
       loadContext: async (input) => ({
         parentName: null,
@@ -593,6 +596,8 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         },
       },
       client,
+      // The turn asks about a gym's fall term: an activity ask, as the model read would say.
+      readFindTurn: async () => ({ findTurn: true }),
       judgeFindReply: findReplyNotJudged,
       runAgent: scriptedRunAgent(steps, write),
       recordRun: async () => {},
@@ -656,9 +661,9 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         const { loadOpenCommitmentById } = await import('~/lib/commitments/ledger');
         return loadOpenCommitmentById(db2, id);
       },
-      resolveRecipient: async (db2, channelMessageId) => {
+      resolveRecipient: async (db2, promise) => {
         const { resolveFollowUpRecipient } = await import('~/lib/channel/activity/sweep');
-        return resolveFollowUpRecipient(db2, channelMessageId);
+        return resolveFollowUpRecipient(db2, promise);
       },
       reader: productionActivityFamilyReader(),
       buildGate: () => openGate,
@@ -697,6 +702,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         recordWatch: async () => ({ status: 'recorded', commitmentId: 'watch-1' }),
       },
       cancelPromise: cancelActivityPromise,
+      clock: () => JOB_AT,
       ...overrides,
     };
   }

@@ -1,8 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type RegisteredTool, type Skill, invokeTool } from '@hale/agent';
+import Anthropic from '@anthropic-ai/sdk';
+import {
+  type RegisteredTool,
+  type RunAgentArgs,
+  type Skill,
+  defineTool,
+  invokeTool,
+} from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { type HealthPlace, healthNumbersIn } from '~/lib/channel/health-line';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
   type ChannelTurn,
@@ -14,6 +23,7 @@ import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
 import {
+  CHANNEL_COACH_MAX_TOKENS,
   type ChannelCoachPorts,
   channelCoachRuntime,
   productionChannelCoachPorts,
@@ -30,6 +40,10 @@ import {
  * here and could not be: that is rule #8's territory, measured against real cached
  * Claude in `apps/worker/evals/run-coach-channel-eval.mjs`.
  */
+
+function promptOf(args: RunAgentArgs): string {
+  return [args.skill.instructions, ...(args.systemExtras ?? [])].join('\n\n');
+}
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
@@ -75,6 +89,10 @@ interface Recorded {
   costUsd: number;
 }
 
+function readingFindTurn(findTurn = true): ChannelCoachPorts['readFindTurn'] {
+  return async () => (findTurn ? { findTurn: true } : { findTurn: false, reason: 'not_find' });
+}
+
 function ports(overrides: Partial<ChannelCoachPorts> = {}) {
   const recorded: Recorded[] = [];
   const contextInputs: unknown[] = [];
@@ -92,6 +110,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     },
     loadChildren: async () => [TEEN],
     loadRegistrationWindows: async () => [],
+    loadHealthPlace: async () => null,
     buildTools: () => [] as RegisteredTool[],
     // Nothing nearby by default: the surface flag is off for months, so silence is the
     // ordinary answer and the cases that exercise it override this.
@@ -99,6 +118,8 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     guardDeps: { async writeAudit() {} },
     // Never reached: `runAgent` is injected below, and it is the only consumer.
     client: () => ({ messages: {} }) as never,
+    // Not a find by default; the find-turn cases override this.
+    readFindTurn: readingFindTurn(false),
     judgeFindReply: findReplyNotJudged,
     runAgent: answering('Move swim to Tue 4:30? YES to confirm.'),
     recordRun: async (run) => {
@@ -120,6 +141,23 @@ describe('channelCoachRuntime', () => {
     const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
+  });
+
+  /** VIL-536: thinking and tool calls share this ceiling with the reply. 400 was spent
+   * before the model spoke on a broad grouped-map ask; 2000 is the room the reply keeps. */
+  it('hands the loop a completion budget thinking and tools cannot spend alone', async () => {
+    let seen: number | undefined;
+    const p = ports({
+      runAgent: async (args) => {
+        seen = args.maxTokens;
+        return answering('Move swim to Tue 4:30? YES to confirm.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(seen).toBe(CHANNEL_COACH_MAX_TOKENS);
+    expect(CHANNEL_COACH_MAX_TOKENS).toBe(2000);
   });
 
   /**
@@ -146,7 +184,7 @@ describe('channelCoachRuntime', () => {
   it('carries the household group and its skill only when the context has one (VIL-566)', async () => {
     const group = (await loadCronSkill('household-group')).instructions;
     const run = async (householdGroup?: 'pending' | 'claimed') => {
-      const seen: { context: unknown; instructions: string }[] = [];
+      const seen: { context: unknown; instructions: string; prefix?: string }[] = [];
       const p = ports({
         loadContext: async (input) =>
           ({
@@ -157,7 +195,11 @@ describe('channelCoachRuntime', () => {
             ...(householdGroup ? { householdGroup } : {}),
           }) as never,
         runAgent: async (args) => {
-          seen.push({ context: args.context, instructions: args.skill.instructions });
+          seen.push({
+            context: args.context,
+            instructions: promptOf(args),
+            prefix: args.skill.instructions,
+          });
           return answering('ok.')(args);
         },
       });
@@ -167,6 +209,7 @@ describe('channelCoachRuntime', () => {
     const pending = await run('pending');
     expect(pending?.context).toMatchObject({ householdGroup: 'pending' });
     expect(pending?.instructions.endsWith(`\n\n${group}`)).toBe(true);
+    expect(pending?.prefix).not.toContain(group);
     const none = await run();
     expect(none?.context).not.toHaveProperty('householdGroup');
     expect(none?.instructions).not.toContain(group);
@@ -187,7 +230,7 @@ describe('channelCoachRuntime', () => {
             location: { city: null, province: null, country: 'Canada' },
           }) as never,
         runAgent: async (args) => {
-          calls.push(args.skill.instructions);
+          calls.push(promptOf(args));
           return answering('ok.')(args);
         },
       });
@@ -197,6 +240,80 @@ describe('channelCoachRuntime', () => {
     expect((await run(true, 'direct')).endsWith(`\n\n${addendum}`)).toBe(true);
     expect(await run(false, 'direct')).not.toContain(addendum);
     expect(await run(true, 'group')).not.toContain(addendum);
+  });
+
+  it('tells the coach how many texts arrived together, and only on a burst', async () => {
+    const run = async (burstSize?: number) => {
+      const seen: { context: unknown; prompt: string }[] = [];
+      const p = ports({
+        runAgent: async (args) => {
+          seen.push({ context: args.context, prompt: promptOf(args) });
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond(
+        burstSize === undefined ? turn() : { ...turn(), burstSize },
+        [],
+      );
+      return seen[0];
+    };
+    const lone = await run();
+    expect(lone?.context).not.toHaveProperty('arrivedTogether');
+    const burst = await run(2);
+    expect(burst?.context).toMatchObject({ arrivedTogether: 2 });
+    // The fact rides in the context; the system prompt, and its cache prefix, stay put.
+    expect(burst?.prompt).toBe(lone?.prompt);
+    const { arrivedTogether: _dropped, ...rest } = burst?.context as Record<string, unknown>;
+    expect(JSON.stringify(rest)).toBe(JSON.stringify(lone?.context));
+  });
+
+  describe("the family's help lines (VIL-589)", () => {
+    const helpLinesFor = async (
+      place: HealthPlace | null,
+      audience: ChannelTurn['audience'] = 'direct',
+    ) => {
+      const seen: Record<string, unknown>[] = [];
+      const read: string[] = [];
+      const p = ports({
+        loadHealthPlace: async (familyId) => {
+          read.push(familyId);
+          return place;
+        },
+        runAgent: async (args) => {
+          seen.push(args.context as Record<string, unknown>);
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond({ ...turn(), audience }, []);
+      const numbers = [...new Set(healthNumbersIn(JSON.stringify(seen[0])))];
+      return { read, numbers, context: seen[0] };
+    };
+
+    it('hands an Ontario family Health811 and 911, read off its own row', async () => {
+      const ontario = await helpLinesFor({ country: 'CA', provinceOrState: 'Ontario' });
+      expect(ontario.read).toEqual([FAMILY]);
+      expect(ontario.numbers).toEqual(['811', '911']);
+      expect(ontario.context?.helpLines).toEqual({
+        healthLine: 'Health811 (Ontario), call 811, any time',
+        emergency: '911',
+      });
+    });
+
+    it('never hands a US family 811, the call-before-you-dig line there', async () => {
+      const us = await helpLinesFor({ country: 'US', provinceOrState: null });
+      expect(us.numbers).toEqual(['911']);
+      expect(us.context?.helpLines).toEqual({
+        healthLine: "your child's doctor's after-hours line",
+        emergency: '911',
+      });
+    });
+
+    it('names no province to a group: the place is not read and the line carries no number', async () => {
+      const group = await helpLinesFor({ country: 'CA', provinceOrState: 'Ontario' }, 'group');
+      expect(group.read).toEqual([]);
+      expect(group.numbers).toEqual(['911']);
+      expect(JSON.stringify(group.context)).not.toContain('Ontario');
+    });
   });
 
   it('asks for the context as the parent who texted (VIL-429)', async () => {
@@ -241,7 +358,7 @@ describe('channelCoachRuntime', () => {
     const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
       seen.push({
         context: args.context as Record<string, unknown>,
-        instructions: args.skill.instructions,
+        instructions: promptOf(args),
       });
       return answering('ok.')(args);
     };
@@ -274,7 +391,7 @@ describe('channelCoachRuntime', () => {
     const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
       seen.push({
         context: args.context as Record<string, unknown>,
-        instructions: args.skill.instructions,
+        instructions: promptOf(args),
       });
       return answering('ok.')(args);
     };
@@ -292,7 +409,11 @@ describe('channelCoachRuntime', () => {
   });
 
   it('reads a photo into the loop and names a video it did not watch', async () => {
-    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const seen: Array<{
+      context: Record<string, unknown>;
+      attachments?: unknown[];
+      instructions: string;
+    }> = [];
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
     const p = ports({
       readInboundMedia: (parts) =>
@@ -304,6 +425,7 @@ describe('channelCoachRuntime', () => {
         seen.push({
           context: args.context as Record<string, unknown>,
           attachments: args.attachments as unknown[],
+          instructions: args.skill.instructions,
         });
         return answering('Got the flyer.')(args);
       },
@@ -322,6 +444,81 @@ describe('channelCoachRuntime', () => {
 
     expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
     expect(seen[0]?.context.arrivedMedia).toEqual([{ kind: 'video' }]);
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]?.instructions).not.toContain('arrivedContacts');
+  });
+
+  it('reads a .vcf into the loop as contact fields, not as an attachment', async () => {
+    const seen: Array<{
+      context: Record<string, unknown>;
+      attachments?: unknown[];
+      instructions: string;
+    }> = [];
+    const vcf = ['BEGIN:VCARD', 'FN:Jane Smith', 'TEL;TYPE=CELL:+14165550100', 'END:VCARD'].join(
+      '\n',
+    );
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(parts, fetch, undefined, async () => new Response(vcf, { status: 200 })),
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+          instructions: promptOf(args),
+        });
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn('this is my mom'),
+        inboundMedia: [
+          { kind: 'contact', url: 'https://cdn.example/Jane.vcf', mime: 'text/vcard' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.attachments).toBeUndefined();
+    expect(seen[0]?.context.arrivedMedia).toBeUndefined();
+    expect(seen[0]?.context.arrivedContacts).toEqual([
+      {
+        name: 'Jane Smith',
+        phones: [{ number: '+14165550100', e164: '+14165550100', label: 'cell' }],
+      },
+    ]);
+    expect(seen[0]?.context.arrivedContactsTruncated).toBeUndefined();
+    expect(seen[0]?.instructions).toContain('arrivedContacts');
+  });
+
+  it('tells the loop when a contact file had more cards than it kept', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const p = ports({
+      readInboundMedia: async () => ({
+        blocks: [],
+        unwatched: [],
+        contacts: [{ name: 'Ada', phones: [] }],
+        contactsTruncated: true,
+      }),
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [
+          { kind: 'contact', url: 'https://cdn.example/book.vcf', mime: 'text/vcard' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.arrivedContacts).toEqual([{ name: 'Ada', phones: [] }]);
+    expect(seen[0]?.arrivedContactsTruncated).toBe(true);
   });
 
   it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {
@@ -346,7 +543,7 @@ describe('channelCoachRuntime', () => {
       runAgent: async (args) => {
         seen.push({
           tools: [...args.skill.meta.tools],
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         return answering('ok.')(args);
       },
@@ -373,6 +570,52 @@ describe('channelCoachRuntime', () => {
     expect(seen[0]?.instructions).not.toContain(tone.instructions);
     expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
     expect(seen[2]?.instructions).not.toContain(tone.instructions);
+  });
+
+  it('appends the age-fit correction skill only on a 1:1 turn with AGE_FIT_CORRECTION_ENABLED on (VIL-568)', async () => {
+    const addendum = (await loadCronSkill('age-fit-correction')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(promptOf(args));
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('AGE_FIT_CORRECTION_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
+  });
+
+  it('appends the no-group-relay skill only on a 1:1 turn with GROUP_1TO1_NO_GROUP_RELAY_ENABLED on (VIL-577)', async () => {
+    const addendum = (await loadCronSkill('coach-no-group-relay')).instructions;
+    const seen: string[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(promptOf(args));
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', '');
+      await channelCoachRuntime(p).respond(turn(), []);
+      vi.stubEnv('GROUP_1TO1_NO_GROUP_RELAY_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[1]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[2]).not.toContain(addendum);
   });
 
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
@@ -753,6 +996,8 @@ describe('the watch a turn started', () => {
         reader: { householdNames: async () => [] },
         watchConsentGranted: async () => true,
         readClassAvailability: {} as never,
+        parentWords: `can you watch this for a spot? ${COURSE_URL}`,
+        linksThisTurn: () => [],
         onWatch: onWatch as never,
       }),
     ];
@@ -988,7 +1233,7 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
         seen.push({
           tools: args.tools.map((t) => t.name),
           skillTools: [...args.skill.meta.tools],
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         if (call) {
           const verb = args.tools.find((t) => t.name === 'reply_as_voice_memo');
@@ -1072,6 +1317,420 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
   });
 });
 
+/**
+ * VIL-680 — the model chooses the tapback. Dark: no verb, the same prompt bytes, no
+ * `reaction` key. Lit (a 1:1 turn the router lit): the verb and the addendum ride, and the
+ * choice rides out with how many other tools the turn ran.
+ */
+describe('channelCoachRuntime · a tapback on the parent message (VIL-680)', () => {
+  const LOOKUP = defineTool({
+    name: 'lookup_week',
+    description: 'x',
+    inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
+    handler: async () => ({ events: [] }),
+  });
+
+  type Seen = { tools: string[]; skillTools: string[]; prompt: string };
+  function seeing(
+    seen: Seen[],
+    calls: Array<{ name: string; input: unknown }> = [],
+  ): ChannelCoachPorts['runAgent'] {
+    return async (args) => {
+      seen.push({
+        tools: args.tools.map((t) => t.name),
+        skillTools: [...args.skill.meta.tools],
+        prompt: promptOf(args),
+      });
+      for (const call of calls) {
+        const tool = args.tools.find((t) => t.name === call.name);
+        if (!tool) throw new Error(`no ${call.name}`);
+        await invokeTool(tool, call.input, args.toolContext, args.guardDeps);
+      }
+      return answering('Anytime!')(args);
+    };
+  }
+
+  it('dark: no verb, the same prompt bytes as a plain turn, and no reaction key', async () => {
+    const seen: Seen[] = [];
+    const dark = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn('thanks'), reactions: false },
+      [],
+    );
+    await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(turn('thanks'), []);
+    expect(seen[0]?.tools).not.toContain('react_to_parent_message');
+    expect(seen[0]?.skillTools).not.toContain('react_to_parent_message');
+    expect(seen[0]?.prompt).toBe(seen[1]?.prompt);
+    expect(dark).not.toHaveProperty('reaction');
+  });
+
+  it('a group turn never gets the verb, even when asked to', async () => {
+    const seen: Seen[] = [];
+    await channelCoachRuntime(ports({ runAgent: seeing(seen) }))
+      .respond({ ...turn('thanks'), audience: 'group', reactions: true }, [])
+      .catch(() => undefined);
+    expect(seen[0]?.tools ?? []).not.toContain('react_to_parent_message');
+  });
+
+  it('lit 1:1: the verb and the addendum ride; not calling it is no reaction', async () => {
+    const addendum = (await loadCronSkill('coach-reaction')).instructions;
+    const seen: Seen[] = [];
+    const result = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn('thanks'), reactions: true },
+      [],
+    );
+    expect(seen[0]?.tools).toContain('react_to_parent_message');
+    expect(seen[0]?.skillTools).toContain('react_to_parent_message');
+    expect(seen[0]?.prompt.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(result.reaction).toBeNull();
+    expect(result.reply).toBe('Anytime!');
+  });
+
+  it('lit 1:1: the choice rides out, last call wins, with no other tool counted', async () => {
+    const result = await channelCoachRuntime(
+      ports({
+        runAgent: seeing(
+          [],
+          [
+            { name: 'react_to_parent_message', input: { reaction: 'like', alone: false } },
+            { name: 'react_to_parent_message', input: { reaction: 'love', alone: true } },
+          ],
+        ),
+      }),
+    ).respond({ ...turn('thanks'), reactions: true }, []);
+    expect(result.reaction).toEqual({
+      reaction: { type: 'love' },
+      alone: true,
+      otherToolCalls: 0,
+    });
+  });
+
+  it('lit 1:1: every other tool the turn ran is counted beside the choice', async () => {
+    const result = await channelCoachRuntime(
+      ports({
+        buildTools: () => [LOOKUP],
+        runAgent: seeing(
+          [],
+          [
+            { name: 'lookup_week', input: {} },
+            { name: 'react_to_parent_message', input: { reaction: 'love', alone: true } },
+          ],
+        ),
+      }),
+    ).respond({ ...turn('thanks'), reactions: true }, []);
+    expect(result.reaction).toEqual({
+      reaction: { type: 'love' },
+      alone: true,
+      otherToolCalls: 1,
+    });
+  });
+});
+
+describe('channelCoachRuntime · several bubbles on a 1:1 iMessage turn', () => {
+  const TWO_THOUGHTS = 'Swim is Saturday at 10.\n\nWant me to add it to your calendar?';
+
+  function seeing(seen: string[]): ChannelCoachPorts['runAgent'] {
+    return async (args) => {
+      seen.push(promptOf(args));
+      return answering(TWO_THOUGHTS)(args);
+    };
+  }
+
+  it('lit: the bubble addendum rides last and the reply breaks between bubbles', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const { reply } = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), replyBubbles: true },
+      [],
+    );
+
+    expect(seen[0]?.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(reply).toBe('Swim is Saturday at 10.\nWant me to add it to your calendar?');
+  });
+
+  it('dark: the same skill bytes as a turn that never heard of bubbles, and one line', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const dark = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), replyBubbles: false },
+      [],
+    );
+    await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(turn(), []);
+
+    expect(seen[0]).not.toContain(addendum);
+    expect(seen[0]).toBe(seen[1]);
+    expect(dark.reply).toBe('Swim is Saturday at 10. Want me to add it to your calendar?');
+  });
+
+  it('a group turn never splits, even when asked to', async () => {
+    const addendum = (await loadCronSkill('coach-bubbles')).instructions;
+    const seen: string[] = [];
+
+    const { reply } = await channelCoachRuntime(ports({ runAgent: seeing(seen) })).respond(
+      { ...turn(), audience: 'group', replyBubbles: true },
+      [],
+    );
+
+    expect(seen[0]).not.toContain(addendum);
+    expect(reply).not.toContain('\n');
+  });
+});
+
+describe('channelCoachRuntime · inbound photo facts (VIL-413)', () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
+  const FLYER = {
+    kind: 'flyer' as const,
+    title: 'Fall swim',
+    venue: 'Harbor Rec',
+    whenText: 'Tuesdays 4:30',
+    registrationUrl: 'https://harbor-rec.example/register',
+    childName: null,
+    notes: 'ages 6-8',
+    confidence: 0.9,
+  };
+
+  function photoTurn() {
+    return {
+      ...turn('can you read this'),
+      inboundMedia: [
+        { kind: 'image' as const, url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+      ],
+    };
+  }
+
+  function photoPorts(overrides: Partial<ChannelCoachPorts> = {}) {
+    return ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+        ),
+      ...overrides,
+    });
+  }
+
+  it('dark: does not extract, leaves the skill bytes, and still attaches the image', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const extract = vi.fn();
+    const seen: Array<{
+      context: Record<string, unknown>;
+      instructions: string;
+      attachments?: unknown[];
+    }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => false,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: promptOf(args),
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(extract).not.toHaveBeenCalled();
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]?.instructions).not.toContain(addendum);
+  });
+
+  it('lit: hands the facts and the addendum, and the image still reaches the model', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const toolsTurns: ChannelTurn[] = [];
+    const seen: Array<{
+      context: Record<string, unknown>;
+      instructions: string;
+      attachments?: unknown[];
+    }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: async () => FLYER,
+      buildTools: (incoming) => {
+        toolsTurns.push(incoming);
+        return [];
+      },
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: promptOf(args),
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Fall swim is Tuesdays.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(seen[0]?.context.photoFacts).toEqual({ ...FLYER, readFrom: 'image' });
+    expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(toolsTurns[0]?.photoFacts).toEqual({ ...FLYER, readFrom: 'image' });
+  });
+
+  it('lit: a group turn reads nothing new and keeps its bytes', async () => {
+    const addendum = (await loadCronSkill('coach-photo-facts')).instructions;
+    const extract = vi.fn(async () => FLYER);
+    const seen: Array<{ context: Record<string, unknown>; instructions: string }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          instructions: promptOf(args),
+        });
+        return answering('Got it.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond({ ...photoTurn(), audience: 'group' }, []);
+    expect(extract).not.toHaveBeenCalled();
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(seen[0]?.instructions).not.toContain(addendum);
+  });
+
+  it('lit: an extract failure still attaches the image and sends no canned line', async () => {
+    const extract = vi.fn(async () => {
+      throw new Error('down');
+    });
+    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const p = photoPorts({
+      photoFactsEnabled: () => true,
+      readPhotoFacts: extract,
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+    const { reply } = await channelCoachRuntime(p).respond(photoTurn(), []);
+    expect(extract).toHaveBeenCalled();
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context).not.toHaveProperty('photoFacts');
+    expect(reply).toBe('Got the flyer.');
+  });
+
+  const pdf = Buffer.from('%PDF-1.7\n%%EOF\n');
+
+  function pdfTurn() {
+    return {
+      ...turn('can you read this form'),
+      inboundMedia: [
+        { kind: 'image' as const, url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+        { kind: 'file' as const, url: 'https://cdn.example/form.pdf', mime: 'application/pdf' },
+      ],
+    };
+  }
+
+  function pdfPorts(overrides: Partial<ChannelCoachPorts> = {}) {
+    return ports({
+      photoFactsEnabled: () => true,
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+          undefined,
+          undefined,
+          { documents: true, documentFetch: async () => new Response(pdf, { status: 200 }) },
+        ),
+      ...overrides,
+    });
+  }
+
+  /** What the API answers for a PDF it will not read: the whole request, refused. */
+  const pdfRefused = () =>
+    Anthropic.APIError.generate(
+      400,
+      {
+        type: 'error',
+        error: { type: 'invalid_request_error', message: 'The PDF specified was not valid.' },
+      },
+      undefined,
+      {},
+    );
+
+  function refusesPdfs(onCall: (args: RunAgentArgs) => Promise<void> = async () => {}) {
+    const calls: Array<{
+      attachments?: Array<{ type: string }>;
+      context: Record<string, unknown>;
+    }> = [];
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      calls.push({
+        attachments: args.attachments as Array<{ type: string }> | undefined,
+        context: args.context as Record<string, unknown>,
+      });
+      await onCall(args);
+      if (args.attachments?.some((block) => block.type === 'document')) throw pdfRefused();
+      return answering('The flyer says Tuesdays; the form would not open.')(args);
+    };
+    return { calls, runAgent };
+  }
+
+  it("lit: facts read beside a PDF are the document's", async () => {
+    const toolsTurns: ChannelTurn[] = [];
+    const p = pdfPorts({
+      readPhotoFacts: async () => FLYER,
+      buildTools: (incoming) => {
+        toolsTurns.push(incoming);
+        return [];
+      },
+    });
+    await channelCoachRuntime(p).respond(pdfTurn(), []);
+    expect(toolsTurns[0]?.photoFacts).toEqual({ ...FLYER, readFrom: 'document' });
+  });
+
+  it('lit: a PDF the API refuses becomes an unwatched file, and the coach still answers', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { calls, runAgent } = refusesPdfs();
+    const p = pdfPorts({
+      readPhotoFacts: async () => {
+        throw pdfRefused();
+      },
+      runAgent,
+    });
+    const { reply } = await channelCoachRuntime(p).respond(pdfTurn(), []);
+    expect(reply).toBe('The flyer says Tuesdays; the form would not open.');
+    expect(calls.map((call) => call.attachments?.map((block) => block.type))).toEqual([
+      ['image', 'document'],
+      ['image'],
+    ]);
+    expect(calls[0]?.context).not.toHaveProperty('arrivedMedia');
+    expect(calls[1]?.context.arrivedMedia).toEqual([{ kind: 'file' }]);
+    expect(info).toHaveBeenCalledWith(
+      { reason: 'provider_refused', count: 1 },
+      'channel coach: inbound document unread',
+    );
+    info.mockRestore();
+  });
+
+  it('lit: a refusal after a tool has acted is not retried', async () => {
+    const noted = defineTool({
+      name: 'note_it',
+      description: 'test tool',
+      inputSchema: z.object({}),
+      monetary: false,
+      touchesChildContent: false,
+      handler: async () => ({ noted: true }),
+    });
+    const { calls, runAgent } = refusesPdfs(async (args) => {
+      await invokeTool(noted, {}, args.toolContext, args.guardDeps);
+    });
+    const p = pdfPorts({
+      readPhotoFacts: async () => null,
+      buildTools: () => [noted],
+      runAgent,
+    });
+    await expect(channelCoachRuntime(p).respond(pdfTurn(), [])).rejects.toBeInstanceOf(
+      ChannelTurnFailed,
+    );
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe('productionChannelCoachPorts · whose voice memo is heard (VIL-495)', () => {
   const MEMO = [
     { kind: 'audio' as const, url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' },
@@ -1099,7 +1758,12 @@ describe('productionChannelCoachPorts · whose voice memo is heard (VIL-495)', (
     const p = ports({
       readInboundMedia: async (_parts, audience) => {
         audiences.push(audience);
-        return { blocks: [], unwatched: [{ kind: 'audio' }] };
+        return {
+          blocks: [],
+          unwatched: [{ kind: 'audio' }],
+          contacts: [],
+          contactsTruncated: false,
+        };
       },
     });
     for (const audience of ['group', 'direct'] as const) {
@@ -1234,7 +1898,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
       seen.push({
         tools: args.tools.map((t) => t.name),
         skillTools: [...args.skill.meta.tools],
-        instructions: args.skill.instructions,
+        instructions: promptOf(args),
       });
       return answering('ok.')(args);
     };
@@ -1246,7 +1910,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
       emailReader: e.reader,
       runAgent: async (args) => {
         expect(args.skill.meta.tools).toContain('read_email');
-        expect(args.skill.instructions).toContain('read_email');
+        expect(promptOf(args)).toContain('read_email');
         const tool = args.tools.find((t) => t.name === 'read_email');
         if (!tool) throw new Error('no read_email verb');
         await tool.handler({ gmailMessageId: 'gm-1' } as never, {} as never);
@@ -1359,6 +2023,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
 
 describe('find reasoning stays off the reply (VIL-524)', () => {
   const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
 
   it('does not append the private skill or call the judge on a calendar edit', async () => {
     let instructions = '';
@@ -1369,7 +2034,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
         return { verdict: 'withhold' };
       },
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering('You and Sam share one page for the swim signup.')(args);
       },
     });
@@ -1383,9 +2048,10 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const draft = 'All three finds are at the library: Storytime Saturday at 10.';
     let instructions = '';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: send,
       runAgent: async (args) => {
-        instructions = args.skill.instructions;
+        instructions = promptOf(args);
         return answering(draft)(args);
       },
     });
@@ -1399,6 +2065,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'All three finds share one page…';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'withhold' }),
       runAgent: answering(draft),
     });
@@ -1452,6 +2119,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
   it("the judge reads the draft with a teen's name already redacted", async () => {
     const drafts: string[] = [];
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async (draft) => {
         drafts.push(draft);
         return { verdict: 'send' };
@@ -1471,12 +2139,31 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       'EarlyON Saturday at 10.',
     );
     expect(gate).toEqual({ verdict: 'unjudged', reason: 'client_unavailable' });
+    vi.unstubAllEnvs();
+  });
+
+  it('production wires a find-turn reader, not a word list', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const reading = await productionChannelCoachPorts({} as Database).readFindTurn({
+      text: "what's on this weekend",
+      transcript: [],
+    });
+    expect(reading).toEqual({ findTurn: false, reason: 'client_unavailable' });
+    expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("what's on this weekend");
+    logged.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it('the scripted pass-through sends the draft and names that', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
-    const p = ports({ judgeFindReply: findReplyNotJudged, runAgent: answering(draft) });
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: findReplyNotJudged,
+      runAgent: answering(draft),
+    });
     const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
     expect(reply).toBe(draft);
     expect(error).toHaveBeenCalledWith(
@@ -1490,6 +2177,7 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';
     const p = ports({
+      readFindTurn: asFind,
       judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
       runAgent: answering(draft),
     });
@@ -1510,6 +2198,133 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     );
     error.mockRestore();
   });
+});
+
+describe('the day a find is for (VIL-567)', () => {
+  const send = async () => ({ verdict: 'send' as const });
+  const asFind = readingFindTurn();
+
+  it("hands the model today on the family's clock, not the UTC day", async () => {
+    const seen: Record<string, unknown>[] = [];
+    // 02:30Z Monday is still Sunday evening for a family on Pacific time.
+    const p = ports({
+      now: () => new Date('2026-11-09T02:30:00.000Z'),
+      loadTimeZone: async () => 'America/Los_Angeles',
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(seen[0]?.localNow).toEqual({
+      date: '2026-11-08',
+      weekday: 'Sunday',
+      time: '18:30',
+      timeZone: 'America/Los_Angeles',
+    });
+  });
+
+  it('a bare find after a question about today gets the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      loadTranscript: async () => [
+        { role: 'user' as const, content: 'is there anything on today?' },
+        { role: 'assistant' as const, content: 'Nothing on your calendar today.' },
+        { role: 'user' as const, content: 'find me something to do' },
+      ],
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  it('a find with their own Gmail connected keeps the day addendum and the email addendum, email last', async () => {
+    let instructions = '';
+    const p = ports({
+      readFindTurn: asFind,
+      judgeFindReply: send,
+      voiceMemosEnabled: () => true,
+      emailReader: {
+        connected: async () => true,
+        read: async () => ({ read: true as const, body: 'unused', truncated: false }),
+      },
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do today'), []);
+    const voiceAt = instructions.indexOf('A reply can be a voice memo');
+    const findPrivateAt = instructions.indexOf('Keep the finding to yourself');
+    const findDayAt = instructions.indexOf('The day a find is for');
+    const readEmailAt = instructions.indexOf('An email Hale told them about');
+    expect(voiceAt).toBeGreaterThan(-1);
+    expect(findPrivateAt).toBeGreaterThan(voiceAt);
+    expect(findDayAt).toBeGreaterThan(findPrivateAt);
+    expect(readEmailAt).toBeGreaterThan(findDayAt);
+  });
+
+  it('a calendar edit does not get the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(instructions).not.toContain('The day a find is for');
+  });
+
+  it('a find in any language gets the day addendum when the reader says it is one', async () => {
+    const seen: string[] = [];
+    let instructions = '';
+    const p = ports({
+      readFindTurn: async ({ text }) => {
+        seen.push(text);
+        return { findTurn: true };
+      },
+      judgeFindReply: send,
+      runAgent: async (args) => {
+        instructions = promptOf(args);
+        return answering('Patinoire familiale à 13h.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('trouve-moi quelque chose à faire'), []);
+    expect(seen).toEqual(['trouve-moi quelque chose à faire']);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  // The read is a model call on the SMS hot path. A reader that only answers once the
+  // family context has started loading never answers when it runs in front of that load.
+  it('reads the find turn while the family context loads, not in front of it', async () => {
+    let contextStarted = () => {};
+    const contextLoading = new Promise<void>((resolve) => {
+      contextStarted = resolve;
+    });
+    const p = ports({
+      readFindTurn: async () => {
+        await contextLoading;
+        return { findTurn: true };
+      },
+      judgeFindReply: send,
+      runAgent: answering('Family skate at the arena, today at 1.'),
+    });
+    const loadContext = p.loadContext;
+    p.loadContext = async (input) => {
+      contextStarted();
+      return loadContext(input);
+    };
+    const { reply } = await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(reply).toBe('Family skate at the arena, today at 1.');
+  }, 2000);
 });
 
 /**
@@ -1544,7 +2359,7 @@ describe('deferred capabilities', () => {
           tools: args.tools.map((tool) => tool.name),
           listed: args.skill.meta.tools,
           context: args.context,
-          instructions: args.skill.instructions,
+          instructions: promptOf(args),
         });
         for (const call of options.call ?? []) {
           const tool = args.tools.find((t) => t.name === call.tool);
@@ -1636,10 +2451,12 @@ describe('a reply written after read_email (VIL-628)', () => {
     parentStated?: string[];
     watched?: string;
     answer?: string;
+    place?: HealthPlace;
   }) {
-    const { parentStated } = opts;
+    const { parentStated, place } = opts;
     const p = ports({
       ...(parentStated ? { loadParentStatedFacts: async () => parentStated } : {}),
+      ...(place ? { loadHealthPlace: async () => place } : {}),
       ...(opts.watched
         ? {
             loadProviderWatch: async () => [
@@ -1703,6 +2520,32 @@ describe('a reply written after read_email (VIL-628)', () => {
   it('a number the parent once told Hale (memory_source parent_message) survives (positive control)', async () => {
     const { reply } = await respond({ read: true, parentStated: [`school office ${PHONE}`] });
     expect(reply).toBe(ANSWER);
+  });
+
+  it('a reply that held only a dropped token sends nothing, not a fragment', async () => {
+    for (const answer of [PHONE, `${PHONE}.`, `"${PHONE}"`, `(${PHONE})!`]) {
+      await expect(respond({ read: true, answer })).rejects.toThrow(
+        /reply held only tokens the email gave/,
+      );
+    }
+  });
+
+  it('the help line Hale chose for the family survives a read turn (VIL-589)', async () => {
+    const answer = 'The trip is Friday. If she still has a fever, Health811 is there any time.';
+    const { reply } = await respond({
+      read: true,
+      answer,
+      place: { country: 'CA', provinceOrState: 'Ontario' },
+    });
+    expect(reply).toBe(answer);
+  });
+
+  it('a help line Hale did not choose for the family is still dropped', async () => {
+    const { reply } = await respond({
+      read: true,
+      answer: 'The trip is Friday. Health811 is there any time.',
+    });
+    expect(reply).toBe('The trip is Friday. is there any time.');
   });
 
   it("Hale's own site survives a read turn (positive control)", async () => {

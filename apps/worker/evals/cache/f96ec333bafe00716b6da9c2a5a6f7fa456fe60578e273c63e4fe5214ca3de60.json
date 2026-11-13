@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states the cart holds Sunday 10:00 at $98, the security code is needed, nothing was charged, and the browser stays open about 9 minutes. It does not claim registration or a spot, makes no promise to retry, and has no link or invented facts. Mode is auto but the text correctly frames the parent finishing the step, which matches the run state. Tone is short, plain and friendly with one clear ask implied.",
+    "score": 5
+  }
+}

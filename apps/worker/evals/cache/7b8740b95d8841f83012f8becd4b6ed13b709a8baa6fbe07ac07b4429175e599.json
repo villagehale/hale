@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzUM7rGDezSiGQMdRFoS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsQgKEAgTGAI4AUIIdGhpbmtpbmcSDKW/skbf0YUtio94KBoMb9nnhi6ch2mORPanIjDKbbUuB0aCllW//1SZDBYndcbMtfWxfwLI13JcLEAGx/03utlUq24BFLnR2g7EhV0qzgcyjEIxWDPnuHQ79adxbjVLKw7okaqYkJnT6EEZgxDazx+ciybfsTVDx3RM0l6RRrqjC6rl4KeU4HldduzGJhcsIpFlH1LSJAKgbPfH6x02Gy3C6V9aBJfkhk1nAU5tyKE/vAGAKa8EloOHkJSYnyfGy60RUI0g4Vi0nVLp+aWLUUaV19j/yCi/cH3DpbT3+9aUmfTtRQZEvGCieRjE7VwMbRZmz1jf3gU7Dlx2VTvAXIB6ILk/wVFNS14YbT+GkfjZch9iQ9G68vFe4Ls0oPJ5OjYdQA/hBvhiCyYKdRHljkUzmey3GZR0D9Fbpgm578q6tE/qSrOyF1Yg5nZzPc8NWJKutbpMjvvNaZxiEKpClFpeRqXDY9epq1rAE7+w0c87phrSJX3vFIAWIl0wcg7C8BMrsbetg3Rpv2OsBAM3xhqMoucyJZ7Z7rc2kfm9njkL8VbU9Psp+40ZLRNk1qsEyPzqcGtvdmbMVhHib/z5qldLDE+Df2yXS74+JvSJOtXvkJ+4y/cBsO/UvQh+c3Mz/Ue2hEb9DFizn32hX5z9BJVAMbaADYqcrGPjTsLjamFhZRx0l2CfGwaCgTcklbBQQ1yFGaYp59snxXOKP4E4NxMAkz/n7tTxUHiklNREMRBtQM6j6PJ18z6bEVSPIP29IheQmXSctEI+YtrbOUtJFeBAigDcYhsiNkfF66YGKTOrLFJuXi7iJn7X75q33xfuMFK/iAg47ksw/BfpDCrMLsQDmQO/rvShRApFh82ROjNmWhcpsQgbTCffzDlC0/QmqYiUe58LlPt1ZRT61c/Hd0y1a4H2/sFeIKO2LHWZO5EjwKmYxWrzdb8LYyB8NVseujr/RaH6U0aOB4OL6FWW51zN9+YvT+sn87PB5SeSvKMiBH0DVRvHvk9Bep8CzWzbfrGIb7teXZz2MgLsPJw3JQjO42CXsm0dYz00kaw57vxgQtwYXAaolSCVDTsOme+55auNUGW+s4fWDd3gCHqBEmKK537JmVaNRYlZHMKg23W9lobGUIPHliQmkwx3V9YyN8iWCZUIw/aOPd/R4s8f8h0HhMc+LX5BDr5CZnqqgmf+QGjVh79adsYVZk3dATKnGGjlbH4qyykVPBi/KLWCbW/frEl4PqYLFaPZm1q7mNzrPx379x84GqjEZxXsDNZmv675qRpySWosmPwAOMZyzOzPqbHPUTP51MvbsTu7h9Az8wZAsGd5t+koWpsbqYAulgKFs7hZh7XfUPwy6rgr+6qvdx9Kkw3zfoH7UZcv2VxMi3QJF1/DGIvF2llcUBgB"
+      },
+      {
+        "type": "text",
+        "text": "Nothing on the swim lesson says either way, so I can't tell you if the pool has towels. I'd pack one to be safe, since lots of pools don't supply them."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1825,
+      "cache_read_input_tokens": 18193,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1825,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 180,
+      "output_tokens_details": {
+        "thinking_tokens": 125
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text mostly fits: says Sunday 10:00 is in the cart, implies parent pays in browser, nothing charged implied but not stated. Problems: uses system talk 'payment_off is set' (reason code), not warm/plain, doesn't mention the link follows or the ~8 minute window, and doesn't clearly say Hale is not paying right now. Also does not state nothing was charged, and 'open browser' phrasing is fine but the text fails the watchFor requirement of saying the parent pays and the time limit. Score reflects reason code leak and missing key watchFor points.",
+    "score": 2
+  }
+}

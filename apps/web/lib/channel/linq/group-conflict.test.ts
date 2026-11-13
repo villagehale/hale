@@ -5,9 +5,11 @@ import {
   type ClashSourceBlock,
   type GroupClash,
   clashCalendar,
+  clashCrossParent,
   clashPollOffer,
   clashPollOptions,
   clashPollPass,
+  crossParentClashDedupeKey,
   findGroupClashes,
   groupConflictAlertUsable,
   groupConflictLineInput,
@@ -82,6 +84,91 @@ describe('findGroupClashes', () => {
         now: NOW,
       }),
     ).toEqual([]);
+  });
+
+  it('still says nothing when two parents cover two children, even with uncoverSameKid', () => {
+    expect(
+      findGroupClashes({
+        plans: [
+          plan({ key: 'a', title: 'Maya recital', holders: ['barton'], end: AT_4 }),
+          plan({ key: 'b', title: 'Leo practice', holders: ['sam'] }),
+        ],
+        busy: [],
+        people: [barton, sam],
+        now: NOW,
+        kids: ['Maya', 'Leo'],
+        uncoverSameKid: true,
+      }),
+    ).toEqual([]);
+  });
+
+  it("flags one child's two overlapping plans even when each is held by a different parent", () => {
+    const [clash, ...rest] = findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Maya recital', holders: ['barton'], end: AT_4 }),
+        plan({ key: 'b', title: 'Maya dentist', holders: ['sam'] }),
+      ],
+      busy: [],
+      people: [barton, sam],
+      now: NOW,
+      kids: ['Maya', 'Leo'],
+      uncoverSameKid: true,
+    });
+    expect(rest).toEqual([]);
+    expect(clash?.first.key).toBe('a');
+    expect(clash && 'plan' in clash.second && clash.second.plan.key).toBe('b');
+    expect(clash?.restsOn).toEqual({ a: 'barton', b: 'sam' });
+    expect(clashCrossParent(clash as GroupClash, ['Maya', 'Leo'], ['barton', 'sam'])).toBe(true);
+    expect(crossParentClashDedupeKey(clash as GroupClash, 'barton')).toBe(
+      `${clash?.dedupeKey}:1to1:barton`,
+    );
+  });
+
+  it("does not treat a driver on a different overlapping plan as covering one child's two", () => {
+    expect(
+      findGroupClashes({
+        plans: [
+          plan({ key: 'a', title: 'Maya recital', holders: ['barton'], end: AT_4 }),
+          plan({ key: 'b', title: 'Maya dentist', holders: ['sam'] }),
+        ],
+        busy: [],
+        people: [barton, sam],
+        now: NOW,
+        kids: ['Maya'],
+        uncoverSameKid: true,
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("leaves one child's two plans covered when uncoverSameKid is off", () => {
+    expect(
+      findGroupClashes({
+        plans: [
+          plan({ key: 'a', title: 'Maya recital', holders: ['barton'], end: AT_4 }),
+          plan({ key: 'b', title: 'Maya dentist', holders: ['sam'] }),
+        ],
+        busy: [],
+        people: [barton, sam],
+        now: NOW,
+        kids: ['Maya'],
+      }),
+    ).toEqual([]);
+  });
+
+  it('is not a cross-parent clash when the same parent holds both', () => {
+    const [clash] = findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] }),
+        plan({ key: 'b', title: "Maya's dentist", holders: ['barton'], end: AT_4 }),
+      ],
+      busy: [],
+      people: [barton, sam],
+      now: NOW,
+      kids: ['Maya'],
+      uncoverSameKid: true,
+    });
+    expect(clash).toBeDefined();
+    expect(clashCrossParent(clash as GroupClash, ['Maya'], ['barton', 'sam'])).toBe(false);
   });
 
   it('flags a plan whose taker is busy then', () => {

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reasoning": "m1 'thanks!' asks nothing on its own and thanks Hale for the swim answer, so it joins the ask it comes with. m2 asks a new question about Friday pickup, which is a different ask from the Thursday swim details, but m1 has no separate ask to answer, so it attaches to m2 as the thanks that precedes it.",
+    "groups": [
+      [
+        "m1",
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1331
+}

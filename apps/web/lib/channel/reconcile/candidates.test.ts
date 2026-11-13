@@ -98,8 +98,8 @@ describe('buildClaimCandidates', () => {
     expect(set.familyId).toBe(FAM);
   });
 
-  it('the alias enum has exactly 94 entries, and a full set only ever emits enum values', () => {
-    expect(CLAIM_ROW_ALIASES).toHaveLength(1 + 50 + 20 + 5 + 10 + 5 + 1 + 2);
+  it('the alias enum has exactly 124 entries, and a full set only ever emits enum values', () => {
+    expect(CLAIM_ROW_ALIASES).toHaveLength(1 + 50 + 20 + 5 + 10 + 5 + 1 + 10 + 10 + 10 + 2);
     expect(CLAIM_ROW_ALIASES[0]).toBe('none');
     const many = (n: number, row: ClaimCandidateRow) => Array.from({ length: n }, () => row);
     const full = buildClaimCandidates(

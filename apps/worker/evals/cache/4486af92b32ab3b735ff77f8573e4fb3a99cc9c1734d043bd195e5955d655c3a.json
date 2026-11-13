@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "No worries, I'll leave the name for now. Want me to check your inbox for kids' school and activity emails? Can I connect Gmail?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1293
+}

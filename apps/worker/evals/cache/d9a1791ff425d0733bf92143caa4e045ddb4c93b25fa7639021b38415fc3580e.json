@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single parent text with one question in the last bubble, is in English, and gives times correctly converted to Toronto time (EST, UTC-5: 21:30Z is 4:30pm, not 4:30... verified: 2026-11-16 21:30Z = 16:30 EST, 22:00Z = 17:00, 14:15Z = 09:15, 23:00Z = 18:00, 18:00Z = 13:00). However, the first bubble says 'Nothing's on for the rest of this week' which is an unsupported claim since events fall on Monday 16 through Saturday 21 and the current time is Thursday 12 Nov, so Friday is empty but the phrasing about Next week starting Monday is accurate. Bubble splitting is reasonable: each bubble is a whole thought by day stretch. The 'Tuesday' bubble combines multiple days and is somewhat dense, and the 'Saturday' bubble is a fragment-like single item but still a complete thought. Minor stylistic issues only, with a correct and complete schedule and no invented facts.",
+    "score": 4
+  }
+}

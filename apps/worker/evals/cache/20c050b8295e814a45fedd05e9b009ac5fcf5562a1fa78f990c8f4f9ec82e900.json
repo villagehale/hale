@@ -1,0 +1,60 @@
+{
+  "response": {
+    "id": "msg_011CgzUbYrZdiUTUtAKqgJsj",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_013ATkFJoB5YnVupm7iVJetY",
+        "name": "offer_signup",
+        "input": {
+          "child": "Ada",
+          "activity": "Little Kickers, Saturday 9:30 class",
+          "source": "chat",
+          "registrationUrl": "https://kickers.example-sport.test/register/little-kickers-sat-0930",
+          "evidence": "can you also get Ada into Little Kickers, the Saturday 9:30 class? registration opens Dec 1 at 7am too",
+          "sessions": [
+            {
+              "id": "little-kickers-sat-0930",
+              "label": "Little Kickers Saturday 9:30",
+              "startsAt": "Saturday 9:30",
+              "endsAt": "Saturday 9:30",
+              "full": false,
+              "priceCents": null
+            }
+          ],
+          "approvedPriceCents": null,
+          "opensAt": "2026-12-01T07:00:00-05:00"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 533,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21977,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 847,
+      "output_tokens_details": {
+        "thinking_tokens": 450
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -109,6 +109,12 @@ export type ProactiveSendKind =
    */
   | 'mid_activity_ask'
   /**
+   * VIL-681 · a parent started something with Hale yesterday and went quiet: one
+   * check-back the next day, written by the decider's writer. Decider-only, like the
+   * mid-activity ask. The bound is the workstream, held by a once-ever dedupe key.
+   */
+  | 'next_day_checkback'
+  /**
    * The co-parent left, and the parent who STAYED is told once (VIL-355 follow-up).
    *
    * Unprompted by construction — the departing parent acted, the staying one did not —
@@ -260,6 +266,8 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   evening_check_in: false,
   // A question about how a class is going keeps until morning.
   mid_activity_ask: false,
+  // A nudge about something they started yesterday is worth as much after breakfast.
+  next_day_checkback: false,
   // Nothing here is worth less at 08:00. The seat is already gone, the week is already
   // theirs, and waking somebody at 23:00 to tell them their co-parent left is the
   // cruellest hour this message could pick.
@@ -368,6 +376,8 @@ export const PROACTIVE_CATEGORY: Record<
   evening_check_in: 'evening_check_in',
   // The same "how did it go" consent family as the activity follow-up.
   mid_activity_ask: 'activity_followup',
+  // Hale following up on a thread it is in the middle of.
+  next_day_checkback: 'followup',
   co_parent_departed: 'co_parent_departed',
   travel_brief: 'travel_brief',
   duty_ask: 'duty_ask',

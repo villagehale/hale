@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply handles both parts correctly. It drafts the cancel for the one matching Thursday swim and asks in a plain sentence whether to go ahead. It offers the verified indoor find by its title with the correct Aug 8 date, and the URL comes from offerable. The soccer-conflict clause is accurate to the week but adds a bit of padding, since no time was given for story time.",
+    "score": 4
+  }
+}

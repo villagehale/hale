@@ -7,5 +7,5 @@ export const config = {
   // Run i18n routing on page paths only. Everything with a dot (llms.txt,
   // robots.txt, sitemap.xml, favicon.ico, fonts, images) and the framework
   // internals are excluded, so those keep serving unprefixed and untouched.
-  matcher: '/((?!api|_next|_vercel|llms\\.txt|.*\\..*).*)',
+  matcher: '/((?!api|ingest|_next|_vercel|llms\\.txt|.*\\..*).*)',
 };

@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "Totally fine, no name needed. Want me to check your inbox for kid stuff next? Hale can read everything in Gmail, and I only keep what's about the kids.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameDeclined": true,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1497
+}

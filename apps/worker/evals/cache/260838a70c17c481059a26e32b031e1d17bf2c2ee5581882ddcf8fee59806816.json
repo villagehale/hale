@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "The names are drawn! 🎅 Each of you gets your own draw privately from me, Hale. A couple of you will need to text me first so I can send yours, so keep an eye out. Keep it secret!"
+  },
+  "latencyMs": 1964,
+  "usage": {
+    "input_tokens": 48,
+    "output_tokens": 72,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

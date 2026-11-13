@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The request matches exactly one event, Soccer practice on Sat 10:00am at Cedarvale Park, and a move was drafted. The reply names the change in a plain sentence and asks whether to go ahead. Every detail traces to the week, and there is no greeting, no YES keyword and no padding.",
+    "score": 5
+  }
+}

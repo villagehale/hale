@@ -10,17 +10,27 @@
  * stays a separate exact-`on` gate, and the engine runs only inside
  * `runAuthorizedSignup`, after the parent's explicit yes.
  */
+import { isEnabled } from '@hale/flags';
+
 export const BROWSER_USE_SIGNUP_ENABLED_ENV = 'BROWSER_USE_SIGNUP_ENABLED';
 
 export function browserUseSignupEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env[BROWSER_USE_SIGNUP_ENABLED_ENV] === 'true';
+  return isEnabled('browser-use-signup', undefined, env);
 }
 
 export const BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV = 'BROWSER_USE_SIGNUP_PAYMENT_ENABLED';
 
-/** Agent payment through the Stripe Link wallet. Off unless exactly `true`. */
+/**
+ * Agent payment through the Stripe Link wallet, and the day-before plan's payment with the
+ * card saved on the parent's city account. Off unless exactly `true`; off, a plan stops at
+ * checkout and the parent pays on the live browser.
+ *
+ * ENV-ONLY. Not a PostHog flag. Nothing in PostHog can turn a payment on.
+ * Runtime still stops before any payment > $0 (`payment_boundary`) and still
+ * caps a signup run at $3 (`SIGNUP_RUN_MAX_COST_USD`).
+ */
 export function browserUseSignupPaymentEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {

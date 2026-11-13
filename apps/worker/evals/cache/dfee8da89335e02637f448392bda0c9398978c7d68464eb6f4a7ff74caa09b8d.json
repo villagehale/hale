@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Thursday 6 PM local is the last good pre-weekend evening; Saturday afternoon window fits the library session and the swim registration closes Friday, so batch both now with no streak, preference, or decline blocking.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find",
+      "reg-deadline"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}
