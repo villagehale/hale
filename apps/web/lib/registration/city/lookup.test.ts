@@ -47,6 +47,7 @@ const TORONTO_SITE: OfficialSite = {
   host: 'toronto.ca',
   website: 'https://www.toronto.ca/',
   source: 'wikidata:Q172',
+  referenced: true,
 };
 
 function deps(

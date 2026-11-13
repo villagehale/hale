@@ -1,3 +1,4 @@
+import { verifyOfficialHost } from '~/lib/official-host';
 import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
 import { type OfficialSite, onOfficialSite } from './official-site';
@@ -21,6 +22,9 @@ import type { PageSearch } from './search';
 export type CityNotFoundReason =
   /** The structured source names no single official website for this place. */
   | 'no_official_site'
+  /** The source's one value for the site carries no reference, and the live search's top
+   * result is not on its domain: nothing corroborates it (lib/official-host.ts). */
+  | 'official_site_unconfirmed'
   /** The search named no page on the municipality's official site for this place. */
   | 'no_official_page'
   /** A page was read and said this season's opening is not out yet (announced later, not
@@ -130,6 +134,23 @@ export async function lookupCityRegistration(
   if (search.outcome === 'failed') return { status: 'retry', reason: search.reason };
   if (search.outcome === 'none') {
     return { status: 'not_found', reason: 'no_official_page', municipality: null, tried: [] };
+  }
+  const trust = verifyOfficialHost({
+    host: site.host,
+    referenced: site.referenced,
+    topResultUrl: search.urls[0] ?? null,
+  });
+  if (!trust.trusted) {
+    console.info(
+      { reason: trust.reason, source: site.source },
+      'own-city registration: official site not corroborated',
+    );
+    return {
+      status: 'not_found',
+      reason: 'official_site_unconfirmed',
+      municipality: search.municipality,
+      tried: [],
+    };
   }
 
   const tried: Array<{ url: string; outcome: string }> = [];
