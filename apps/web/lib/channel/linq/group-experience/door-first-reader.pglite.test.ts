@@ -165,6 +165,8 @@ function door(input: {
   dms: string[];
   rsvp: GroupPlanRsvpReading;
   experienceReads?: { count: number };
+  experience?: GroupExperienceReading;
+  rsvpInputs?: unknown[];
 }) {
   return {
     database: db.database,
@@ -187,12 +189,17 @@ function door(input: {
     sharedGroupReader: sharedReader,
     sharedGroupVoice: fakeSharedGroupComposer({ body: 'shared-reply-line' }),
     privateAsideModel: noAside,
-    groupPlanRsvpReader: { read: async () => input.rsvp },
+    groupPlanRsvpReader: {
+      read: async (readInput: unknown) => {
+        input.rsvpInputs?.push(readInput);
+        return input.rsvp;
+      },
+    },
     groupPlanRsvpComposer: fakeGroupPlanRsvpComposer(),
     groupExperienceReader: {
       read: async () => {
         if (input.experienceReads) input.experienceReads.count += 1;
-        return none;
+        return input.experience ?? none;
       },
     },
     groupExperienceComposer: fakeGroupExperienceComposer({
@@ -349,6 +356,93 @@ describe('the first reader binds a plan opening to the plan it is about (gate RE
   });
 });
 
+describe('the group-moment RSVP vote binds only to the plan it is about (gate R1, probe V1)', () => {
+  const vote = (samePlan: boolean | null): GroupExperienceReading => ({
+    ...none,
+    kind: 'rsvp_vote',
+    response: 'yes',
+    samePlan,
+  });
+
+  async function picnicRsvps(planId: string) {
+    return db.database
+      .select()
+      .from(schema.linqGroupPlanRsvps)
+      .where(eq(schema.linqGroupPlanRsvps.planId, planId));
+  }
+
+  it('an answer about another event that the second reader reads as a vote with no plan named records nothing and asks nothing', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    const group: string[] = [];
+    const dms: string[] = [];
+    await send(
+      door({
+        group,
+        dms,
+        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', samePlan: false }),
+        experience: vote(null),
+      }),
+      PARENT_B,
+      'm1',
+      "we're in for the zoo on Sunday",
+    );
+    expect(await picnicRsvps(picnic.id)).toEqual([]);
+    expect(group.filter((line) => line.includes('picnic'))).toEqual([]);
+    expect(dms).toEqual([]);
+    expect(await db.database.select().from(schema.linqGroupPlanCalendarConsents)).toEqual([]);
+  });
+
+  it('the second reader never overrides the first reader naming another event', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    const dms: string[] = [];
+    await send(
+      door({
+        group: [],
+        dms,
+        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', samePlan: false }),
+        experience: vote(true),
+      }),
+      PARENT_B,
+      'm1',
+      "we're in for the zoo on Sunday",
+    );
+    expect(await picnicRsvps(picnic.id)).toEqual([]);
+    expect(dms).toEqual([]);
+  });
+
+  it('a vote the second reader does not tie to the open plan is not counted there', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    const dms: string[] = [];
+    await send(
+      door({ group: [], dms, rsvp: rsvpReading({ intent: 'chatter' }), experience: vote(null) }),
+      PARENT_B,
+      'm1',
+      "we're in for the zoo on Sunday",
+    );
+    expect(await picnicRsvps(picnic.id)).toEqual([]);
+    expect(dms).toEqual([]);
+  });
+
+  it('a vote the second reader ties to the open plan lands on it (control)', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    await send(
+      door({ group: [], dms: [], rsvp: rsvpReading({ intent: 'chatter' }), experience: vote(true) }),
+      PARENT_B,
+      'm1',
+      'count us in',
+    );
+    expect((await picnicRsvps(picnic.id)).map((row) => row.response)).toEqual(['yes']);
+  });
+});
+
 describe('a lock when VIL-471 owns the poll, through the door (gate REFUTED 2)', () => {
   async function pollWithTwoSundayVotes(familyId: string) {
     const plans = createPostgresGroupPlanRsvpStore(db.database);
@@ -424,5 +518,98 @@ describe('a lock when VIL-471 owns the poll, through the door (gate REFUTED 2)',
     expect(await plans.loadLivePoll(CHAT)).not.toBeNull();
     expect(group.filter((line) => line.startsWith('time_lock'))).toEqual([]);
     expect(group.filter((line) => line.includes('Saturday 10'))).toEqual([]);
+  });
+});
+
+describe('a poll about the open plan carries placed choices, and its lock moves the plan (gate R3, through the door)', () => {
+  it('the reader gets the household clock, each choice is placed on the open plan, and "Sunday, lock it in" moves the plan to Sunday', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: CHAT })
+      .where(eq(schema.families.id, a.familyId));
+    const picnic = await openPicnic(a.familyId, a.userId);
+    const group: string[] = [];
+    const rsvpInputs: unknown[] = [];
+    await send(
+      door({
+        group,
+        dms: [],
+        rsvpInputs,
+        rsvp: rsvpReading({
+          intent: 'start_poll',
+          samePlan: true,
+          pollQuestion: 'picnic time?',
+          pollOptions: ['Saturday 10', 'Sunday 2'],
+          pollStarts: [SATURDAY_10, SUNDAY_14],
+        }),
+      }),
+      PARENT_A,
+      'poll-1',
+      'Hale can we vote on the picnic time, Saturday 10 or Sunday 2?',
+    );
+    expect(rsvpInputs[0]).toMatchObject({ clock: { timeZone: 'America/Toronto' } });
+    const plans = createPostgresGroupPlanRsvpStore(db.database);
+    const poll = await plans.loadLivePoll(CHAT);
+    expect(poll?.options.map((option) => option.places)).toEqual([
+      { planId: picnic.id, startsAt: SATURDAY_10 },
+      { planId: picnic.id, startsAt: SUNDAY_14 },
+    ]);
+    // A claimed chat with another family in it holds group lines until its roster is
+    // confirmed; releasing the claim lets this shared chat hear the lock line.
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.id, a.familyId));
+
+    const locked = await send(
+      door({
+        group,
+        dms: [],
+        rsvp: rsvpReading({ intent: 'close_poll', samePlan: true, pollChoice: 'o2' }),
+      }),
+      PARENT_B,
+      'lock-1',
+      'Sunday, lock it in Hale',
+    );
+    expect(locked.outcome).toBe('group_experience_spoken');
+    expect(await plans.loadLivePoll(CHAT)).toBeNull();
+    const [row] = await db.database
+      .select()
+      .from(schema.linqGroupPlans)
+      .where(eq(schema.linqGroupPlans.id, picnic.id));
+    expect(row?.startsAt).toEqual(new Date(SUNDAY_14));
+    expect(group.filter((line) => line.startsWith('time_lock'))).toEqual([
+      'time_lock {"winner":"Sunday 2"}',
+    ]);
+  });
+
+  it('a poll the reader does not tie to the open plan places nothing (control)', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: CHAT })
+      .where(eq(schema.families.id, a.familyId));
+    await openPicnic(a.familyId, a.userId);
+    await send(
+      door({
+        group: [],
+        dms: [],
+        rsvp: rsvpReading({
+          intent: 'start_poll',
+          samePlan: false,
+          pollQuestion: 'zoo when?',
+          pollOptions: ['Saturday 10', 'Sunday 2'],
+          pollStarts: [SATURDAY_10, SUNDAY_14],
+        }),
+      }),
+      PARENT_A,
+      'poll-1',
+      'Hale poll Saturday 10 or Sunday 2 for the zoo?',
+    );
+    const poll = await createPostgresGroupPlanRsvpStore(db.database).loadLivePoll(CHAT);
+    expect(poll?.options.map((option) => option.places ?? null)).toEqual([null, null]);
   });
 });

@@ -274,9 +274,9 @@ describe('VIL-399 scene 04: the tally never writes a calendar on its own', () =>
   it('a yes RSVP read from the group takes the household OK path; a no takes none', async () => {
     const { a, b, plan } = await planWithAnswers(new Date(SATURDAY_10));
     await db.exec('truncate table linq_group_plan_rsvps cascade');
-    const yes = ports(reading({ kind: 'rsvp_vote', response: 'yes' }));
+    const yes = ports(reading({ kind: 'rsvp_vote', response: 'yes', samePlan: true }));
     await considerGroupExperience(yes.ports, turnInput(a));
-    const no = ports(reading({ kind: 'rsvp_vote', response: 'no' }));
+    const no = ports(reading({ kind: 'rsvp_vote', response: 'no', samePlan: true }));
     await considerGroupExperience(no.ports, {
       ...turnInput(a),
       senderHandle: PARENT_B,

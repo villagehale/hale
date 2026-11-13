@@ -657,11 +657,15 @@ async function privateCalendarReply(
 /**
  * One group message's read state across the door. `done`: the group moment already read it.
  * `lockAsked`: the VIL-442 reader, which runs first, read a lock on the open poll, so the group
- * moment locks without reading the message again.
+ * moment locks without reading the message again. `otherEvent`: the VIL-442 reader did not tie
+ * this message to the open plan, so the group moment never counts it there.
  */
 interface GroupMessageRead {
   done: boolean;
   lockAsked?: boolean;
+  /** With `lockAsked`: the open poll's option key the lock named. */
+  lockChoice?: string;
+  otherEvent?: boolean;
 }
 
 async function runGroupExperience(
@@ -709,6 +713,8 @@ async function runGroupExperience(
       text: input.text,
       messageId: input.messageId,
       ...(read.lockAsked ? { decided: 'time_lock' as const } : {}),
+      ...(read.lockAsked && read.lockChoice ? { lockChoice: read.lockChoice } : {}),
+      ...(read.otherEvent ? { otherEvent: true as const } : {}),
     },
   );
   return groupExperienceTakesTheTurn(result) ? result : null;
@@ -814,7 +820,11 @@ async function tryGroupPlanRsvpTurn(
       secretSanta: await secretSantaRunsInChat(deps.database, input.chatId),
     },
   );
-  if (rsvp.handled && rsvp.outcome === 'group_poll_lock_asked' && read) read.lockAsked = true;
+  if (rsvp.handled && rsvp.outcome === 'group_poll_lock_asked' && read) {
+    read.lockAsked = true;
+    read.lockChoice = rsvp.lockChoice;
+  }
+  if (rsvp.handled && rsvp.outcome === 'group_plan_other_event' && read) read.otherEvent = true;
   if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
   deps.log.info(
     { outcome: rsvp.outcome },

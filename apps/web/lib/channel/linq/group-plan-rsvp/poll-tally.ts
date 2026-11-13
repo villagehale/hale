@@ -11,6 +11,8 @@ export interface GroupPollOption {
   key: string;
   text: string;
   providerOptionId: string | null;
+  /** Choosing this option places that group plan at that instant (ISO). */
+  places?: { planId: string; startsAt: string } | null;
 }
 
 export interface GroupPollVoteRow {

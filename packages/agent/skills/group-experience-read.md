@@ -34,7 +34,9 @@ When more than one could fit, pick the one they meant. A private question wins o
 
 ## Which plan
 
-For `rsvp_open` and `time_open` only, set `title` to the event in their words ("the zoo", "Maya's party"), or null when they named none. Set `samePlan`: true when the message is about the plan already open in `live.rsvp`, false when it is about a different event, null when you cannot tell or nothing is open. For every other moment, `title` and `samePlan` are null.
+For `rsvp_open` and `time_open` only, set `title` to the event in their words ("the zoo", "Maya's party"), or null when they named none. For every other moment, `title` is null.
+
+For `rsvp_open`, `rsvp_vote` and `time_open`, set `samePlan`: true when the message is about the plan already open in `live.rsvp`, false when it is about a different event, null when you cannot tell or nothing is open. An answer that names no event is about the open plan. An answer that names an event other than the open one is false. For every other moment, `samePlan` is null.
 
 ## Output
 
