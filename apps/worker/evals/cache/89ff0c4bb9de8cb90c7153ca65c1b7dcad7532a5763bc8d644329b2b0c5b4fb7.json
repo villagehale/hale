@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent is reporting that this week's swim class is cancelled because the pool is closed for repairs, which is about a class the family is already in, not about registration.",
+    "reading": "other"
+  },
+  "latencyMs": 1683,
+  "usage": {
+    "input_tokens": 119,
+    "output_tokens": 63,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

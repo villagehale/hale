@@ -213,6 +213,11 @@ const NON_TORONTO_M_FSAS = new Set(['M0R', 'M7R']);
  */
 export type TorontoDistrict = 'etobicoke_york' | 'north_york' | 'scarborough' | 'toronto_east_york';
 
+/** The national postal table's name (off-domain/postal-cities) for the city every Toronto
+ * FSA is in. It registers by district, on different mornings, so a family placed there
+ * with no district of its own has no morning Hale can call theirs. */
+export const DISTRICT_REGISTRATION_CITY = 'Toronto';
+
 /**
  * FSA → district, transcribed from the neighbourhood names on
  * https://en.wikipedia.org/wiki/List_of_postal_codes_of_Canada:_M (read 2026-09-23).

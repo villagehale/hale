@@ -49,6 +49,8 @@ export * from './village-intros.js';
 export * from './curated-resources.js';
 export * from './registration-windows.js';
 export * from './registration-discovery-readings.js';
+export * from './city-registration-readings.js';
+export * from './city-official-sites.js';
 export * from './registration-sequences.js';
 export * from './registration-verify-runs.js';
 export * from './cron-heartbeats.js';

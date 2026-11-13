@@ -4,8 +4,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import {
   NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
   nextDayCheckbackDedupeKey,
@@ -248,6 +248,34 @@ describe('runProactiveReview', () => {
       .from(schema.familyCheckInPrefs)
       .where(eq(schema.familyCheckInPrefs.familyId, familyId));
     expect(prefs?.lastAskedAt).toEqual(THURSDAY_EVENING);
+  });
+
+  it('leaves a waiting registration tell untouched while its own lane is switched off', async () => {
+    const opening = {
+      kind: 'registration_opening' as const,
+      category: 'nudge' as const,
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: new Date('2026-12-01T11:30:00.000Z'),
+    };
+    for (const cadence of ['', 'live']) {
+      vi.stubEnv('PROACTIVE_CADENCE', cadence);
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'false');
+      const id = await enqueue(`registration-opening:${cadence || 'off'}`, opening);
+      const off = harness(sendAll);
+      await runProactiveReview(db.database, off.deps, THURSDAY_EVENING);
+      expect({
+        cadence,
+        snapshots: off.snapshots.length,
+        row: (await candidate(id))?.status,
+      }).toEqual({ cadence, snapshots: 0, row: 'queued' });
+
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
+      const on = harness(sendAll);
+      await runProactiveReview(db.database, on.deps, THURSDAY_EVENING);
+      expect({ cadence, row: (await candidate(id))?.status }).toEqual({ cadence, row: 'sent' });
+    }
   });
 
   it('sends an evening check-in in shadow, and still shadows a nudge', async () => {
@@ -571,9 +599,11 @@ describe('runProactiveReview', () => {
     });
   });
 
-  it('never holds past the moment an item stops being worth sending, and names the clamp', async () => {
+  it('never holds past the last review that can still send an item, and names the clamp', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    // Saturday noon in the family's zone; the last review that can still send it is at 11.
     const worthless = new Date('2026-10-10T16:00:00.000Z');
+    const lastSend = new Date('2026-10-10T15:00:00.000Z');
     const id = await enqueue('nudge:weather:w41', { worthlessAfter: worthless });
     const asked = '2027-06-01T12:00:00.000Z';
     const h = harness((snapshot) => ({
@@ -586,12 +616,75 @@ describe('runProactiveReview', () => {
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
-    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(worthless.toISOString());
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(lastSend.toISOString());
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({
-      holdUntil: worthless.toISOString(),
+      holdUntil: lastSend.toISOString(),
       holdClamped: 'worthless_after',
       askedHoldUntil: asked,
+    });
+  });
+
+  describe('a registration tell held past its opening', () => {
+    // Dec 1, 6:30 a.m. in the family's zone: inside the quiet hours.
+    const OPENS = new Date('2026-12-01T11:30:00.000Z');
+    const opening = {
+      kind: 'registration_opening' as const,
+      category: 'nudge' as const,
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: OPENS,
+    };
+    const holdPast = (snapshot: FamilySnapshot): DeciderDecision => ({
+      reason: 'Closer to the day',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: '2026-12-02T15:00:00.000Z',
+      frequencyPreference: null,
+    });
+
+    it('wakes while it can still be sent before the doors open, and is sent', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const asked = new Date('2026-11-28T15:00:00.000Z');
+      const id = await enqueue('registration-opening:held', opening);
+
+      await runProactiveReview(db.database, harness(holdPast).deps, asked);
+
+      // The last evening hour before the doors open for any number: Nov 30, 19:00 in the
+      // family's zone, so the review it wakes at is still inside the day of a Florida or
+      // Oklahoma number, whose quiet hours start at 20:00.
+      const wake = new Date('2026-12-01T00:00:00.000Z');
+      expect((await candidate(id))?.holdUntil?.toISOString()).toBe(wake.toISOString());
+      const [decision] = await audits('proactive_cadence_decision');
+      expect(decision?.after).toMatchObject({ holdClamped: 'worthless_after' });
+
+      const later = harness(sendAll);
+      await runProactiveReview(db.database, later.deps, new Date(wake.getTime() + 23 * 60_000));
+      expect((await candidate(id))?.status).toBe('sent');
+      expect(later.transport.sent).toHaveLength(1);
+    });
+
+    it('is dropped by name when no moment is left to send it before the doors open', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      // Nov 30, 19:30 in the family's zone: past the last hour it could still be sent.
+      const tooLate = new Date('2026-12-01T00:30:00.000Z');
+      const id = await enqueue('registration-opening:late', opening);
+
+      const summary = await runProactiveReview(db.database, harness(holdPast).deps, tooLate);
+
+      expect(await candidate(id)).toMatchObject({
+        status: 'dropped',
+        reason: 'hold_past_last_send',
+        holdUntil: null,
+      });
+      expect(summary.held).toBe(0);
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toContainEqual({
+        reason: 'hold_past_last_send',
+        itemIds: [id],
+        mode: 'live',
+      });
     });
   });
 
@@ -636,6 +729,31 @@ describe('runProactiveReview', () => {
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({
       holdUntil: edge.toISOString(),
+      holdClamped: 'snapshot_window',
+      askedHoldUntil: asked,
+    });
+  });
+
+  it('never parks an item with a far window past the days the decider can see, either', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue('nudge:weather:w41', {
+      worthlessAfter: new Date('2027-06-01T12:00:00.000Z'),
+    });
+    const asked = '2027-05-01T12:00:00.000Z';
+    const h = harness((snapshot) => ({
+      reason: 'Too early',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: asked,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const edge = new Date(THURSDAY_EVENING.getTime() + SNAPSHOT_DAYS * 24 * 60 * 60_000);
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(edge.toISOString());
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({
       holdClamped: 'snapshot_window',
       askedHoldUntil: asked,
     });

@@ -1,0 +1,512 @@
+{
+  "searchinfo": {
+    "search": "Toronto"
+  },
+  "search": [
+    {
+      "id": "Q172",
+      "title": "Q172",
+      "pageid": 310,
+      "concepturi": "http://www.wikidata.org/entity/Q172",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q172",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "capital and largest city of the province of Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "capital and largest city of the province of Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q203384",
+      "title": "Q203384",
+      "pageid": 199861,
+      "concepturi": "http://www.wikidata.org/entity/Q203384",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q203384",
+      "display": {
+        "label": {
+          "value": "Toronto Maple Leafs",
+          "language": "en"
+        },
+        "description": {
+          "value": "National Hockey League franchise in Toronto, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Maple Leafs",
+      "description": "National Hockey League franchise in Toronto, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Maple Leafs"
+      }
+    },
+    {
+      "id": "Q132880",
+      "title": "Q132880",
+      "pageid": 134659,
+      "concepturi": "http://www.wikidata.org/entity/Q132880",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q132880",
+      "display": {
+        "label": {
+          "value": "Toronto Raptors",
+          "language": "en"
+        },
+        "description": {
+          "value": "National Basketball Association team in Toronto, Ontario",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Raptors",
+      "description": "National Basketball Association team in Toronto, Ontario",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Raptors"
+      }
+    },
+    {
+      "id": "Q327238",
+      "title": "Q327238",
+      "pageid": 314177,
+      "concepturi": "http://www.wikidata.org/entity/Q327238",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q327238",
+      "display": {
+        "label": {
+          "value": "Toronto FC",
+          "language": "en"
+        },
+        "description": {
+          "value": "soccer club in Toronto, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto FC",
+      "description": "soccer club in Toronto, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto FC"
+      }
+    },
+    {
+      "id": "Q117037112",
+      "title": "Q117037112",
+      "pageid": 111827217,
+      "concepturi": "http://www.wikidata.org/entity/Q117037112",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q117037112",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "oil tanker built in 2005",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "oil tanker built in 2005",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q141104589",
+      "title": "Q141104589",
+      "pageid": 134555001,
+      "concepturi": "http://www.wikidata.org/entity/Q141104589",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q141104589",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "episode of Interview with the Vampire (S3 E3)",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "episode of Interview with the Vampire (S3 E3)",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q736775",
+      "title": "Q736775",
+      "pageid": 692913,
+      "concepturi": "http://www.wikidata.org/entity/Q736775",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q736775",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "city in Jefferson County, Ohio, United States",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "city in Jefferson County, Ohio, United States",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q650829",
+      "title": "Q650829",
+      "pageid": 612533,
+      "concepturi": "http://www.wikidata.org/entity/Q650829",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q650829",
+      "display": {
+        "label": {
+          "value": "Toronto Blue Jays",
+          "language": "en"
+        },
+        "description": {
+          "value": "baseball team and Major League Baseball franchise in Toronto, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Blue Jays",
+      "description": "baseball team and Major League Baseball franchise in Toronto, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Blue Jays"
+      }
+    },
+    {
+      "id": "Q142349",
+      "title": "Q142349",
+      "pageid": 144005,
+      "concepturi": "http://www.wikidata.org/entity/Q142349",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q142349",
+      "display": {
+        "label": {
+          "value": "Toronto Argonauts",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian football team based in Toronto, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Argonauts",
+      "description": "Canadian football team based in Toronto, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Argonauts"
+      }
+    },
+    {
+      "id": "Q611723",
+      "title": "Q611723",
+      "pageid": 576058,
+      "concepturi": "http://www.wikidata.org/entity/Q611723",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q611723",
+      "display": {
+        "label": {
+          "value": "Toronto Metropolitan University",
+          "language": "en"
+        },
+        "description": {
+          "value": "public research university in Toronto, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Metropolitan University",
+      "description": "public research university in Toronto, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Metropolitan University"
+      }
+    },
+    {
+      "id": "Q2506760",
+      "title": "Q2506760",
+      "pageid": 2419815,
+      "concepturi": "http://www.wikidata.org/entity/Q2506760",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2506760",
+      "display": {
+        "label": {
+          "value": "Toronto City",
+          "language": "en"
+        },
+        "description": {
+          "value": "defunct association football club",
+          "language": "en"
+        }
+      },
+      "label": "Toronto City",
+      "description": "defunct association football club",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto City"
+      }
+    },
+    {
+      "id": "Q2666611",
+      "title": "Q2666611",
+      "pageid": 2569264,
+      "concepturi": "http://www.wikidata.org/entity/Q2666611",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2666611",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "city in Woodson County, Kansas, USA",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "city in Woodson County, Kansas, USA",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q389974",
+      "title": "Q389974",
+      "pageid": 371091,
+      "concepturi": "http://www.wikidata.org/entity/Q389974",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q389974",
+      "display": {
+        "label": {
+          "value": "2104 Toronto",
+          "language": "mul"
+        },
+        "description": {
+          "value": "asteroid",
+          "language": "en"
+        }
+      },
+      "label": "2104 Toronto",
+      "description": "asteroid",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Toronto"
+      },
+      "aliases": [
+        "Toronto"
+      ]
+    },
+    {
+      "id": "Q3143461",
+      "title": "Q3143461",
+      "pageid": 3003140,
+      "concepturi": "http://www.wikidata.org/entity/Q3143461",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3143461",
+      "display": {
+        "label": {
+          "value": "Toronto Huskies",
+          "language": "en"
+        },
+        "description": {
+          "value": "BAA and NBA Team",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Huskies",
+      "description": "BAA and NBA Team",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Huskies"
+      }
+    },
+    {
+      "id": "Q1013097",
+      "title": "Q1013097",
+      "pageid": 962533,
+      "concepturi": "http://www.wikidata.org/entity/Q1013097",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q1013097",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "town in Clinton County, Iowa, USA",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "town in Clinton County, Iowa, USA",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q818723",
+      "title": "Q818723",
+      "pageid": 771585,
+      "concepturi": "http://www.wikidata.org/entity/Q818723",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q818723",
+      "display": {
+        "label": {
+          "value": "Toronto Stock Exchange",
+          "language": "en"
+        },
+        "description": {
+          "value": "stock exchange in Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Stock Exchange",
+      "description": "stock exchange in Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Stock Exchange"
+      }
+    },
+    {
+      "id": "Q7826258",
+      "title": "Q7826258",
+      "pageid": 7759308,
+      "concepturi": "http://www.wikidata.org/entity/Q7826258",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7826258",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian rock band",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "Canadian rock band",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q7826543",
+      "title": "Q7826543",
+      "pageid": 7759608,
+      "concepturi": "http://www.wikidata.org/entity/Q7826543",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7826543",
+      "display": {
+        "label": {
+          "value": "Toronto Township",
+          "language": "en"
+        },
+        "description": {
+          "value": "geographic township in Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Toronto Township",
+      "description": "geographic township in Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto Township"
+      }
+    },
+    {
+      "id": "Q2249475",
+      "title": "Q2249475",
+      "pageid": 2172801,
+      "concepturi": "http://www.wikidata.org/entity/Q2249475",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2249475",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "suburb within Lake Macquarie, New South Wales, Australia",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "suburb within Lake Macquarie, New South Wales, Australia",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    },
+    {
+      "id": "Q2688228",
+      "title": "Q2688228",
+      "pageid": 2588201,
+      "concepturi": "http://www.wikidata.org/entity/Q2688228",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2688228",
+      "display": {
+        "label": {
+          "value": "Toronto",
+          "language": "en"
+        },
+        "description": {
+          "value": "town in South Dakota, United States of America",
+          "language": "en"
+        }
+      },
+      "label": "Toronto",
+      "description": "town in South Dakota, United States of America",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Toronto"
+      }
+    }
+  ],
+  "search-continue": 20,
+  "success": 1
+}

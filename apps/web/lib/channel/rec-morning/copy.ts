@@ -11,7 +11,12 @@ import {
   YMCA_SWIM_OPENS,
 } from './facts';
 import type { RecMorningTopic, RecMorningWhere } from './match';
-import { matchRecMorning, postalMentioned, resolveRecMorningWhere } from './match';
+import {
+  matchRecMorning,
+  postalMentioned,
+  recMorningAsksOwnTown,
+  resolveRecMorningWhere,
+} from './match';
 import { type RecMorningReader, sharedRecMorningReader } from './read';
 
 /**
@@ -166,6 +171,14 @@ function intakeWhere(input: { postal?: string | null }): RecMorningWhere | null 
     province: null,
     timeZone: fsa === null ? null : timezoneForIntakePostal('CA', fsa),
   });
+}
+
+/** Mid-signup, the parent asks for the dates of the town their postal code is in. */
+export function recMorningIntakeAsksOwnTown(input: {
+  parentWords: string;
+  postal?: string | null;
+}): boolean {
+  return recMorningAsksOwnTown(input.parentWords, intakeWhere(input));
 }
 
 /**

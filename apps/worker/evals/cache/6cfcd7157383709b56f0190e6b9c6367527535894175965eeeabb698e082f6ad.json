@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks when registration opens in Ottawa, a city the facts do not name (they cover Markham only), so this is about registering but outside what the facts cover.",
+    "reading": "other"
+  },
+  "latencyMs": 1398,
+  "usage": {
+    "input_tokens": 99,
+    "output_tokens": 67,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

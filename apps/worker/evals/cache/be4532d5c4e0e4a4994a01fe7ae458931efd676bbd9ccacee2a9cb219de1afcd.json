@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Parent asks someone to pick up her child from skating at 4 because she is running late at work; this is a pickup request, not a question about registration.",
+    "reading": "other"
+  },
+  "latencyMs": 1136,
+  "usage": {
+    "input_tokens": 116,
+    "output_tokens": 59,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

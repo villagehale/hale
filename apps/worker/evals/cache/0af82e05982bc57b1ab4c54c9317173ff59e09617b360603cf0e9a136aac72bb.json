@@ -1,0 +1,123 @@
+{
+  "stopReason": "end_turn",
+  "content": [
+    {
+      "type": "server_tool_use"
+    },
+    {
+      "type": "server_tool_use"
+    },
+    {
+      "type": "web_search_tool_result",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/news/2026-08-13-city-winnipegs-fallwinter-leisure-guide-now-available",
+          "title": "City of Winnipeg’s Fall/Winter Leisure Guide now available"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/recreation-leisure/recreation-programs",
+          "title": "Recreation programs"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://chvnradio.com/articles/registration-dates-announced-for-winnipeg-fall-and-winter-recreation-programs",
+          "title": "Registration dates announced for Winnipeg fall and winter recreation programs - CHVNRadio: Southern Manitoba's hub for local and Christian news, and adult contemporary Christian programming."
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/recreation-leisure/recreation-programs/leisure-guide/plan-registration-day",
+          "title": "Plan for registration day"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://classic107.com/articles/fall-and-winter-leisure-guide-now-available",
+          "title": "Fall and winter leisure guide now available - Classic107: Winnipeg's only dedicated classical and jazz radio station."
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/recreation-leisure/recreation-programs/skating-lessons",
+          "title": "Skating lessons"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://anc.ca.apm.activecommunities.com/leisureonline/home?onlineSiteId=0&from_original_cui=true&locale=en-US",
+          "title": "Home"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/media/6283",
+          "title": "Recreation Subsidies in Winnipeg"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://winnipeg.epubs.flippagepublishing.com/publication/?i=868183&p=3&view=issueViewer",
+          "title": "City of Winnipeg • Leisure Guide"
+        }
+      ]
+    },
+    {
+      "type": "web_search_tool_result",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/news/2023-12-07-city-winnipegs-winter-leisure-guide-now-available",
+          "title": "City of Winnipeg’s Winter Leisure Guide now available"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/news/2026-08-13-city-winnipegs-fallwinter-leisure-guide-now-available",
+          "title": "City of Winnipeg’s Fall/Winter Leisure Guide now available"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/news/2025-08-14-city-winnipegs-fallwinter-leisure-guide-now-available",
+          "title": "City of Winnipeg’s Fall/Winter Leisure Guide now available"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.winnipeg.ca/news/2025-12-04-winter-leisure-guide-swimming-and-skating-brochures-now-available",
+          "title": "Winter Leisure Guide Swimming and Skating brochures now available"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://x.com/cityofwinnipeg/status/2087917212157751407",
+          "title": "City of Winnipeg on X: \"Start planning your fall and winter activities. The Fall/Winter Leisure Guide, and Fall Leisure Guide Swimming and Skating brochures are now available online. Registration begins Tuesday, August 25 at 8 a.m. Visit: https://t.co/wLUwwK8qpl\" / X"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://classic107.com/articles/fall-and-winter-leisure-guide-now-available",
+          "title": "Fall and winter leisure guide now available - Classic107: Winnipeg's only dedicated classical and jazz radio station."
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://chvnradio.com/articles/registration-dates-announced-for-winnipeg-fall-and-winter-recreation-programs",
+          "title": "Registration dates announced for Winnipeg fall and winter recreation programs - CHVNRadio: Southern Manitoba's hub for local and Christian news, and adult contemporary Christian programming."
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://orlikow.ca/2025/08/city-of-winnipegs-fall-winter-leisure-guide-now-available/",
+          "title": "City of Winnipeg’s Fall/Winter Leisure Guide now available -"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://accesswinnipeg.com/2024/08/fall-2024-winter-2025-leisure-guide-registration-now-open/",
+          "title": "Fall 2024/Winter 2025 Leisure Guide Registration Now Open"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://en.wikipedia.org/wiki/Festival_du_Voyageur",
+          "title": "Festival du Voyageur"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "text": "```json\n{\n  \"municipality\": \"City of Winnipeg\",\n  \"pages\": [\n    \"https://www.winnipeg.ca/news/2026-08-13-city-winnipegs-fallwinter-leisure-guide-now-available\",\n    \"https://www.winnipeg.ca/recreation-leisure/recreation-programs/leisure-guide/plan-registration-day\",\n    \"https://www.winnipeg.ca/recreation-leisure/recreation-programs\"\n  ],\n  \"note\": null\n}\n```"
+    }
+  ],
+  "searches": 2,
+  "latencyMs": 4426,
+  "recordedAt": "2026-11-12T20:00:00.000Z"
+}

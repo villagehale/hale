@@ -3,26 +3,38 @@ import { recMorningReply } from './copy';
 import type { RecMorningWhere } from './match';
 import { REC_MORNING_READ_TOOL_SCHEMA, acceptRecMorningReading } from './read';
 
-describe('the rec-morning-read eval reads only turns the word test passes', () => {
-  it('every fixture reaches the reader in production, on both paths', async () => {
+describe('the rec-morning-read eval reads only turns that reach the reader in production', () => {
+  it('every fixture reaches the reader, on the group, 1:1 and signup paths', async () => {
     const path = '../../../../worker/evals/rec-morning-read-fixtures.mjs';
     const {
       REC_MORNING_READ_FIXTURES: fixtures,
       REC_MORNING_READ_NOW: now,
       REC_MORNING_READ_WHERE: where,
     } = (await import(/* @vite-ignore */ path)) as {
-      REC_MORNING_READ_FIXTURES: Array<{ id: string; path: string; text: string; expect: string }>;
+      REC_MORNING_READ_FIXTURES: Array<{
+        id: string;
+        path: string;
+        text: string;
+        facts?: string;
+        expect: string;
+      }>;
       REC_MORNING_READ_NOW: string;
       REC_MORNING_READ_WHERE: RecMorningWhere;
     };
     expect(fixtures.length).toBeGreaterThanOrEqual(10);
     for (const fixture of fixtures) {
-      expect(recMorningReply(fixture.text, new Date(now), where), fixture.id).not.toBeNull();
+      // A signup fixture is read against its town's own opening (VIL-684), which the
+      // signup door hands the reader for any program-dates question; every other one
+      // passes the word test first.
+      if (fixture.path === 'intake') expect(fixture.facts, fixture.id).toBeTruthy();
+      else expect(recMorningReply(fixture.text, new Date(now), where), fixture.id).not.toBeNull();
     }
     expect(new Set(fixtures.map((fixture) => fixture.expect))).toEqual(
       new Set(['answers', 'other']),
     );
-    expect(new Set(fixtures.map((fixture) => fixture.path))).toEqual(new Set(['group', 'direct']));
+    expect(new Set(fixtures.map((fixture) => fixture.path))).toEqual(
+      new Set(['group', 'direct', 'intake']),
+    );
   });
 });
 

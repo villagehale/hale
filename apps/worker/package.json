@@ -137,6 +137,8 @@
     "eval:registration-verify": "node evals/run-registration-verify-eval.mjs --cached-only",
     "eval:registration-date-unconfirmed": "node evals/run-registration-date-unconfirmed-eval.mjs --cached-only",
     "eval:registration-date-moved": "node evals/run-registration-date-moved-eval.mjs --cached-only",
+    "eval:city-registration": "node evals/run-city-registration-eval.mjs --cached-only",
+    "eval:city-registration:broken": "node evals/run-city-registration-eval.mjs --broken",
     "eval:spot-open-voice": "node evals/run-spot-open-voice-eval.mjs --cached-only",
     "eval:class-availability": "node evals/run-class-availability-eval.mjs --cached-only",
     "eval:travel-extract": "node evals/run-travel-extract-eval.mjs --cached-only",

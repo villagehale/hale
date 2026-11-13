@@ -180,7 +180,12 @@ describe('a PDF source, and failed reads that never fall back', () => {
     ['an unreadable PDF', Buffer.from('%PDF-1.4 broken'), 'pdf_unreadable'],
     ['a PDF with no text', registrationPdfFixture(['']), 'pdf_no_text'],
     ['a redirect', { outcome: 'redirected', location: 'https://example.net/queue' }, 'redirected'],
-    ['a refused status', { outcome: 'refused', reason: 'http_status', status: 503 }, 'http_status'],
+    ['a refused status', { outcome: 'refused', reason: 'http_status', status: 404 }, 'http_status'],
+    [
+      'a server error, which says nothing about the page',
+      { outcome: 'refused', reason: 'http_status', status: 503 },
+      'http_server_error',
+    ],
     ['an oversized page', { outcome: 'refused', reason: 'too_large' }, 'too_large'],
     ['a timeout', { outcome: 'failed', reason: 'timeout' }, 'timeout'],
     ['a network error', { outcome: 'failed', reason: 'network_error' }, 'network_error'],
@@ -196,6 +201,26 @@ describe('a PDF source, and failed reads that never fall back', () => {
     expect(reading).not.toHaveProperty('dates');
     expect(await readRegistrationWindows([stored], reader, NOW, null)).toEqual([]);
     expect(p.extract).not.toHaveBeenCalled();
+  });
+});
+
+describe('a page with no words on it', () => {
+  it('is unreadable, and never reaches the model (a bot challenge is not "not published")', async () => {
+    // ottawa.ca to the pinned fetcher, 2026-11-12: a 200 with an Incapsula challenge.
+    const challenge = Buffer.from(
+      '<html>\r\n<head>\r\n<META NAME="robots" CONTENT="noindex,nofollow">\r\n<script src="/_Incapsula_Resource?SWJIYLWA=5074a744">\r\n</script>\r\n<body>\r\n</body></html>\r\n',
+    );
+    const p = ports(challenge, async () => {
+      throw new Error('an empty page must not reach the model');
+    });
+    const window = registrationWindowFixture({ cycleLabel: 'Winter 2027' });
+    const reading = await createRegistrationReader(p)(windowReadTarget(window), NOW);
+    expect(reading).toMatchObject({ status: 'unreadable', reason: 'empty_page' });
+    expect(p.extract).not.toHaveBeenCalled();
+    // Positive control: a page with words on it is read.
+    const words = ports(html(PAGE));
+    await createRegistrationReader(words)(windowReadTarget(window), NOW);
+    expect(words.extract).toHaveBeenCalledTimes(1);
   });
 });
 

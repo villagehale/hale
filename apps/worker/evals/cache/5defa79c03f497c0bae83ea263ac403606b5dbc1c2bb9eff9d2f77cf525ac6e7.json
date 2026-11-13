@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent is sharing that the child enjoyed camp today and wants to go back tomorrow, which is a note about how a class went, not a question about registration.",
+    "reading": "other"
+  },
+  "latencyMs": 1310,
+  "usage": {
+    "input_tokens": 116,
+    "output_tokens": 64,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

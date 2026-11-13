@@ -58,9 +58,12 @@ import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
+import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
+import { REGISTRATION_OPENING_KIND } from '~/lib/registration/city/context';
+import { ownCityRegistrationEnabled } from '~/lib/registration/city/flag';
 import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
 import { applyCandidateAfterSend, payloadOf } from './after-send';
 import { type WriterResult, composeProactiveBatch } from './compose';
@@ -81,7 +84,7 @@ import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
-import { isVerbatimKind } from './verbatim';
+import { FLORIDA_OKLAHOMA_QUIET_START } from './quiet';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -89,6 +92,7 @@ import {
   loadFamilySnapshot,
 } from './snapshot';
 import { type ToolCandidate, boundedLine } from './tools';
+import { isVerbatimKind } from './verbatim';
 import { volumeIsUnusual } from './volume';
 
 /**
@@ -417,6 +421,11 @@ async function loadOpenItems(
       summary.parentNotInFamily += 1;
       continue;
     }
+    if (laneSwitchedOff(row.kind)) {
+      // Its lane's kill switch is off: the row is left as it is, neither offered nor
+      // settled, and the next review after the switch is back on takes it up.
+      continue;
+    }
     if (!isProactiveSendKind(row.kind)) {
       // The gate has no class for it, so no send of it can be gated: never offered.
       await mark(database, familyId, [row.id], {
@@ -480,14 +489,20 @@ async function loadOpenItems(
 
 /**
  * Kinds with no sweep of their own left to send them: the evening check-in, the VIL-393
- * mid-activity ask and the VIL-681 next-day check-back. They are reviewed live even while
- * the cadence flag is off.
+ * mid-activity ask, the VIL-681 next-day check-back and the VIL-684 own-city
+ * registration opening. They are reviewed live even while the cadence flag is off.
  */
 const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
   'evening_check_in',
   'mid_activity_ask',
   'next_day_checkback',
+  'registration_opening',
 ];
+
+/** A kind whose own lane has a kill switch, and it is off. */
+function laneSwitchedOff(kind: string): boolean {
+  return kind === REGISTRATION_OPENING_KIND && !ownCityRegistrationEnabled();
+}
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);
@@ -507,30 +522,73 @@ async function seatedParents(database: Database, familyId: string): Promise<Set<
   return new Set(rows.map((row) => row.userId));
 }
 
+/** The review runs once an hour (vercel.json): a row held to an instant wakes at the first
+ * review at or after it, up to this much later. */
+const REVIEW_INTERVAL_MS = 60 * 60_000;
+
+/** The quiet window as the earliest any number starts it (a Florida or Oklahoma line's
+ * 20:00, quiet.ts): a hold is for a family, not one number, so it wakes inside every
+ * parent's day. */
+const EARLIEST_QUIET = { start: FLORIDA_OKLAHOMA_QUIET_START, end: PROACTIVE_QUIET_HOURS.end };
+
+function inEarliestQuiet(at: Date, timeZone: string): boolean {
+  return isWithinQuietHours(at, timeZone, EARLIEST_QUIET.start, EARLIEST_QUIET.end);
+}
+
+/** The most recent start of that quiet window at or before `at`, in this zone. */
+function quietStartBefore(at: Date, timeZone: string): Date {
+  const today = dayKeyOf(at, timeZone);
+  const start = zonedLocalInstant(today, EARLIEST_QUIET.start, timeZone);
+  if (start.getTime() <= at.getTime()) return start;
+  return zonedLocalInstant(addDaysToKey(today, -1), EARLIEST_QUIET.start, timeZone);
+}
+
 /**
- * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
- * items the row would sit in the waiting set (hold.ts), where no signal reopens it. With
- * no `worthlessAfter` at all, a hold never reaches past the days the decider could see
+ * The last moment a held item may wake and still be sent before `worthlessAfter`: the
+ * review it wakes at must come before that instant and outside the quiet hours of any
+ * number. A tell whose value ends at 6:30 a.m. wakes by 19:00 the evening before, never
+ * at 6:30, when the next review could only drop it as expired.
+ */
+export function lastSendBefore(worthlessAfter: Date, timeZone: string): Date {
+  const before = (ms: number) => new Date(worthlessAfter.getTime() - ms);
+  const quietInReach =
+    inEarliestQuiet(before(REVIEW_INTERVAL_MS), timeZone) || inEarliestQuiet(before(1), timeZone);
+  const edge = quietInReach ? quietStartBefore(before(1), timeZone) : worthlessAfter;
+  return new Date(edge.getTime() - REVIEW_INTERVAL_MS);
+}
+
+/**
+ * A hold never outlives what it holds. Past the last moment the chosen items can still be
+ * sent (lastSendBefore) the row would wake only to expire, or sit in the waiting set
+ * (hold.ts), where no signal reopens it. When that moment has already gone, nothing can
+ * send it later and the hold is `no_time_left`: the caller drops it by name. And whatever
+ * the items' windows, a hold never reaches past the days the decider could see
  * (`SNAPSHOT_DAYS`), so a far-off clock cannot park the row out of every review.
  */
 function clampHold(
   holdUntil: string | null,
   items: readonly QueuedItem[],
   now: Date,
-): { holdUntil: string | null; clamped: 'worthless_after' | 'snapshot_window' | null } {
+  timeZone: string,
+): {
+  holdUntil: string | null;
+  clamped: 'worthless_after' | 'snapshot_window' | 'no_time_left' | null;
+} {
   if (holdUntil === null) return { holdUntil, clamped: null };
   const bounds = items
     .map((item) => item.worthlessAfter)
     .filter((at): at is string => at !== null)
-    .sort((a, b) => Date.parse(a) - Date.parse(b));
+    .map((at) => lastSendBefore(new Date(at), timeZone).getTime())
+    .sort((a, b) => a - b);
   const earliest = bounds[0];
-  if (earliest === undefined) {
-    const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
-    if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
-    return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
+  const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
+  if (earliest !== undefined && earliest <= edge.getTime()) {
+    if (Date.parse(holdUntil) <= earliest) return { holdUntil, clamped: null };
+    if (earliest <= now.getTime()) return { holdUntil: null, clamped: 'no_time_left' };
+    return { holdUntil: new Date(earliest).toISOString(), clamped: 'worthless_after' };
   }
-  if (Date.parse(holdUntil) <= Date.parse(earliest)) return { holdUntil, clamped: null };
-  return { holdUntil: earliest, clamped: 'worthless_after' };
+  if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
+  return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
 }
 
 async function audit(
@@ -557,6 +615,7 @@ type SettledReason =
   | 'already_sent'
   | 'already_asked'
   | 'requested_drop_after_parent_text'
+  | 'hold_past_last_send'
   | OpenAskClosedReason;
 
 /**
@@ -907,7 +966,7 @@ async function reviewFamily(
 
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
-  const hold = clampHold(decision.holdUntil, chosen, now);
+  const hold = clampHold(decision.holdUntil, chosen, now, context.timeZone);
   const cadence = keptCadence(decision, mode, textAuthors, snapshot.parentTextsWithheld);
   // The decision row is where a cadence preference is kept (preference.ts), and the
   // reason it was not, by name. It also says whose texts it read (snapshot.ts), how many
@@ -985,6 +1044,23 @@ async function reviewFamily(
       now,
     });
     summary.dropped += 1;
+    return;
+  }
+  if (decision.action === 'hold' && hold.clamped === 'no_time_left') {
+    // Held past the last moment it could still be sent: no later review can send it, so it
+    // is settled now under its own name rather than left to expire.
+    await mark(database, familyId, ids, {
+      status: 'dropped',
+      reason: 'hold_past_last_send',
+      decision: 'hold',
+      holdUntil: null,
+      now,
+    });
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: 'hold_past_last_send',
+      itemIds: ids,
+      mode,
+    });
     return;
   }
   if (decision.action === 'hold') {

@@ -1,0 +1,65 @@
+{
+  "stopReason": "end_turn",
+  "content": [
+    {
+      "type": "server_tool_use"
+    },
+    {
+      "type": "web_search_tool_result",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://ca.nextdoor.com/city/post/52776564077399/",
+          "title": "Enjoy the winter in Markham by registering for our recreation programs and swim lessons!"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.markhampanamcentre.ca/sports-recreation-fitness/sports-recreation-programs/outdoor-programs",
+          "title": "Outdoor Programs"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information",
+          "title": "Registration and General Information"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.markham.ca/about-city-markham/markham-now/markham-now-november-9-2023",
+          "title": "Markham Now (November 9, 2023)"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/public-skating-lessons-hockey",
+          "title": "Public Skating, Lessons & Hockey"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://prodd.markham.ca/sports-recreation-fitness/sports-recreation-programs",
+          "title": "Sports & Recreation Programs"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/programs",
+          "title": "Programs"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://prodd.markham.ca/sports-recreation-fitness/sports-recreation-programs/programs",
+          "title": "Programs"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://en.wikipedia.org/wiki/Cornell_Community_Centre_%26_Library",
+          "title": "Cornell Community Centre %26 Library"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "text": "{\"municipality\":\"City of Markham\",\"pages\":[\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information\",\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/programs\"],\"note\":null}"
+    }
+  ],
+  "searches": 1,
+  "latencyMs": 3282,
+  "recordedAt": "2026-11-12T20:00:00.000Z"
+}

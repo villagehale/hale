@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Parent asks Hale to loop in Sam about Saturday's swim pickup, which is a logistics message, not a question about registration.",
+    "reading": "other"
+  },
+  "latencyMs": 1725,
+  "usage": {
+    "input_tokens": 120,
+    "output_tokens": 58,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -423,6 +423,12 @@ jobs:
       - name: Registration date-moved text eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-date-moved
 
+      - name: Own-city registration lookup eval (cached-only)
+        run: pnpm --filter @hale/worker eval:city-registration
+
+      - name: Own-city registration lookup eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:city-registration:broken
+
       - name: Spot-opened text eval (cached-only)
         run: pnpm --filter @hale/worker eval:spot-open-voice
 

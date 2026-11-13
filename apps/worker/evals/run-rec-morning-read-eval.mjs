@@ -8,7 +8,8 @@
 // One forced call per fixture, max 256 tokens, Haiku (`task: screen`). The request shape,
 // schema and accept are imported from apps/web/lib/channel/rec-morning/read.ts, and the
 // facts are the production word test's own output at a fixed clock, so the eval cannot
-// drift from production.
+// drift from production. VIL-684's intake cases hand the own town's opening line instead
+// (a fixture's `facts`), the facts the signup door reads a program-dates question against.
 //
 // Usage (from apps/worker):
 //   node evals/run-rec-morning-read-eval.mjs --preflight
@@ -74,11 +75,9 @@ async function main() {
   const cost = makeCost();
   const failures = [];
   for (const fixture of fixtures) {
-    const facts = copy.recMorningReply(
-      fixture.text,
-      new Date(REC_MORNING_READ_NOW),
-      REC_MORNING_READ_WHERE,
-    );
+    const facts =
+      fixture.facts ??
+      copy.recMorningReply(fixture.text, new Date(REC_MORNING_READ_NOW), REC_MORNING_READ_WHERE);
     if (facts === null) throw new Error(`${fixture.id}: the word test offers no facts`);
     const call = await cachedToolCall({
       tag: `rec-morning-read:${reader.REC_MORNING_READ_MAX_TOKENS}:${fixture.id}`,

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks when swim registration opens, which the facts cover: Fall 2026 already opened Sep 15 and Winter 2027 dates are not posted yet.",
+    "reading": "answers"
+  },
+  "latencyMs": 1627,
+  "usage": {
+    "input_tokens": 107,
+    "output_tokens": 71,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

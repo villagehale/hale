@@ -557,7 +557,7 @@
   },
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",
-    "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
+    "sha256": "f6aaa8a0483eb115105fd1cf337cde5a81d74c1ef01492210af844003650542f"
   },
   "registration-date-moved.md": {
     "file": "registration-date-moved.md",
@@ -582,6 +582,10 @@
   "registration-note.md": {
     "file": "registration-note.md",
     "sha256": "cff18881826efd412bbfcf53b1f79956a55abd29297288468ae6e7175bb89117"
+  },
+  "registration-page-search.md": {
+    "file": "registration-page-search.md",
+    "sha256": "44b087615dd030d08c812fba71604ef7056c4515744c4e0c1aaaee85fd97f2ef"
   },
   "registration-text-check.md": {
     "file": "registration-text-check.md",

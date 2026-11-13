@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks to loop in Sam about swim pickup and also asks when winter swim registration opens, which the facts address (Winter 2027 dates not posted yet).",
+    "reading": "answers"
+  },
+  "latencyMs": 1278,
+  "usage": {
+    "input_tokens": 124,
+    "output_tokens": 71,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

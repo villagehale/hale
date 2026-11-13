@@ -13,6 +13,11 @@ export const REC_MORNING_READ_WHERE = {
   timeZone: 'America/Toronto',
 };
 
+/** VIL-684 · a town's own opening, as the family is told it (city/context.ts `line`): the
+ * facts a mid-signup program-dates question is read against. */
+const OWN_TOWN_LINE =
+  'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. for Markham residents; everyone else Dec 2, 6:30 a.m.';
+
 export const REC_MORNING_READ_FIXTURES = [
   {
     id: 'group-loop-in-swim-pickup',
@@ -73,5 +78,49 @@ export const REC_MORNING_READ_FIXTURES = [
     path: 'direct',
     text: 'is efun still a thing?',
     expect: 'answers',
+  },
+  // VIL-684 · mid-signup, a program-dates question read against the own town's opening.
+  // Only a question about that opening is answered from it; any other is searched.
+  {
+    id: 'intake-own-town-winter-open',
+    path: 'intake',
+    text: 'when does winter rec registration open?',
+    facts: OWN_TOWN_LINE,
+    expect: 'answers',
+  },
+  {
+    id: 'intake-own-town-my-town',
+    path: 'intake',
+    text: 'when do winter programs open for sign up in my town?',
+    facts: OWN_TOWN_LINE,
+    expect: 'answers',
+  },
+  {
+    id: 'intake-own-town-other-town',
+    path: 'intake',
+    text: 'my sister is in Ottawa, when does registration open there?',
+    facts: OWN_TOWN_LINE,
+    expect: 'other',
+  },
+  {
+    id: 'intake-own-town-summer-camp',
+    path: 'intake',
+    text: 'when does summer camp registration open?',
+    facts: OWN_TOWN_LINE,
+    expect: 'other',
+  },
+  {
+    id: 'intake-own-town-private-club',
+    path: 'intake',
+    text: 'when does Markham Skating Club registration open?',
+    facts: OWN_TOWN_LINE,
+    expect: 'other',
+  },
+  {
+    id: 'intake-own-town-closes',
+    path: 'intake',
+    text: 'when does winter registration close?',
+    facts: OWN_TOWN_LINE,
+    expect: 'other',
   },
 ];

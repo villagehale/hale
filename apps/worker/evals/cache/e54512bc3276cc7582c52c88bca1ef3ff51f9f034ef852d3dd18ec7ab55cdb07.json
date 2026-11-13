@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks Hale to tell Sam that they cannot make Saturday's swim pickup, which is a pickup logistics message, not a question about registration.",
+    "reading": "other"
+  },
+  "latencyMs": 1462,
+  "usage": {
+    "input_tokens": 129,
+    "output_tokens": 66,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 816
+  }
+}

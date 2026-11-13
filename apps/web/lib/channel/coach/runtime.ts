@@ -275,7 +275,11 @@ export interface ChannelCoachPorts {
   /** The municipal registration windows this family can still act on, and whether the
    * ladder is armed for them — Hale's flagship job, made visible to a turn that is
    * being asked about it (see registration-context.ts). */
-  loadRegistrationWindows(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
+  loadRegistrationWindows(
+    familyId: string,
+    parentUserId: string,
+    now: Date,
+  ): Promise<RegistrationWindowContext[]>;
   /** Where the family is for the health line (VIL-589): a 1:1 turn's `helpLines` are
    * `healthLineFacts` of it, so 811 reaches only a family placed where 811 is a health
    * line. Required: a coach that cannot place a family must say so with null. */
@@ -487,7 +491,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ports.loadSkill(turn.parentUserId, turn.familyId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
-        ports.loadRegistrationWindows(turn.familyId, now),
+        ports.loadRegistrationWindows(turn.familyId, turn.parentUserId, now),
         ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
         ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
         // A group reply goes to everyone in it, so the province a health line names is not
@@ -1186,10 +1190,11 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         );
         return [];
       }),
-    loadRegistrationWindows: (familyId, now) =>
+    loadRegistrationWindows: (familyId, parentUserId, now) =>
       loadRegistrationWindows(
         productionRegistrationContextPorts(database),
         familyId,
+        parentUserId,
         DEFAULT_TIMEZONE,
         now,
       ),
