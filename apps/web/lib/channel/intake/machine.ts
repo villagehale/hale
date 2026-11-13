@@ -59,7 +59,11 @@ import {
   sharedSecretSantaLineWriter,
 } from '~/lib/channel/linq/secret-santa';
 import { answerGuestDraws, owedGuestDraws } from '~/lib/channel/linq/secret-santa-send';
-import { GARBLED_TEXT, type LinqChatService } from '~/lib/channel/linq/transport';
+import {
+  GARBLED_TEXT,
+  type LinqChatService,
+  refuseGarbledText,
+} from '~/lib/channel/linq/transport';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
   plainTextWithoutLinks,
@@ -959,6 +963,21 @@ async function sendMapBubbles(
   transcript: TranscriptEntry[],
 ): Promise<'delivered' | 'send_failed'> {
   const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  // VIL-683 · every bubble is checked before the first goes: a garbled one leaves the whole
+  // map owed, so the parent never has the bubbles before it.
+  try {
+    for (const bubble of toSend) refuseGarbledText(bubble);
+  } catch (err) {
+    if (!isGarbledRefusal(err)) throw err;
+    if (ctx.session.familyId) {
+      await recordGarbledRefusal(database, { familyId: ctx.session.familyId, surface: 'intake' });
+    }
+    console.error(
+      { reason: 'map_send_failed', err: GARBLED_TEXT, landed: 0, bubbles: toSend.length },
+      'intake: activity map not delivered, still owed',
+    );
+    return 'send_failed';
+  }
   // VIL-682 K5 · lit, on a chat Linq said is iMessage each bubble after the first waits
   // the bubble gap, none past the moment Linq stops waiting for this webhook.
   const familyId = ctx.session.familyId;
@@ -4010,6 +4029,9 @@ async function restartFromReader(
   try {
     sent = await sendResolvingNewChat(deps.transport, { to: args.phoneE164, body });
   } catch (error) {
+    // VIL-683 · the send seam refused a garbled confirmation: no provider refused anything,
+    // the words never went. Re-enrolled, nothing sent, as for a withheld one.
+    if (isGarbledRefusal(error)) return { status: 'restarted', ack: 'voice_unsent' };
     // VIL-348: an opt-out list that still holds this number refuses the confirmation
     // permanently (21610) although Hale has re-enrolled them. Named, never a 500 that
     // would only retry identically after the consent write. A transient failure throws.
@@ -4138,6 +4160,9 @@ export async function handleStop(
     // would fail the one message we are legally required to get right. A TRANSIENT
     // failure is still a failure: it throws, and the retry finds the session closed and
     // sends the ack again.
+    // VIL-683 · a garbled confirmation the send seam refused reached nobody, not even by
+    // the carrier: the stop is recorded and the outcome says nothing went.
+    if (isGarbledRefusal(error)) return { status: 'stopped', ack: 'voice_unsent' };
     const refusal = readSendRefusal(error);
     if (!refusal?.permanent) throw error;
   }

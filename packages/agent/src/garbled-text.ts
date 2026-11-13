@@ -18,11 +18,19 @@
  *
  * A run of three or more outside a Latin word ("â€”" between spaces, Arabic read as
  * windows-1252) counts when it reads back in windows-1252 or windows-1250, and so does a
- * two-character one that reads back as a Latin letter ("Ã" and a no-break space for "à").
- * windows-874 is left out of that case, because it is Thai: a Thai word such as "เขต" also
- * reads back as UTF-8. A run glued to the end of a Latin word that is one letter and then
- * only punctuation or a no-break space is an accented word before its closing marks
- * ("café…”", "fermé »"), not a run outside the word.
+ * two-character one that reads back as a Latin letter or sign. Only those two pages,
+ * because a word in another page's own script can read back as UTF-8 too: Thai "เขต" and
+ * "รถ" in windows-874, Russian "Её" in windows-1251. In every page, a run outside a word
+ * counts when it reads back as punctuation ("โ€”", a dash in windows-874), and so does a
+ * letter and a no-break space that read back as a Latin letter ("Γ " for "à" in
+ * ISO-8859-7). A run glued to the end of a Latin word that is one letter and then only
+ * punctuation, currency or a no-break space is an accented word before its closing marks
+ * ("café…”", "fermé »", "café €"), not a run outside the word.
+ *
+ * A broken character can sit against an honest one in the same run ("cafÃ©…", "GrüÃŸe"):
+ * the whole run is not UTF-8, but the part at its end does read back. So each part of a
+ * run that starts or ends it is read too, and counts when it reads back as a character a
+ * writer means there (never by the looser three-character rule).
  */
 
 const DECODED_PAGES = [
@@ -87,15 +95,38 @@ const CODE_PAGES: readonly CodePage[] = [
 ];
 
 const NEVER_MEANT = /\uFFFD|[\uD800-\uDFFF]|(?![\t\n\r])\p{Cc}/u;
-// A no-break space joins a run: "à" read back in windows-1252 is "Ã" and one.
-const RUN = /(?:[^\p{ASCII}\s]|\u00A0){2,}/gu;
+// A run is two or more characters in a row that some page above gives a byte for. A
+// character no page gives (Chinese, an emoji) ends a run, so "â€”" glued to Chinese is
+// read on its own. A no-break space joins a run: "à" read back in windows-1252 is "Ã" and one.
+const PAGE_CHARS = new Set(CODE_PAGES.flatMap(({ bytes }) => [...bytes.keys()]));
+const RUN_CHAR = /[^\p{ASCII}\s]|\u00A0/u;
+
+function runsOf(text: string): { run: string; index: number }[] {
+  const runs: { run: string; index: number }[] = [];
+  let start = 0;
+  let chars: string[] = [];
+  let index = 0;
+  for (const char of [...text, '']) {
+    if (char !== '' && RUN_CHAR.test(char) && PAGE_CHARS.has(char)) {
+      if (chars.length === 0) start = index;
+      chars.push(char);
+    } else {
+      if (chars.length >= 2) runs.push({ run: chars.join(''), index: start });
+      chars = [];
+    }
+    index += char.length;
+  }
+  return runs;
+}
 const LATIN_LETTER = /[A-Za-z]/;
 /** Characters a writer means inside a Latin word: Latin letters a parent's language uses,
  * punctuation, currency, letterlike symbols, and emoji. */
 const MEANT_IN_WORD =
   /^(?:[\u00A0-\u017F\u01A0-\u01B0\u01CD-\u01DC\u0218-\u021B\u1E00-\u1EFF\u2000-\u206F\u20A0-\u20CF\u2100-\u214F]|\uFE0F|\p{Extended_Pictographic}|\p{Emoji_Modifier})+$/u;
 const LATIN_MEANT = /^[\u00A0-\u017F\u01A0-\u01B0\u01CD-\u01DC\u0218-\u021B\u1E00-\u1EFF]+$/u;
-const LETTER_THEN_PUNCTUATION = /^\p{L}[\p{P}\u00A0]+$/u;
+const LETTER_THEN_PUNCTUATION = /^\p{L}[\p{P}\p{Sc}\u00A0]+$/u;
+const PUNCTUATION = /^[\u2010-\u205E]+$/u;
+const LATIN_LETTER_MEANT = /^[\u00C0-\u00FF]$/u;
 
 function asUtf8(bytes: Uint8Array): string | null {
   try {
@@ -118,25 +149,43 @@ function brokenInWord(run: string): boolean {
   });
 }
 
-function brokenStandingAlone(run: string): boolean {
+function brokenStandingAlone(run: string, whole: boolean): boolean {
+  const length = [...run].length;
   return CODE_PAGES.some(({ label, bytes }) => {
-    if (!STANDALONE_PAGES.has(label)) return false;
     const decoded = readsBackAs(run, bytes);
     if (decoded === null) return false;
-    return [...run].length >= 3 || LATIN_MEANT.test(decoded);
+    if (PUNCTUATION.test(decoded)) return true;
+    if (length === 2 && run.endsWith('\u00A0') && LATIN_LETTER_MEANT.test(decoded)) return true;
+    if (!STANDALONE_PAGES.has(label)) return false;
+    return (whole && length >= 3) || LATIN_MEANT.test(decoded);
   });
+}
+
+/** The parts of a run, two characters or longer, that start it or end it. */
+function endParts(run: string, fromStart: boolean, fromEnd: boolean): string[] {
+  const chars = [...run];
+  const parts: string[] = [];
+  for (let length = chars.length - 1; length >= 2; length -= 1) {
+    if (fromStart) parts.push(chars.slice(0, length).join(''));
+    if (fromEnd) parts.push(chars.slice(chars.length - length).join(''));
+  }
+  return parts;
 }
 
 export function hasGarbledText(text: string): boolean {
   if (NEVER_MEANT.test(text)) return true;
-  for (const match of text.matchAll(RUN)) {
-    const run = match[0];
-    const before = text[match.index - 1] ?? '';
-    const after = text[match.index + run.length] ?? '';
-    const inWord = LATIN_LETTER.test(before) || LATIN_LETTER.test(after);
-    if (inWord && brokenInWord(run)) return true;
-    if (LATIN_LETTER.test(before) && LETTER_THEN_PUNCTUATION.test(run)) continue;
-    if (brokenStandingAlone(run)) return true;
+  for (const { run, index } of runsOf(text)) {
+    const latinBefore = LATIN_LETTER.test(text[index - 1] ?? '');
+    const latinAfter = LATIN_LETTER.test(text[index + run.length] ?? '');
+    if (
+      (latinBefore || latinAfter) &&
+      [run, ...endParts(run, latinBefore, latinAfter)].some(brokenInWord)
+    ) {
+      return true;
+    }
+    if (latinBefore && LETTER_THEN_PUNCTUATION.test(run)) continue;
+    if (brokenStandingAlone(run, true)) return true;
+    if (endParts(run, true, true).some((part) => brokenStandingAlone(part, false))) return true;
   }
   return false;
 }

@@ -1204,6 +1204,10 @@ describe('a garbled loop text sends nothing and is on the audit trail', () => {
       'a set of texts',
       { kind: 'sms', text: GARBLED, texts: [GARBLED, 'Swim is Saturday.'], modelWritten: true },
     ],
+    [
+      'a set of texts whose garbled one comes after a clean one',
+      { kind: 'sms', text: GARBLED, texts: ['Swim is Saturday.', GARBLED], modelWritten: true },
+    ],
   ] satisfies [string, RenderedContent][])('%s', async (_name, rendered) => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { fetchSpy, sms } = realSms();

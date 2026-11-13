@@ -10474,6 +10474,70 @@ describe('a garbled coach reply sends nothing', () => {
     expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
   });
 
+  /** The 1:1 iMessage chat door (sendLinqChatMessage) reads the global fetch. */
+  function chatDoor() {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async (url: string) =>
+      url.endsWith('/messages')
+        ? Response.json({ message: { id: `msg-${fetchSpy.mock.calls.length}` } }, { status: 201 })
+        : new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    const posted = () =>
+      fetchSpy.mock.calls.map(([url]) => url).filter((url) => url.endsWith('/messages'));
+    return { posted, transport: createReplyTransport({ phone: new FakeTransport() }) };
+  }
+
+  const CHAT: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+    service: 'iMessage',
+  };
+
+  it('an answer of several bubbles with a garbled one sends none of them, the clean first one included', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const turns = fakeTurnLedger();
+    const apology = fakeApology();
+    const door = chatDoor();
+    const h = harness({
+      coach: fakeCoach(`Bonne nouvelle !\n${GARBLED}`),
+      turns,
+      apology,
+      context: { body: 'what is on saturday', reply: CHAT },
+    });
+    h.deps.transport = door.transport;
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_failed');
+    expect(door.posted()).toEqual([]);
+    expect(apology.calls).toBe(0);
+    expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
+    expect(turns.deferred).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('the same answer of several bubbles spelled right sends each of them (positive control)', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const door = chatDoor();
+    const h = harness({
+      coach: fakeCoach('Bonne nouvelle !\nNatation préscolaire sam. 9h00'),
+      context: { body: 'what is on saturday', reply: CHAT },
+    });
+    h.deps.transport = door.transport;
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(door.posted()).toHaveLength(2);
+    vi.unstubAllGlobals();
+  });
+
   it('an honest French reply goes out through the same door (positive control)', async () => {
     const door = realDoor();
     const h = harness({ coach: fakeCoach('Natation préscolaire samedi à 9 h.') });

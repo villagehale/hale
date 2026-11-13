@@ -16,7 +16,10 @@ export function isGarbledRefusal(err: unknown): err is LinqSendError {
  */
 export async function recordGarbledRefusal(
   database: Database,
-  input: { familyId: string; surface: 'intake' | 'family_outbound' },
+  input: {
+    familyId: string;
+    surface: 'intake' | 'family_outbound' | 'one_to_one' | 'group_reminder';
+  },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,

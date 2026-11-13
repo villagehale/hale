@@ -3,6 +3,7 @@ import { noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
+import { isGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type BubbleGaps, readBubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
 import { GARBLED_TEXT, type LinqChatService } from '~/lib/channel/linq/transport';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
@@ -543,9 +544,14 @@ async function dispatchTexts(
     return { channel, outcome: 'suppressed_quiet_hours' };
   }
   const err = outcome.error;
-  if (!(err instanceof Refused)) throw err;
-  const refused = err.outcome;
-  const errorCode = refused.status === 'error' ? refused.code : refused.reason;
+  let errorCode: string;
+  if (isGarbledRefusal(err)) {
+    errorCode = err.code;
+  } else {
+    if (!(err instanceof Refused)) throw err;
+    const refused = err.outcome;
+    errorCode = refused.status === 'error' ? refused.code : refused.reason;
+  }
   const failedId = await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
   await auditIfGarbled(ports, msg, channel, errorCode, failedId);
   return { channel, outcome: 'failed', reason: errorCode, voice };

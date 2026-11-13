@@ -37,7 +37,7 @@ import {
   santaQuietNow,
 } from './secret-santa-send';
 import { fakeSharedGroupComposer } from './shared-group-voice-fake';
-import { LinqSendError } from './transport';
+import { LinqSendError, refuseGarbledText } from './transport';
 
 /**
  * VIL-686 over the REAL DDL and through the REAL group door (handleLinqGroupMessage), the
@@ -1050,6 +1050,45 @@ describe('distinct send outcomes', () => {
     expect((await participantOf(KEN))?.heldReason).toBe('line_unwritten');
     expect((await participantOf(MEI))?.deliveredAt).not.toBeNull();
     expect((await participantOf(ADA))?.deliveredAt).not.toBeNull();
+    await runSecretSantaSweep(db.database, clock, sweepPorts(w, l.writer));
+    expect((await participantOf(KEN))?.deliveredAt).not.toBeNull();
+  });
+});
+
+describe('a garbled giver line (VIL-683)', () => {
+  it('is a writer failure the sweep asks again, never a person Hale cannot reach', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await seedChat();
+    const w = wire();
+    await fiveDrawn(w);
+    // The send seam's own check (linq/transport.ts), as the real Linq door runs it.
+    const send = w.oneToOne.text;
+    w.oneToOne.text = async (input) => {
+      refuseGarbledText(input.body);
+      return send(input);
+    };
+    const l = lines();
+    const garbling: SecretSantaLineWriter = {
+      async write(request) {
+        const line = await l.writer.write(request);
+        return request.purpose === 'giver_draw' && request.facts.giver === 'Ken'
+          ? (line?.replace("You're", 'Youâ€™re') ?? null)
+          : line;
+      },
+    };
+
+    await runSecretSantaSweep(db.database, clock, sweepPorts(w, garbling));
+
+    expect((await participantOf(KEN))?.heldReason).toBe('line_unwritten');
+    expect((await participantOf(KEN))?.deliveredAt).toBeNull();
+    expect(w.direct.filter((m) => m.to === KEN)).toEqual([]);
+    expect((await participantOf(MEI))?.deliveredAt).not.toBeNull();
+    const trail = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog);
+    expect(trail.map((row) => row.actionTaken)).toContain('channel_text_garbled');
+    expect(trail.map((row) => row.after)).toContainEqual({ outcome: 'garbled_text' });
+
     await runSecretSantaSweep(db.database, clock, sweepPorts(w, l.writer));
     expect((await participantOf(KEN))?.deliveredAt).not.toBeNull();
   });

@@ -96,7 +96,7 @@ import {
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
-import { GARBLED_TEXT, LinqSendError } from '~/lib/channel/linq/transport';
+import { GARBLED_TEXT, LinqSendError, refuseGarbledText } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
   productionVoiceReplyDeps,
@@ -4247,6 +4247,9 @@ async function sendReplySet(
   },
 ): Promise<SentAnswer> {
   assertTurnLive();
+  // VIL-683 · every bubble is checked before any goes, a voice memo or an effect included,
+  // so a garbled bubble refuses the whole answer as a failure before the first send.
+  for (const body of args.bodies) refuseGarbledText(body);
   if (args.beforeSend) await args.beforeSend();
   const plain = args.stamps?.some((stamp) => stamp !== undefined) === true;
   const keys = args.bodies.map((_body, index) => textDedupeKey(args.setKey, index));

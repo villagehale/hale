@@ -20,6 +20,7 @@ import {
   retrieveLinqLocation,
   sendLinqChatMessage,
   sendLinqEffect,
+  sendLinqExperience,
   sendLinqParts,
   sendLinqPoll,
   setupLinqContactCard,
@@ -1527,6 +1528,19 @@ describe('a garbled text never reaches a parent', () => {
       'a reply turn',
       (f: typeof fetch) =>
         createLinqTextTransport({ chatId: CHAT, fetch: f }).send({ to: '', body: GARBLED }),
+    ],
+    [
+      'an experience card title',
+      (f: typeof fetch) =>
+        sendLinqExperience({
+          chatId: CHAT,
+          experience: {
+            name: 'link',
+            action: 'open',
+            params: { url: 'https://example.test/plan', title: GARBLED },
+          },
+          fetch: f,
+        }),
     ],
     [
       'a replacement character',

@@ -221,6 +221,56 @@ describe('Devin #982 finding 1: unsent map group on retry', () => {
   });
 });
 
+/** VIL-683 · a garbled bubble anywhere in the map stops the whole map before its first. */
+describe('a map with a garbled bubble sends none of it', () => {
+  function leads(story: string): FriendVoiceComposer {
+    const voice = scripted();
+    return {
+      async compose(input, options) {
+        const base = await voice.compose(input, options);
+        if (input.step !== 'find_show') return base;
+        return { ...base, groupLeads: [SWIM, story] };
+      },
+    };
+  }
+
+  it('the clean first bubble is not sent either; the map stays owed and the refusal is audited', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps } = harness();
+    deps.friendVoice = leads(STORY.replace(' - ', ' â€“ '));
+
+    const first = await handleInboundSms(fake.db, inbound(transport, 'Ada is 4, H0H 0H0'), deps);
+
+    expect(first).toMatchObject({ status: 'provisioned', mapOwed: 'send_failed' });
+    const { row } = await evidence(fake, transport);
+    expect(row.swimSent).toBe(false);
+    expect(row.storySent).toBe(false);
+    expect(row.findDelivered).toBe(false);
+    const garbled = fake.writes
+      .filter((w) => w.op === 'insert')
+      .map((w) => w.payload as Record<string, unknown>)
+      .filter((payload) => payload.actionTaken === 'channel_text_garbled');
+    expect(garbled).toEqual([
+      expect.objectContaining({
+        actor: 'system',
+        after: { surface: 'intake', reason: 'garbled_text' },
+      }),
+    ]);
+  });
+
+  it('the same map spelled right sends every bubble (positive control)', async () => {
+    const { fake, transport, deps } = harness();
+    deps.friendVoice = leads(STORY.replace(' - ', ' – '));
+
+    await handleInboundSms(fake.db, inbound(transport, 'Ada is 4, H0H 0H0'), deps);
+
+    const { row } = await evidence(fake, transport);
+    expect(row.swimSent).toBe(true);
+    expect(row.storySent).toBe(true);
+  });
+});
+
 describe('Devin #982 finding 2: stopAsking paired with a question', () => {
   async function atCalendarAsk() {
     const h = harness();

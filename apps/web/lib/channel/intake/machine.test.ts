@@ -1329,4 +1329,68 @@ describe('intake · a garbled reply sends nothing (VIL-683)', () => {
     expect(result).toEqual({ status: 'first_touch', step: 'place_asked' });
     expect(door.fetchSpy).toHaveBeenCalled();
   });
+
+  /** A keyword confirmation the send seam refuses as garbled went to nobody: the outcome
+   * says voice_unsent, never sent (what a carrier refusal means) or provider_refused. */
+  function confirming(intent: 'stop' | 'start', confirmation: string): IntakeDeps['optOutReader'] {
+    return {
+      read: async (input) =>
+        acceptOptOutReading(
+          { intent, verbatim: input.text, language: 'fr', confirmation },
+          input.text,
+        ),
+    };
+  }
+
+  it.each([
+    ['garbled', 'Câ€™est notÃ©, plus de messages.', 'voice_unsent', 0],
+    ['spelled right (positive control)', 'C’est noté, plus de messages.', 'sent', 1],
+  ] as const)('a STOP confirmation %s', async (name, confirmation, ack, posts) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    const door = linqDoor();
+
+    // Its own words per case: the text-read cache is shared.
+    const result = await text(fake, transport, deps, `arrête, stop case ${name}`, {
+      ...deps,
+      transport: door.transport,
+      optOutReader: confirming('stop', confirmation),
+    });
+
+    expect(result).toEqual({ status: 'stopped', ack });
+    expect(door.fetchSpy).toHaveBeenCalledTimes(posts);
+  });
+
+  it.each([
+    ['garbled', 'Rebonjour, câ€™est reparti.', 'voice_unsent', 0],
+    ['spelled right (positive control)', 'Rebonjour, c’est reparti.', 'sent', 1],
+  ] as const)('a START confirmation %s', async (name, confirmation, ack, posts) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fake, transport, deps } = harness({});
+    const familyId = '00000000-0000-4000-8000-0000000000f6';
+    const userId = '00000000-0000-4000-8000-0000000000u6';
+    await fake.db.insert(schema.parentChannels).values({
+      userId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+      revokedAt: NOW,
+    } as never);
+    await fake.db
+      .insert(schema.familyMembers)
+      .values({ familyId, userId, role: 'primary_parent' } as never);
+    const door = linqDoor();
+
+    const result = await text(fake, transport, deps, `reprends, start case ${name}`, {
+      ...deps,
+      transport: door.transport,
+      optOutReader: confirming('start', confirmation),
+    });
+
+    expect(result).toEqual({ status: 'restarted', ack });
+    expect(door.fetchSpy).toHaveBeenCalledTimes(posts);
+  });
 });
