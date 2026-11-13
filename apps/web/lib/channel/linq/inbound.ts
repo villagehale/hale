@@ -60,6 +60,15 @@ import {
   linqWebhookSecret,
 } from './config';
 import { type OneToOneSend, privateAsideOneToOne, resumeConnectLink } from './connect-link-1to1';
+import {
+  type SecretSantaLineWriter,
+  type SecretSantaTurnModel,
+  chatHasCollectingDraw,
+  secretSantaEnabled,
+  secretSantaRunsInChat,
+  sharedSecretSantaLineWriter,
+} from './secret-santa';
+import { releaseHeldDrawsForCustomer } from './secret-santa-send';
 import { recordLinqEditWebhook } from './edit';
 import { familySpeechLanguage } from './family-outbound';
 import {
@@ -257,6 +266,10 @@ export async function handleLinqInboundRequest(
     groupExperienceComposer?: GroupExperienceComposer;
     /** VIL-459 test seam. Production places a picked common time with the real invite sender. */
     commonTimePlan?: CommonTimePlanPorts;
+    /** VIL-686 test seam. Production reads a Secret Santa turn with the model. */
+    secretSantaTurn?: SecretSantaTurnModel;
+    /** VIL-686 test seam. Production writes every Secret Santa line with the model. */
+    secretSantaLine?: SecretSantaLineWriter;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -403,6 +416,27 @@ export async function handleLinqInboundRequest(
           outcome = await routeOneToOne(deps, message, answerBy);
         }
       }
+    }
+    // VIL-686: a customer's held Secret Santa draw goes as a reply to their own text, after
+    // their turn (a STOP in it has already revoked the channel, which then resolves to
+    // nobody). A miss is named and never fails the turn.
+    try {
+      const released = await releaseHeldDrawsForCustomer(
+        deps.database,
+        { phone: message.senderHandle, now: deps.now?.() ?? new Date() },
+        { writer: deps.secretSantaLine ?? sharedSecretSantaLineWriter(), oneToOne: deps.oneToOne },
+      );
+      if (released.outcomes.length > 0) {
+        deps.log.info(
+          { outcome: 'secret_santa_released', delivered: released.delivered },
+          'linq inbound: held secret santa draws released 1:1',
+        );
+      }
+    } catch (err) {
+      deps.log.error(
+        { outcome: 'secret_santa_release_failed', err: err instanceof Error ? err.name : 'unknown' },
+        'linq inbound: held secret santa draws not released',
+      );
     }
   } finally {
     try {
@@ -567,6 +601,8 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
     send: deps.sendGroupText,
     listHandles: deps.listChatHandles,
     composer: deps.sharedGroupVoice,
+    santaTurn: deps.secretSantaTurn,
+    santaLine: deps.secretSantaLine,
   };
 }
 
@@ -729,6 +765,7 @@ async function tryGroupPlanRsvpTurn(
       text: input.text,
       tapback: input.tapback,
       tapbackMessageId: input.tapbackMessageId,
+      secretSanta: await secretSantaRunsInChat(deps.database, input.chatId),
     },
   );
   if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
@@ -811,14 +848,23 @@ export function handleLinqGroupMessage(
 }
 
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  // VIL-686: while this chat's Secret Santa is collecting, "I'm in" and "count me out" are
+  // its words, so the RSVP door waits until the shared-group turn has read them. A row,
+  // not words, decides it.
+  const santaCollecting =
+    linqMultiFamilyGroupsEnabled() &&
+    secretSantaEnabled() &&
+    (await chatHasCollectingDraw(deps.database, message.chatId));
   // A plan ask in a multi-family chat must run before the shared-group reader,
   // or it is handed back as a question and falls into the mixed-family hold.
-  const rsvpFirst = await tryGroupPlanRsvpTurn(deps, {
-    chatId: message.chatId,
-    senderHandle: message.senderHandle,
-    text: message.text,
-    tapback: null,
-  });
+  const rsvpFirst = santaCollecting
+    ? null
+    : await tryGroupPlanRsvpTurn(deps, {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        tapback: null,
+      });
   if (rsvpFirst) return rsvpFirst;
 
   if (linqMultiFamilyGroupsEnabled()) {

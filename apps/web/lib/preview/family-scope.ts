@@ -90,6 +90,8 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own
     // Carpool and group-plan family sweeps, not yet scoped.
     'carpool-reminders': 'skip',
     'group-plan-rsvp-followups': 'skip',
+    // VIL-686 draws text givers 1:1 from a shared-chat sweep, not yet scoped.
+    'secret-santa': 'skip',
     'spend-alert': 'skip',
     'delete-sweep': 'skip',
     'attachment-sweep': 'skip',

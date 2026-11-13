@@ -369,6 +369,11 @@
     "version": null,
     "sha256": "9fbd622e31b7491cdce4a3d1cafacf5fbf6ef00bf9dca3b9c86d44c8746a1590"
   },
+  "judges/secret-santa": {
+    "name": "judges/secret-santa",
+    "version": null,
+    "sha256": "034a75bf16d7f3aff4b41541578dd7b8cc4bec972d59a522fea65d59bb436d50"
+  },
   "judges/shared-group-list-turn": {
     "name": "judges/shared-group-list-turn",
     "version": null,

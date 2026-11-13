@@ -46,6 +46,9 @@ const NOT_IN_FAMILY_EXPORT = [
   'tool_refused',
   // That one adult's own 1:1 ask went on the deep queue (VIL-682).
   'activity_deep_dispatched',
+  // VIL-686. That one adult was sent their Secret Santa draw, or told whose had not landed.
+  'linq_secret_santa_draw_sent',
+  'linq_secret_santa_noted',
 ] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {
