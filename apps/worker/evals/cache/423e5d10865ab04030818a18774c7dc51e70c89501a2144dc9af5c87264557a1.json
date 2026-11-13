@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30这个班,我没能登进你在这个网站的账号。\n我在他们网站上开着一个浏览器窗口,没有占位,只是停在登录页。\n你从这里接着登录就行,大约能保持8分钟:https://live.browser-use.com/s/fixture-live-view-token"
+  },
+  "latencyMs": 2324,
+  "usage": {
+    "input_tokens": 142,
+    "output_tokens": 113,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

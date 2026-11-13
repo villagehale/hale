@@ -208,8 +208,16 @@ function readCharacters(text: string): string {
   return text.normalize('NFKC').replace(/\p{Cf}/gu, '');
 }
 
-/** Where a handed link ends in a scheme token, or null when the token is not one. */
-function handedLinkEnd(token: string, handed: readonly string[]): number | null {
+// The token stops at the first non-ASCII character, but a phone reads a full stop and a
+// letter after it as more of the link: '<link>.рф' is the host '<host>.рф'.
+const READ_ON = /^[\p{L}\p{N}]/u;
+
+/**
+ * Where a handed link ends in a scheme token, or null when the token is not one. `next` is
+ * the character after the token, so a full stop it reads on through is not closing.
+ */
+function handedLinkEnd(token: string, handed: readonly string[], next = ''): number | null {
+  if (token.endsWith('.') && READ_ON.test(next)) return null;
   const bare = token.replace(CLOSING_PUNCTUATION, '').length;
   for (let end = token.length; end >= bare; end -= 1) {
     if (sameLink(token.slice(0, end), handed)) return end;
@@ -217,18 +225,23 @@ function handedLinkEnd(token: string, handed: readonly string[]): number | null 
   return null;
 }
 
+function nextAfter(read: string, index: number, token: string): string {
+  return read.charAt(index + token.length);
+}
+
 /**
  * The text with each handed link set aside, read as a handset reads its characters. A
  * handed link counts only as itself, compared as a parsed URL, and only where all that
  * follows it before whitespace, the end or a non-ASCII character is closing punctuation:
  * '<link>(场次', '<link>)。' and '<link>!' are the link, while '<link>.evil.tld',
- * '<link>．app', '<link>@host' and '<link>!@host' are another link.
+ * '<link>．app', '<link>@host' and '<link>!@host' are another link. The link and that
+ * closing punctuation go together: a full stop left behind would read as a spaced dot and
+ * join the words around it ('page is <link>. Max' as 'is.Max').
  */
 function withoutHanded(text: string, handed: readonly string[]): string {
-  return readCharacters(text).replace(SCHEME_TOKEN, (token) => {
-    const end = handedLinkEnd(token, handed);
-    return end === null ? token : ` ${token.slice(end)}`;
-  });
+  return readCharacters(text).replace(SCHEME_TOKEN, (token, index: number, read: string) =>
+    handedLinkEnd(token, handed, nextAfter(read, index, token)) === null ? token : ' ',
+  );
 }
 
 /**
@@ -237,8 +250,9 @@ function withoutHanded(text: string, handed: readonly string[]): string {
  * does not carry 'https://x.example/sw'.
  */
 export function carriesLink(text: string, link: string): boolean {
-  return [...readCharacters(text).matchAll(SCHEME_TOKEN)].some(
-    ([token]) => handedLinkEnd(token, [link]) !== null,
+  const read = readCharacters(text);
+  return [...read.matchAll(SCHEME_TOKEN)].some(
+    ({ 0: token, index }) => handedLinkEnd(token, [link], nextAfter(read, index, token)) !== null,
   );
 }
 
