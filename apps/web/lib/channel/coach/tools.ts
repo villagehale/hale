@@ -1,7 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
-import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gt, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
@@ -23,7 +23,7 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
-import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import { dayKeyIn, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { teenNameIn } from '~/lib/privacy/teen-name';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
@@ -877,8 +877,8 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
           and(
             eq(schema.familyEvents.familyId, familyId),
             householdFamilyEvent(),
-            gte(schema.familyEvents.startsAt, start),
             lte(schema.familyEvents.startsAt, end),
+            or(gte(schema.familyEvents.startsAt, start), gt(schema.familyEvents.endsAt, start)),
           ),
         )
         .orderBy(asc(schema.familyEvents.startsAt));
@@ -1089,22 +1089,51 @@ function dayLabel(at: Date, timeZone: string): string {
   }).format(at);
 }
 
+/**
+ * An item that runs past the day it starts can begin before the week read, or end after
+ * it (VIL-688: "who has the kids Dec 21 to Jan 1" when the stay began the weekend before),
+ * so its labels carry the date. A same-day item keeps the short label and no `until`
+ * key, so the bytes of an ordinary week are what they were.
+ */
+function spansDays(startsAt: Date, endsAt: Date | null, timeZone: string): endsAt is Date {
+  return endsAt !== null && dayKeyIn(endsAt, timeZone) !== dayKeyIn(startsAt, timeZone);
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Google stores an all-day item at UTC midnight with an exclusive end date. */
+function allDayLabels(block: CalendarBlockView): { when: string; until: string | null } {
+  const lastDay = block.endsAt ? new Date(block.endsAt.getTime() - DAY_MS) : null;
+  return {
+    when: dayLabel(block.startsAt, 'UTC'),
+    until:
+      lastDay && lastDay.getTime() > block.startsAt.getTime() ? dayLabel(lastDay, 'UTC') : null,
+  };
+}
+
 function renderScheduleEntry(entry: WeekScheduleEntry, timeZone: string) {
   if (entry.kind === 'event') {
+    const { startsAt, endsAt } = entry.event;
+    const spans = spansDays(startsAt, endsAt, timeZone);
     return {
       kind: 'event' as const,
       eventId: entry.event.eventId,
       what: entry.event.title,
-      when: localWhen(entry.event.startsAt, timeZone),
+      when: spans ? longWhen(startsAt, timeZone) : localWhen(startsAt, timeZone),
+      ...(spans ? { until: longWhen(endsAt, timeZone) } : {}),
       where: entry.event.location,
       source: entry.event.source,
     };
   }
-  const when = entry.block.allDay
-    ? dayLabel(entry.block.startsAt, timeZone)
-    : localWhen(entry.block.startsAt, timeZone);
-  const until =
-    !entry.block.allDay && entry.block.endsAt ? localWhen(entry.block.endsAt, timeZone) : null;
+  const label = spansDays(entry.block.startsAt, entry.block.endsAt, timeZone)
+    ? longWhen
+    : localWhen;
+  const { when, until } = entry.block.allDay
+    ? allDayLabels(entry.block)
+    : {
+        when: label(entry.block.startsAt, timeZone),
+        until: entry.block.endsAt ? label(entry.block.endsAt, timeZone) : null,
+      };
   if (entry.block.title === null) {
     return { kind: 'busy' as const, when, until, allDay: entry.block.allDay };
   }
@@ -1153,8 +1182,11 @@ async function readConnectedWeek(
         and(
           eq(schema.parentCalendarBlocks.familyId, familyId),
           eq(schema.parentCalendarBlocks.status, 'confirmed'),
-          gte(schema.parentCalendarBlocks.startAt, start),
           lte(schema.parentCalendarBlocks.startAt, end),
+          or(
+            gte(schema.parentCalendarBlocks.startAt, start),
+            gt(schema.parentCalendarBlocks.endAt, start),
+          ),
         ),
       )
       .orderBy(asc(schema.parentCalendarBlocks.startAt)),

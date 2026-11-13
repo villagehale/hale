@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzL1WBDDvyrt3EqoNQoK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6wkKEAgTGAI4AUIIdGhpbmtpbmcSDFndDBO7/U6+KYxhLBoMwLeGOy7Vr68KVUgMIjD7gprMR/SjCirlSknfCp6RFZWWOcS+eY1M7QYon9NyERJhXZ7BvKJ44i3u7U73DVYqiAlEZgJmoi+/nLfBQEPVHM8DWKpksnCJ2ipyF1NvQ03f0mAkwDbC8Bt1HE3nEA2+foMeUW9Ex5xohjSuu3ca4fbgEg9mfux/5e1a8nDXv1S9bH8hO4tZkYHGGQzvx48CBbDE1OrDsiZNO4zJ+VINAXUqwDGdsLoJZdLw04C7YIxUAqCk/7rn65Z8bEl+TUrwnqPNciWI6PJ7PvUnYdEDyUcZRiXVUSXcHVskHM3MX7BGdB5c0RP8o+5UyFsjL4LNkqKv9kjb6lnwZHZzyJQJEfG8Jtis+n6DamneEreeoIgAplhl2AOotVaQvC3opASsgDQof5zXDhq7owd5G3QSW+rdcXtbP/0S5GQoRhX+vpK3B03GAL8w7YvsWFFhzFN2sGLlh6c5quBTRjCYWClEyRMI64koZkyt2u8RhS0eZ1fwwlfyU/gqzHotlC0Ucxfd/L+7BPCuhdpdVZ2OkV8wcwKvGvwkRImjzjPOvYvyjhJQKWVoe70b4olP47jD2G+EGmIRjnxoUI3q8QlUzgs2k53300+begC5xebhfBznEwKzgL63AsChzGCqiovurRfrRY3PTSDVjxcQMjXYnssLPvyHXGYCjuf9AxdxEz1OZ8F2z8FfZo/UkDpKSNjEQkJrO7M/fj54yxW+bWBPycppUkfWWgqsGTvM0+zsDywmVrzldwCGXHNuvJ67ivGlfoMsn5yBllSLL91mkiG7JCX3ynwtNb5HnrDYI7Ms6G3MuvUxpF/cgzKplu5a9oFFeeCHW2xweIAdsVOY0L9oWiUeOQoNxoVB3T3/TRyFPAoZMDp6Cmlj65LQWZmEfEOydlI/IWXQ3BQY34cmpQ0ibBTm9vuQrKSuDPS0hAl7+3igCL2q7o0E+tMcaLatxt/SKqrWzwQ98FJozadEBh3r9mxhHg3oGG+S6y83F2cFXEf4BKXbJ1lGxvLxhKA+urXud2pr9xOx2jg2BFStJpjydgHrSRZo0UYx7kOmw+dqC8t3yUgFhoYcYsCsUMABt8O4Zdg1n8gyFoFr0EUxIoqDJsKQE4oGb6UtvP8GAKp2U4pj+/I6aROzlwZcEOvC9bl/ibZwTjVHCD1hWa9ZFWwSCWOZsigEgSYr19dKrcOQXrjl7vz9qhuY50eJZ9SNBSCUXEOr74xg9XsJTsJQPMCjeKF1M2RrqCt/ike30Wc+oGNYY7tsAC/9JAUC0g6vXkQulayuUbqwfb91p35QQcpUsNEmKFeBAj/pUqZ739/SA/1FXZR/eZeTpe5GQNqX7lHIieBh+Vd1KhGcbozTDgsIRvNMnfb1WUL/UtJwQbKZ3kTSk1J/BE35/zRC+fTrK2vYKQFA0vKly+mexgTtx76PJmNVsHwAsXEbBiHznROMz8SSa2fy3xIuO0wcOgzO43/xr5wOgSHuqh4K0uqsvjs7JjA2zOFbYyl9EZjOY6N8mBHqCtn4gSMQJzTzIBS3VuBmviQK3949/e0WpFkTWF2/mdvEx4QXfp0YWhrASBOw/R6mcdL8AZun3iXRrB3ULxPnxK3evxuvgsnbdh5VZBgB"
+      },
+      {
+        "type": "text",
+        "text": "Appeler la piscine, c'est hors de ma portée."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1673,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18136,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 233,
+      "output_tokens_details": {
+        "thinking_tokens": 211
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

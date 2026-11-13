@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CgzL3wR3kqJbve5mMsgLM",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5QYKEAgTGAI4AUIIdGhpbmtpbmcSDNHHCF3R2gG6LDCHtBoMA8esqOp9c64pAPORIjCI9Wpv5cWETjfkUOtfLGSilfrMlit4rP/oHjsSivgjVTfeClEQgHOn54LwAaNoYagqggarC7GmJXVL/WnOT3lzIC0ep5gdRr8SC+kVp6bedLWLxy9Xa2CruUmlXziTlbLENmYLV+RzKi1J7dMubN8weoeqB96iW/Nb6Nqx2ArpQR/gx95gQYRH93YfPiu/8NSm/tuOAxtqV7rxOI4Rlwjxje3tmu6s2LrxPJM4pZcQwUcqBO/A2bn3ykjazITvnv/zqqYf2N8vVtHqsYOtPLSDoESRgmTruHFAG2HzCk97+6mZuXRHgBEY6U85/KZC8JvC+IDq23JEE3+X3j+PBNgdPyXNIFL16ac7e4CaVoRdUaig2n8TYw2rSzYiPdC7SZNI2A/NNUAZETkRBIrLypTp6+qO+86pTWcjZ8a5vqyy32YviTm1bdAmXjElNZRienlFFrlTaESiieakD2xUtVK1s71dO73ZUw6nhuA2iPHZ40PO54XNZDFz+J1XPwZWOPLiK5C621ocGdueem0jOuDZNVuynZoH6sX2klnzbRj9Sfor7Y0vGmQGtJdSkfyaInjuOBW9wmlsZBLKOqQwHVykKVqKkVjBwcIYlPIdvRo8K0oabXv8fK/maI0GwD5jYnln66eF9Vc5WUetMamgwAYhZ76ct4sVnsY1nXOyWZmdKGRRJIT15Bjv+8eTwv9imSKgSDiBqDZpSbX5oh0hyOKDsVWz7jXz9xCJ4ebAX7NovxzohwWn2nMLm9ziQXc37m+udFufCpresfjkDEYdIvCC4cXNTsrvMBrYjKu782Yf+rkCi2vEriXO5E9i66C+LPNlaF665ePVMIpvVTuTFs6wjnW3k9SnjmNi8LAvdQmLNMQr4nmaf/1RB5KuMpXek2l8Re2nNpcnedvXuQmRBSxzp9rilhR0YMIeWao89kUZfKvTYbA2gGMtoPqdf9pBY66EDKFHPz7qClrPpH1LChvQ2vxnu/OucQIvyRWoEfoFfYZ+FgJQ5xUxitM4KTFS+e7dSpuX8CxhmYWXrMBR6f06nyDCniS+wxRp2UyfBFsWeYzF1YENc+qGIXAiJ6fxHMbAjm0DkhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Rwtt1HT9KJX819V4vtsrjo",
+        "name": "find_activities",
+        "input": {
+          "query": "things to do Saturday afternoon for a 4 year old in Toronto",
+          "when": "Saturday afternoon"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1880,
+      "cache_read_input_tokens": 18136,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1880,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 166,
+      "output_tokens_details": {
+        "thinking_tokens": 67
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -167,6 +167,7 @@ import {
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { coachHelpLines } from './lib/coach-help-lines.mjs';
+import { fixtureEventWhen, fixtureWeek } from './lib/fixture-week.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
@@ -880,13 +881,20 @@ function buildFixtureTools(
       if (!Number.isInteger(offset) || offset < 0 || offset > 8) {
         throw new Error('weekOffset must be a whole number from 0 to 8');
       }
-      // The fixture week is week 0 and FIXTURE_FAR_EVENTS sit further out; any other week
-      // is honestly empty, which is what production would return.
+      // The fixture week is week 0. FIXTURE_FAR_EVENTS sit further out and are read the way
+      // production's reader reads them, so a stay that began before a week is in it; any
+      // other week is honestly empty, which is what production would return.
       const weekStart = addDaysToKey(FIXTURE_WEEK_START, offset * 7);
       const rows =
         offset === 0
           ? FIXTURE_EVENTS
-          : FIXTURE_FAR_EVENTS.filter((event) => event.weekOffset === offset);
+          : (
+              await fixtureWeek(
+                FIXTURE_FAR_EVENTS,
+                { weekOffset: offset },
+                { now: FIXTURE_NOW, timeZone: FIXTURE_TIMEZONE },
+              )
+            ).events;
       const result = {
         weekStart,
         timeZone: FIXTURE_TIMEZONE,
@@ -895,7 +903,7 @@ function buildFixtureTools(
         events: rows.map((event) => ({
           eventId: event.eventId,
           what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
-          when: localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE),
+          ...fixtureEventWhen(event, FIXTURE_TIMEZONE),
           where: isPrivate(event) ? null : event.location,
         })),
       };
@@ -1621,8 +1629,15 @@ function groundedHay(fixture, toolResults) {
   }
   // Both forms of every day the schedule actually touches: the tools emit "Thu", the
   // model may write "Thursday", and neither is a fabrication.
-  for (const event of [...FIXTURE_EVENTS, ...FIXTURE_FAR_EVENTS]) {
-    const label = localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE);
+  // A later week counts only on a turn that read it (VIL-688).
+  const laterLabels = toolResults
+    .flat()
+    .flatMap((output) => output?.laterWeek?.events ?? [])
+    .flatMap((event) => [event.when, event.until ?? '']);
+  for (const label of [
+    ...FIXTURE_EVENTS.map((event) => localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE)),
+    ...laterLabels,
+  ]) {
     const short = label.slice(0, 3).toLowerCase();
     const full = DAY_NAMES.find(([, abbr]) => abbr === short)?.[0];
     parts.push(label, full ?? '');
@@ -2349,7 +2364,7 @@ async function main() {
     const hay = groundedHay(fixture, [
       toolResults,
       toolOutputs,
-      [...FIXTURE_EVENTS, ...FIXTURE_FAR_EVENTS].filter((e) => !isPrivate(e)).map((e) => ({
+      FIXTURE_EVENTS.filter((e) => !isPrivate(e)).map((e) => ({
         what: e.title,
         where: e.location,
         when: localWhen(new Date(e.startsAt), FIXTURE_TIMEZONE),

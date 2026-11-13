@@ -5,13 +5,14 @@ import {
   COACH_BUBBLES_NOW,
   COACH_BUBBLES_TIME_ZONE,
 } from '../coach-bubbles-fixtures.mjs';
-import { fixtureWeek } from './fixture-week.mjs';
+import { FIXTURE_FAR_EVENTS, FIXTURE_NOW, FIXTURE_TIMEZONE } from '../coach-channel-fixtures.mjs';
+import { fixtureEventWhen, fixtureWeek } from './fixture-week.mjs';
 
 /**
  * The coach-bubbles `lookup_week` stub reads the week the production tool reads. The other
  * side of each comparison is the REAL `lookup_week` (apps/web/lib/channel/coach/tools.ts)
  * over a reader holding the same events, filtered the way its query filters them
- * (`startsAt` between the window's two ends, both kept).
+ * (starting by the window's end, and starting inside it or ending after its start).
  */
 
 const TOOLS = new URL('../../../web/lib/channel/coach/tools.ts', import.meta.url);
@@ -25,7 +26,7 @@ beforeAll(async () => {
     parentURL: import.meta.url,
     tsconfig: WEB_TSCONFIG,
   });
-  productionLookupWeek = (fixture) => {
+  productionLookupWeek = (fixture, clock = CLOCK) => {
     const events = fixture.events.map((event) => ({
       eventId: event.eventId,
       title: event.title,
@@ -38,10 +39,14 @@ beforeAll(async () => {
       sensitive: false,
     }));
     const reader = {
-      timeZone: async () => COACH_BUBBLES_TIME_ZONE,
+      timeZone: async () => clock.timeZone,
       weekPlanSummary: async () => null,
       eventsInWeek: async (_familyId, start, end) =>
-        events.filter((event) => event.startsAt >= start && event.startsAt <= end),
+        events.filter(
+          (event) =>
+            event.startsAt <= end &&
+            (event.startsAt >= start || (event.endsAt !== null && event.endsAt > start)),
+        ),
       resolveEvent: async () => null,
       connectedWeek: async () => ({
         calendarSync: 'not_connected',
@@ -61,7 +66,7 @@ beforeAll(async () => {
       villageTool: null,
       activity: null,
       spots: null,
-      now: new Date(COACH_BUBBLES_NOW),
+      now: new Date(clock.now),
     }).find((tool) => tool.name === 'lookup_week');
   };
 }, 60_000);
@@ -103,6 +108,31 @@ describe('the coach-bubbles lookup_week stub', () => {
     for (const input of [{ weekOffset: 9 }, { weekOffset: -1 }, { weekOffset: '1' }]) {
       expect(lookupWeek.inputSchema.safeParse(input).success, JSON.stringify(input)).toBe(false);
       await expect(fixtureWeek([], input, CLOCK), JSON.stringify(input)).rejects.toThrow();
+    }
+  });
+
+  it('reads a stay that began the weekend before into the week it runs through, dated (VIL-688)', async () => {
+    const clock = { now: FIXTURE_NOW, timeZone: FIXTURE_TIMEZONE };
+    const lookupWeek = productionLookupWeek({ events: FIXTURE_FAR_EVENTS }, clock);
+    const begunBefore = FIXTURE_FAR_EVENTS.find((event) => event.eventId === 'evt-dads-week');
+    expect(Date.parse(begunBefore.startsAt)).toBeLessThan(Date.parse('2026-09-14T04:00:00.000Z'));
+    for (const weekOffset of [5, 6]) {
+      const stub = await fixtureWeek(FIXTURE_FAR_EVENTS, { weekOffset }, clock);
+      const real = await lookupWeek.handler({ weekOffset }, {});
+      expect(stub.events.map((event) => event.eventId)).toContain('evt-dads-week');
+      expect(
+        stub.events.map((event) => ({
+          eventId: event.eventId,
+          ...fixtureEventWhen(event, FIXTURE_TIMEZONE),
+        })),
+        `week ${weekOffset}`,
+      ).toEqual(
+        real.events.map(({ eventId, when, until }) => ({
+          eventId,
+          when,
+          ...(until ? { until } : {}),
+        })),
+      );
     }
   });
 });

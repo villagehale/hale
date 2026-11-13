@@ -177,15 +177,15 @@ export const FIXTURE_EVENTS = [
 ];
 
 /**
- * Rows further out than next week (VIL-688), keyed by the `weekOffset` that reads them:
- * week 6 is Sep 14 to 20. A text about those dates is answerable only by reading that far.
+ * Rows further out than next week (VIL-688). Week 6 is Sep 14 to 20; the dad's stay
+ * begins the Saturday before it (week 5), so a read of week 6 finds it only because it
+ * runs into that week. A text about those dates is answerable only by reading that far.
  */
 export const FIXTURE_FAR_EVENTS = [
   {
-    weekOffset: 6,
     eventId: 'evt-dads-week',
     title: "Kids at their dad's",
-    startsAt: '2026-09-14T13:00:00.000Z',
+    startsAt: '2026-09-12T14:00:00.000Z',
     endsAt: '2026-09-18T21:00:00.000Z',
     location: null,
     childId: null,
@@ -193,7 +193,6 @@ export const FIXTURE_FAR_EVENTS = [
     sensitive: false,
   },
   {
-    weekOffset: 6,
     eventId: 'evt-grandma-weekend',
     title: 'Grandma has the kids',
     startsAt: '2026-09-19T14:00:00.000Z',
