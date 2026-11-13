@@ -51,6 +51,7 @@ import {
   runPrivateAside,
 } from './group-private-aside';
 import { familyFreeBusy, formatWhen } from './household-calendar';
+import { type ParticipantRead, listedReaders } from './participant-readers';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
@@ -1006,8 +1007,6 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
 
 type PersonRow = typeof schema.linqSharedGroupPeople.$inferSelect;
 
-type ParticipantRead = Awaited<ReturnType<ListChatHandles>>;
-
 /** Linq's participant list for the chat, or null when it could not be asked. */
 async function participantsOf(chatId: string): Promise<ParticipantRead | null> {
   try {
@@ -1016,25 +1015,6 @@ async function participantsOf(chatId: string): Promise<ParticipantRead | null> {
     if (err instanceof LinqSendError) return null;
     throw err;
   }
-}
-
-/**
- * VIL-687: the blind indexes of everyone Linq lists in the chat, or null when the list does
- * not place everyone: a failed read, a chat that is not a group, or a list without the
- * speaker (an empty one included, which is what a 200 with no or unreadable body parses
- * to), or a handle that is not a number (an Apple ID email). Linq's list already leaves out
- * people who left or were removed (readLinqChatHandles); Hale's own line is not a reader.
- */
-function listedReaders(listed: ParticipantRead | null, speakerHash: string): string[] | null {
-  if (listed?.status !== 'ok' || listed.isGroup === false) return null;
-  const hashes = new Set<string>();
-  for (const handle of listed.handles) {
-    const phone = normalizePhoneE164(handle);
-    if (phone === null) return null;
-    if (haleLine(phone)) continue;
-    hashes.add(phoneBlindIndex(phone));
-  }
-  return hashes.has(speakerHash) ? [...hashes] : null;
 }
 
 /**
@@ -1703,7 +1683,11 @@ export async function takeMultiFamilyTurn(
           speaker: me,
           // Linq is asked who is here only when an item in the chat is hidden.
           ...sharedListAudience(live, settledIds, async () =>
-            listedReaders(participants ?? (await participantsOf(input.chatId)), me.phoneE164Hash),
+            listedReaders(
+              participants ?? (await participantsOf(input.chatId)),
+              me.phoneE164Hash,
+              haleLine,
+            ),
           ),
         }
       : null;
