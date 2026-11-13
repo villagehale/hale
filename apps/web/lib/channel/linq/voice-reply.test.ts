@@ -52,6 +52,8 @@ describe('sendReplyAsVoiceMemo (VIL-476 Design lock)', () => {
     ['not_one_to_one', () => {}, { chatId: null }],
     ['text_only_turn', () => {}, { textOnly: true }],
     ['has_link', () => {}, { text: 'Their page: https://example.org/swim' }],
+    // VIL-683 · the text door refuses the same words, so nothing is said either way.
+    ['garbled_text', () => {}, { text: 'Natation prรฉscolaire sam. 9h00' }],
   ])('stays text: %s', async (why, setup, over) => {
     setup();
     const d = deps();

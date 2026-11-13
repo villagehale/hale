@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
+import { createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import type {
   CrisisPager,
   CrisisUnanswered,
@@ -2061,6 +2062,76 @@ describe("ladder: a safety outcome names the health line for the family's region
       closed: false,
       held: 'writer_absent',
     });
+  });
+});
+
+/**
+ * VIL-683 · a ladder reply the send seam refuses as garbled, once the family exists. The
+ * refusal comes from the REAL Linq door (createLinqPhoneTransport, fetch spied).
+ */
+describe('ladder: a garbled reply sends nothing and is on the audit trail (VIL-683)', () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f683';
+  const USER = '00000000-0000-4000-8000-00000000a683';
+
+  function ladder(spell: (reply: string) => string) {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ chat: { id: 'chat-1', message: { id: 'msg-1' } } }, { status: 201 }),
+    );
+    const { fake, transport, deps } = harness({
+      transport: createLinqPhoneTransport({ fetch: fetchSpy as typeof fetch }),
+    });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+      collected: { children: [], postalCode: 'M5V 2T6' },
+    });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'none', confirmation: '', language: 'en' }),
+    };
+    const voice = deps.friendVoice;
+    deps.friendVoice = {
+      async compose(input, options) {
+        const composed = await (voice as FriendVoiceComposer).compose(input, options);
+        return { ...composed, reply: spell(composed.reply) };
+      },
+    };
+    return { fake, transport, deps, fetchSpy };
+  }
+
+  // The name ask's own catch keeps the ladder moving (inbox and co-parent still go out),
+  // so this turn is not cut short; the refusal still reaches the family's audit trail.
+  it('nothing reaches the network, and the family row names only surface and reason', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, fetchSpy } = ladder((reply) => `${reply} Itâ€™s on.`);
+
+    const result = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
+
+    expect(result).toMatchObject({ status: 'ladder_advanced' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const audits = fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.auditLog)
+      .map((w) => w.payload)
+      .filter((row) => row.actionTaken === 'channel_text_garbled');
+    expect(audits).toEqual([
+      {
+        familyId: FAMILY,
+        actor: 'system',
+        actionTaken: 'channel_text_garbled',
+        after: { surface: 'intake', reason: 'garbled_text' },
+      },
+    ]);
+  });
+
+  it('the same reply spelled right goes out (positive control)', async () => {
+    const { fake, transport, deps, fetchSpy } = ladder((reply) => `${reply} It’s on.`);
+    const result = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
+    expect(result).toMatchObject({ status: 'ladder_advanced' });
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });
 

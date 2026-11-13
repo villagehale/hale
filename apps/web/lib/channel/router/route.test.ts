@@ -38,7 +38,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import { createLinqPhoneTransport } from '~/lib/channel/linq/transport';
-import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
+import { type VoiceReplyOutcome, sendReplyAsVoiceMemo } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
@@ -10052,6 +10052,53 @@ describe('a garbled coach reply sends nothing', () => {
     const again = harness({ coach: rerun, turns });
     expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
     expect(rerun.calls).toBe(0);
+  });
+
+  it('a garbled reply the model chose to say as a voice memo is neither spoken nor sent', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
+    const turns = fakeTurnLedger();
+    const door = realDoor();
+    const tts = vi.fn(async () => ({ audio: new Uint8Array([1]), contentType: 'audio/mpeg' }));
+    const memo = vi.fn(async () => ({ providerMessageId: 'vm-1' }));
+    const h = harness({
+      coach: {
+        async respond() {
+          return {
+            reply: GARBLED,
+            planOffer: null,
+            activityPromise: null,
+            spotWatch: null,
+            voiceMemo: true,
+          };
+        },
+      },
+      turns,
+      context: {
+        reply: { channel: 'imessage', to: PHONE, chatId: 'chat-voice', replyToMessageId: null },
+      },
+    });
+    h.deps.transport = door.transport;
+    h.deps.sendVoiceReply = (input) =>
+      sendReplyAsVoiceMemo(input, {
+        tts,
+        host: async () => ({ attachmentId: 'att-1' }),
+        capability: async () => ({
+          status: 'available',
+          selectedService: 'iMessage',
+          cached: false,
+        }),
+        send: memo,
+      });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_failed');
+    expect(tts).not.toHaveBeenCalled();
+    expect(memo).not.toHaveBeenCalled();
+    expect(door.fetchSpy).not.toHaveBeenCalled();
+    expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
   });
 
   it('an honest French reply goes out through the same door (positive control)', async () => {

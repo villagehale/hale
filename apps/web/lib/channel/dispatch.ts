@@ -4,7 +4,7 @@ import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { type BubbleGaps, readBubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
-import type { LinqChatService } from '~/lib/channel/linq/transport';
+import { GARBLED_TEXT, type LinqChatService } from '~/lib/channel/linq/transport';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimEnforce } from '~/lib/channel/reconcile/claim-enforce';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
@@ -421,7 +421,8 @@ async function dispatchLeg(
 
   // Permanent error OR a skip (not configured / disabled / no address).
   const errorCode = result.status === 'error' ? result.code : result.reason;
-  await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
+  const failedId = await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
+  await auditIfGarbled(ports, msg, channel, errorCode, failedId);
   return { channel, outcome: 'failed', reason: errorCode, voice };
 }
 
@@ -545,8 +546,32 @@ async function dispatchTexts(
   if (!(err instanceof Refused)) throw err;
   const refused = err.outcome;
   const errorCode = refused.status === 'error' ? refused.code : refused.reason;
-  await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
+  const failedId = await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
+  await auditIfGarbled(ports, msg, channel, errorCode, failedId);
   return { channel, outcome: 'failed', reason: errorCode, voice };
+}
+
+/**
+ * VIL-683 · the send seam (linq/transport.ts) refused a garbled text after its writer was
+ * asked once more. Nothing was sent and nothing stands in for it; the failed ledger row
+ * says so, and this puts it on the family's audit trail, by channel and template only.
+ */
+async function auditIfGarbled(
+  ports: DispatchPorts,
+  msg: LoopMessage,
+  channel: DeliveredChannel,
+  errorCode: string,
+  ledgerId: string,
+): Promise<void> {
+  if (errorCode !== GARBLED_TEXT) return;
+  await ports.audit({
+    familyId: msg.familyId,
+    actor: 'system',
+    actionTaken: 'channel_text_garbled',
+    targetTable: 'channel_messages',
+    targetId: ledgerId,
+    after: { channel, category: msg.category, templateKey: msg.templateKey },
+  });
 }
 
 /** The words a parent will actually read. */

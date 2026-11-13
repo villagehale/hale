@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
 import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
@@ -1173,3 +1173,76 @@ describe('VIL-581 · the production dispatch port is bound and does nothing whil
 });
 
 const MODEL_BODY_FOR_WIRING = 'Swim is at 10 on Saturday.';
+
+/**
+ * VIL-683 · a loop text the send seam refuses as garbled. The refusal comes from the REAL
+ * Linq door under the real SMS adapter (fetch spied). Its writer was already asked once
+ * more, so nothing is sent, nothing stands in, and the family's audit trail names it.
+ */
+describe('a garbled loop text sends nothing and is on the audit trail', () => {
+  const GARBLED = 'Natation prรฉscolaire sam. 9h00';
+
+  function realSms() {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ chat: { id: 'chat-1', message: { id: 'msg-1' } } }, { status: 201 }),
+    );
+    const sms = createSmsChannel({
+      transport: createLinqPhoneTransport({ fetch: fetchSpy as typeof fetch }),
+      resolveTarget: async () => '+14165550101',
+      configured: true,
+    });
+    return { fetchSpy, sms };
+  }
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['one text', { kind: 'sms', text: GARBLED, modelWritten: true }],
+    [
+      'a set of texts',
+      { kind: 'sms', text: GARBLED, texts: [GARBLED, 'Swim is Saturday.'], modelWritten: true },
+    ],
+  ] satisfies [string, RenderedContent][])('%s', async (_name, rendered) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fetchSpy, sms } = realSms();
+    const { ports, ledger, audits } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      channels: { sms },
+      renderer: { render: () => rendered },
+    });
+
+    const result = await dispatchLoopMessage(message(), ports);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.legs).toEqual([
+      expect.objectContaining({ channel: 'sms', outcome: 'failed', reason: 'garbled_text' }),
+    ]);
+    expect(ledger).toEqual([
+      expect.objectContaining({ status: 'failed', errorCode: 'garbled_text' }),
+    ]);
+    expect(audits).toEqual([
+      {
+        actionTaken: 'channel_text_garbled',
+        after: { channel: 'sms', category: 'reminder', templateKey: 'weekly-plan-v1' },
+      },
+    ]);
+  });
+
+  it('the same text spelled right is sent (positive control)', async () => {
+    const { fetchSpy, sms } = realSms();
+    const { ports, audits } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      channels: { sms },
+      renderer: {
+        render: () => ({ kind: 'sms', text: 'Natation préscolaire sam. 9h00', modelWritten: true }),
+      },
+    });
+
+    await dispatchLoopMessage(message(), ports);
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.actionTaken)).toEqual(['channel_sent']);
+  });
+});

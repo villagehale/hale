@@ -273,6 +273,8 @@ export const AUDIT_VERBS = [
   'voice_call_completed',
   'voice_relay_ticket_replayed',
   'channel_sent',
+  // VIL-683 · the send seam refused a garbled text, so nothing went out.
+  'channel_text_garbled',
   // The delivery-truth sweep asserting a terminal state no receipt ever confirmed.
   'delivery_status_forced',
   // The claim sweep naming an executor send claim nothing ever confirmed.
@@ -1146,6 +1148,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
+  channel_text_garbled: {
+    sentence: 'Hale held back a message that came out garbled',
+    family: 'problem',
+  },
   // The sweep gave up waiting for a delivery receipt: the message may never have
   // reached the phone, and the trail must say so rather than imply it arrived.
   delivery_status_forced: {

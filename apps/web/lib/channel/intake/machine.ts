@@ -24,6 +24,7 @@ import {
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
+import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
@@ -58,7 +59,7 @@ import {
   sharedSecretSantaLineWriter,
 } from '~/lib/channel/linq/secret-santa';
 import { answerGuestDraws, owedGuestDraws } from '~/lib/channel/linq/secret-santa-send';
-import type { LinqChatService } from '~/lib/channel/linq/transport';
+import { GARBLED_TEXT, type LinqChatService } from '~/lib/channel/linq/transport';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
   plainTextWithoutLinks,
@@ -310,6 +311,11 @@ export type IntakeOutcome =
    * outbound, so the first-reply sweep also owes it one reply.
    */
   | { status: 'first_touch_unsent'; reason: FriendFallback }
+  /**
+   * VIL-683 · the send seam refused this turn's reply as garbled, after its writer was
+   * asked once more. Nothing was sent, and the rest of the turn did not run.
+   */
+  | { status: 'reply_garbled' }
   | { status: 'greeted' }
   /**
    * VIL-686 · a guest (no Hale channel of their own) whose Secret Santa draw waited on
@@ -458,7 +464,17 @@ export async function handleInboundSms(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const read = { optOutUnread: false };
-  const outcome = await runIntakeTurn(database, inbound, deps, read);
+  let outcome: IntakeOutcome;
+  try {
+    outcome = await runIntakeTurn(database, inbound, deps, read);
+  } catch (err) {
+    // VIL-683 · the send seam refused a garbled reply its writer had already drafted
+    // twice. Nothing went out and nothing stands in for it; the turn ends here by name
+    // rather than as a webhook failure. sendAndRecord put it on the family's audit trail.
+    if (!isGarbledRefusal(err)) throw err;
+    console.warn({ code: GARBLED_TEXT }, 'intake: a garbled reply was refused - nothing sent');
+    return { status: 'reply_garbled' };
+  }
   // The hand-off carries a failed opt-out read with the text itself, so the router's guard
   // never rests on the hold row alone: settleOptOutHold may fail to write it.
   if (
@@ -1007,7 +1023,15 @@ async function sendAndRecord(
       ? liftPreviewLink(body)
       : null;
   const text = lifted ? lifted.text : body;
-  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body: text });
+  let sent: Awaited<ReturnType<typeof sendResolvingNewChat>>;
+  try {
+    sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body: text });
+  } catch (err) {
+    if (isGarbledRefusal(err) && ctx.session.familyId) {
+      await recordGarbledRefusal(database, { familyId: ctx.session.familyId, surface: 'intake' });
+    }
+    throw err;
+  }
   const wireBody = sent.linkOmitted ? plainTextWithoutLinks(text) : text;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
   const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
