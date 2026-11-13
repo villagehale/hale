@@ -419,6 +419,10 @@
     "file": "inbound-photo-facts.md",
     "sha256": "725798bfa8e23b6d756745ead0a620d46ec37e3b360015a425e93a1c0c0e33ff"
   },
+  "inbound-side-turn.md": {
+    "file": "inbound-side-turn.md",
+    "sha256": "f5e4f10513478ced2c63e29ea6c097fc6f38c538a07e641c687a136d158d45cf"
+  },
   "infer-memory.md": {
     "file": "infer-memory.md",
     "sha256": "19ddfbe362f31e731b996221819939de5a9c88a9fa8fb89f2e4f3939d9e0361e"
@@ -641,7 +645,7 @@
   },
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
-    "sha256": "aefa2380258d108f0f425dfe640acf2fdeca286ab340cc6cc4ef375b8601e0fb"
+    "sha256": "f4b4c4137b58106180f0a6d90646acb846949ca3b99ec3e59b3d6150c256eff3"
   },
   "signup-provider-notice.md": {
     "file": "signup-provider-notice.md",

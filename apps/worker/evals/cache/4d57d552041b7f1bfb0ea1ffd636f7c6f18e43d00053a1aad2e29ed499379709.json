@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text invents a $86.22 maximum that is not in the facts (maxPriceCents is null), and it asks two things at once (which day first plus implied max), violating the one-ask rule.",
-    "score": 1
-  }
-}

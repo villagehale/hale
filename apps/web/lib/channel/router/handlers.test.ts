@@ -864,6 +864,15 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
         verdict: { claimed: false },
       });
     }
+    // A side turn asks the same question first, and gets the same answer.
+    for (const ask of asks) {
+      const detects = await recMorningHandler().detects(placeDb.database, {
+        ...turn(ask),
+        familyId: markham,
+        now: TURN_NOW,
+      });
+      expect({ ask, detects }).toEqual({ ask, detects: false });
+    }
     // Another town's question is still this lane's: the reading is Markham's only.
     expect((await handleFor(markham, 'Vaughan swim registration?')).claimed).toBe(true);
   });

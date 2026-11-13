@@ -142,6 +142,8 @@ async function driveAssisted(
     outcome,
     detail,
     choiceIndex: null,
+    // Assisted mode never pays: the parent submits and pays on the live browser.
+    charged: 'nothing',
     ...extra,
   });
   let runId: string | null = null;

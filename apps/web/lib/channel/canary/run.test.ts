@@ -5,6 +5,7 @@ import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from '~/lib/channel/
 import { schedulePeriodSeconds } from '~/lib/cron/deadman';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import vercelConfig from '~/vercel.json';
 import { CANARY_ANSWERED_ACTION, CANARY_PHONE_E164, canaryChannel } from './config';
@@ -30,6 +31,8 @@ const CANARY_CRON_PATH = '/api/cron/inbound-canary';
 
 let db: TestDb;
 let canary: SeededFamily;
+/** What reached #ops: the real pager, with only the Slack post faked. */
+let posted: string[];
 
 interface Capture {
   url: string;
@@ -87,7 +90,16 @@ function fakeDoor(options: { status?: number; skewMs?: number } = {}): {
 }
 
 function run(fetchImpl: typeof globalThis.fetch, now = NOW): Promise<void> {
-  return runInboundCanary({ database: db.database, fetch: fetchImpl, now: () => now });
+  const post = async (text: string) => {
+    posted.push(text);
+    return 'sent' as const;
+  };
+  return runInboundCanary({
+    database: db.database,
+    fetch: fetchImpl,
+    now: () => now,
+    pager: failurePageOpsPager(() => db.database, { post, now }),
+  });
 }
 
 /** A landed injection, as the door records one. */
@@ -141,6 +153,9 @@ beforeEach(async () => {
   vi.stubEnv('LINQ_WEBHOOK_SECRET', LINQ_SECRET);
   vi.stubEnv('LINQ_FROM_E164', '+16462352164');
 
+  posted = [];
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await db.database.delete(schema.rateLimits);
   await db.database.delete(schema.auditLog);
   await db.database.delete(schema.channelMessages);
   await db.database.delete(schema.parentChannels);
@@ -157,6 +172,7 @@ beforeEach(async () => {
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe('runInboundCanary · the injection', () => {
@@ -325,5 +341,37 @@ describe('runInboundCanary · fail-closed ordering', () => {
     if (!entry) throw new Error(`${CANARY_CRON_PATH} is not in vercel.json`);
 
     expect(VERIFY_NOT_BEFORE_MS).toBeGreaterThan(2 * schedulePeriodSeconds(entry.schedule) * 1_000);
+  });
+});
+
+describe('runInboundCanary · a failed tick pages #ops within one canary period', () => {
+  it('a turn that was never answered pages inbound_canary_failed, and the tick still throws', async () => {
+    const door = fakeDoor();
+    await seedPriorInjection(db.database, new Date(NOW.getTime() - 10 * 60_000));
+
+    // Still thrown: cronRoute withholds the heartbeat stamp, so the dead-man stays armed.
+    await expect(run(door.fetch)).rejects.toThrow(/was never answered/);
+    expect(posted).toEqual(['Hale: ops page. site inbound_canary_failed. stage never_answered.']);
+  });
+
+  it.each([
+    { stage: 'not_configured', arrange: () => vi.stubEnv('LINQ_API_KEY', ''), status: 200 },
+    { stage: 'injection', arrange: () => undefined, status: 403 },
+    { stage: 'not_landed', arrange: () => undefined, status: 200 },
+  ])('a tick that fails at $stage pages that stage', async ({ stage, arrange, status }) => {
+    arrange();
+    const door = fakeDoor({ status });
+
+    await expect(run(door.fetch)).rejects.toThrow(/inbound canary/);
+    expect(posted).toEqual([`Hale: ops page. site inbound_canary_failed. stage ${stage}.`]);
+  });
+
+  it('positive control: a tick whose previous turn was answered pages nobody', async () => {
+    const door = fakeDoor();
+    const prior = await seedPriorInjection(db.database, new Date(NOW.getTime() - 10 * 60_000));
+    await seedAnswer(db.database, prior, new Date(NOW.getTime() - 10 * 60_000 + 1_000));
+
+    await expect(run(door.fetch)).resolves.toBeUndefined();
+    expect(posted).toEqual([]);
   });
 });
