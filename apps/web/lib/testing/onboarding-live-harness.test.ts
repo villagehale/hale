@@ -129,9 +129,9 @@ function scripted(input: FriendVoiceInput): FriendComposed {
   if (input.step === 'schedule' && (capture.scheduleAdds as unknown[]).length > 0) {
     return {
       reply:
-        'Both are on as reminders: Swim Kids 3 on Saturdays and the storytime this Thursday. Anything else from the list?',
+        'Both are on as reminders: Swim Kids 3 on Saturdays and the storytime this Thursday.',
       capture,
-      asksCount: 1,
+      asksCount: 0,
     };
   }
 
