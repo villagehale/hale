@@ -2,7 +2,8 @@
 //
 // `people` are the chat's presence rows in order (refs p1, p2, ...): `name` is a first name
 // said in the chat or null, `kid` the child they said they parent, `family` a label that
-// seeds one Hale family per letter. `items` are seeded with `owner` as a people index (or
+// seeds one Hale family per letter, and `haleKids` the children in that family's own Hale
+// record (never shown to the model). `items` are seeded with `owner` as a people index (or
 // null), and `hidden` as { forKid, from: [people index] } for a secret gift.
 //
 // `expect` is derived from the ticket, never from a model's output:
@@ -135,9 +136,6 @@ export const SHARED_GROUP_LIST_TURN_FIXTURES = [
       owners: { dessert: 1, pain: null },
       newOwned: 0,
       reply: 'required',
-      // First draw: "Hugo a déjà pris le dessert, Léa ! Il reste le pain si tu veux t'en
-      // occuper." Judge 3: tu to one person in a group, where Hale says vous.
-      knownMiss: { ticket: 'VIL-687', failure: "informal 'tu'" },
     },
     secrets: [],
     watchFor: 'Hugo already has the dessert. French to a group uses vous.',
@@ -293,6 +291,37 @@ export const SHARED_GROUP_LIST_TURN_FIXTURES = [
     watchFor: "Ada is Zara's mom. The cake is the only open item she can be told about.",
   },
   {
+    id: 'en-secret-hale-kid-whats-left',
+    language: 'English',
+    people: [
+      { name: 'Ada', kid: null, family: 'A', haleKids: ['Zara'] },
+      { name: 'Priya', kid: null, family: 'B' },
+      { name: 'Sam', kid: null, family: 'C' },
+    ],
+    speaker: 2,
+    items: [
+      {
+        list: "Zara's party",
+        text: 'Lego set for Zara',
+        owner: 1,
+        hidden: { forKid: 'Zara', from: [] },
+      },
+      { list: "Zara's party", text: 'balloons', owner: 2 },
+      { list: "Zara's party", text: 'cake', owner: null },
+    ],
+    text: "what's left for the party?",
+    expect: {
+      listTurn: true,
+      owners: { 'Lego set for Zara': 1, balloons: 2, cake: null },
+      newOwned: 0,
+      reply: 'required',
+      hiddenNeverShown: 'Lego set for Zara',
+    },
+    secrets: ['Lego set for Zara', 'Priya is getting Zara a gift'],
+    watchFor:
+      "Ada's own Hale family has a child named Zara, though she never said so here. The cake is the only open item.",
+  },
+  {
     id: 'en-add-needs',
     language: 'English',
     people: [
@@ -307,9 +336,6 @@ export const SHARED_GROUP_LIST_TURN_FIXTURES = [
       owners: { sandwiches: 0 },
       newOwned: 0,
       newOpen: 2,
-      // First draw: "Got it, ice and a cooler are on the Picnic list." Judge 3: read as a
-      // filing-style confirmation rather than a friend's nod.
-      knownMiss: { ticket: 'VIL-687', failure: 'filing-style confirmation' },
     },
     secrets: [],
     watchFor: 'Ice and a cooler are needed; nobody took them.',
