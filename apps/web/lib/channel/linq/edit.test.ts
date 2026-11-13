@@ -16,6 +16,7 @@ import {
   listEditableLinqSends,
   recordLinqEditWebhook,
 } from './edit';
+import { SIDE_TURN_TEMPLATE_KEY } from '../router/side-turn';
 import { considerLinqReply } from './moments';
 
 const NOW = new Date('2026-10-31T16:00:00.000Z');
@@ -44,7 +45,7 @@ function linqFetch(status = 200, body: unknown = { id: MESSAGE }) {
 
 async function seedBubble(
   fake: ReturnType<typeof makeFakeDb>,
-  input: { sentAt: Date; text: string; messageId?: string } = {
+  input: { sentAt: Date; text: string; messageId?: string; templateKey?: string } = {
     sentAt: NOW,
     text: 'Swim is at 4.',
   },
@@ -61,6 +62,7 @@ async function seedBubble(
     providerChatId: CHAT,
     sentAt: input.sentAt,
     relatedConversationId: CONV,
+    ...(input.templateKey ? { templateKey: input.templateKey } : {}),
   });
   await fake.db.insert(schema.messages).values({
     conversationId: CONV,
@@ -93,6 +95,28 @@ describe('VIL-479 Linq message edit', () => {
     expect(linqMessageEditEnabled()).toBe(true);
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'TRUE');
     expect(linqMessageEditEnabled()).toBe(false);
+  });
+
+  it('never offers the reply another text got while this turn was running (router/side-turn.ts)', async () => {
+    const fake = makeFakeDb();
+    await seedBubble(fake);
+    await seedBubble(fake, {
+      sentAt: NOW,
+      text: 'Swim is Thursday at 4:30.',
+      messageId: 'side-msg',
+      templateKey: SIDE_TURN_TEMPLATE_KEY,
+    });
+
+    const offered = await listEditableLinqSends(fake.db, {
+      familyId: FAMILY,
+      conversationId: CONV,
+      chatId: CHAT,
+      now: NOW,
+      inboundAt: INBOUND,
+    });
+
+    // This turn's own bubble, sent at the same moment, is still offered.
+    expect(offered.map((row) => row.messageId)).toEqual([MESSAGE]);
   });
 
   it('offers a recent text bubble and withholds one outside the window or past the edit cap', async () => {

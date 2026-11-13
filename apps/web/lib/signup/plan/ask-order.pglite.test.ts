@@ -24,6 +24,7 @@ import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { FakeReplyTransport, type ReplySent } from '~/lib/channel/router/reply-route';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
+import { darkSideTurn } from '~/lib/channel/router/side-turn.fixture';
 import {
   auditSmokeAlarmClaim,
   auditTurnLedger,
@@ -233,6 +234,7 @@ function deps(
     smokeAlarm: auditSmokeAlarmClaim(db.database),
     turns: auditTurnLedger(db.database),
     burst: options.burst ?? { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
+    sideTurn: darkSideTurn(),
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },

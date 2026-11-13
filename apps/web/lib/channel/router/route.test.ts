@@ -116,6 +116,7 @@ import {
   TurnDeferred,
   routeChannelMessage,
 } from './route';
+import { darkSideTurn } from './side-turn.fixture';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { TURN_ANSWERED_ACTION, auditTurnLedger, loadInboundContext } from './wiring';
@@ -179,6 +180,9 @@ function claimingHandler(
   const handler = {
     name,
     calls: 0,
+    async detects() {
+      return true;
+    },
     async handle() {
       handler.calls += 1;
       return { claimed: true as const, outcome: `${name}_claimed`, reply };
@@ -193,6 +197,9 @@ function passingHandler(name: string): DeterministicHandler & { calls: number; b
     name,
     calls: 0,
     bodies: [] as string[],
+    async detects() {
+      return false;
+    },
     async handle(_db: unknown, ctx: { body: string }) {
       handler.calls += 1;
       handler.bodies.push(ctx.body);
@@ -371,6 +378,16 @@ function fakeTurnLedger(): InboundTurnLedger & {
     async recordAnswered(input: { channelMessageId: string }) {
       ledger.answered.push(input.channelMessageId);
       return 'claimed' as const;
+    },
+    // A side turn's (side-turn.ts): dark in every test here.
+    async claimAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
+    },
+    async recordAnsweredAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
+    },
+    async releaseAhead(): Promise<never> {
+      throw new Error('no side turn runs in this file');
     },
     async recordDeferred(input: {
       channelMessageId: string;
@@ -593,6 +610,7 @@ function harness(
     consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
     burst?: InboundBurst;
+    sideTurn?: ChannelRouterDeps['sideTurn'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -671,6 +689,7 @@ function harness(
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
       burst: options.burst ?? fakeBurst(),
+      sideTurn: options.sideTurn ?? darkSideTurn(),
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       floodLine: options.floodLine ?? fakeFloodLine(),
@@ -2667,6 +2686,36 @@ describe('back-to-back texts read as one turn', () => {
   });
 });
 
+describe('a text behind a running turn (INBOUND_MIDTURN, side-turn.ts)', () => {
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'SM1',
+    service: 'iMessage',
+  };
+
+  it('dark: the turn asks the port once and nothing else is read, slept or sent', async () => {
+    const sideTurn = darkSideTurn();
+    const h = harness({ sideTurn, context: { reply: IMESSAGE } });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(sideTurn.calls).toEqual([`enabled:${job().family_id}`]);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('never watches a group turn, lit or not: the port is not even asked', async () => {
+    const sideTurn = darkSideTurn();
+    const h = harness({ sideTurn, context: { reply: IMESSAGE } });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(sideTurn.calls).toEqual([]);
+  });
+});
+
 describe('a re-driven turn never answers twice', () => {
   it('does nothing at all when this text has already been answered', async () => {
     const turns = fakeTurnLedger();
@@ -2822,6 +2871,7 @@ describe('a receipt sent as several bubbles', () => {
     const after: string[] = [];
     const handler: DeterministicHandler = {
       name: 'two_bubbles',
+      detects: async () => true,
       handle: async () => ({
         claimed: true,
         outcome: 'asked',
@@ -3531,6 +3581,7 @@ describe('natural reply resolution', () => {
     const resolver = fakeResolver({ status: 'unresolved', reason: 'no_target' });
     const claiming: DeterministicHandler = {
       name: 'claims_everything',
+      detects: async () => true,
       handle: async () => ({ claimed: true, outcome: 'ok', reply: 'Filed.' }),
     };
     const h = harness({
@@ -3587,6 +3638,7 @@ describe('natural reply resolution', () => {
     let otherCalls = 0;
     const other: DeterministicHandler = {
       name: 'not_the_owner',
+      detects: async () => false,
       handle: async () => {
         otherCalls += 1;
         return { claimed: false };
@@ -3743,6 +3795,7 @@ describe('natural reply resolution', () => {
     const coach = fakeCoach();
     const declining: DeterministicHandler = {
       name: 'owner_approval',
+      detects: async () => false,
       resolves: new Set(['approval']),
       handle: async () => ({ claimed: false }),
     };
@@ -4414,6 +4467,7 @@ describe('what the parent stated is written before anything reads it', () => {
     // the same words would supersede a fact that was just written.
     const claimer: DeterministicHandler = {
       name: 'claimer',
+      detects: async () => true,
       handle: async () => ({ claimed: true, outcome: 'recorded_done', reply: 'Filed.' }),
     };
     const { h, order } = statefulHarness({ handlers: [claimer], body: 'done' });
@@ -5318,6 +5372,7 @@ describe('the weekday-care answer', () => {
     const coach = fakeCoach();
     const offerHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
     };
@@ -5389,6 +5444,7 @@ describe('the weekday-care answer', () => {
     };
     const offerHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
     };
@@ -5415,6 +5471,7 @@ describe('the weekday-care answer', () => {
 
     const yesHandler: DeterministicHandler = {
       name: 'email_alert_add',
+      detects: async () => true,
       resolves: new Set(['email_alert_add']),
       handle: async () => ({ claimed: true, outcome: 'added', reply: null }),
     };
@@ -6335,6 +6392,7 @@ describe('a slow answer gets one holding line first', () => {
     const holding = fakeHoldingLine("I'm on it.");
     const slowPlan: DeterministicHandler = {
       name: 'plan',
+      detects: async () => true,
       handle: async (_db, turn) => {
         await new Promise((resolve) => setTimeout(resolve, 120));
         await turn.send('the plan, part one');
@@ -6358,6 +6416,7 @@ describe('a slow answer gets one holding line first', () => {
     const holding = fakeHoldingLine("I'm on it.");
     const slowOptOut: DeterministicHandler = {
       name: 'sms_opt_out',
+      detects: async () => true,
       handle: async () => {
         await new Promise((resolve) => setTimeout(resolve, 120));
         return { claimed: true, outcome: 'opted_out', reply: 'opted out' };
@@ -7683,6 +7742,9 @@ describe('VIL-463 group scope', () => {
   function askerOnlyHandler(onlyToAsker: boolean): DeterministicHandler {
     return {
       name: 'asker_only',
+      async detects() {
+        return true;
+      },
       async handle() {
         return {
           claimed: true as const,
@@ -8664,6 +8726,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
     const plan: DeterministicHandler = {
       name: 'plan',
+      detects: async () => false,
       handle: async (_db, turn) => {
         await turn.send('Nights 1-3: down drowsy but awake.');
         await turn.send('Nights 4-7: stretch the wait.');
@@ -8685,6 +8748,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
   it('dark: the same handler sends its messages back to back', async () => {
     const plan: DeterministicHandler = {
       name: 'plan',
+      detects: async () => false,
       handle: async (_db, turn) => {
         await turn.send('Nights 1-3: down drowsy but awake.');
         await turn.send('Nights 4-7: stretch the wait.');

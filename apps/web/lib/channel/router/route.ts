@@ -108,10 +108,10 @@ import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import {
   type OffDomainLane,
   type ReplySource,
+  keepPendingAsk,
   settlePendingAsks,
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
-import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
 import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
@@ -142,12 +142,7 @@ import { subtractSpans } from '~/lib/channel/reconcile/sentences';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { CrisisKind } from '~/lib/channel/voice/crisis-check';
-import {
-  type CrisisPager,
-  type SaidLineWriter,
-  logCrisisUnanswered,
-} from '~/lib/channel/voice/said-line';
+import type { CrisisPager, SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -159,12 +154,7 @@ import {
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
-import {
-  failurePageCrisisPager,
-  noteCrisisReplySent,
-  pageOps,
-  reportTurnFailures,
-} from '~/lib/monitoring/failure-page';
+import { noteCrisisReplySent, pageOps, reportTurnFailures } from '~/lib/monitoring/failure-page';
 import {
   type IncidentFailure,
   classifyChainedProviderFailure,
@@ -214,8 +204,15 @@ import {
 } from './reaction-plan';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
+import {
+  SIDE_TURN_LAPSED,
+  type SideTurnPorts,
+  type SideTurnWatch,
+  watchSideTurns,
+} from './side-turn';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
+import { pageUnwrittenCrisis } from './unwritten-moment';
 
 /**
  * VIL-220 · C1 — the inbound router: the consumer of A3's `channel.message.received`.
@@ -459,7 +456,23 @@ export interface DeterministicHandler {
    */
   readonly resolves?: ReadonlySet<OpenQuestionKind>;
   handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict>;
+  /**
+   * Would {@link handle} take this text? Its own matcher, run with no claim and no side
+   * effect: it reads, and writes, sends and acts on nothing. A side turn (side-turn.ts)
+   * asks every handler before its own read and hands back a text any one would take, so a
+   * text a handler acts on (a revocation, a disconnect, a "forget") is never answered in
+   * words alone. Where a model read settles the claim, the matcher in front of it answers.
+   */
+  detects(database: Database, ctx: HandlerDetectContext): Promise<boolean>;
 }
+
+/** What {@link DeterministicHandler.detects} is shown: the text and who sent it. No send,
+ * and no resolver reading, so a handler that claims only what the resolver read takes
+ * nothing here. */
+export type HandlerDetectContext = Pick<
+  HandlerContext,
+  'familyId' | 'parentUserId' | 'body' | 'now' | 'openQuestions' | 'inboundChannelMessageId'
+>;
 
 export interface ChannelRouterDeps {
   database: Database;
@@ -539,6 +552,9 @@ export interface ChannelRouterDeps {
   /** Which back-to-back texts this turn reads together (burst.ts). Non-nullable (rule
    * #11): dark is the plan's own `flag_off`, never an absent planner. */
   burst: InboundBurst;
+  /** A text that lands while this turn runs (side-turn.ts). Non-nullable (rule #11): dark
+   * is the port's own `enabled`, never an absent watcher. */
+  sideTurn: SideTurnPorts;
   /** The words a broken turn gets, composed (apology.ts). Non-nullable (rule #11) and
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
@@ -793,6 +809,8 @@ export type TurnDeferralReason =
   | 'model_unreachable'
   | 'turn_timeout'
   | 'moment_unwritten'
+  /** A side reply's claim holds the text, inside its lease (turn-ledger.ts `held`). */
+  | 'side_claim_held'
   | ApologyFallback;
 
 /**
@@ -817,13 +835,6 @@ export class TurnDeferred extends Error {
     this.name = 'TurnDeferred';
     this.reason = reason;
   }
-}
-
-/** The crisis a moment is, or null for a moment that is not one. */
-function momentCrisisKind(moment: Moment): CrisisKind | null {
-  if (moment === 'mental_crisis') return 'mental';
-  if (moment === 'emergency') return 'emergency';
-  return null;
 }
 
 export type RouterStatus =
@@ -925,7 +936,7 @@ export async function routeChannelMessage(
   const signal = turnDeadlineSignal(deadlineMs);
   const trailed: Promise<unknown>[] = [];
   const turnDeps = detachWorkstream(deps, trailed);
-  const wait: TurnWait = { end: async () => undefined };
+  const wait: TurnWait = { end: async () => undefined, side: null };
   try {
     const result = await runTurnThen(
       signal,
@@ -980,12 +991,16 @@ export async function routeChannelMessage(
     // Every exit, the deadline's included: no bubble left up and no holding line sent
     // after the turn is over.
     await wait.end();
+    // A side turn still in flight ends before this job frees the parent's key, so its text
+    // cannot start its own turn meanwhile.
+    await wait.side?.stop();
   }
 }
 
 /** What covers a parent's wait for one turn, ended however the turn ends. */
 interface TurnWait {
   end: () => Promise<void>;
+  side: SideTurnWatch | null;
 }
 
 async function routeChannelMessageInner(
@@ -1015,7 +1030,21 @@ async function routeChannelMessageInner(
   if (stage === 'folded') {
     return done(deps, job, { status: 'folded', handler: null, conversationId: null, lane: null });
   }
-  const redriven = stage === 'deferred';
+  if (stage === 'held') {
+    // The side turn that claimed it may still be sending. The re-drive reads it again.
+    throw new TurnDeferred('side_claim_held', new Error('side_claim_held'));
+  }
+  if (stage === 'lapsed') {
+    // That side reply never went: the claim is given back, and its thread row and budget
+    // are already paid, so this is a re-drive.
+    await deps.turns.releaseAhead({
+      familyId: job.family_id,
+      parentUserId: job.parent_user_id,
+      channelMessageId: job.channel_message_id,
+      reason: SIDE_TURN_LAPSED,
+    });
+  }
+  const redriven = stage === 'deferred' || stage === 'lapsed';
 
   // BACK-TO-BACK TEXTS (burst.ts). Before any gate reads a word, so every gate below reads
   // the whole burst: a STOP or a crisis in the second text cannot slip past one.
@@ -1029,6 +1058,14 @@ async function routeChannelMessageInner(
       ...(burst.kind === 'anchor' ? { readOutcome: burst.read } : { why: burst.why }),
     },
     'channel router: burst',
+  );
+  // From here a text that lands behind this turn may be answered beside it (side-turn.ts).
+  // A side reply closes no open question, and keeps the one its own answer leaves.
+  wait.side = watchSideTurns(deps, job, burst, ({ pendingAsk, ...reply }) =>
+    sendReply(deps, {
+      ...reply,
+      openAsks: pendingAsk === null ? 'untouched' : { keeps: pendingAsk },
+    }),
   );
 
   const loaded = await deps.loadContext(deps.database, job);
@@ -1906,18 +1943,8 @@ async function routeChannelMessageInner(
         { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
         'channel router: moment reply unwritten',
       );
-      const crisis = momentCrisisKind(verdict.moment);
-      if (crisis !== null) {
-        // A crisis nobody could answer reaches a human now, not on the re-drive.
-        await logCrisisUnanswered(deps.crisisPager ?? failurePageCrisisPager(deps.database), {
-          kind: crisis,
-          where: 'router moment',
-          ...momentUnwritten(verdict.reason),
-          inboundId: job.provider_message_id,
-          familyId: job.family_id,
-          parentUserId: job.parent_user_id,
-        });
-      }
+      // A crisis nobody could answer reaches a human now, not on the re-drive.
+      await pageUnwrittenCrisis(deps, job, verdict, 'router moment');
       try {
         await deps.turns.recordDeferred({
           familyId: job.family_id,
@@ -3679,8 +3706,12 @@ type SendReplyArgs = {
    * `'untouched'` is a line that is not an answer (the holding line). It goes out while
    * the turn is still reading, and the question the turn is about to read is one it
    * must not close.
+   *
+   * `{ keeps }` is an answer sent while another turn is still running (side-turn.ts):
+   * the question it left open is kept beside its row, and it closes none, for the
+   * holding line's reason.
    */
-  openAsks: { leaves: PendingAsk | null } | 'untouched';
+  openAsks: { leaves: PendingAsk | null } | { keeps: PendingAsk } | 'untouched';
   /** The lane's own name for this receipt, or null for a reply nothing reads back
    * (see {@link HandlerVerdict.templateKey}). */
   templateKey?: string | null;
@@ -4014,6 +4045,14 @@ async function settleAnswerAsks(
 ): Promise<void> {
   if (args.openAsks === 'untouched') return;
   try {
+    if ('keeps' in args.openAsks) {
+      await keepPendingAsk(deps.database, {
+        familyId: args.job.family_id,
+        channelMessageId,
+        ask: args.openAsks.keeps,
+      });
+      return;
+    }
     await settlePendingAsks(deps.database, {
       familyId: args.job.family_id,
       parentUserId: args.job.parent_user_id,
