@@ -1,7 +1,0 @@
-{
-  "value": {
-    "reason": "Sentence 0 only quotes the parent's note inside quotation marks and attributes it to the parent, so it is not a claim. Sentence 1 is an acknowledgement with no claim. No rows exist.",
-    "claims": []
-  },
-  "latencyMs": 1176
-}

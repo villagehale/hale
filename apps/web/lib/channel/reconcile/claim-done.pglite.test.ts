@@ -1,7 +1,9 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { cancelSignupPlan } from '~/lib/signup/plan/store';
 import { loadClaimShadowContext } from './candidate-rows';
 import { bindDispatchClaimEnforce, createClaimEnforcer } from './claim-enforce';
 import type { ReadClaim } from './claim-reader';
@@ -44,7 +46,7 @@ async function user(): Promise<string> {
   return row?.id as string;
 }
 
-async function seed() {
+async function seed(primaryLanguage = 'en') {
   const primary = await user();
   const [fam] = await db.database
     .insert(schema.families)
@@ -52,7 +54,7 @@ async function seed() {
       displayName: 'Household',
       provinceOrState: 'CO',
       onboardingStage: 'sms_active',
-      primaryLanguage: 'en',
+      primaryLanguage,
     })
     .returning({ id: schema.families.id });
   const familyId = fam?.id as string;
@@ -68,19 +70,25 @@ async function seed() {
 
 async function signupOffer(
   ids: { familyId: string; primary: string; childId: string },
-  status: 'pending' | 'submitting' | 'completed' | 'handed_back',
-) {
-  await db.database.insert(schema.authorizedSignupOffers).values({
-    familyId: ids.familyId,
-    childId: ids.childId,
-    parentUserId: ids.primary,
-    activityKey: 'swim-sat',
-    activityLabel: 'Saturday swim',
-    registrationUrl: 'https://register.example.org/swim',
-    sessions: [],
-    providerHost: 'register.example.org',
-    status,
-  });
+  status: 'pending' | 'planned' | 'submitting' | 'completed' | 'handed_back',
+  extra: Partial<typeof schema.authorizedSignupOffers.$inferInsert> = {},
+): Promise<string> {
+  const [row] = await db.database
+    .insert(schema.authorizedSignupOffers)
+    .values({
+      familyId: ids.familyId,
+      childId: ids.childId,
+      parentUserId: ids.primary,
+      activityKey: 'swim-sat',
+      activityLabel: 'Saturday swim',
+      registrationUrl: 'https://register.example.org/swim',
+      sessions: [],
+      providerHost: 'register.example.org',
+      status,
+      ...extra,
+    })
+    .returning({ id: schema.authorizedSignupOffers.id });
+  return row?.id as string;
 }
 
 const noShadow: ClaimShadow = {
@@ -176,14 +184,57 @@ describe('a "registered" claim needs a confirmation row', () => {
 });
 
 describe('a "sent" claim needs a send receipt', () => {
-  it('no text to anyone else: refused; a delivered text to the co-parent backs it', async () => {
+  async function withCoParent() {
     const ids = await seed();
     const coParent = await user();
     await db.database
       .insert(schema.familyMembers)
       .values({ familyId: ids.familyId, userId: coParent, role: 'co_parent' });
-    const sent: ReadClaim[] = [{ segment: 0, kind: 'send_done', row: 'm1' }];
-    // A text to the recipient themself is the conversation, not a receipt for another.
+    return { ...ids, coParent };
+  }
+
+  /** A text Hale sent because an action said to: the only kind of text that is a receipt. */
+  async function actionText(
+    ids: { familyId: string },
+    parentUserId: string,
+    status: 'sent' | 'delivered',
+  ) {
+    const [event] = await db.database
+      .insert(schema.events)
+      .values({
+        familyId: ids.familyId,
+        source: 'test',
+        eventType: 'test',
+        dedupHash: `dedup-${ids.familyId}-${parentUserId}-${status}`,
+      })
+      .returning({ id: schema.events.id });
+    const [action] = await db.database
+      .insert(schema.actions)
+      .values({
+        familyId: ids.familyId,
+        eventId: event?.id as string,
+        actionType: 'share_photos_with_family',
+        payload: {},
+      })
+      .returning({ id: schema.actions.id });
+    await db.database.insert(schema.channelMessages).values({
+      familyId: ids.familyId,
+      parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reminder',
+      status,
+      sentAt: at(-0.1),
+      relatedActionId: action?.id as string,
+    });
+  }
+
+  const sent: ReadClaim[] = [{ segment: 0, kind: 'send_done', row: 'm1' }];
+  const received: ReadClaim[] = [{ segment: 0, kind: 'send_received', row: 'm1' }];
+  const GOT_IT = 'Your co-parent got the pickup time.';
+
+  it("Hale's chat to the recipient themself is not a receipt", async () => {
+    const ids = await withCoParent();
     await db.database.insert(schema.channelMessages).values({
       familyId: ids.familyId,
       parentUserId: ids.primary,
@@ -194,16 +245,128 @@ describe('a "sent" claim needs a send receipt', () => {
       sentAt: at(-0.1),
     });
     expect(await sweep(ids.familyId, SENT, sent)).toEqual(['no_send_record']);
+  });
+
+  it("Hale's chat reply to the co-parent is not a receipt for the primary parent", async () => {
+    const ids = await withCoParent();
     await db.database.insert(schema.channelMessages).values({
       familyId: ids.familyId,
-      parentUserId: coParent,
+      parentUserId: ids.coParent,
       channel: 'imessage',
       direction: 'out',
-      category: 'reminder',
+      category: 'reply',
       status: 'delivered',
       sentAt: at(-0.1),
     });
+    expect(await sweep(ids.familyId, SENT, sent)).toEqual(['no_send_record']);
+  });
+
+  it("Hale's own reply in a group chat is not a receipt", async () => {
+    const ids = await withCoParent();
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: ids.familyId,
+      chatId: 'chat-group-1',
+      userId: ids.primary,
+      phoneE164Encrypted: 'enc',
+      phoneE164Hash: 'hash',
+      role: 'parent',
+    });
+    await db.database.insert(schema.channelMessages).values({
+      familyId: ids.familyId,
+      parentUserId: ids.primary,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      status: 'delivered',
+      providerChatId: 'chat-group-1',
+      sentAt: at(-0.1),
+    });
+    expect(await sweep(ids.familyId, 'I posted the RSVP in the group.', sent)).toEqual([
+      'no_send_record',
+    ]);
+  });
+
+  it('a text an action sent to the co-parent backs "I sent it" once the provider took it', async () => {
+    const ids = await withCoParent();
+    await actionText(ids, ids.coParent, 'sent');
     expect(await sweep(ids.familyId, SENT, sent)).toEqual([]);
+  });
+
+  it('"they got it" needs the provider to have said it was delivered', async () => {
+    const ids = await withCoParent();
+    await actionText(ids, ids.coParent, 'sent');
+    expect(await sweep(ids.familyId, GOT_IT, received)).toEqual(['no_delivery_record']);
+    expect(await dispatch(ids.familyId, ids.primary, GOT_IT, received)).toEqual({
+      status: 'unbacked',
+    });
+    await db.database
+      .update(schema.channelMessages)
+      .set({ status: 'delivered' })
+      .where(eq(schema.channelMessages.familyId, ids.familyId));
+    expect(await sweep(ids.familyId, GOT_IT, received)).toEqual([]);
+  });
+});
+
+describe('a booking or a cancellation that names a day must be that day', () => {
+  const SATURDAY = new Date('2026-11-07T17:00:00Z'); // 10:00 in America/Denver
+
+  async function bookingOn(ids: { familyId: string; primary: string }, when: Date) {
+    await db.database.insert(schema.activityBookings).values({
+      familyId: ids.familyId,
+      parentUserId: ids.primary,
+      integrationId: '00000000-0000-4000-8000-0000000000c2',
+      messageId: 'msg-day',
+      providerHost: 'register.example.org',
+      title: 'Saturday swim',
+      firstSessionAt: when,
+    });
+  }
+
+  it('fr: "réservé pour jeudi" cited to a Saturday booking is refused', async () => {
+    const ids = await seed('fr');
+    await bookingOn(ids, SATURDAY);
+    const booked: ReadClaim[] = [{ segment: 0, kind: 'scheduled_event', row: 'r1' }];
+    expect(
+      await sweep(ids.familyId, 'Le cours de natation est réservé pour jeudi à 16 h.', booked),
+    ).toEqual(['no_scheduled_row']);
+    expect(
+      await sweep(ids.familyId, 'Le cours de natation est réservé pour samedi à 10 h.', booked),
+    ).toEqual([]);
+  });
+
+  it('en: "registered … Thursday at 4pm" cited to a Saturday booking is refused', async () => {
+    const ids = await seed();
+    await bookingOn(ids, SATURDAY);
+    expect(
+      await sweep(
+        ids.familyId,
+        'She is registered for swim lessons on Thursday at 4pm.',
+        registered('r1'),
+      ),
+    ).toEqual(['no_registration_record']);
+    expect(
+      await sweep(
+        ids.familyId,
+        'She is registered for swim lessons on Saturday at 10am.',
+        registered('r1'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('a removed Saturday row does not back "I cancelled Thursday\'s swim"', async () => {
+    const ids = await seed();
+    await db.database.insert(schema.familyEvents).values({
+      familyId: ids.familyId,
+      title: 'Swim lesson',
+      startsAt: SATURDAY,
+      source: 'placement',
+      deletedAt: at(-0.1),
+    });
+    const cancelled: ReadClaim[] = [{ segment: 0, kind: 'cancelled', row: 'x1' }];
+    expect(await sweep(ids.familyId, "I cancelled Thursday's swim.", cancelled)).toEqual([
+      'no_cancel_record',
+    ]);
+    expect(await sweep(ids.familyId, "I cancelled Saturday's swim.", cancelled)).toEqual([]);
   });
 });
 
@@ -220,5 +383,55 @@ describe('a "cancelled" claim needs a cancellation row', () => {
       deletedAt: at(-0.1),
     });
     expect(await sweep(ids.familyId, CANCELLED, cancelled)).toEqual([]);
+  });
+});
+
+describe('a cancelled sign-up counts only once it is over', () => {
+  const CANCELLED_SWIM = "I cancelled Saturday swim, so you won't be charged.";
+  const cancelled: ReadClaim[] = [{ segment: 0, kind: 'cancelled', row: 'x1' }];
+  const PAYING = {
+    phase: 'paying' as const,
+    runId: 'run-1',
+    sessionId: 'session-1',
+    browserId: null,
+    choiceIndex: 0,
+    cartTotalCents: 9000,
+    holdExpiresAt: null,
+    costUsd: null,
+  };
+
+  it('a take-back while the payment runs is only a request: refused', async () => {
+    const ids = await seed();
+    const offerId = await signupOffer(ids, 'submitting', { planResume: PAYING });
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId,
+        familyId: ids.familyId,
+        actor: ids.primary,
+        now: at(-0.1),
+      }),
+    ).toBe('paying');
+    expect(await sweep(ids.familyId, CANCELLED_SWIM, cancelled)).toEqual(['no_cancel_record']);
+    // The run then ends without the registration: the payment was under way, so it is
+    // still not a cancellation anyone can promise "no charge" on.
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ status: 'handed_back' })
+      .where(eq(schema.authorizedSignupOffers.id, offerId));
+    expect(await sweep(ids.familyId, CANCELLED_SWIM, cancelled)).toEqual(['no_cancel_record']);
+  });
+
+  it('a take-back before the run started is a cancellation: backed', async () => {
+    const ids = await seed();
+    const offerId = await signupOffer(ids, 'planned');
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId,
+        familyId: ids.familyId,
+        actor: ids.primary,
+        now: at(-0.1),
+      }),
+    ).toBe('cancelled');
+    expect(await sweep(ids.familyId, 'I cancelled the swim sign-up.', cancelled)).toEqual([]);
   });
 });

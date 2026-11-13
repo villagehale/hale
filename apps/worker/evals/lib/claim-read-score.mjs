@@ -16,6 +16,7 @@ export const READ_CLAIM_KINDS = [
   'self_referential',
   'registration_done',
   'send_done',
+  'send_received',
   'cancelled',
 ];
 
@@ -162,6 +163,8 @@ const BACKS = {
     c.source === 'reported_outcome' ||
     c.source === 'parent_stated',
   send_done: (c) => c.source === 'send_receipt',
+  // Sent is not received: only a receipt the provider marked delivered.
+  send_received: (c) => c.source === 'send_receipt' && c.delivered === true,
   cancelled: (c) => c.source === 'cancelled',
 };
 
@@ -223,6 +226,22 @@ export const DEGENERATE_READERS = {
       goldClaims(fixture).map((c) =>
         c.kind === 'registration_done' && c.row === 'none'
           ? { ...c, row: compatibleRefs(fixture, c.kind)[0] ?? 'none' }
+          : c,
+      ),
+  },
+  // A reader that reads "they got it" as only "I sent it", citing whatever send it was
+  // offered, lets a false arrival through on a receipt nobody marked delivered. Every
+  // other claim is gold, so only the delivery fixtures can fail it.
+  'received-as-sent': {
+    mustFail: 'caught',
+    read: (fixture) =>
+      goldClaims(fixture).map((c) =>
+        c.kind === 'send_received'
+          ? {
+              ...c,
+              kind: 'send_done',
+              row: c.row === 'none' ? (compatibleRefs(fixture, 'send_done')[0] ?? 'none') : c.row,
+            }
           : c,
       ),
   },

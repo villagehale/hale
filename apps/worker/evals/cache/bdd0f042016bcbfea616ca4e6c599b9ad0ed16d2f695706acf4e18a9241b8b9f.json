@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the swim registration is paid and the child is in. Row r1 is a confirmed registration_done for the Saturday swim, which matches the program, so it backs a registration_done claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "r1"
+      }
+    ]
+  },
+  "latencyMs": 1115
+}

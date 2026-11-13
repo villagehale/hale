@@ -56,7 +56,7 @@ beforeAll(async () => {
 
 const BASE = ['reproducer', 'no_worries', 'reported', 'negation', 'compound', 'arming', 'all_set'];
 /** VIL-581: each "done" kind, true and false, in every gated language. */
-const DONE = ['registered', 'sent', 'cancelled'];
+const DONE = ['registered', 'sent', 'delivered', 'cancelled'];
 const MORE = [
   'season_spot',
   'wrong_subject',
@@ -190,6 +190,12 @@ describe('the JS compatibility table agrees with the production verifier', () =>
       sentAt: new Date('2026-11-03T15:00:00Z'),
       delivered: true,
     },
+    {
+      source: 'send_receipt',
+      kind: 'send_done',
+      sentAt: new Date('2026-11-03T15:00:00Z'),
+      delivered: false,
+    },
     { source: 'cancelled', kind: 'cancelled', startsAt: null },
   ];
   it('for every kind and every source', () => {
@@ -211,7 +217,9 @@ describe('the JS compatibility table agrees with the production verifier', () =>
         );
         const verifierBacks = verdict.resolutions[0].status !== 'refused';
         const jsBacks = compatibleRefs({ candidates: [{ ref: 'x', ...shape }] }, kind).length === 1;
-        expect(jsBacks, `${kind} × ${shape.source}/${shape.kind}`).toBe(verifierBacks);
+        expect(jsBacks, `${kind} × ${shape.source}/${shape.kind}/${shape.delivered}`).toBe(
+          verifierBacks,
+        );
       }
     }
   });

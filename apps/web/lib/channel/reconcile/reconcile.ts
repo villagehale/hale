@@ -111,9 +111,10 @@ export type RefusalReason =
   /** VIL-581 · "she's registered", "you got the spot", "it's paid" with no confirmed
    * signup, no recorded booking and no word from the parent that she got in. */
   | 'no_registration_record'
-  /** VIL-581 · "I sent it", "they got it" with no send that left (or, for arrived,
-   * none the provider said was delivered). */
+  /** VIL-581 · "I sent it" with no send an action made to someone else. */
   | 'no_send_record'
+  /** VIL-581 · "they got it" with no send the provider said was delivered. */
+  | 'no_delivery_record'
   /** VIL-581 · "I cancelled it", "it's off your calendar" with nothing removed. */
   | 'no_cancel_record';
 
@@ -158,7 +159,9 @@ const VIOLATION: Record<RefusalReason, string> = {
   no_registration_record:
     'The message says a child is registered, enrolled, has the spot, or that it is paid. No confirmed sign-up, no recorded booking and nothing the parent said backs that, so it would be false. Say what was actually done, or what still has to happen.',
   no_send_record:
-    'The message says something was sent to someone, or that they got it. No send like that left Hale, so it would be false. Say what was actually done, such as a draft, or offer to do it.',
+    'The message says something was sent to someone. No send like that left Hale, so it would be false. Say what was actually done, such as a draft, or offer to do it.',
+  no_delivery_record:
+    'The message says someone got it or that it arrived. Nothing says it was delivered yet, so that would be false. Say only what is known: that it was sent, if it was.',
   no_cancel_record:
     'The message says something was cancelled or removed. Nothing like that was removed or called off, so it would be false. Say what was actually done, such as a change waiting for approval, or what still has to happen.',
 };

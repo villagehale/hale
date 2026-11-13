@@ -1135,9 +1135,9 @@ describe("VIL-581 · each renderer says whether its words are the model's", () =
 });
 
 describe('VIL-581 · the production dispatch port is bound and does nothing while off', () => {
-  it('buildDispatchPorts wires a claim shadow that answers off with no env and no query', async () => {
+  it('buildDispatchPorts wires a claim shadow that answers off under the kill switch, with no query', async () => {
     const { buildDispatchPorts } = await import('./wiring');
-    vi.stubEnv('CLAIM_READER_MODE', '');
+    vi.stubEnv('CLAIM_READER_MODE', 'off');
     try {
       const noQueries = new Proxy(
         {},

@@ -14,6 +14,7 @@ const INVITE = 'co_parent_invite';
 const SELF = 'self_referential';
 const RD = 'registration_done';
 const SENT = 'send_done';
+const RECEIVED = 'send_received';
 const CANCEL = 'cancelled';
 
 /**
@@ -1407,11 +1408,11 @@ const EN_DONE = [
   fx({
     id: 'en-sent-delivered-false',
     language: 'en',
-    category: 'sent',
+    category: 'delivered',
     body: 'Your co-parent got the pickup time.',
     rows: [sent('co', TO_COPARENT, false)],
-    claims: [[SENT, 'none']],
-    refused: [['no_send_record']],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
   }),
   fx({
     id: 'en-sent-group',
@@ -1650,6 +1651,185 @@ const ES_DONE = [
   }),
 ];
 
+// VIL-581 fix round · a take-back that is only a request is no cancellation; a booking
+// or a cancellation that names a day must be that day; "they got it" needs delivered.
+const plan = (ref, what) => ({ ref, source: 'cancelled', kind: CANCEL, what });
+const SWIM = 'Swim lessons';
+
+const FIX_ROUND = [
+  // A take-back while the payment ran writes no cancellation row: the class is still on.
+  fx({
+    id: 'en-cancel-paying',
+    language: 'en',
+    category: 'cancelled',
+    body: "I cancelled Saturday swim, so you won't be charged.",
+    rows: [cal('swim', 'Swim lesson', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  fx({
+    id: 'fr-cancel-paying',
+    language: 'fr',
+    category: 'cancelled',
+    body: 'J’ai annulé la natation de samedi, donc tu ne seras pas facturé.',
+    rows: [cal('swim', 'Cours de natation', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  fx({
+    id: 'zh-cancel-paying',
+    language: 'zh',
+    category: 'cancelled',
+    body: '我已经取消了星期六的游泳课，所以不会扣费。',
+    rows: [cal('swim', '游泳课', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  fx({
+    id: 'es-cancel-paying',
+    language: 'es',
+    category: 'cancelled',
+    body: 'Cancelé la natación del sábado, así que no te cobrarán.',
+    rows: [cal('swim', 'Clase de natación', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  // A sign-up taken back before its run: the row that backs the true reply.
+  fx({
+    id: 'en-cancel-signup',
+    language: 'en',
+    category: 'cancelled',
+    body: 'I cancelled the Saturday swim sign-up.',
+    rows: [plan('swim', 'Saturday swim')],
+    claims: [[CANCEL, 'swim']],
+  }),
+  // A booking on Saturday does not back a Thursday sentence, in any language.
+  fx({
+    id: 'en-booking-wrong-day',
+    language: 'en',
+    category: 'day_time',
+    body: "She's registered for swim lessons on Thursday at 4pm.",
+    rows: [booking('swim', SWIM, SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'en-booking-right-day',
+    language: 'en',
+    category: 'day_time',
+    body: "She's registered for swim lessons on Saturday at 10am.",
+    rows: [booking('swim', SWIM, SAT_10)],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'fr-booking-wrong-day',
+    language: 'fr',
+    category: 'day_time',
+    body: 'Le cours de natation est réservé pour jeudi à 16 h.',
+    rows: [booking('swim', 'Cours de natation', SAT_10)],
+    claims: [[SE, 'none']],
+    refused: [['no_scheduled_row']],
+  }),
+  fx({
+    id: 'fr-booking-right-day',
+    language: 'fr',
+    category: 'day_time',
+    body: 'Le cours de natation est réservé pour samedi à 10 h.',
+    rows: [booking('swim', 'Cours de natation', SAT_10)],
+    claims: [[SE, 'swim']],
+  }),
+  fx({
+    id: 'zh-booking-wrong-day',
+    language: 'zh',
+    category: 'day_time',
+    body: '游泳课已经订在星期四下午4点。',
+    rows: [booking('swim', '游泳课', SAT_10)],
+    claims: [[SE, 'none']],
+    refused: [['no_scheduled_row']],
+  }),
+  fx({
+    id: 'es-booking-wrong-day',
+    language: 'es',
+    category: 'day_time',
+    body: 'Está inscrita en natación el jueves a las 16:00.',
+    rows: [booking('swim', 'Clase de natación', SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  // Sent is not received: "they got it" needs a receipt the provider marked delivered.
+  fx({
+    id: 'en-received-delivered',
+    language: 'en',
+    category: 'delivered',
+    body: 'Your co-parent got the pickup time.',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+  fx({
+    id: 'en-sent-and-received',
+    language: 'en',
+    category: 'delivered',
+    body: 'I texted your co-parent the pickup time, and she got it.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [
+      [SENT, 'co'],
+      [RECEIVED, 'none'],
+    ],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'fr-received-undelivered',
+    language: 'fr',
+    category: 'delivered',
+    body: 'Ton coparent a bien reçu l’heure de ramassage.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'fr-received-delivered',
+    language: 'fr',
+    category: 'delivered',
+    body: 'Ton coparent a bien reçu l’heure de ramassage.',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+  fx({
+    id: 'zh-received-undelivered',
+    language: 'zh',
+    category: 'delivered',
+    body: '你的另一位家长已经收到接孩子的时间了。',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'zh-received-delivered',
+    language: 'zh',
+    category: 'delivered',
+    body: '你的另一位家长已经收到接孩子的时间了。',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+  fx({
+    id: 'es-received-undelivered',
+    language: 'es',
+    category: 'delivered',
+    body: 'Tu copadre ya recibió la hora de recogida.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'es-received-delivered',
+    language: 'es',
+    category: 'delivered',
+    body: 'Tu copadre ya recibió la hora de recogida.',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+];
+
 export const CLAIM_READ_FIXTURES = [
   ...EN,
   ...FR,
@@ -1660,4 +1840,5 @@ export const CLAIM_READ_FIXTURES = [
   ...FR_DONE,
   ...ZH_DONE,
   ...ES_DONE,
+  ...FIX_ROUND,
 ];

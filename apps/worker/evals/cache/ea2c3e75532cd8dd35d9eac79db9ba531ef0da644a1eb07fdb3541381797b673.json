@@ -1,7 +1,0 @@
-{
-  "value": {
-    "reason": "Sentence 0 quotes the parent's own words (\"you said\" plus quoted text), so it is not a claim. Sentence 1 is just an acknowledgement. No rows exist, so there are no claims.",
-    "claims": []
-  },
-  "latencyMs": 2419
-}

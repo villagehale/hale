@@ -651,6 +651,7 @@ const KINDS = [
   'self_referential',
   'registration_done',
   'send_done',
+  'send_received',
   'cancelled',
 ];
 const REASONS = [
@@ -662,6 +663,7 @@ const REASONS = [
   'no_coparent_invite',
   'no_registration_record',
   'no_send_record',
+  'no_delivery_record',
   'no_cancel_record',
 ];
 const EVENT_KEYS = [
@@ -708,9 +710,9 @@ describe('agent_claim_shadow', () => {
     return h;
   }
 
-  it('carries exactly the 82 keys, every one present', async () => {
+  it('carries exactly the 89 keys, every one present', async () => {
     const h = await oneEvent();
-    expect(EVENT_KEYS).toHaveLength(82);
+    expect(EVENT_KEYS).toHaveLength(89);
     expect(Object.keys(h.props()).sort()).toEqual([...EVENT_KEYS].sort());
   });
 

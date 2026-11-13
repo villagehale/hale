@@ -175,6 +175,7 @@ describe('the output schema', () => {
       'self_referential',
       'registration_done',
       'send_done',
+      'send_received',
       'cancelled',
     ]);
     expect(READ_CLAIM_KINDS).toEqual(item.properties.kind.enum);

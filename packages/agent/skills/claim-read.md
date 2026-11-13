@@ -19,7 +19,7 @@ Read the meaning of each sentence, not its words. Do not look for particular wor
 
 ## What counts as a claim
 
-A claim is something the sentence says Hale has done, has on record, or will do, that a parent would rely on. There are nine kinds:
+A claim is something the sentence says Hale has done, has on record, or will do, that a parent would rely on. There are ten kinds:
 
 - `scheduled_event`: the sentence says a placement exists — something is booked, scheduled, on the calendar or confirmed for a time, or "you're all set for" a particular thing. A tag question on such a statement ("…, right?") still claims it.
 - `registration_done`: the sentence says a child now has a place in a program — is registered, enrolled or signed up, got in, got or holds the spot or seat, or that the registration or its fee is paid. Whoever did it, Hale or the parent.
@@ -28,7 +28,8 @@ A claim is something the sentence says Hale has done, has on record, or will do,
 - `activity_followup`: Hale will come back with finds, options, ideas or details it is still looking for or waiting on ("I'll keep looking", "I'll get back to you once those details are confirmed").
 - `co_parent_invite`: Hale invited, or will invite, someone (a co-parent, a caregiver, a number) to join.
 - `self_referential`: Hale promises to change its own messages or behaviour (to stop sending something, to send less, to remember to do something differently).
-- `send_done`: the sentence says Hale has sent, emailed, texted, forwarded, shared or posted something to someone else (another adult, a group chat, a provider), or that they received it.
+- `send_done`: the sentence says Hale has sent, emailed, texted, forwarded, shared or posted something to someone else (another adult, a group chat, a provider).
+- `send_received`: the sentence says that someone else got, received or has seen something Hale sent, or that it arrived. A sentence that says both ("I texted her and she got it") makes a `send_done` claim and a `send_received` claim.
 - `cancelled`: the sentence says something has been cancelled, removed, taken off the calendar, called off or withdrawn, or that Hale stopped watching something.
 
 One sentence can make several claims, of the same or different kinds. List each one separately, with the same sentence number.
@@ -54,7 +55,7 @@ For each claim, `row` is the alias of the ONE row the claim is about: the same a
 - When a sentence names a day or a time, the row it is about should have that day and time.
 - Rows with `state: "pending"` are what this very message is setting up; cite one when the sentence is about it. A `mintable` row is a registration Hale can start watching now; cite it when the sentence promises to watch that registration.
 - A `registration_done` claim is about a `registration_done` row (`state: "confirmed"`) for that program, or a `parent_stated` row where the parent said so. A calendar row only says the thing is planned; it never shows a place was taken.
-- A `send_done` claim is about a row whose label names that kind of send and audience. When the sentence says the other person got it, received it or it arrived, only a row with `state: "delivered"` is about it.
+- A `send_done` claim is about a row whose label names that kind of send and audience. A `send_received` claim is about such a row only when its `state` is `"delivered"`.
 - A `cancelled` claim is about a `cancelled` row for that same thing.
 - `co_parent_invite` and `self_referential` claims are never about a row: always `none`.
 - When `inbound` asks about something and the sentence answers it ("yes, that's booked"), the claim is about the thing the parent asked about.
@@ -68,6 +69,6 @@ For each claim, `row` is the alias of the ONE row the claim is about: the same a
 Return JSON:
 
 - `reason`: one or two short sentences on what you read. It is never shown to anyone.
-- `claims`: one entry per claim, each with `sentence` (the sentence's `i`), `kind` (one of the nine above) and `row` (an alias from `rows`, or `none`). An empty list when the message claims nothing.
+- `claims`: one entry per claim, each with `sentence` (the sentence's `i`), `kind` (one of the ten above) and `row` (an alias from `rows`, or `none`). An empty list when the message claims nothing.
 
 Only use sentence numbers and aliases you were given.

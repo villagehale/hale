@@ -1,7 +1,0 @@
-{
-  "value": {
-    "reason": "The only sentence states that nothing is booked, which is a negation and makes no claim. No rows exist, so there is nothing to cite.",
-    "claims": []
-  },
-  "latencyMs": 1705
-}

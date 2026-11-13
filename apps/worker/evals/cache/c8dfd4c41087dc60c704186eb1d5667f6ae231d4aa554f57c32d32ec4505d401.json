@@ -1,7 +1,0 @@
-{
-  "value": {
-    "reason": "The sentence says a draft was made and sits in drafts, which is only drafted and not sent, so it is not a send_done claim. No rows exist, so nothing else applies.",
-    "claims": []
-  },
-  "latencyMs": 1149
-}

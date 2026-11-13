@@ -308,8 +308,19 @@ describe('loadClaimShadowContext — what backs "registered", "sent" and "cancel
     expect(JSON.stringify(context.rows)).not.toContain('ZQXJ');
   });
 
-  it('sends: a group-chat text and an executed email back "sent"; the recipient’s own text and an unsent email do not', async () => {
+  it('sends: a group-chat text an action posted and an executed email back "sent"; chat, the recipient’s own text and an unsent email do not', async () => {
     const { familyId, primary } = await seedA();
+    const action = async (actionType: string) => {
+      const [ev] = await db.database
+        .insert(schema.events)
+        .values({ familyId, source: 'test', eventType: 'test', dedupHash: `d-${seq++}` })
+        .returning({ id: schema.events.id });
+      const [row] = await db.database
+        .insert(schema.actions)
+        .values({ eventId: ev?.id as string, familyId, actionType, payload: {} })
+        .returning({ id: schema.actions.id });
+      return row?.id as string;
+    };
     const text = (extra: Partial<typeof schema.channelMessages.$inferInsert>) =>
       db.database.insert(schema.channelMessages).values({
         familyId,
@@ -321,8 +332,6 @@ describe('loadClaimShadowContext — what backs "registered", "sent" and "cancel
         sentAt: at(-1),
         ...extra,
       });
-    await text({ providerChatId: 'chat-one-to-one' });
-    await text({ providerChatId: 'chat-group', status: 'delivered' });
     await db.database.insert(schema.linqGroupMembers).values({
       familyId,
       chatId: 'chat-group',
@@ -331,21 +340,26 @@ describe('loadClaimShadowContext — what backs "registered", "sent" and "cancel
       phoneE164Hash: 'h',
       role: 'parent',
     });
-    const action = async (sentAt: Date | null) => {
-      const [ev] = await db.database
-        .insert(schema.events)
-        .values({ familyId, source: 'test', eventType: 'test', dedupHash: `d-${seq++}` })
-        .returning({ id: schema.events.id });
-      const [row] = await db.database
-        .insert(schema.actions)
-        .values({ eventId: ev?.id as string, familyId, actionType: 'send_email', payload: {} })
-        .returning({ id: schema.actions.id });
+    // Hale's own chat in the group and to the recipient: the conversation, not receipts.
+    await text({ providerChatId: 'chat-group', status: 'delivered' });
+    await text({
+      providerChatId: 'chat-one-to-one',
+      relatedActionId: await action('add_to_routine'),
+    });
+    // A post an action made in the group: a receipt, delivered.
+    await text({
+      providerChatId: 'chat-group',
+      status: 'delivered',
+      category: 'reminder',
+      relatedActionId: await action('share_photos_with_family'),
+    });
+    const email = async (sentAt: Date | null) => {
       await db.database
         .insert(schema.outboundSends)
-        .values({ actionId: row?.id as string, sentAt });
+        .values({ actionId: await action('send_email'), sentAt });
     };
-    await action(at(-2));
-    await action(null);
+    await email(at(-2));
+    await email(null);
 
     const context = await ready({ familyId, now: NOW, parentUserId: null });
     const sends = context.rows.filter((r) => r.source === 'send_receipt');

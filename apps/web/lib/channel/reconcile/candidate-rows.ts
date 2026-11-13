@@ -1,9 +1,4 @@
-import {
-  type Database,
-  householdFamilyEvent,
-  householdRemovedFamilyEvent,
-  schema,
-} from '@hale/db';
+import { type Database, householdFamilyEvent, householdRemovedFamilyEvent, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -33,9 +28,11 @@ import { loadReconcileView } from './view';
  *
  * WHAT A "DONE" CLAIM MAY CITE. A registration is backed only by a confirmed signup, a
  * booking a confirmation email recorded, or the parent saying the child got in — never
- * a calendar row. A send is backed only by a text or email that left for SOMEONE ELSE:
- * Hale's own texts to this recipient are the conversation, not a receipt. A
- * cancellation is backed only by something actually removed or called off lately.
+ * a calendar row. A send is backed only by a text or email an ACTION sent to SOMEONE
+ * ELSE: Hale's chat (to this recipient, to the co-parent, or in a group) is the
+ * conversation, not a receipt. A cancellation is backed only by something actually
+ * removed or called off lately — a sign-up only once its take-back is over and no
+ * payment was under way.
  */
 
 /** How far back a send still backs "I sent it". */
@@ -419,10 +416,14 @@ function audienceOf(inGroupChat: boolean, role: string | null): SendAudience | n
 }
 
 /**
- * What backs "I sent it": a text that left in a group chat or to another adult of this
- * family, or an email Hale's executor sent for it, within the window. A text whose
- * provider said it arrived is `delivered`; the rest are only `sent` (a "they got it"
- * claim needs the delivered one). Nothing about the content travels.
+ * What backs "I sent it": a text an action sent in a group chat or to another adult of
+ * this family, or an email Hale's executor sent for it, within the window. A text whose
+ * provider said it arrived (Linq `message.delivered`, delivery-status.ts) is
+ * `delivered`; the rest are only `sent`, and only `delivered` backs "they got it".
+ * Nothing about the content travels.
+ *
+ * Read through the family's members, so the scan rides `channel_messages_cap_idx`
+ * (parent_user_id first) rather than the whole ledger.
  */
 async function sendReceiptRows(
   database: Database,
@@ -432,6 +433,10 @@ async function sendReceiptRows(
 ): Promise<ClaimCandidateRow[]> {
   const since = new Date(now.getTime() - SEND_RECEIPT_WINDOW_MS);
   const inGroupChat = sql<boolean>`${schema.channelMessages.providerChatId} is not null and exists (select 1 from ${schema.linqGroupMembers} where ${schema.linqGroupMembers.chatId} = ${schema.channelMessages.providerChatId})`;
+  const members = database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
   const [texts, emails] = await Promise.all([
     database
       .select({
@@ -442,6 +447,14 @@ async function sendReceiptRows(
         role: schema.familyMembers.role,
       })
       .from(schema.channelMessages)
+      // Only a text an action of this family sent: Hale's chat is never a receipt.
+      .innerJoin(
+        schema.actions,
+        and(
+          eq(schema.actions.id, schema.channelMessages.relatedActionId),
+          eq(schema.actions.familyId, familyId),
+        ),
+      )
       .leftJoin(
         schema.familyMembers,
         and(
@@ -451,6 +464,7 @@ async function sendReceiptRows(
       )
       .where(
         and(
+          inArray(schema.channelMessages.parentUserId, members),
           eq(schema.channelMessages.familyId, familyId),
           eq(schema.channelMessages.direction, 'out'),
           inArray(schema.channelMessages.status, ['sent', 'delivered']),
@@ -519,7 +533,7 @@ async function sendReceiptRows(
  * What backs "I cancelled it" / "it's off your calendar": within the window, a household
  * calendar row removed (its title through the same teen/sensitive redaction), a booking
  * the provider called off, a page Hale stopped watching, a signup plan the parent took
- * back.
+ * back that has ended without a payment starting.
  */
 async function cancellationRows(
   database: Database,
@@ -581,7 +595,11 @@ async function cancellationRows(
       .where(
         and(
           eq(schema.authorizedSignupOffers.familyId, familyId),
+          // Over, not requested: a take-back of a run that is still going, or one whose
+          // payment had started, can still end in a charge (cancelSignupPlan 'paying').
+          eq(schema.authorizedSignupOffers.status, 'handed_back'),
           gte(schema.authorizedSignupOffers.planCancelRequestedAt, since),
+          sql`coalesce(${schema.authorizedSignupOffers.planResume}->>'phase', '') <> 'paying'`,
         ),
       )
       .orderBy(desc(schema.authorizedSignupOffers.planCancelRequestedAt))

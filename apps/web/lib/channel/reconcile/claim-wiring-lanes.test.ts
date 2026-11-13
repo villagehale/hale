@@ -56,4 +56,9 @@ describe('isRetryableClaimReadFailure', () => {
     expect(isRetryableClaimReadFailure('oversize')).toBe(false);
     expect(isRetryableClaimReadFailure('lane_unavailable')).toBe(false);
   });
+
+  it('does not pay for another read of a body the model could not answer or the API refused', () => {
+    expect(isRetryableClaimReadFailure('unparseable')).toBe(false);
+    expect(isRetryableClaimReadFailure('provider_rejected')).toBe(false);
+  });
 });

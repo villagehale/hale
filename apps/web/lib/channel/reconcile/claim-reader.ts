@@ -38,6 +38,7 @@ export const READ_CLAIM_KINDS = [
   'self_referential',
   'registration_done',
   'send_done',
+  'send_received',
   'cancelled',
 ] as const;
 export type ReadClaimKind = (typeof READ_CLAIM_KINDS)[number];

@@ -139,8 +139,9 @@ export const refusedResolutions = (verdict: ClaimReadVerdict) =>
 
 /**
  * VIL-581 · dispatch failures that should come back. A drain retry can recover a
- * provider blip; a missing zone, an oversize body, or a lane that cannot call will
- * fail the same way on the next tick.
+ * provider blip; a missing zone, an oversize body, a lane that cannot call, an answer
+ * the model could not shape for this body, or a request the API rejected will fail the
+ * same way on the next tick, so those are not paid for again.
  */
 export function isRetryableClaimReadFailure(reason: ClaimEnforceFailure): boolean {
   switch (reason) {
@@ -149,9 +150,9 @@ export function isRetryableClaimReadFailure(reason: ClaimEnforceFailure): boolea
     case 'incident':
     case 'no_budget':
     case 'truncated':
+      return true;
     case 'unparseable':
     case 'provider_rejected':
-      return true;
     case 'refused':
     case 'lane_unavailable':
     case 'oversize':

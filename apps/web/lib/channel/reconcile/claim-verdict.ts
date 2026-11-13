@@ -6,7 +6,9 @@ import type { ClaimResolution, RefusalReason } from './reconcile';
 /**
  * VIL-581 · code verifies every citation the reader made. Pure: the alias must be one
  * this call offered (the per-call map), the row's kind must be able to back the claim's
- * kind, and a booking cited to a calendar row must not name another day or time.
+ * kind, a sentence cited to any row with a start time (calendar, booking, cancellation)
+ * must not name another day or time, and "they got it" needs a row the provider marked
+ * delivered.
  * Refusals keep main's vocabulary (`RefusalReason`); `why` says which check refused.
  *
  * A refused claim is a VERDICT about a sentence. A failed read is a different union in
@@ -60,6 +62,9 @@ function backing(kind: ReadClaim['kind'], row: ClaimCandidateRow): MatchedBy | '
       return null;
     case 'send_done':
       return row.source === 'send_receipt' ? 'send_receipt' : null;
+    // Sent is not received: until the provider says it arrived, nobody "got it".
+    case 'send_received':
+      return row.source === 'send_receipt' && row.delivered ? 'send_receipt' : null;
     case 'cancelled':
       return row.source === 'cancelled' ? 'cancellation_row' : null;
     case 'registration_watch':
@@ -113,6 +118,8 @@ function refusalFor(kind: ReadClaim['kind'], candidates: ClaimCandidateSet): Ref
       return 'no_registration_record';
     case 'send_done':
       return 'no_send_record';
+    case 'send_received':
+      return 'no_delivery_record';
     case 'cancelled':
       return 'no_cancel_record';
   }
@@ -141,7 +148,8 @@ function resolve(
     return { claim, status: 'minted', alias: 'w1', window: row as MintableWindow };
   }
   if (
-    row.source === 'calendar' &&
+    'startsAt' in row &&
+    row.startsAt !== null &&
     dayTimeConflict(sentence, row.startsAt, ctx.timeZone, ctx.locale)
   ) {
     return refused('day_time_conflict');
