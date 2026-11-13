@@ -7136,6 +7136,7 @@ describe('the reply row, written to a real database', () => {
 
       it('a tapback that stood in for the words', async () => {
         lit();
+        vi.stubEnv('LINQ_REACTIONS_ENABLED', 'false');
         vi.stubEnv('LINQ_API_KEY', 'test-key');
         const reacted: string[] = [];
         vi.stubGlobal('fetch', async (url: string) => {
