@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Quick look at your calendar: nothing about Mia turned up there yet, so I'll keep watching for her activities and let you know if anything matters. Talk soon.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "ahaMention": null
+  },
+  "latencyMs": 1299
+}

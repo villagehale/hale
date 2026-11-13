@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { markUntrustedTree, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, markUntrustedTree, pickLane } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { loadDraftActionSkill } from './skill';
@@ -63,6 +63,7 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
     client,
     lane,
     system: skill.instructions,
+    cacheTtl: SPARSE_CACHE_TTL,
     userMessage,
     toolName: 'draft_action',
     toolDescription: 'Return the structured draft of the proposed action.',

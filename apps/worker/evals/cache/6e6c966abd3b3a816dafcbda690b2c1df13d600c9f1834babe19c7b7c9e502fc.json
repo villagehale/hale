@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the storytime moved from Saturday Sept 19 to Sunday Sept 20, both at 1:00 PM, about 45 minutes, and names Robin and the library. It claims the calendar is already updated, which matches alreadyOnCalendar true, and it makes no unsupported ask or offer since offer is null. Minor issue: it says 'emailed Tuesday' which matches arrivedOn, and the tone is casual and fits. Only slight concern is the ambiguity-free dating, which is accurate, so the text is solid.",
+    "score": 5
+  }
+}

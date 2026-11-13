@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The line correctly tells Priya that she drew Ana, but it also reveals that Ben drew Cy, a second pairing that is explicitly secret. A giver_draw may name only the giver's own receiver, so this is a direct secrecy violation. The parenthetical 'don't tell!' makes it worse, and the draw also includes information not in the provided facts.",
+    "score": 1
+  }
+}

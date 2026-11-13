@@ -1,7 +1,14 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { forceToolJson, markUntrusted, pickLane, untrustedSourceFor } from '@hale/agent';
+import {
+  SPARSE_CACHE_TTL,
+  forceToolJson,
+  markUntrusted,
+  pickLane,
+  untrustedSourceFor,
+} from '@hale/agent';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
 import { z } from 'zod';
+import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
 import { anthropicClient } from '../anthropic/client.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { redactEventPayload } from '../redaction/redact.js';
@@ -166,7 +173,7 @@ export async function runClassifier(
   const basePrompt = await loadPrompt('classifier');
   await loadStagePacks();
   const pack = stagePackFor(input.stages ?? ['newborn']);
-  const instructions = pack ? `${basePrompt}\n\n${pack}` : basePrompt;
+  const extras = pack ? [pack] : [];
 
   // The dedup key is the ORIGINAL content's, so a signal that arrives twice
   // still probes to the same row whether or not the family's names changed
@@ -185,17 +192,23 @@ export async function runClassifier(
 
   const lane = pickLane('classify');
   const startedAt = Date.now();
-  const { value: parsed, usage } = await forceToolJson({
-    client: deps.client ?? anthropicClient('classify_event'),
-    lane,
-    system: instructions,
-    userMessage,
-    toolName: 'classification',
-    toolDescription: 'Return the structured classification of the inbound signal.',
-    inputJsonSchema: classifierOutputJsonSchema,
-    schema: classifierOutputSchema,
-    maxTokens: 4096,
-  });
+  const { value: parsed, usage } = await withLlmContext(
+    { stage: 'classify_event', ...llmFamilyContext(input.familyId) },
+    () =>
+      forceToolJson({
+        client: deps.client ?? anthropicClient('classify_event'),
+        lane,
+        system: basePrompt,
+        systemExtras: extras,
+        cacheTtl: SPARSE_CACHE_TTL,
+        userMessage,
+        toolName: 'classification',
+        toolDescription: 'Return the structured classification of the inbound signal.',
+        inputJsonSchema: classifierOutputJsonSchema,
+        schema: classifierOutputSchema,
+        maxTokens: 4096,
+      }),
+  );
 
   return {
     eventType: parsed.event_type,

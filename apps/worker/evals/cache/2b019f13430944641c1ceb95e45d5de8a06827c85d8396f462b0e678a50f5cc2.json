@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzTfwCisiPDWs8QqJbDU",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSugcKEAgTGAI4AUIIdGhpbmtpbmcSDNrV0ZvNksM6hVrUMBoMoDqKhcYsk6veZAIOIjA+cgWXI8zReLkD9JLSk8PFZyISJVKsWwQ0ifqXWpvIpVShV9S7RGqbnYx/0tZcPTIq1waonk9SQNcWD1xZz6rVigGTCTZIw0waCfQ4hrLvpQFd43lKGxFHf3FQI1hQvIVdDVBINhYPXvmNc04TucRZeLwTobJ4uuo1OQmt6lUE7AOITJV5VuMNasOXhaIHHFv36M3cuXW1cOoCTOhj5nwmaBB4X2icmgwbwGzKdKhlZDShjShMiet/bMxngd1aXRiYGijp72BA0SGBw0q0DMoaX9t20gqOfKL2eTjzp5hthEUzvzcueNnecJ0seite6nD7AAyEpmPSwsgLvd59BbU55aMe3+QxF5DEAiDBouKgJLILeez0BFR5tfGxrZZOom6I1e0ZHnvUC8RosU3ajVh31HMArL0wdKmIGzkiwcLD5CuIAEoo33345B039o9pl9K+gaPtctZYige87LADnbFGLk+NEuNYiX7uShIZ0HnRp4kHVDivAnHN6uWn+0scQnRtZysRJeoijHx3mL6KWw5whcrPhFCwcpiyOBWFWoeQA3letl82S934WXuIsPdsiETMjXZRzh9bWxg9HBSFD2ri2mU+0bn8DcGJAUqHe8poN8pCWy0jOazqGJG5O6XL/FJIFADfPQTIp1OotBt5Ptmiea0uurjU+AOQL/8k4vkRHD5NjbdVcgvur794Azaq+lQO1EOu5Y3v1fF0mV1U+5d/nwQ556jcqDAhodGE72IQto8537W+IH2Clf/4lRb5rhQkLObp2J7dxZkXONeUqf6pu3m4JwiVzpiSPTfFUx9g53qwmphAl6x6hwaVkIJN22D+GEkCew6PmXKdacLHKmKtiEmt9oRMOXHvvBWzMgwjVoxlkSGHD5IP+Gnu53SsnqGxxj++uPj5ZR0VmaXbVnQnm45BuAeubXV4nKdRHwtXn76SbYMSAy33+qtNZGKyU8PxRPq26ESnA2b2RDLqsXkWeOwRG4R9NfTFToqeOAimazQW+nTHSGmwB8zMR5CgGbSdzzisIevEW3Ik3IdsuMhW6W6ur62DuQBAfGHU83I221oll4n3Madx9mFQP0iicc6+EZ+WeyHNPMRi+3SCKZdLQoskQsBt4OBIu1Z2iHtNUfA8Qi5ZAmwjNv15ouVR55qdnLm/HTRm5Rz6WUmRSrq3JcEyooTZg7DpY+n64FxVQu5lFq+FrLY0ImsYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week for Saturday's 10:00am soccer practice. If you want somewhere different, Riverdale Farm is a free outdoor farm rather than a park, and it's listed for Sun, Aug 9. [link-b8b9f6]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1569,
+      "cache_read_input_tokens": 23770,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1569,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 191,
+      "output_tokens_details": {
+        "thinking_tokens": 101
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3156
+}

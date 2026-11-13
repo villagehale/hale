@@ -1,6 +1,7 @@
-import { forceToolJson, markUntrustedTree, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, forceToolJson, markUntrustedTree, pickLane } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
+import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
 import { anthropicClient } from '../anthropic/client.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { type AgentRunMetrics, metricsFromUsage } from './run-metrics.js';
@@ -68,17 +69,22 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
 
   const lane = pickLane('draft');
   const startedAt = Date.now();
-  const { value: parsed, usage } = await forceToolJson({
-    client: anthropicClient(),
-    lane,
-    system: instructions,
-    userMessage,
-    toolName: 'draft_action',
-    toolDescription: 'Return the structured draft of the proposed action.',
-    inputJsonSchema: drafterOutputJsonSchema,
-    schema: drafterOutputSchema,
-    maxTokens: 4096,
-  });
+  const { value: parsed, usage } = await withLlmContext(
+    { stage: 'drafter', ...llmFamilyContext(input.familyId) },
+    () =>
+      forceToolJson({
+        client: anthropicClient('drafter'),
+        lane,
+        system: instructions,
+        cacheTtl: SPARSE_CACHE_TTL,
+        userMessage,
+        toolName: 'draft_action',
+        toolDescription: 'Return the structured draft of the proposed action.',
+        inputJsonSchema: drafterOutputJsonSchema,
+        schema: drafterOutputSchema,
+        maxTokens: 4096,
+      }),
+  );
 
   return {
     draft: {

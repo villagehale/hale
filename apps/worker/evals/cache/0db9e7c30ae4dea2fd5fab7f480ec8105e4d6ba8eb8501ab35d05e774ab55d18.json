@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgxMDgaTtuapwKSjUk3cX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Yes, this is really common at 20 months. Sudden night wakings often show up with big developmental leaps, teething, or a nap or bedtime that has drifted.\n\nTonight, if he wakes, keep it boring. Go in, use a calm low voice and a quick pat, and keep the lights off. Skip picking him up or starting a game, so 2am doesn't turn into something fun. If he's also running a fever or seems unwell, call 811."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 115,
+      "cache_read_input_tokens": 22801,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 115,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 145,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

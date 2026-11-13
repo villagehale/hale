@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reasoning": "m1 asks for a July soccer camp for Milo; m2 adds a price limit of $300 a week to that same search, so it constrains the same ask.",
+    "groups": [
+      [
+        "m1",
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1782
+}

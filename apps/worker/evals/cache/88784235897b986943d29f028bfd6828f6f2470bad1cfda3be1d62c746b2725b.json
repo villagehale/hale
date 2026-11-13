@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the sender, the Tuesday arrival, the date Friday October 2, 9 AM, the location at the daycare, and the child Robin. It asks whether to add it, matching offer add_to_week. Casual tone, English, no invented details, no subject or surname quoted. Minor: 'Heads up' framing and the email 'emailed Tuesday' are supported by arrivedOn.",
+    "score": 5
+  }
+}

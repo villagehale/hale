@@ -50,6 +50,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   'apps/web/lib/monitoring/failure-page.ts': ['crisis_unanswered'],
   // VIL-472. One recorder writes the tapback and the sticker moment.
   'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_sticker'],
+  // VIL-479. One helper writes Hale's edit and a parent's edit of their own bubble.
+  'apps/web/lib/channel/linq/edit.ts': ['linq_message_edited', 'linq_parent_message_edited'],
   // VIL-226. One audit helper writes every verb of the hourly proactive review, and a
   // decider send names the sweep's own verb for a nudge.
   'apps/web/lib/channel/proactive/review.ts': [
@@ -253,6 +255,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // attempts back by the same value (attempt cap and backoff, VIL-449).
   'apps/web/lib/loop/calendar-invite.ts': ['calendar_cancel.retry_attempt'],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
+  // TURN_FOLDED_ACTION — the turn ledger reads the same constant back at GATE 0.
+  'apps/web/lib/channel/router/burst.ts': ['sms_turn_folded'],
   // CANARY_ANSWERED_ACTION — a constant precisely because the cron's
   // verification reads the same value back (channel/canary/run.ts); a literal
   // here would let the two halves drift apart silently.

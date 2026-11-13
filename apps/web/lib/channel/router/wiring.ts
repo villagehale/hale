@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
@@ -37,7 +38,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
-import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { deliveredAsk } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
@@ -82,9 +83,11 @@ import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
-import { introAskDedupeKey } from '~/lib/village/intros/run';
+import { introAskDedupeKey, introCardDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
+import { createInboundBurst } from './burst';
+import { createBurstReader } from './burst-reader';
 import { createDisambiguationStore } from './disambiguation';
 import { createFloodLine } from './flood-line';
 import {
@@ -122,8 +125,19 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
+import { SIDE_TURN_CLAIM_LEASE_MS, productionSideTurnFamily } from './side-turn';
+import { createSideTurnReader } from './side-turn-reader';
 import type { SmokeAlarmClaim } from './smoke-alarm';
-import type { InboundTurnLedger } from './turn-ledger';
+import {
+  type InboundTurnLedger,
+  TURN_ANSWERED_ACTION,
+  TURN_CLAIMED_AHEAD_ACTION,
+  TURN_DEFERRED_ACTION,
+  TURN_FAILED_ACTION,
+  TURN_FOLDED_ACTION,
+  TURN_LEDGER_LOOKBACK_MS,
+  TURN_LEDGER_TARGET,
+} from './turn-ledger';
 
 /**
  * VIL-220 · C1 — the production wiring. The one place the router meets real tables, a
@@ -157,6 +171,7 @@ export async function loadInboundContext(
       channel: schema.channelMessages.channel,
       providerMessageId: schema.channelMessages.providerMessageId,
       providerChatId: schema.channelMessages.providerChatId,
+      providerService: schema.channelMessages.providerService,
       inboundMedia: schema.channelMessages.inboundMedia,
     })
     .from(schema.channelMessages)
@@ -182,6 +197,7 @@ export async function loadInboundContext(
       message.channel,
       message.providerMessageId,
       message.providerChatId,
+      message.providerService,
     ),
     arrivedInFamilyGroup(database, job.family_id, message.channel, message.providerChatId),
   ]);
@@ -235,6 +251,7 @@ async function resolveReplyRoute(
   channel: typeof schema.channelMessages.$inferSelect.channel,
   providerMessageId: string | null,
   providerChatId: string | null,
+  providerService: schema.LinqServiceValue | null,
 ): Promise<ReplyRoute | null> {
   switch (channel) {
     case 'sms': {
@@ -256,6 +273,7 @@ async function resolveReplyRoute(
             to: phoneE164,
             chatId: providerChatId,
             replyToMessageId: providerMessageId,
+            service: providerService,
           }
         : null;
     }
@@ -586,40 +604,7 @@ export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
   };
 }
 
-/**
- * The two audit actions the turn ledger reads back. DATA values, like
- * {@link SMOKE_ALARM_ACTION}: they are what a PIPEDA access request renders and what the
- * re-drive gate reads, so they are never renamed with the code.
- */
-export const TURN_ANSWERED_ACTION = 'sms_turn_answered';
-export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
-
-/**
- * The third one, and the one whose absence made the 2026-08-22 turn unreadable. A DATA
- * value like the two above. The re-drive gate does NOT read it: a failed turn that
- * apologised is still answered, and answering twice is the thing the ledger exists to
- * prevent.
- */
-export const TURN_FAILED_ACTION = 'sms_turn_failed';
-
-/** The table both rows point at, named ONCE. The reader's predicate and the writers'
- * values are the same three strings; a fourth copy of any of them is how a gate stops
- * matching the rows it is supposed to find. */
-const TURN_LEDGER_TARGET = 'channel_messages';
-
-/**
- * How far back the stage read looks.
- *
- * The ONLY index on audit_log is (family_id, occurred_at), and this read now runs on
- * every inbound text rather than only on a failed turn during an outage. Bounding the
- * time makes it a range scan over one family's recent rows instead of a filter over
- * their whole history.
- *
- * A week is far past the point where the answer could change: pg-boss exhausts this
- * queue's retries in one to two hours (channel/config.ts), so a turn older than that is
- * not going to be re-driven at all.
- */
-const TURN_LEDGER_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+export { TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION, TURN_FAILED_ACTION, TURN_FOLDED_ACTION };
 
 /**
  * The router's memory of its own attempts, in audit_log — no new table and no migration,
@@ -662,18 +647,86 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
           .returning({ id: schema.channelTurnAnswerClaims.id });
         if (claimed.length === 0) return 'already_answered';
 
+        await tx.insert(schema.auditLog).values([
+          {
+            familyId: input.familyId,
+            actor: input.parentUserId,
+            actionTaken: TURN_ANSWERED_ACTION,
+            targetTable: TURN_LEDGER_TARGET,
+            targetId: input.channelMessageId,
+          },
+          // A folded text is answered by this same reply. Its claim is the fold's, so
+          // only the anchor's claim above arbitrates; `into` names the turn that answered.
+          ...input.folded.map((memberId) => ({
+            familyId: input.familyId,
+            actor: input.parentUserId,
+            actionTaken: TURN_ANSWERED_ACTION,
+            targetTable: TURN_LEDGER_TARGET,
+            targetId: memberId,
+            after: { into: input.channelMessageId },
+          })),
+        ]);
+        return 'claimed';
+      }),
+    recordRouted: async ({ channelMessageId }) => {
+      await database
+        .insert(schema.channelTurnAnswerClaims)
+        .values({ channelMessageId })
+        .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId });
+    },
+    claimAhead: async (input, alongside) =>
+      database.transaction(async (tx) => {
+        const claimed = await tx
+          .insert(schema.channelTurnAnswerClaims)
+          .values({ channelMessageId: input.channelMessageId })
+          .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId })
+          .returning({ id: schema.channelTurnAnswerClaims.id });
+        if (claimed.length === 0) return 'already_answered';
         await tx.insert(schema.auditLog).values({
           familyId: input.familyId,
           actor: input.parentUserId,
-          actionTaken: TURN_ANSWERED_ACTION,
+          actionTaken: TURN_CLAIMED_AHEAD_ACTION,
           targetTable: TURN_LEDGER_TARGET,
           targetId: input.channelMessageId,
         });
+        await alongside(tx as unknown as Database);
         return 'claimed';
       }),
+    recordAnsweredAhead: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: TURN_ANSWERED_ACTION,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+      });
+    },
+    releaseAhead: async (input) =>
+      database.transaction(async (tx) => {
+        await tx
+          .delete(schema.channelTurnAnswerClaims)
+          .where(eq(schema.channelTurnAnswerClaims.channelMessageId, input.channelMessageId));
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          actionTaken: TURN_DEFERRED_ACTION,
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: input.channelMessageId,
+          after: { reason: input.reason },
+        });
+      }),
+    // A side reply's claim row is read beside the others (claimAhead): taken before its
+    // reply is sent, with no answered row yet, it is held until its lease lapses. Given
+    // back, it has a deferred row at or after it. Only the NEWEST claim is read, and only a
+    // deferred row from its time on gives it back: an older one released an earlier claim
+    // or deferred the text's own turn, and reading it as this claim's would let that turn
+    // answer while the side turn holding the claim is still sending.
     stageOf: async ({ familyId, channelMessageId }) => {
       const rows = await database
-        .select({ actionTaken: schema.auditLog.actionTaken })
+        .select({
+          actionTaken: schema.auditLog.actionTaken,
+          occurredAt: schema.auditLog.occurredAt,
+        })
         .from(schema.auditLog)
         .where(
           and(
@@ -681,10 +734,32 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
             eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
             eq(schema.auditLog.targetId, channelMessageId),
-            inArray(schema.auditLog.actionTaken, [TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION]),
+            inArray(schema.auditLog.actionTaken, [
+              TURN_ANSWERED_ACTION,
+              TURN_DEFERRED_ACTION,
+              TURN_FOLDED_ACTION,
+              TURN_CLAIMED_AHEAD_ACTION,
+            ]),
           ),
         );
+      if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
       if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
+      const ahead = rows
+        .filter((row) => row.actionTaken === TURN_CLAIMED_AHEAD_ACTION)
+        .reduce<(typeof rows)[number] | undefined>(
+          (newest, row) => (newest && newest.occurredAt >= row.occurredAt ? newest : row),
+          undefined,
+        );
+      if (
+        ahead &&
+        !rows.some(
+          (row) => row.actionTaken === TURN_DEFERRED_ACTION && row.occurredAt >= ahead.occurredAt,
+        )
+      ) {
+        return Date.now() - ahead.occurredAt.getTime() < SIDE_TURN_CLAIM_LEASE_MS
+          ? 'held'
+          : 'lapsed';
+      }
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
     recordDeferred: async (input) => {
@@ -770,6 +845,23 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
     turns: auditTurnLedger(database),
+    // Back-to-back texts read as one turn, on the same lazy client as the screen. On
+    // unless INBOUND_BURST_ENABLED is `false`.
+    burst: createInboundBurst(database, {
+      enabled: (familyId) => isEnabled('inbound-burst', familyId),
+      reader: createBurstReader(screenClient),
+      now: () => new Date(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: console,
+    }),
+    // A text that lands while this parent's turn runs, read beside it, on the same lazy
+    // client. On unless INBOUND_MIDTURN_ENABLED=false.
+    sideTurn: {
+      enabled: (familyId) => isEnabled('inbound-midturn', familyId),
+      reader: createSideTurnReader(screenClient),
+      family: productionSideTurnFamily(database),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    },
     // The words a broken turn gets, on the same lazy client the screen and the general
     // answer use — one key, one failure story, resolved only by the turn that needs one.
     apology: createTurnApology(screenClient),
@@ -788,8 +880,17 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordCapabilityNotes,
     // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
     // tick is the consumer — so the reply is never waiting on research.
-    dispatchDeepResearch: (payload) =>
-      dispatchDeepResearch(async () => (await getQueue()) as unknown as DeepResearchQueue, payload),
+    dispatchDeepResearch: (payload, askedBy) =>
+      dispatchDeepResearch(
+        {
+          resolve: async () => (await getQueue()) as unknown as DeepResearchQueue,
+          audit: async (row) => {
+            await database.insert(schema.auditLog).values(row);
+          },
+        },
+        payload,
+        askedBy,
+      ),
     // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.
@@ -870,8 +971,8 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
       introOptInOpen: async (database, { familyId, parentUserId }) => {
         // ASKED AND UNANSWERED, read from two different places because they are two
-        // different facts: the ask is an outbound ledger row (so a card that was composed
-        // and never sent is not a question), and the answer is a consent row of EITHER
+        // different facts: the ask is a DELIVERED outbound ledger row (so a card that was
+        // composed, queued or failed is not a question), and the answer is a consent row of EITHER
         // polarity (a decline is an answer, and re-asking a family that said no would be
         // the worst version of this feature).
         //
@@ -879,11 +980,11 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // question is asked once per household, but only the parent it was TEXTED to has it
         // open — otherwise a co-parent who never saw it could answer it, and Hale would
         // write a consent row in their name for a question it never put to them.
-        const [askedParentUserId, answered] = await Promise.all([
-          introAskRecipient(database, familyId),
+        const [ask, answered] = await Promise.all([
+          deliveredAsk(database, introAskDedupeKey(familyId)),
           discoverabilityAsked(database, parentUserId),
         ]);
-        return askedParentUserId === parentUserId && !answered;
+        return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.sentAt } : null;
       },
       introProposal: async (database, familyId, now) => {
         // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
@@ -891,7 +992,13 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // card that never existed), and offering one of those to the resolver would invite
         // it to resolve a question that is already closed.
         const proposal = await intros.answerableProposal(database, familyId, now);
-        return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+        if (proposal?.standing !== 'unanswered') return null;
+        // Open, and dated, only once the card reached this side. The proposal's own
+        // per-side stamp is written when the provider accepts the send, and a receipt
+        // can still say it never arrived.
+        const side = proposal.familyAId === familyId ? 'a' : 'b';
+        const card = await deliveredAsk(database, introCardDedupeKey(proposal.id, side));
+        return card && { id: proposal.id, askedAt: card.sentAt };
       },
       planOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
@@ -985,20 +1092,4 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
     },
     options,
   );
-}
-
-/** Who the one discoverability ask actually went to, or null if it never went. The
- * dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
-async function introAskRecipient(database: Database, familyId: string): Promise<string | null> {
-  const [row] = await database
-    .select({ parentUserId: schema.channelMessages.parentUserId })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.dedupeKey, introAskDedupeKey(familyId)),
-        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
-      ),
-    )
-    .limit(1);
-  return row?.parentUserId ?? null;
 }

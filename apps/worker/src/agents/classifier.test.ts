@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { markUntrusted } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { runClassifier } from './classifier.js';
 import { dedupHashFor } from './dedup.js';
@@ -141,7 +142,9 @@ describe('runClassifier — the input it sends is redacted by the callee (rule #
     // The connector leg redacts once before the pg-boss row is written and the
     // classifier redacts again; the placeholders match none of the five
     // patterns, so the second pass is byte-stable rather than corrupting.
-    expect(capturedSignal(create).raw_content).toBe(JSON.stringify(alreadyRedacted));
+    expect(capturedSignal(create).raw_content).toBe(
+      markUntrusted('email', 'payload', JSON.stringify(alreadyRedacted)),
+    );
   });
 
   it('has no field for un-redacted content — the type refuses a rawContent string', async () => {

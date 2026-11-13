@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence says the child is already enrolled in Saturday swimming, which is a registration claim. The only matching row is a calendar entry, not a confirmed registration, so the registration claim is uncited. The enrollment also places her in that Saturday class, which matches the e1 calendar row.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 3573
+}

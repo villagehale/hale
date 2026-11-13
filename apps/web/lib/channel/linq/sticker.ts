@@ -1,11 +1,13 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { peelLinqSticker } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { isOneEmoji } from './one-emoji';
 import { LinqSendError } from './transport';
 
 /**
@@ -19,7 +21,7 @@ import { LinqSendError } from './transport';
  */
 
 export function linqStickersEnabled(): boolean {
-  return process.env.LINQ_STICKERS_ENABLED?.trim() === 'true';
+  return isEnabled('linq-stickers');
 }
 
 export interface LinqStickerInput {
@@ -64,9 +66,6 @@ export function linqStickerUserMessage(input: LinqStickerInput): string {
   });
 }
 
-const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-const PICTOGRAPH = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
-
 /**
  * Why a reading cannot be acted on. Linq's peel takes exactly one emoji, and a turn
  * that drops the reply must leave a sticker in its place. Neither is a judgement
@@ -76,11 +75,8 @@ export type LinqStickerRefusal = 'not_one_emoji' | 'silent_turn';
 
 export function linqStickerRefusals(decision: LinqStickerDecision): LinqStickerRefusal[] {
   const refusals: LinqStickerRefusal[] = [];
-  if (decision.sticker !== null) {
-    const graphemes = [...segmenter.segment(decision.sticker)];
-    if (graphemes.length !== 1 || !PICTOGRAPH.test(decision.sticker)) {
-      refusals.push('not_one_emoji');
-    }
+  if (decision.sticker !== null && !isOneEmoji(decision.sticker)) {
+    refusals.push('not_one_emoji');
   }
   if (!decision.sendReply && decision.sticker === null) refusals.push('silent_turn');
   return refusals;
@@ -126,7 +122,9 @@ export function createLinqStickerDecider(
 let shared: LinqStickerDecider | null = null;
 
 export function sharedLinqStickerDecider(): LinqStickerDecider {
-  shared ??= createLinqStickerDecider(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createLinqStickerDecider(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

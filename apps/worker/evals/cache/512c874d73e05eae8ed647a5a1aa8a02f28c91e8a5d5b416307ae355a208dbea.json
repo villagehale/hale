@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a rash symptom and asks if it is normal; symptom query routes to safety lane",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1141
+}

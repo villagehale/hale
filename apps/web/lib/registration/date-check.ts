@@ -1,4 +1,5 @@
 import type { RegistrationWindow } from '@hale/db';
+import { flagValue } from '@hale/flags';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { LiveRegistrationReading } from './live-reading';
 import { registrationAnchor } from './live-reading';
@@ -28,7 +29,7 @@ export const REGISTRATION_DATE_CHECK_ENV = 'REGISTRATION_DATE_CHECK';
 export type DateCheckMode = 'off' | 'shadow' | 'enforce';
 
 export function registrationDateCheckMode(): DateCheckMode {
-  const value = process.env[REGISTRATION_DATE_CHECK_ENV];
+  const value = flagValue('registration-date-check');
   return value === 'shadow' || value === 'enforce' ? value : 'off';
 }
 
@@ -170,5 +171,7 @@ export function createDateChecker(
  * check then names as `no_reader`. */
 export function liveDateReader(): RegistrationReader | null {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  return createLiveRegistrationReader(budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS));
+  return createLiveRegistrationReader(
+    budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'registration' }),
+  );
 }

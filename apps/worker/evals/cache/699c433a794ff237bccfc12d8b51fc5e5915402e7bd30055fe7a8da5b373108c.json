@@ -1,0 +1,37 @@
+{
+  "value": {
+    "cycle_on_page": "2026 Spring Programs and Swim Lessons",
+    "evidence": "2026 Spring Programs and Swim Lessons Preview starting Feb. 1 Register starting Feb. 24 at 6:30 AM",
+    "year_evidence": "2026 Spring Programs and Swim Lessons",
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": "The page gives the registration opening no resident or non-resident label: \"Register starting Feb. 24 at 6:30 AM\".",
+    "preview": {
+      "quote": "Feb. 1",
+      "date_text": "Feb. 1",
+      "time_text": null,
+      "date": "2026-02-01",
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "Feb. 24 at 6:30 AM",
+      "date_text": "Feb. 24",
+      "time_text": "6:30 AM",
+      "date": "2026-02-24",
+      "time": "06:30"
+    },
+    "note": null,
+    "found": true,
+    "reason": null,
+    "confidence": 0.95
+  },
+  "latencyMs": 3439,
+  "usage": {
+    "input_tokens": 348,
+    "output_tokens": 344,
+    "cache_read_input_tokens": 4982,
+    "cache_creation_input_tokens": 0
+  }
+}

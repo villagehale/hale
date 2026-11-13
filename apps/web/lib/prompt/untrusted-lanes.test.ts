@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { UNTRUSTED_CLOSE, UNTRUSTED_FIELD_MARKING_ENABLED_ENV } from '@hale/agent';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { UNTRUSTED_CLOSE } from '@hale/agent';
+import { describe, expect, it } from 'vitest';
 import {
   type EmailAlertNoticeFacts,
   emailAlertNoticeUserMessage,
@@ -13,7 +13,7 @@ import { extractionInput } from '~/lib/registration/verify-window';
 
 /**
  * VIL-560 · untrusted email, calendar and web fields enter a prompt through the
- * shared mark. Off is identity (eval cache keys stay). On wraps with the same tags.
+ * shared mark, always on, with the same tags in every lane.
  */
 
 const WEB_LIB = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,39 +40,8 @@ describe('VIL-560 · every untrusted inbound lane uses the shared mark', () => {
   });
 });
 
-describe('VIL-560 · exported user messages are identity while the flag is off', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('event notes, registration page and class page keep today’s JSON', () => {
-    expect(eventNotesUserMessage('Swim', 'Use the back lot')).toBe(
-      JSON.stringify({ title: 'Swim', description: 'Use the back lot' }),
-    );
-    expect(
-      extractionInput(
-        { municipality: 'toronto', programDomain: 'swim', cycleLabel: 'Fall 2026' },
-        '<p>opens Nov 10</p>',
-      ),
-    ).toBe(
-      JSON.stringify({
-        municipality: 'toronto',
-        program_domain: 'swim',
-        cycle_label: 'Fall 2026',
-        page_text: '<p>opens Nov 10</p>',
-      }),
-    );
-    expect(classAvailabilityInput({ label: 'Tue swim', anchor: null }, 'Full')).toBe(
-      JSON.stringify({
-        class_label: 'Tue swim',
-        session_anchor: null,
-        page_text: 'Full',
-      }),
-    );
-  });
-
-  it('on, the same builders wrap the untrusted fields and keep Hale-owned keys bare', () => {
-    vi.stubEnv(UNTRUSTED_FIELD_MARKING_ENABLED_ENV, 'true');
+describe('VIL-560 · exported user messages mark the untrusted fields', () => {
+  it('event notes, registration page and class page wrap the untrusted fields and keep Hale-owned keys bare', () => {
     const notes = JSON.parse(eventNotesUserMessage('Swim', 'Use the back lot')) as {
       title: string;
       description: string;
@@ -88,14 +57,18 @@ describe('VIL-560 · exported user messages are identity while the flag is off',
     ) as { municipality: string; page_text: string };
     expect(page.municipality).toBe('toronto');
     expect(page.page_text).toContain('source="web" field="page_text"');
+    const cls = JSON.parse(classAvailabilityInput({ label: 'Tue swim', anchor: null }, 'Full')) as {
+      class_label: string;
+      session_anchor: null;
+      page_text: string;
+    };
+    expect(cls.class_label).toBe('Tue swim');
+    expect(cls.session_anchor).toBeNull();
+    expect(cls.page_text).toContain('source="web" field="page_text"');
   });
 });
 
 describe('emailAlertNoticeUserMessage', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   const facts = {
     now: { date: 'Tuesday, November 10, 2026', time: '9:00 AM' },
     children: [{ name: 'Robin', ageYears: 3 }],
@@ -120,12 +93,7 @@ describe('emailAlertNoticeUserMessage', () => {
     recentNotices: [] as string[],
   } satisfies EmailAlertNoticeFacts;
 
-  it('off leaves the facts JSON unchanged', () => {
-    expect(emailAlertNoticeUserMessage(facts)).toBe(JSON.stringify(facts));
-  });
-
-  it('on wraps the email’s own strings and leaves the kind bare', () => {
-    vi.stubEnv(UNTRUSTED_FIELD_MARKING_ENABLED_ENV, 'true');
+  it('wraps the email’s own strings and leaves the kind bare', () => {
     const parsed = JSON.parse(emailAlertNoticeUserMessage(facts)) as {
       email: { sender: string; kind: string; title: string };
       children: { name: string }[];

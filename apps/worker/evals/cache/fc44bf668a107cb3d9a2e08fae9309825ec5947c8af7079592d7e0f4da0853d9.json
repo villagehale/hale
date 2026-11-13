@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The sentence reports what the parent said earlier (\"you told me the dentist is booked\"), not a booking Hale has on record. There are no rows, so nothing is backed.",
+    "claims": []
+  },
+  "latencyMs": 1629
+}

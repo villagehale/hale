@@ -1,6 +1,14 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, type Skill, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
+import {
+  type AgentClient,
+  type Skill,
+  agentRunCostUsd,
+  pickModel,
+  promptCacheHitFromRead,
+  runAgent,
+} from '@hale/agent';
 import type { Database } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
 import { buildCronGuardDeps } from '~/lib/cron/guards';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -61,10 +69,10 @@ let defaultClient: Anthropic | undefined;
  */
 export function voiceClient(): AgentClient | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || process.env.VOICE_DISABLED === 'true') return null;
+  if (!apiKey || !isEnabled('voice')) return null;
   // Callers span crons AND the intake radar inside an inbound text turn — the
   // tightest host governs, so this is the SMS-lane budget (audit P1-7).
-  defaultClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  defaultClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'voice' });
   return defaultClient;
 }
 
@@ -179,6 +187,7 @@ export async function composeVoice<TVoice>(
           costUsd: agentRunCostUsd(modelUsed, result.usage),
           cacheReadTokens: result.usage.cacheReadTokens,
           cacheWriteTokens: result.usage.cacheCreationTokens,
+          promptCacheHit: promptCacheHitFromRead(result.usage.cacheReadTokens),
           latencyMs: Date.now() - startedAt,
           status: voice ? 'completed' : 'failed',
           langfuseTraceId: trace.traceId,

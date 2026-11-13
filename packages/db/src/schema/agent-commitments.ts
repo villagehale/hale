@@ -112,6 +112,14 @@ export const agentCommitments = pgTable(
      * went out carrying no fact at all, so the next one must carry one or stay silent.
      */
     heardFacts: text('heard_facts').array(),
+    /**
+     * The BCP-47 tag the inbound screen read off the parent's text this activity promise
+     * answers (migration 0240), so the follow-up can be written in the language they asked
+     * in. A tag, never the parent's words. Null when the screen read none, on every other
+     * kind, and on rows written before the column existed: the follow-up then uses the
+     * parent's stored language. A watch a follow-up mints carries its promise's tag on.
+     */
+    askLanguage: text('ask_language'),
     /** When the promise stops being kept-in-time and starts being late. */
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),

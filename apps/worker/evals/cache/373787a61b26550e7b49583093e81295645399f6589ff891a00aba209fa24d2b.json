@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Checks against the rubric: the reply is in Chinese, matching the parent's text, and names the Sunday pick with its time (2 点, Toronto local, correct for 2:00 Toronto). It answers the one question with no question asked, and the page address is correctly last. However, the first bubble is a sentence that is itself a complete answer, and the second bubble is a thought that adds only a loose statement ('你周日那天目前没有别的安排') that is not among the facts and reads as an invented claim about the parent's schedule beyond the data given. That invented framing breaks point 5, and the second bubble carries a separate thought rather than just the link, so it is slightly under-split from the answer. Overall it is close to correct but breaks the nothing-invented point.",
+    "score": 3
+  }
+}

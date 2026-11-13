@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyNSxNxzFrB3FsSKyD44",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "Calling the pool is past me, so that one's yours to make."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1610,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 339,
+      "output_tokens_details": {
+        "thinking_tokens": 318
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

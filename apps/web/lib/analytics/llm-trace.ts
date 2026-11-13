@@ -1,50 +1,33 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
+import {
+  type HaleStage,
+  type LlmTraceContext,
+  buildGenerationProperties,
+  hashLlmFamilyId,
+  llmContentCaptureEnabled,
+} from '@hale/agent';
 import type { PostHog } from 'posthog-node';
 import { projectClient } from './posthog-node';
 
 /**
- * LLM analytics for every Anthropic call, in PRIVACY MODE (hard rule #1).
+ * LLM analytics for every Anthropic call.
  *
  * Every client in apps/web is built by lib/pipeline/client.ts, and that factory hands it
  * through {@link traceAnthropic}. With POSTHOG_PROJECT_API_KEY unset the client is
  * returned UNTOUCHED — the same object, no proxy, no timer — which is the inert path the
  * tests pin. With the key set, `messages.create` and `messages.stream` report one
- * `$ai_generation` per call: model, token counts, latency, stage, trace id, error class.
+ * `$ai_generation` per call: model, tokens, cache, cost, latency, stage, hashed family.
  *
- * WHAT IS NEVER SENT: `$ai_input`, `$ai_output_choices`, the system prompt, tool
- * arguments, or an error message. They are not stripped after the fact; the builder below
- * has no field they could ride in (llm-trace.test.ts asserts their absence on the wire).
+ * Content ($ai_input / $ai_output_choices) is behind POSTHOG_LLM_CONTENT_ENABLED (exact
+ * `true`, default off). When on, phones, emails, and street addresses are redacted first.
+ * The family id is HMAC-SHA256'd with POSTHOG_ID_SALT; without a salt the distinct id is
+ * `system`, never the raw id.
  *
  * Why not `@posthog/ai`'s wrapper: it requires `@anthropic-ai/sdk >= 0.112`, and Hale pins
- * 0.41. The event shape here is the one PostHog's LLM dashboards read.
+ * 0.41. The event shape here is PostHog's documented LLM-analytics schema.
  */
 
-/** The stages the LLM dashboard breaks down by. 'unattributed' is a real bucket, not a default to hide. */
-export type HaleStage =
-  | 'triage'
-  | 'reply_intent'
-  | 'memory_infer'
-  | 'intake_extract'
-  | 'inbound_screen'
-  | 'classify_event'
-  | 'reviewer'
-  | 'discovery'
-  | 'coach'
-  | 'retention'
-  | 'claim_read'
-  | 'unattributed';
-
-export interface LlmTraceContext {
-  /** Hashed family id, or 'system' for crons. Never a phone number or raw id. */
-  distinctId?: string;
-  /** agent_runs.id when the call belongs to an agent turn. */
-  traceId?: string;
-  stage?: HaleStage;
-  promptVersion?: string;
-  channel?: 'sms' | 'imessage' | 'email' | 'none';
-  mode?: string;
-}
+export type { HaleStage, LlmTraceContext };
 
 const storage = new AsyncLocalStorage<LlmTraceContext>();
 
@@ -53,58 +36,22 @@ export function withLlmContext<T>(ctx: LlmTraceContext, fn: () => T): T {
   return storage.run({ ...storage.getStore(), ...ctx }, fn);
 }
 
-interface Usage {
-  input_tokens?: number | null;
-  output_tokens?: number | null;
-  cache_read_input_tokens?: number | null;
-  cache_creation_input_tokens?: number | null;
+/** Hashed family id for distinct_id, or empty when the salt is unset. */
+export function llmFamilyContext(familyId: string): Pick<LlmTraceContext, 'distinctId'> {
+  const distinctId = hashLlmFamilyId(familyId, process.env.POSTHOG_ID_SALT);
+  return distinctId ? { distinctId } : {};
 }
 
-/** The whole `$ai_generation` property bag. Pure + exported so the privacy shape is asserted directly. */
-export function buildGenerationProperties(input: {
-  ctx: LlmTraceContext;
-  model: string;
-  latencyMs: number;
-  usage?: Usage | null;
-  stopReason?: string | null;
-  error?: unknown;
-}): Record<string, string | number | boolean> {
-  const { ctx, usage } = input;
-  const props: Record<string, string | number | boolean> = {
-    $ai_provider: 'anthropic',
-    $ai_model: input.model,
-    $ai_latency: input.latencyMs / 1000,
-    $ai_trace_id: ctx.traceId ?? randomUUID(),
-    $ai_is_error: input.error !== undefined,
-    hale_stage: ctx.stage ?? 'unattributed',
-    privacy_mode: true,
-  };
-  if (usage?.input_tokens != null) props.$ai_input_tokens = usage.input_tokens;
-  if (usage?.output_tokens != null) props.$ai_output_tokens = usage.output_tokens;
-  if (usage?.cache_read_input_tokens != null)
-    props.$ai_cache_read_input_tokens = usage.cache_read_input_tokens;
-  if (usage?.cache_creation_input_tokens != null)
-    props.$ai_cache_creation_input_tokens = usage.cache_creation_input_tokens;
-  if (input.stopReason) props.$ai_stop_reason = input.stopReason;
-  if (ctx.promptVersion) props.prompt_version = ctx.promptVersion;
-  if (ctx.channel) props.channel = ctx.channel;
-  if (ctx.mode) props.mode = ctx.mode;
-  if (input.error !== undefined) {
-    // The class and the HTTP status only. An SDK error message can quote the request.
-    const err = input.error as { name?: unknown; status?: unknown };
-    props.$ai_error = typeof err?.name === 'string' ? err.name : 'Error';
-    if (typeof err?.status === 'number') props.$ai_http_status = err.status;
-  }
-  return props;
-}
+export { buildGenerationProperties };
 
 function report(
   client: PostHog,
   ctx: LlmTraceContext,
   model: string,
   started: number,
-  result: { usage?: Usage | null; stop_reason?: string | null } | null,
+  result: { usage?: unknown; stop_reason?: string | null; content?: unknown } | null,
   error?: unknown,
+  request?: { model?: string; system?: unknown; messages?: unknown } | null,
 ): void {
   try {
     client.capture({
@@ -114,9 +61,12 @@ function report(
         ctx,
         model,
         latencyMs: Date.now() - started,
-        usage: result?.usage ?? null,
+        usage: (result?.usage as never) ?? null,
         stopReason: result?.stop_reason ?? null,
         error,
+        contentEnabled: llmContentCaptureEnabled() && !ctx.omitContent,
+        request: request ?? null,
+        response: result,
       }),
     });
     // flushAt: 1 already sends; the explicit flush is not awaited so the parent's
@@ -133,7 +83,7 @@ interface MessagesLike {
 }
 
 /**
- * Wrap an Anthropic client's `messages.create` / `messages.stream` with privacy-mode
+ * Wrap an Anthropic client's `messages.create` / `messages.stream` with LLM-analytics
  * tracing. Returns `client` itself, unwrapped, when POSTHOG_PROJECT_API_KEY is unset.
  */
 export function traceAnthropic<C extends { messages: MessagesLike }>(
@@ -150,26 +100,30 @@ export function traceAnthropic<C extends { messages: MessagesLike }>(
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
       if (prop === 'create' && typeof value === 'function') {
-        return (params: { model?: string }, ...rest: unknown[]) => {
+        return (
+          params: { model?: string; system?: unknown; messages?: unknown },
+          ...rest: unknown[]
+        ) => {
           const ctx = ctxNow();
           const started = Date.now();
           const model = params?.model ?? 'unknown';
           const out = (value as (...a: unknown[]) => unknown).call(target, params, ...rest);
-          // Observe without changing what the caller holds (an APIPromise stays one).
           if (out && typeof (out as Promise<unknown>).then === 'function') {
             (out as Promise<unknown>).then(
               (res) => {
-                // A `stream: true` create resolves to a Stream with no usage; still counted.
-                report(ph, ctx, model, started, res as never);
+                report(ph, ctx, model, started, res as never, undefined, params);
               },
-              (err) => report(ph, ctx, model, started, null, err),
+              (err) => report(ph, ctx, model, started, null, err, params),
             );
           }
           return out;
         };
       }
       if (prop === 'stream' && typeof value === 'function') {
-        return (params: { model?: string }, ...rest: unknown[]) => {
+        return (
+          params: { model?: string; system?: unknown; messages?: unknown },
+          ...rest: unknown[]
+        ) => {
           const ctx = ctxNow();
           const started = Date.now();
           const model = params?.model ?? 'unknown';
@@ -178,8 +132,8 @@ export function traceAnthropic<C extends { messages: MessagesLike }>(
           };
           if (stream && typeof stream.finalMessage === 'function') {
             stream.finalMessage().then(
-              (res) => report(ph, ctx, model, started, res as never),
-              (err) => report(ph, ctx, model, started, null, err),
+              (res) => report(ph, ctx, model, started, res as never, undefined, params),
+              (err) => report(ph, ctx, model, started, null, err, params),
             );
           }
           return stream;

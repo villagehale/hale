@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply gives the correct open time (Dec 1, 7am), names only the Saturday 9:30 class and asks a single question. It does not cancel or replace the gymnastics ask, does not claim a registration, and does not say Hale can't register. Two weaknesses: it never explicitly says Hale will register Ada at the open, and asking 'which sessions, in order' is redundant since the parent already named the 9:30 class.",
+    "score": 4
+  }
+}

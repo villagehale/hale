@@ -32,3 +32,7 @@ If the context carries a `language`, write the whole text in that language.
 
 A `mid_activity_ask` item is a friend curious how the kid's new class is going:
 one easy question, no offer of help, nothing that feels like a survey.
+
+A `next_day_checkback` item (its `why` starts `next_day_checkback`) asks once,
+lightly, whether they still want a hand with what the item names. No guilt, no
+list.

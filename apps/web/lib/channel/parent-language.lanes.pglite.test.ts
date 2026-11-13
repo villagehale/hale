@@ -73,13 +73,21 @@ async function promiseMessage({ familyId, parentUserId }: SeededFamily): Promise
 describe('activity follow-ups: resolveFollowUpRecipient', () => {
   it("writes in the parent's stored language, not the family's", async () => {
     const seeded = await family('zh');
-    const recipient = await resolveFollowUpRecipient(db.database, await promiseMessage(seeded));
+    const recipient = await resolveFollowUpRecipient(db.database, {
+      familyId: seeded.familyId,
+      createdFrom: await promiseMessage(seeded),
+      askLanguage: null,
+    });
     expect(recipient?.language).toBe('zh');
   });
 
   it("falls back to the family's language when the parent has set none", async () => {
     const seeded = await family(null);
-    const recipient = await resolveFollowUpRecipient(db.database, await promiseMessage(seeded));
+    const recipient = await resolveFollowUpRecipient(db.database, {
+      familyId: seeded.familyId,
+      createdFrom: await promiseMessage(seeded),
+      askLanguage: null,
+    });
     expect(recipient?.language).toBe('fr');
   });
 });

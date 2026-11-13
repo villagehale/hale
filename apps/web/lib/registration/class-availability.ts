@@ -6,13 +6,20 @@ import type { SpotState } from '~/lib/channel/spots/availability';
 import { checkedSchedule } from '~/lib/channel/spots/schedule';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
+import { zonedLocalInstant } from '~/lib/plan/spine';
 import { MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
 import {
   type RegistrationPageFetch,
   createRegistrationPageBytesFetch,
   registrationPageUrl,
 } from './page';
-import { MIN_VERIFY_CONFIDENCE, normalizeQuote } from './verify-window';
+import {
+  DATE_ONLY_WALL_CLOCK,
+  MIN_VERIFY_CONFIDENCE,
+  REGISTRATION_TIME_ZONE,
+  dateSpanRefusal,
+  normalizeQuote,
+} from './verify-window';
 
 /**
  * VIL-337 · whether one class on ANY program page has room, read by the model and
@@ -48,6 +55,9 @@ export const CLASS_AVAILABILITY_JSON_SCHEMA = {
     availability_quote: quote,
     waitlist_quote: quote,
     schedule_quote: quote,
+    session_start_quote: quote,
+    session_start_date_text: quote,
+    session_start: { type: ['string', 'null'] },
     state: {
       type: 'string',
       enum: ['open', 'full', 'waitlist_full', 'registration_closed', 'not_yet_open', 'unknown'],
@@ -63,6 +73,9 @@ export const CLASS_AVAILABILITY_JSON_SCHEMA = {
     'availability_quote',
     'waitlist_quote',
     'schedule_quote',
+    'session_start_quote',
+    'session_start_date_text',
+    'session_start',
     'state',
     'spots_left',
     'waitlist_room',
@@ -78,6 +91,9 @@ const extractionSchema = z.object({
   availability_quote: nullableQuote,
   waitlist_quote: nullableQuote,
   schedule_quote: nullableQuote,
+  session_start_quote: nullableQuote,
+  session_start_date_text: nullableQuote,
+  session_start: z.string().max(10).nullable(),
   state: z.enum([
     'open',
     'full',
@@ -136,6 +152,9 @@ export type ClassAvailabilityReading =
       spotsLeft: number | null;
       waitlistRoom: boolean;
       schedule: string | null;
+      /** First class, off the listing's own words, or null when the page does not
+       * publish a start Hale can stand behind. The watch ends then. */
+      sessionStartsAt: Date | null;
       digest: string;
     }
   | { status: 'not_registrable'; reason: 'closed' | 'not_yet_open'; digest: string }
@@ -190,6 +209,46 @@ function digitsIn(text: string): number[] {
 
 export function pageDigest(pageText: string): string {
   return createHash('sha256').update(pageText).digest('hex').slice(0, 32);
+}
+
+function calendarDay(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const day = new Date(`${date}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === date;
+}
+
+/** Years the page actually prints. A start whose year is not among them is a guess. */
+function yearsOnPage(pageText: string): Set<string> {
+  return new Set(normalizeQuote(pageText).match(/\b(19|20)\d{2}\b/g) ?? []);
+}
+
+/**
+ * The first class, when the listing/provider page states it and the model's date is
+ * the one its own quote prints. Null is the sixty-day bound, never a refused watch:
+ * a page that is full today is still worth watching if it did not print a start.
+ */
+export function listingSessionStart(
+  extracted: Pick<
+    ExtractedAvailability,
+    'session_start_quote' | 'session_start_date_text' | 'session_start'
+  >,
+  pageText: string,
+): Date | null {
+  const quote = extracted.session_start_quote;
+  const dateText = extracted.session_start_date_text;
+  const date = extracted.session_start;
+  if (quote === null || dateText === null || date === null) return null;
+  if (!calendarDay(date) || !yearsOnPage(pageText).has(date.slice(0, 4))) return null;
+  const page = normalizeQuote(pageText);
+  if (!page.includes(normalizeQuote(quote))) return null;
+  if (dateSpanRefusal({ quote, dateText, timeText: null, date, time: null }) !== null) {
+    return null;
+  }
+  try {
+    return zonedLocalInstant(date, DATE_ONLY_WALL_CLOCK, REGISTRATION_TIME_ZONE);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -258,6 +317,7 @@ export function normalizeClassAvailability(
     spotsLeft: extracted.state === 'open' ? spotsLeft : null,
     waitlistRoom: extracted.state === 'full' && extracted.waitlist_room === true,
     schedule,
+    sessionStartsAt: listingSessionStart(extracted, pageText),
     digest,
   };
 }

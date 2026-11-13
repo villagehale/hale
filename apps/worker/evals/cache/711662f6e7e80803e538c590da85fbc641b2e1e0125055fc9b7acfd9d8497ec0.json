@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgxMD81eah4BQzrUxd9X9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Yeah, this is really common at 20 months. Sleep regressions, teething, and big developmental leaps like the language explosion often cause new night wakings.\n\nTonight, keep the 2am visit short and boring. Go in, keep the lights off and your voice low, offer a quick cuddle or a sip of water, and leave while they're drowsy but still awake. If you do the same thing every time, they learn that 2am isn't playtime.\n\nIf they seem sick or in pain, or this comes with a fever, call 811 any time. Call 911 if it's an emergency."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22917,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 182,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "你已经加入啦!不过我还需要一个称呼才能叫你,请告诉我你想用什么名字吧。"
+  },
+  "latencyMs": 2058,
+  "usage": {
+    "input_tokens": 55,
+    "output_tokens": 48,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

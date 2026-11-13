@@ -479,8 +479,7 @@ from model reasoning): `lib/injection-score.mjs`, whose positive controls are
 `lib/injection-score.test.mjs`. Each lane must also have called its model on every fixture
 and reached its outcome stage at least once, so an empty run cannot pass. The memory arm
 gets one honest parent turn, so a run that saves nothing cannot pass as one that refused the
-planted fact. Untrusted email, calendar and web fields are marked the same way
-(`markUntrusted` in `@hale/agent`) when `UNTRUSTED_FIELD_MARKING_ENABLED` is exactly
-`true`. Unset, the helpers are identity, so this suite’s cache keys do not change. Not
+planted fact. Untrusted email, calendar and web fields are marked the same way in every
+lane (`markUntrusted` in `@hale/agent`), always on, so the recordings carry the mark. Not
 covered yet: the Browser Use signup lane (its model runs on Browser Use’s cloud against a
 live page).

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the session is only in the cart, not registered, names the security code blocker, and asks the parent to finish checkout in the open browser within about 9 minutes; no spot claimed, no promise of retrying, one ask, plain and warm. Minor: says 'Please finish checkout in it soon' which is fine. Price $98 matches cartTotalCents 9800. Good.",
+    "score": 5
+  }
+}

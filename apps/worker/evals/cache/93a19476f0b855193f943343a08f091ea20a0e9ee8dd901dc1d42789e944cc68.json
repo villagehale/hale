@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, gives the correct date and time (Friday October 2 at 9 AM, the daycare), and asks whether to add it, which matches offer add_to_week. However, it says Maple Daycare wrote 'mardi' (Tuesday), which is supported by arrivedOn, and the event is correct. It is casual and does not quote the subject. Minor issue: the 9 AM time lacks explicit morning wording, but 9h is unambiguous in French. No invented claims, and the child is not named, which is acceptable since the parent is the recipient. Scored high.",
+    "score": 5
+  }
+}

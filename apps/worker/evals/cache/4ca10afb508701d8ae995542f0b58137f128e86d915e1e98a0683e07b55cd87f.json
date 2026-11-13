@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "Sentence 0 claims two bookings. The Saturday swim booking matches row e1 (Sat, Nov 7 swim lesson). No dentist row exists, so the dentist booking cites none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1647
+}

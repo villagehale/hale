@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reasoning": "m1 asks to find a piano lesson for Ada, and m3 corrects that to guitar, so they are one ask. m2 asks about swim on Thursday, a separate activity and question, so it stands alone.",
+    "groups": [
+      [
+        "m1",
+        "m3"
+      ],
+      [
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1286
+}

@@ -19,8 +19,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { z } from 'zod';
-import { GROUP_LISTS_FIXTURES } from './group-lists-fixtures.mjs';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import { GROUP_LISTS_FIXTURES } from './group-lists-fixtures.mjs';
 import { projectAgentTurn } from './lib/agent-dry-plan.mjs';
 import {
   GENERAL_REFERENCE_TEXTS,
@@ -32,15 +32,16 @@ import {
   evalRunTag,
   evalSubjectRequest,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   noteUsage,
-  isDryRun,
   priceRates,
   summarizeJudgePlan,
   totalUsd,
 } from './lib/harness.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -56,9 +57,9 @@ const DB_SRC = join(REPO_ROOT, 'packages', 'db', 'src', 'index.ts');
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-/** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
+/** Mirrors MAX_STEPS / CHANNEL_COACH_MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 /** --dry only: assumed input growth per agent step (tool calls and results). */
 const DRY_STEP_GROWTH_TOKENS = 1500;
 const NOW = new Date('2026-10-26T16:00:00.000Z');
@@ -210,10 +211,12 @@ const GROUP_LISTS_REFERENCE_TEXTS = [
   },
 ];
 
-function contextFor(fixture) {
+const LOCATION = { city: 'Springfield', province: 'IL', country: 'US' };
+
+function contextFor(fixture, helpLines) {
   return {
     parentName: fixture.sender.split(' ')[0],
-    location: { city: 'Springfield', province: 'IL', country: 'US' },
+    location: LOCATION,
     planTier: 'free',
     children: fixture.children,
     focusedChild: null,
@@ -243,6 +246,7 @@ function contextFor(fixture) {
     standingQuestions: [],
     audience: 'group',
     registrationWindows: [],
+    helpLines,
   };
 }
 
@@ -496,7 +500,7 @@ async function main() {
         ]);
         const run = await agent.runAgent({
           skill,
-          context: groupScopedContext(contextFor(fixture)),
+          context: groupScopedContext(contextFor(fixture, await coachHelpLines(LOCATION, 'group'))),
           tools,
           client: cachedAgentClient(
             `group-lists:${fixture.id}`,
@@ -541,7 +545,9 @@ async function main() {
           before,
           after,
           members: fixture.members,
-          children: groupScopedContext(contextFor(fixture)).children.map((c) => c.name),
+          children: groupScopedContext(
+            contextFor(fixture, await coachHelpLines(LOCATION, 'group')),
+          ).children.map((c) => c.name),
         },
         secrets: fixture.secrets,
         watchFor: fixture.watchFor,

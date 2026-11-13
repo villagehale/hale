@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese, answers the single question with both classes named with day, time and venue, states the Dec 1 7:00 registration opening, and asks no question. Bubbles are one thought each and the address sits at the end. The bubble at the end says 两个班都是 12月1日早上 7:00 开放报名 which is accurate; the first two bubbles each cover one class and the last bubble gives the shared registration fact. No lead-in or count bubble appears, and nothing is invented. Minor issue: the first two bubbles both start with the venue name then the class, which is fine, so the reply meets every point.",
+    "score": 5
+  }
+}

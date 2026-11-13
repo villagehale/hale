@@ -1,0 +1,142 @@
+import type { AgentClient } from '@hale/agent';
+import { pickLane } from '@hale/agent';
+import { z } from 'zod';
+import { loadCronSkill } from '~/lib/cron/skill';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { forceToolJson } from '~/lib/pipeline/structured';
+import type { PlanRsvpResponse } from '../group-plan-rsvp/tally';
+
+export const GROUP_EXPERIENCE_KINDS = [
+  'rsvp_open',
+  'rsvp_vote',
+  'rsvp_tally',
+  'time_open',
+  'time_vote',
+  'time_lock',
+  'link_facts',
+  'private_question',
+  'none',
+] as const;
+export type GroupExperienceKind = (typeof GROUP_EXPERIENCE_KINDS)[number];
+
+export const GROUP_EXPERIENCE_READ_SKILL = 'group-experience-read';
+export const GROUP_EXPERIENCE_READ_MAX_TOKENS = 400;
+
+export interface GroupExperienceLiveView {
+  rsvp: { title: string | null } | null;
+  time: { question: string | null; options: readonly { key: string; text: string }[] } | null;
+  link: { url: string } | null;
+}
+
+export interface GroupExperienceReadInput {
+  text: string;
+  senderName: string | null;
+  live: GroupExperienceLiveView;
+  urls: readonly string[];
+  recent: readonly { from: 'hale' | 'member'; text: string }[];
+}
+
+export interface GroupExperienceReading {
+  kind: GroupExperienceKind;
+  title: string | null;
+  response: PlanRsvpResponse | null;
+  optionKey: string | null;
+  options: string[];
+  confidence: 'high' | 'low';
+}
+
+export interface GroupExperienceReader {
+  read(input: GroupExperienceReadInput): Promise<GroupExperienceReading | null>;
+}
+
+const readingSchema = z.object({
+  kind: z.enum(GROUP_EXPERIENCE_KINDS),
+  title: z.string().nullable().optional(),
+  response: z.enum(['yes', 'no', 'maybe']).nullable().optional(),
+  optionKey: z.string().nullable().optional(),
+  options: z.array(z.string()).optional(),
+  confidence: z.enum(['high', 'low']).optional(),
+});
+
+export const GROUP_EXPERIENCE_READ_TOOL_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    kind: { type: 'string', enum: [...GROUP_EXPERIENCE_KINDS] },
+    title: { type: ['string', 'null'] },
+    response: { type: ['string', 'null'], enum: ['yes', 'no', 'maybe', null] },
+    optionKey: { type: ['string', 'null'] },
+    options: { type: 'array', items: { type: 'string' } },
+    confidence: { type: 'string', enum: ['high', 'low'] },
+  },
+  required: ['kind'],
+} as const;
+
+export function groupExperienceUserMessage(input: GroupExperienceReadInput): string {
+  return JSON.stringify({
+    text: input.text,
+    senderName: input.senderName,
+    live: input.live,
+    urls: [...input.urls],
+    recent: input.recent,
+  });
+}
+
+export function parseGroupExperienceReading(value: unknown): GroupExperienceReading | null {
+  const parsed = readingSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const confidence = parsed.data.confidence ?? 'low';
+  const kind = confidence === 'low' ? 'none' : parsed.data.kind;
+  return {
+    kind,
+    title: parsed.data.title?.trim() || null,
+    response: parsed.data.response ?? null,
+    optionKey: parsed.data.optionKey?.trim() || null,
+    options: (parsed.data.options ?? []).map((option) => option.trim()).filter(Boolean),
+    confidence,
+  };
+}
+
+export function createGroupExperienceReader(
+  clientOrResolver: AgentClient | (() => AgentClient),
+): GroupExperienceReader {
+  const once = async (input: GroupExperienceReadInput) => {
+    const client = typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
+    const skill = await loadCronSkill(GROUP_EXPERIENCE_READ_SKILL);
+    const { value } = await forceToolJson({
+      client,
+      lane: pickLane(skill.meta.task),
+      system: skill.instructions,
+      userMessage: groupExperienceUserMessage(input),
+      toolName: 'group_experience_read',
+      toolDescription: 'Name the moment this group message is, or none.',
+      inputJsonSchema: GROUP_EXPERIENCE_READ_TOOL_SCHEMA,
+      schema: readingSchema,
+      maxTokens: GROUP_EXPERIENCE_READ_MAX_TOKENS,
+    });
+    return parseGroupExperienceReading(value);
+  };
+  return {
+    async read(input) {
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          const reading = await once(input);
+          if (reading) return reading;
+        } catch (err) {
+          console.warn(
+            { attempt, err: err instanceof Error ? err.name : 'unknown' },
+            'group experience: read failed',
+          );
+        }
+      }
+      return null;
+    },
+  };
+}
+
+export function productionGroupExperienceReader(): GroupExperienceReader | undefined {
+  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  return createGroupExperienceReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
+}

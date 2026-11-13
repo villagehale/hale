@@ -13,8 +13,10 @@ import {
   namesAnyIn,
   teenRoster,
 } from '@hale/worker/memory-context';
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { PARENT_ROLES } from '~/lib/channel/role-scope';
+import { isChannelGroupNoteKey } from '~/lib/coach/note-key';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import {
   commitClassifiedMemory,
@@ -266,7 +268,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Name its subject: childId is a childId from read_recent_memory's children when the fact is about that child, or null when it is about the whole family. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. When the fact rests on recent events, pass sourceEventId: the eventId of the newest one it rests on. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
+      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Name its subject: childId is a childId from read_recent_memory's children when the fact is about that child, or null when it is about the whole family. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. When the fact rests on recent events, pass sourceEventId: the eventId of the newest one it rests on. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
     inputSchema: z.object({
       childId: z.string().uuid().nullable(),
       factType: memoryFactType,
@@ -356,6 +358,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         observedAt: input.observedAt,
         expiresAt: input.expiresAt,
         correctsKey: input.correctsKey,
+        record: input.record,
       });
       return { saved: true as const, factId };
     },
@@ -444,11 +447,47 @@ async function loadDistillTurns(
     .map((c) => c.name);
 
   const familyConversations = await database
-    .select({ id: schema.conversations.id })
+    .select({ id: schema.conversations.id, noteKey: schema.conversations.noteKey })
     .from(schema.conversations)
     .where(eq(schema.conversations.familyId, familyId));
-  const conversationIds = familyConversations.map((c) => c.id);
-  if (conversationIds.length === 0) return [];
+  const ownIds = familyConversations
+    .filter((c) => !isChannelGroupNoteKey(c.noteKey))
+    .map((c) => c.id);
+  const groupIds = familyConversations
+    .filter((c) => isChannelGroupNoteKey(c.noteKey))
+    .map((c) => c.id);
+
+  // VIL-597 (G8): the skill reads every `user` turn as the parent. A group thread holds
+  // every seated member's texts (a caregiver, a grandparent) and Hale's answers to any of
+  // them, so only a turn a parent of this family signed is read from it. An unsigned
+  // group turn, from before the author was recorded, is not.
+  const parentIds =
+    groupIds.length === 0
+      ? []
+      : (
+          await database
+            .select({ userId: schema.familyMembers.userId })
+            .from(schema.familyMembers)
+            .where(
+              and(
+                eq(schema.familyMembers.familyId, familyId),
+                inArray(schema.familyMembers.role, [...PARENT_ROLES]),
+              ),
+            )
+        ).map((row) => row.userId);
+  const readable = [
+    ...(ownIds.length > 0 ? [inArray(schema.messages.conversationId, ownIds)] : []),
+    ...(groupIds.length > 0 && parentIds.length > 0
+      ? [
+          and(
+            inArray(schema.messages.conversationId, groupIds),
+            eq(schema.messages.role, 'user'),
+            inArray(schema.messages.authorUserId, parentIds),
+          ),
+        ]
+      : []),
+  ];
+  if (readable.length === 0) return [];
 
   const turnRows = await database
     .select({
@@ -460,7 +499,7 @@ async function loadDistillTurns(
     .from(schema.messages)
     .where(
       and(
-        inArray(schema.messages.conversationId, conversationIds),
+        or(...readable),
         gte(schema.messages.createdAt, since),
         isNull(schema.messages.deletedAt),
         // VIL-616: a reply written after `read_email` may repeat a stranger's name,
@@ -620,7 +659,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
   const saveChildFact = defineTool({
     name: 'save_child_fact',
     description:
-      "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId null), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
+      "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId null), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
     inputSchema: z.object({
       childId: z.string().uuid().nullable(),
       category: distillCategory,
@@ -709,6 +748,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         observedAt: input.observedAt,
         expiresAt: input.expiresAt,
         correctsKey: input.correctsKey,
+        record: input.record,
       });
       return { saved: true as const, factId };
     },

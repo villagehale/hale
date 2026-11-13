@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French with tu, states the correct opening time, lists both sessions at 98 $, asks one question (which sessions and order), and mentions the duplicate-queue note as instructed. No invented facts, no registration claims. Minor issue: it runs to three sentences and bundles the ask with the queue note, slightly stretching the 'one or two short sentences' guidance.",
+    "score": 4
+  }
+}

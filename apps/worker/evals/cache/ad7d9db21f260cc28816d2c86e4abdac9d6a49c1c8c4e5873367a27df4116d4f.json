@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi Cy, it's Hale from your group chat (you can tell me to stop any time). You're the Secret Santa for Ben! Keep it just between us."
+  },
+  "latencyMs": 1810,
+  "usage": {
+    "input_tokens": 85,
+    "output_tokens": 58,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

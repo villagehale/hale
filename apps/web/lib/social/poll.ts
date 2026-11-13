@@ -219,7 +219,7 @@ export async function runSocialWatchCron(
 
 async function loadSweepClient() {
   const { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } = await import('~/lib/pipeline/client');
-  return budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  return budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'compose' });
 }
 
 /** Drain entry: signup watches only. The hourly cron owns Discovery. */
