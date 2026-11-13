@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011CgyHMdDpib2rATbCJwyMD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS7wgKEAgTGAI4AUIIdGhpbmtpbmcSDLdLLHrAkrdmCDSsRBoMQP/4JLf/ldrRQ9NjIjCnltz4WTuuPdty0fZUe36B0y5WaIzIPtCcOZKJvDeXsJ9YVx1xYaKQLEpG2NBW2uUqjAiqNJiwbN8/rsjlW3mbspO38pPg6EnzderdQ0Teyjou+PlSaZKNpXHq/jvNdzmyNsElzl3sxXH/3IHGH7kMoLiRJ8+vThheh3qW27n1KG2eF3gfYhGMc+cBNyXNeKZb1eDBDyxZiDUNxG8qITvA5PsYsmAsvqQDm7az7On/i8e8f7fMmCPs58ypTGBJitLKD84WpMin4AHa4gTaZUkcex/Nglbtjj7tWesG1NjRn4rLpyksLnb0WjYUUevMAoWV7a3OqOafk7h37DGaKbCQ7CdtyYc8OKaIrHtDYn/alBzpnp8gknBPl3bVyQgMmJvtJ/UfuZEfg8dXWWiihgg9zl8h1+PDhmgElU6YAz287KkCO1tTmsDRMgFkYZshOpwefLdHcqeW9tnRSaslPbNSGHcoTSshvmeOwqWtZL2dOO9ErYViWjOxJ7YlFktR3puxSr0iMRohwrMI7JuOi4KpyLvy97z+L7KZalENTCusKrLWxzmdb7/mC4nts7z/KioaF6FxVHVbYlOdtJjMIDG8v4QOrBQw+CqBIspJvhTeV3qqioTS3T7Z2694wA+e2/mPAfFLnNzuhAAeRrFGffID5Qx/IePh/zLA10P+UQeLf6DbQXKWr54nj/hkomM03NDjrR9gekIBJTTUFhEW/V9bdKPJ3iKrAxWzR7k3RTypjfHPmy6xfP9NAY2UnJsvyTKT1QumpuA2DVPpgVD6IQ7Yl7vLzS/9n4IZKwFTQkGReSIa4CRawTslNgj3Q2nxZKI9GRWKmMEvACYcnkMqcemWbfaDvLfZkzQFP+lNi5emgoFDAnavdWgUO0PQh98cqYXTG8DVmr7QMZSMnFZloa7PgHrJcPbuUkPMpr7fQZ2OoU2dvLrwWR9surebPS3U7pT5iYZEsQoed/Zetdm0khk4NslagbmA5WUGGwapyCsWeOZR6VyK16qCjTYvlyyuf4Bd3bycKevF2+pNgj35WvjmtKmTYt3bA+lgSd8y1yi0MVhsqmhe+aF0ZmlW57ksRW7jBZoKFrSv76zv8nRfe/Z6FEzG7X/ZDU+RiU02EEAVOvQenCzqwVdeVHHFrcx0GpWPTiFFlN4XUqCU96NH0YAW0X79ADXgAHZ3jzU1bhizIjDuYmdpoqfZs6z47ILpKs4xBpR3OVmP7u4HvmBDMVslMKWighukKGeYrpfbqtbmMRylYETkMJDh1cP/kpc/wntezAiZsy+F/24j9RRbDFssuUWIU4QZx1Wy5VKuze4NEJJJsNaKgbRw5EJ/ttyOtZT8asqgi/jn1QSUvTeeXJ/HXLFo2LrJzuaXKl9HzdgROjCg/yf2xFhqLfB3seXx5QsntjWJLmsD2ThcjFKggUpU5ymvjwUOudo3rhb8RjgwGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_011Z2KnZXGpTC2NZNPGJuQYC",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Tiny Gym at Cartwheels",
+          "date": "2026-09-13",
+          "time": "09:30",
+          "weekday": "Sunday"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1715,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23580,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 376,
+      "output_tokens_details": {
+        "thinking_tokens": 235
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4199
+}

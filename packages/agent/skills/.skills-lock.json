@@ -93,7 +93,7 @@
   },
   "capability-table.md": {
     "file": "capability-table.md",
-    "sha256": "cddbfec3d736e5e46e2fcf4a97167ce2f6d3b22e4a3e92328b859e10cfcc9a6d"
+    "sha256": "421d2044c11812d1bc97a7fe97612073ff43218855676297c3fbc7b7791e3902"
   },
   "carpool-reading.md": {
     "file": "carpool-reading.md",
@@ -105,7 +105,7 @@
   },
   "claim-read.md": {
     "file": "claim-read.md",
-    "sha256": "7ccfa034d473deb59bd7305c9ccfd7ae5284e5dfd0bc6b9af1742d2da5105c10"
+    "sha256": "fa9ff6cf505955f4a38eeb5c8278389d1843267de0eeaec4c02e6a3e682af54d"
   },
   "classify-event.md": {
     "file": "classify-event.md",
@@ -129,7 +129,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "6adfb83fe3c3822d30d53dec3116e16ebdf57f4a166d46dcce05f540fb660b2a"
+    "sha256": "8d2c9e8a7310bca652161d75de11f2c460916d2d59fb597d448d2e588cfd63f6"
   },
   "coach-fact-source.md": {
     "file": "coach-fact-source.md",

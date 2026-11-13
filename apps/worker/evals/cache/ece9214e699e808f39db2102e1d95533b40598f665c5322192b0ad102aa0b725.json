@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "general-knowledge",
+    "reason": "asks for a translation of a phrase, a general-knowledge language question rather than a family-week task",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2801
+}

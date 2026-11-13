@@ -413,7 +413,8 @@ export async function planLapse(
 /**
  * A parent of the family takes back a plan, with one audit row either way.
  *
- * - `cancelled`: before the open, `planned` to `handed_back`.
+ * - `cancelled`: before the open, `planned` to `handed_back`, with the take-back time stamped
+ *   so the claim reader has the row that backs "I cancelled it".
  * - `cancel_requested`: its run is going (a queue, perhaps checkpointed between sweeps). The
  *   take-back is marked on the offer; the next sweep lets the run go instead of resuming it,
  *   and no payment starts after it ({@link savePlanResume}).
@@ -429,7 +430,7 @@ export async function cancelSignupPlan(
   const ours = and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId));
   const rows = await database
     .update(offers)
-    .set({ status: 'handed_back', updatedAt: input.now })
+    .set({ status: 'handed_back', planCancelRequestedAt: input.now, updatedAt: input.now })
     .where(and(ours, eq(offers.status, 'planned')))
     .returning({ id: offers.id });
   if (rows.length > 0) {

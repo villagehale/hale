@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine development/health-admin question about whether a screening is due, not a reported symptom or provider-access request",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 4015
+}

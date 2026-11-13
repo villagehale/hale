@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked in Spanish to stop sending emails without asking first. Autonomy for send and reply email was turned off this turn, so the confirmation is true. The reply is in the parent's language, addresses Sam by name, is one plain sentence, and drafts nothing because nothing needed drafting. 'Listo, Sam' is a light acknowledgement, not a greeting or sign-off.",
+    "score": 5
+  }
+}

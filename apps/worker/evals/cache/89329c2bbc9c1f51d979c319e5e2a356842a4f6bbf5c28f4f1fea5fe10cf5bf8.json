@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, that Hale stop sending emails on their behalf without asking first. Autonomy for send_email and reply_to_email was turned off this turn, so the reply's claim is true. It is in Spanish, matching the parent, and it confirms plainly and stops. Using the parent's name is fine. 'Listo, Sam' is a light opener rather than a greeting. One short, exact sentence that does the job.",
+    "score": 5
+  }
+}

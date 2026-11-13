@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgzFP4MyAH4XeX3eyjact",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "That sounds brutal, I'm sorry. Two hours of screaming at 1am wears anyone down.\n\nOne thing to try tonight is to keep the room dark and boring when it happens. Stay close, use few words, and skip the lights and the picking up. Screaming that long at this age is often a night terror or a big sleep-cycle wobble, and a toddler in the middle of one usually can't be woken or comforted. Calm, steady presence is the whole job. Try moving bedtime 20 to 30 minutes earlier too, since overtired is a common trigger."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1633,
+      "cache_read_input_tokens": 20420,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1633,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 182,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

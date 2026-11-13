@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale cancelled Saturday's swimming class. The only matching row (e1) is an open scheduled event, not a cancelled row, so the cancelled claim is not backed. The non-charge remark is not a separate claim kind.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "cancelled",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2601
+}

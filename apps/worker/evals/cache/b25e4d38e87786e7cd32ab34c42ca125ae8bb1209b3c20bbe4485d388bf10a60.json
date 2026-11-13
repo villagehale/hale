@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "translating material for their own kid's swim class flyer is in-domain family-week help; not a language-switch request",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1761
+}

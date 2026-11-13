@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyBW4vv4jm9NbiGmcz3M",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlAcKEAgTGAI4AUIIdGhpbmtpbmcSDNNqIOfAytpFnOKF4xoM1aUfFAjkYcFSZrbvIjA8UvONRSb/6C30TRxE0q2InGXpRJAtH2K5kszSAABvFeAd/gznULWYjEhHjwq2VaIqsQbp45eNTDdm2ssFLt2YlraD4/rfgx4R45vtyKqx1s6+7AxIfjYzZwpHO00JwSiych/Jy7gFWmpXclOdlm+Rzv3bf4qeP3BCfgvxYyDYxEqSVoUjHk6hOmwsWGjQ7i7+l4inQgUPwlBooRdbSotZkbuLXHFU1B/Wx++2x9SzdKmDhbx0OG51srKtaLtarZFkFEyye5rQTeriHZVJFD09VMWXcrLmH4QwV2rsJL9W2PDawb/q+3UQ5fsvJ18KaEOtmY7qenDfMStUmGhj+0ZQgmQstkxgvuA4gjhfe9vi13gRarmCSCSyw+KOkqpOsdBf76IUcztSuBFM/ytzyRj6U/n27xJTOagYulCzrCnPZssvErOaBoLb4GA1xbLaxaWv5G+HSM0dzqPA/hSZUw71ClGWw4DO+6wm+u46DQMfrmTajMgjqvpKO/1S/dfbP1Cf+cY7CLBpjgGqYdVsscf4A3xYVco61pPjrrCM0qFKnobs9zn89zx6l1THKCBX9c7BxURPPmY6pT9keiWUNUu3mNuVEGNxKaGeD+hglz2raV3mZecWsgyPf3J3J6YKE5YbJkGadxtF/I0TEmpPctPyXc2GUn6f9Fj85LX0V5BhIOL7eVqL9PRMmpqXlond3rBHUkGLWawmLXGjkcWout7DhEg2YX40ON/X2coVZrFWMZ4TlgR26d8xad13lhpjQ6AdQA8ZdpOAOpMlPK/9/NXGdssX/NaLdwW9qZhrtCM4tSUEVQoNNev+IgwkyLNumwVAHM8nE5fp+ruZP5buYnnlb+8s399Lr4OkA3M8zqsOlfHJ6YqwJid6sHSj5LJYLZz2pyC32Tr81y4NyJ2or/GaD9zsKthFJu2i66XUqXIWHIbdYtojH9C+MzNPShrK9ZQ+C/LRl8FkMXAFW6VIa0h+3Q894KhGfEe6Oyb2DLMGBaStSJsUJtgctq0xiZ2rTL3UFHTK7/L13j4F6ci/w+cCuVUe8g+yVLH10lglh0mnFvO8vHnM+gwAoPfICFlxcDSqVIho7J2j/jxWx2z2xEetrqQfW3Rqe9N+xRO3lPoU22/ZNV1X5boMybbZMIpL7z6Hw43IGAE="
+      },
+      {
+        "type": "text",
+        "text": "周日下午有 Danforth Library 的 Toddler music circle，Sun, Nov 15, 2:00，室内、免费，适合 1 到 3 岁，正好适合 20 个月的宝宝。[link-60f088]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 2178,
+      "cache_read_input_tokens": 20605,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2178,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 183,
+      "output_tokens_details": {
+        "thinking_tokens": 103
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

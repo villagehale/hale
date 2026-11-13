@@ -200,7 +200,7 @@ const poisoned = new Proxy({} as Database, {
 describe('runNextDayCheckbackSweep', () => {
   it('reads nothing while the lane flag is off, and queues the same seed once it is on', async () => {
     const seeded = await seed();
-    vi.stubEnv(NEXT_DAY_CHECKBACK_ENABLED_ENV, 'true\n');
+    vi.stubEnv(NEXT_DAY_CHECKBACK_ENABLED_ENV, 'false');
     const off = await runNextDayCheckbackSweep(poisoned, NOW, deps());
     expect(off).toMatchObject({ skipped: 'flag_off', examined: 0, queued: 0 });
 

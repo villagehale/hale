@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { COACH_VOICE_MEMO_CHILD, COACH_VOICE_MEMO_FIXTURES } from './coach-voice-memo-fixtures.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import {
   cacheGet,
   cacheKey,
@@ -43,10 +44,12 @@ const MAX_STEPS = 6;
 const MAX_TOKENS = 2000;
 const NOW = '2026-11-12T17:00:00.000Z';
 
-function contextFor(fixture) {
+const LOCATION = { city: 'Columbus', province: 'OH', country: 'US' };
+
+function contextFor(fixture, helpLines) {
   return {
     parentName: null,
-    location: { city: 'Columbus', province: 'OH', country: 'US' },
+    location: LOCATION,
     planTier: 'free',
     children: [COACH_VOICE_MEMO_CHILD],
     focusedChild: null,
@@ -61,6 +64,7 @@ function contextFor(fixture) {
     nowIso: NOW,
     standingQuestions: [],
     registrationWindows: [],
+    helpLines,
     ...(fixture.arrivedMedia ? { arrivedMedia: fixture.arrivedMedia } : {}),
   };
 }
@@ -167,7 +171,7 @@ async function main() {
     let chose = false;
     const run = await agent.runAgent({
       skill,
-      context: contextFor(fixture),
+      context: contextFor(fixture, await coachHelpLines(LOCATION)),
       tools: toolsFor(agent, replyAsVoiceMemoTool, fixture, calls, skill.meta.tools, () => {
         chose = true;
       }),

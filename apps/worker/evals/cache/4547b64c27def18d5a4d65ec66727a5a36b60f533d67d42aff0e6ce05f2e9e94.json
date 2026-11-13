@@ -1,0 +1,56 @@
+{
+  "response": {
+    "id": "msg_011CgzFMdfdHBerAM2Um7YjZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS7AkKEAgTGAI4AUIIdGhpbmtpbmcSDJ7LK0O1W+pIzyJI7RoM2x+R6hUzEBgZv2kcIjD+n4Avj8teXHwNICWA7vT/gxXVaM9N8qpML1yLtTSM2syZ2H8IGFxZYhAffWzP3IMqiQnDjbkM7dFPQgx3TneUiA2af6GMVzUN+EeXA4EiCXJSvW3+s+U7As9m8ZRyyyLrMdJ+hkw0XqA+pXkVO3oidTgRWMULyeJU1XXVBrQ6o3vwekEmMGE7o7PVZ2ZoI2FHrjq86PqOJgZQbi6GYKC1HKaWMi+g76XArQ3JzqlXLEKd6RNPxSzr5VY+bYGmgHAAvQgxS0mTpCnp6o4Tt+ldRc9EPPw/5+p/9c+If9y7JSlivnPnJrP1rpmqcYLvn4qJnrrOUO0Dm6k6oyd8GDga9FBHDyuMqVr1Eca/OEoNzxvwuiwkCo19dbEFUWWFc/ZVkeAzHcVNrmrlCRbB9I4TMaeY8sULisFBA2iZsFJyIM1dI0bsqwSNmbda4ySiWEPLKbe0CFmzINBCY9jQno3Vzc6pLMLOgDzYcjTqS8tDuL3f61Kja9ApoNkl5mkyXkfA0CEK7tvwd1TV5tTIKGyXrNqCzt5q0yXttWuQjMdo84vDSFe6PKqyFkTIynVg4LIKntsZ2Vt8oXVGAx8g1hJ+78npZviNzk8fnwJoy/8mUtnY/5X1xK6EwpfIKUsBrpAKVjlfxC7kmCvuNfzxToNH2dzeVsGMhzDEJJMxtenaiR6p8Epmrjyt2/+wfbAWO6G4YqQPgc+f/g7r6Ci02UtPh2qY0DPPF3jUcKLlgEL9LwYMDSecYPLTIIVP0ByKliD9+EaMhAEqTqvj3cirRmN3JSOy9UeaciSxMKE77v9ngky0bKyedHWEnuA/b1RHygrpDjEhKYAX0KSyegePlpSrnCvJQqsOcxvKDmkmePb3fbJm1jFFOFHtP6GAznX28AisxJrWx3VCJk+WVA6H06rj7pi1ptrtoB9YDg4jc0VPndL6u/8q+tdJ08iNpXFNAWTCAnQ9L4pSRbsZ5mfYoixjWyGz841MnkWphHzLtzAHCZtdCXyT7u7C8FESPznWS4ALBjUc3hUvEwWEQYPDQA/6GczdRZl9un2475Cl57XVlZ86tUDk4UNOLaoeI+qnKKkRZ3kr6y3qiIahD1/jsGjTPN54ZGKDuiqqUNfGAiZ9TrcF6qy6uXN6S1D9PLWpMfXNiUbo5PwZ0Hbuq3uSJ3xU92JbxFGykvrwErC07hX8kXsuFMittogRDnMJcZagPn5/uN5oHJmVEeuyF0jgqGPYS8cGsRkXpuduTWXBbKgm3dorYg12Zc1C9mB4TWj904zqaI2X0+uC2Rq6xvSy1tNnCohH+rQE8LuhBJ9WneeVEKmKCWQOuz4CcTKqhsODWGWkY6tk5+CDOxx3A0iCs2fvKY+CRvLgqE9/ifX7YfAXKXPXfMqY42UvMOKk/bmy3jO0IrQzYC3ZmIrX/jvOy7bsZf2k9Y6G/D6Zbm0+YoElVP/1BltXVMpv/LHtzJh5XygzPwufuDoClhwLSJPR1ZVKIW/dCtzFsGWHX+g+nTYNcuddyZYjJgRmRG/kgHolet/ENEN8SKkfe+yPvE9ro/NRZyMrFDvRtm5l2KlJqhwqV5mp5Vd/TCFu+x5LIM+toNsnxfEI3c19OFeDOKgYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DBgj15sDvTpewiRB4Vgb3P",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "toddler",
+          "ageMonths": 28
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GgxeoUX7s7RUTbZvZ83g4f",
+        "name": "note_capability_correction",
+        "input": {
+          "capability": "sign_up"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 771,
+      "cache_creation_input_tokens": 20420,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 20420
+      },
+      "output_tokens": 334,
+      "output_tokens_details": {
+        "thinking_tokens": 201
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

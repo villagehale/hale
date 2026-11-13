@@ -11,6 +11,7 @@ import {
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { type HealthPlace, healthNumbersIn } from '~/lib/channel/health-line';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
   type ChannelTurn,
@@ -109,6 +110,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     },
     loadChildren: async () => [TEEN],
     loadRegistrationWindows: async () => [],
+    loadHealthPlace: async () => null,
     buildTools: () => [] as RegisteredTool[],
     // Nothing nearby by default: the surface flag is off for months, so silence is the
     // ordinary answer and the cases that exercise it override this.
@@ -263,6 +265,55 @@ describe('channelCoachRuntime', () => {
     expect(burst?.prompt).toBe(lone?.prompt);
     const { arrivedTogether: _dropped, ...rest } = burst?.context as Record<string, unknown>;
     expect(JSON.stringify(rest)).toBe(JSON.stringify(lone?.context));
+  });
+
+  describe("the family's help lines (VIL-589)", () => {
+    const helpLinesFor = async (
+      place: HealthPlace | null,
+      audience: ChannelTurn['audience'] = 'direct',
+    ) => {
+      const seen: Record<string, unknown>[] = [];
+      const read: string[] = [];
+      const p = ports({
+        loadHealthPlace: async (familyId) => {
+          read.push(familyId);
+          return place;
+        },
+        runAgent: async (args) => {
+          seen.push(args.context as Record<string, unknown>);
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond({ ...turn(), audience }, []);
+      const numbers = [...new Set(healthNumbersIn(JSON.stringify(seen[0])))];
+      return { read, numbers, context: seen[0] };
+    };
+
+    it('hands an Ontario family Health811 and 911, read off its own row', async () => {
+      const ontario = await helpLinesFor({ country: 'CA', provinceOrState: 'Ontario' });
+      expect(ontario.read).toEqual([FAMILY]);
+      expect(ontario.numbers).toEqual(['811', '911']);
+      expect(ontario.context?.helpLines).toEqual({
+        healthLine: 'Health811 (Ontario), call 811, any time',
+        emergency: '911',
+      });
+    });
+
+    it('never hands a US family 811, the call-before-you-dig line there', async () => {
+      const us = await helpLinesFor({ country: 'US', provinceOrState: null });
+      expect(us.numbers).toEqual(['911']);
+      expect(us.context?.helpLines).toEqual({
+        healthLine: "your child's doctor's after-hours line",
+        emergency: '911',
+      });
+    });
+
+    it('names no province to a group: the place is not read and the line carries no number', async () => {
+      const group = await helpLinesFor({ country: 'CA', provinceOrState: 'Ontario' }, 'group');
+      expect(group.read).toEqual([]);
+      expect(group.numbers).toEqual(['911']);
+      expect(JSON.stringify(group.context)).not.toContain('Ontario');
+    });
   });
 
   it('asks for the context as the parent who texted (VIL-429)', async () => {

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "request to switch the reply language to French; it is about Hale itself, not an off-domain question",
+    "language": "en",
+    "language_request": "fr"
+  },
+  "latencyMs": 958
+}

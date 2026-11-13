@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's single question with no question at all, stays in English, and gives a plain no-results answer with no invented program, venue, day or date, as the rubric asks. Splitting into two bubbles is fine since they are two distinct thoughts: what was checked, and the promise to look again. The first bubble does carry some detail about what was searched, but it is the answer itself rather than a lead-in, so it does not break the rule against introductory bubbles. Only minor wording could be tighter.",
+    "score": 4
+  }
+}

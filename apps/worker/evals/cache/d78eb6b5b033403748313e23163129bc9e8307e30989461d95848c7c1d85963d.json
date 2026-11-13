@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "Sentence 0 quotes the parent's own words back ('you said: I'll register her Monday, then call') inside quotation marks, which is not a claim. Sentence 1 is just an acknowledgment, 'OK'. No rows exist, so nothing can be backed.",
+    "claims": []
+  },
+  "latencyMs": 2585
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asks Hale to switch replies to English; a language switch request, not a family-admin or off-domain question",
+    "language": "es",
+    "language_request": "en"
+  },
+  "latencyMs": 3306
+}

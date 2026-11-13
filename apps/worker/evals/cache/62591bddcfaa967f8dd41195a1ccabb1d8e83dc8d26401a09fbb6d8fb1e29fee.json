@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks for family activities for a 3-year-old indoors this weekend, which Hale searches for; weather is only the context, not the question",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 3748
+}

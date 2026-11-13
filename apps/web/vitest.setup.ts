@@ -2,6 +2,11 @@
 // doesn't require real infrastructure. Tests inject their own db handle.
 process.env.DATABASE_URL ??= 'postgres://test:test@localhost:5432/test';
 
+// The claim reader enforces by default in production, and it is a real model call
+// (rule #8: no mock). A test that is about it hands a scripted reader or sets the mode;
+// gate.pglite.test.ts deletes this to pin the production default.
+process.env.CLAIM_READER_MODE ??= 'off';
+
 // #868: keywords.ts is gone; stop/start is a model read. Every test gets the scripted
 // reader unless it hands its own (deps.optOutReader) or installs another.
 import { setSharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks what is on this week, the family schedule",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1758
+}
