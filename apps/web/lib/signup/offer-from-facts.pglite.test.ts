@@ -9,6 +9,7 @@ import { activityKeyFor, offerSignupFromFacts } from './offer-from-facts';
 import type { PlanReplyFacts } from './plan/writer';
 import { runAuthorizedSignup } from './run';
 import { captureProviderSession } from './session-capture';
+import { askStamp } from './store';
 import { echoOfferWriter } from './test-models';
 
 const NOW = new Date('2026-10-28T15:00:00.000Z');
@@ -112,7 +113,7 @@ describe('offerSignupFromFacts (production caller)', () => {
     expect(plain?.planOpensAt).toBeNull();
   });
 
-  it('an ActiveNet offer is a plan only while the assisted switch is on, and is written as assisted', async () => {
+  it('an ActiveNet host is a full auto plan, with or without the assisted switch', async () => {
     const seeded = await family();
     const href = 'https://anc.ca.apm.activecommunities.com/exampleville/activity/search/detail/7';
     const opensAt = new Date(NOW.getTime() + 20 * 60 * 60_000);
@@ -155,15 +156,17 @@ describe('offerSignupFromFacts (production caller)', () => {
     vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
     const off = await run();
     if (!off.ok) throw new Error(off.reason);
-    expect(writer.facts).toHaveLength(1);
-    expect(planFacts).toHaveLength(0);
+    expect(planFacts.map((f) => [f.moment, f.mode])).toEqual([['offer', 'auto']]);
+    expect(off.text).toBe(`Plan text from the model.\n${href}`);
     await close(off.offerId);
 
     vi.stubEnv('REGISTRATION_ASSISTED_RUN_ENABLED', 'true');
     const on = await run();
     if (!on.ok) throw new Error(on.reason);
-    expect(planFacts.map((f) => [f.moment, f.mode])).toEqual([['offer', 'assisted']]);
-    expect(on.text).toBe(`Plan text from the model.\n${href}`);
+    expect(planFacts.map((f) => [f.moment, f.mode])).toEqual([
+      ['offer', 'auto'],
+      ['offer', 'auto'],
+    ]);
     const [row] = await db.database
       .select()
       .from(schema.authorizedSignupOffers)
@@ -314,7 +317,14 @@ describe('offerSignupFromFacts (production caller)', () => {
       },
       { writer },
     );
-    expect(offered.ok).toBe(true);
+    if (!offered.ok) throw new Error(offered.reason);
+    // The coach's reply carrying the offer went out, so the parent's next yes is its.
+    const keep = await askStamp(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      offerIds: [offered.offerId],
+    })();
+    await keep();
 
     const captured = await captureProviderSession(db.database, {
       familyId: seeded.familyId,
@@ -373,6 +383,49 @@ describe('offerSignupFromFacts (production caller)', () => {
     const [engineInput] = run.mock.calls[0] as unknown as [{ payment: unknown }];
     expect(engineInput.payment).toBeNull();
     expect(process.env.BROWSER_USE_SIGNUP_PAYMENT_ENABLED ?? '').toBe('');
+  });
+
+  it('an already-open program is offered as a register-now plan', async () => {
+    const seeded = await family();
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    const past = new Date(NOW.getTime() - 60 * 60_000);
+    const planFacts: PlanReplyFacts[] = [];
+    const result = await offerSignupFromFacts(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        childId: seeded.childId,
+        now: NOW,
+        planOpensAt: past,
+        facts: {
+          source: 'chat',
+          evidence: 'Winter swim is open now',
+          registrationUrl: HREF,
+          sessions: [SESSION],
+          approvedPriceCents: null,
+          language: null,
+        },
+      },
+      {
+        writer: echoOfferWriter(),
+        autoHosts: [new URL(HREF).hostname],
+        planWriter: {
+          write: async (facts) => {
+            planFacts.push(facts);
+            return 'Plan text from the model.';
+          },
+        },
+      },
+    );
+    if (!result.ok) throw new Error(result.reason);
+    expect(planFacts[0]?.moment).toBe('offer');
+    const [row] = await db.database
+      .select()
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.id, result.offerId));
+    expect(row?.planAlreadyOpen).toBe(true);
+    expect(row?.planOpensAt?.toISOString()).toBe(NOW.toISOString());
   });
 
   it('is the production caller: offer-copy is not imported', () => {

@@ -129,8 +129,9 @@ export const OFF_DOMAIN_BUDGET_MS = 60_000;
  * live job can never reach it. A job is claimed only when its turn starts
  * ({@link CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE}), so its active age is the turn
  * deadline, plus the timeout path's settle writes (route.ts), plus the drain's own
- * complete/fail. The trailed workstream extract is handed to `waitUntil` and is not
- * part of that age. 180s sits above that envelope and below the function wall, so
+ * complete/fail. The back-to-back settle and its grouping read (router/burst.ts) run
+ * inside the turn deadline, so they add nothing to that age. The trailed workstream
+ * extract is handed to `waitUntil` and is not part of that age. 180s sits above that envelope and below the function wall, so
  * a dead turn frees the key in minutes. Re-drives are safe — the turn ledger
  * (router/turn-ledger.ts) answers a text at most once.
  */

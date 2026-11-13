@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Stop request in French (\"ARRÊT\"). Reply is in French, says plainly it will no longer text, and explains how to come back (say so in their own words). Short, warm, asks nothing and sells nothing. No readLate field, so no lateness acknowledgment is required."
+  }
+}

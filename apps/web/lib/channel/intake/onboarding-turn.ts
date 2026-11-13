@@ -4,6 +4,7 @@ import {
   preferParentRole,
 } from '~/lib/channel/identity/parent-role';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
+import { acceptCalendarDate } from './calendar-date';
 import type { ExtractedChild } from './extract';
 import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place';
 import { type IntakeSession, placeSettled } from './session';
@@ -43,6 +44,7 @@ export interface OnboardingCapture {
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[];
   parentName: string | null;
   /**
@@ -175,9 +177,14 @@ export function lastTranscriptAt(transcript: readonly { at: string }[]): string 
   return null;
 }
 
-/** Every child we are keeping has an age. A named child with no age is not done. */
-export function agesAreComplete(children: readonly { ageMonths: number | null }[]): boolean {
-  return children.length > 0 && children.every((child) => child.ageMonths != null);
+/** Every child we are keeping has an age, or a birth date we can work the age out from. */
+export function agesAreComplete(
+  children: readonly { ageMonths: number | null; dateOfBirth?: string | null }[],
+): boolean {
+  return (
+    children.length > 0 &&
+    children.every((child) => child.ageMonths != null || Boolean(child.dateOfBirth))
+  );
 }
 
 /** Every child we are keeping has a first name. */
@@ -440,14 +447,22 @@ export function acceptOnboardingCapture(
         ? item.ageMonths
         : null;
     const name = acceptName(item.name);
-    if (ageMonths === null && !name) return [];
+    const dateOfBirth = acceptCalendarDate(item.dateOfBirth);
+    if (ageMonths === null && !name && !dateOfBirth) return [];
     const agePrecision: 'years' | 'months' | null =
       ageMonths === null
         ? null
         : item.agePrecision === 'years' || item.agePrecision === 'months'
           ? item.agePrecision
           : 'months';
-    return [{ name, ageMonths, agePrecision }];
+    return [
+      {
+        name,
+        ageMonths,
+        agePrecision,
+        ...(dateOfBirth ? { dateOfBirth } : {}),
+      },
+    ];
   });
   const addsIn = Array.isArray(row.scheduleAdds) ? row.scheduleAdds : [];
   const scheduleAdds: ScheduleAdd[] = [];
@@ -597,6 +612,7 @@ export function mergeChildFacts(
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[],
 ): ExtractedChild[] {
   if (incoming.length === 0) return prior.map((child) => ({ ...child }));
@@ -605,6 +621,7 @@ export function mergeChildFacts(
       name: child.name,
       ageMonths: child.ageMonths,
       agePrecision: child.ageMonths == null ? null : (child.agePrecision ?? 'months'),
+      ...(child.dateOfBirth ? { dateOfBirth: child.dateOfBirth } : {}),
     }));
   }
   const next = prior.map((child) => ({ ...child }));
@@ -634,11 +651,13 @@ export function mergeChildFacts(
         row.ageMonths = child.ageMonths;
         row.agePrecision = child.agePrecision ?? row.agePrecision ?? 'months';
       }
-    } else if (child.name || child.ageMonths != null) {
+      if (child.dateOfBirth) row.dateOfBirth = child.dateOfBirth;
+    } else if (child.name || child.ageMonths != null || child.dateOfBirth) {
       next.push({
         name: child.name,
         ageMonths: child.ageMonths,
         agePrecision: child.ageMonths == null ? null : (child.agePrecision ?? 'months'),
+        ...(child.dateOfBirth ? { dateOfBirth: child.dateOfBirth } : {}),
       });
     }
   }

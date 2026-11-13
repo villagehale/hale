@@ -9,7 +9,8 @@ import { users } from './users.js';
  * One row per family and provider host. `storage_state_ciphertext` is an
  * AES-256-GCM blob (APP_ENCRYPTION_KEY) of cookies and local storage only. It
  * is never a password. The row is deleted when the parent confirms they are in,
- * or by the hourly delete sweep once `expires_at` (captured + 48h) passes. The
+ * or by the hourly delete sweep once `expires_at` (plan-scoped, hard max 45 days)
+ * passes. The
  * Browser Use profile seeded from it is deleted with it.
  */
 export const providerSignupSessions = pgTable(
@@ -29,6 +30,10 @@ export const providerSignupSessions = pgTable(
     browserUseProfileId: text('browser_use_profile_id'),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastKeepaliveAt: timestamp('last_keepalive_at', { withTimezone: true }),
+    lastValidatedAt: timestamp('last_validated_at', { withTimezone: true }),
+    /** Structured account-change warning from a page read. Never a password. */
+    accountWarning: text('account_warning'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

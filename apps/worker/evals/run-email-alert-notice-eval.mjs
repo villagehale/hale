@@ -46,8 +46,8 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');

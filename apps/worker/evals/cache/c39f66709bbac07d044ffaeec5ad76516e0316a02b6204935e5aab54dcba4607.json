@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Bonjour ! Petit souci avec votre Secret Santa : quelqu'un est parti après le tirage, donc certains tirages ne peuvent pas être envoyés. Le plus simple serait d'annuler et de recommencer un nouveau tirage avec le groupe."
+  },
+  "latencyMs": 2234,
+  "usage": {
+    "input_tokens": 47,
+    "output_tokens": 100,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

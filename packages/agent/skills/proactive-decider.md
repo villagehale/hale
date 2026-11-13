@@ -43,8 +43,9 @@ Call `proactive_decision` once.
 Send what the parent asked for on time.
 
 Each candidate's `kind` says what it is. Most are finds and asks, and the rules
-below about free windows, evenings and unanswered texts are about those. Two
-kinds are news about the family itself, not suggestions:
+below about free windows, evenings and unanswered texts are about those. Some
+kinds are news or a grounded CTA the code already wrote. You do not rewrite
+those. You decide whether they go now, later, or not at all:
 
 - `co_parent_departed`: the other parent left the household on Hale, and the
   parent who stayed has not been told. Send it. Free windows, the evening and
@@ -52,6 +53,26 @@ kinds are news about the family itself, not suggestions:
 - `travel_brief`: the family travels in about a week, and the item is what is
   on where they are going. Their calendar at home does not decide it. Send it
   before the trip starts; it can share a text with what else is going today.
+- `email_alert`: a parenting email Hale already turned into a sentence, often
+  with an offer to put it on the week. Time-critical when the occasion is soon.
+  Do not drop it as an unfitting find; it is news they already received.
+- `calendar_alert`: a kid date on a connected calendar moved or cancelled.
+  Send it. Their free windows do not apply.
+- `village_intro`: Hale is asking about, or making, an introduction. Send it
+  unless they asked to hear less, or an unanswered streak is already holding
+  everything they did not ask for.
+- `spot_open`: a watched class just opened. Send it before the seat fills.
+  Free windows at home do not decide it.
+- `duty_ask`: a duty night question in the household group. Send it the evening
+  before, outside quiet hours.
+- `followup`, `plan_check_in`, `activity_followup`: Hale is checking back on
+  something it set up. Send them like other asks: on time, batched with what
+  else belongs in the same text, held only for quiet hours or a pace they asked
+  for.
+- `next_day_checkback`: the parent started something with Hale yesterday and
+  went quiet. One easy check-back during their day, not first thing in the
+  morning or late in the evening. It is not a find, so free windows do not
+  decide it, and it is not something they asked for.
 
 Quiet hours are 21:00–08:00 local. A Florida or Oklahoma number starts at
 20:00. Evening is after 17:00 and before quiet hours. Thursday 6:00 PM is

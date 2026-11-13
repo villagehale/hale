@@ -12,6 +12,10 @@ const SW = 'spot_watch';
 const AF = 'activity_followup';
 const INVITE = 'co_parent_invite';
 const SELF = 'self_referential';
+const RD = 'registration_done';
+const SENT = 'send_done';
+const RECEIVED = 'send_received';
+const CANCEL = 'cancelled';
 
 /**
  * Standard-time offsets after the 2026-11-01 change, for the zones the fixtures use. US
@@ -58,11 +62,32 @@ const windowRow = (ref, what) => ({
   local: WINDOW_OPENS,
 });
 const pendingFollowup = (ref, what) => ({ ref, source: 'pending', kind: AF, what });
+// VIL-581 · what backs "registered", "sent" and "cancelled". Send labels are the exact
+// strings candidate-rows.ts builds (claim-label.ts SEND_RECEIPT_WHAT).
+const signup = (ref, what) => ({ ref, source: 'signup_confirmed', kind: RD, what });
+const booking = (ref, what, local) => ({ ref, source: 'booking', kind: RD, what, local });
+const reported = (ref, what) => ({ ref, source: 'reported_outcome', kind: RD, what });
+const SENT_AT = '2026-11-03T08:15';
+const sent = (ref, what, delivered) => ({
+  ref,
+  source: 'send_receipt',
+  kind: SENT,
+  what,
+  delivered,
+  local: SENT_AT,
+});
+const removed = (ref, what, local) => ({ ref, source: 'cancelled', kind: CANCEL, what, local });
+const TO_COPARENT = 'A text to the co-parent';
+const IN_GROUP = 'A text in a group chat';
 const pendingSpot = (ref, what) => ({ ref, source: 'pending', kind: SW, what });
 
 /** The instant fields each source carries, from its family-local wall time. */
 function rowFor({ local, ...row }, timeZone) {
-  if (row.source === 'calendar') return { ...row, startsAt: at(local, timeZone) };
+  if (row.source === 'calendar' || row.source === 'booking') {
+    return { ...row, startsAt: at(local, timeZone) };
+  }
+  if (row.source === 'cancelled') return { ...row, startsAt: local ? at(local, timeZone) : null };
+  if (row.source === 'send_receipt') return { ...row, sentAt: at(local, timeZone) };
   if (row.source === 'live_sequence') return { ...row, opensAt: at(local, timeZone) };
   if (row.source === 'mintable_window') return { ...row, opensForFamilyAt: at(local, timeZone) };
   return row;
@@ -1279,4 +1304,541 @@ const AR = [
   }),
 ];
 
-export const CLAIM_READ_FIXTURES = [...EN, ...FR, ...ZH, ...ES, ...AR];
+// VIL-581 · "registered", "sent" and "cancelled": each needs its own kind of row.
+const EN_DONE = [
+  fx({
+    id: 'en-registered-signup',
+    language: 'en',
+    category: 'registered',
+    body: "Good news: she's registered for Saturday swim.",
+    rows: [signup('swim', 'Saturday swim'), cal('swimcal', 'Swim lesson', SAT_10)],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'en-registered-calendar-only',
+    language: 'en',
+    category: 'registered',
+    body: "She's registered for Saturday swim.",
+    rows: [cal('swim', 'Swim lesson', SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'en-registered-wrong-program',
+    language: 'en',
+    category: 'wrong_subject',
+    body: "He's enrolled in Saturday swim now.",
+    rows: [signup('soccer', 'Sunday soccer')],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'en-registered-booking',
+    language: 'en',
+    category: 'registered',
+    body: 'He got a spot in the Tuesday art class.',
+    rows: [booking('art', 'Tuesday art class', TUE_9)],
+    claims: [[RD, 'art']],
+  }),
+  fx({
+    id: 'en-registered-paid',
+    language: 'en',
+    category: 'registered',
+    body: 'The swim registration is paid and she is in.',
+    rows: [signup('swim', 'Saturday swim')],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'en-registered-paid-false',
+    language: 'en',
+    category: 'registered',
+    body: 'I paid for the soccer registration.',
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'en-registered-reported',
+    language: 'en',
+    category: 'registered',
+    body: "She's registered for Maple Bend winter swim, so that one is covered.",
+    rows: [reported('swim', 'Maple Bend swim winter registration')],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'en-registered-negation',
+    language: 'en',
+    category: 'negation',
+    body: "I haven't registered her for swim yet, and sign-up opens Tuesday.",
+  }),
+  fx({
+    id: 'en-registered-ack',
+    language: 'en',
+    category: 'reported',
+    inbound: 'I signed her up for Saturday swim this morning.',
+    body: 'Nice, glad she got a spot in Saturday swim.',
+  }),
+  fx({
+    id: 'en-registered-offer',
+    language: 'en',
+    category: 'proposal',
+    body: 'Her swim registration is filled in; want me to submit it?',
+  }),
+  fx({
+    id: 'en-sent-coparent',
+    language: 'en',
+    category: 'sent',
+    body: 'I texted your co-parent the pickup time.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[SENT, 'co']],
+  }),
+  fx({
+    id: 'en-sent-false',
+    language: 'en',
+    category: 'sent',
+    body: 'I emailed the swim coach about Saturday.',
+    claims: [[SENT, 'none']],
+    refused: [['no_send_record']],
+  }),
+  fx({
+    id: 'en-sent-drafted',
+    language: 'en',
+    category: 'sent',
+    body: "I drafted an email to the swim coach; it's in your Gmail drafts.",
+  }),
+  fx({
+    id: 'en-sent-delivered-false',
+    language: 'en',
+    category: 'delivered',
+    body: 'Your co-parent got the pickup time.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'en-sent-group',
+    language: 'en',
+    category: 'sent',
+    body: 'I posted the bring-list in the group chat.',
+    rows: [sent('grp', IN_GROUP, true)],
+    claims: [[SENT, 'grp']],
+  }),
+  fx({
+    id: 'en-cancel-removed',
+    language: 'en',
+    category: 'cancelled',
+    body: 'I took Saturday swim off your calendar.',
+    rows: [removed('swim', 'Swim lesson', SAT_10)],
+    claims: [[CANCEL, 'swim']],
+  }),
+  fx({
+    id: 'en-cancel-false',
+    language: 'en',
+    category: 'cancelled',
+    body: "I cancelled Thursday's dentist visit.",
+    rows: [cal('dentist', 'Dentist visit', THU_14)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  fx({
+    id: 'en-cancel-awaiting',
+    language: 'en',
+    category: 'cancelled',
+    body: 'Taking swim off your calendar is waiting for your OK.',
+  }),
+];
+
+const FR_DONE = [
+  fx({
+    id: 'fr-registered-signup',
+    language: 'fr',
+    category: 'registered',
+    body: 'Bonne nouvelle : elle est inscrite à la natation du samedi.',
+    rows: [signup('swim', 'Natation du samedi'), cal('swimcal', 'Cours de natation', SAT_10)],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'fr-registered-calendar-only',
+    language: 'fr',
+    category: 'registered',
+    body: 'Elle est inscrite à la natation du samedi.',
+    rows: [cal('swim', 'Cours de natation', SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'fr-registered-wrong-program',
+    language: 'fr',
+    category: 'wrong_subject',
+    body: 'Il a eu sa place à la natation du samedi.',
+    rows: [signup('soccer', 'Soccer du dimanche')],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'fr-registered-negation',
+    language: 'fr',
+    category: 'negation',
+    body: 'Je ne l’ai pas encore inscrite à la natation.',
+  }),
+  fx({
+    id: 'fr-sent-coparent',
+    language: 'fr',
+    category: 'sent',
+    body: 'J’ai envoyé l’heure de la sortie d’école à ton conjoint.',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[SENT, 'co']],
+  }),
+  fx({
+    id: 'fr-sent-false',
+    language: 'fr',
+    category: 'sent',
+    body: 'J’ai écrit à l’entraîneur de natation pour samedi.',
+    claims: [[SENT, 'none']],
+    refused: [['no_send_record']],
+  }),
+  fx({
+    id: 'fr-cancel-removed',
+    language: 'fr',
+    category: 'cancelled',
+    body: 'J’ai retiré la natation de samedi de ton calendrier.',
+    rows: [removed('swim', 'Cours de natation', SAT_10)],
+    claims: [[CANCEL, 'swim']],
+  }),
+  fx({
+    id: 'fr-cancel-false',
+    language: 'fr',
+    category: 'cancelled',
+    body: 'J’ai annulé le rendez-vous chez le dentiste de jeudi.',
+    rows: [cal('dentist', 'Dentiste', THU_14)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+];
+
+const ZH_DONE = [
+  fx({
+    id: 'zh-registered-signup',
+    language: 'zh',
+    category: 'registered',
+    body: '好消息：她已经报上周六的游泳课了。',
+    rows: [signup('swim', '周六游泳课'), cal('swimcal', '游泳课', SAT_10)],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'zh-registered-calendar-only',
+    language: 'zh',
+    category: 'registered',
+    body: '她已经报上周六的游泳课了。',
+    rows: [cal('swim', '游泳课', SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'zh-registered-wrong-program',
+    language: 'zh',
+    category: 'wrong_subject',
+    body: '周六游泳课的名额已经帮他抢到了。',
+    rows: [signup('soccer', '周日足球')],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'zh-registered-negation',
+    language: 'zh',
+    category: 'negation',
+    body: '我还没有帮她报游泳课。',
+  }),
+  fx({
+    id: 'zh-sent-coparent',
+    language: 'zh',
+    category: 'sent',
+    body: '我已经把接孩子的时间发给你的另一半了。',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[SENT, 'co']],
+  }),
+  fx({
+    id: 'zh-sent-false',
+    language: 'zh',
+    category: 'sent',
+    body: '我已经给游泳教练发了邮件。',
+    claims: [[SENT, 'none']],
+    refused: [['no_send_record']],
+  }),
+  fx({
+    id: 'zh-cancel-removed',
+    language: 'zh',
+    category: 'cancelled',
+    body: '我已经把周六的游泳课从你的日历上删掉了。',
+    rows: [removed('swim', '游泳课', SAT_10)],
+    claims: [[CANCEL, 'swim']],
+  }),
+  fx({
+    id: 'zh-cancel-false',
+    language: 'zh',
+    category: 'cancelled',
+    body: '周四的牙医预约我已经帮你取消了。',
+    rows: [cal('dentist', '牙医', THU_14)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+];
+
+const ES_DONE = [
+  fx({
+    id: 'es-registered-signup',
+    language: 'es',
+    category: 'registered',
+    body: 'Buenas noticias: ya está inscrita en natación de los sábados.',
+    rows: [signup('swim', 'Natación de los sábados'), cal('swimcal', 'Clase de natación', SAT_10)],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'es-registered-calendar-only',
+    language: 'es',
+    category: 'registered',
+    body: 'Ya está inscrita en natación de los sábados.',
+    rows: [cal('swim', 'Clase de natación', SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'es-registered-wrong-program',
+    language: 'es',
+    category: 'wrong_subject',
+    body: 'Ya tiene su lugar en natación de los sábados.',
+    rows: [signup('soccer', 'Fútbol de los domingos')],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'es-registered-negation',
+    language: 'es',
+    category: 'negation',
+    body: 'Todavía no la he inscrito en natación.',
+  }),
+  fx({
+    id: 'es-sent-coparent',
+    language: 'es',
+    category: 'sent',
+    body: 'Le mandé la hora de recogida a tu pareja.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[SENT, 'co']],
+  }),
+  fx({
+    id: 'es-sent-false',
+    language: 'es',
+    category: 'sent',
+    body: 'Le escribí al entrenador de natación sobre el sábado.',
+    claims: [[SENT, 'none']],
+    refused: [['no_send_record']],
+  }),
+  fx({
+    id: 'es-cancel-removed',
+    language: 'es',
+    category: 'cancelled',
+    body: 'Quité la natación del sábado de tu calendario.',
+    rows: [removed('swim', 'Clase de natación', SAT_10)],
+    claims: [[CANCEL, 'swim']],
+  }),
+  fx({
+    id: 'es-cancel-false',
+    language: 'es',
+    category: 'cancelled',
+    body: 'Cancelé la cita con el dentista del jueves.',
+    rows: [cal('dentist', 'Dentista', THU_14)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+];
+
+// VIL-581 fix round · a take-back that is only a request is no cancellation; a booking
+// or a cancellation that names a day must be that day; "they got it" needs delivered.
+const plan = (ref, what) => ({ ref, source: 'cancelled', kind: CANCEL, what });
+const SWIM = 'Swim lessons';
+
+const FIX_ROUND = [
+  // A take-back while the payment ran writes no cancellation row: the class is still on.
+  fx({
+    id: 'en-cancel-paying',
+    language: 'en',
+    category: 'cancelled',
+    body: "I cancelled Saturday swim, so you won't be charged.",
+    rows: [cal('swim', 'Swim lesson', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  fx({
+    id: 'fr-cancel-paying',
+    language: 'fr',
+    category: 'cancelled',
+    body: 'J’ai annulé la natation de samedi, donc tu ne seras pas facturé.',
+    rows: [cal('swim', 'Cours de natation', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  fx({
+    id: 'zh-cancel-paying',
+    language: 'zh',
+    category: 'cancelled',
+    body: '我已经取消了星期六的游泳课，所以不会扣费。',
+    rows: [cal('swim', '游泳课', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  fx({
+    id: 'es-cancel-paying',
+    language: 'es',
+    category: 'cancelled',
+    body: 'Cancelé la natación del sábado, así que no te cobrarán.',
+    rows: [cal('swim', 'Clase de natación', SAT_10)],
+    claims: [[CANCEL, 'none']],
+    refused: [['no_cancel_record']],
+  }),
+  // A sign-up taken back before its run: the row that backs the true reply.
+  fx({
+    id: 'en-cancel-signup',
+    language: 'en',
+    category: 'cancelled',
+    body: 'I cancelled the Saturday swim sign-up.',
+    rows: [plan('swim', 'Saturday swim')],
+    claims: [[CANCEL, 'swim']],
+  }),
+  // A booking on Saturday does not back a Thursday sentence, in any language.
+  fx({
+    id: 'en-booking-wrong-day',
+    language: 'en',
+    category: 'day_time',
+    body: "She's registered for swim lessons on Thursday at 4pm.",
+    rows: [booking('swim', SWIM, SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  fx({
+    id: 'en-booking-right-day',
+    language: 'en',
+    category: 'day_time',
+    body: "She's registered for swim lessons on Saturday at 10am.",
+    rows: [booking('swim', SWIM, SAT_10)],
+    claims: [[RD, 'swim']],
+  }),
+  fx({
+    id: 'fr-booking-wrong-day',
+    language: 'fr',
+    category: 'day_time',
+    body: 'Le cours de natation est réservé pour jeudi à 16 h.',
+    rows: [booking('swim', 'Cours de natation', SAT_10)],
+    claims: [[SE, 'none']],
+    refused: [['no_scheduled_row']],
+  }),
+  fx({
+    id: 'fr-booking-right-day',
+    language: 'fr',
+    category: 'day_time',
+    body: 'Le cours de natation est réservé pour samedi à 10 h.',
+    rows: [booking('swim', 'Cours de natation', SAT_10)],
+    claims: [[SE, 'swim']],
+  }),
+  fx({
+    id: 'zh-booking-wrong-day',
+    language: 'zh',
+    category: 'day_time',
+    body: '游泳课已经订在星期四下午4点。',
+    rows: [booking('swim', '游泳课', SAT_10)],
+    claims: [[SE, 'none']],
+    refused: [['no_scheduled_row']],
+  }),
+  fx({
+    id: 'es-booking-wrong-day',
+    language: 'es',
+    category: 'day_time',
+    body: 'Está inscrita en natación el jueves a las 16:00.',
+    rows: [booking('swim', 'Clase de natación', SAT_10)],
+    claims: [[RD, 'none']],
+    refused: [['no_registration_record']],
+  }),
+  // Sent is not received: "they got it" needs a receipt the provider marked delivered.
+  fx({
+    id: 'en-received-delivered',
+    language: 'en',
+    category: 'delivered',
+    body: 'Your co-parent got the pickup time.',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+  fx({
+    id: 'en-sent-and-received',
+    language: 'en',
+    category: 'delivered',
+    body: 'I texted your co-parent the pickup time, and she got it.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [
+      [SENT, 'co'],
+      [RECEIVED, 'none'],
+    ],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'fr-received-undelivered',
+    language: 'fr',
+    category: 'delivered',
+    body: 'Ton coparent a bien reçu l’heure de ramassage.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'fr-received-delivered',
+    language: 'fr',
+    category: 'delivered',
+    body: 'Ton coparent a bien reçu l’heure de ramassage.',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+  fx({
+    id: 'zh-received-undelivered',
+    language: 'zh',
+    category: 'delivered',
+    body: '你的另一位家长已经收到接孩子的时间了。',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'zh-received-delivered',
+    language: 'zh',
+    category: 'delivered',
+    body: '你的另一位家长已经收到接孩子的时间了。',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+  fx({
+    id: 'es-received-undelivered',
+    language: 'es',
+    category: 'delivered',
+    body: 'Tu copadre ya recibió la hora de recogida.',
+    rows: [sent('co', TO_COPARENT, false)],
+    claims: [[RECEIVED, 'none']],
+    refused: [['no_delivery_record']],
+  }),
+  fx({
+    id: 'es-received-delivered',
+    language: 'es',
+    category: 'delivered',
+    body: 'Tu copadre ya recibió la hora de recogida.',
+    rows: [sent('co', TO_COPARENT, true)],
+    claims: [[RECEIVED, 'co']],
+  }),
+];
+
+export const CLAIM_READ_FIXTURES = [
+  ...EN,
+  ...FR,
+  ...ZH,
+  ...ES,
+  ...AR,
+  ...EN_DONE,
+  ...FR_DONE,
+  ...ZH_DONE,
+  ...ES_DONE,
+  ...FIX_ROUND,
+];

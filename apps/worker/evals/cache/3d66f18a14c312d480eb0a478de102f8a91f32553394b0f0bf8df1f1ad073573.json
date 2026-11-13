@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Parent drops the swim program for a different one; take-back of this plan",
+    "said": "游泳那个不要了",
+    "named": "游泳那个",
+    "verdict": "take_back",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 2065
+}

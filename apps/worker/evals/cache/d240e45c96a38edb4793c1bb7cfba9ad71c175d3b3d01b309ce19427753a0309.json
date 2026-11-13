@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "not_find",
+    "reason": "calendar read of their own schedule, not a nearby search"
+  },
+  "latencyMs": 1648
+}

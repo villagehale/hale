@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { type FamilyBasicsView, toFamilyBasics } from '~/lib/dashboard/family-basics';
 import { type FamilyMembersView, toFamilyMembersView } from '~/lib/dashboard/family-members';
-import type { TrailView } from '~/lib/dashboard/mappers';
+import { TEEN_REDACTED_PLACEHOLDER, type TrailView } from '~/lib/dashboard/mappers';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
@@ -10,6 +10,7 @@ import type { AuditVerb } from '~/lib/trail/verbs';
 import { type HouseholdExport, loadHouseholdExport } from './export-household';
 import { type FamilyMemoryExport, exportTeenGate, loadFamilyMemoryExport } from './export-memory';
 import { type RequesterOnlyExport, loadRequesterOnlyExport } from './export-requester';
+import { accessExportRound2Enabled } from './export-round-2';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -41,6 +42,13 @@ const NOT_IN_FAMILY_EXPORT = [
   'parent_language_changed',
   // That one adult connected their Google account again, possibly in another household.
   'integration_google_revoke_cancelled',
+  // VIL-635. A rail refusal names one adult; the family copy never carries it.
+  'tool_refused',
+  // That one adult's own 1:1 ask went on the deep queue (VIL-682).
+  'activity_deep_dispatched',
+  // VIL-686. That one adult was sent their Secret Santa draw, or told whose had not landed.
+  'linq_secret_santa_draw_sent',
+  'linq_secret_santa_noted',
 ] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {
@@ -126,7 +134,9 @@ export interface FamilyExportDocument {
    * what makes the "how did it go?" ask happen - so a right-to-access copy without it
    * would omit something Hale does on their behalf. The place and the street address
    * leave as the email wrote them (null when it gave none); no confirmation number, no
-   * amount, no child, because the table has no column for any of them.
+   * amount, no child, because the table has no column for any of them. Lit
+   * (`ACCESS_EXPORT_ROUND_2_ENABLED`), the copy is this adult's bookings only, like
+   * trips, and a title that names a 13+ child becomes the teen placeholder.
    */
   activityBookings: {
     title: string;
@@ -177,6 +187,16 @@ export interface FamilyExportDocument {
   sameActivityOptIns: {
     kind: string;
     activityKey: string;
+    createdAt: string;
+    revokedAt: string | null;
+  }[];
+  /**
+   * VIL-399 — this household's own yes to being counted in "who else is going".
+   * Whether they said yes, and whether they took it back. No other household,
+   * no class, and no child: those are not columns, and the read is scoped to
+   * this family so another household's yes cannot appear here.
+   */
+  goingCountOptIns: {
     createdAt: string;
     revokedAt: string | null;
   }[];
@@ -320,6 +340,7 @@ export async function assembleFamilyExport(
       loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, {
         includeInternal: true,
         exclude: NOT_IN_FAMILY_EXPORT,
+        viewerUserId: deps.actorUserId,
       }));
   const now = deps.now ?? new Date();
 
@@ -355,6 +376,7 @@ export async function assembleFamilyExport(
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId))
     .orderBy(schema.children.dateOfBirth);
+  const gate = exportTeenGate(childRows, now);
 
   const memberRows = await database
     .select({
@@ -501,10 +523,20 @@ export async function assembleFamilyExport(
       cancelledAt: schema.activityBookings.cancelledAt,
     })
     .from(schema.activityBookings)
-    .where(eq(schema.activityBookings.familyId, familyId))
+    .where(
+      accessExportRound2Enabled()
+        ? and(
+            eq(schema.activityBookings.familyId, familyId),
+            eq(schema.activityBookings.parentUserId, deps.actorUserId),
+          )
+        : eq(schema.activityBookings.familyId, familyId),
+    )
     .orderBy(schema.activityBookings.firstSessionAt);
   const activityBookings = bookingRows.map((row) => ({
-    title: row.title,
+    title:
+      accessExportRound2Enabled() && gate.isPrivate([], [row.title])
+        ? TEEN_REDACTED_PLACEHOLDER
+        : row.title,
     firstSessionAt: row.firstSessionAt.toISOString(),
     providerHost: row.providerHost,
     location: row.location,
@@ -679,6 +711,19 @@ export async function assembleFamilyExport(
     revokedAt: row.revokedAt?.toISOString() ?? null,
   }));
 
+  const goingCountRows = await database
+    .select({
+      createdAt: schema.goingCountOptIns.createdAt,
+      revokedAt: schema.goingCountOptIns.revokedAt,
+    })
+    .from(schema.goingCountOptIns)
+    .where(eq(schema.goingCountOptIns.familyId, familyId))
+    .orderBy(schema.goingCountOptIns.createdAt);
+  const goingCountOptIns = goingCountRows.map((row) => ({
+    createdAt: row.createdAt.toISOString(),
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+  }));
+
   const memoryDigests = digestRows.flatMap((row) => {
     const grain = digestGrain(row.grain);
     if (grain === null) return [];
@@ -708,7 +753,6 @@ export async function assembleFamilyExport(
     { userId: deps.actorUserId },
     now,
   );
-  const gate = exportTeenGate(childRows, now);
   const household = await loadHouseholdExport(database, familyId, deps.actorUserId, gate);
   const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId, gate);
 
@@ -740,6 +784,7 @@ export async function assembleFamilyExport(
     authorizedSignups,
     signupFieldConsents,
     sameActivityOptIns,
+    goingCountOptIns,
     eveningCheckIn,
     activityReviews,
     trips,

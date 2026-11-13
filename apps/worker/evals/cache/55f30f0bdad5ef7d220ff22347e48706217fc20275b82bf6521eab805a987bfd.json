@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Asks about a different program (soccer), does not turn down the swim plan",
+    "said": null,
+    "named": null,
+    "verdict": "unrelated",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1415
+}

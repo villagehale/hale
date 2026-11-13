@@ -1,3 +1,5 @@
+import type { LinqChatService } from '~/lib/channel/linq/transport';
+
 /**
  * WHERE HALE'S ANSWER GOES — the router's one question about delivery, and the only
  * place the answer is allowed to be shaped like a phone number.
@@ -34,6 +36,11 @@ export type ReplyRoute =
        * Null when the ledger row has no provider id — the send is still an
        * answer, it simply does not quote. */
       replyToMessageId: string | null;
+      /** The service Linq said carried the inbound (`channel_messages.provider_service`):
+       * Linq relays green-bubble SMS and RCS chats on this same channel. Only `iMessage`
+       * keeps several bubbles in order. Absent or null: Linq did not say, and the reply
+       * goes as one text. */
+      service?: LinqChatService | null;
     };
 
 /**
@@ -61,16 +68,18 @@ export interface ReplySent {
  * as one they did (rule #11).
  */
 export interface ReplyTransport {
-  send(input: { route: ReplyRoute; body: string }): Promise<ReplySent>;
+  /** `sendKey` names this send to the provider (Linq's idempotency key), so a resend under
+   * the same key is dropped. Absent: the provider mints one. */
+  send(input: { route: ReplyRoute; body: string; sendKey?: string }): Promise<ReplySent>;
 }
 
 /** Records every send with the route it went out on — the assertion surface for "was
  * this answered on the channel the parent used". */
 export class FakeReplyTransport implements ReplyTransport {
-  readonly sent: Array<{ route: ReplyRoute; body: string }> = [];
+  readonly sent: Array<{ route: ReplyRoute; body: string; sendKey?: string }> = [];
   private counter = 0;
 
-  async send(input: { route: ReplyRoute; body: string }): Promise<ReplySent> {
+  async send(input: { route: ReplyRoute; body: string; sendKey?: string }): Promise<ReplySent> {
     this.sent.push(input);
     this.counter += 1;
     return { providerMessageId: `fake-out-${this.counter}`, channel: input.route.channel };

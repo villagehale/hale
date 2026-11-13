@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentRunCostUsd, estimateCostUsd } from './cost.js';
+import { agentRunCostUsd, estimateCostUsd, tryEstimateCostUsd } from './cost.js';
 import { DEEPSEEK_MODEL, HAIKU_MODEL, OPUS_MODEL, SONNET_MODEL } from './model.js';
 
 /**
@@ -55,6 +55,16 @@ describe('estimateCostUsd', () => {
     );
   });
 
+  it('bills 1h cache writes at 2x the input rate', () => {
+    // 1M 1h cache-creation on Sonnet 5.5 = $2 * 2 = $4.
+    expect(
+      estimateCostUsd(
+        SONNET_MODEL,
+        tiers({ cacheCreationTokens: 1_000_000, cacheCreation1hTokens: 1_000_000 }),
+      ),
+    ).toBeCloseTo(4, 6);
+  });
+
   it('bills cache reads at the published per-model rate', () => {
     // 50K cache-read: Sonnet 5.5 $0.10/M, Opus 5.5 $0.20/M, Haiku 5.5 $0.01/M.
     const reads = tiers({ cacheReadTokens: 50_000 });
@@ -102,5 +112,25 @@ describe('agentRunCostUsd', () => {
       completionTokens: 90,
     });
     expect(cost).toBeCloseTo(0.0043903, 9);
+  });
+
+  it('prices the 1h slice of a loop at 2x', () => {
+    // 1M 1h write on Sonnet 5.5 = $4.
+    expect(
+      agentRunCostUsd(SONNET_MODEL, {
+        promptTokens: 1_000_000,
+        cacheCreationTokens: 1_000_000,
+        cacheCreation1hTokens: 1_000_000,
+        cacheReadTokens: 0,
+        completionTokens: 0,
+      }),
+    ).toBeCloseTo(4, 6);
+  });
+});
+
+describe('tryEstimateCostUsd', () => {
+  it('returns undefined for an unlisted model instead of throwing', () => {
+    expect(tryEstimateCostUsd('not-a-model', tiers({ inputTokens: 1 }))).toBeUndefined();
+    expect(tryEstimateCostUsd(SONNET_MODEL, tiers({ inputTokens: 1_000_000 }))).toBe(2);
   });
 });

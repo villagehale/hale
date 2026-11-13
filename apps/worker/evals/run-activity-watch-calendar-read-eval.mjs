@@ -40,8 +40,12 @@ const CHECK_SRC = join(WEB_ROOT, 'lib', 'channel', 'activity', 'calendar-check.t
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-/** Anything but `held` keeps the watch open, which is what a not-held fixture asks for. */
+/**
+ * Anything but `held` keeps the watch open, which is what a not-held fixture asks for. A
+ * fixture with its own `passOn` (the VIL-681 check-backs) passes on exactly those.
+ */
 function passes(fixture, verdict) {
+  if (fixture.passOn) return fixture.passOn.includes(verdict);
   return fixture.expect === 'held' ? verdict === 'held' : verdict !== null && verdict !== 'held';
 }
 

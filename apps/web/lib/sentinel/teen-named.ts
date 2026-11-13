@@ -1,4 +1,5 @@
-import { stageFromAgeInMonths } from '@hale/types';
+import { namesAny, stageFromAgeInMonths } from '@hale/types';
+import { teenNameSharedMatcherEnabled } from '~/lib/privacy/teen-name';
 import type { FamilyChildRef } from './types';
 
 /**
@@ -8,18 +9,28 @@ import type { FamilyChildRef } from './types';
  * child, the age gate cannot. Read at alert time (subject and snippet) and again when
  * `read_email` opens the body, because a child can turn 13 between the two.
  *
- * Only the given name is matched, as a whole word, after folding case, accents, width and
- * invisible characters. A surname is left out because a younger sibling shares it.
+ * Unlit, only the given name is matched, as a whole word, after folding case, accents,
+ * width and invisible characters. A surname is left out because a younger sibling shares
+ * it. Lit (`TEEN_NAME_SHARED_MATCHER_ENABLED`), every name part of two or more letters
+ * is a hit — a shared surname included, which withholds more (rule #1).
  */
 export function namesTeenChild(
   texts: readonly string[],
   children: readonly Pick<FamilyChildRef, 'name' | 'ageInMonths'>[],
 ): boolean {
-  const names = children
-    .filter((child) => stageFromAgeInMonths(child.ageInMonths) === 'teenager')
+  const teens = children.filter((child) => stageFromAgeInMonths(child.ageInMonths) === 'teenager');
+  if (teens.length === 0) return false;
+  if (teenNameSharedMatcherEnabled()) {
+    return texts.some((text) =>
+      namesAny(
+        text,
+        teens.map((child) => child.name),
+      ),
+    );
+  }
+  const names = teens
     .map((child) => fold(child.name).trim().split(/\s+/)[0] ?? '')
     .filter((name) => name.length > 0);
-  if (names.length === 0) return false;
   const text = fold(texts.join('\n'));
   return names.some((name) =>
     new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{N}])`, 'u').test(text),

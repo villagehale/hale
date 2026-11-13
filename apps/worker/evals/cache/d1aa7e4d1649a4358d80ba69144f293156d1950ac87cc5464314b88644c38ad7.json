@@ -1,0 +1,19 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": null,
+    "leaveSelf": false,
+    "draw": true,
+    "cancel": false,
+    "language": "en",
+    "reply": "On it, drawing now! Everyone will get their draw in a private text."
+  },
+  "latencyMs": 1927,
+  "usage": {
+    "input_tokens": 213,
+    "output_tokens": 81,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

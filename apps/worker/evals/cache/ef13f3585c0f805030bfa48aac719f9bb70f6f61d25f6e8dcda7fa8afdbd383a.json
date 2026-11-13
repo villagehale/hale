@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "现在还有 1 位已经加入的朋友没告诉我该怎么称呼,等大家都报上名字,我才能开始抽签哦。"
+  },
+  "latencyMs": 2004,
+  "usage": {
+    "input_tokens": 60,
+    "output_tokens": 57,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

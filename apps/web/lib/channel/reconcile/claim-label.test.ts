@@ -147,7 +147,9 @@ function labelOffenders(files: ReadonlyArray<{ path: string; source: string }>):
       continue;
     }
     for (const arg of calls) {
-      if (!/from:\s*'calendar'/.test(arg) && /\btitle\b/.test(arg)) {
+      // `booking` is activity_bookings.title, a table a 13+ child's confirmation never
+      // writes; a family_events title still has only the calendar way in.
+      if (!/from:\s*'(?:calendar|booking)'/.test(arg) && /\btitle\b/.test(arg)) {
         offenders.push(`${path}: a title outside the calendar source`);
       }
     }

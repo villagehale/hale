@@ -1,0 +1,15 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Ines",
+        "age_months": 84,
+        "age_precision": "years",
+        "date_of_birth": null
+      }
+    ],
+    "postal_code": null,
+    "confidence": 0.9
+  },
+  "latencyMs": 1200
+}

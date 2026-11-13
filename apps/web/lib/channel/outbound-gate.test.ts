@@ -660,6 +660,30 @@ describe('the duty ask class', () => {
   });
 });
 
+describe('the next-day check-back class', () => {
+  /** 02:00 Toronto — inside the 21:00-08:00 proactive quiet window. */
+  const TWO_AM = new Date('2026-07-15T06:00:00.000Z');
+
+  it('never claims urgency — a check-back on yesterday keeps until 08:00', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'next_day_checkback',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('is ledgered as a follow-up', () => {
+    expect(PROACTIVE_CATEGORY.next_day_checkback).toBe('followup');
+  });
+});
+
 describe('holdStatus — one copy, beside the union it is keyed on', () => {
   /**
    * It was a module-private `Record` in `integrations/email-alert.ts` and AGAIN in

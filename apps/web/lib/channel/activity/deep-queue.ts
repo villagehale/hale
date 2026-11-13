@@ -1,10 +1,11 @@
+import type { schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import {
   type DeepResearchPayload,
   type QueueCreateOptions,
   createQueueWithPolicy,
 } from '@hale/tools-contracts';
 import type { ActivityPromiseRecordOutcome } from './commitment';
-import { owesDepth } from './evidence';
 
 /**
  * THE QUEUE THE QUESTION-TIME DEEP PASS RIDES.
@@ -158,21 +159,62 @@ export interface DeepResearchQueue {
 export type DeepDispatchOutcome =
   | { status: 'enqueued' }
   | { status: 'already_queued' }
-  | { status: 'not_enqueued'; reason: 'no_depth_owed' | 'not_recorded' | 'queue_unavailable' };
+  | {
+      status: 'not_enqueued';
+      reason: 'not_recorded' | 'followup_now_dark' | 'queue_unavailable';
+    };
+
+export interface DeepDispatchPorts {
+  /** A RESOLVER, so a queue that cannot be opened at all is the same counted outcome as
+   * one that refuses the send — the connection is where this fails in practice. */
+  resolve: () => Promise<DeepResearchQueue>;
+  /** Writes the dispatch's audit row (rule #6). Required: a log line is not kept. */
+  audit: (row: typeof schema.auditLog.$inferInsert) => Promise<void>;
+}
 
 /**
- * Enqueue the deep pass for a promise that was just written down.
+ * Enqueue the deep pass for a promise that was just written down, and keep the outcome as
+ * one audit row on that commitment: the status, and the reason when it did not enqueue.
+ * Never the subject (rule #1). The row is about one adult's own ask, so it carries that
+ * adult as its audience (VIL-635) and is not a family row every parent seat reads.
  *
  * IT NEVER THROWS, and that is the contract with the router. This runs after the parent's
  * reply has already been sent and the promise is already a row; an exception here would
  * buy a carrier retry and a duplicate text, and would trade a fast answer for a lost one.
  * The promise stays open either way, so the worst a failed dispatch costs is that the
  * hourly sweep keeps it instead — which is the system working as it did before this queue
- * existed.
+ * existed. An audit row that cannot be written is logged by class and changes nothing.
  */
 export async function dispatchDeepResearch(
-  /** A RESOLVER, so a queue that cannot be opened at all is the same counted outcome as
-   * one that refuses the send — the connection is where this fails in practice. */
+  ports: DeepDispatchPorts,
+  payload: DeepResearchPayload,
+  /** The adult whose 1:1 ask made the promise. Beside the job, never in its payload. */
+  askedBy: string,
+): Promise<DeepDispatchOutcome> {
+  const outcome = await enqueueDeepResearch(ports.resolve, payload);
+  try {
+    await ports.audit({
+      familyId: payload.family_id,
+      actor: 'system',
+      actionTaken: 'activity_deep_dispatched',
+      targetTable: 'agent_commitments',
+      targetId: payload.commitment_id,
+      after: outcome,
+      audience: askedBy,
+    });
+  } catch (err) {
+    console.error(
+      {
+        commitmentId: payload.commitment_id,
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+      },
+      'activity deep dispatch: the outcome was not audited',
+    );
+  }
+  return outcome;
+}
+
+async function enqueueDeepResearch(
   resolve: () => Promise<DeepResearchQueue>,
   payload: DeepResearchPayload,
 ): Promise<DeepDispatchOutcome> {
@@ -200,41 +242,43 @@ export async function dispatchDeepResearch(
 }
 
 /**
- * THE DECISION, in one place: does this promise get answered in minutes or in a day?
+ * WHILE `deep-followup-now` IS LIT, EVERY RECORDED PROMISE IS RESEARCHED NOW. The parent
+ * was told Hale would come back, so the answer is worth minutes rather than a day, whatever
+ * the promise is about. No word in the subject decides it: a keyword test here used to send
+ * "indoor swim lessons" and every non-English subject to the 24-hour sweep.
  *
- * It is a function rather than four lines in the router because all four of its answers
- * are outcomes somebody has to be able to count (rule #11), and three of them are
- * indistinguishable from the outside:
+ * Its answers are outcomes somebody has to be able to count (rule #11):
  *
  *   NOT RECORDED — the promise itself did not become a row. Nothing to research, and the
  *   ledger writer has already logged the bigger problem.
- *   NO DEPTH OWED — the subject names no place and asks for nothing on a timetable, so
- *   there is no page worth opening today. The hourly sweep still keeps the promise.
- *   QUEUE UNAVAILABLE — the enqueue failed. Same answer for the parent as the line above,
- *   arrived at for a completely different reason, and a dashboard that folded them
- *   together could not tell a broken queue from a quiet week.
+ *   FOLLOWUP NOW DARK — the switch is off for this family, so nothing is queued and the
+ *   hourly sweep answers the promise at its due time, as it did before the switch.
+ *   QUEUE UNAVAILABLE — the enqueue failed, and the hourly sweep keeps the promise.
  *
  * NOTHING HERE CHANGES WHETHER THE PROMISE IS KEPT. Every branch leaves the ledger row
  * exactly as the router wrote it — open, due within the day, selected by the hourly sweep.
  * The only thing at stake is how fast.
  */
 export async function dispatchDepthForPromise(
-  dispatch: (payload: DeepResearchPayload) => Promise<DeepDispatchOutcome>,
+  dispatch: (payload: DeepResearchPayload, askedBy: string) => Promise<DeepDispatchOutcome>,
   input: {
     familyId: string;
-    /** The de-identified subject, off the promise the coach's tool registered. */
-    subject: string;
+    /** The adult whose ask made the promise: the audience of the dispatch's audit row. */
+    parentUserId: string;
     recorded: ActivityPromiseRecordOutcome;
   },
 ): Promise<DeepDispatchOutcome> {
   if (input.recorded.status !== 'recorded') {
     return { status: 'not_enqueued', reason: 'not_recorded' };
   }
-  if (!owesDepth(input.subject)) {
-    return { status: 'not_enqueued', reason: 'no_depth_owed' };
+  if (!isEnabled('deep-followup-now', input.familyId)) {
+    return { status: 'not_enqueued', reason: 'followup_now_dark' };
   }
-  return dispatch({
-    commitment_id: input.recorded.commitmentId,
-    family_id: input.familyId,
-  });
+  return dispatch(
+    {
+      commitment_id: input.recorded.commitmentId,
+      family_id: input.familyId,
+    },
+    input.parentUserId,
+  );
 }
