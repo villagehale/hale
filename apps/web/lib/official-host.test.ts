@@ -55,6 +55,18 @@ describe('ownRegistrableDomain', () => {
       'mytown.edublogs.org',
       'mytown.typepad.com',
       'mytown.ning.com',
+      // Free hosts the list leaves out, seen in review.
+      'mytown.000webhostapp.com',
+      'mytown.neocities.org',
+      'mytown.glitch.me',
+      'mytown.tripod.com',
+      'mytown.angelfire.com',
+      'mytown.strikingly.com',
+      'mytown.wpengine.com',
+      'mytown.hs-sites.com',
+      'mytown.blogger.com',
+      'mytown.jimdofree.com',
+      'mytown.webnode.page',
     ]) {
       expect({ host, domain: ownRegistrableDomain(host) }).toEqual({ host, domain: null });
     }

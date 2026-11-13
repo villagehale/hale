@@ -60,17 +60,23 @@ export function cityKey(place: Pick<OwnCity, 'city' | 'provinceOrState' | 'count
     .join('|');
 }
 
-/** The district a Toronto FSA names, and whether residency is in doubt, from one row. */
+/** The district a Toronto FSA names, and whether residency is in doubt, from one row.
+ * Residency is in doubt where the GTA table records the FSA in two towns, or in one town
+ * that is not the city the family is placed in (a saved city with another town's code). */
 function refinements(
   row: PlaceRow,
   country: FamilyCountry | undefined,
+  city: string,
 ): Pick<OwnCity, 'district' | 'residencyKnown'> {
   const postal = row.postalCode?.trim() || row.areaCoarse?.trim();
   const token = postal ? matchPostalToken(postal) : null;
   if (country === 'CA' && token?.country === 'CA') {
+    const towns = municipalitiesForFsa(token.areaKey);
+    const [town] = towns;
     return {
       district: districtForFsa(token.areaKey),
-      residencyKnown: municipalitiesForFsa(token.areaKey).length <= 1,
+      residencyKnown:
+        towns.length === 0 || (towns.length === 1 && town === folded(city).replace(/[\s-]+/g, '_')),
     };
   }
   return { district: null, residencyKnown: country !== 'US' };
@@ -81,7 +87,7 @@ export async function ownCityOfRow(row: PlaceRow): Promise<OwnCityRead> {
   if (place.status === 'unknown') return place;
   if (place.city === undefined) return { status: 'unknown', reason: 'unmapped' };
   const country = postalCountryOf(place.country);
-  const refined = refinements(row, country);
+  const refined = refinements(row, country, place.city);
   if (
     country === 'CA' &&
     refined.district === null &&
