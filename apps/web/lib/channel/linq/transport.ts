@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { hasGarbledText } from '@hale/agent';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import {
@@ -64,6 +65,24 @@ export class LinqSendError extends Error {
     this.permanent = permanent;
     this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * VIL-683 · THE ONE SEND SEAM FOR GARBLED TEXT. Every text that reaches a parent leaves as a
+ * Linq text part (assertParts), an edit, a poll option or an experience card's copy, and
+ * each is checked here before any fetch. A garbled text is a model failure: a permanent refusal named `garbled_text`,
+ * so each caller's refusal handling ledgers it and sends nothing in its place. The writer
+ * was already asked once more at the model seam (@hale/agent forceToolJson and runAgent).
+ * Logged by code only, never the words (rule #1).
+ */
+export const GARBLED_TEXT = 'garbled_text';
+
+/** Also called on every text of a set before its first is sent (sendTexts, the router's
+ * reply set, the intake map), so a set with one garbled text sends none of them. */
+export function refuseGarbledText(text: string): void {
+  if (!hasGarbledText(text)) return;
+  console.warn({ code: GARBLED_TEXT }, 'linq: garbled text refused — not sent');
+  throw new LinqSendError(GARBLED_TEXT, 0, true);
 }
 
 /**
@@ -390,6 +409,7 @@ function assertParts(parts: readonly LinqOutboundPart[]): void {
     if (part.type === 'text' && (part.value.length === 0 || part.value.length > TEXT_MAX)) {
       throw new LinqSendError('invalid_parts', 400, true);
     }
+    if (part.type === 'text') refuseGarbledText(part.value);
     if (part.type === 'text' && part.decorations) {
       assertDecorations(part.value, part.decorations);
     }
@@ -479,6 +499,7 @@ export async function sendLinqExperience(input: {
   if (!input.experience.name || !input.experience.action) {
     throw new LinqSendError('invalid_experience', 400, true);
   }
+  for (const value of Object.values(input.experience.params)) refuseGarbledText(value);
   const message = {
     experience: input.experience,
     ...(cadenceArmed() ? { idempotency_key: linqSendKey(input.sendKey) } : {}),
@@ -617,6 +638,7 @@ export async function editLinqMessage(input: {
   ) {
     throw new LinqSendError('invalid_edit', 400, true);
   }
+  refuseGarbledText(input.text);
   const result = await linqRequest({
     method: 'PATCH',
     path: `/messages/${encodeURIComponent(input.messageId)}`,
@@ -1239,6 +1261,7 @@ export async function sendLinqPoll(input: {
 }): Promise<{ messageId: string; options: LinqPollOptionRef[] }> {
   const texts = input.options.map((option) => option.trim()).filter((option) => option.length > 0);
   if (texts.length < 2) throw new LinqSendError('invalid_poll', 400, true);
+  for (const text of texts) refuseGarbledText(text);
   const result = await linqRequest({
     method: 'POST',
     path: `/chats/${encodeURIComponent(input.chatId)}/polls`,

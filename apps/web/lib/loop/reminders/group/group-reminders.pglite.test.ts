@@ -17,7 +17,11 @@ import type { GroupTurnReader } from '~/lib/channel/linq/group-turn-reader';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
-import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
+import {
+  LinqSendError,
+  listLinqParticipantHandles,
+  refuseGarbledText,
+} from '~/lib/channel/linq/transport';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { buildDistillTools } from '~/lib/cron/inference-tools';
@@ -880,6 +884,30 @@ describe('asking for a reminder in the group', () => {
       ),
     ).toEqual({ handled: true, outcome: 'group_reminder_set' });
     expect(await onlyReminder()).toMatchObject({ status: 'scheduled' });
+  });
+
+  // VIL-683 · the send seam's own check, as the real Linq door runs it, on a garbled line.
+  it('a garbled confirmation the send seam refuses sends nothing and is on the audit trail', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+    const send = ports.send;
+    if (!send) throw new Error('turnPorts sends');
+    const garbled = {
+      ...ports,
+      send: async (input: { chatId: string; text: string; replyTo?: string }) => {
+        refuseGarbledText(`${input.text} Câ€™est notÃ©.`);
+        return send(input);
+      },
+    };
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(RUTH, 'remind me at 4', 'in-garbled'),
+      garbled,
+    );
+    expect(sends).toEqual([]);
+    expect(await verbs(home.familyId)).toContain('channel_text_garbled');
+    expect(await verbs(home.familyId)).not.toContain('sms_reply_sent');
   });
 
   it('sets nothing, and says so to ops, when no voice is configured at all', async () => {

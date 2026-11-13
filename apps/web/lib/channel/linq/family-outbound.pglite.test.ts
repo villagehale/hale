@@ -14,6 +14,7 @@ import {
 } from './family-outbound';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import type { ListChatHandles } from './roster';
+import { createLinqPhoneTransport } from './transport';
 
 /**
  * A claimed group is the home channel. No group keeps the caller's door.
@@ -239,6 +240,87 @@ describe('deliverFamilyOutbound', () => {
       }),
     ]);
     expect(http.linqUrls()).toEqual([]);
+  });
+});
+
+/**
+ * VIL-683 · a Hale-initiated text the send seam refuses as garbled, on the real Linq doors
+ * (the group chat send and the 1:1 phone transport, fetch spied). Its writer was already
+ * asked once more: nothing is sent, the delivery is skipped by name, and the family's
+ * audit trail says so by surface and reason only.
+ */
+describe('a garbled family text is skipped and on the audit trail', () => {
+  const GARBLED = 'Natation prรฉscolaire sam. 9h00';
+
+  async function garbledAudits(familyId: string) {
+    const rows = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, familyId));
+    return rows.filter((row) => row.actionTaken === 'channel_text_garbled');
+  }
+
+  it('in the household group', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const seeded = await seedHousehold(GROUP);
+    const http = wire();
+    const delivered = await deliverFamilyOutbound(db.database, {
+      familyId: seeded.familyId,
+      body: GARBLED,
+      to: '+14165550100',
+      legacy: new FakeTransport(),
+      fetch: http.fetch,
+      shareGroupCap: false,
+      target: await familyOutboundTarget(db.database, seeded.familyId, {
+        contentClass: 'schedule',
+        listChatHandles: present(PARENT, DAD),
+      }),
+    });
+    expect(delivered).toEqual({ status: 'skipped', reason: 'garbled_text' });
+    expect(http.linqUrls()).toEqual([]);
+    expect(await garbledAudits(seeded.familyId)).toEqual([
+      expect.objectContaining({
+        actor: 'system',
+        audience: null,
+        after: { surface: 'family_outbound', reason: 'garbled_text' },
+      }),
+    ]);
+  });
+
+  it('on the 1:1 door', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const seeded = await seed(null);
+    const http = wire();
+    const delivered = await deliverFamilyOutbound(db.database, {
+      familyId: seeded.familyId,
+      body: GARBLED,
+      to: '+14165550100',
+      legacy: createLinqPhoneTransport({ fetch: http.fetch }),
+      fetch: http.fetch,
+    });
+    expect(delivered).toEqual({ status: 'skipped', reason: 'garbled_text' });
+    expect(http.linqUrls()).toEqual([]);
+    expect(await garbledAudits(seeded.familyId)).toHaveLength(1);
+  });
+
+  it('the same text spelled right is sent, with no such row (positive control)', async () => {
+    const seeded = await seedHousehold(GROUP);
+    const http = wire();
+    const delivered = await deliverFamilyOutbound(db.database, {
+      familyId: seeded.familyId,
+      body: 'Natation préscolaire sam. 9h00',
+      to: '+14165550100',
+      legacy: new FakeTransport(),
+      fetch: http.fetch,
+      shareGroupCap: false,
+      target: await familyOutboundTarget(db.database, seeded.familyId, {
+        contentClass: 'schedule',
+        listChatHandles: present(PARENT, DAD),
+      }),
+    });
+    expect(delivered).toMatchObject({ status: 'sent', chatId: GROUP });
+    expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(await garbledAudits(seeded.familyId)).toEqual([]);
   });
 });
 

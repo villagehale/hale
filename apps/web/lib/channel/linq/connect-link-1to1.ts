@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
 import { PreviewCaptureRefused } from '~/lib/channel/preview-capture-transport';
@@ -68,7 +69,10 @@ const PROVIDERS = ['gcal', 'gmail'] as const;
 export type OneToOneSent =
   | { outcome: 'sent'; chatId: string | null; rowId: string; providerMessageId: string | null }
   | { outcome: 'already_sent' }
-  | { outcome: 'not_sent'; code: string; permanent: boolean };
+  | { outcome: 'not_sent'; code: string; permanent: boolean }
+  /** VIL-683 · the send seam refused the line as garbled: a model failure, never a person
+   * Hale cannot reach. Nothing went; the claim is released so a fresh line can try. */
+  | { outcome: 'garbled_text' };
 
 export async function sendOneToOne(
   database: Database,
@@ -123,6 +127,14 @@ export async function sendOneToOne(
       providerMessageId: sent.providerMessageId,
     };
   } catch (err) {
+    if (isGarbledRefusal(err)) {
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: err.code, dedupeKey: null, body: null })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      await recordGarbledRefusal(database, { familyId: input.familyId, surface: 'one_to_one' });
+      return { outcome: 'garbled_text' };
+    }
     const previewRefusal = err instanceof PreviewCaptureRefused ? err.reason : null;
     if (!(err instanceof LinqSendError) && !previewRefusal) throw err;
     const code = err instanceof LinqSendError ? err.code : previewRefusal;
@@ -301,6 +313,9 @@ export type ConnectLinkOutcome =
       groupNotice: GroupLineOutcome | { outcome: 'no_group' };
     }
   | { outcome: 'link_not_sent'; code: string }
+  /** VIL-683 · the line was garbled: nothing went, nobody in the group is asked anything,
+   * and their next message asks the writer again. */
+  | { outcome: 'garbled_text' }
   /** Linq is not configured, or did not answer: not a refusal, so nobody is asked anything. */
   | { outcome: '1to1_not_sent'; code: string };
 
@@ -371,7 +386,7 @@ export async function deliverConnectLinkOneToOne(
     now: input.now,
     send,
   });
-  if (said.outcome === 'already_sent') return said;
+  if (said.outcome === 'already_sent' || said.outcome === 'garbled_text') return said;
   if (said.outcome === 'not_sent' && (!said.permanent || said.code === 'not_configured')) {
     return { outcome: '1to1_not_sent', code: said.code };
   }
@@ -527,7 +542,8 @@ export type GroupQuietOutcome =
   | { outcome: 'group_line_unsent'; fallback: GroupLineFallback }
   | { outcome: 'sent' }
   | { outcome: 'already_sent' }
-  | { outcome: 'not_sent'; code: string };
+  | { outcome: 'not_sent'; code: string }
+  | { outcome: 'garbled_text' };
 
 const NOT_FAMILY: readonly schema.LinqRosterMemberStatus[] = ['not_family', 'refused'];
 

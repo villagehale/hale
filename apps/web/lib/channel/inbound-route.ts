@@ -214,6 +214,13 @@ export async function routeInboundText(
       );
       return 'intake_unsent';
     }
+    if (outcome.status === 'reply_garbled') {
+      deps.log.error(
+        { providerMessageId: inbound.providerId, reason: outcome.status },
+        'inbound: an onboarding reply was garbled and not sent',
+      );
+      return 'intake_unsent';
+    }
     if (outcome.status === 'first_touch_unsent') {
       deps.log.error(
         { providerMessageId: inbound.providerId, reason: outcome.reason },

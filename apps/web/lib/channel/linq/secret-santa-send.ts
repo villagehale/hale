@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { isGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { householdTimezone, knownTimezone } from '~/lib/channel/household-timezone';
 import { isParentHeld, isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
@@ -439,23 +440,34 @@ export async function sendDrawLine(
   }
   if (sent === 'claim_stuck') {
     await hold(database, giver.id, 'claim_stuck');
-  } else {
-    await releaseClaim(database, giver.id, sent);
+    return { outcome: 'held', reason: sent };
   }
-  return { outcome: 'held', reason: sent };
+  // VIL-683 · a garbled line is one the writer did not get right, so the sweep asks it
+  // again, as for any unwritten line; the attempt's audit row above names it.
+  const reason = sent === 'garbled_text' ? 'line_unwritten' : sent;
+  await releaseClaim(database, giver.id, reason);
+  return { outcome: 'held', reason };
 }
 
 async function sendTo(
   database: Database,
   input: { recipient: DrawRecipient; body: string; giver: LoadedGiver; now: Date },
   ports: SantaSendPorts,
-): Promise<'delivered' | 'cannot_open_1to1' | 'send_failed' | 'claim_stuck' | 'not_texted_hale'> {
+): Promise<
+  | 'delivered'
+  | 'cannot_open_1to1'
+  | 'send_failed'
+  | 'claim_stuck'
+  | 'not_texted_hale'
+  | 'garbled_text'
+> {
   const { recipient } = input;
   if (recipient.kind === 'reply') {
     try {
       await recipient.send(input.body);
       return 'delivered';
     } catch (err) {
+      if (isGarbledRefusal(err)) return 'garbled_text';
       if (!(err instanceof LinqSendError)) throw err;
       return err.permanent && err.code !== 'not_configured' ? 'cannot_open_1to1' : 'send_failed';
     }
@@ -475,6 +487,7 @@ async function sendTo(
     send: ports.oneToOne ?? defaultOneToOneSend(),
   });
   if (out.outcome === 'sent') return 'delivered';
+  if (out.outcome === 'garbled_text') return 'garbled_text';
   if (out.outcome === 'already_sent') {
     const [row] = await database
       .select({ providerMessageId: schema.channelMessages.providerMessageId })

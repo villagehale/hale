@@ -139,7 +139,10 @@ export type TurnFailureReason =
   | 'claim_read_failed'
   /** A text about a sign-up ask could not be marked before its send, so nothing was sent
    * (signup/store.ts askStamp). The turn is claimed: the coach's writes landed. */
-  | 'ask_order_unmarked';
+  | 'ask_order_unmarked'
+  /** VIL-683 · the send seam refused the reply as garbled after the writer was asked once
+   * more. Nothing was texted; the turn is claimed. */
+  | 'garbled_text';
 
 /**
  * What became of an ANSWERED claim. 'already_answered' means another attempt's claim

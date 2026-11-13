@@ -1,3 +1,4 @@
+import { hasGarbledText } from '@hale/agent';
 import type { Database } from '@hale/db';
 import {
   checkLinqIMessageCapability,
@@ -26,6 +27,7 @@ import { VoiceSpeechError, synthesizeHaleVoice } from './voice-speech';
  *   - the turn is a kind that must stay text (onboarding, connect receipt, poll/card,
  *     short facts to scan) — the caller says so with `textOnly`;
  *   - the reply carries a link (a spoken URL cannot be tapped);
+ *   - the reply is garbled (VIL-683), which the text send then refuses too;
  *   - iMessage capability is not `available` (unknown / unavailable never falls back
  *     to bare audio on RCS/SMS);
  *   - TTS or hosting the audio fails, or the send throws.
@@ -91,6 +93,9 @@ export async function sendReplyAsVoiceMemo(
   if (input.textOnly) return { sent: 'text', why: 'text_only_turn' };
   if (!input.text.trim()) return { sent: 'text', why: 'empty' };
   if (hasLinkShape(input.text)) return { sent: 'text', why: 'has_link' };
+  // VIL-683 · garbled words are never spoken. As text they meet the same check at the
+  // send seam (transport.ts), which refuses them, so the parent hears and reads nothing.
+  if (hasGarbledText(input.text)) return { sent: 'text', why: 'garbled_text' };
   const capability = await (
     deps.capability ?? ((address) => checkLinqIMessageCapability({ address }))
   )(input.address).catch(() => null);

@@ -96,7 +96,7 @@ import {
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { GARBLED_TEXT, LinqSendError, refuseGarbledText } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
   productionVoiceReplyDeps,
@@ -3089,7 +3089,11 @@ async function runAgentTurn(
       // parent a question, and a question that is not written down is the defect VIL-304
       // exists to close.
       await disposition.afterSend?.(channelMessageId);
-    } else if (err instanceof ClaimReadFailed || err instanceof AskOrderUnmarked) {
+    } else if (
+      err instanceof ClaimReadFailed ||
+      err instanceof AskOrderUnmarked ||
+      disposition.reason === GARBLED_TEXT
+    ) {
       // Nothing was sent, and the coach's writes landed: claim the turn so a redelivery
       // reads `answered` and never reruns it (#973's rule).
       await args.claimSilent?.();
@@ -3612,6 +3616,20 @@ async function disposeOfFailedTurn(
       reply: null,
       reason: 'ask_order_unmarked',
       log: { askOrderUnmarked: true },
+    };
+  }
+
+  // VIL-683 · the send seam refused the reply as garbled (linq/transport.ts). The writer
+  // was already asked once more (runAgent), so this is the second garbled draft: a model
+  // failure. Nothing stands in for it — no apology, no drafts receipt — and nothing is
+  // deferred, since a re-drive would rerun the coach and repeat its tool writes. The turn
+  // is claimed (the caller) and the failure is recorded by name.
+  if (err instanceof LinqSendError && err.code === GARBLED_TEXT) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: GARBLED_TEXT,
+      log: { garbledText: true },
     };
   }
 
@@ -4229,6 +4247,9 @@ async function sendReplySet(
   },
 ): Promise<SentAnswer> {
   assertTurnLive();
+  // VIL-683 · every bubble is checked before any goes, a voice memo or an effect included,
+  // so a garbled bubble refuses the whole answer as a failure before the first send.
+  for (const body of args.bodies) refuseGarbledText(body);
   if (args.beforeSend) await args.beforeSend();
   const plain = args.stamps?.some((stamp) => stamp !== undefined) === true;
   const keys = args.bodies.map((_body, index) => textDedupeKey(args.setKey, index));

@@ -11,7 +11,7 @@ import {
   resumeConnectLink,
 } from './connect-link-1to1';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
-import { LinqSendError } from './transport';
+import { LinqSendError, createLinqPhoneTransport } from './transport';
 
 /**
  * Group onboarding v2: a parent who said in the group who they are gets their connect
@@ -424,6 +424,59 @@ describe('deliverConnectLinkOneToOne', () => {
     expect(trail).toContain('group_line_unsent');
     expect(trail).not.toContain('connector_link_minted');
     expect(await connectStep()).toBe('none');
+  });
+
+  // VIL-683 · through the REAL Linq door (fetch spied): a garbled line is a model failure,
+  // never a recipient Hale cannot reach. Nothing stands in for it in the group.
+  it('a garbled line sends nothing, asks nobody in the group, and is named and audited', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const { familyId, userId } = await seedConfirmedGroup();
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ chat: { id: DIRECT, message: { id: 'msg-1' } } }, { status: 201 }),
+    );
+    const transport = createLinqPhoneTransport({ fetch: fetchSpy as unknown as typeof fetch });
+    const door: OneToOneSend = {
+      text: async (input) => {
+        const sent = await transport.send(input);
+        return { providerMessageId: sent.providerMessageId, chatId: sent.chatId ?? null };
+      },
+      link: async () => ({ providerMessageId: 'link-1' }),
+    };
+    const group = groupSends();
+    const voice = (spelled: string) =>
+      fakeGroupOnboardingComposer({
+        body: (input) => `${input.kind}: ${input.mustMention.join(' ')}, ${spelled}.`,
+      });
+
+    const result = await deliverConnectLinkOneToOne(db.database, {
+      familyId,
+      userId,
+      groupChatId: GROUP,
+      now: NOW,
+      voice: voice('itâ€™s yours'),
+      oneToOne: door,
+      groupSend: group.send,
+    });
+
+    expect(result).toEqual({ outcome: 'garbled_text' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(group.sends).toEqual([]);
+    expect(await connectStep()).toBe('none');
+    expect(await verbs(familyId)).toContain('channel_text_garbled');
+    expect(await verbs(familyId)).not.toContain('sms_reply_sent');
+
+    // Their next message asks the writer again; spelled right, it goes.
+    const resumed = await resumeConnectLink(db.database, {
+      phone: DAD,
+      now: NOW,
+      voice: voice('it’s yours'),
+      oneToOne: door,
+      groupSend: group.send,
+    });
+    expect(resumed).toEqual({ outcome: 'sent', links: 2 });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(group.sends).toEqual([]);
   });
 
   it('gives a grandparent no connect link', async () => {

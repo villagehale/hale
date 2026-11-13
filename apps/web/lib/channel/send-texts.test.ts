@@ -25,6 +25,43 @@ describe('sendTexts', () => {
     expect(order).toEqual(['record:0', 'record:1', 'record:2']);
   });
 
+  // VIL-683 · a garbled text anywhere in a set stops the whole set before its first text.
+  it.each([
+    ['last', ['Bonne nouvelle !', 'Natation prรฉscolaire sam. 9h00']],
+    ['first', ['Natation prรฉscolaire sam. 9h00', 'Bonne nouvelle !']],
+  ])('a set with a garbled text %s sends none of it', async (_where, texts) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const transport = new FakeTransport();
+    const rows: number[] = [];
+    const out = await sendTexts({
+      texts,
+      setKey: 'set',
+      target: { kind: 'person', to: '+15555550100' },
+      transport,
+      record: async ({ index }) => {
+        rows.push(index);
+      },
+    });
+    expect(transport.sent).toHaveLength(0);
+    expect(rows).toEqual([]);
+    expect(out).toMatchObject({ status: 'failed', failedAt: 0, sent: [], alreadySent: [] });
+    expect(out.status === 'failed' && out.error).toMatchObject({ code: 'garbled_text' });
+    vi.restoreAllMocks();
+  });
+
+  it('the same set spelled right sends each text (positive control)', async () => {
+    const transport = new FakeTransport();
+    const out = await sendTexts({
+      texts: ['Bonne nouvelle !', 'Natation préscolaire sam. 9h00'],
+      setKey: 'set',
+      target: { kind: 'person', to: '+15555550100' },
+      transport,
+      record: async () => {},
+    });
+    expect(out.status).toBe('sent');
+    expect(transport.bodies()).toEqual(['Bonne nouvelle !', 'Natation préscolaire sam. 9h00']);
+  });
+
   it('awaits each send before starting the next', async () => {
     const events: string[] = [];
     await sendTexts({

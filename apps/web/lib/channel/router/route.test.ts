@@ -38,7 +38,8 @@ import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
-import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
+import { createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import { type VoiceReplyOutcome, sendReplyAsVoiceMemo } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
@@ -107,6 +108,7 @@ import {
   createOpenQuestionReader,
 } from './open-questions';
 import { FakeReplyTransport, type ReplyRoute } from './reply-route';
+import { createReplyTransport } from './reply-transport';
 import { type ReplyReading, type ReplyResolver, toReading } from './resolve';
 import {
   type ChannelCoachRuntime,
@@ -10373,5 +10375,174 @@ describe('a Linq chat’s service decides bubbles, from the webhook to the send'
     expect(row).toEqual({ channel: 'imessage', providerService: 'iMessage' });
     expect(coach.turns[0]?.replyBubbles).toBe(true);
     expect(sent.map((send) => send.body)).toEqual(['Swim is Saturday at 10.', 'Bring a towel.']);
+  });
+});
+
+/**
+ * VIL-683 · a coach reply the send seam refuses as garbled. The writer was already asked
+ * once more (runAgent); this is the second garbled draft. The refusal comes from the REAL
+ * Linq door (createReplyTransport over createLinqPhoneTransport, fetch spied), not a fake
+ * that stipulates it.
+ */
+describe('a garbled coach reply sends nothing', () => {
+  const GARBLED = 'Natation prรฉscolaire sam. 9h00';
+
+  function realDoor() {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ chat: { id: 'chat-1', message: { id: 'msg-1' } } }, { status: 201 }),
+    );
+    return {
+      fetchSpy,
+      transport: createReplyTransport({
+        phone: createLinqPhoneTransport({ fetch: fetchSpy as unknown as typeof fetch }),
+      }),
+    };
+  }
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('no apology, no deferral, the failure recorded by name, and a redelivery never reruns the coach', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const turns = fakeTurnLedger();
+    const apology = fakeApology();
+    const coach = fakeCoach(GARBLED);
+    const door = realDoor();
+    const h = harness({ coach, turns, apology });
+    h.deps.transport = door.transport;
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(door.fetchSpy).not.toHaveBeenCalled();
+    expect(apology.calls).toBe(0);
+    expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
+    expect(turns.deferred).toEqual([]);
+
+    const rerun = fakeCoach('should never run');
+    const again = harness({ coach: rerun, turns });
+    expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
+    expect(rerun.calls).toBe(0);
+  });
+
+  it('a garbled reply the model chose to say as a voice memo is neither spoken nor sent', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
+    const turns = fakeTurnLedger();
+    const door = realDoor();
+    const tts = vi.fn(async () => ({ audio: new Uint8Array([1]), contentType: 'audio/mpeg' }));
+    const memo = vi.fn(async () => ({ providerMessageId: 'vm-1' }));
+    const h = harness({
+      coach: {
+        async respond() {
+          return {
+            reply: GARBLED,
+            planOffer: null,
+            activityPromise: null,
+            spotWatch: null,
+            voiceMemo: true,
+          };
+        },
+      },
+      turns,
+      context: {
+        reply: { channel: 'imessage', to: PHONE, chatId: 'chat-voice', replyToMessageId: null },
+      },
+    });
+    h.deps.transport = door.transport;
+    h.deps.sendVoiceReply = (input) =>
+      sendReplyAsVoiceMemo(input, {
+        tts,
+        host: async () => ({ attachmentId: 'att-1' }),
+        capability: async () => ({
+          status: 'available',
+          selectedService: 'iMessage',
+          cached: false,
+        }),
+        send: memo,
+      });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_failed');
+    expect(tts).not.toHaveBeenCalled();
+    expect(memo).not.toHaveBeenCalled();
+    expect(door.fetchSpy).not.toHaveBeenCalled();
+    expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
+  });
+
+  /** The 1:1 iMessage chat door (sendLinqChatMessage) reads the global fetch. */
+  function chatDoor() {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async (url: string) =>
+      url.endsWith('/messages')
+        ? Response.json({ message: { id: `msg-${fetchSpy.mock.calls.length}` } }, { status: 201 })
+        : new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    const posted = () =>
+      fetchSpy.mock.calls.map(([url]) => url).filter((url) => url.endsWith('/messages'));
+    return { posted, transport: createReplyTransport({ phone: new FakeTransport() }) };
+  }
+
+  const CHAT: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+    service: 'iMessage',
+  };
+
+  it('an answer of several bubbles with a garbled one sends none of them, the clean first one included', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const turns = fakeTurnLedger();
+    const apology = fakeApology();
+    const door = chatDoor();
+    const h = harness({
+      coach: fakeCoach(`Bonne nouvelle !\n${GARBLED}`),
+      turns,
+      apology,
+      context: { body: 'what is on saturday', reply: CHAT },
+    });
+    h.deps.transport = door.transport;
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_failed');
+    expect(door.posted()).toEqual([]);
+    expect(apology.calls).toBe(0);
+    expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
+    expect(turns.deferred).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('the same answer of several bubbles spelled right sends each of them (positive control)', async () => {
+    vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+    const door = chatDoor();
+    const h = harness({
+      coach: fakeCoach('Bonne nouvelle !\nNatation préscolaire sam. 9h00'),
+      context: { body: 'what is on saturday', reply: CHAT },
+    });
+    h.deps.transport = door.transport;
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(door.posted()).toHaveLength(2);
+    vi.unstubAllGlobals();
+  });
+
+  it('an honest French reply goes out through the same door (positive control)', async () => {
+    const door = realDoor();
+    const h = harness({ coach: fakeCoach('Natation préscolaire samedi à 9 h.') });
+    h.deps.transport = door.transport;
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(door.fetchSpy).toHaveBeenCalledOnce();
   });
 });

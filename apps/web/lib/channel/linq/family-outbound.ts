@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { type SQL, and, eq, inArray, isNull } from 'drizzle-orm';
 import { groupLineLabels, noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
+import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -153,11 +154,18 @@ export type FamilyOutboundDelivery =
   | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
   | { status: 'skipped'; reason: string };
 
-function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery | null {
+async function skippedRefusal(
+  database: Database,
+  familyId: string,
+  err: unknown,
+): Promise<FamilyOutboundDelivery | null> {
   const refusal = readSendRefusal(err);
   if (!refusal) return null;
   if (refusal.code !== 'not_configured' && !refusal.permanent) return null;
   console.warn({ familyId, code: refusal.code }, 'family outbound: provider refused — not sent');
+  if (isGarbledRefusal(err)) {
+    await recordGarbledRefusal(database, { familyId, surface: 'family_outbound' });
+  }
   return { status: 'skipped', reason: refusal.code };
 }
 
@@ -239,7 +247,7 @@ export async function deliverFamilyOutbound(
         chatId: target.chatId,
       };
     } catch (err) {
-      const skipped = skippedRefusal(input.familyId, err);
+      const skipped = await skippedRefusal(database, input.familyId, err);
       if (skipped) return skipped;
       throw err;
     }
@@ -260,7 +268,7 @@ export async function deliverFamilyOutbound(
       ...(sent.linkOmitted ? { linkOmitted: sent.linkOmitted } : {}),
     };
   } catch (err) {
-    const skipped = skippedRefusal(input.familyId, err);
+    const skipped = await skippedRefusal(database, input.familyId, err);
     if (skipped) return skipped;
     throw err;
   }

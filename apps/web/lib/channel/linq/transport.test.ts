@@ -20,6 +20,7 @@ import {
   retrieveLinqLocation,
   sendLinqChatMessage,
   sendLinqEffect,
+  sendLinqExperience,
   sendLinqParts,
   sendLinqPoll,
   setupLinqContactCard,
@@ -1476,5 +1477,101 @@ describe('readLinqChatPage', () => {
     expect(readLinqChatPage({ chats: { id: CHAT } })).toBeNull();
     expect(readLinqChatPage(null)).toBeNull();
     expect(readLinqChatPage({ chats: [{ is_group: false }] })).toBeNull();
+  });
+});
+
+/**
+ * VIL-683 · THE SEND SEAM. Every text that reaches a parent is a Linq text part, an edit or
+ * a poll option, and each passes here. A garbled one is a permanent, named refusal before
+ * any fetch, so every caller's existing refusal handling records it and nothing goes out.
+ */
+describe('a garbled text never reaches a parent', () => {
+  const GARBLED = 'Natation prรฉscolaire sam. 9h00';
+  const sent = () =>
+    vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ chat_id: CHAT, message: { id: 'msg-out-1' } }, { status: 201 }),
+    );
+
+  it.each([
+    [
+      'a chat message',
+      (f: typeof fetch) => sendLinqChatMessage({ chatId: CHAT, text: GARBLED, fetch: f }),
+    ],
+    [
+      'message parts',
+      (f: typeof fetch) =>
+        sendLinqParts({ chatId: CHAT, parts: [{ type: 'text', value: GARBLED }], fetch: f }),
+    ],
+    [
+      'an effect',
+      (f: typeof fetch) =>
+        sendLinqEffect({
+          chatId: CHAT,
+          text: GARBLED,
+          effect: { type: 'bubble', name: 'gentle' },
+          fetch: f,
+        }),
+    ],
+    [
+      'a new chat',
+      (f: typeof fetch) => createLinqChat({ from: FROM, to: [TO], text: GARBLED, fetch: f }),
+    ],
+    [
+      'an edit',
+      (f: typeof fetch) => editLinqMessage({ messageId: 'msg-out-1', text: GARBLED, fetch: f }),
+    ],
+    [
+      'a poll option',
+      (f: typeof fetch) => sendLinqPoll({ chatId: CHAT, options: ['Saturday', GARBLED], fetch: f }),
+    ],
+    [
+      'a reply turn',
+      (f: typeof fetch) =>
+        createLinqTextTransport({ chatId: CHAT, fetch: f }).send({ to: '', body: GARBLED }),
+    ],
+    [
+      'an experience card title',
+      (f: typeof fetch) =>
+        sendLinqExperience({
+          chatId: CHAT,
+          experience: {
+            name: 'link',
+            action: 'open',
+            params: { url: 'https://example.test/plan', title: GARBLED },
+          },
+          fetch: f,
+        }),
+    ],
+    [
+      'a replacement character',
+      (f: typeof fetch) => sendLinqChatMessage({ chatId: CHAT, text: 'Swim Sat�rday', fetch: f }),
+    ],
+  ])('refuses %s, permanently and by name, before any fetch', async (_name, send) => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = sent();
+    const error = await send(fetchMock as unknown as typeof fetch).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(LinqSendError);
+    expect(error).toMatchObject({ code: 'garbled_text', permanent: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Logged by name, never with the words.
+    expect(JSON.stringify(warn.mock.calls)).toContain('garbled_text');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Natation');
+    warn.mockRestore();
+  });
+
+  it.each([
+    ['French', 'Natation préscolaire samedi à 9 h, « c’est noté ».'],
+    ['Chinese', '周六上午九点的游泳课已经报名成功。'],
+    ['Arabic', 'درس السباحة يوم السبت الساعة 9، تم التسجيل.'],
+    ['emoji', 'See you Saturday 🏊‍♀️👨‍👩‍👧 🇨🇦'],
+    ['CJK punctuation', '「周六」上午九点，好的！（确认）'],
+  ])('sends honest %s text (positive control)', async (_name, text) => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = sent();
+    await expect(sendLinqChatMessage({ chatId: CHAT, text, fetch: fetchMock })).resolves.toEqual({
+      providerMessageId: 'msg-out-1',
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
