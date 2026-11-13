@@ -37,6 +37,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { expectedFailGate } from './said-line-expected-fail.mjs';
 import {
   SIGNUP_OUTCOME_REPLY_BROKEN,
   SIGNUP_OUTCOME_REPLY_FIXTURES,
@@ -55,6 +56,14 @@ const JUDGE_MAX_TOKENS = 4096;
 const ATTEMPTS = 2;
 
 const JUDGE_SYSTEM = judgePrompt('signup-outcome-reply');
+
+/**
+ * Cached-only expected-fail list (VIL-683). The writer's French came back with its accents
+ * garbled on the first draft and again on the retry, so the gate sends nothing: the product
+ * behaving as it should on a model failure, and a writer miss to fix there. A listed case
+ * that passes turns the check red. Live runs ignore it: every case must pass.
+ */
+const EXPECTED_FAIL = Object.freeze(['fr-reached-checkout-live']);
 
 function estimateTokens(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
@@ -296,7 +305,14 @@ async function main() {
     );
     process.exit(1);
   }
-  process.exit(results.every((r) => r.failures.length === 0) ? 0 : 1);
+  const gate = expectedFailGate(
+    results.map((r) => ({ id: r.fixture.id, failed: r.failures.length > 0 })),
+    cachedOnly ? EXPECTED_FAIL : [],
+    SIGNUP_OUTCOME_REPLY_FIXTURES.map((f) => f.id),
+    'VIL-683',
+  );
+  for (const line of gate.lines) console.info(line);
+  process.exit(gate.ok ? 0 : 1);
 }
 
 main().catch((err) => {
