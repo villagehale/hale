@@ -62,9 +62,22 @@ export type SharedListPerson = Pick<
 type ItemRow = schema.SharedGroupListItem;
 type Hiding = Pick<ItemRow, 'hiddenForKid' | 'hiddenFromPersonIds' | 'hiddenFromFamilyIds'>;
 
-/** First word, folded without accents: "Zoé Chen", " zoe" and "ZOE" are one child for hiding. */
+/**
+ * First word, folded without accents, possessives or punctuation, so "Zoé Chen", " zoe",
+ * "Zoe's" and "Zoe’s" are one child, and "Anne Marie" is "Anne-Marie", for hiding. Whole
+ * words are compared, so "Mial" is never "Mia".
+ */
 function kidKey(name: string | null): string | null {
-  const folded = name ? foldListText(name.normalize('NFKD').replace(/\p{M}/gu, '')) : '';
+  const folded = name
+    ? foldListText(
+        name
+          .normalize('NFKD')
+          .replace(/\p{M}/gu, '')
+          .replace(/['‘’ʼ]s?(?=[^\p{L}\p{N}]|$)/giu, '')
+          .replace(/['‘’ʼ]/gu, '')
+          .replace(/[^\p{L}\p{N}]+/gu, ' '),
+      )
+    : '';
   return folded ? (folded.split(' ')[0] ?? null) : null;
 }
 
@@ -745,30 +758,36 @@ export async function applySharedListTurn(
   return { handled: true, line, lineWhy: 'model', counts };
 }
 
+/** Why presence rows are forgotten: they or Hale left the chat, or their family was erased. */
+export type SharedListForgetReason = 'left' | 'erased';
+
 /**
- * When people's presence rows are forgotten (they left, Hale left, or their family was
- * erased), the open items they added and their own claims go, an item they added that
- * someone staying has claimed passes to that person, and the items they held reopen. A
- * stopped person's row is kept as a tombstone, so the cascade alone would not reach their
- * items; an item passed on first is out of the cascade's reach.
+ * When people's presence rows are forgotten, the items they added and their own claims go,
+ * and the items they held reopen. On leaving, an item they added that someone staying has
+ * claimed passes to that person; on erasure it goes too, since its text is what the erased
+ * person typed. A stopped person's row is kept as a tombstone, so the cascade alone would
+ * not reach their items; an item passed on first is out of the cascade's reach.
  */
 export async function forgetSharedListPeople(
   database: Database,
   personIds: readonly string[],
+  reason: SharedListForgetReason,
 ): Promise<void> {
   if (personIds.length === 0) return;
   const items = schema.sharedGroupListItems;
   const ids = [...personIds];
-  await database
-    .update(items)
-    .set({ addedByPersonId: sql`${items.ownerPersonId}` })
-    .where(
-      and(
-        inArray(items.addedByPersonId, ids),
-        isNotNull(items.ownerPersonId),
-        notInArray(items.ownerPersonId, ids),
-      ),
-    );
+  if (reason === 'left') {
+    await database
+      .update(items)
+      .set({ addedByPersonId: sql`${items.ownerPersonId}` })
+      .where(
+        and(
+          inArray(items.addedByPersonId, ids),
+          isNotNull(items.ownerPersonId),
+          notInArray(items.ownerPersonId, ids),
+        ),
+      );
+  }
   await database.delete(items).where(inArray(items.addedByPersonId, ids));
   await database
     .update(items)

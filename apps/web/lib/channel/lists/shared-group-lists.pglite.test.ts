@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { runDeletionSweep } from '~/lib/rights/delete';
 import { forgetSharedGroupPeople, takeMultiFamilyTurn } from '~/lib/channel/linq/multi-family';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import type {
@@ -112,10 +113,10 @@ async function person(extra: Partial<typeof schema.linqSharedGroupPeople.$inferI
   return row;
 }
 
-async function family(name: string) {
+async function family(name: string, scheduledDeletionAt?: Date) {
   const [row] = await db.database
     .insert(schema.families)
-    .values({ displayName: name, provinceOrState: 'ON' })
+    .values({ displayName: name, provinceOrState: 'ON', scheduledDeletionAt })
     .returning({ id: schema.families.id });
   return row?.id as string;
 }
@@ -485,14 +486,24 @@ describe('retention', () => {
     await item(stopped.id, 'cups');
     await item(ada.id, 'plates', { ownerPersonId: sam.id });
     await item(ada.id, 'napkins', { ownerPersonId: stopped.id });
-    await forgetSharedGroupPeople(db.database, eq(schema.linqSharedGroupPeople.chatId, CHAT), NOW);
+    await forgetSharedGroupPeople(
+      db.database,
+      eq(schema.linqSharedGroupPeople.chatId, CHAT),
+      NOW,
+      'left',
+    );
     expect(await items()).toEqual([]);
 
     const keep = await person();
     const gone = await person();
     await item(keep.id, 'plates', { ownerPersonId: gone.id });
     await item(gone.id, 'cups');
-    await forgetSharedGroupPeople(db.database, eq(schema.linqSharedGroupPeople.id, gone.id), NOW);
+    await forgetSharedGroupPeople(
+      db.database,
+      eq(schema.linqSharedGroupPeople.id, gone.id),
+      NOW,
+      'left',
+    );
     expect((await items()).map((r) => [r.text, r.ownerPersonId])).toEqual([['plates', null]]);
   });
 
@@ -510,7 +521,12 @@ describe('retention', () => {
       await item(host.id, 'napkins', { ownerPersonId: host.id });
       await item(mei.id, 'chips', { ownerPersonId: host.id });
       await item(stayer.id, 'ice');
-      await forgetSharedGroupPeople(db.database, eq(schema.linqSharedGroupPeople.id, host.id), NOW);
+      await forgetSharedGroupPeople(
+        db.database,
+        eq(schema.linqSharedGroupPeople.id, host.id),
+        NOW,
+        'left',
+      );
       const rows = (await items()).map((r) => [r.text, r.ownerPersonId, r.addedByPersonId]).sort();
       expect(rows).toEqual([
         ['chips', null, mei.id],
@@ -519,6 +535,29 @@ describe('retention', () => {
       ]);
     },
   );
+
+  it("erasure deletes everything the erased person added, claimed or not, and frees what they held; other families' items stay", async () => {
+    const erasedFamily = await family('Erased', new Date(NOW.getTime() - 24 * 60 * 60 * 1000));
+    const meiFamily = await family('Mei');
+    const erased = await person({ familyId: erasedFamily });
+    const mei = await person({ familyId: meiFamily });
+    const stayer = await person();
+    await item(erased.id, 'salad', { ownerPersonId: mei.id });
+    await item(erased.id, 'cups');
+    await item(mei.id, 'chips', { ownerPersonId: erased.id });
+    await item(mei.id, 'plates', { ownerPersonId: mei.id });
+    await item(stayer.id, 'ice');
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    const rows = (await items()).map((r) => [r.text, r.ownerPersonId, r.addedByPersonId]).sort();
+    expect(rows).toEqual([
+      ['chips', null, mei.id],
+      ['ice', null, stayer.id],
+      ['plates', mei.id, mei.id],
+    ]);
+  });
 });
 
 describe('in a multi-family group turn', () => {
@@ -801,6 +840,42 @@ describe('in a multi-family group turn', () => {
       // Positive control: the open, non-secret cake is shown and the answer is sent.
       expect(seen.map((input) => input.items.map((i) => i.text))).toEqual([['cake']]);
       expect(wire.texts).toEqual(['Cake is still open.']);
+    });
+
+    it.each([
+      ['Mia', "Mia's"],
+      ['Mia', 'Mia\u2019s'],
+      ['Jess', "Jess'"],
+      ['Anne-Marie', 'Anne Marie'],
+    ])(
+      'matches her Hale child %j across possessives and punctuation (%j)',
+      async (adaKid, forKid) => {
+        const wire = await secretBeforeAda(adaKid, forKid);
+        const { seen } = await say(
+          PRIYA,
+          "what's left?",
+          'in-left',
+          [MEI, PRIYA, ADA],
+          () => decision({ reply: 'Cake is still open.' }),
+          wire,
+        );
+        expect(seen.map((input) => input.items.map((i) => i.text))).toEqual([['cake']]);
+      },
+    );
+
+    it('does not hide a gift for a different name that only starts the same', async () => {
+      const wire = await secretBeforeAda('Mia', 'Mial');
+      const { seen } = await say(
+        PRIYA,
+        "what's left?",
+        'in-left',
+        [MEI, PRIYA, ADA],
+        () => decision({ reply: 'Cake is still open.' }),
+        wire,
+      );
+      expect(seen.map((input) => input.items.map((i) => i.text).sort())).toEqual([
+        ['Lego for Mial', 'cake'],
+      ]);
     });
 
     it('matches her Hale child across case, accents and surrounding spaces', async () => {

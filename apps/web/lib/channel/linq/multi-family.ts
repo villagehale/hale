@@ -6,6 +6,7 @@ import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
 import {
+  type SharedListForgetReason,
   type SharedListTurnModel,
   applySharedListTurn,
   forgetSharedListPeople,
@@ -710,18 +711,20 @@ export async function forgetSharedGroupPresence(
       ? and(eq(people.chatId, input.chatId), eq(people.phoneE164Hash, phoneBlindIndex(phone)))
       : null;
   if (!scope) return 0;
-  return forgetSharedGroupPeople(database, scope, input.now);
+  return forgetSharedGroupPeople(database, scope, input.now, 'left');
 }
 
 /**
  * Forgets the shared-chat people rows `scope` matches: a row with no stop is deleted, and a
  * stopped row keeps only its chat, number hash and stop time, so the STOP still holds when
- * the number comes back. Presence leaving and family erasure both forget through here.
+ * the number comes back. Presence leaving and family erasure both forget through here, and
+ * say which, because their list items are kept differently.
  */
 export async function forgetSharedGroupPeople(
   database: Database,
   scope: SQL,
   now: Date,
+  reason: SharedListForgetReason,
 ): Promise<number> {
   const people = schema.linqSharedGroupPeople;
   // VIL-687: their list items go first; a stopped row stays, so its cascade never fires.
@@ -729,6 +732,7 @@ export async function forgetSharedGroupPeople(
   await forgetSharedListPeople(
     database,
     scoped.map((row) => row.id),
+    reason,
   );
   const forgotten = await database
     .delete(people)
