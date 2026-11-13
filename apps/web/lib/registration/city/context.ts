@@ -5,7 +5,7 @@ import { matchPostalToken } from '~/lib/channel/off-domain/place';
 import type { VerifiedRegistrationReading } from '../live-reading';
 import { winterCycleLabel } from './cycle';
 import { ownCityRegistrationEnabled } from './flag';
-import { familyOpening, openingInstant, openingPhrase, openingQuote } from './opening';
+import { familyOpening, openingInstant, openingPhrase } from './opening';
 import { type OwnCity, ownCityOfRow, readOwnCity } from './place';
 import { latestCityReading } from './store';
 
@@ -28,10 +28,16 @@ export interface CityOpeningFacts {
    * the residents' morning and everyone else's, each with who it is for. */
   opensFor: string;
   opensAt: Date;
-  /** The opening's calendar day as the page prints it: what a tell is keyed on, so a
-   * re-read that drops the printed time is still the same opening. */
-  openingDate: string;
+  /** Every calendar day the line states, as the page prints it: what a tell is keyed on,
+   * so a moved date of either is a new tell, and a re-read that drops the printed time is
+   * still the same one. */
+  statedDates: readonly string[];
   generalOpens: string | null;
+  /** The one line this family is told, each date with who it is for: the tell's `what`,
+   * and the facts a mid-signup answer is written from, so the two never differ. */
+  line: string;
+  /** Each date as the line prints it, which must reach the parent unchanged. */
+  phrases: readonly string[];
 }
 
 /** This family's opening on a verified page, or null when the page has none for them or
@@ -45,35 +51,51 @@ export function cityOpeningFacts(
   const opening = familyOpening(reading, place);
   if (opening === null) return null;
   const opensAt = openingInstant(reading, opening.own);
+  const town = place.city;
+  const programs = reading.programOnPage ?? cycleLabel;
+  const statedDates = opening.general
+    ? [opening.own.date, opening.general.date]
+    : [opening.own.date];
   if (opensAt.getTime() <= now.getTime()) {
     // In doubt, the residents' morning may never have been theirs: everyone's still is.
-    // Keyed on the first opening, so a parent already told both is not told again.
+    // Keyed on both openings, so a parent already told both is not told again.
     const later = opening.residencyInDoubt ? opening.general : null;
     if (later === null) return null;
     const laterAt = openingInstant(reading, later);
     if (laterAt.getTime() <= now.getTime()) return null;
+    const phrase = openingPhrase(reading, later, now);
     return {
-      town: place.city,
-      programs: reading.programOnPage ?? cycleLabel,
-      opensFor: openingPhrase(reading, later, now),
+      town,
+      programs,
+      opensFor: phrase,
       opensAt: laterAt,
-      openingDate: opening.own.date,
+      statedDates,
       generalOpens: null,
+      line: `${town} ${programs} registration opens ${phrase}`,
+      phrases: [phrase],
     };
   }
   const own = openingPhrase(reading, opening.own, now);
   const general = opening.general ? openingPhrase(reading, opening.general, now) : null;
+  // Residency in doubt: both mornings in the one field, each with who it is for, so no
+  // reader can keep the earlier one and drop the condition.
+  const opensFor =
+    opening.residencyInDoubt && general !== null
+      ? `${own} if they live in ${town}, otherwise ${general}`
+      : own;
+  const generalOpens = opening.residencyInDoubt ? null : general;
   return {
-    town: place.city,
-    programs: reading.programOnPage ?? cycleLabel,
-    // Residency in doubt: both mornings in the one field, each with who it is for, so no
-    // reader can keep the earlier one and drop the condition.
-    opensFor: opening.residencyInDoubt
-      ? `${own} if they live in ${place.city}, otherwise ${general}`
-      : own,
+    town,
+    programs,
+    opensFor,
     opensAt,
-    openingDate: opening.own.date,
-    generalOpens: opening.residencyInDoubt ? null : general,
+    statedDates,
+    generalOpens,
+    line:
+      generalOpens === null
+        ? `${town} ${programs} registration opens ${opensFor}`
+        : `${town} ${programs} registration opens ${own} for ${town} residents; everyone else ${generalOpens}`,
+    phrases: general === null ? [own] : [own, general],
   };
 }
 
@@ -99,35 +121,30 @@ async function tellPending(
   return row !== undefined;
 }
 
-/** This place's own opening off its own page, with the page's own words for each of its
- * dates, or null: none on file, or already open. */
+/** This place's own opening off its own page, or null: none on file, or already open. */
 async function ownCityOpening(
   database: Database,
   place: OwnCity,
   now: Date,
-): Promise<{ facts: CityOpeningFacts; quotes: string[] } | null> {
+): Promise<CityOpeningFacts | null> {
   const cycleLabel = winterCycleLabel(now);
   const stored = await latestCityReading(database, place, cycleLabel);
   if (stored?.status !== 'verified') return null;
-  const facts = cityOpeningFacts(place, cycleLabel, stored.reading, now);
-  const opening = familyOpening(stored.reading, place);
-  if (facts === null || opening === null) return null;
-  const dates = opening.general ? [opening.own, opening.general] : [opening.own];
-  return { facts, quotes: dates.map((date) => openingQuote(date, place.district)) };
+  return cityOpeningFacts(place, cycleLabel, stored.reading, now);
 }
 
 /**
- * A parent mid-signup, before there is a family: the page's own words for the opening of
- * the town their postal code is in, or null with none on file. Read the way a family's
- * place is read (place.ts), off the code alone, and chosen the way the family's own tell
- * is (familyOpening), so the answer mid-signup is the date they are later told. The
+ * A parent mid-signup, before there is a family: the opening of the town their postal
+ * code is in, or null with none on file. Read the way a family's place is read
+ * (place.ts), off the code alone, and worded the way the family's own tell is
+ * (cityOpeningFacts), so the answer mid-signup is the line they are later told. The
  * country is the code's own: a Canadian FSA or a US ZIP.
  */
-export async function postalOwnCityQuotes(
+export async function postalOwnCityOpening(
   database: Database,
   postal: string,
   now: Date,
-): Promise<string[] | null> {
+): Promise<CityOpeningFacts | null> {
   if (!ownCityRegistrationEnabled()) return null;
   const token = matchPostalToken(postal);
   if (token === null) return null;
@@ -139,7 +156,7 @@ export async function postalOwnCityQuotes(
     areaCoarse: null,
   });
   if (own.status !== 'known') return null;
-  return (await ownCityOpening(database, own.place, now))?.quotes ?? null;
+  return ownCityOpening(database, own.place, now);
 }
 
 export async function ownCityRegistrationContext(
@@ -151,9 +168,8 @@ export async function ownCityRegistrationContext(
   if (!ownCityRegistrationEnabled()) return [];
   const own = await readOwnCity(database, familyId);
   if (own.status !== 'known') return [];
-  const opening = await ownCityOpening(database, own.place, now);
-  if (opening === null) return [];
-  const { facts } = opening;
+  const facts = await ownCityOpening(database, own.place, now);
+  if (facts === null) return [];
   return [
     {
       town: facts.town,

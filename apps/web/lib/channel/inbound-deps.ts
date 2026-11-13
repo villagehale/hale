@@ -49,7 +49,7 @@ import {
 } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
-import { postalOwnCityQuotes } from '~/lib/registration/city/context';
+import { postalOwnCityOpening } from '~/lib/registration/city/context';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -117,7 +117,7 @@ export function buildIntakeDeps(
     }),
     friendVoice: createFriendVoiceComposer(client),
     answerComposer: createIntakeAnswerComposer(client, (postal, now) =>
-      postalOwnCityQuotes(database, postal, now),
+      postalOwnCityOpening(database, postal, now),
     ),
     identityAsk: createIdentityAskVoice(() => client),
     optOutReader: sharedOptOutReader(),

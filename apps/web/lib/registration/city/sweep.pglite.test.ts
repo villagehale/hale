@@ -7,7 +7,7 @@ import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
-import { ownCityRegistrationContext, postalOwnCityQuotes } from './context';
+import { ownCityRegistrationContext, postalOwnCityOpening } from './context';
 import { OWN_CITY_REGISTRATION_ENABLED_ENV } from './flag';
 import type { CityLookupDeps } from './lookup';
 import { RECHECK_CHANGED_MS, RECHECK_FOUND_MS, cachedOfficialSite } from './official-site';
@@ -268,7 +268,7 @@ describe('the own-city registration sweep', () => {
           district: null,
         },
         cycleLabel: 'Winter 2027',
-        openingDate: '2026-12-16',
+        statedDates: ['2026-12-16'],
       }),
     });
     expect((await tells(one.familyId)).map((row) => row.parentUserId).sort()).toEqual(
@@ -659,7 +659,7 @@ describe('each family is told the date for its own residency and district', () =
         VAUGHAN_PAGE,
       ]);
       expect(await whatOf(resident.familyId)).toEqual([
-        'Markham Winter 2027 registration opens Dec 1, 6:30 a.m.; everyone else Dec 2, 6:30 a.m.',
+        'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. for Markham residents; everyone else Dec 2, 6:30 a.m.',
       ]);
       // Never told Dec 1 is theirs: both mornings, each with who it is for.
       expect(await whatOf(inDoubt.familyId)).toEqual([
@@ -741,8 +741,12 @@ describe('each family is told the date for its own residency and district', () =
 
     const result = await runCityRegistrationSweep(db.database, deps(lookup), between);
 
-    // Still due: one family here has a morning ahead.
-    expect(result).toMatchObject({ lookedUp: 1, past: 0, queued: 0, duplicate: 1 });
+    // Still due: one family here has a morning ahead. Its waiting tell no longer offers the
+    // residents' morning that has gone, and is not a second tell.
+    expect(result).toMatchObject({ lookedUp: 1, past: 0, queued: 0, refreshed: 1 });
+    expect((await tells(inDoubt.familyId)).map((row) => [row.status, row.what])).toEqual([
+      ['queued', 'Markham Winter 2027 registration opens Dec 2, 6:30 a.m.'],
+    ]);
     expect(
       await ownCityRegistrationContext(
         db.database,
@@ -761,6 +765,53 @@ describe('each family is told the date for its own residency and district', () =
       what: 'Markham Winter 2027 registration opens Dec 2, 6:30 a.m.',
       worthlessAfter: new Date('2026-12-02T11:30:00Z'),
     });
+  });
+
+  it('a waiting tell never keeps a date the page has since moved, whichever of its dates moved', async () => {
+    const resident = await seedFamily('L3P 1A1');
+    const inDoubt = await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents, nonResidents])), NOW);
+    // Nov 16: the page now opens everyone else on Dec 3; the residents' morning is unchanged.
+    const later = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+    const dec3 = { ...nonResidents, date: '2026-12-03' };
+
+    await runCityRegistrationSweep(db.database, deps(york([residents, dec3])), later);
+
+    const waiting = async (familyId: string) =>
+      (await tells(familyId))
+        .filter((row) => row.status === 'queued' || row.status === 'held')
+        .map((row) => row.what);
+    // For a family in doubt that lives outside Markham, the "otherwise" date is its own.
+    expect(await waiting(inDoubt.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 3, 6:30 a.m.',
+    ]);
+    expect(await waiting(resident.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. for Markham residents; everyone else Dec 3, 6:30 a.m.',
+    ]);
+    expect(await coachOf(inDoubt)).toMatchObject([
+      { opensFor: 'Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 3, 6:30 a.m.' },
+    ]);
+  });
+
+  it('a tell already sent is told again when a date it stated moves', async () => {
+    const inDoubt = await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents, nonResidents])), NOW);
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ status: 'sent' })
+      .where(eq(schema.proactiveCandidates.familyId, inDoubt.familyId));
+    const later = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+
+    const result = await runCityRegistrationSweep(
+      db.database,
+      deps(york([residents, { ...nonResidents, date: '2026-12-03' }])),
+      later,
+    );
+
+    expect(result).toMatchObject({ queued: 1, duplicate: 0 });
+    expect((await tells(inDoubt.familyId)).find((row) => row.status === 'queued')?.what).toBe(
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 3, 6:30 a.m.',
+    );
   });
 
   it("a city stays due while any family there has no opening on the page, even once another family's has passed", async () => {
@@ -1334,6 +1385,23 @@ describe('one transient failure never cancels a known date or a waiting tell', (
     expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['sent']);
   });
 
+  it('a waiting tell takes a time the page moved on the same day, and opens at it', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    const earlier = scripted({ read: () => verified(SUDBURY_PAGE, '2026-12-16', '06:30') });
+
+    const result = await runCityRegistrationSweep(db.database, deps(earlier), stale);
+
+    expect(result).toMatchObject({ verified: 1, queued: 0, refreshed: 1, superseded: 0 });
+    const rows = await tells(family.familyId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: 'queued',
+      what: 'Greater Sudbury Winter 2027 registration opens Dec 16, 6:30 a.m.',
+      worthlessAfter: new Date('2026-12-16T11:30:00Z'),
+    });
+  });
+
   it('tells the coach a text is coming only for the parent whose own tell is waiting', async () => {
     const family = await seedFamily('P3A 1A1', 2);
     const [first, second] = family.parentIds as [string, string];
@@ -1448,30 +1516,32 @@ describe("a lookup that writes no reading still moves the city's next turn", () 
 describe("a parent mid-signup: does their postal code's town have its own opening", () => {
   it('reads the town off the code, and answers only from a verified opening still ahead', async () => {
     // No reading for the town yet.
-    expect(await postalOwnCityQuotes(db.database, 'P3A', NOW)).toBeNull();
+    expect(await postalOwnCityOpening(db.database, 'P3A', NOW)).toBeNull();
     await seedFamily('P3A 1A1');
     await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
-    expect(await postalOwnCityQuotes(db.database, 'P3A', NOW)).toEqual(['2026-12-16 08:00']);
-    expect(await postalOwnCityQuotes(db.database, 'P3A 1A1', NOW)).not.toBeNull();
+    expect((await postalOwnCityOpening(db.database, 'P3A', NOW))?.line).toBe(
+      'Greater Sudbury Winter 2027 registration opens Dec 16, 8:00 a.m.',
+    );
+    expect(await postalOwnCityOpening(db.database, 'P3A 1A1', NOW)).not.toBeNull();
     // Another town, and the same town once its doors have opened.
-    expect(await postalOwnCityQuotes(db.database, 'K2P', NOW)).toBeNull();
+    expect(await postalOwnCityOpening(db.database, 'K2P', NOW)).toBeNull();
     expect(
-      await postalOwnCityQuotes(db.database, 'P3A', new Date('2026-12-17T15:00:00Z')),
+      await postalOwnCityOpening(db.database, 'P3A', new Date('2026-12-17T15:00:00Z')),
     ).toBeNull();
     // The kill switch.
     vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'false');
-    expect(await postalOwnCityQuotes(db.database, 'P3A', NOW)).toBeNull();
+    expect(await postalOwnCityOpening(db.database, 'P3A', NOW)).toBeNull();
   });
 
   it("reads a Toronto code's own district", async () => {
     await seedFamily('M2N 0A1');
     await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
-    // The page's own words for the district's row, not its bare date.
-    expect(await postalOwnCityQuotes(db.database, 'M2N', NOW)).toEqual([
-      'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.',
-    ]);
+    // The district's own morning.
+    expect((await postalOwnCityOpening(db.database, 'M2N', NOW))?.line).toBe(
+      'Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.',
+    );
     // Toronto, East York: a district with no reading of its own.
-    expect(await postalOwnCityQuotes(db.database, 'M4C', NOW)).toBeNull();
+    expect(await postalOwnCityOpening(db.database, 'M4C', NOW)).toBeNull();
   });
 });
 

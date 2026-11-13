@@ -5,10 +5,13 @@ import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { recMorningIntakeAsksOwnTown, writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
+import { sharedRecMorningReader } from '~/lib/channel/rec-morning/read';
+import { speak } from '~/lib/channel/spoken-line';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { CityOpeningFacts } from '~/lib/registration/city/context';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
 import { groundUserMessage } from './ground-message';
@@ -359,9 +362,12 @@ async function groundOfficialPages(
 async function answerFromOfficialPages(
   client: AgentClient,
   input: IntakeAnswerInput,
-  ownTown: readonly string[] | null,
+  ownTown: CityOpeningFacts | null,
 ): Promise<IntakeAnswerOutcome> {
-  if (ownTown !== null) return answerFromOwnTownPage(ownTown, input);
+  if (ownTown !== null) {
+    const own = await answerFromOwnTownOpening(ownTown, input);
+    if (own !== null) return own;
+  }
   const ground = await groundOfficialPages(client, input);
   if (ground.status === 'ungrounded') {
     console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
@@ -374,17 +380,37 @@ async function answerFromOfficialPages(
 }
 
 /**
- * VIL-684: the parent's own town has a date off its own official page, so that page's
- * words are the grounding, not a second search that could name another date than the one
- * the family is told. Quotes that cannot go out as one plain SMS send nothing.
+ * VIL-684: the parent's own town has an opening off its own official page. When the
+ * model reads that opening as the answer to what they asked, the reply is written from
+ * the line the family is later told (each date with who it is for), never from a second
+ * search that could name another date. Anything else they asked about (another town,
+ * another season, a club, a closing date), and a read that failed, is null: the search
+ * answers it. The dates must reach the parent unchanged; a reply that cannot be written
+ * sends nothing.
  */
-function answerFromOwnTownPage(
-  quotes: readonly string[],
+async function answerFromOwnTownOpening(
+  opening: CityOpeningFacts,
   input: IntakeAnswerInput,
-): IntakeAnswerOutcome {
-  const notes = quotes.map((quote) => (/[.!]$/.test(quote) ? quote : `${quote}.`)).join(' ');
-  const body = officialPageReplyFromNotes(notes, input.pendingAsk);
-  return body === null ? unavailable('unusable', 'own_town_quote') : { status: 'answered', body };
+): Promise<IntakeAnswerOutcome | null> {
+  const language = input.language ?? null;
+  const reading = await sharedRecMorningReader()({
+    text: input.parentWords,
+    facts: opening.line,
+    language,
+  });
+  if (reading !== 'answers') {
+    console.info({ reading: reading ?? 'read_failed' }, 'intake answer: own town not asked');
+    return null;
+  }
+  const body = await speak({
+    purpose: 'rec_morning',
+    language,
+    facts: { answer: opening.line, parentWords: input.parentWords },
+    verbatim: opening.phrases,
+  });
+  return body === null
+    ? unavailable('unusable', 'own_town_unwritten')
+    : { status: 'answered', body };
 }
 
 async function answerFromCurrentSource(
@@ -407,23 +433,23 @@ async function answerFromCurrentSource(
     : { status: 'answered', body };
 }
 
-/** The page's own words for the opening of the town a postal code is in, or null with
- * none on file (VIL-684). */
-export type IntakeOwnTownQuotes = (postal: string, now: Date) => Promise<readonly string[] | null>;
+/** The opening of the town a postal code is in, as the family would be told it, or null
+ * with none on file (VIL-684). */
+export type IntakeOwnTownOpening = (postal: string, now: Date) => Promise<CityOpeningFacts | null>;
 
-type OwnTownRead = () => Promise<readonly string[] | null>;
+type OwnTownRead = () => Promise<CityOpeningFacts | null>;
 
 export function createIntakeAnswerComposer(
   client: AgentClient,
-  ownTownQuotes: IntakeOwnTownQuotes,
+  ownTownOpening: IntakeOwnTownOpening,
 ): IntakeAnswerComposer {
-  /** VIL-684: the page's own words for the opening of the parent's own town (the reading
-   * the family is later told from), read at most once a turn; null with none on file. */
+  /** VIL-684: the opening of the parent's own town (the line the family is later told),
+   * read at most once a turn; null with none on file. */
   const ownTownOf = (input: IntakeAnswerInput): OwnTownRead => {
-    let read: Promise<readonly string[] | null> | undefined;
+    let read: Promise<CityOpeningFacts | null> | undefined;
     const postal = input.postalCode ?? null;
     return () => {
-      read ??= postal === null ? Promise.resolve(null) : ownTownQuotes(postal, new Date());
+      read ??= postal === null ? Promise.resolve(null) : ownTownOpening(postal, new Date());
       return read;
     };
   };
@@ -514,8 +540,9 @@ async function answerTheRead(
   ownTown: OwnTownRead,
 ): Promise<IntakeAnswerOutcome> {
   switch (value.askKind) {
-    // Any program-dates question, in any wording: a town with a reading on file is answered
-    // from it, so the answer mid-signup is the date the family is later told.
+    // A program-dates question the own town's opening answers (the reader's call, in any
+    // wording) is answered from it, so the answer mid-signup is the date the family is
+    // later told; any other is searched.
     case 'program_dates':
       return answerFromOfficialPages(client, input, await ownTown());
     case 'current_source':
