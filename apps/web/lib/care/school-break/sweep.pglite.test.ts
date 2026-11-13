@@ -5,11 +5,14 @@ import { loadWeekdayCareContext } from '~/lib/care/weekday';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
 import { SCHOOL_BREAK_ASK_TEMPLATE_KEY, parseWeekdayAskKey } from '~/lib/channel/weekday-care/key';
+import { CONNECTOR_SCOPES } from '~/lib/integrations/google-oauth';
+import type { GoogleFetch } from '~/lib/integrations/sync';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { SCHOOL_BREAK_FACT_KEY, loadSchoolBreak, recordSchoolBreak } from './facts';
 import { SCHOOL_BREAK_ENABLED_ENV } from './flag';
 import type { BoardLookupDeps } from './lookup';
 import type { BreakPageReading } from './read';
+import { productionSchoolMailPorts, schoolMailReader } from './school-mail';
 import type { CalendarSearch } from './search';
 import {
   SCHOOL_BREAK_ASK_KIND,
@@ -48,6 +51,10 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.unstubAllEnvs();
+  inbox.clear();
+  gmailReads.length = 0;
+  wikidata.queries.length = 0;
+  wikidata.fail = false;
   await db.exec('truncate table families, users, school_break_readings cascade');
 });
 
@@ -87,13 +94,54 @@ function scripted(
   return { lookup, searches, reads };
 }
 
+/** The mailbox, faked at Google's edge: message id to its From header. */
+const inbox = new Map<string, string>();
+const gmailReads: string[] = [];
+const fakeGmail: GoogleFetch = async (url) => {
+  const id = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
+  gmailReads.push(id);
+  const from = inbox.get(id);
+  if (from === undefined) return { ok: false, status: 404, json: async () => ({}) };
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ payload: { headers: [{ name: 'From', value: from }] } }),
+  };
+};
+
+/** Wikidata, faked at its port: these hosts are the official sites of school boards. */
+const PROVEN_BOARDS: Record<string, string> = { [BOARD]: 'Q101', [OTHER_BOARD]: 'Q102' };
+const wikidata = {
+  queries: [] as string[],
+  fail: false,
+  async sparql(query: string): Promise<unknown> {
+    this.queries.push(query);
+    if (this.fail) throw new Error('source down');
+    return {
+      results: {
+        bindings: Object.entries(PROVEN_BOARDS)
+          .filter(([host]) => query.includes(`<https://www.${host}/>`))
+          .map(([host, qid]) => ({
+            item: { value: `http://www.wikidata.org/entity/${qid}` },
+            site: { value: `https://www.${host}/` },
+          })),
+      },
+    };
+  },
+};
+
 function deps(
   lookup: BoardLookupDeps | null,
   over: Partial<SchoolBreakSweepDeps> = {},
 ): SchoolBreakSweepDeps {
   return {
-    ...defaultSchoolBreakSweepDeps(null),
+    ...defaultSchoolBreakSweepDeps(db.database, null),
     lookup,
+    schoolMail: schoolMailReader({
+      ...productionSchoolMailPorts(db.database, fakeGmail),
+      accessToken: async () => 'test-token',
+    }),
+    boardSite: wikidata,
     buildGate: openGate,
     queueCandidate: queueCheckInForDecider,
     f14For: () => true,
@@ -115,7 +163,12 @@ function deps(
 let seq = 0;
 
 async function seedFamily(
-  input: { senders?: string[]; dateOfBirth?: string; parents?: number } = {},
+  input: {
+    senders?: string[];
+    dateOfBirth?: string;
+    parents?: number;
+    gmailStatus?: 'active' | 'revoked';
+  } = {},
 ): Promise<{ familyId: string; parentIds: string[] }> {
   const [family] = await db.database
     .insert(schema.families)
@@ -138,15 +191,46 @@ async function seedFamily(
   await db.database
     .insert(schema.children)
     .values({ familyId, name: 'Robin', dateOfBirth: input.dateOfBirth ?? '2019-03-01' });
-  for (const senderDomain of input.senders ?? []) {
-    seq += 1;
-    await db.database.insert(schema.familyForwardSenders).values({
-      familyId,
-      senderDomain,
-      ref: seq.toString(16).padStart(8, '0'),
-      state: 'allowed',
-      decidedAt: NOW,
-    });
+  if ((input.senders ?? []).length > 0) {
+    const [gmail] = await db.database
+      .insert(schema.integrations)
+      .values({
+        familyId,
+        userId: parentIds[0] as string,
+        provider: 'gmail',
+        status: input.gmailStatus ?? 'active',
+        scopes: [...CONNECTOR_SCOPES.gmail],
+        oauthTokensEncrypted: null,
+      })
+      .returning({ id: schema.integrations.id });
+    for (const senderDomain of input.senders ?? []) {
+      seq += 1;
+      const messageId = `msg-${seq}`;
+      inbox.set(messageId, `School Office <office@${senderDomain}>`);
+      const [message] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId: parentIds[0] as string,
+          channel: 'sms',
+          direction: 'out',
+          category: 'alert',
+          status: 'sent',
+          sentAt: NOW,
+        })
+        .returning({ id: schema.channelMessages.id });
+      await db.database.insert(schema.emailAlertOffers).values({
+        familyId,
+        parentUserId: parentIds[0] as string,
+        integrationId: gmail?.id as string,
+        messageId,
+        kind: 'new_event',
+        title: 'Curriculum night',
+        startsAt: NOW,
+        channelMessageId: message?.id as string,
+        expiresAt: NOW,
+      });
+    }
   }
   return { familyId, parentIds };
 }
@@ -365,6 +449,129 @@ describe('the winter-break sweep', () => {
       validFrom: NOW,
     });
     expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect((await loadWeekdayCareContext(db.database, familyId, NOW)).verifiedBreak).toBeNull();
+  });
+  it('reads the board off the school mail Hale already alerted on: the sender proven a board by Wikidata', async () => {
+    const { familyId } = await seedFamily({ senders: [`mail.${BOARD}`] });
+    const script = scripted();
+
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+
+    expect(gmailReads).toEqual([`msg-${seq}`]);
+    expect(wikidata.queries).toHaveLength(1);
+    expect(script.searches).toEqual([BOARD]);
+    expect(result).toMatchObject({ verified: 1, recorded: 1, queued: 0 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
+      source: 'board_page',
+      boardHost: BOARD,
+      sourceUrl: PAGE,
+    });
+  });
+
+  it('never searches a sender Wikidata does not prove a school: the family is asked once instead', async () => {
+    const { familyId } = await seedFamily({ senders: ['club.example'] });
+    const script = scripted();
+
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+
+    expect(wikidata.queries).toHaveLength(1);
+    expect(script.searches).toEqual([]);
+    expect(await db.database.select().from(schema.schoolBreakReadings)).toEqual([]);
+    expect(result).toMatchObject({ queued: 1 });
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('reads no mail from a connection that is no longer active', async () => {
+    const { familyId } = await seedFamily({ senders: [BOARD], gmailStatus: 'revoked' });
+    const script = scripted();
+    await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+    expect(gmailReads).toEqual([]);
+    expect(script.searches).toEqual([]);
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('asks rather than waits when the mail cannot be read, and names it', async () => {
+    const { familyId } = await seedFamily({ senders: [BOARD] });
+    const failing: GoogleFetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
+    const result = await runSchoolBreakSweep(
+      db.database,
+      deps(scripted().lookup, {
+        schoolMail: schoolMailReader({
+          ...productionSchoolMailPorts(db.database, failing),
+          accessToken: async () => 'test-token',
+        }),
+      }),
+      NOW,
+    );
+    expect(result).toMatchObject({ mailUnread: 1, queued: 1 });
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('waits, and asks nothing, while Wikidata does not answer', async () => {
+    const { familyId } = await seedFamily({ senders: [BOARD] });
+    wikidata.fail = true;
+    const script = scripted();
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+    expect(result).toMatchObject({ waiting: 1, queued: 0 });
+    expect(script.searches).toEqual([]);
+    expect(await asks(familyId)).toEqual([]);
+
+    // Back the next hour: the mail is read again, because nothing settled.
+    wikidata.fail = false;
+    const again = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+    expect(script.searches).toEqual([BOARD]);
+    expect(again).toMatchObject({ recorded: 1 });
+  });
+
+  it("reads a family's mail at most once a day once it settled", async () => {
+    const { familyId } = await seedFamily({ senders: ['club.example'] });
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect(gmailReads).toHaveLength(1);
+    // With the family still open (its ask cleared here), its mail is not read again that day.
+    await db.database
+      .delete(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, familyId));
+    const later = new Date(NOW.getTime() + 60 * 60_000);
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), later);
+    expect(gmailReads).toHaveLength(1);
+    await db.database
+      .delete(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, familyId));
+    const nextDay = new Date(NOW.getTime() + 25 * 60 * 60_000);
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), nextDay);
+    expect(gmailReads).toHaveLength(2);
+  });
+
+  it("asks once a school year even when the household's first parent changes", async () => {
+    const { familyId, parentIds } = await seedFamily({ parents: 2 });
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    const onlySecond = deps(scripted().lookup, {
+      recipients: async () => [
+        { parentUserId: parentIds[1] as string, timeZone: 'America/Toronto', role: 'co_parent' },
+      ],
+    });
+    const again = await runSchoolBreakSweep(db.database, onlySecond, NOW);
+    expect(again).toMatchObject({ asked: 1, queued: 0 });
+    expect((await asks(familyId)).map((row) => row.parentUserId)).toEqual([parentIds[0]]);
+  });
+
+  it('queues no ask the outbound gate refuses', async () => {
+    const { familyId } = await seedFamily();
+    const closed = (): OutboundGatePorts => ({ ...openGate(), channelEnrolled: async () => false });
+    const result = await runSchoolBreakSweep(
+      db.database,
+      deps(scripted().lookup, { buildGate: closed }),
+      NOW,
+    );
+    expect(result).toMatchObject({ held: 1, queued: 0 });
+    expect(await asks(familyId)).toEqual([]);
+  });
+
+  it('names no break to the break question while the kill switch is off, though the fact stands', async () => {
+    const { familyId } = await seedFamily({ senders: [BOARD] });
+    await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).not.toBeNull();
+    vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'false');
     expect((await loadWeekdayCareContext(db.database, familyId, NOW)).verifiedBreak).toBeNull();
   });
 });

@@ -12,9 +12,9 @@ export const maxDuration = 300;
 
 /**
  * GET /api/cron/school-break — VIL-685. Hourly: each family's 2026-27 winter break, read
- * off their own board's calendar page (the host their school mail comes from) and cached
- * per board, or one daytime question queued for the proactive decider when no page has
- * it. Its kill switch (SCHOOL_BREAK_ENABLED) defaults on; `false` reads nothing.
+ * off their own board's calendar page (the board's official site, proven by Wikidata from
+ * the school mail Hale already alerted them about) and cached per board, or one daytime
+ * question queued for the proactive decider when no page has it. Its kill switch (SCHOOL_BREAK_ENABLED) defaults on; `false` reads nothing.
  *
  * Cron auth is the spend gate: without `Authorization: Bearer <CRON_SECRET>` nothing runs.
  * No model client (no API key) is a named count in the summary, never a silent pass.
@@ -25,7 +25,11 @@ export const GET = cronRoute('school-break', async () => {
     ? budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'discovery' })
     : null;
   try {
-    const summary = await runSchoolBreakSweep(db(), defaultSchoolBreakSweepDeps(client));
+    const database = db();
+    const summary = await runSchoolBreakSweep(
+      database,
+      defaultSchoolBreakSweepDeps(database, client),
+    );
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } catch (err) {
     console.error(

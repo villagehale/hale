@@ -754,6 +754,39 @@ describe('the forwarding-address revoke confirm on the open list', () => {
   });
 });
 
+describe('the weekday-care ask, described to the resolver', () => {
+  it('VIL-685 · says the winter-break dates ask is about the break, not weekday cover', async () => {
+    const reader = createOpenQuestionReader({
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => ({ id: 'ask-2', askedAt: T1, scope: 'break_dates' as const }),
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      pendingApprovals: async () => [],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const [only, ...rest] = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    expect(rest).toEqual([]);
+    expect(only).toMatchObject({ id: 'ask-2', kind: 'weekday_care' });
+    expect(only?.description).toBe("When this household's winter break starts and ends");
+  });
+});
+
 describe('a stalled reader (VIL-400)', () => {
   function sources(overrides: Partial<OpenQuestionSources> = {}): OpenQuestionSources {
     return {

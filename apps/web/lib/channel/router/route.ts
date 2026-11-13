@@ -140,6 +140,7 @@ import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { CrisisPager, SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -2173,7 +2174,10 @@ type WeekdayCareReplyOutcome =
       eventKey: string | null;
     }
   | { status: 'declined' }
-  | { status: 'not_recorded'; reason: 'no_open_ask' | 'wrong_channel' | 'child_gone' };
+  | {
+      status: 'not_recorded';
+      reason: 'no_open_ask' | 'wrong_channel' | 'child_gone' | 'school_break_off';
+    };
 
 /**
  * Read the answer, write the fact, say nothing — and REPORT which of those happened.
@@ -2204,6 +2208,8 @@ async function recordWeekdayCareAnswer(
   if (target.status !== 'open') return { status: 'not_recorded', reason: target.status };
 
   if ('scope' in target && target.scope === 'break_dates') {
+    // The lane's kill switch covers its reply reader too: off, nothing is read or filed.
+    if (!schoolBreakEnabled()) return { status: 'not_recorded', reason: 'school_break_off' };
     const reading = await deps.schoolBreakReplyReader.read({
       text: turn.body,
       today: dayKeyOf(turn.now, DEFAULT_TIMEZONE),

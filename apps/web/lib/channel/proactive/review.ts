@@ -21,6 +21,7 @@ import {
   type WeekdayCareContext,
   loadWeekdayCareContext,
 } from '~/lib/care/weekday';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import { recordCheckInAsk } from '~/lib/channel/checkin/cadence';
 import {
   type FamilyTextRecipient,
@@ -54,7 +55,10 @@ import {
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  eventKeyFromWeekdayBreakDedupe,
+} from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
@@ -417,6 +421,11 @@ async function loadOpenItems(
       summary.parentNotInFamily += 1;
       continue;
     }
+    if (laneSwitchedOff(row.templateKey)) {
+      // Its lane's kill switch is off: the row is left as it is, neither offered nor
+      // settled, and the next review after the switch is back on takes it up.
+      continue;
+    }
     if (!isProactiveSendKind(row.kind)) {
       // The gate has no class for it, so no send of it can be gated: never offered.
       await mark(database, familyId, [row.id], {
@@ -489,6 +498,17 @@ const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
   'next_day_checkback',
   'school_break_ask',
 ];
+
+/** VIL-685 · the winter-break ask and the break question both stop with SCHOOL_BREAK_ENABLED. */
+const SCHOOL_BREAK_TEMPLATE_KEYS: readonly string[] = [
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+];
+
+/** A row whose own lane has a kill switch, and it is off. */
+function laneSwitchedOff(templateKey: string): boolean {
+  return SCHOOL_BREAK_TEMPLATE_KEYS.includes(templateKey) && !schoolBreakEnabled();
+}
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);

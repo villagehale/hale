@@ -115,6 +115,7 @@ import {
   TurnDeferred,
   routeChannelMessage,
 } from './route';
+import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
 import { darkSideTurn } from './side-turn.fixture';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
@@ -5602,6 +5603,47 @@ describe('the weekday-care answer', () => {
     // Not claimed: the coach still answers, with the fact in its context.
     expect(coach.calls).toBe(1);
     expect(result.status).toBe('agent_replied');
+  });
+
+  it('VIL-685 · with SCHOOL_BREAK_ENABLED=false the dates reply is neither read nor filed', async () => {
+    vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'false');
+    const recorded: unknown[] = [];
+    let reads = 0;
+    const h = harness({
+      context: { body: 'dec 21 to jan 1' },
+      coach: fakeCoach(),
+      questions: questionsFrom(askStanding),
+      weekdayCareAnswerTarget: async () => ({
+        status: 'open' as const,
+        scope: 'break_dates' as const,
+        schoolYear: '2026-27',
+      }),
+      schoolBreakReplyReader: {
+        read: async () => {
+          reads += 1;
+          return {
+            status: 'read' as const,
+            firstDay: '2026-12-21',
+            lastDay: '2027-01-01',
+            name: 'winter break',
+            quote: 'dec 21 to jan 1',
+          };
+        },
+      },
+      recordSchoolBreak: async (_db, write) => {
+        recorded.push(write);
+      },
+    });
+
+    try {
+      await routeChannelMessage(h.deps, job());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(reads).toBe(0);
+    expect(recorded).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('school_break_off');
   });
 
   it('VIL-685 · files nothing when the reply gives no days, and says so in the log', async () => {

@@ -21,6 +21,7 @@ import {
   defaultNudgeRunDeps,
   f14EnabledFor,
   isNudgeSlot,
+  nudgeWorthlessAfter,
   runNudgeCron,
 } from './run.js';
 import type { SaturdayPlans } from './saturday-plans';
@@ -1288,6 +1289,31 @@ describe('runNudgeCron — the weekday-care ask', () => {
       const audits = h.writes.filter((w) => w.table === schema.auditLog).map((w) => w.payload);
       expect(JSON.stringify(audits)).not.toContain('weekday_care');
     });
+  });
+
+  it('VIL-685 · a break question stops being worth sending after the break begins', () => {
+    const nudge = {
+      kind: 'weekday_care' as const,
+      ask: {
+        prompt: 'verified_break' as const,
+        eventKey: 'winter-break-2026-12-21',
+        label: 'Winter Break',
+      },
+    };
+    expect(
+      nudgeWorthlessAfter(
+        nudge,
+        new Date('2026-11-13T15:00:00Z'),
+        'America/Toronto',
+      )?.toISOString(),
+    ).toBe('2026-12-22T05:00:00.000Z');
+    expect(
+      nudgeWorthlessAfter(
+        { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+        new Date('2026-11-13T15:00:00Z'),
+        'America/Toronto',
+      ),
+    ).toBeNull();
   });
 
   it('with no model, sends nothing for one school-age child', async () => {

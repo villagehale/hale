@@ -1,7 +1,8 @@
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
+import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
+import { WEEKDAY_BREAK_TEMPLATE_KEY, WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
@@ -14,7 +15,10 @@ import { NEXT_DAY_CHECKBACK_ENABLED_ENV } from '~/lib/channel/next-day-checkback
 import { defaultRecheckOpenAsk } from '~/lib/channel/next-day-checkback/recheck';
 import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  weekdayFinderDedupeKey,
+} from '~/lib/channel/weekday-care/key';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
 import { listDueWorkstreams } from '~/lib/memory/workstreams';
@@ -248,6 +252,45 @@ describe('runProactiveReview', () => {
       .from(schema.familyCheckInPrefs)
       .where(eq(schema.familyCheckInPrefs.familyId, familyId));
     expect(prefs?.lastAskedAt).toEqual(THURSDAY_EVENING);
+  });
+
+  it('VIL-685 · leaves a winter-break ask and a break question untouched while SCHOOL_BREAK_ENABLED=false', async () => {
+    const ask = {
+      kind: 'school_break_ask' as const,
+      category: 'nudge' as const,
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      what: 'Ask when winter break starts and ends.',
+      why: 'school_break_ask year=2026-27',
+      sourceUrl: null,
+      worthlessAfter: new Date('2026-12-15T17:00:00.000Z'),
+    };
+    const question = {
+      templateKey: WEEKDAY_BREAK_TEMPLATE_KEY,
+      what: 'Winter break starts Dec 21. Want me to look for camps?',
+      why: 'weekday_break',
+      worthlessAfter: new Date('2026-12-21T17:00:00.000Z'),
+    };
+    for (const cadence of ['', 'live']) {
+      vi.stubEnv('PROACTIVE_CADENCE', cadence);
+      vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'false');
+      const ids = [await enqueue(`school-break-ask:${cadence || 'off'}`, ask)];
+      if (cadence === 'live') ids.push(await enqueue('weekday-break:live', question));
+      const off = harness(sendAll);
+      await runProactiveReview(db.database, off.deps, THURSDAY_EVENING);
+      expect({
+        cadence,
+        snapshots: off.snapshots.length,
+        rows: await Promise.all(ids.map(async (id) => (await candidate(id))?.status)),
+      }).toEqual({ cadence, snapshots: 0, rows: ids.map(() => 'queued') });
+
+      vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
+      const on = harness(sendAll);
+      await runProactiveReview(db.database, on.deps, THURSDAY_EVENING);
+      expect({ cadence, offered: on.snapshots.flatMap((s) => s.candidates).length }).toEqual({
+        cadence,
+        offered: ids.length,
+      });
+    }
   });
 
   it('sends an evening check-in in shadow, and still shadows a nudge', async () => {

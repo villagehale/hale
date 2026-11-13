@@ -7,9 +7,9 @@ tools: [web_search]
 
 # Find the board's own school-year calendar
 
-You are given a web `host` and a `school_year`. The host is the domain a family's
-school mail comes from, so it belongs to their school board or school. Your search
-only returns pages on that host.
+You are given a web `host` and a `school_year`. The host is the official website of
+the school board or school a family's school mail comes from. Your search only
+returns pages on that host.
 
 Find the page where it publishes its calendar for that school year: the school
 year calendar page, or the calendar PDF it links to. You do not read any date
