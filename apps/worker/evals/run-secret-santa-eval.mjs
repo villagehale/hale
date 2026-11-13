@@ -372,7 +372,19 @@ async function main() {
           text: fixture.text,
           tapback: null,
           senderName: 'Priya',
-          plan: fixture.plan,
+          // The production read shows the open plans by key (newest first).
+          plans: fixture.plan
+            ? [
+                {
+                  key: 'p1',
+                  title: fixture.plan.title,
+                  startsAt: null,
+                  deadline: fixture.plan.deadline,
+                  yesNames: fixture.plan.yesNames,
+                  waitingNames: fixture.plan.waitingNames,
+                },
+              ]
+            : [],
           recent: [],
           // Production sends it wherever Secret Santa runs (secretSantaRunsInChat).
           secretSanta: true,
