@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reading's kind is private_question, which is the expected moment. It sets no other fields, and it does not copy the address or any other private detail into a field.",
+    "score": 5
+  }
+}

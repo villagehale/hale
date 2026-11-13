@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": false,
+    "line": "",
+    "options": [],
+    "why": "private_1to1 needs a fact from facts to answer the allergy question; facts only record the allergy, not the snack's ingredients, so I cannot say whether there are peanuts without guessing."
+  },
+  "latencyMs": 1189
+}

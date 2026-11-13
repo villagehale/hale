@@ -1,4 +1,5 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { placedInstant } from '../group-experience/reading';
 import type { GroupHoldReason } from '../group-audience';
 import { type GroupPollVoiceKind, groupPollLineInput } from './poll-facts';
 import type { GroupPollRecord, NativeCardOption } from './poll-store';
@@ -6,7 +7,6 @@ import {
   GROUP_POLL_MAX_OPTIONS,
   type GroupPollTally,
   isPollSettlePoint,
-  optionKeyAt,
   tallyGroupPoll,
 } from './poll-tally';
 import type { GroupPlanRsvpReading, GroupPollReadView } from './reading';
@@ -70,6 +70,7 @@ export interface GroupPollCardPort {
 export type GroupPollTurnResult = {
   handled: true;
   outcome:
+    | 'group_poll_lock_asked'
     | 'group_poll_spoken'
     | 'group_poll_recorded'
     | 'group_poll_unread'
@@ -78,15 +79,19 @@ export type GroupPollTurnResult = {
   notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' | GroupHoldReason };
   card?: 'sent' | { skipped: GroupPollCardSkip };
   pollTally?: GroupPollTally;
+  /** `group_poll_lock_asked`: the open poll's option key the lock named, when it named one. */
+  lockChoice?: string;
 };
 
 export interface GroupPollTurnDeps {
   store: GroupPlanRsvpStore;
   composer?: GroupPlanRsvpComposer;
+  /** One poll line, ledgered on the poll's household (named by id, never looked up). */
   send: (input: {
     chatId: string;
     text: string;
     kind: 'poll';
+    familyId: string;
   }) => Promise<{ providerMessageId: string }>;
   card?: GroupPollCardPort;
 }
@@ -109,22 +114,28 @@ function expectedOf(seated: readonly ExpectedPerson[]) {
   return seated.map((person) => ({ memberKey: person.memberKey, displayName: person.displayName }));
 }
 
-/** The model's choices, trimmed and de-duplicated as returned. At most six. */
-function choicesOf(reading: GroupPlanRsvpReading): string[] {
-  const out: string[] = [];
-  for (const raw of reading.pollOptions ?? []) {
+/**
+ * The model's choices, trimmed and de-duplicated as returned, each with the instant the reader
+ * placed it at (or null). At most six.
+ */
+function choicesOf(reading: GroupPlanRsvpReading): { text: string; startsAt: string | null }[] {
+  const out: { text: string; startsAt: string | null }[] = [];
+  for (const [index, raw] of (reading.pollOptions ?? []).entries()) {
     const text = raw.trim();
-    if (!text || out.includes(text)) continue;
-    out.push(text);
+    if (!text || out.some((choice) => choice.text === text)) continue;
+    out.push({ text, startsAt: placedInstant(reading.pollStarts?.[index]) });
     if (out.length === GROUP_POLL_MAX_OPTIONS) break;
   }
   return out;
 }
 
+
 async function speakPoll(
   deps: GroupPollTurnDeps,
   input: {
     chatId: string;
+    /** The poll's household: the line is ledgered on it. */
+    familyId: string;
     kind: GroupPollVoiceKind;
     language: ReplyLanguage;
     question: string | null;
@@ -156,7 +167,12 @@ async function speakPoll(
     return { status: 'unsent', notice: { skipped: spoken.reason } };
   }
   try {
-    await deps.send({ chatId: input.chatId, text: spoken.line, kind: 'poll' });
+    await deps.send({
+      chatId: input.chatId,
+      text: spoken.line,
+      kind: 'poll',
+      familyId: input.familyId,
+    });
   } catch (err) {
     const held = err instanceof GroupPlanRsvpHeld ? err.reason : null;
     console.error(
@@ -191,6 +207,13 @@ export async function takeGroupPollReading(
     language: ReplyLanguage;
     now: Date;
     livePoll: GroupPollRecord | null;
+    /**
+     * The open plan a new poll's timed choices place, by an id code resolved from the reader's
+     * key, and only when the asker hosts that plan. Null: the poll places no plan.
+     */
+    planId?: string | null;
+    /** `start_poll`: the household whose ledger carries a new poll, or null when none. */
+    pollFamilyId?: string | null;
     seated: readonly ExpectedPerson[];
     voter: GroupPollVoter;
   },
@@ -201,10 +224,23 @@ export async function takeGroupPollReading(
   const poll = context.livePoll;
   if (!poll) return { handled: false };
 
+  // The lock itself is the group moment's (group-experience lockTime): one lock, one line.
+  // This turn only names what the message meant, so the door hands it on unread.
+  if (reading.intent === 'close_poll') {
+    const named = poll.options.find((option) => option.key === reading.pollChoice)?.key;
+    return {
+      handled: true,
+      outcome: 'group_poll_lock_asked',
+      count: 'ignored',
+      ...(named ? { lockChoice: named } : {}),
+    };
+  }
+
   if (reading.intent === 'ask_poll') {
     const tally = await deps.store.loadPollTally(poll.id);
     const said = await speakPoll(deps, {
       chatId: context.chatId,
+      familyId: poll.familyId,
       kind: 'poll_tally',
       language: context.language,
       question: poll.question,
@@ -235,12 +271,15 @@ async function startPoll(
     chatId: string;
     language: ReplyLanguage;
     now: Date;
+    planId?: string | null;
+    pollFamilyId?: string | null;
     seated: readonly ExpectedPerson[];
+    voter: GroupPollVoter;
   },
   deps: GroupPollTurnDeps,
 ): Promise<GroupPollTurnResult | { handled: false }> {
-  const cover = await deps.store.coveringFamily(context.chatId);
-  if (!cover) return { handled: false };
+  const familyId = context.pollFamilyId ?? null;
+  if (!familyId) return { handled: false };
   const question = reading.pollQuestion?.trim() || null;
   const choices = choicesOf(reading);
   const expected = expectedOf(context.seated);
@@ -249,6 +288,7 @@ async function startPoll(
     const tally = tallyGroupPoll([], [], expected);
     const said = await speakPoll(deps, {
       chatId: context.chatId,
+      familyId,
       kind: 'poll_needs_options',
       language: context.language,
       question,
@@ -258,33 +298,39 @@ async function startPoll(
     return spokenOrUnsent(said, tally);
   }
 
-  const options = choices.map((text, index) => ({
-    key: optionKeyAt(index),
-    text,
-    providerOptionId: null,
-  }));
-  const opening = tallyGroupPoll(options, [], expected);
+  // The poll exists, with its household and its plan (by id), before anything is said: the
+  // line is ledgered on that household, never on whatever is open in the chat.
+  const planId = context.planId ?? null;
+  const poll = await deps.store.createPoll({
+    chatId: context.chatId,
+    familyId,
+    question,
+    options: choices.map((choice) => ({
+      text: choice.text,
+      providerOptionId: null,
+      ...(planId && choice.startsAt ? { places: { planId, startsAt: choice.startsAt } } : {}),
+    })),
+    expected,
+    origin: 'parent',
+    providerMessageId: null,
+    now: context.now,
+  });
+  const opening = await deps.store.loadPollTally(poll.id);
   const cardPlanned = deps.card?.enabled() ?? false;
   const said = await speakPoll(deps, {
     chatId: context.chatId,
+    familyId: poll.familyId,
     kind: 'poll_started',
     language: context.language,
     question,
     tally: opening,
     card: cardPlanned,
   });
-  if (said.status !== 'sent') return spokenOrUnsent(said, opening);
-
-  const poll = await deps.store.createPoll({
-    chatId: context.chatId,
-    familyId: cover.familyId,
-    question,
-    options: choices.map((text) => ({ text, providerOptionId: null })),
-    expected,
-    origin: 'parent',
-    providerMessageId: null,
-    now: context.now,
-  });
+  if (said.status !== 'sent') {
+    // Nobody heard it, so nobody can vote on it: it closes rather than catch a later pick.
+    await deps.store.closePoll(poll.id, null, context.now, 'unsent');
+    return spokenOrUnsent(said, opening);
+  }
 
   let card: GroupPollTurnResult['card'];
   if (!deps.card) {
@@ -295,7 +341,7 @@ async function startPoll(
   } else {
     const sent = await deps.card.send({
       chatId: context.chatId,
-      familyId: cover.familyId,
+      familyId,
       pollId: poll.id,
       options: poll.options.map((option) => ({ key: option.key, text: option.text })),
       now: context.now,
@@ -351,6 +397,7 @@ async function recordAndSettle(
   }
   const said = await speakPoll(deps, {
     chatId: input.chatId,
+    familyId: input.poll.familyId,
     kind: 'poll_tally',
     language: input.language,
     question: input.poll.question,

@@ -34,14 +34,24 @@ export interface GroupExperienceReadInput {
   live: GroupExperienceLiveView;
   urls: readonly string[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
+  /** The asking household's clock, so a proposed time can be placed. Null when Hale has none. */
+  clock: { now: string; timeZone: string } | null;
 }
 
 export interface GroupExperienceReading {
   kind: GroupExperienceKind;
   title: string | null;
+  /**
+   * `rsvp_open` / `time_open`: true when the message is about the plan already open
+   * (`live.rsvp`), false when it is about another event, null when the reader cannot tell.
+   * Only true ties a poll to the open plan.
+   */
+  samePlan: boolean | null;
   response: PlanRsvpResponse | null;
   optionKey: string | null;
   options: string[];
+  /** For each option, the instant it names on `clock` (ISO with offset), or null. */
+  starts: (string | null)[];
   confidence: 'high' | 'low';
 }
 
@@ -52,9 +62,11 @@ export interface GroupExperienceReader {
 const readingSchema = z.object({
   kind: z.enum(GROUP_EXPERIENCE_KINDS),
   title: z.string().nullable().optional(),
+  samePlan: z.boolean().nullable().optional(),
   response: z.enum(['yes', 'no', 'maybe']).nullable().optional(),
   optionKey: z.string().nullable().optional(),
   options: z.array(z.string()).optional(),
+  starts: z.array(z.string().nullable()).optional(),
   confidence: z.enum(['high', 'low']).optional(),
 });
 
@@ -64,9 +76,11 @@ export const GROUP_EXPERIENCE_READ_TOOL_SCHEMA = {
   properties: {
     kind: { type: 'string', enum: [...GROUP_EXPERIENCE_KINDS] },
     title: { type: ['string', 'null'] },
+    samePlan: { type: ['boolean', 'null'] },
     response: { type: ['string', 'null'], enum: ['yes', 'no', 'maybe', null] },
     optionKey: { type: ['string', 'null'] },
     options: { type: 'array', items: { type: 'string' } },
+    starts: { type: 'array', items: { type: ['string', 'null'] } },
     confidence: { type: 'string', enum: ['high', 'low'] },
   },
   required: ['kind'],
@@ -79,7 +93,17 @@ export function groupExperienceUserMessage(input: GroupExperienceReadInput): str
     live: input.live,
     urls: [...input.urls],
     recent: input.recent,
+    clock: input.clock,
   });
+}
+
+const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+
+/** An instant the model placed on a clock, or null. A label is never parsed as a date. */
+export function placedInstant(value: string | null | undefined): string | null {
+  const text = value?.trim();
+  if (!text || !ISO_WITH_OFFSET.test(text) || Number.isNaN(Date.parse(text))) return null;
+  return text;
 }
 
 export function parseGroupExperienceReading(value: unknown): GroupExperienceReading | null {
@@ -87,12 +111,24 @@ export function parseGroupExperienceReading(value: unknown): GroupExperienceRead
   if (!parsed.success) return null;
   const confidence = parsed.data.confidence ?? 'low';
   const kind = confidence === 'low' ? 'none' : parsed.data.kind;
+  const raw = parsed.data.options ?? [];
+  const rawStarts = parsed.data.starts ?? [];
+  // Starts pair with options by position; a list that does not line up places nothing.
+  const aligned = rawStarts.length === raw.length;
+  const kept = raw
+    .map((option, index) => ({
+      text: option.trim(),
+      start: aligned ? placedInstant(rawStarts[index]) : null,
+    }))
+    .filter((option) => option.text.length > 0);
   return {
     kind,
     title: parsed.data.title?.trim() || null,
+    samePlan: parsed.data.samePlan ?? null,
     response: parsed.data.response ?? null,
     optionKey: parsed.data.optionKey?.trim() || null,
-    options: (parsed.data.options ?? []).map((option) => option.trim()).filter(Boolean),
+    options: kept.map((option) => option.text),
+    starts: kept.map((option) => option.start),
     confidence,
   };
 }

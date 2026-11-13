@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Ada asks Hale to count the Saturday picnic already tracked as p1; intent ask_tally, addressed, correct plan key. Fits the situation."
+  }
+}

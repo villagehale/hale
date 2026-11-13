@@ -1,0 +1,14 @@
+{
+  "value": {
+    "send": true,
+    "line": "Hey Ben, still hoping to hear from you on soccer Saturday. Are you in or out?",
+    "why": "follow_up"
+  },
+  "latencyMs": 1241,
+  "usage": {
+    "input_tokens": 169,
+    "output_tokens": 54,
+    "cache_read_input_tokens": 1269,
+    "cache_creation_input_tokens": 0
+  }
+}

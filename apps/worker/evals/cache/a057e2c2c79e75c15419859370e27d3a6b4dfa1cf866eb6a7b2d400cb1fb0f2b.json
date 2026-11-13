@@ -1,0 +1,13 @@
+{
+  "value": {
+    "kind": "link_facts",
+    "title": null,
+    "samePlan": null,
+    "response": null,
+    "optionKey": null,
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 1270
+}

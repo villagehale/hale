@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Hi Priya, the zoo trip has moved, and it's now on your calendar for Sun, Nov 15 at 2:00 PM.",
+    "why": "calendar_moved"
+  },
+  "latencyMs": 1039
+}

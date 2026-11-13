@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "The camp link is $120 per session at https://park.example/camp. I can take sign-ups from here if you tell me which session you want.",
+    "options": [],
+    "why": "link_facts: public price and link only; the login, payment card, and who booked were left out."
+  },
+  "latencyMs": 1286
+}

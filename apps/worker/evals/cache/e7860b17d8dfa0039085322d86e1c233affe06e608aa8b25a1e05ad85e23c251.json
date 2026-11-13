@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correctly flags samePlan false: the zoo answer is about a different event. Intent rsvp with yes is a plausible read but should not be counted for the picnic. Low confidence is appropriate."
+  }
+}

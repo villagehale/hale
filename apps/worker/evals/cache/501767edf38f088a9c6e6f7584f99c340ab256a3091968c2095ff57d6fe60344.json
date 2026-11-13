@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks who is coming to the Saturday picnic, which is a request to tally RSVPs, so the expected moment is rsvp_open. The reading is kind rsvp_tally with title 'Saturday picnic', which matches the situation. No response, option, or start time is invented, and no private detail appears in any field. The reading is correct for the moment.",
+    "score": 5
+  }
+}

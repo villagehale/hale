@@ -97,7 +97,7 @@ export const VOICE_FIXTURES = [
       householdLabel: 'les Patel',
     },
     situation:
-      'One private line to Priya, in French, the way a friend texts. Ask whether to put this picnic on her household calendar. One real question. Address her, not the group. Do not invent a fact. Do not use a fixed phrase.',
+      'One private line to Priya, in French, the way a friend texts. Her household (the Patels) already said they are coming, which the line may say. Ask whether to put this picnic on her household calendar. One real question. Address her, not the group. Do not invent a fact. Do not use a fixed phrase.',
   },
   {
     id: 'zh-written',
@@ -127,5 +127,38 @@ export const VOICE_FIXTURES = [
     },
     situation:
       'No language is stored. The parent wrote in French. The line follows that message: one private question, in French, about putting this picnic on their calendar. It is not in English.',
+  },
+  {
+    id: 'moved-after-lock',
+    kind: 'calendar_moved',
+    language: 'en',
+    facts: {
+      title: 'zoo trip',
+      startsAt: 'Sun, Nov 15 at 2:00 PM',
+      location: null,
+      displayName: 'Priya',
+      householdLabel: null,
+    },
+    situation:
+      "The group picked a new time for the zoo trip. Hale had already put it on Priya's calendar and has moved that copy to Sunday at 2 PM. One private line saying it moved and when it is now. No question. Do not invent the old time. Do not use a fixed phrase.",
+  },
+  {
+    id: 'which-plan',
+    kind: 'calendar_which',
+    language: 'en',
+    parentWords: 'yes please',
+    facts: {
+      title: 'Saturday picnic',
+      startsAt: null,
+      location: null,
+      displayName: 'Priya',
+      householdLabel: null,
+      choices: [
+        { title: 'Saturday picnic', startsAt: 'Sat, Nov 14 at 10:00 AM' },
+        { title: 'zoo trip', startsAt: 'Sun, Nov 15 at 2:00 PM' },
+      ],
+    },
+    situation:
+      'Priya has two open calendar asks (the Saturday picnic and the zoo trip) and replied only "yes please". Nothing is on her calendar yet. One private question asking which one she means, naming both plans with their times. Exactly one question. Do not tell her what words to type. Do not use a fixed phrase.',
   },
 ];

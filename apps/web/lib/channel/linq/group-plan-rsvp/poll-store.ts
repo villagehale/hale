@@ -10,6 +10,7 @@ import {
 
 export type GroupPollOrigin = 'parent' | 'hale_offer';
 export type GroupPollVoteSource = 'text' | 'native';
+export type GroupPollCloseReason = 'locked' | 'unsent';
 
 export interface GroupPollRecord {
   id: string;
@@ -27,7 +28,11 @@ export interface CreatePollInput {
   familyId: string;
   question: string | null;
   /** Choice texts in order, or native card options when adopting a card. */
-  options: readonly { text: string; providerOptionId: string | null }[];
+  options: readonly {
+    text: string;
+    providerOptionId: string | null;
+    places?: { planId: string; startsAt: string } | null;
+  }[];
   expected: readonly GroupPollExpectedRow[];
   origin: GroupPollOrigin;
   providerMessageId: string | null;
@@ -58,6 +63,16 @@ export interface GroupPollStore {
   pollForCard(chatId: string, providerMessageId: string): Promise<GroupPollRecord | null>;
   /** Closes the chat's live poll, if any, then opens this one. */
   createPoll(input: CreatePollInput): Promise<GroupPollRecord>;
+  /**
+   * Closes this poll: a lock landed on it, or its opening line never reached the group.
+   * False when it was already closed.
+   */
+  closePoll(
+    pollId: string,
+    actorUserId: string | null,
+    now: Date,
+    reason?: GroupPollCloseReason,
+  ): Promise<boolean>;
   attachCard(
     pollId: string,
     card: { providerMessageId: string; options: readonly NativeCardOption[] },
@@ -82,12 +97,13 @@ function flag(value: boolean): 'true' | 'false' {
 }
 
 export function pollOptionsFrom(
-  options: readonly { text: string; providerOptionId: string | null }[],
+  options: CreatePollInput['options'],
 ): GroupPollOption[] {
   return options.map((option, index) => ({
     key: optionKeyAt(index),
     text: option.text,
     providerOptionId: option.providerOptionId,
+    ...(option.places ? { places: option.places } : {}),
   }));
 }
 
@@ -143,6 +159,24 @@ export function createPostgresGroupPollStore(database: Database): GroupPollStore
         )
         .limit(1);
       return row ? recordOf(row) : null;
+    },
+
+    async closePoll(pollId, actorUserId, now, reason = 'locked') {
+      const [closed] = await database
+        .update(schema.linqGroupPolls)
+        .set({ closedAt: now, updatedAt: now })
+        .where(and(eq(schema.linqGroupPolls.id, pollId), isNull(schema.linqGroupPolls.closedAt)))
+        .returning({ id: schema.linqGroupPolls.id, familyId: schema.linqGroupPolls.familyId });
+      if (!closed) return false;
+      await database.insert(schema.auditLog).values({
+        familyId: closed.familyId,
+        actor: actorUserId ?? 'system',
+        actionTaken: 'linq_group_poll_closed',
+        targetTable: 'linq_group_polls',
+        targetId: closed.id,
+        after: { reason },
+      });
+      return true;
     },
 
     async createPoll(input) {

@@ -74,7 +74,9 @@ function memoryStore(): GroupExperienceStore {
 function stubPlans() {
   return {
     coveringFamily: async () => ({ familyId: FAMILY, timeZone: 'America/Toronto' }),
-    loadLivePlan: async () => null,
+    listOpenPlans: async () => [],
+    loadOpenPlan: async () => null,
+    loadLivePoll: async () => null,
     createPlan: async (input: { chatId: string; familyId: string; title: string }) => ({
       id: 'plan-1',
       chatId: input.chatId,
@@ -116,9 +118,11 @@ function reading(partial: Partial<GroupExperienceReading>): GroupExperienceReadi
   return {
     kind: 'none',
     title: null,
+    samePlan: null,
     response: null,
     optionKey: null,
     options: [],
+    starts: [],
     confidence: 'high',
     ...partial,
   };
@@ -139,7 +143,9 @@ describe('takeGroupExperienceTurn', () => {
         senderName: 'Priya',
         senderFamilyId: FAMILY,
         text: 'who is in for Saturday',
+        messageId: 'm-1',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -165,7 +171,9 @@ describe('takeGroupExperienceTurn', () => {
         senderName: 'Priya',
         senderFamilyId: FAMILY,
         text: 'who is in for the picnic',
+        messageId: 'm-1',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -178,12 +186,14 @@ describe('takeGroupExperienceTurn', () => {
           enabled: () => false,
           send: async () => ({ status: 'skipped', reason: 'polls_off' }),
         },
-        send: async ({ text }) => {
+        sendLine: async ({ text }) => {
           sent.push(text);
           return { providerMessageId: 'out-1' };
         },
         privateSlices: async () => [] as FamilyPrivateSlice[],
+        deny: async () => [],
         households: async () => [FAMILY],
+        planHouseholds: { resolve: async () => ({ status: 'one', familyId: FAMILY }) },
       },
     );
     expect(result.handled).toBe(true);
@@ -206,7 +216,9 @@ describe('takeGroupExperienceTurn', () => {
         senderName: 'Priya',
         senderFamilyId: FAMILY,
         text: 'who is in',
+        messageId: 'm-1',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -215,11 +227,12 @@ describe('takeGroupExperienceTurn', () => {
         composer: fakeGroupExperienceComposer({ fail: true }),
         store: memoryStore(),
         plans: stubPlans(),
-        send: async ({ text }) => {
+        sendLine: async ({ text }) => {
           sent.push(text);
           return { providerMessageId: 'out-1' };
         },
         privateSlices: async () => [],
+        deny: async () => [],
         households: async () => [FAMILY],
       },
     );
@@ -243,7 +256,9 @@ describe('takeGroupExperienceTurn', () => {
         senderName: 'Priya',
         senderFamilyId: FAMILY,
         text: 'does the snack have peanuts? Mira is allergic',
+        messageId: 'm-1',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -254,7 +269,7 @@ describe('takeGroupExperienceTurn', () => {
         }),
         store: memoryStore(),
         plans: stubPlans(),
-        send: async ({ text }) => {
+        sendLine: async ({ text }) => {
           group.push(text);
           return { providerMessageId: 'g1' };
         },
@@ -272,6 +287,7 @@ describe('takeGroupExperienceTurn', () => {
             signups: [],
           },
         ],
+        deny: async () => ['Mira peanut allergy'],
         households: async () => [FAMILY],
       },
     );
@@ -280,7 +296,7 @@ describe('takeGroupExperienceTurn', () => {
     expect(oneToOne).toEqual([{ familyId: FAMILY, text: 'Noted on Mira.' }]);
   });
 
-  it('refuses a group line that repeats a private slice string', async () => {
+  it('refuses a group line that repeats a deny-list term', async () => {
     vi.stubEnv('GROUP_PRIVATE_QUESTION_ENABLED', 'true');
     const group: string[] = [];
     await takeGroupExperienceTurn(
@@ -292,7 +308,9 @@ describe('takeGroupExperienceTurn', () => {
         senderName: 'Priya',
         senderFamilyId: FAMILY,
         text: 'peanut allergy?',
+        messageId: 'm-1',
         language: 'en',
+        timeZone: 'America/Toronto',
         now: NOW,
       },
       {
@@ -301,21 +319,13 @@ describe('takeGroupExperienceTurn', () => {
         composer: fakeGroupExperienceComposer({ leak: 'About that peanut allergy.' }),
         store: memoryStore(),
         plans: stubPlans(),
-        send: async ({ text }) => {
+        sendLine: async ({ text }) => {
           group.push(text);
           return { providerMessageId: 'g1' };
         },
         sendOneToOne: async () => 'sent',
-        privateSlices: async () => [
-          {
-            familyId: FAMILY,
-            memory: ['peanut allergy'],
-            calendar: [],
-            email: [],
-            children: [],
-            signups: [],
-          },
-        ],
+        privateSlices: async () => [],
+        deny: async () => ['peanut allergy'],
         households: async () => [FAMILY],
       },
     );

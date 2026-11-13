@@ -55,6 +55,11 @@ export const linqGroupCarpools = pgTable(
     reminderGroupSentAt: timestamp('reminder_group_sent_at', { withTimezone: true }),
     reminderDriverSentAt: timestamp('reminder_driver_sent_at', { withTimezone: true }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    /**
+     * VIL-689 · decided once when the ride is made: `household` (a household group) or
+     * `shared` (a chat several families share). Null on rides made before it was recorded.
+     */
+    chatAudience: text('chat_audience').$type<'household' | 'shared'>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -62,6 +67,10 @@ export const linqGroupCarpools = pgTable(
     statusCheck: check(
       'linq_group_carpools_status_check',
       sql`${table.status} in ('open', 'assigned', 'cancelled')`,
+    ),
+    chatAudienceCheck: check(
+      'linq_group_carpools_chat_audience_check',
+      sql`${table.chatAudience} IS NULL OR ${table.chatAudience} in ('household', 'shared')`,
     ),
     reminderCheck: check(
       'linq_group_carpools_reminder_status_check',

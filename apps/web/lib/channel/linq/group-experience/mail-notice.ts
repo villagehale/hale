@@ -1,6 +1,7 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { SourceChange } from '~/lib/loop/reminders/change';
+import { inviteWhenLabel } from '~/lib/loop/templates/calendar-invite/sms';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { groupMailNoticeEnabled } from '../config';
 import { deliverLinqGroupNotice } from '../group';
@@ -23,6 +24,8 @@ export async function postMailNoticeToHouseholdGroup(
     familyId: string;
     eventId: string;
     change: SourceChange;
+    /** The household zone the change was read in; the model is told times on this clock. */
+    timeZone: string;
     now: Date;
     composer?: GroupExperienceComposer;
     send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
@@ -65,8 +68,8 @@ export async function postMailNoticeToHouseholdGroup(
       facts: {
         title: event.title,
         field: input.change.field,
-        previousStartsAt: input.change.previousStartsAt.toISOString(),
-        startsAt: event.startsAt.toISOString(),
+        previousWhen: inviteWhenLabel(input.change.previousStartsAt, input.timeZone),
+        when: inviteWhenLabel(event.startsAt, input.timeZone),
       },
     },
     input.composer ?? productionGroupExperienceComposer(),

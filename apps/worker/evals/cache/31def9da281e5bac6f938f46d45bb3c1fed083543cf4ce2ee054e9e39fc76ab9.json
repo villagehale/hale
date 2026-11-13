@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message picks Sunday, which is option b in the open time poll. Reading is time_vote with optionKey b, which is correct; no invented fields or private details.",
+    "score": 5
+  }
+}

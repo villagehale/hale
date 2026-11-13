@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Hi Priya, thanks! Which one should I put on your calendar: the Saturday picnic (Sat, Nov 14 at 10:00 AM) or the zoo trip (Sun, Nov 15 at 2:00 PM)?",
+    "why": "calendar_which"
+  },
+  "latencyMs": 2292
+}

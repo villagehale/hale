@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks who is coming to Saturday's picnic, and nothing is currently open in the chat (live.rsvp is null). The situation is a question about attendance for a plan with no open tally, which per the rubric means it should open an RSVP tally (kind 'rsvp_open' or similar), not 'none'. Reading kind 'none' is the wrong moment, so the score is 1.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks about another family's dentist appointment, which is a private question, and the reading correctly classifies it as private_question, matching the expected moment with no private details copied into fields.",
+    "score": 5
+  }
+}

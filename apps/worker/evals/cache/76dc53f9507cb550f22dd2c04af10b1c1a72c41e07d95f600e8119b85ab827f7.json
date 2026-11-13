@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Priya asks for the live status of the open Saturday poll, and the reading correctly classifies it as ask_poll with no invented fields."
+  }
+}

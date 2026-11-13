@@ -1,0 +1,28 @@
+{
+  "value": {
+    "intent": "edit",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": "yes",
+    "headcount": 3,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "planKey": "p1",
+    "replacesPlanKey": null,
+    "addressed": false,
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollStarts": [],
+    "pollChoice": null
+  },
+  "latencyMs": 8043,
+  "usage": {
+    "input_tokens": 488,
+    "output_tokens": 538,
+    "cache_read_input_tokens": 3412,
+    "cache_creation_input_tokens": 3411
+  }
+}

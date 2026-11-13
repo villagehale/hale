@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reading's kind is 'none', but the expected moment is 'private_question'. The message asks about another family's calendar entry (the Diaz kid's dentist appointment). Per the rules, reading a private question as 'none' is an automatic 1.",
+    "score": 1
+  }
+}

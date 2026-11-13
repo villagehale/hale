@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Thanks for asking about Mira's allergy. I don't have confirmed info on the snack ingredients yet, so please check the exact product with the organizer before the session.",
+    "options": [],
+    "why": "private_1to1: answer the allergy question from facts without guessing whether the snack contains peanuts."
+  },
+  "latencyMs": 2155
+}

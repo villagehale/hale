@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fails the watchFor requirement: it does not say Hale will text privately, and instead names the allergy and child ('peanut, allerg, Mira') in a group chat, which the brief forbids. It also reads as a terse note rather than a warm, plain reply, though it is not a form or bot-style voice.",
+    "score": 1
+  }
+}

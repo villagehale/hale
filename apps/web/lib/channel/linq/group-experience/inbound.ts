@@ -1,11 +1,19 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { groupExperienceTurnEnabled, groupPollsEnabled } from '../config';
-import { privateAsideOneToOne } from '../connect-link-1to1';
+import { type OneToOneSend, privateAsideOneToOne } from '../connect-link-1to1';
+import {
+  moveGroupPlanCalendarCopies,
+  settleGroupPlanCalendarAfterRsvp,
+} from '../group-plan-rsvp/inbound';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
+import type { PlanRef } from '../group-plan-rsvp/plan-identity';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
+import type { GroupPlanRsvpComposer } from '../group-plan-rsvp/voice';
 import { readFamilySliceForAudience } from '../multi-family';
 import { lookupLinqPollOption } from '../poll';
+import type { ListChatHandles } from '../roster';
 import { isGroupExperiencePollKind } from './kinds';
 import { postgresExperiencePollCard } from './poll-card';
 import type { GroupExperienceReader } from './reading';
@@ -21,9 +29,40 @@ export interface GroupExperienceInboundPorts {
   database: Database;
   now: Date;
   send?: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+  listChatHandles?: ListChatHandles;
   reader?: GroupExperienceReader;
   composer?: GroupExperienceComposer;
   sendOneToOne?: GroupExperienceTurnPorts['sendOneToOne'];
+  /** The 1:1 transport. Absent means production Linq (the door's own test seam). */
+  oneToOne?: OneToOneSend;
+  /** The VIL-503 calendar ask's writer. Absent means the production model. */
+  calendarComposer?: GroupPlanRsvpComposer;
+}
+
+function calendarSettle(ports: GroupExperienceInboundPorts, chatId: string) {
+  return (answer: Parameters<NonNullable<GroupExperienceTurnPorts['settleCalendar']>>[0]) =>
+    settleGroupPlanCalendarAfterRsvp(
+      {
+        database: ports.database,
+        now: ports.now,
+        oneToOne: ports.oneToOne,
+        composer: ports.calendarComposer,
+      },
+      { chatId, ...answer },
+    );
+}
+
+function calendarMove(ports: GroupExperienceInboundPorts, chatId: string) {
+  return (input: { planId: string; actorUserId: string | null }) =>
+    moveGroupPlanCalendarCopies(
+      {
+        database: ports.database,
+        now: ports.now,
+        oneToOne: ports.oneToOne,
+        composer: ports.calendarComposer,
+      },
+      { chatId, ...input },
+    );
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -39,13 +78,15 @@ async function senderNameOf(database: Database, userId: string | null): Promise<
 function productionOneToOne(
   database: Database,
   now: Date,
+  send: OneToOneSend | undefined,
 ): NonNullable<GroupExperienceTurnPorts['sendOneToOne']> {
-  const aside = privateAsideOneToOne(database, { now });
+  const aside = privateAsideOneToOne(database, { now, send });
   return async (input) => {
     const textOut = await aside({
       familyId: input.familyId,
       text: input.text,
       dedupeKey: input.dedupeKey,
+      askerUserId: input.askerUserId ?? null,
     });
     return textOut === 'sent' || textOut === 'suppressed' ? 'sent' : 'not_sent';
   };
@@ -60,10 +101,15 @@ export async function considerGroupExperience(
     senderFamilyId?: string | null;
     coveringFamilyId: string;
     text: string;
+    messageId: string;
+    decided?: 'time_lock';
+    lockChoice?: string;
+    planRef?: PlanRef;
   },
 ): Promise<GroupExperienceTurnOutcome> {
   if (!groupExperienceTurnEnabled()) return { handled: false };
   const senderUserId = input.senderUserId ?? null;
+  const askerFamilyId = input.senderFamilyId ?? input.coveringFamilyId;
   return takeGroupExperienceTurn(
     {
       chatId: input.chatId,
@@ -73,16 +119,25 @@ export async function considerGroupExperience(
       senderName: await senderNameOf(ports.database, senderUserId),
       senderFamilyId: input.senderFamilyId ?? null,
       text: input.text,
+      messageId: input.messageId,
       language: 'en',
+      timeZone: await knownHouseholdTimezone(ports.database, askerFamilyId),
       now: ports.now,
+      ...(input.decided ? { decided: input.decided } : {}),
+      ...(input.lockChoice ? { lockChoice: input.lockChoice } : {}),
+      ...(input.planRef ? { planRef: input.planRef } : {}),
     },
     {
       database: ports.database,
       reader: ports.reader,
       composer: ports.composer,
       send: ports.send,
+      ...(ports.listChatHandles ? { listChatHandles: ports.listChatHandles } : {}),
       pollCard: postgresExperiencePollCard(ports.database),
-      sendOneToOne: ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now),
+      settleCalendar: calendarSettle(ports, input.chatId),
+      moveCalendar: calendarMove(ports, input.chatId),
+      sendOneToOne:
+        ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now, ports.oneToOne),
       privateSlices: async (familyIds) => {
         const out = [];
         for (const familyId of familyIds) {
@@ -133,6 +188,10 @@ export async function considerGroupExperiencePollVote(
   if (option.pollKind === 'group_rsvp' && option.choiceValue && option.subjectKey) {
     const response = option.choiceValue;
     if (response !== 'yes' && response !== 'no' && response !== 'maybe') return { handled: false };
+    // The card names its plan by id; a closed plan takes no more answers.
+    if (!(await plans.loadOpenPlan(input.chatId, option.subjectKey, ports.now))) {
+      return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
+    }
     await plans.upsertRsvp({
       planId: option.subjectKey,
       memberKey,
@@ -146,6 +205,17 @@ export async function considerGroupExperiencePollVote(
       coversKeys: [],
       verbatim: option.text,
       now: ports.now,
+    });
+    await calendarSettle(
+      ports,
+      input.chatId,
+    )({
+      planId: option.subjectKey,
+      userId: senderUserId,
+      memberKey,
+      displayName: senderName || 'someone',
+      response,
+      parentWords: null,
     });
     return { handled: true, outcome: 'group_experience_recorded', count: 'intake' };
   }

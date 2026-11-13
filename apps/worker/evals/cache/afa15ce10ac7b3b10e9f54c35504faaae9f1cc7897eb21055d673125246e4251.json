@@ -1,0 +1,18 @@
+{
+  "value": {
+    "send": true,
+    "line": "Park time this weekend, which works better for everyone: Saturday at 10 or Sunday at 10?",
+    "options": [
+      "Saturday 10",
+      "Sunday 10"
+    ],
+    "why": "time_open"
+  },
+  "latencyMs": 1133,
+  "usage": {
+    "input_tokens": 86,
+    "output_tokens": 75,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

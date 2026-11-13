@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday picnic so far: Priya, Sam and Ana are in, Diego can't make it. Nobody's on maybe yet.",
+    "options": [],
+    "why": "rsvp_tally"
+  },
+  "latencyMs": 1101
+}

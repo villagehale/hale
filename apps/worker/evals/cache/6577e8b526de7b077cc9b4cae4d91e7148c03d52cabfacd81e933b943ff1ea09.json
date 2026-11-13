@@ -1,0 +1,12 @@
+{
+  "value": {
+    "kind": "rsvp_tally",
+    "title": "Saturday picnic",
+    "response": null,
+    "optionKey": null,
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 1999
+}

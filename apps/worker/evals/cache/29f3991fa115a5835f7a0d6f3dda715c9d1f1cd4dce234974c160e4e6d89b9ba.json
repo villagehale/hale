@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message uses only the public facts: the $120 price for two sessions and the Baos' registration for session 2, without naming the child or adding a link or invented details. It leaves out the URL, which the facts provide, so it is not fully complete. Its tone is plain and friendly, but it names a child and who registered, which the watchFor says to avoid, so it misses the moment's constraint.",
+    "score": 3
+  }
+}

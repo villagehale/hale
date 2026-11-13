@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent clearly asked to lock the poll on Saturday, and the expected moment is time_lock, but the reading returned kind 'none' instead of a lock action. Wrong moment, so it fails.",
+    "score": 1
+  }
+}

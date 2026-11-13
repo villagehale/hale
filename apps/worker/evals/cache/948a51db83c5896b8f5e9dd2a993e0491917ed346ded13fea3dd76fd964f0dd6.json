@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for another family's home address, which is a private detail. The expected moment is private_question, but the reading returned kind 'none' instead of routing it as a private_question. The reading fails to tag the moment as the expected private_question, so it does not meet the bar for a 5. Its handling is not a wrong invented answer, so it is not a 1.",
+    "score": 3
+  }
+}

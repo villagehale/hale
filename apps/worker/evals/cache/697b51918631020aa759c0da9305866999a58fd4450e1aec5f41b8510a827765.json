@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a family login, a private question, and the expected moment is private_question. The reading returned kind none, which does not name the private_question moment. Its meaning is correct (no event, no invented fields, no private detail copied), but the kind label is not one of the expected values, so it scores 1 per the rubric.",
+    "score": 1
+  }
+}

@@ -103,7 +103,23 @@ async function seed() {
     knownUserId: mayaId,
     status: 'known_parent',
   });
+  await textedHaleOneToOne(familyId, mayaId);
   return { familyId, mayaId };
+}
+
+/** This parent has texted Hale 1:1 before: the only person a driver 1:1 may go to. */
+async function textedHaleOneToOne(familyId: string, userId: string) {
+  await db.database.insert(schema.channelMessages).values({
+    familyId,
+    parentUserId: userId,
+    channel: 'imessage',
+    direction: 'in',
+    category: 'reply',
+    providerChatId: `dm-${userId}`,
+    status: 'delivered',
+    inGroup: false,
+    sentAt: new Date('2026-10-01T15:00:00.000Z'),
+  });
 }
 
 async function seatPriya(familyId: string) {
@@ -247,7 +263,10 @@ describe('reminder bugs', () => {
     expect((await run()).fired).toBe(1);
     expect((await run()).fired).toBe(0);
     expect(group.texts).toHaveLength(1);
-    const ledger = await db.database.select().from(schema.channelMessages);
+    const ledger = await db.database
+      .select()
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.direction, 'out'));
     expect(ledger).toHaveLength(1);
     expect(ledger[0]?.parentUserId).toBe(mayaId);
   });
@@ -905,6 +924,7 @@ describe('driver reminder zone', () => {
       .insert(schema.users)
       .values({ externalAuthId: 'imessage:driver', name: 'Dana Lee', timezone: driverZone })
       .returning({ id: schema.users.id });
+    await textedHaleOneToOne(familyId, driver?.id as string);
     const pickupAt = new Date(pickupIso);
     await db.database.insert(schema.linqGroupCarpools).values({
       chatId: CHAT,

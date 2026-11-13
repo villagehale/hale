@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks to open a time poll for the picnic, which is the expected moment time_open. The reading uses kind time_open, samePlan true matches the open Saturday picnic RSVP, and the options Saturday 10 and Saturday 11 match the proposed times. Starts map to Saturday 2026-11-14 at 10:00 and 11:00 in America/Toronto, consistent with the clock (Nov 12, 2026 is a Thursday, so the coming Saturday is Nov 14). No private details appear.",
+    "score": 5
+  }
+}

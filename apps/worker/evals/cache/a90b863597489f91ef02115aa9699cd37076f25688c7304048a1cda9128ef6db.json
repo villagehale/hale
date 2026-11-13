@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday picnic update: Priya, Sam and Ana are in, Diego can't make it, and there are no maybes yet.",
+    "options": [],
+    "why": "rsvp_tally: yes/no/maybe counts and names from facts, no ask, no question mark."
+  },
+  "latencyMs": 1215
+}

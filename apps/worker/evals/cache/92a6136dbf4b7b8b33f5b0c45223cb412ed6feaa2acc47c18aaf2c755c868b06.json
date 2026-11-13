@@ -1,0 +1,19 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday picnic: are you in?",
+    "options": [
+      "Coming",
+      "Not this time",
+      "Maybe"
+    ],
+    "why": "rsvp_open"
+  },
+  "latencyMs": 2272,
+  "usage": {
+    "input_tokens": 76,
+    "output_tokens": 58,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1771
+  }
+}

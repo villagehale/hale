@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is private_question, but the reading's kind is 'none'. A private question read as anything but private_question scores 1.",
+    "score": 1
+  }
+}

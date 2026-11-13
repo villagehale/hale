@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks who is coming to the Saturday picnic, which is a request to see RSVPs, so rsvp_open is the expected kind. The reading correctly opens an RSVP for the Saturday picnic. samePlan is null, but the live chat has no open plan, so that is acceptable. Response and options are correctly left empty, and no private detail is copied.",
+    "score": 4
+  }
+}

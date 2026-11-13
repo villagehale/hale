@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message uses only facts provided (price, two sessions, 4 spots left), stays plain and specific to the moment, asks nothing, and carries no login, payment, or bot-style phrasing. It omits the link, which is acceptable since the parent already posted it, but it is a bit flat and does not add any helpful framing for the group.",
+    "score": 4
+  }
+}

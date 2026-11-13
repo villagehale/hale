@@ -313,11 +313,11 @@
   },
   "group-experience-read.md": {
     "file": "group-experience-read.md",
-    "sha256": "73641ff51a4302d66ed707be8b1f910d41ec5c119a2bbfff71f1d1025e56e31d"
+    "sha256": "11e4d640dfb0e6b8a2af984d91601a38c07e2800794a322c0420b22f111cbc8d"
   },
   "group-experience-voice.md": {
     "file": "group-experience-voice.md",
-    "sha256": "fe8caaaf6895d8ff9afa467a0aa493009c59b402e306aca6a2ab62ae93a4054e"
+    "sha256": "50d9205ad278374445e6990cee4a022f2edc053274e471fa1c9aa0887cfbbcdc"
   },
   "group-mention-read.md": {
     "file": "group-mention-read.md",
@@ -349,7 +349,7 @@
   },
   "group-plan-rsvp-calendar-voice.md": {
     "file": "group-plan-rsvp-calendar-voice.md",
-    "sha256": "9212bdc688d722c6492b288ed25693ec7f9b7c7b8b0b54ddab51dd17bc413850"
+    "sha256": "1f6d315cbea4692b6ee01706d9efcffbace2564139e28e76364b8445248d5223"
   },
   "group-plan-rsvp-read-secret-santa.md": {
     "file": "group-plan-rsvp-read-secret-santa.md",
@@ -357,11 +357,11 @@
   },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",
-    "sha256": "86bdc136dc1d4f8adbf6b24f1018d8bd8a4b1b230d21bf7c82e120e36a2bfe92"
+    "sha256": "98c0aee832346d4a63bccc695e9737b48959bfb4fe9b31ccb1785f9852f0091b"
   },
   "group-plan-rsvp-voice.md": {
     "file": "group-plan-rsvp-voice.md",
-    "sha256": "77b780558002c9b69b55b49b4741568c792b82b038866643e5f5d0162a7a181b"
+    "sha256": "f234dc786e9ed17f10cdb8d88f0da0cd7d4f8989ea826c2ab605a13cc0791fca"
   },
   "group-poll-offer.md": {
     "file": "group-poll-offer.md",
@@ -373,7 +373,7 @@
   },
   "group-poll-voice.md": {
     "file": "group-poll-voice.md",
-    "sha256": "550287356dac32b81cfb0fb6c33b6a4c3c4c457f917d28bf78f7e97d07469b84"
+    "sha256": "093a8227cb8626c420d64eaf77695224085dc8d360b9162ff81f9d67c3c8a515"
   },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",

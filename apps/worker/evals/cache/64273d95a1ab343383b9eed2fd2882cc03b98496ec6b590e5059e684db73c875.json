@@ -1,0 +1,12 @@
+{
+  "value": {
+    "send": true,
+    "line": "Park day is on! Saturday at 10 or Sunday at 10, which works for your family?",
+    "options": [
+      "Saturday 10",
+      "Sunday 10"
+    ],
+    "why": "time_open"
+  },
+  "latencyMs": 984
+}

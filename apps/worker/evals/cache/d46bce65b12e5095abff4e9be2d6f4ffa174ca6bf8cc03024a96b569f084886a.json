@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Uses only the given facts (new time Sat Nov 14 4:00 PM, previously 3:00 PM), has no login or ask, and reads as a friendly heads-up specific to this change; it is short and plain.",
+    "score": 5
+  }
+}

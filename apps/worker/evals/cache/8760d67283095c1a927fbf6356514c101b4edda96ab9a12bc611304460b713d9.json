@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks to open an RSVP for a different plan (the zoo on Sunday), which is the expected kind rsvp_open. The title 'the zoo' correctly names the new event, and samePlan is false since the live plan is the Saturday picnic. No private details are copied and no invented times or answers appear.",
+    "score": 5
+  }
+}

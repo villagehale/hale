@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is correctly read as a private_question, which matches the expected moment. No fields are set and no private details are copied into any field.",
+    "score": 5
+  }
+}

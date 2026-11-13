@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The family is answering about a different outing (zoo on Sunday), not the open Saturday picnic RSVP. The reading correctly sets samePlan false and kind rsvp_vote, with response yes; that matches the meaning of an RSVP for a different event, though the reading's kind should arguably be a new opening or none, not an RSVP vote on the picnic. Since the vote is recorded as a yes against the picnic tally with samePlan false, the moment is mishandled.",
+    "score": 2
+  }
+}

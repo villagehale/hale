@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent clearly asked for a time poll between Saturday 10 and Sunday 10, and the expected moment is time_open. The reading returned kind none, so no poll was created, and it missed the required moment entirely.",
+    "score": 1
+  }
+}

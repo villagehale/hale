@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to lock the open time poll on Saturday, which is the time_lock moment expected. The reading returned kind none, so it does not match the expected moment and misses the intent entirely.",
+    "score": 1
+  }
+}

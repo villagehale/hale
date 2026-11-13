@@ -1,0 +1,28 @@
+{
+  "value": {
+    "intent": "start_tracking",
+    "planTitle": "zoo",
+    "startsAt": "2026-11-15T14:00:00-05:00",
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "planKey": "other",
+    "replacesPlanKey": null,
+    "addressed": true,
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollStarts": [],
+    "pollChoice": null
+  },
+  "latencyMs": 3770,
+  "usage": {
+    "input_tokens": 154,
+    "output_tokens": 381,
+    "cache_read_input_tokens": 3411,
+    "cache_creation_input_tokens": 0
+  }
+}

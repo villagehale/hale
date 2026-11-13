@@ -36,6 +36,9 @@ function rsvp(
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
+    planKey: 'p1',
+    replacesPlanKey: null,
+    addressed: false,
     ...extras,
   };
 }
@@ -93,11 +96,16 @@ async function startPicnic(world = worldWithPicnic()) {
         householdLabel: null,
         coversNames: [],
         confidence: 'high',
+        planKey: 'p1',
+        replacesPlanKey: null,
+        addressed: false,
       }),
       composer,
-      send: async ({ text }) => {
+      send: async ({ text, chatId, planId }) => {
         texts.push(text);
-        return { providerMessageId: `msg-${texts.length}` };
+        const providerMessageId = `msg-${texts.length}`;
+        if (planId) world.planLines.set(providerMessageId, { chatId, planId });
+        return { providerMessageId };
       },
       enabled: () => true,
     },
@@ -138,7 +146,9 @@ describe('takeGroupPlanRsvpTurn', () => {
     expect(start.tally?.waitingNames).toEqual(['Priya', 'Sam', 'Maya']);
     expect(texts).toHaveLength(1);
     const line = composer.calls[0]?.input;
-    if (line?.skill !== 'group-plan-rsvp-voice') throw new Error('expected a plan line');
+    if (line?.skill !== 'group-plan-rsvp-voice' || line.kind === 'which_plan') {
+      throw new Error('expected a plan line');
+    }
     expect(line.kind).toBe('tracking_started');
     expect(line.facts.title).toBe('Saturday picnic');
     expect(line.facts.waitingNames).toEqual(['Priya', 'Sam', 'Maya']);
@@ -203,6 +213,9 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: null,
+          replacesPlanKey: null,
+          addressed: false,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async ({ text }) => {
@@ -264,6 +277,9 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         }),
       },
     );
@@ -274,7 +290,7 @@ describe('takeGroupPlanRsvpTurn', () => {
     expect(edited.tally?.yesCount).toBe(1);
   });
 
-  it('reads a thumbs-up from someone who is not a Hale customer', async () => {
+  it('reads a thumbs-up on the plan line from someone who is not a Hale customer', async () => {
     const { store } = await startPicnic();
     const outcome = await takeGroupPlanRsvpTurn(
       {
@@ -283,6 +299,7 @@ describe('takeGroupPlanRsvpTurn', () => {
         senderName: 'Sam',
         text: '',
         tapback: 'like',
+        tapbackMessageId: 'msg-1',
         language: 'en',
         now: NOW,
       },
@@ -302,6 +319,32 @@ describe('takeGroupPlanRsvpTurn', () => {
     expect(outcome.handled).toBe(true);
     if (!outcome.handled) return;
     expect(outcome.tally?.yesCount).toBe(1);
+  });
+
+  it('a thumbs-up on a message that is no plan line binds to no plan, even with one open', async () => {
+    const { store } = await startPicnic();
+    const outcome = await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: SAM,
+        senderName: 'Sam',
+        text: '',
+        tapback: 'like',
+        tapbackMessageId: 'a-joke-someone-posted',
+        language: 'en',
+        now: NOW,
+      },
+      {
+        store,
+        reader: { read: async () => rsvp('yes') },
+        composer: fakeGroupPlanRsvpComposer(),
+        send: async () => ({ providerMessageId: 'x' }),
+        enabled: () => true,
+      },
+    );
+    expect(outcome).toMatchObject({ handled: true, outcome: 'group_plan_other_event' });
+    const [plan] = await store.listOpenPlans(CHAT, NOW);
+    expect((await store.loadTally(plan?.id ?? '')).tally.yesCount).toBe(0);
   });
 
   it('does not take the inbound turn for banter — other group jobs can still run', async () => {
@@ -329,6 +372,9 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: null,
+          replacesPlanKey: null,
+          addressed: false,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async () => ({ providerMessageId: 'x' }),
@@ -363,6 +409,9 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         }),
         composer: fakeGroupPlanRsvpComposer({ fail: true }),
         send: async () => ({ providerMessageId: 'x' }),
@@ -398,6 +447,9 @@ describe('takeGroupPlanRsvpTurn', () => {
       householdLabel: null,
       coversNames: [],
       confidence: 'high',
+      planKey: 'p1',
+      replacesPlanKey: null,
+      addressed: false,
     });
     const held = await takeGroupPlanRsvpTurn(ask, {
       store,
@@ -521,6 +573,9 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async ({ text }) => {
@@ -563,6 +618,9 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async () => ({ providerMessageId: 'x' }),
@@ -601,6 +659,9 @@ describe('takeGroupPlanRsvpTurn', () => {
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         }),
         composer: fakeGroupPlanRsvpComposer(),
         send: async () => ({ providerMessageId: 'x' }),

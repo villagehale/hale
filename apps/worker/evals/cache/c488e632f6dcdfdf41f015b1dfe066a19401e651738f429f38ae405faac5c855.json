@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks to open a time poll for the picnic with Saturday 10 or 11 as options, which is the expected time_open moment. The reading returned kind none, so it is the wrong moment.",
+    "score": 1
+  }
+}

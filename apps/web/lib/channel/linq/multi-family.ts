@@ -32,7 +32,15 @@ import {
   latestCommonTimeProposal,
   placePickedTime,
 } from './common-time-plan';
-import { linqGroupCommonTimeEnabled, linqMultiFamilyGroupsEnabled } from './config';
+import { considerSharedCarpoolTurn } from './carpool';
+import { denyTermsFromSlices } from './group-experience/deny-terms';
+import type { CarpoolReader } from './carpool-reading';
+import type { CarpoolComposer } from './carpool-voice';
+import {
+  linqGroupCarpoolEnabled,
+  linqGroupCommonTimeEnabled,
+  linqMultiFamilyGroupsEnabled,
+} from './config';
 import { linqChatAuditKey } from './family-audit';
 import {
   FREE_BUSY_CONSENT,
@@ -40,7 +48,7 @@ import {
   latestFreeBusyRows,
   withdrawFreeBusyConsent,
 } from './free-busy-consent';
-import type { GroupFamilyDirectory } from './group-plan-invites';
+import { type GroupFamilyDirectory, groupPlanCopyKey } from './group-plan-invites';
 import {
   type PrivateAsideModel,
   type PrivateAsideOutcome,
@@ -145,6 +153,21 @@ export interface MultiFamilyTurnPorts {
   commonTimeWriter?: (request: SpokenLineRequest) => Promise<string | null>;
   /** VIL-459: a picked time becomes a plan with per-family invites. Production: inbound. */
   commonTimePlan?: CommonTimePlanPorts;
+  /**
+   * VIL-399: a group moment (an RSVP or time poll, a posted link, a private question) read
+   * before Hale's plain answer. Null leaves the turn to the answer below. `privateMove`
+   * means the asker was already texted 1:1 about their own question, so no aside follows.
+   */
+  experience?: () => Promise<{
+    result: Extract<MultiFamilyTurnResult, { handled: true }>;
+    privateMove: boolean;
+    /** Households the moment already texted 1:1: the aside never texts them again. */
+    textedFamilies: readonly string[];
+  } | null>;
+  /** VIL-689: reads a ride in this shared chat. Production: sharedCarpoolReader(). */
+  carpoolReader?: CarpoolReader;
+  /** VIL-689: writes the shared chat's ask-for-a-driver line. Production: the carpool voice. */
+  carpoolVoice?: CarpoolComposer;
   /** VIL-687: reads a shared-list turn. Production: sharedListTurnModel(). */
   listTurn?: SharedListTurnModel;
   /** VIL-686: reads a Secret Santa turn. Production: secretSantaTurnModel(). */
@@ -901,6 +924,8 @@ export async function readFamilySliceForAudience(
 async function readFamilyPrivateSlice(
   database: Database,
   familyId: string,
+  /** Calendar copies of a plan this chat itself made: the group's own facts, not private. */
+  exceptCopyKeys: ReadonlySet<string> = new Set(),
 ): Promise<FamilyPrivateSlice> {
   const [kids, facts, mail, bookings, events, zoneRows] = await Promise.all([
     database
@@ -940,6 +965,7 @@ async function readFamilyPrivateSlice(
         startsAt: schema.familyEvents.startsAt,
         childId: schema.familyEvents.childId,
         sensitive: schema.familyEvents.sensitive,
+        groupPlanCopyKey: schema.familyEvents.groupPlanCopyKey,
       })
       .from(schema.familyEvents)
       .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent())),
@@ -966,6 +992,7 @@ async function readFamilyPrivateSlice(
     // one parent's own Google mirror is excluded by the household-row predicate.
     calendar: events
       .filter((row) => row.familyId === familyId)
+      .filter((row) => !row.groupPlanCopyKey || !exceptCopyKeys.has(row.groupPlanCopyKey))
       .filter(
         (row) =>
           !isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, kids, new Date()),
@@ -981,7 +1008,7 @@ async function readFamilyPrivateSlice(
  * (present or not), and the family whose group this chat is. A union, so losing one source
  * (a forgotten presence row, an ended seat) never narrows it.
  */
-async function denyListForChat(database: Database, chatId: string): Promise<string[]> {
+export async function denyListForChat(database: Database, chatId: string): Promise<string[]> {
   const [present, joins, hosts] = await Promise.all([
     presentHouseholds(database, chatId, { includeStopped: true, includeLeft: true }),
     liveJoins(database, chatId),
@@ -995,14 +1022,20 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
     ...joins.map((join) => join.familyId),
     ...hosts.map((host) => host.id),
   ]);
-  const tokens: string[] = [];
+  // A plan this chat made is the group's own: a household's calendar copy of it (VIL-503)
+  // carries the plan title the group already said, so it is no private term here.
+  const chatPlans = await database
+    .select({ id: schema.linqGroupPlans.id })
+    .from(schema.linqGroupPlans)
+    .where(eq(schema.linqGroupPlans.chatId, chatId));
+  const ownCopies = new Set(
+    chatPlans.flatMap((plan) => [...households].map((id) => groupPlanCopyKey(plan.id, id))),
+  );
+  const slices: FamilyPrivateSlice[] = [];
   for (const familyId of households) {
-    const slice = await readFamilyPrivateSlice(database, familyId);
-    tokens.push(...slice.children, ...slice.memory, ...slice.email, ...slice.signups);
-    // Calendar titles block leaks too; the clock suffix is not a deny token.
-    tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));
+    slices.push(await readFamilyPrivateSlice(database, familyId, ownCopies));
   }
-  return tokens.filter((token) => token.trim().length >= 3);
+  return denyTermsFromSlices(slices);
 }
 
 type PersonRow = typeof schema.linqSharedGroupPeople.$inferSelect;
@@ -1143,7 +1176,7 @@ export type MultiFamilyTurnResult =
       handled: true;
       outcome: string;
       count: 'intake' | 'ignored' | 'duplicate';
-      notice?: string;
+      notice?: string | { skipped: string };
       /** VIL-457: what the private aside did for this message, when it ran. */
       aside?: string;
     };
@@ -1169,7 +1202,13 @@ function asideReachedFamily(out: PrivateAsideOutcome): boolean {
 async function privateAsideFor(
   database: Database,
   deps: { model: PrivateAsideModel; sendOneToOne: SendOneToOne },
-  input: { chatId: string; inboundId: string; text: string; senderFamilyId: string },
+  input: {
+    chatId: string;
+    inboundId: string;
+    text: string;
+    senderFamilyId: string;
+    exceptFamilies: readonly string[];
+  },
 ): Promise<AsideTurn> {
   try {
     const out = await runPrivateAside(database, deps, {
@@ -1924,13 +1963,16 @@ export async function takeMultiFamilyTurn(
 
   // VIL-496: past the two-family gate, a message that touches a family's own facts gets
   // its 1:1 aside whatever the group read was (question, chatter, unclear).
-  const runAside = async (): Promise<AsideTurn | undefined> =>
+  const runAside = async (
+    exceptFamilies: readonly string[] = [],
+  ): Promise<AsideTurn | undefined> =>
     input.privateAside && channel && inbound !== 'guest'
       ? await privateAsideFor(database, input.privateAside, {
           chatId: input.chatId,
           inboundId: inbound,
           text: input.text,
           senderFamilyId: channel.familyId,
+          exceptFamilies,
         })
       : undefined;
   const logFallthrough = (why: string, aside: AsideTurn | undefined) => {
@@ -2019,6 +2061,46 @@ export async function takeMultiFamilyTurn(
         ...(aside ? { aside: aside.outcome } : {}),
       };
     }
+  }
+
+  // VIL-689: a ride in a shared chat. Only a Hale family member here changes one; a line
+  // goes to the group only when Hale asks who drives.
+  if (channel && linqGroupCarpoolEnabled()) {
+    const ride = await considerSharedCarpoolTurn(database, {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderUserId: channel.userId,
+      senderFamilyId: channel.familyId,
+      senderName: me.firstName,
+      peopleNames: live.flatMap((row) => (row.firstName ? [row.firstName] : [])),
+      text: input.text,
+      messageId: input.providerMessageId,
+      now: input.now,
+      deny: () => denyListForChat(database, input.chatId),
+      sendGroup: (line) =>
+        deliverShared(database, {
+          familyId: host.familyId,
+          parentUserId: host.parentUserId,
+          chatId: input.chatId,
+          text: line.text,
+          templateKey: line.templateKey,
+          dedupeKey: line.dedupeKey,
+          now: input.now,
+          send: wired.send,
+        }),
+      reader: wired.carpoolReader,
+      voice: wired.carpoolVoice,
+    });
+    if (ride.handled && ride.outcome === 'carpool_asked') {
+      return { handled: true, outcome: ride.outcome, count: 'intake', notice: ride.notice };
+    }
+  }
+
+  const moment = wired.experience ? await wired.experience() : null;
+  if (moment) {
+    if (moment.privateMove) return moment.result;
+    const aside = await runAside(moment.textedFamilies);
+    return aside ? { ...moment.result, aside: aside.outcome } : moment.result;
   }
 
   if (intent === 'question' || intent === 'find_time' || intent === 'yes' || intent === 'no') {

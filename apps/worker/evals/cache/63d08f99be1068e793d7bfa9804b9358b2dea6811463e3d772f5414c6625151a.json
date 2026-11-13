@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday 10 it is, locked in for everyone.",
+    "options": [],
+    "why": "time_lock"
+  },
+  "latencyMs": 1684,
+  "usage": {
+    "input_tokens": 69,
+    "output_tokens": 45,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

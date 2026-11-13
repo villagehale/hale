@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Got it, I'll text you privately on that one.",
+    "options": [],
+    "why": "private_hold: someone asked something private; acknowledge without naming it, no ask."
+  },
+  "latencyMs": 1041
+}

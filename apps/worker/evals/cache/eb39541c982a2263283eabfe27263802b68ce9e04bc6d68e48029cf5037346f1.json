@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Want me to take the sign-up for the camp from here? Just say the word and I'll handle it.",
+    "options": [],
+    "why": "registration_1to1"
+  },
+  "latencyMs": 972
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a family login, which is a private question. The reading's kind is private_question, which is the expected moment, and no private detail is copied into any field. All fields are correctly null or empty.",
+    "score": 5
+  }
+}

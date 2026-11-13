@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to lock the open time poll on Saturday, and the reading is time_lock, which is expected. The reading sets no optionKey, though the parent clearly chose the Saturday 10 option (key a), so the vote target is missing, but the kind itself is correct and no private detail is copied, so this is a strong but not perfect match.",
+    "score": 4
+  }
+}

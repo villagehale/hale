@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "Heads up: swim has moved from 3:00 PM to 4:00 PM on Sat, Nov 14.",
+    "options": [],
+    "why": "mail_notice"
+  },
+  "latencyMs": 1305,
+  "usage": {
+    "input_tokens": 118,
+    "output_tokens": 65,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

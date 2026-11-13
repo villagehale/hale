@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message clearly signals an RSVP acceptance for four people, and the expected moment is rsvp_vote. The reading returned kind 'none' instead of an rsvp_vote with response 'yes', so the wrong moment was produced and the correct answer was missed.",
+    "score": 1
+  }
+}

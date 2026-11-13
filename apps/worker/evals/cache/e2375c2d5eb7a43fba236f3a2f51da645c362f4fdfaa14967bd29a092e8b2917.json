@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a maybe RSVP (depends on Leo's nap). The expected moment is an rsvp_vote, but the reading returned kind none with no response, so the correct moment was missed entirely.",
+    "score": 1
+  }
+}

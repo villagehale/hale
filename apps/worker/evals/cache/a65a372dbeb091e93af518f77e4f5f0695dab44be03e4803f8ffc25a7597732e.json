@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a public camp link with price and spots; the reading kind link_facts is a plausible moment for a shared link. However, the situation describes a link post, and the reading kind is link_facts, which should be the correct kind for this message. The fields are null/empty as expected for link_facts.",
+    "score": 4
+  }
+}

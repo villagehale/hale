@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": false,
+    "line": "",
+    "options": [],
+    "why": "publicText contains a family login and a payment card number; the group line must not carry credentials or payment details, and I will not write around them. Posting only the public link facts (price) would require code to supply them as separate, verified facts."
+  },
+  "latencyMs": 1826
+}

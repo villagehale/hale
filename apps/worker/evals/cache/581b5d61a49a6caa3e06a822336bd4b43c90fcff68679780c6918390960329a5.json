@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Ada asks about a different event, the zoo Sunday 2pm, so samePlan false and intent start_tracking for a new plan is the right reading. Sunday 2pm matches 2026-11-15 14:00."
+  }
+}

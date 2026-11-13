@@ -18,6 +18,7 @@ const runWelcomeCardRedriveMock = vi.fn();
 const runDepartureNoticeRedriveMock = vi.fn();
 const runAutonomyNoticeRedriveMock = vi.fn();
 const runGroupPlanReportRedriveMock = vi.fn();
+const runGroupPlanMovedNoticeRedriveMock = vi.fn();
 const sweepDutyAsksMock = vi.fn();
 const runNextDayCheckbackSweepMock = vi.fn();
 const runProactiveReviewMock = vi.fn();
@@ -76,6 +77,9 @@ vi.mock('~/lib/channel/autonomy/dispatch', () => ({
 vi.mock('~/lib/channel/group-plan/redrive', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/group-plan/redrive')>()),
   runGroupPlanReportRedrive: (...a: unknown[]) => runGroupPlanReportRedriveMock(...a),
+}));
+vi.mock('~/lib/channel/linq/group-plan-rsvp/moved-redrive', () => ({
+  runGroupPlanMovedNoticeRedrive: (...a: unknown[]) => runGroupPlanMovedNoticeRedriveMock(...a),
 }));
 // Duty asks have their own flag and return before a read when it is off. Mock
 // the module anyway: the real graph is heavy enough to blow the gate test's
@@ -141,6 +145,9 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runDepartureNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
     runAutonomyNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
     runGroupPlanReportRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
+    runGroupPlanMovedNoticeRedriveMock
+      .mockReset()
+      .mockResolvedValue({ open: 0, due: 0, sent: 0, skipped: 0, dark: false });
     runProactiveReviewMock.mockReset().mockResolvedValue({
       mode: 'off',
       families: 0,
@@ -238,6 +245,10 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
         {},
         expect.objectContaining({ sender: expect.anything() }),
       );
+      expect(runGroupPlanMovedNoticeRedriveMock).toHaveBeenCalledTimes(1);
+      expect(runGroupPlanMovedNoticeRedriveMock).toHaveBeenCalledWith(
+        expect.objectContaining({ database: {}, now: expect.any(Date) }),
+      );
       expect(sweepDutyAsksMock).toHaveBeenCalledTimes(1);
       expect(sweepDutyAsksMock).toHaveBeenCalledWith({});
       expect(runNextDayCheckbackSweepMock).toHaveBeenCalledTimes(1);
@@ -248,6 +259,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     } else {
       expect(runWelcomeCardRedriveMock).not.toHaveBeenCalled();
       expect(runDepartureNoticeRedriveMock).not.toHaveBeenCalled();
+      expect(runGroupPlanMovedNoticeRedriveMock).not.toHaveBeenCalled();
       expect(runAutonomyNoticeRedriveMock).not.toHaveBeenCalled();
       expect(runGroupPlanReportRedriveMock).not.toHaveBeenCalled();
       expect(sweepDutyAsksMock).not.toHaveBeenCalled();

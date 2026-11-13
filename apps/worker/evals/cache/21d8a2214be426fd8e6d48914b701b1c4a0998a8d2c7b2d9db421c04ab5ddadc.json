@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Priya, tu veux que j'ajoute le pique-nique de samedi 31 octobre à 11 h au parc sur ton calendrier ?",
+    "why": "calendar_ask"
+  },
+  "latencyMs": 1191
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Meaning and voice are on target: one short, friendly ask about Saturday's picnic that uses only the given fact. However, it breaks the explicit watchFor rule against reply-word instructions by telling people to reply with specific words (\"coming, not coming, or maybe\"), which the spec treats as a fail condition.",
+    "score": 2
+  }
+}

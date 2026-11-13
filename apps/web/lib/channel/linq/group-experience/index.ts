@@ -4,7 +4,7 @@ export {
   isGroupExperiencePollKind,
 } from './kinds';
 export { httpsUrlsIn } from './urls';
-export { groupLineLeaksPrivate, privateDenyTokens } from './privacy';
+export { groupLineLeaksPrivate } from './privacy';
 export {
   considerGroupExperience,
   considerGroupExperiencePollVote,
@@ -15,4 +15,3 @@ export { takeGroupExperienceTurn } from './turn';
 export type { GroupExperienceTurnOutcome } from './turn';
 export { parseGroupExperienceReading, groupExperienceUserMessage } from './reading';
 export { composeGroupExperienceLine, lineUsable } from './voice';
-export { yesFamilyIdsForPlan, placeYesFamilyCalendars } from './calendar';

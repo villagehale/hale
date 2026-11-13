@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a yes about a different event (zoo on Sunday), not the open Saturday picnic RSVP. The reading kind 'none' is wrong because this is a response that names a different plan, so the correct reading is an RSVP vote with samePlan false, not 'none'.",
+    "score": 1
+  }
+}

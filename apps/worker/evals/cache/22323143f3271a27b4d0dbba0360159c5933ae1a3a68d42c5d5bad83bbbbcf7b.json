@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a child's birthday, which is private data, and the reading correctly classifies it as private_question with no fields filled in, matching the expected moment.",
+    "score": 5
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "intent": "close_poll",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "samePlan": null,
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollChoice": null
+  },
+  "latencyMs": 1768
+}

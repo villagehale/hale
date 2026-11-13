@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for another family's home address, which is a private question, so `private_question` is the right kind. No field carries the address or any other private detail, and no title, answer, option or time is invented.",
+    "score": 5
+  }
+}

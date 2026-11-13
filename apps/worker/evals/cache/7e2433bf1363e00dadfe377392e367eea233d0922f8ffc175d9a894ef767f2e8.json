@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The situation is a lock request on an open time poll, but the reading is kind 'none' instead of a lock moment, so it is the wrong moment and scores 1.",
+    "score": 1
+  }
+}

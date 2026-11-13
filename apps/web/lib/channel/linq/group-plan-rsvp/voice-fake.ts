@@ -20,6 +20,9 @@ function factsLine(input: GroupLineInput): string {
     const counts = facts.options.map((option) => `${option.text}=${option.votes}`).join(' ');
     return `${input.kind} ${facts.question ?? ''} ${counts} ${facts.waitingNames.join(' ')}`;
   }
+  if (input.kind === 'which_plan') {
+    return `${input.kind} ${input.facts.choices.map((choice) => choice.title).join(' ')}`;
+  }
   const facts = input.facts;
   const count = `${facts.yesCount} ${facts.toGo}`;
   const names = [...facts.yesNames, ...facts.waitingNames].join(' ');
