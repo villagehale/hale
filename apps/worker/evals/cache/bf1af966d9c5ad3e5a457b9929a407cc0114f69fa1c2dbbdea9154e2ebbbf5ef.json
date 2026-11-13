@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Priya already owns the cupcakes, but the reply tells Jordan 'Cupcakes are yours', which is exactly the doubled-claim error. It never mentions Priya or that the cupcakes are taken, and it does not point Jordan to the still-open fruit tray. The tone and language are fine, but the facts are wrong.",
+    "score": 1
+  }
+}
