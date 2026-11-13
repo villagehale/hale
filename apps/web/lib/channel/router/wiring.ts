@@ -38,7 +38,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
-import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { deliveredAsk } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
@@ -83,7 +83,7 @@ import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
-import { introAskDedupeKey } from '~/lib/village/intros/run';
+import { introAskDedupeKey, introCardDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createInboundBurst } from './burst';
@@ -971,8 +971,8 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
       introOptInOpen: async (database, { familyId, parentUserId }) => {
         // ASKED AND UNANSWERED, read from two different places because they are two
-        // different facts: the ask is an outbound ledger row (so a card that was composed
-        // and never sent is not a question), and the answer is a consent row of EITHER
+        // different facts: the ask is a DELIVERED outbound ledger row (so a card that was
+        // composed, queued or failed is not a question), and the answer is a consent row of EITHER
         // polarity (a decline is an answer, and re-asking a family that said no would be
         // the worst version of this feature).
         //
@@ -980,11 +980,11 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // question is asked once per household, but only the parent it was TEXTED to has it
         // open — otherwise a co-parent who never saw it could answer it, and Hale would
         // write a consent row in their name for a question it never put to them.
-        const [askedParentUserId, answered] = await Promise.all([
-          introAskRecipient(database, familyId),
+        const [ask, answered] = await Promise.all([
+          deliveredAsk(database, introAskDedupeKey(familyId)),
           discoverabilityAsked(database, parentUserId),
         ]);
-        return askedParentUserId === parentUserId && !answered;
+        return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.sentAt } : null;
       },
       introProposal: async (database, familyId, now) => {
         // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
@@ -992,7 +992,13 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // card that never existed), and offering one of those to the resolver would invite
         // it to resolve a question that is already closed.
         const proposal = await intros.answerableProposal(database, familyId, now);
-        return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+        if (proposal?.standing !== 'unanswered') return null;
+        // Open, and dated, only once the card reached this side. The proposal's own
+        // per-side stamp is written when the provider accepts the send, and a receipt
+        // can still say it never arrived.
+        const side = proposal.familyAId === familyId ? 'a' : 'b';
+        const card = await deliveredAsk(database, introCardDedupeKey(proposal.id, side));
+        return card && { id: proposal.id, askedAt: card.sentAt };
       },
       planOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
@@ -1086,20 +1092,4 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
     },
     options,
   );
-}
-
-/** Who the one discoverability ask actually went to, or null if it never went. The
- * dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
-async function introAskRecipient(database: Database, familyId: string): Promise<string | null> {
-  const [row] = await database
-    .select({ parentUserId: schema.channelMessages.parentUserId })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.dedupeKey, introAskDedupeKey(familyId)),
-        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
-      ),
-    )
-    .limit(1);
-  return row?.parentUserId ?? null;
 }

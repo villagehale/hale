@@ -20,7 +20,7 @@ import { runAuthorizedSignup } from '../run';
 import {
   type SendStamp,
   askStamp,
-  loadLastAskedOfferId,
+  loadLastAsked,
   loadSignupIdentity,
   recordSignupOffer,
 } from '../store';
@@ -153,7 +153,8 @@ async function replySent(result: { stamp?: SendStamp }): Promise<void> {
 
 /** The ask whose text reached the parent last, as the walk reads it. */
 async function lastAsked(f: { familyId: string; parentUserId: string }) {
-  return loadLastAskedOfferId(db.database, f);
+  const last = await loadLastAsked(db.database, f);
+  return last.status === 'asked' ? last.offerId : null;
 }
 
 let phones = 0;

@@ -195,7 +195,13 @@ import {
   holdingLineNotArmed,
   holdingLineRead,
 } from './holding-line';
-import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import {
+  type Asked,
+  type OpenQuestion,
+  type OpenQuestionKind,
+  type OpenQuestionReader,
+  latestAsked,
+} from './open-questions';
 import {
   REACTED_ALONE,
   type ReactionPlan,
@@ -203,7 +209,12 @@ import {
   reactionsLitFor,
 } from './reaction-plan';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
-import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
+import {
+  type ReplyConfidence,
+  type ReplyReading,
+  type ReplyResolver,
+  warrantsClarifying,
+} from './resolve';
 import {
   SIDE_TURN_LAPSED,
   type SideTurnPorts,
@@ -455,6 +466,16 @@ export interface DeterministicHandler {
    * handler that starts owning a kind says so in its own definition.
    */
   readonly resolves?: ReadonlySet<OpenQuestionKind>;
+  /**
+   * For a handler whose asks are not on the open-question list (the sign-up lane): Hale's
+   * last text about any of this parent's asks, as one {@link Asked} (null `askedAt`: one
+   * may have gone at a time not known). Empty when no text about one is known to have
+   * reached them. The router ranks it with the open questions by the one newest-ask rule
+   * (VIL-302, `latestAsked`): when it is the newest, nothing is narrowed and the answer
+   * reaches this handler unplaced. The handler takes a bare answer only by the same rule.
+   * Reads only, like {@link detects}.
+   */
+  offListAsks?(database: Database, ctx: HandlerDetectContext): Promise<readonly Asked[]>;
   handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict>;
   /**
    * Would {@link handle} take this text? Its own matcher, run with no claim and no side
@@ -1223,6 +1244,7 @@ async function routeChannelMessageInner(
       await appendMessage(conversationId, 'user', text.body, deps.database, {
         childId: null,
         topic: null,
+        authorUserId: job.parent_user_id,
         ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
       });
     }
@@ -2246,18 +2268,26 @@ async function resolveNaturalReply(
   // every inbound text.
   if (questions.length === 0) return { status: 'carry_on', questions };
 
-  // Calendar offers are read by the calendar model, including when the reply is not
-  // English. A draft the reviewer has not cleared does not count as a competing YES
-  // (VIL-513): it used to force the general resolver, which returned not_answerable
-  // and the coach drafted the same add again.
-  const calendarQuestions = questionsForCalendarReader(questions);
-  const read = calendarQuestions
-    ? await deps.calendarOffers.readParent({
-        text: turn.body,
-        questions: calendarQuestions,
-        now: turn.now,
-      })
-    : await deps.replyResolver.read({ text: turn.body, questions });
+  // VIL-302 · the words are read against everything open FIRST, so a reply that names an
+  // older ask ("no thanks to the intro") is placed on it. Only when that read cannot tell
+  // which ask a reply answers (`ambiguous`) are the words read again against the newest
+  // ask: a bare "yes" after a search offer is the search. Narrowing first is unsafe: shown
+  // only the newest ask, the real model put a decline of an older intro on the newest
+  // offer (the `vil-302-declines-*` eval fixtures). If the newest ask is itself two
+  // offers, the second read is still `ambiguous`, and Hale asks which. An ask ranked off
+  // this list (the sign-up lane's) that Hale texted last means nothing is narrowed and the
+  // answer reaches that lane unplaced. A narrowed read that cannot place the reply for
+  // another reason says nothing the whole read did not, so the whole read stands.
+  const whole = await readOpenQuestions(deps, turn, questions);
+  const latest =
+    whole.status === 'unresolved' && whole.reason === 'ambiguous'
+      ? latestAsked(questions, await offListAsks(deps, turn))
+      : null;
+  const narrowed = latest ? await readOpenQuestions(deps, turn, latest) : null;
+  const read =
+    narrowed && (narrowed.status === 'resolved' || warrantsClarifying(narrowed.reason))
+      ? narrowed
+      : whole;
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
   const reading = approvalForCalendarYes(questions, read);
@@ -2360,6 +2390,39 @@ async function resolveNaturalReply(
       handler: owner.name,
     },
   };
+}
+
+/** Hale's last text about each lane's asks that are off the open-question list
+ * ({@link DeterministicHandler.offListAsks}). */
+async function offListAsks(deps: ChannelRouterDeps, turn: HandlerContext): Promise<Asked[]> {
+  const asks: Asked[] = [];
+  for (const handler of deps.handlers) {
+    if (handler.offListAsks) asks.push(...(await handler.offListAsks(deps.database, turn)));
+  }
+  return asks;
+}
+
+/**
+ * One model read of the parent's words against these questions.
+ *
+ * Calendar offers are read by the calendar model, including when the reply is not
+ * English. A draft the reviewer has not cleared does not count as a competing YES
+ * (VIL-513): it used to force the general resolver, which returned not_answerable
+ * and the coach drafted the same add again.
+ */
+async function readOpenQuestions(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  questions: readonly OpenQuestion[],
+): Promise<ReplyReading> {
+  const calendarQuestions = questionsForCalendarReader(questions);
+  return calendarQuestions
+    ? deps.calendarOffers.readParent({
+        text: turn.body,
+        questions: calendarQuestions,
+        now: turn.now,
+      })
+    : deps.replyResolver.read({ text: turn.body, questions });
 }
 
 /**
