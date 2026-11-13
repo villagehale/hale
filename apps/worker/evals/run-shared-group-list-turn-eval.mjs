@@ -69,6 +69,13 @@ async function seed(dbm, database, fixture) {
       .returning({ id: schema.families.id });
     families.set(label, row.id);
   }
+  for (const p of fixture.people) {
+    for (const name of p.haleKids ?? []) {
+      await database
+        .insert(schema.children)
+        .values({ familyId: families.get(p.family), name, dateOfBirth: '2020-03-01' });
+    }
+  }
   const people = [];
   for (const [index, p] of fixture.people.entries()) {
     const [row] = await database
@@ -262,7 +269,7 @@ async function main() {
           text: fixture.text,
           language: null,
           speaker: people[fixture.speaker],
-          people,
+          ...(await lists.sharedListAudience(testDb.database, people)),
         };
         const read = await lists.readSharedListTurn(testDb.database, context, model);
         const result = await lists.applySharedListTurn(testDb.database, context, read, {

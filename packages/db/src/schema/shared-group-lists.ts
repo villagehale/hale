@@ -11,7 +11,8 @@ import { linqSharedGroupPeople } from './linq-multi-family.js';
  *
  * `owner_person_id` null means the item is still open. An item someone added belongs to
  * them: when their presence row is forgotten (they left, Hale left, or their family was
- * erased) the item goes with it. An owner who is forgotten only frees the item.
+ * erased) the item goes with it, unless someone staying has claimed it, and then it passes
+ * to that person. An owner who is forgotten only frees the item.
  *
  * Hidden gifts: `hidden_for_kid` (the child the gift is for, as said in the chat),
  * `hidden_from_person_ids` (the people the model named as that child's family) and

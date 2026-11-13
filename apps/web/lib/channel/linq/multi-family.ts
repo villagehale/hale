@@ -10,6 +10,7 @@ import {
   applySharedListTurn,
   forgetSharedListPeople,
   readSharedListTurn,
+  sharedListAudience,
   sharedListTurnModel,
 } from '~/lib/channel/lists/shared-group-lists';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
@@ -1620,7 +1621,7 @@ export async function takeMultiFamilyTurn(
           text: input.text,
           language: wired.language ?? null,
           speaker: me,
-          people: live,
+          ...(await sharedListAudience(database, live)),
         }
       : null;
   const listModel = listContext ? (wired.listTurn ?? sharedListTurnModel()) : null;

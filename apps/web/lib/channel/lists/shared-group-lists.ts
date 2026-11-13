@@ -1,7 +1,18 @@
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
-import { type SQL, and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  type SQL,
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notInArray,
+  sql,
+} from 'drizzle-orm';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
@@ -51,27 +62,64 @@ export type SharedListPerson = Pick<
 type ItemRow = schema.SharedGroupListItem;
 type Hiding = Pick<ItemRow, 'hiddenForKid' | 'hiddenFromPersonIds' | 'hiddenFromFamilyIds'>;
 
-/** First word, folded: "Mia Chen" and "mia" are one child for hiding. */
+/** First word, folded without accents: "Zoé Chen", " zoe" and "ZOE" are one child for hiding. */
 function kidKey(name: string | null): string | null {
-  const folded = name ? foldListText(name) : '';
+  const folded = name ? foldListText(name.normalize('NFKD').replace(/\p{M}/gu, '')) : '';
   return folded ? (folded.split(' ')[0] ?? null) : null;
+}
+
+/** Who reads a list: the people Hale has placed in the chat, and what their Hale records hold. */
+export interface SharedListAudience {
+  people: readonly SharedListPerson[];
+  /**
+   * The children's names in each present Hale family's own record, by family id. Read only
+   * to hide gifts, never sent to the model: a parent who never said whose parent she is is
+   * still her child's family.
+   */
+  haleKids: ReadonlyMap<string, readonly string[]>;
+}
+
+export async function sharedListAudience(
+  database: Database,
+  people: readonly SharedListPerson[],
+): Promise<SharedListAudience> {
+  const familyIds = [
+    ...new Set(people.flatMap((person) => (person.familyId ? [person.familyId] : []))),
+  ];
+  const rows =
+    familyIds.length === 0
+      ? []
+      : await database
+          .select({ familyId: schema.children.familyId, name: schema.children.name })
+          .from(schema.children)
+          .where(inArray(schema.children.familyId, familyIds));
+  const haleKids = new Map<string, string[]>();
+  for (const row of rows) {
+    const names = haleKids.get(row.familyId);
+    if (names) names.push(row.name);
+    else haleKids.set(row.familyId, [row.name]);
+  }
+  return { people, haleKids };
 }
 
 /**
  * True when anyone in `audience` is the hidden child's family: a person the model named,
- * someone in one of their Hale families, or someone who said in the chat they are that
- * child's parent.
+ * someone in one of their Hale families, someone whose Hale family has a child of that
+ * name, or someone who said in the chat they are that child's parent.
  */
-export function hiddenFromAudience(item: Hiding, audience: readonly SharedListPerson[]): boolean {
+export function hiddenFromAudience(item: Hiding, audience: SharedListAudience): boolean {
   const kid = kidKey(item.hiddenForKid);
   const people = new Set(item.hiddenFromPersonIds);
   const families = new Set(item.hiddenFromFamilyIds);
   if (!kid && people.size === 0 && families.size === 0) return false;
-  return audience.some(
+  const isKid = (name: string | null) => kid !== null && kidKey(name) === kid;
+  return audience.people.some(
     (person) =>
       people.has(person.id) ||
-      (person.familyId !== null && families.has(person.familyId)) ||
-      (kid !== null && kidKey(person.inferredKidName) === kid),
+      isKid(person.inferredKidName) ||
+      (person.familyId !== null &&
+        (families.has(person.familyId) ||
+          (audience.haleKids.get(person.familyId)?.some(isKid) ?? false))),
   );
 }
 
@@ -95,7 +143,7 @@ export interface SharedListItemView {
 export async function readSharedListForAudience(
   database: Database,
   chatId: string,
-  audience: readonly SharedListPerson[],
+  audience: SharedListAudience,
 ): Promise<{ items: SharedListItemView[]; omitted: number }> {
   const rows = await database
     .select()
@@ -310,14 +358,13 @@ export function sharedListTurnModel(): SharedListTurnModel | null {
 // ---------------------------------------------------------------------------------------
 // One turn.
 
-export interface SharedListTurnContext {
+/** `people` is everyone Hale has placed in this chat: they all read the group line. */
+export interface SharedListTurnContext extends SharedListAudience {
   chatId: string;
   text: string;
   language: string | null;
   /** The person who sent this message. */
   speaker: SharedListPerson;
-  /** Everyone Hale has placed in this chat: they all read the group line. */
-  people: readonly SharedListPerson[];
 }
 
 interface Snapshot {
@@ -333,11 +380,7 @@ export type SharedListRead =
   | { kind: 'list'; snapshot: Snapshot; decision: SharedListDecision };
 
 async function snapshotFor(database: Database, context: SharedListTurnContext): Promise<Snapshot> {
-  const { items, omitted } = await readSharedListForAudience(
-    database,
-    context.chatId,
-    context.people,
-  );
+  const { items, omitted } = await readSharedListForAudience(database, context.chatId, context);
   const personRef = new Map(context.people.map((person, index) => [person.id, `p${index + 1}`]));
   const itemRefs = new Map(items.map((item, index) => [`i${index + 1}`, item]));
   return {
@@ -535,7 +578,7 @@ async function applyOnce(
     }
     const row = await existing(listKey, textKey);
     if (!row) throw new Error('shared list: item insert returned no row');
-    note(expected, hiddenFromAudience(row, context.people) ? 'held' : 'already_on', row.id);
+    note(expected, hiddenFromAudience(row, context) ? 'held' : 'already_on', row.id);
   }
 
   for (const entry of decision.claim) {
@@ -586,7 +629,7 @@ async function applyOnce(
       note(expected, 'held', null);
       continue;
     }
-    if (hiddenFromAudience(row, context.people)) {
+    if (hiddenFromAudience(row, context)) {
       note(expected, 'held', row.id);
       continue;
     }
@@ -691,7 +734,7 @@ export async function applySharedListTurn(
           .from(schema.sharedGroupListItems)
           .where(inArray(schema.sharedGroupListItems.id, [...touched]))
           .orderBy(asc(schema.sharedGroupListItems.addedAt));
-  if (rows.some((row) => hiddenFromAudience(row, context.people))) {
+  if (rows.some((row) => hiddenFromAudience(row, context))) {
     return { handled: true, line: null, lineWhy: 'withheld', counts };
   }
   const said = sharedListTurnUserMessage(current.snapshot.input);
@@ -704,8 +747,10 @@ export async function applySharedListTurn(
 
 /**
  * When people's presence rows are forgotten (they left, Hale left, or their family was
- * erased), the items they added go and the items they held reopen. A stopped person's
- * row is kept as a tombstone, so the cascade alone would not reach their items.
+ * erased), the open items they added and their own claims go, an item they added that
+ * someone staying has claimed passes to that person, and the items they held reopen. A
+ * stopped person's row is kept as a tombstone, so the cascade alone would not reach their
+ * items; an item passed on first is out of the cascade's reach.
  */
 export async function forgetSharedListPeople(
   database: Database,
@@ -713,9 +758,20 @@ export async function forgetSharedListPeople(
 ): Promise<void> {
   if (personIds.length === 0) return;
   const items = schema.sharedGroupListItems;
-  await database.delete(items).where(inArray(items.addedByPersonId, [...personIds]));
+  const ids = [...personIds];
+  await database
+    .update(items)
+    .set({ addedByPersonId: sql`${items.ownerPersonId}` })
+    .where(
+      and(
+        inArray(items.addedByPersonId, ids),
+        isNotNull(items.ownerPersonId),
+        notInArray(items.ownerPersonId, ids),
+      ),
+    );
+  await database.delete(items).where(inArray(items.addedByPersonId, ids));
   await database
     .update(items)
     .set({ ownerPersonId: null, claimedAt: null })
-    .where(inArray(items.ownerPersonId, [...personIds]));
+    .where(inArray(items.ownerPersonId, ids));
 }
