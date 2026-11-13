@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Jordan tried to claim cupcakes, but facts.after shows Priya already owns them. The reply says 'Cupcakes are yours, thank you!', which tells Jordan the item is theirs. That is exactly the doubled-claim error the watchFor note warns about, and it misleads the whole group about who is bringing cupcakes. It never mentions Priya or offers the open fruit tray. Tone and language are fine, but the fact error is disqualifying.",
+    "score": 1
+  }
+}
