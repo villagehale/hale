@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "An RSVP is open for the Saturday picnic, and the message is a tentative yes-or-no answer about that same plan, so rsvp_vote with response maybe and samePlan true is the right moment and fields; no private detail (the nap is only a conditional, not copied as a private fact) appears in any field.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A request to charge a card is a private question involving payment details, so the right kind is private_question. The reading classed it as none, which is the wrong moment, so the score is 1.",
+    "score": 1
+  }
+}

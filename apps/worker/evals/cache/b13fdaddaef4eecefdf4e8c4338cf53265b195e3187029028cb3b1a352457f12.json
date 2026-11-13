@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "An RSVP for the Saturday picnic is open and the message is a tentative answer to it ('maybe, depends on Leo's nap'), so the moment is an RSVP vote with response 'maybe' about the open plan. The reading returned kind 'none', which is the wrong moment, so the score is 1.",
+    "score": 1
+  }
+}

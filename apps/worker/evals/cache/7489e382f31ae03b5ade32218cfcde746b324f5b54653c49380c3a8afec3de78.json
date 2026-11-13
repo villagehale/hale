@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The situation is a parent asking for the current picture of an open RSVP (the Saturday picnic tally). That is a tally-check moment, but the reading returned kind 'none', so it misses the moment entirely and should score 1.",
+    "score": 1
+  }
+}

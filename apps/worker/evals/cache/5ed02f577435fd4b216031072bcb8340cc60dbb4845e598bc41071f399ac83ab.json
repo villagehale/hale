@@ -1,0 +1,26 @@
+{
+  "value": {
+    "intent": "start_poll",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "samePlan": null,
+    "pollQuestion": "Saturday — park or the pool?",
+    "pollOptions": [
+      "park",
+      "the pool"
+    ],
+    "pollStarts": [
+      null,
+      null
+    ],
+    "pollChoice": null
+  },
+  "latencyMs": 3558
+}

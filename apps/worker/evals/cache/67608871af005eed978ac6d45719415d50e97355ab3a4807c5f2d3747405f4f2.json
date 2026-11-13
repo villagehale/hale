@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A time poll is open and the family is choosing Sunday, which is a vote for option b. The reading returned kind none, which misses the moment; it should be a time vote with optionKey b.",
+    "score": 1
+  }
+}

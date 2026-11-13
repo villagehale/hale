@@ -366,10 +366,16 @@ async function main() {
       fixture.samePlan === undefined ||
       !PLAN_BINDING_INTENTS.includes(value.intent) ||
       value.samePlan === fixture.samePlan;
+    // A plan's start is placed on the household clock; a missed day is a wrong calendar.
+    const startOk =
+      fixture.startsAt === undefined ||
+      (value.startsAt !== null &&
+        Date.parse(value.startsAt) === Date.parse(fixture.startsAt));
     const ok =
       verdict.score >= JUDGE_MIN &&
       fixture.accept.includes(value.intent) &&
-      planOk;
+      planOk &&
+      startOk;
     if (!ok) allPass = false;
     console.info(
       `${ok ? "PASS" : "FAIL"}  read:${fixture.id}  intent=${value.intent} samePlan=${value.samePlan} judge:${verdict.score}`,

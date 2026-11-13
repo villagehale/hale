@@ -205,7 +205,6 @@ async function main() {
       message: fixture.input.text,
       live: fixture.input.live,
       clock: fixture.input.clock,
-      expected: fixture.accept,
       reading: parsed,
     });
     const failures = [...misses];

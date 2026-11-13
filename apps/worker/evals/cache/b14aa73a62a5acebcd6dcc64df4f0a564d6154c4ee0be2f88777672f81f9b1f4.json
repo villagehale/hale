@@ -1,0 +1,12 @@
+{
+  "value": {
+    "send": true,
+    "line": "Hey all, which time works best for the park: Saturday 10 or Sunday 10? Pick one below.",
+    "options": [
+      "Saturday 10",
+      "Sunday 10"
+    ],
+    "why": "time_open"
+  },
+  "latencyMs": 1286
+}

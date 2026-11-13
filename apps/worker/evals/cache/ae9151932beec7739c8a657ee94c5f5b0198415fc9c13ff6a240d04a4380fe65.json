@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks for a time poll for the zoo, a different event from the open picnic RSVP, so kind time_open, title 'the zoo', samePlan false, and options with correct starts for Saturday 10 and Sunday 2 on the Toronto clock are all right.",
+    "score": 5
+  }
+}

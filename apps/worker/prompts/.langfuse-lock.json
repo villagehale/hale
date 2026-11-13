@@ -172,7 +172,7 @@
   "judges/group-experience-read": {
     "name": "judges/group-experience-read",
     "version": null,
-    "sha256": "544a91b0baf018906616dc30f373883e42a3758e9cbcee6d3b454f8db32dc387"
+    "sha256": "ea817e670c1177f46bc67e087a86d18a71624a29fe55d2bf59bb48298445e634"
   },
   "judges/group-experience-voice": {
     "name": "judges/group-experience-voice",
@@ -207,7 +207,7 @@
   "judges/group-plan-rsvp-read": {
     "name": "judges/group-plan-rsvp-read",
     "version": 2,
-    "sha256": "75cff91f7e4e420274969f57459bd8f6a54076547e76bb6e2e20acea6187ebba"
+    "sha256": "24759df1bd6b77612e6d9bd8abd766daa2cb2495d5583072756a1cde7571ae4b"
   },
   "judges/group-plan-rsvp-voice": {
     "name": "judges/group-plan-rsvp-voice",
@@ -217,7 +217,7 @@
   "judges/group-poll-read": {
     "name": "judges/group-poll-read",
     "version": null,
-    "sha256": "499f28d9b6ce051a07b5126db5281c3654edcbb7ca3e1b4a8588c4ebd5b427cb"
+    "sha256": "19c2989839778b05615850c93a2fd8c250972b69d50d6c7d6e3efd4fdc4cac69"
   },
   "judges/group-poll-voice": {
     "name": "judges/group-poll-voice",

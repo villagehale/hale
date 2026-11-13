@@ -1,0 +1,13 @@
+{
+  "value": {
+    "kind": "rsvp_open",
+    "title": "the Saturday picnic",
+    "samePlan": null,
+    "response": null,
+    "optionKey": null,
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 2876
+}

@@ -13,6 +13,8 @@ const LIVE_SATURDAY = {
   ],
 };
 
+const CLOCK = { now: '2026-11-12T11:00:00-05:00', timeZone: 'America/Toronto' };
+
 const LIVE_TIMES = {
   question: 'zoo when?',
   options: [
@@ -131,6 +133,7 @@ export const GROUP_POLL_READ_FIXTURES = [
       polls: { live: LIVE_TIMES },
     },
     accept: ['close_poll'],
+    pollChoice: 'o2',
   },
   {
     id: 'bare-lock',
@@ -145,6 +148,24 @@ export const GROUP_POLL_READ_FIXTURES = [
       polls: { live: LIVE_TIMES },
     },
     accept: ['close_poll'],
+    pollChoice: null,
+  },
+  {
+    id: 'start-plan-time',
+    situation:
+      "A picnic is being counted. A parent asks the group to vote on that picnic's time: Saturday at 10 or Sunday at 2. Today is Thursday, November 12.",
+    input: {
+      text: 'Hale can we vote on the picnic time, Saturday 10 or Sunday 2?',
+      tapback: null,
+      senderName: 'Ada',
+      plan: { title: 'picnic', deadline: null, yesNames: ['Bao'], waitingNames: ['Ada'] },
+      recent: [],
+      polls: { live: null },
+      clock: CLOCK,
+    },
+    accept: ['start_poll'],
+    samePlan: true,
+    pollStarts: ['2026-11-14T10:00:00-05:00', '2026-11-15T14:00:00-05:00'],
   },
 ];
 

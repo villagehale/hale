@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a payment request involving card details, which is a private question. The reading classifies it as private_question, every other field is null or empty, and no private detail such as the card digits is copied into any field.",
+    "score": 5
+  }
+}

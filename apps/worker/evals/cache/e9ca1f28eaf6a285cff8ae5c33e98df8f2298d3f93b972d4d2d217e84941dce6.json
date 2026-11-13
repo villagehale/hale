@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A public camp link with price and sessions is not a private question, and the reading kind 'none' is wrong only if this should open something. The situation is a shared link with details, which Hale should treat as an opening or sharing moment rather than ignore; reading 'none' does not match the expected moment, so this is scored low.",
+    "score": 2
+  }
+}

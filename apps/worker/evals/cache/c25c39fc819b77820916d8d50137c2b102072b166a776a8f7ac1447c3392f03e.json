@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Carries exactly one question asking to pick between the two given times, uses only facts provided (Saturday 10, Sunday 10, park), and reads friendly and specific. However, 'Pick one below' tells people what to do, which the rubric treats as a telling-people-what-to-type style; it's mild but a small deduction.",
+    "score": 4
+  }
+}

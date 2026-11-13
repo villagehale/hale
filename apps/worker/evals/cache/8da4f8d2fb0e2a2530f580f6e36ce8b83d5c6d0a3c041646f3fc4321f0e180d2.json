@@ -1,0 +1,20 @@
+{
+  "value": {
+    "intent": "start_tracking",
+    "planTitle": "zoo",
+    "startsAt": "2026-11-15T14:00:00-05:00",
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "samePlan": false,
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollStarts": [],
+    "pollChoice": null
+  },
+  "latencyMs": 6365
+}

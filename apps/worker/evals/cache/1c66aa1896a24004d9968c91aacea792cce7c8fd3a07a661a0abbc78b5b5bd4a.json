@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is warm and specific to the situation, promises a private follow-up as the watchFor requires, and avoids inventing facts. However, it names the child ('Mira') and the allergy ('peanut allergy') in a group chat, which the watchFor explicitly forbids, so it misses a key constraint.",
+    "score": 2
+  }
+}
