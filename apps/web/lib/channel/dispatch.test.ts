@@ -1099,7 +1099,15 @@ describe("VIL-581 · each renderer says whether its words are the model's", () =
     >[0]);
     const url = 'https://app.example.org/i/abc';
     const invite = calendarInviteSmsRenderer.render(
-      message({ payload: { summary: 'Swim', when: 'Sat 10:00', url, line: `Add swim: ${url}` } }),
+      message({
+        payload: {
+          familyEventId: 'e1',
+          summary: 'Swim',
+          when: 'Sat 10:00',
+          url,
+          line: `Add swim: ${url}`,
+        },
+      }),
       'sms',
       'generic',
     );
