@@ -133,6 +133,7 @@ function composer(): FriendVoiceComposer & { inputs: FriendVoiceInput[] } {
           input.step === 'ages'
             ? 'How old are your kids?'
             : "Hey, it's Hale. What's your postal code?",
+        asksCount: 1,
       };
     },
   };

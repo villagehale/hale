@@ -1,0 +1,28 @@
+{
+  "value": {
+    "reply": "No problem, let's leave the name for now. Want me to check your inbox for kid stuff next? Gmail can show me school notes and activity sign-ups so I can flag what matters.",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 2094,
+  "usage": {
+    "input_tokens": 533,
+    "output_tokens": 449,
+    "cache_read_input_tokens": 6205,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Great, I'll keep it simple. The number and a short phrase are right below, for whenever you want to start the group. Just send them in a group text with Mia's other parent.",
+    "asks": false,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": true,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "coparentGroup": true,
+    "stopAsking": false
+  },
+  "latencyMs": 1870,
+  "usage": {
+    "input_tokens": 1063,
+    "output_tokens": 416,
+    "cache_read_input_tokens": 6168,
+    "cache_creation_input_tokens": 0
+  }
+}

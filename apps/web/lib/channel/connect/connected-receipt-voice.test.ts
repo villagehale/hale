@@ -9,7 +9,7 @@ describe('connected receipt voice', () => {
   it('sends the model receipt, and nothing canned when the model is missing', async () => {
     const composed = await connectedReceiptBody('en', 'gmail', {
       async compose() {
-        return { reply: 'Gmail is connected.' };
+        return { reply: 'Gmail is connected.', asksCount: 0 };
       },
     });
     expect(composed).toBe('Gmail is connected.');
@@ -19,10 +19,10 @@ describe('connected receipt voice', () => {
     expect(missing).toBe('');
   });
 
-  it('does not send a receipt that names the other connector', async () => {
+  it('does not send a receipt the model says offers the other connector', async () => {
     const body = await connectedReceiptBody('fr', 'gcal', {
       async compose() {
-        return { reply: 'Ton Gmail est connecté.' };
+        return { reply: 'Ton Gmail est connecté.', asksCount: 0, connectorsOffered: ['gmail'] };
       },
     });
     expect(body).toBe('');

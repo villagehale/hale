@@ -409,7 +409,7 @@
   },
   "household-group.md": {
     "file": "household-group.md",
-    "sha256": "49051843ca92f7a51cd97d63b14414217ac7f2c83e87c8e7789332deaa048410"
+    "sha256": "f32163e68ad88619df50bb4555828209e5f18b48c0352ccde87eab842b44bf4b"
   },
   "identity-ask.md": {
     "file": "identity-ask.md",
@@ -517,11 +517,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
+    "sha256": "053e5853862e77b8380e172c83f2dd51846437f32d4a728083fc296cb0c73342"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "71061a434f3640c9f1963f4ea2766468fd3dc25304314b0d797cd6e727f6e5dd"
+    "sha256": "20d70df49add1f4067febc4ad5d9a5c8c581af6a367d4414366e9ea8479b34fb"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",

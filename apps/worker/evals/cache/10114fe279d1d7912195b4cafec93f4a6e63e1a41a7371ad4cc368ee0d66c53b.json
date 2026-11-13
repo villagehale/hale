@@ -1,0 +1,24 @@
+{
+  "value": {
+    "reply": "Got it, no calendar for now. I'll hold off on Mia's carpool until it's on the schedule map. Would a group chat with the other parent help?",
+    "asks": true,
+    "messageIsQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "scheduleAdds": []
+  },
+  "latencyMs": 1795,
+  "usage": {
+    "input_tokens": 871,
+    "output_tokens": 389,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 2853
+  }
+}

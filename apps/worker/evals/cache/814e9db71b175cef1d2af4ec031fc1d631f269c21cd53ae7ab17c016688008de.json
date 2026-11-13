@@ -1,0 +1,28 @@
+{
+  "value": {
+    "reply": "Got it, no name for now. Gmail next: I can read your inbox to catch kids' school and activity emails, and Google shares everything in it, but I only keep what's needed to remind you. Want to connect it?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "nameConfirmed": null
+  },
+  "latencyMs": 2517,
+  "usage": {
+    "input_tokens": 529,
+    "output_tokens": 485,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6205
+  }
+}

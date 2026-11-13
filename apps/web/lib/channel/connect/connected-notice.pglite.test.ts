@@ -34,9 +34,17 @@ const APP_KEY = Buffer.alloc(32, 7).toString('base64');
 /** Test-only stand-in for the receipt model: a plain receipt, and an ask on the email step. */
 const receiptVoice: FriendVoiceComposer = {
   async compose(input) {
-    if (input.step === 'email') return { reply: 'Email ask (test fixture)?' };
-    if (input.step === 'calendar') return { reply: 'Calendar ask (test fixture)?' };
-    return { reply: 'Receipt (test fixture).' };
+    if (input.step === 'email') {
+      return { reply: 'Email ask (test fixture)?', asksCount: 1, connectorsOffered: ['gmail'] };
+    }
+    if (input.step === 'calendar') {
+      return {
+        reply: 'Calendar ask (test fixture)?',
+        asksCount: 1,
+        connectorsOffered: ['calendar'],
+      };
+    }
+    return { reply: 'Receipt (test fixture).', asksCount: 0 };
   },
 };
 
@@ -410,7 +418,11 @@ describe('sendConnectorConnectedText', () => {
       friendVoice: {
         async compose(input) {
           if (input.step === 'email') {
-            return { reply: 'Want me to watch school and camp email for the dates?' };
+            return {
+              reply: 'Want me to watch school and camp email for the dates?',
+              asksCount: 1,
+              connectorsOffered: ['gmail'],
+            };
           }
           const synced = input.synced;
           seen.push({
@@ -423,6 +435,7 @@ describe('sendConnectorConnectedText', () => {
               ? `${clash.earlier} runs into ${clash.later} that Saturday. I can remind you the evening before.`
               : 'Your calendar is connected.',
             ahaMention: clash?.earlier ?? null,
+            asksCount: 0,
           };
         },
       },
@@ -493,12 +506,16 @@ describe('sendConnectorConnectedText', () => {
       friendVoice: {
         async compose(input) {
           if (input.step === 'email') {
-            return { reply: 'Want me to watch school and camp email for the dates?' };
+            return {
+              reply: 'Want me to watch school and camp email for the dates?',
+              asksCount: 1,
+              connectorsOffered: ['gmail'],
+            };
           }
           reads.push(input.synced?.read ?? 'missing');
           expect(input.synced?.calendar).toEqual([]);
           expect(input.synced?.overlaps).toEqual([]);
-          return { reply: 'Your calendar is connected.', ahaMention: null };
+          return { reply: 'Your calendar is connected.', ahaMention: null, asksCount: 0 };
         },
       },
     };
@@ -543,11 +560,15 @@ describe('sendConnectorConnectedText', () => {
       friendVoice: {
         async compose(input) {
           if (input.step === 'calendar') {
-            return { reply: 'Want me to check your calendar?' };
+            return {
+              reply: 'Want me to check your calendar?',
+              asksCount: 1,
+              connectorsOffered: ['calendar'],
+            };
           }
           reads.push(input.synced?.read ?? 'missing');
           expect(input.synced?.email).toEqual([]);
-          return { reply: 'Gmail is connected.', ahaMention: null };
+          return { reply: 'Gmail is connected.', ahaMention: null, asksCount: 0 };
         },
       },
     };

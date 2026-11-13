@@ -862,7 +862,10 @@ describe('a first text that got no reply', () => {
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
   });
 
-  function withComposer(h: Harness, compose: () => Promise<{ reply: string }>): void {
+  function withComposer(
+    h: Harness,
+    compose: () => Promise<{ reply: string; asksCount?: number }>,
+  ): void {
     const intake = h.deps.intake('sms');
     intake.friendVoice = { compose };
   }
@@ -881,7 +884,10 @@ describe('a first text that got no reply', () => {
 
   it('stays intake when the opening reply was sent', async () => {
     const h = harness();
-    withComposer(h, async () => ({ reply: "Hey, it's Hale. What's your postal code?" }));
+    withComposer(h, async () => ({
+      reply: "Hey, it's Hale. What's your postal code?",
+      asksCount: 1,
+    }));
 
     const outcome = await routeInboundText(h.deps, inbound());
 

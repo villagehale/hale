@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Nothing new has come in from the calendar yet, so I'll keep watching for anything Mia needs. I'll text you when something matters for her.",
+    "asks": false,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "language": "en",
+    "ahaMention": null
+  },
+  "latencyMs": 1818,
+  "usage": {
+    "input_tokens": 1071,
+    "output_tokens": 404,
+    "cache_read_input_tokens": 6206,
+    "cache_creation_input_tokens": 0
+  }
+}

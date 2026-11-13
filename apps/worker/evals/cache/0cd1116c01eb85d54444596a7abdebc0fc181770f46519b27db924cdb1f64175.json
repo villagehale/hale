@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reply": "I don't have a storytime time for Saturday in front of me, so I can't tell you that one. Before we go on, what should I call you?",
+    "asks": true,
+    "messageIsQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null
+  },
+  "latencyMs": 1756,
+  "usage": {
+    "input_tokens": 540,
+    "output_tokens": 354,
+    "cache_read_input_tokens": 6205,
+    "cache_creation_input_tokens": 0
+  }
+}

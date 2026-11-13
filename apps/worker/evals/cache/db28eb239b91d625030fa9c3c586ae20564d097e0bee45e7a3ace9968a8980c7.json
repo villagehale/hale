@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Great, I'll start a new group with Mia's other parent so you both see the same plans and reminders. Nothing gets set up until you start it.",
+    "asks": false,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "en"
+  },
+  "latencyMs": 2354,
+  "usage": {
+    "input_tokens": 5716,
+    "output_tokens": 432,
+    "cache_read_input_tokens": 6206,
+    "cache_creation_input_tokens": 0
+  }
+}

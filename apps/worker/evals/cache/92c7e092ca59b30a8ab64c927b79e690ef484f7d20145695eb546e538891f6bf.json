@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "That's completely fine, we'll leave it there. Next up: would you like me to connect your Gmail so I can keep an eye out for the kids' school and activity emails?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "nameDeclined": true,
+    "nameTakenBack": false
+  },
+  "latencyMs": 2043,
+  "usage": {
+    "input_tokens": 536,
+    "output_tokens": 422,
+    "cache_read_input_tokens": 6205,
+    "cache_creation_input_tokens": 0
+  }
+}

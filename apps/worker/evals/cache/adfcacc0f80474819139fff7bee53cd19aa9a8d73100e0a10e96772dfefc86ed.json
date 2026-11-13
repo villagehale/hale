@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Totally fine, I won't push. Then let's skip the place for now; I just won't be able to find things close to you. What are your kids' first names?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "en"
+  },
+  "latencyMs": 1995,
+  "usage": {
+    "input_tokens": 679,
+    "output_tokens": 429,
+    "cache_read_input_tokens": 6476,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Pas de souci, on n'a pas besoin de ton code postal complet. Juste les trois premiers caractères suffisent pour trouver ce qui est près de chez toi. Tu peux me les donner?",
+    "asks": true,
+    "messageIsQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "coarse",
+    "language": "fr"
+  },
+  "latencyMs": 1963,
+  "usage": {
+    "input_tokens": 617,
+    "output_tokens": 430,
+    "cache_read_input_tokens": 6476,
+    "cache_creation_input_tokens": 0
+  }
+}

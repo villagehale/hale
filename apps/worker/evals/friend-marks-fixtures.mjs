@@ -1,7 +1,9 @@
 /**
  * The model fields friend-voice.ts reads instead of a text match:
- * `asks`, `parentQuestion`, `connectorsOffered`, `joinPointer`, `claimsSaved`. These strings are
- * the cases, not a matcher: code does not decide intent from them.
+ * `asks`, `messageIsQuestion`, `connectorsOffered`, `joinPointer`, `claimsSaved`, and on every
+ * reply `asksCount`, `asksName`, `speaksAsParent`, `joinInProse`, `messageIsYes` and
+ * `messageOnlyName` (VIL-541). These strings are the cases, not a matcher: code does not
+ * decide intent from them.
  *
  * `emits` lists the fields the model must return on that turn, with a value of
  * the right type, because the send depends on them there. `expect` is what the
@@ -10,7 +12,7 @@
  * whether `connectorsOffered` holds the connector this step is not: code
  * refuses that reply under this step's link. `noYesIn` names the
  * connector a question must not turn into a yes: code clears that yes only
- * when `parentQuestion` is set, so a yes without it is a miss. `offersNone` is a
+ * when `messageIsQuestion` is set, so a yes without it is a miss. `offersNone` is a
  * turn whose reply must offer no connector at all. `sendable` is a reply that
  * must pass the code judge for its step, so code would send it. `throughCode` is a
  * turn graded on what speakFriend sends, after its refusal and its one rewrite.
@@ -70,18 +72,20 @@ const PLACE_DECLINED_FR = {
     },
   ],
 };
-// The first attempt's draft as Preview refused it: two questions. The retry is
-// told what this message should ask, as speakFriend tells it.
+// The first attempt's draft as Preview refused it: two questions, so the judge's detail
+// is `too_many`. The retry is told what this message should ask, as speakFriend tells it.
 const PLACE_DECLINED_RETRY = {
   draft:
     "Totally fair, you don't have to share it. Could you tell me the city instead? Or just the first three characters?",
   reason: 'question',
+  detail: 'too_many',
   askNote: true,
 };
 const PLACE_DECLINED_RETRY_FR = {
   draft:
     'Pas de souci, tu n’es pas obligé. Tu peux me dire ta ville à la place? Ou juste les trois premiers caractères?',
   reason: 'question',
+  detail: 'too_many',
   askNote: true,
 };
 
@@ -173,7 +177,7 @@ export const FRIEND_MARKS_FIXTURES = [
     id: 'name-ask',
     over: { step: 'names', parentWords: 'ok' },
     emits: ['asks'],
-    expect: { asks: true },
+    expect: { asks: true, asksName: true },
   },
   {
     id: 'ack-no-ask',
@@ -197,8 +201,8 @@ export const FRIEND_MARKS_FIXTURES = [
     },
     // No offersOther: the email ask sometimes also offers the calendar. The
     // field then lists it and code refuses that draft, which is the gate working.
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: false },
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
+    expect: { messageIsQuestion: false },
   },
   {
     id: 'email-question-zh',
@@ -209,8 +213,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
+    expect: { messageIsQuestion: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -223,8 +227,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
+    expect: { messageIsQuestion: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -237,8 +241,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
+    expect: { messageIsQuestion: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -250,8 +254,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
+    expect: { messageIsQuestion: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -268,8 +272,8 @@ export const FRIEND_MARKS_FIXTURES = [
       ],
       checklist: { ...NOTHING_YET, postal: true, kids: true },
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
+    expect: { messageIsQuestion: true },
     offersNone: true,
     printReply: true,
   },
@@ -376,8 +380,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: { ...DONE_THROUGH_NAME, gmail: true },
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: false },
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
+    expect: { messageIsQuestion: false },
     offersOther: false,
   },
   {
@@ -388,7 +392,7 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
+    emits: ['asks', 'messageIsQuestion', 'connectorsOffered'],
     expect: {},
     offersOther: true,
     noYesIn: 'connectCalendar',
@@ -402,8 +406,8 @@ export const FRIEND_MARKS_FIXTURES = [
       coparentJoin: { line: '(555) 555-0142', phrase: 'Hale group' },
       checklist: DONE_THROUGH_SCHEDULE,
     },
-    emits: ['asks', 'parentQuestion', 'joinPointer'],
-    expect: { parentQuestion: false, joinPointer: 'below' },
+    emits: ['asks', 'messageIsQuestion', 'joinPointer'],
+    expect: { messageIsQuestion: false, joinPointer: 'below' },
   },
   {
     id: 'coparent-no',
@@ -414,8 +418,8 @@ export const FRIEND_MARKS_FIXTURES = [
       coparentJoin: { line: '(555) 555-0142', phrase: 'Hale group' },
       checklist: DONE_THROUGH_SCHEDULE,
     },
-    emits: ['asks', 'parentQuestion'],
-    expect: { parentQuestion: false },
+    emits: ['asks', 'messageIsQuestion'],
+    expect: { messageIsQuestion: false },
   },
   // VIL-538: the Preview turn. An English parent, on the co-parent step, asks to
   // save something that is not a map line, with a "tomorrow Saturday" that is a
@@ -521,14 +525,47 @@ const OTHER_CONNECTOR = { email: 'calendar', calendar: 'gmail' };
 
 const FIELD_TYPE = {
   asks: (v) => typeof v === 'boolean',
-  parentQuestion: (v) => typeof v === 'boolean',
+  messageIsQuestion: (v) => typeof v === 'boolean',
   connectorsOffered: (v) =>
     Array.isArray(v) && v.every((item) => item === 'gmail' || item === 'calendar'),
   claimsSaved: (v) => typeof v === 'boolean',
   joinPointer: (v) =>
     v === null || ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'].includes(v),
   placeAsk: (v) => ['full', 'coarse', 'none'].includes(v),
+  asksCount: (v) => Number.isInteger(v) && v >= 0,
+  asksName: (v) => typeof v === 'boolean',
+  speaksAsParent: (v) => typeof v === 'boolean',
+  joinInProse: (v) => typeof v === 'boolean',
+  messageIsYes: (v) => typeof v === 'boolean',
+  messageOnlyName: (v) => v === null || typeof v === 'string',
 };
+
+/** Code reads these on every reply: an omitted one means nothing is sent. */
+const EVERY_REPLY_EMITS = [
+  'asksCount',
+  'asksName',
+  'speaksAsParent',
+  'joinInProse',
+  'messageIsYes',
+  'messageOnlyName',
+];
+
+/**
+ * The fields code reads on every reply that the model left out or mistyped, and an
+ * `asks` that disagrees with `asksCount`. Empty is a pass.
+ */
+export function everyReplyMisses(value) {
+  const misses = EVERY_REPLY_EMITS.filter(
+    (field) => !value || !(field in value) || !FIELD_TYPE[field](value[field]),
+  ).map((field) => `${field}:omitted`);
+  // The two question fields are one fact: a reply that asks has a count above zero.
+  if (typeof value?.asks === 'boolean' && Number.isInteger(value?.asksCount)) {
+    if (value.asks !== value.asksCount > 0) {
+      misses.push(`asksCount:${value.asksCount}_vs_asks:${value.asks}`);
+    }
+  }
+  return misses;
+}
 
 /**
  * The fields this fixture needed and the model left out or mistyped. Empty is a pass.
@@ -581,7 +618,7 @@ export function friendMarksMisses(
   if (fixture.sendable && judged?.ok !== true) {
     misses.push(`reply:unsendable:${judged?.reason ?? 'not_judged'}`);
   }
-  if (fixture.noYesIn && value?.[fixture.noYesIn] === true && value?.parentQuestion !== true) {
+  if (fixture.noYesIn && value?.[fixture.noYesIn] === true && value?.messageIsQuestion !== true) {
     misses.push(`${fixture.noYesIn}:yes_kept`);
   }
   // An English parent gets an English reply: no accented letters in it.

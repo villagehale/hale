@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Got it, just you. Thanks, Dana. I'll leave the co-parent group out for now, and if that changes, just say so.",
+    "asks": false,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": true,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "coparentGroup": false,
+    "language": "en"
+  },
+  "latencyMs": 1769,
+  "usage": {
+    "input_tokens": 570,
+    "output_tokens": 401,
+    "cache_read_input_tokens": 6167,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Great, thanks. Google shares your whole inbox with me, but I only keep and use what's about the kids, and I never send email. You can disconnect any time. Want me to connect your Gmail? Use the link above if it's there.",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null
+  },
+  "latencyMs": 2003,
+  "usage": {
+    "input_tokens": 641,
+    "output_tokens": 388,
+    "cache_read_input_tokens": 6167,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "That's fine, no problem. Could you give me just the first three characters of your postal code instead? That's enough to place you by area, not your street.",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1904,
+  "usage": {
+    "input_tokens": 593,
+    "output_tokens": 430,
+    "cache_read_input_tokens": 6476,
+    "cache_creation_input_tokens": 0
+  }
+}

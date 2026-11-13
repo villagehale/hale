@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Tu peux me donner juste les trois premiers caractères de ton code postal à la place?",
+    "asks": true,
+    "asksCount": 1,
+    "asksName": false,
+    "messageIsQuestion": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "postalCode": null,
+    "stopAsking": false
+  },
+  "latencyMs": 1964,
+  "usage": {
+    "input_tokens": 796,
+    "output_tokens": 462,
+    "cache_read_input_tokens": 3162,
+    "cache_creation_input_tokens": 0
+  }
+}

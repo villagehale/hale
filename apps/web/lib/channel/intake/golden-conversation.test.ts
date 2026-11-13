@@ -27,7 +27,7 @@ import {
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from './fakes';
-import type { FriendVoiceInput } from './friend-voice';
+import type { FriendVoiceInput, OfferedConnector } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 import { FakeTransport, type InboundMessage } from './transport';
@@ -70,6 +70,9 @@ interface ScriptedTurn {
   capture: WireCapture;
   groupLeads?: string[];
   asks?: boolean;
+  asksCount: number;
+  asksName?: boolean;
+  connectorsOffered?: OfferedConnector[];
   joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 }
 
@@ -178,11 +181,12 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       reply: 'Here is what is on near you for their ages.',
       capture,
       groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
+      asksCount: 0,
     };
   }
   // Reminders just recorded: confirm them, ask nothing.
   if (capture.scheduleAdds.length > 0) {
-    return { reply: 'Done, a weekly reminder for the swim.', capture };
+    return { reply: 'Done, a weekly reminder for the swim.', capture, asksCount: 0 };
   }
   // The test double is the model. Production does not read these phrases.
   if (input.step === 'coparent' && /\bnew group\b/i.test(words)) {
@@ -190,6 +194,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       reply: 'The number is below whenever you want.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'new' },
       joinPointer: 'below',
+      asksCount: 0,
     };
   }
   if (input.step === 'coparent' && /\bour group\b/i.test(words)) {
@@ -197,6 +202,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       reply: 'The number is below whenever you want to add me.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'existing' },
       joinPointer: 'below',
+      asksCount: 0,
     };
   }
   if (input.step === 'coparent' && capture.coparentGroup === true) {
@@ -204,6 +210,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       reply: 'Add the number below to your family group, whenever you like.',
       capture,
       joinPointer: 'below',
+      asksCount: 0,
     };
   }
   // A yes to the connector just asked is answered as a yes. The next ask
@@ -216,10 +223,12 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       reply:
         "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
       capture,
+      asksCount: 0,
     };
   }
 
   let ask: string;
+  let offered: OfferedConnector[] = [];
   if (!postalKnown) ask = "Hey, it's Hale. What's your postal code?";
   else if (!kidsKnown) ask = "What are your kids' names?";
   else if (!agesKnown) ask = 'How old are your kids?';
@@ -228,8 +237,10 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     ask = who
       ? `${who}, want me to watch school and camp email for the dates?`
       : 'Want me to watch school and camp email for the dates?';
+    offered = ['gmail'];
   } else if (!calendarKnown) {
     ask = who ? `${who}, want me to check your calendar?` : 'Want me to check your calendar?';
+    offered = ['calendar'];
   } else if (!scheduleKnown && input.findLines.length > 0) {
     ask = 'Want the swim one on your calendar as a weekly reminder?';
   } else if (!coparentKnown) ask = 'Want me to set up a group chat with the other parent?';
@@ -237,7 +248,15 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
 
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture, asks: ask !== "I'll take it from here." };
+  const asks = ask !== "I'll take it from here.";
+  return {
+    reply,
+    capture,
+    asks,
+    asksCount: asks ? 1 : 0,
+    asksName: postalKnown && kidsKnown && agesKnown && !nameKnown,
+    connectorsOffered: offered,
+  };
 }
 
 function findResult() {
@@ -836,11 +855,13 @@ describe('golden onboarding conversation', () => {
         async compose(input) {
           const chosen = input.synced?.calendar[0];
           const partner = input.synced?.overlaps[0]?.later;
-          if (!chosen) return { reply: 'Your calendar is connected.', ahaMention: null };
+          if (!chosen)
+            return { reply: 'Your calendar is connected.', ahaMention: null, asksCount: 0 };
           const clash = partner ? ` It overlaps ${partner}.` : '';
           return {
             reply: `${chosen.title} is on your calendar ${when}.${clash} I can remind you the evening before.`,
             ahaMention: chosen.title,
+            asksCount: 0,
           };
         },
       },
@@ -871,10 +892,11 @@ describe('golden onboarding conversation', () => {
       {
         async compose(input) {
           const subject = input.synced?.email[0]?.subject;
-          if (!subject) return { reply: 'Gmail is connected.', ahaMention: null };
+          if (!subject) return { reply: 'Gmail is connected.', ahaMention: null, asksCount: 0 };
           return {
             reply: `${subject} is in your email. I can remind you before it.`,
             ahaMention: subject,
+            asksCount: 0,
           };
         },
       },
@@ -890,7 +912,7 @@ describe('golden onboarding conversation', () => {
       'gcal',
       {
         async compose() {
-          return { reply: 'Your calendar is connected.', ahaMention: null };
+          return { reply: 'Your calendar is connected.', ahaMention: null, asksCount: 0 };
         },
       },
       emptyAha('gcal'),
@@ -906,7 +928,7 @@ describe('golden onboarding conversation', () => {
         {
           async compose(input) {
             groups.push(input.householdGroup);
-            return { reply: 'Your calendar is connected.', ahaMention: null };
+            return { reply: 'Your calendar is connected.', ahaMention: null, asksCount: 0 };
           },
         },
         emptyAha('gcal'),
@@ -924,7 +946,7 @@ describe('golden onboarding conversation', () => {
       'gcal',
       {
         async compose() {
-          return { reply: 'Hockey is on Thursday at 4:00.', ahaMention: 'Hockey' };
+          return { reply: 'Hockey is on Thursday at 4:00.', ahaMention: 'Hockey', asksCount: 0 };
         },
       },
       synced,

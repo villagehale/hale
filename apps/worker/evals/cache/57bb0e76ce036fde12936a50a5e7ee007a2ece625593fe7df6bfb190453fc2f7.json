@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "D'accord, pas de souci. Est-ce que tu peux me donner juste les trois premiers caractères de ton code postal? Ça me suffit pour trouver ce qui est près de chez toi.",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1964,
+  "usage": {
+    "input_tokens": 611,
+    "output_tokens": 454,
+    "cache_read_input_tokens": 6476,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -2,10 +2,12 @@
 //
 // SUBJECT: packages/agent/skills/onboarding-friend.md, called with the same
 // tool, schema and lane as createFriendVoiceComposer. friend-voice.ts reads
-// `asks`, `parentQuestion`, `connectorsOffered` and `joinPointer` instead of
-// matching '?' or English/French words. This checks the model returns them on
+// `asks`, `messageIsQuestion`, `connectorsOffered`, `joinPointer` and, on every
+// reply, `asksCount`, `asksName`, `speaksAsParent`, `joinInProse`,
+// `messageIsYes` and `messageOnlyName` instead of matching '?' or
+// English/French words. This checks the model returns them on
 // the turns where the send depends on them, with the right value: a Chinese
-// question is `parentQuestion` and no question is kept as a yes, a calendar
+// question is `messageIsQuestion` and no question is kept as a yes, a calendar
 // reply that offers Gmail lists it, a co-parent yes points `below`, a receipt
 // does not ask.
 //
@@ -20,7 +22,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
-import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
+import {
+  FRIEND_MARKS_FIXTURES,
+  everyReplyMisses,
+  friendMarksMisses,
+} from './friend-marks-fixtures.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -73,10 +79,11 @@ function inputFor(voice, fixture) {
   );
   const input = { ...base, ...fixture.over };
   if (!fixture.retry) return input;
-  // With askNote the retry is briefed as speakFriend briefs it: the problem, for this
-  // step, then what the message should ask. Older fixtures keep their recorded bytes.
+  // With askNote the retry is briefed as speakFriend briefs it: the problem, with the
+  // judge's detail, for this step, then what the message should ask. Older fixtures keep
+  // their recorded bytes.
   const problem = fixture.retry.askNote
-    ? `${voice.retryProblem(fixture.retry.reason, undefined, input)} This message should ${voice.askInWords(input.step, input)}.`
+    ? `${voice.retryProblem(fixture.retry.reason, fixture.retry.detail, input)} This message should ${voice.askInWords(input.step, input)}.`
     : voice.retryProblem(fixture.retry.reason);
   return { ...input, retry: { draft: fixture.retry.draft, problem } };
 }
@@ -242,9 +249,17 @@ async function record() {
           ) ?? []
         ).filter((bubble) => bubble.length > 0).length
       : 0;
-    // A reply code would send: the same judge speakFriend runs, for this step.
-    const judged = fixture.sendable
-      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+    // A reply code would send: the same judge speakFriend runs, for this step, on
+    // the same model fields speakFriend hands it.
+    const marks = fixture.sendable ? voice.parseReplyTool(result.value) : null;
+    const judged = marks
+      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input, {
+          asksCount: marks.asksCount,
+          asksName: marks.asksName === true,
+          speaksAsParent: marks.speaksAsParent === true,
+          offered: marks.connectorsOffered ?? [],
+          parentQuestion: marks.parentQuestion === true,
+        })
       : null;
     const context = voice.friendVoiceContext(input);
     const meaning = fixture.watchFor
@@ -258,13 +273,16 @@ async function record() {
         })
       : null;
     if (meaning?.dry) continue;
-    const misses = friendMarksMisses(fixture, result.value, {
-      keptGroupBubbles: kept,
-      judged,
-      meaning,
-      meaningMin: JUDGE_MIN,
-      sent,
-    });
+    const misses = [
+      ...friendMarksMisses(fixture, result.value, {
+        keptGroupBubbles: kept,
+        judged,
+        meaning,
+        meaningMin: JUDGE_MIN,
+        sent,
+      }),
+      ...everyReplyMisses(result.value),
+    ];
     if (misses.length > 0) failed += 1;
     console.info(
       `${(misses.length === 0 ? 'PASS' : 'FAIL').padEnd(5)} ${fixture.id.padEnd(24)} ${misses.join(' ')}`,

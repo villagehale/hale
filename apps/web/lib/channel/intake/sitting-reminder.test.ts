@@ -126,12 +126,15 @@ function voiceDeps(transport: FakeTransport): SittingReminderDeps {
     transport,
     friendVoice: {
       async compose(input) {
-        if (input.language === 'fr') return { reply: 'Quel âge ont les enfants?' };
-        if (input.step === 'nudge_ages') return { reply: 'How old are your kids?' };
+        if (input.language === 'fr') return { reply: 'Quel âge ont les enfants?', asksCount: 1 };
+        if (input.step === 'nudge_ages') return { reply: 'How old are your kids?', asksCount: 1 };
         if (input.step === 'nudge_find') {
-          return { reply: 'Still here if one of those looks good. Which of these looks good?' };
+          return {
+            reply: 'Still here if one of those looks good. Which of these looks good?',
+            asksCount: 1,
+          };
         }
-        return { reply: "Still here. What's your postal code?" };
+        return { reply: "Still here. What's your postal code?", asksCount: 1 };
       },
     },
   };

@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reply": "Sounds good. What should I call you when I text you?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null
+  },
+  "latencyMs": 1840,
+  "usage": {
+    "input_tokens": 529,
+    "output_tokens": 329,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6167
+  }
+}

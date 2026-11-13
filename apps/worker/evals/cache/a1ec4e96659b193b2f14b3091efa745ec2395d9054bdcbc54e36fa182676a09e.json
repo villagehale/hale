@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "Parfait, je commence un groupe avec l'autre parent de Mia. Si vous en avez déjà un en iMessage, dites-le-moi et vous m'y ajouterez, sinon je le lance moi-même avec vous deux.",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "fr",
+    "stopAsking": false
+  },
+  "latencyMs": 2155,
+  "usage": {
+    "input_tokens": 5741,
+    "output_tokens": 493,
+    "cache_read_input_tokens": 6206,
+    "cache_creation_input_tokens": 0
+  }
+}
