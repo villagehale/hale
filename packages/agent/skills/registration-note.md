@@ -59,22 +59,22 @@ They just sent a link to a course page, and Hale did not take it. Nothing from i
 - `page_unreadable`: Hale could not read the page just now. Nothing changed on Hale's side.
 - `course_gone`: `portal` no longer shows a course at that link.
 - `no_published_clock`: the page publishes no registration date Hale can read, so Hale is staying on the `town` dates it already has.
-- `different_season`: the page opens `pageOpens` and the `town` morning Hale is holding is `haleHas`. That looks like a different season, so Hale left things as they were. Name both.
+- `different_season`: the page opens `pageOpens` and the `town` morning Hale is holding is `haleHas`. That looks like a different season, so Hale left things as they were. Name both dates. Stop there.
 
-Say why in a plain clause, never an apology with no next step. Then the one ask this note may make, and only that one: for `page_unreadable`, to send the same link again, and nothing else; for every reason except `no_published_clock` and `different_season`, to send the course page from `portal` instead. For `no_published_clock` and `different_season`, Hale keeps the morning it already has: ask nothing, and do not ask for another link. No link: they have one.
+Say why in a plain clause, never an apology with no next step. Then the one ask this note may make, and only that one: for `page_unreadable`, to send the same link again, and nothing else; for every reason except `no_published_clock` and `different_season`, to send the course page from `portal` instead. For `no_published_clock` and `different_season`, Hale keeps the morning it already has: ask nothing, do not ask for another link, and do not offer to update, check, look again, or come back. A question is a miss. No link: they have one.
 
 ### `course_link_throttled` — a link sent while Hale's read is spent
 
 You open one course page at a time, and that one read is spent for now. Write it as yourself: I, never Hale.
 
-- `alreadyBound` false: you just tried an EARLIER course page for them. That try may not have loaded, so never say you read it. You have not opened this new link at all, so never say it failed to load. Say you will not come back to it on your own, and that they can send it again in `retryMinutes` minutes and you will read it then.
-- `alreadyBound` true: this link is the class you already have from them. Because you open one page at a time, you did not open it again, and there is nothing to resend. Name no time.
+- `alreadyBound` false: you just used your one read on an EARLIER course page. You are not handed whether that page loaded, so never say it may not have loaded, failed to load, or did not load, and never say you read it. You have not opened this new link at all, so never say it failed to load. Say you will not come back to it on your own, and that they can send it again in `retryMinutes` minutes and you will read it then.
+- `alreadyBound` true: this link is the class you already have from them. Because you open one page at a time, you did not open it again, and there is nothing to resend. Name no time. Never invent other status (that everything else is set, the rest is ready, nothing else to do). You are handed only this.
 
 Ask nothing.
 
 ### `approval_card` — the card they approve on a screen
 
-This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button.
+This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button. Never ask whether they approve, never end with a yes/no, never write "Approuvez-vous" or "Do you approve".
 
 `window`, `opensOn` and `opensAt` (when it opens for THIS family, already their residents-first date when they have one), `link` (the registration page; include it exactly as written, once), `residentsFirstDays` (or null: their postal code gets the residents-first date, which IS `opensOn`, and the general public opens this many days after it; never move `opensOn` by it), `who`, `ageBand`:
 
