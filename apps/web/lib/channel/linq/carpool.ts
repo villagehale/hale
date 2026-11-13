@@ -561,8 +561,6 @@ export type SharedCarpoolGroupSend = (line: {
 
 export interface SharedCarpoolTurnInput {
   chatId: string;
-  /** The family whose ledger carries the ride (the chat's host). */
-  ledgerFamilyId: string;
   senderHandle: string;
   /** The sender's own Hale account and family: a guest changes nothing. */
   senderUserId: string | null;
@@ -644,7 +642,8 @@ export async function considerSharedCarpoolTurn(
   if (turn.speak === 'addressed_status' && !next.driverName && !next.askedForDriverAt) {
     turn = { speak: 'ask_driver' };
   }
-  const familyId = existing?.familyId ?? input.ledgerFamilyId;
+  // A new ride is the sender's family's own: never filed under another household here.
+  const familyId = existing?.familyId ?? input.senderFamilyId;
   let stored = next;
   let notice: 'sent' | 'not_sent' | undefined;
   let outcome: Extract<CarpoolTurnOutcome, { handled: true }>['outcome'] =

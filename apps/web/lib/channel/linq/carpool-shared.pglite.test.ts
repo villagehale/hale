@@ -4,6 +4,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import {
+  loadAffectedDrivers,
+  reanchorCarpoolReminders,
+} from '~/lib/integrations/team-schedule/driver';
 import { runCarpoolReminders } from './carpool';
 import type { CarpoolReading } from './carpool-apply';
 import { fakeCarpoolComposer } from './carpool-voice';
@@ -46,7 +50,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec(
-    'truncate table families, users, linq_shared_group_people, linq_multi_family_joins, linq_multi_family_members, linq_group_carpools, audit_log, channel_messages cascade',
+    'truncate table families, users, linq_shared_group_people, linq_multi_family_joins, linq_multi_family_members, linq_group_carpools, family_events, audit_log, channel_messages cascade',
   );
 });
 
@@ -248,6 +252,97 @@ describe('a ride in a shared chat', () => {
     );
     expect(out.group).toEqual(['Who can drive Mia to soccer Tuesday?']);
     expect(out.body.outcome).toBe('carpool_asked');
+  });
+});
+
+describe("a shared ride is never another family's private event data", () => {
+  const TUESDAY_HOCKEY = new Date('2026-11-17T23:00:00.000Z');
+
+  async function hockeyFor(familyId: string) {
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId,
+        title: 'hockey',
+        startsAt: TUESDAY_HOCKEY,
+        location: 'Arena 1',
+        source: 'email',
+      })
+      .returning({ id: schema.familyEvents.id });
+    return event?.id as string;
+  }
+
+  it("is kept under the driver's own family, and a team-schedule change on the host family's event neither finds its driver nor moves it", async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    const b = await seedFamily(PARENT_B, 'Bao', 'Mia');
+    await say("I'll drive soccer Tuesday 5:30, taking Mia", PARENT_B, 'm1', ride({ kids: 'Mia' }));
+    const [before] = await rides();
+    expect(before?.familyId).toBe(b.familyId);
+
+    for (const familyId of [a.familyId, b.familyId]) {
+      const eventId = await hockeyFor(familyId);
+      expect(
+        await loadAffectedDrivers(db.database, {
+          familyId,
+          familyEventId: eventId,
+          originalStartsAt: TUESDAY_HOCKEY,
+          timeZone: 'America/Toronto',
+        }),
+      ).toEqual([]);
+      await reanchorCarpoolReminders(db.database, {
+        familyId,
+        originalStartsAt: TUESDAY_HOCKEY,
+        newStartsAt: new Date('2026-11-18T00:30:00.000Z'),
+        newLocation: 'Arena 2',
+        cancelled: false,
+        timeZone: 'America/Toronto',
+        now: NOW,
+      });
+    }
+    const [after] = await rides();
+    expect(after?.pickupAt?.toISOString()).toBe(before?.pickupAt?.toISOString());
+    expect(after?.pickupPlace).toBe(before?.pickupPlace);
+    expect(after?.reminderFireAt?.toISOString()).toBe(before?.reminderFireAt?.toISOString());
+  });
+
+  it("a ride in the family's own claimed household chat is still found and moved (positive control)", async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: 'chat-ada-household' })
+      .where(eq(schema.families.id, a.familyId));
+    await db.database.insert(schema.linqGroupCarpools).values({
+      chatId: 'chat-ada-household',
+      familyId: a.familyId,
+      planKey: 'hockey:2026-11-17',
+      eventLabel: 'hockey',
+      pickupAt: TUESDAY_HOCKEY,
+      driverName: 'Ada',
+      driverUserId: a.userId,
+      driverHaleCustomer: 'true',
+      status: 'assigned',
+      reminderStatus: 'pending',
+    });
+    const eventId = await hockeyFor(a.familyId);
+    expect(
+      await loadAffectedDrivers(db.database, {
+        familyId: a.familyId,
+        familyEventId: eventId,
+        originalStartsAt: TUESDAY_HOCKEY,
+        timeZone: 'America/Toronto',
+      }),
+    ).toEqual([{ userId: a.userId }]);
+    await reanchorCarpoolReminders(db.database, {
+      familyId: a.familyId,
+      originalStartsAt: TUESDAY_HOCKEY,
+      newStartsAt: new Date('2026-11-18T00:30:00.000Z'),
+      newLocation: 'Arena 2',
+      cancelled: false,
+      timeZone: 'America/Toronto',
+      now: NOW,
+    });
+    const [moved] = await rides();
+    expect(moved?.pickupPlace).toBe('Arena 2');
   });
 });
 
