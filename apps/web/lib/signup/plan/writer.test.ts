@@ -61,6 +61,17 @@ describe('the plan reply gate', () => {
     expect(planReplyViolations(text)).toEqual([]);
   });
 
+  it('refuses a draft whose accents came out garbled, and sends the same text written right', () => {
+    // A recorded Sonnet 5.5 draw: UTF-8 "é" read back in windows-1250.
+    const garbled = "Le total est de 98 $, donc je n'ai pas payĂ©. Rien n'a Ă©tĂ© dĂ©bitĂ©.";
+    expect(planReplyViolations(garbled)).toContain(
+      'garbled characters: an accented letter came out as two or three other characters',
+    );
+    expect(
+      planReplyViolations("Le total est de 98 $, donc je n'ai pas payé. Rien n'a été débité."),
+    ).toEqual([]);
+  });
+
   it('refuses a made-up max the listing facts never stated', () => {
     const invented = 'Swim opens at 7:00 a.m. The most I can pay is $86.22.';
     expect(planReplyViolations(invented, FACTS)).toContain(
@@ -116,6 +127,7 @@ describe('the plan reply gate', () => {
           sessionLabel: 'Swim https://evil.example.test/x Sat',
           cartTotalCents: 9800,
           amountChargedCents: null,
+          charged: 'nothing',
           liveBrowser: true,
           holdMinutes: 10,
         },

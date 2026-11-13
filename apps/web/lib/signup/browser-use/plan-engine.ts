@@ -179,11 +179,38 @@ export interface PlanPaymentInput extends Pick<BrowserUsePlanInput, 'onStep' | '
   resume: PlanPayingToken;
 }
 
+/**
+ * What this run charged, as the engine knows it. `nothing`: the run stopped before any
+ * payment run, or the card was declined. `unknown`: a payment run started, or the review
+ * placed the order, and no charged amount was read; never read as zero. `cents`: the
+ * amount the payment run read.
+ */
+export type PlanCharged = 'nothing' | 'unknown' | { cents: number };
+
 export interface BrowserUsePlanResult extends Omit<BrowserUseSignupResult, 'outcome' | 'detail'> {
   outcome: PlanEngineOutcome;
   detail: PlanEngineDetail;
   /** Index into `choices` of the session in the cart, or null when none was. */
   choiceIndex: number | null;
+  /** Set to `nothing` on every result, and only {@link reportPayment} may say otherwise. */
+  charged: PlanCharged;
+}
+
+interface PlanTracker extends BrowserTracker {
+  /** Set before the checkout review run is created: from then on it may have placed the order. */
+  reviewStarted: boolean;
+}
+
+/** The plan engine threw. `reviewStarted`: the checkout review may have placed the order. */
+export class PlanEngineThrew extends BrowserUseEngineThrew {
+  readonly reviewStarted: boolean;
+  constructor(
+    cause: unknown,
+    ids: ConstructorParameters<typeof BrowserUseEngineThrew>[1] & { reviewStarted: boolean },
+  ) {
+    super(cause, ids);
+    this.reviewStarted = ids.reviewStarted;
+  }
 }
 
 /** Only the slots on the consent grant. Every choice label is a `session` slot. */
@@ -219,7 +246,7 @@ function planResult(
   detail: PlanEngineDetail,
   choiceIndex: number | null,
 ): BrowserUsePlanResult {
-  return { ...base, outcome, detail, choiceIndex };
+  return { ...base, outcome, detail, choiceIndex, charged: 'nothing' };
 }
 
 export function runBrowserUsePlanSignup(
@@ -246,12 +273,13 @@ export function settleBrowserUsePlanPayment(
 async function tracked(
   resume: PlanResumeToken | null,
   deps: BrowserUseEngineDeps,
-  drive: (tracker: BrowserTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
+  drive: (tracker: PlanTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  const tracker: BrowserTracker = {
+  const tracker: PlanTracker = {
     browserId: resume?.browserId ?? null,
     runId: resume?.runId ?? null,
     sessionId: resume?.sessionId ?? null,
+    reviewStarted: false,
   };
   let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
   try {
@@ -262,11 +290,12 @@ async function tracked(
       browserId: tracker.browserId,
       sessionId,
     }).catch(() => null);
-    throw new BrowserUseEngineThrew(error, {
+    throw new PlanEngineThrew(error, {
       runId: tracker.runId ?? null,
       sessionId,
       browserId: tracker.browserId,
       sessionCostUsd,
+      reviewStarted: tracker.reviewStarted,
     });
   }
   // The browser holds the family's place in line until a later sweep picks it up.
@@ -286,7 +315,7 @@ export async function releasePlanRun(
 async function drivePlan(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
-  tracker: BrowserTracker,
+  tracker: PlanTracker,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   if (input.resume?.phase === 'paying') return resumePayment(input, deps, tracker, input.resume);
   let runId: string | null = input.resume?.runId ?? null;
@@ -397,6 +426,7 @@ async function drivePlan(
     if (!input.paymentEnabled) return { ...checkout, detail: 'payment_off' };
     if (!ids.sessionId) return checkout;
 
+    tracker.reviewStarted = true;
     const review = await reviewCheckout(input, deps, tracker, ids.sessionId);
     const reviewed: BrowserUsePlanResult = {
       ...checkout,
@@ -420,10 +450,11 @@ async function drivePlan(
       ok: final.ok,
     });
     if (!final.ok) {
-      // A charge may exist: the browser stays on what the provider now shows, so it can be
+      // Only a review answer that was read can rule out a placed order. Placed, or never read,
+      // a charge may exist: the browser stays on what the provider now shows, so it can be
       // checked, and the payment row records an amount not known.
-      if (final.detail === 'review_placed_order') {
-        return reportPayment(input, { ...reviewed, detail: 'review_placed_order' });
+      if (review.kind === 'unread' || final.detail === 'review_placed_order') {
+        return reportPayment(input, { ...reviewed, detail: final.detail });
       }
       return {
         ...reviewed,
@@ -459,12 +490,14 @@ async function drivePlan(
   } catch (error) {
     if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
     if (error instanceof BrowserUseApiError) {
-      return planResult(
+      const failed = planResult(
         failure('error', 'api_error', { runId, sessionId: tracker.sessionId }),
         'error',
         'api_error',
         null,
       );
+      // Once the review run exists it may have placed the order, as for a throw.
+      return tracker.reviewStarted ? reportPayment(input, failed) : failed;
     }
     throw error;
   }
@@ -638,10 +671,22 @@ async function resumePayment(
   return awaitPayment(input, deps, tracker, checkout, { ...paying, runId: paying.runId });
 }
 
+/**
+ * The one door for a result where a charge may exist: every payment run's end, a payment
+ * whose run id was never stored, and a review that placed the order or was never read. It
+ * writes the payment row and says what was charged.
+ */
 async function reportPayment(
   input: Pick<BrowserUsePlanInput, 'onStep'>,
-  result: BrowserUsePlanResult,
+  reported: BrowserUsePlanResult,
 ): Promise<BrowserUsePlanResult> {
+  const charged: PlanCharged =
+    reported.amountChargedCents !== null
+      ? { cents: reported.amountChargedCents }
+      : reported.detail === 'card_declined'
+        ? 'nothing'
+        : 'unknown';
+  const result = { ...reported, charged };
   await input.onStep({
     step: 'payment',
     outcome: result.outcome,
