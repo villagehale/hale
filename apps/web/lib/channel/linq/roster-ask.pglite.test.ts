@@ -151,6 +151,7 @@ function inbound(sender: string, text: string, messageId = `in-${text.length}`):
     text,
     mediaCount: 0,
     receivedAt: NOW,
+    sentAt: NOW,
     otherHandles: [],
     mentions: [],
   };

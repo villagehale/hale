@@ -178,11 +178,17 @@ describe('readLinqChatJoinedAt: when Linq says each present participant joined',
         { handle: ACTIVE, status: 'active', joined_at: JOINED },
         { handle: NULL_STATUS, status: 'active', joined_at: JOINED },
         { handle: NULL_STATUS, status: 'active' },
+        { handle: NO_STATUS, status: 'active', joined_at: JOINED },
+        { handle: NO_STATUS, status: 'active', joined_at: BEFORE },
+        { handle: ACTIVE_BUT_LEFT_AT, status: 'active' },
+        { handle: ACTIVE_BUT_LEFT_AT, status: 'active', joined_at: JOINED },
       ]),
     ).toEqual(
       new Map([
         [ACTIVE, at(JOINED)],
         [NULL_STATUS, null],
+        [NO_STATUS, at(JOINED)],
+        [ACTIVE_BUT_LEFT_AT, null],
       ]),
     );
   });

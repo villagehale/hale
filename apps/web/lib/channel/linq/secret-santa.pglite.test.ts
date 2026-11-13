@@ -304,6 +304,7 @@ async function say(d: never, from: string, text: string, id = nextId()) {
     text,
     mediaCount: 0,
     receivedAt: clock,
+    sentAt: clock,
     otherHandles: ALL.filter((h) => h !== from),
     isGroup: true,
     mentions: [],
@@ -1290,7 +1291,7 @@ describe('flag and model', () => {
               add: [],
               claim: [{ item: null, text: 'the salad' }],
               release: [],
-              gift: { forKid: null, keepFromKidFamily: false, kidFamily: [] },
+              gift: { forKid: null, keepFromKidFamily: false, kidFamily: [], items: [] },
               reply: 'Salad is yours.',
             };
           },

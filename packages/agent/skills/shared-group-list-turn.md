@@ -34,7 +34,7 @@ Anything else (chat about the party, a question that is not about a list, thanks
 
 ## Secret gifts
 
-Set `gift.keepFromKidFamily` true only when this chat wants a gift kept from the child's own family: someone said so here, or this list's gifts for that child are already `secret`. Then `gift.forKid` is the child, and `gift.kidFamily` the refs of the people here who are that child's parents or family (from `kidName` or what was said), or empty when none of them is here. A potluck, a teacher or coach gift, and a gift with no sign the chat wants it kept quiet are not secret: false, with `forKid` null and `kidFamily` empty.
+Set `gift.keepFromKidFamily` true only when this message keeps a gift from the child's own family: it says so, or it adds or claims a gift for a child whose gifts on this list are already `secret`. Then `gift.forKid` is the child, `gift.kidFamily` the refs of the people here who are that child's parents or family (from `kidName` or what was said), or empty when none of them is here, and `gift.items` the refs of items already on the list that the message asks to keep secret ("let's keep the Lego a surprise"), or empty when it only adds or claims. A question about the list keeps nothing new secret. A potluck, a teacher or coach gift, and a gift with no sign the chat wants it kept quiet are not secret: false, with `forKid` null and `kidFamily` and `items` empty.
 
 Never point at, hint at or name the giver of a secret gift in a way its child's family would read. Code also checks this and sends nothing when it can't be kept.
 

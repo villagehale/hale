@@ -100,6 +100,9 @@ export interface LinqInboundText {
   /** The same parts, classified. Absent on a literal that only counted them. */
   media?: InboundMediaPart[];
   receivedAt: Date;
+  /** Linq's sent_at, or null when the payload carried no readable one (`receivedAt` is then
+   * Hale's own clock, which a retry puts after the real send). */
+  sentAt: Date | null;
   /** Other participants when the payload carried them. Empty means the webhook
    * did not list them — message.received does not — not that the chat is empty. */
   otherHandles: string[];
@@ -308,8 +311,9 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     return { kind: 'ignored', reason: 'malformed' };
   }
 
-  const sentAt = typeof data.sent_at === 'string' ? new Date(data.sent_at) : receivedAtFallback;
-  const receivedAt = Number.isNaN(sentAt.getTime()) ? receivedAtFallback : sentAt;
+  const parsedSentAt = typeof data.sent_at === 'string' ? new Date(data.sent_at) : null;
+  const sentAt = parsedSentAt && !Number.isNaN(parsedSentAt.getTime()) ? parsedSentAt : null;
+  const receivedAt = sentAt ?? receivedAtFallback;
 
   return {
     kind: isGroup ? 'group' : 'message',
@@ -321,6 +325,7 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
       mediaCount: media.length,
       media,
       receivedAt,
+      sentAt,
       otherHandles: otherHandles(data.chat),
       isGroup: saidGroup,
       mentions: mentionsFromParts(parts),

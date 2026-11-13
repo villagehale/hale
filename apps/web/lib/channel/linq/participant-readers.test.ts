@@ -37,6 +37,25 @@ describe('listedReaders: who Linq says was here when the message was sent', () =
     expect([...(readers?.presentAtSend ?? [])]).toEqual([phoneBlindIndex(MEI)]);
   });
 
+  it('counts nobody as present at the send when the message carried no sent time', () => {
+    const readers = listedReaders(
+      {
+        status: 'ok',
+        isGroup: true,
+        handles: [MEI, ADA],
+        joinedAt: new Map([
+          [MEI, BEFORE],
+          [ADA, BEFORE],
+        ]),
+      },
+      phoneBlindIndex(MEI),
+      notHale,
+      null,
+    );
+    expect(readers?.hashes).toHaveLength(2);
+    expect([...(readers?.presentAtSend ?? ['unread'])]).toEqual([]);
+  });
+
   it('a number listed under two spellings counts only if every listing joined before the send', () => {
     const spaced = '+1 641 555 0201';
     const readers = listedReaders(

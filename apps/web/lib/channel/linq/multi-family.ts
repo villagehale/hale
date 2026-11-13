@@ -1579,6 +1579,11 @@ export async function takeMultiFamilyTurn(
     text: string;
     providerMessageId: string;
     receivedAt: Date;
+    /**
+     * VIL-687: Linq's sent_at. Null or absent when the webhook carried none (a reaction, or a
+     * payload without it): then nobody is cleared for a gift this message hides.
+     */
+    sentAt?: Date | null;
     now: Date;
     send?: SendGroup;
     reactionType?: string | null;
@@ -1711,7 +1716,7 @@ export async function takeMultiFamilyTurn(
               await participantsOf(input.chatId, wired.listHandles),
               me.phoneE164Hash,
               haleLine,
-              input.receivedAt,
+              input.sentAt ?? null,
             ),
           ),
         }

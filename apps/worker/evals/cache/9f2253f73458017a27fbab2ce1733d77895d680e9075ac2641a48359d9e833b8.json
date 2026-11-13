@@ -1,0 +1,28 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": "小雨,蛋糕已经有人认领了哦,别重复买啦。要不看看清单上还有什么空着的?"
+  },
+  "latencyMs": 2436,
+  "usage": {
+    "input_tokens": 139,
+    "output_tokens": 132,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}
