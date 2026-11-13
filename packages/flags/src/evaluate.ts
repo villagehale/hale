@@ -5,6 +5,7 @@ import {
   envEnabled,
   envVariant,
   getFlag,
+  offVariantOf,
 } from './catalog.js';
 import { flagsPoller } from './client.js';
 import { POSTHOG_ID_SALT_ENV, hashFamilyIdForFlags } from './hash.js';
@@ -84,7 +85,7 @@ function fromPosthog(
 
 function asBoolean(spec: FlagSpec, value: boolean | string): boolean {
   if (spec.type === 'multivariate') {
-    if (typeof value === 'string') return value !== spec.default;
+    if (typeof value === 'string') return value !== offVariantOf(spec);
     return value;
   }
   if (typeof value === 'string') {
@@ -135,11 +136,11 @@ export function flagValue(
     return isEnabled(flagKey, familyId, env) ? 'true' : 'false';
   }
   if (!posthogFlagsPathEnabled(env)) return envVariant(spec, env);
-  if (isFlagKilled(flagKey, env)) return String(spec.default);
+  if (isFlagKilled(flagKey, env)) return offVariantOf(spec);
   const evaluated = fromPosthog(spec, familyId, env);
   if (evaluated === undefined) return envVariant(spec, env);
   if (typeof evaluated === 'string' && spec.variants.includes(evaluated)) return evaluated;
   if (evaluated === true && spec.onVariant) return spec.onVariant;
-  if (evaluated === false) return String(spec.default);
+  if (evaluated === false) return offVariantOf(spec);
   return envVariant(spec, env);
 }

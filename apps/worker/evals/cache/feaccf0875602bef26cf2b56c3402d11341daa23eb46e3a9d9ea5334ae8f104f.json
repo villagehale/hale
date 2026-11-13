@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the co-parent received the pickup time, which matches a delivered text to the co-parent on record, so it is a send_received claim backed by m1.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_received",
+        "row": "m1"
+      }
+    ]
+  },
+  "latencyMs": 2509
+}

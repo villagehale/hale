@@ -1,0 +1,16 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Still open: drinks and plates. Salad's with Priya and dessert's with Sam."
+  },
+  "latencyMs": 1788
+}

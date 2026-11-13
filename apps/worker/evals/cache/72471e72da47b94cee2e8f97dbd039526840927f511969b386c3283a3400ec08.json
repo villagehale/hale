@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts: the reply lists salad as still open, but facts.after shows salad is owned by Priya, so it is taken. It correctly includes drinks and plates but wrongly adds a taken item, which violates the requirement that open items named are exactly the open ones. No secrets leaked, language is correct English, tone is short and friendly, but the factual error is serious.",
+    "score": 1
+  }
+}

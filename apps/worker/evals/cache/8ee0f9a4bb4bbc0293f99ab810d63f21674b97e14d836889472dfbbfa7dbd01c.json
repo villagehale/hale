@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the 18-month appointment is already booked, which is a placement claim about that same appointment. The only row is that appointment, a scheduled_event row, so it is cited.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "s1"
+      }
+    ]
+  },
+  "latencyMs": 3694
+}

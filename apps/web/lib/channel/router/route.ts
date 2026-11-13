@@ -84,7 +84,12 @@ import {
   releaseGroupOnLeave,
 } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
-import { considerLinqReply } from '~/lib/channel/linq/moments';
+import {
+  type LinqMoment,
+  ParentReactionUnrecorded,
+  ParentReactionUnsent,
+  considerLinqReply,
+} from '~/lib/channel/linq/moments';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -195,6 +200,12 @@ import {
   holdingLineRead,
 } from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import {
+  REACTED_ALONE,
+  type ReactionPlan,
+  planParentReaction,
+  reactionsLitFor,
+} from './reaction-plan';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
 import {
@@ -864,6 +875,11 @@ export type RouterStatus =
   | 'agent_replied'
   /** #973 · the coach wrote nothing; the turn is claimed answered and nothing was sent. */
   | 'agent_silent'
+  /** VIL-680 · the coach's tapback was the whole answer, and no words went. */
+  | typeof REACTED_ALONE
+  /** VIL-680 · the coach chose a tapback as the whole answer and Linq did not take it. The
+   * turn is claimed answered and nothing was sent in its place. */
+  | 'agent_reaction_unsent'
   | 'agent_failed'
   /** This text already has Hale's answer, and the queue handed it back anyway. The turn
    * stops before anything is threaded, spent or sent (turn-ledger.ts). */
@@ -1062,7 +1078,7 @@ async function routeChannelMessageInner(
     sendReply(deps, {
       ...reply,
       openAsks: pendingAsk === null ? 'untouched' : { keeps: pendingAsk },
-    }),
+    }).then((sent) => sent.channelMessageId),
   );
 
   const loaded = await deps.loadContext(deps.database, job);
@@ -1397,6 +1413,7 @@ async function routeChannelMessageInner(
     voiceMemo = false,
     safetyReply = false,
     stamp?: SendStamp,
+    reaction?: ReactionPlan,
   ) =>
     sendReply(deps, {
       route,
@@ -1414,6 +1431,7 @@ async function routeChannelMessageInner(
       beforeSend: stopTyping,
       onSent,
       voiceMemo,
+      ...(reaction ? { reaction } : {}),
       inboundBody: context.body,
       stickerRead: {
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
@@ -2000,6 +2018,7 @@ async function routeChannelMessageInner(
               how?.voiceMemo === true,
               false,
               how?.stamps?.[0],
+              how?.reaction,
             ),
       hasAnswered: () => answered,
       claimSilent: claimAnswer,
@@ -2011,6 +2030,7 @@ async function routeChannelMessageInner(
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
       replyBubbles: bubblesLit,
+      reactions: !inGroup && reactionsLitFor(route, job),
       cardRoute: inGroup ? null : route,
       groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
       askLanguage:
@@ -2043,7 +2063,7 @@ async function routeChannelMessageInner(
 async function consumePendingDisambiguation(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
-  _answer: (body: string) => Promise<string>,
+  _answer: (body: string) => Promise<SentAnswer>,
 ): Promise<
   | { status: 'handled'; handler: string }
   /** Carried on — and whether a digit went with the menu rather than on down the chain. */
@@ -2395,7 +2415,7 @@ async function deliver(
   answer: (
     body: string,
     how: { templateKey: string | null; groupSync?: GroupActivityDecision; stamp?: SendStamp },
-  ) => Promise<string>,
+  ) => Promise<SentAnswer>,
 ): Promise<void> {
   const bodies =
     verdict.replies && verdict.replies.length > 0
@@ -2404,7 +2424,7 @@ async function deliver(
         ? [verdict.reply]
         : [];
   for (const [index, body] of bodies.entries()) {
-    const channelMessageId = await answer(body, {
+    const { channelMessageId } = await answer(body, {
       templateKey: verdict.templateKey ?? null,
       groupSync: verdict.groupSync,
       // A sign-up stamp brackets the first bubble's send, as afterSend follows it.
@@ -2454,15 +2474,17 @@ async function recordCoachOfferFromReply(
   input: {
     familyId: string;
     parentUserId: string;
-    reply: string;
+    /** What the parent got (runAgentTurn): nothing said, nothing offered. */
+    said: string;
     channelMessageId: string;
     now: Date;
   },
 ): Promise<void> {
+  if (input.said.trim() === '') return;
   try {
     const timeZone = await parentTimeZoneForOffer(deps.database, input.parentUserId);
     const extracted = await deps.calendarOffers.readCoach({
-      text: input.reply,
+      text: input.said,
       now: input.now,
       timeZone,
     });
@@ -2526,13 +2548,18 @@ async function runAgentTurn(
      * `voiceMemo` (VIL-495): the model chose to say it; the send gates decide whether it
      * goes as a memo or as this same text. Several `bubbles` are one answer sent as
      * several messages, and the id handed back is the LAST bubble's. `stamps` are each
-     * bubble's sign-up stamp, by index (see {@link HandlerVerdict.stamp}).
+     * bubble's sign-up stamp, by index (see {@link HandlerVerdict.stamp}). `reaction`
+     * (VIL-680): the tapback the coach chose, planned (reaction-plan.ts).
      */
     answer: (
       bubbles: readonly string[],
       threadSource: schema.MessageSource | null,
-      how?: { voiceMemo?: true; stamps?: readonly (SendStamp | undefined)[] },
-    ) => Promise<string>;
+      how?: {
+        voiceMemo?: true;
+        stamps?: readonly (SendStamp | undefined)[];
+        reaction?: ReactionPlan;
+      },
+    ) => Promise<SentAnswer>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
     /**
@@ -2561,6 +2588,8 @@ async function runAgentTurn(
     audience: ChannelTurn['audience'];
     /** The answer may go out as several bubbles (see ChannelTurn.replyBubbles). */
     replyBubbles?: boolean;
+    /** VIL-680 — the coach may choose a tapback (see ChannelTurn.reactions). */
+    reactions?: boolean;
     /** VIL-497 — the 1:1 route a card may go to; null on a group turn. */
     cardRoute?: ReplyRoute | null;
     /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
@@ -2595,6 +2624,7 @@ async function runAgentTurn(
       capabilityNotes,
       signupOffers,
       singleBubble,
+      reaction: chosenReaction,
     } = await composeReconciledReply(deps, args, view);
     // VIL-616: a reply written after reading an email may repeat the sender's words, so
     // its thread row says so and the nightly memory writer leaves it out.
@@ -2625,6 +2655,28 @@ async function runAgentTurn(
     const bubbles = args.replyBubbles && !singleBubble ? splitReplyBubbles(text) : [text];
     if (bubbles.length > 1) {
       deps.log.info({ bubbles: bubbles.length }, 'channel router: the answer goes as bubbles');
+    }
+    // VIL-680: what the tapback the coach chose does, after the claim gate, on facts code
+    // can see. Planned only on a turn lit for reactions.
+    const reaction = args.reactions
+      ? planParentReaction({
+          choice: chosenReaction ?? null,
+          voiceMemo: voiceMemo === true,
+          attempts: attempts.length,
+          mints: mints.length,
+          unplacedAnswer: args.unplacedAnswer !== null,
+          bubbles,
+        })
+      : null;
+    if (reaction) {
+      deps.log.info(
+        {
+          reaction: reaction.kind,
+          ...(reaction.kind === 'none' ? { reason: reaction.reason } : {}),
+          ...(reaction.kind === 'beside' ? { why: reaction.why } : {}),
+        },
+        'channel router: parent reaction planned',
+      );
     }
     // WHAT THE ANSWER OWES: the follow-up it promised, the registration morning and the
     // page it said it was watching. Written AFTER the send, against a message that went
@@ -2699,10 +2751,11 @@ async function runAgentTurn(
     };
     // A card turn stays text: the card rides beside the words (VIL-495 Design lock).
     const stamps = signupStamps(deps, args.turn, signupOffers ?? [], bubbles);
-    const channelMessageId = await args
+    const sent = await args
       .answer(bubbles, threadSource, {
         ...(voiceMemo === true && !card ? { voiceMemo: true as const } : {}),
         ...(stamps.some((stamp) => stamp !== undefined) ? { stamps } : {}),
+        ...(reaction && reaction.kind !== 'none' ? { reaction } : {}),
       })
       .catch(async (err: unknown) => {
         if (err instanceof ReplySetIncomplete) {
@@ -2716,6 +2769,10 @@ async function runAgentTurn(
         }
         throw err;
       });
+    const { channelMessageId } = sent;
+    // WHAT THE PARENT GOT: the reply, or nothing when a tapback or another moment stood in
+    // for its words. The offer read and the workstream below read this, never the reply.
+    const said = sent.carried === 'words' ? reply : '';
     // AFTER the send: the shadow read adds no latency and cannot change what was sent.
     // An enforced turn was already read before the send, so it starts no shadow.
     if (!enforced) {
@@ -2812,7 +2869,7 @@ async function runAgentTurn(
     await recordCoachOfferFromReply(deps, {
       familyId: args.turn.familyId,
       parentUserId: args.turn.parentUserId,
-      reply,
+      said,
       channelMessageId,
       now: args.turn.now,
     });
@@ -2868,7 +2925,7 @@ async function runAgentTurn(
         await deps.rememberWorkstream({
           familyId: args.turn.familyId,
           parentText: args.turn.body,
-          haleText: reply,
+          haleText: said,
           provenance: args.job.channel_message_id,
           now: args.turn.now,
         });
@@ -2880,12 +2937,46 @@ async function runAgentTurn(
       }
     }
     return done(deps, args.job, {
-      status: 'agent_replied',
+      status: sent.carried === 'reaction' ? REACTED_ALONE : 'agent_replied',
       handler: null,
       conversationId: args.conversationId,
       lane: null,
     });
   } catch (err) {
+    // VIL-680: the tapback was the whole answer and landed, and its ledger row did not.
+    // It answered, so nothing more is sent; the turn is claimed so a redelivery never
+    // asks the coach again.
+    if (err instanceof ParentReactionUnrecorded) {
+      deps.log.error(
+        {
+          outcome: 'reaction_unrecorded',
+          err: err.cause instanceof Error ? err.cause.name : 'unknown',
+        },
+        'channel router: the reaction was the answer and landed; its ledger row did not - nothing more sent',
+      );
+      await args.claimSilent?.();
+      return done(deps, args.job, {
+        status: REACTED_ALONE,
+        handler: null,
+        conversationId: args.conversationId,
+        lane: null,
+      });
+    }
+    // VIL-680: the tapback was the whole answer and did not land. Nothing goes in its
+    // place, and the turn is claimed so a redelivery never asks the coach again.
+    if (err instanceof ParentReactionUnsent) {
+      deps.log.warn(
+        { outcome: 'reaction_unsent', reason: err.reason },
+        'channel router: the reaction was the answer and did not land - nothing sent',
+      );
+      await args.claimSilent?.();
+      return done(deps, args.job, {
+        status: 'agent_reaction_unsent',
+        handler: null,
+        conversationId: args.conversationId,
+        lane: null,
+      });
+    }
     // The turn deadline already decided this attempt is over. An apology here
     // would be a text the parent did not ask for, sent after the drain moved on.
     if (isTurnTimeout(err) || turnSignalAborted()) throw err;
@@ -2969,7 +3060,7 @@ async function runAgentTurn(
       throw new TurnDeferred(disposition.reason, err);
     }
     if (disposition.reply !== null) {
-      const channelMessageId = await args.answer([disposition.reply], null);
+      const { channelMessageId } = await args.answer([disposition.reply], null);
       // Only the choice sentence has one: it is the only reply on this path that asks the
       // parent a question, and a question that is not written down is the defect VIL-304
       // exists to close.
@@ -3158,6 +3249,7 @@ async function composeReconciledReply(
     audience: ChannelTurn['audience'];
     groupChatId?: string | null;
     replyBubbles?: boolean;
+    reactions?: boolean;
   },
   view: Promise<ReconcileView>,
 ): Promise<
@@ -3187,6 +3279,7 @@ async function composeReconciledReply(
         audience: args.audience,
         ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
         ...(args.replyBubbles ? { replyBubbles: true } : {}),
+        ...(args.reactions ? { reactions: true } : {}),
       },
       rejected,
     );
@@ -3672,6 +3765,9 @@ type SendReplyArgs = {
   /** VIL-495 — the model chose to say this reply as a voice memo. Tried first on a
    * Linq 1:1 chat; every "no" sends the same body as the text below. */
   voiceMemo?: boolean;
+  /** VIL-680 — the tapback the coach chose (reaction-plan.ts), on the coach's answer of a
+   * turn lit for reactions. Absent on every other reply. */
+  reaction?: ReactionPlan;
   /** The parent's words, when this reply is the turn's answer. A tapback or
    * a poll can stand in for the text. Absent on the caregiver line, which
    * keeps its sentence. */
@@ -3689,7 +3785,15 @@ type SendReplyArgs = {
   stamp?: SendStamp;
 };
 
-async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<string> {
+/**
+ * One answer's send: its ledger row, and what carried it. `words`: the reply's words went,
+ * as text, a memo or an effect. `reaction`: the coach's tapback was the whole answer.
+ * `moment`: another Linq moment stood in for the words (moments.ts). No words went on the
+ * last two, so no writer after the send may read any.
+ */
+type SentAnswer = { channelMessageId: string; carried: 'words' | 'reaction' | 'moment' };
+
+async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<SentAnswer> {
   assertTurnLive();
   const settleOpenAsks = (channelMessageId: string) =>
     settleAnswerAsks(deps, args, channelMessageId);
@@ -3756,8 +3860,9 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
         );
       }
     }
+    let moment: LinqMoment = { handled: false };
     try {
-      const moment = await considerLinqReply(deps.database, {
+      moment = await considerLinqReply(deps.database, {
         route: args.route,
         inboundBody: args.inboundBody,
         outboundBody: args.body,
@@ -3766,6 +3871,7 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
         ...(edit ? { edit } : {}),
+        ...(args.reaction ? { reaction: args.reaction } : {}),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
@@ -3778,31 +3884,43 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
             }
           : {}),
       });
-      if (moment.handled === 'effect') {
-        effected = {
-          providerMessageId: moment.providerMessageId,
-          delivery: moment.delivery,
-          channel: 'imessage',
-          chatId: args.route.chatId,
-        };
-      } else if (moment.handled) {
-        if (args.claim) await args.claim();
-        if (args.conversationId && moment.threadBody) {
-          await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
-        }
-        await mirrorActivityDecision(deps, args);
-        // A tapback that stood in for the answer is the answer.
-        await settleOpenAsks(moment.channelMessageId);
-        return moment.channelMessageId;
-      }
     } catch (err) {
       // VIL-479 (Devin BUG_0003): a turn that expired while the edit read ran is over.
       // It must not edit a bubble, and it must not send the follow-up either.
-      if (isTurnTimeout(err)) throw err;
+      // VIL-680: a tapback that was the whole answer sends no words, landed or not.
+      if (
+        isTurnTimeout(err) ||
+        err instanceof ParentReactionUnsent ||
+        err instanceof ParentReactionUnrecorded
+      ) {
+        throw err;
+      }
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
+    }
+    if (moment.handled === 'effect') {
+      effected = {
+        providerMessageId: moment.providerMessageId,
+        delivery: moment.delivery,
+        channel: 'imessage',
+        chatId: args.route.chatId,
+      };
+    } else if (moment.handled) {
+      // It landed in place of the words, so nothing from here falls through to them: a
+      // write that fails now fails as one after a text does.
+      await claimAnswerQuietly(deps, args);
+      if (args.conversationId && moment.threadBody) {
+        await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
+      }
+      await mirrorActivityDecision(deps, args);
+      // A tapback that stood in for the answer is the answer.
+      await settleOpenAsks(moment.channelMessageId);
+      return {
+        channelMessageId: moment.channelMessageId,
+        carried: moment.reactedAlone ? 'reaction' : 'moment',
+      };
     }
     // An effect reply already went out: the deadline cannot unsend it, and it must not
     // throw away the claim either.
@@ -3822,7 +3940,7 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
   });
 
   await settleOpenAsks(channelMessageId);
-  return channelMessageId;
+  return { channelMessageId, carried: 'words' };
 }
 
 /**
@@ -4085,7 +4203,7 @@ async function sendReplySet(
      * goes as plain texts. */
     stamps?: readonly (SendStamp | undefined)[];
   },
-): Promise<string> {
+): Promise<SentAnswer> {
   assertTurnLive();
   if (args.beforeSend) await args.beforeSend();
   const plain = args.stamps?.some((stamp) => stamp !== undefined) === true;
@@ -4118,7 +4236,7 @@ async function sendReplySet(
       firstOfAnswer: true,
     });
     await settleAnswerAsks(deps, args, id);
-    return id;
+    return { channelMessageId: id, carried: 'words' };
   }
 
   let effected: {
@@ -4252,7 +4370,7 @@ async function sendReplySet(
   const last = recorded.at(-1);
   if (!last) throw new Error('channel router: the answer set left no ledger row');
   await settleAnswerAsks(deps, args, last);
-  return last;
+  return { channelMessageId: last, carried: 'words' };
 }
 
 /**
