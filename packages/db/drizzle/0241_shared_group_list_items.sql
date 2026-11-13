@@ -5,7 +5,8 @@
 -- can own an item, and no name is copied here.
 --
 -- owner_person_id null = still open. An item someone added goes when their presence row
--- is forgotten (ON DELETE cascade); an owner who is forgotten only frees it (set null).
+-- is forgotten (ON DELETE cascade), unless someone staying claimed it: code passes it to
+-- them first. An owner who is forgotten only frees it (set null).
 -- hidden_for_kid, hidden_from_person_ids and hidden_from_family_ids mark a gift that is
 -- never rendered to the child's family; code applies it on every read.
 --
