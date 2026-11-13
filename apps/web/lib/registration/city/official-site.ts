@@ -115,10 +115,8 @@ export interface NamedPlace {
 
 /** A website's host as compared: lower-case, no trailing dot, no leading `www.`. */
 function siteHost(url: URL): string {
-  return url.hostname
-    .toLowerCase()
-    .replace(/\.$/, '')
-    .replace(/^www\./, '');
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  return host.startsWith('www.') ? host.slice('www.'.length) : host;
 }
 
 function httpUrl(raw: string): URL | null {
