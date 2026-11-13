@@ -855,7 +855,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       log: console,
     }),
     // A text that lands while this parent's turn runs, read beside it, on the same lazy
-    // client. Dark unless INBOUND_MIDTURN_ENABLED or the family allowlist lights it.
+    // client. On unless INBOUND_MIDTURN_ENABLED=false.
     sideTurn: {
       enabled: (familyId) => isEnabled('inbound-midturn', familyId),
       reader: createSideTurnReader(screenClient),

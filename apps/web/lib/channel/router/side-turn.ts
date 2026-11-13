@@ -162,7 +162,7 @@ export type SideTurnOutcome =
   | { kind: 'queued'; why: SideTurnQueuedWhy };
 
 export interface SideTurnPorts {
-  /** INBOUND_MIDTURN_ENABLED, or the family allowlist. */
+  /** INBOUND_MIDTURN_ENABLED: on unless set to `false`. */
   enabled(familyId: string): boolean;
   /** Non-nullable (rule #11): a reader that cannot run says so in its reading. */
   reader: SideTurnReader;
@@ -414,8 +414,8 @@ async function decide(
   if (reading.status === 'unavailable') return queued('reader_unavailable');
   if (reading.verdict === 'hand_back') return queued('handed_back');
 
-  // GATE 3's place, counted once for this text: its own turn will not count it again
-  // unless the text goes back to it.
+  // GATE 3's place. A text that goes back to its own turn after this check is counted
+  // again there: the limiter has no peek and no refund.
   const budget = await deps.limiter.check(job.parent_user_id, AGENT_TURN_ROUTE, AGENT_TURN_LIMIT);
   if (!budget.allowed) {
     if (!budget.firstDenied) return queued('over_limit');

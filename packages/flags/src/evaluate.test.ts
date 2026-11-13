@@ -57,16 +57,14 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true' })).toBe(true);
   });
 
-  it('keeps inbound-midturn dark by default, apart from inbound-burst, and arms one family', () => {
-    expect(isEnabled('inbound-midturn', 'fam-a', {})).toBe(false);
-    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_BURST_ENABLED: 'true' })).toBe(false);
-    const env = { INBOUND_MIDTURN_FAMILY_ALLOWLIST: 'fam-a' };
-    expect(isEnabled('inbound-midturn', 'fam-a', env)).toBe(true);
-    expect(isEnabled('inbound-midturn', 'fam-b', env)).toBe(false);
-    expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_MIDTURN_ENABLED: 'true\n' })).toBe(
+  it('runs inbound-midturn by default for every family; only "false" turns it off', () => {
+    expect(isEnabled('inbound-midturn', 'fam-a', {})).toBe(true);
+    expect(isEnabled('inbound-midturn', undefined, {})).toBe(true);
+    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_MIDTURN_ENABLED: 'false' })).toBe(false);
+    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_MIDTURN_ENABLED: 'false\n' })).toBe(
       false,
     );
-    expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_MIDTURN_ENABLED: 'true' })).toBe(true);
+    expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_BURST_ENABLED: 'false' })).toBe(true);
   });
 
   it('keeps deep-followup-now dark by default and arms one allowlisted family', () => {
