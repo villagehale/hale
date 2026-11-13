@@ -328,6 +328,28 @@ describe('a not-found answer', () => {
       ),
     ).toMatchObject({ status: 'unverified', reason: expected });
   });
+
+  it.each(['announced_later', 'not_published', 'different_cycle_only'] as const)(
+    'is not taken as %s below the confidence floor: a shaky draw says nothing about the page',
+    (reason) => {
+      const page = 'Fall programs are coming soon.';
+      expect(
+        normalizeExtractedRegistration(
+          extracted({ found: false, reason, cycleOnPage: null, confidence: 0.4 }),
+          page,
+          SOURCE,
+        ),
+      ).toMatchObject({ status: 'unverified', reason: 'low_confidence' });
+      // Control: the same answer at the floor carries its reason.
+      expect(
+        normalizeExtractedRegistration(
+          extracted({ found: false, reason, cycleOnPage: null, confidence: 0.7 }),
+          page,
+          SOURCE,
+        ),
+      ).toMatchObject({ status: 'unverified', reason });
+    },
+  );
 });
 
 describe('the zone must be a named IANA region, not a fixed offset', () => {
