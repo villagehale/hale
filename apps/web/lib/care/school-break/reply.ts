@@ -16,8 +16,11 @@ import { usableBreakName } from './read';
  * winter, is `nothing_stated`. The coach still replies. The reader is given the question
  * Hale asked, as sent, so a bare range ("Dec 19 - Jan 5") answering "when are the kids
  * back?" ends on the day back, not the last day off: that day is read as said, and the
- * last day off is the day before it, by calendar arithmetic. The break's name is the
- * parent's own when they gave one, and null when they did not: none is made up.
+ * last day off is the day before it, by calendar arithmetic. When the question put days
+ * to the parent (the school's email stated them) and the parent confirmed them, the days
+ * are read off the question as sent, held to the same checks against its words. The
+ * break's name is the parent's own when they gave one, and null when they did not: none
+ * is made up, and none is taken from the question.
  *
  * A missing client, a missing skill, or a model failure is the same outcome, and the log
  * names which. The parent's text is never in that line (rule #1, rule #11).
@@ -26,16 +29,22 @@ import { usableBreakName } from './read';
 export const SCHOOL_BREAK_REPLY_SKILL = 'school-break-reply';
 export const SCHOOL_BREAK_REPLY_TOOL = 'school_break_reply';
 export const SCHOOL_BREAK_REPLY_DESCRIPTION = 'Read the winter break days this parent gave.';
-export const SCHOOL_BREAK_REPLY_MAX_TOKENS = 300;
+export const SCHOOL_BREAK_REPLY_MAX_TOKENS = 1024;
 const MAX_TEXT_CHARS = 1600;
 
 export const SCHOOL_BREAK_REPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    days_from: {
+      type: ['string', 'null'],
+      enum: ['reply', 'question', null],
+      description:
+        "`reply` when the days are in the parent's words, `question` when the parent confirmed the days the question gave.",
+    },
     quote: {
       type: ['string', 'null'],
-      description: "The parent's words that give the days, copied exactly.",
+      description: 'The words that give the days, copied exactly from where `days_from` says.',
     },
     first_day: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
     first_day_text: {
@@ -49,7 +58,7 @@ export const SCHOOL_BREAK_REPLY_SCHEMA = {
     },
     back_day: {
       type: ['string', 'null'],
-      description: 'YYYY-MM-DD, the first day back, when that is what the parent gave instead.',
+      description: 'YYYY-MM-DD, the first day back, when that is what the days give instead.',
     },
     back_day_text: {
       type: ['string', 'null'],
@@ -63,6 +72,7 @@ export const SCHOOL_BREAK_REPLY_SCHEMA = {
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
   },
   required: [
+    'days_from',
     'quote',
     'first_day',
     'first_day_text',
@@ -76,6 +86,7 @@ export const SCHOOL_BREAK_REPLY_SCHEMA = {
 } as const;
 
 export const schoolBreakReplyParse = z.object({
+  days_from: z.enum(['reply', 'question']).nullable(),
   quote: z.string().nullable(),
   first_day: z.string().nullable(),
   first_day_text: z.string().nullable(),
@@ -114,10 +125,15 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** A reading safe to file, checked by code: pure, so the eval runs the same check. */
 export function toSchoolBreakReplyReading(
   raw: SchoolBreakReplyExtraction,
-  text: string,
+  said: { text: string; question: string | null },
   schoolYear: string,
 ): SchoolBreakReplyReading {
   if (raw.confidence !== 'high') return { status: 'nothing_stated' };
+  const { text } = said;
+  // The words the days must be printed in: the parent's, or the question they confirmed.
+  const source =
+    raw.days_from === 'reply' ? text : raw.days_from === 'question' ? said.question : null;
+  if (source === null) return { status: 'nothing_stated' };
   const { quote, first_day: firstDay } = raw;
   // The break's end, as the parent gave it: the last day off, or the day back. One of them.
   const end =
@@ -129,15 +145,16 @@ export function toSchoolBreakReplyReading(
   if (quote === null || firstDay === null || end === null) return { status: 'nothing_stated' };
   if (!ISO_DAY.test(firstDay) || !ISO_DAY.test(end.date)) return { status: 'nothing_stated' };
   const lastDay = raw.back_day === null ? end.date : addDaysToKey(end.date, -1);
-  const said = normalizeQuote(quote);
-  if (said === '' || !normalizeQuote(text).includes(said)) return { status: 'nothing_stated' };
-  // Each day is printed in the parent's own words and states exactly that day, read by
-  // the same date grammar the board pages are held to: "around christmas" states no day.
+  const quoted = normalizeQuote(quote);
+  if (quoted === '' || !normalizeQuote(source).includes(quoted))
+    return { status: 'nothing_stated' };
+  // Each day is printed in those words and states exactly that day, read by the same date
+  // grammar the board pages are held to: "around christmas" states no day.
   for (const [date, span] of [
     [firstDay, raw.first_day_text],
     [end.date, end.text],
   ] as const) {
-    if (span === null || span.trim() === '' || !said.includes(normalizeQuote(span))) {
+    if (span === null || span.trim() === '' || !quoted.includes(normalizeQuote(span))) {
       return { status: 'nothing_stated' };
     }
     const refusal = dateSpanRefusal({
@@ -205,7 +222,7 @@ export function createSchoolBreakReplyReader(client: () => AgentClient): SchoolB
           schema: schoolBreakReplyParse,
           maxTokens: SCHOOL_BREAK_REPLY_MAX_TOKENS,
         });
-        return toSchoolBreakReplyReading(value, text, schoolYear);
+        return toSchoolBreakReplyReading(value, { text, question: input.question }, schoolYear);
       } catch (err) {
         return nothing('model_failed', failure(err));
       }

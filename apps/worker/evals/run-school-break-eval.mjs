@@ -7,10 +7,13 @@
 //   - the board lookup (lookup.ts) over that reader, so a page with no winter break
 //     comes out `not_found: not_published`: the case where Hale asks the parent once;
 //   - the same skill through read.ts's text reader, on the text of an email a school
-//     sent: the break is filed only when every day is quoted from the email;
+//     sent: its days are put to the parent only when every day is quoted from the email;
+//   - packages/agent/skills/school-mail-sender.md through school-sender.ts: whether a
+//     school or board wrote an authenticated kid email, before its host counts as one;
 //   - packages/agent/skills/school-break-reply.md through reply.ts: the parent's answer
 //     to that one question, read against the question Hale sent, then code's check of it
-//     (a name is filed only when the parent wrote one).
+//     (a name is filed only when the parent wrote one; days the parent confirmed are read
+//     off the question).
 // The pages are fixtures on reserved .example hosts, fetched by a scripted port. Nothing here
 // is a real school's calendar and no family is in any payload.
 //
@@ -111,6 +114,43 @@ Winter Break runs from Monday, December 21, 2026 to Friday, January 1, 2027. Cla
 Thank you,
 The office`;
 
+/** Who wrote an authenticated kid email: only a school or board names the kid's school. */
+const SENDER_CASES = [
+  {
+    id: 'sender-school-office',
+    host: 'school.example',
+    text: `${EMAIL_TEXT}\nExample Public School`,
+    expect: { status: 'school' },
+  },
+  {
+    // A coach's note that names the break: the dates are real, the sender is not a school.
+    id: 'sender-coach',
+    host: 'riverside-soccer.example',
+    text: 'Hi team parents! No practice over Winter Break, Monday, December 21, 2026 to Friday, January 1, 2027. We start again January 9. Coach Sam, Riverside Soccer Club U8',
+    expect: { status: 'not_school' },
+  },
+  {
+    id: 'sender-daycare',
+    host: 'little-sprouts.example',
+    text: 'Dear families, Little Sprouts Child Care Centre will be closed from Thursday, December 24, 2026 to Friday, January 1, 2027. We reopen Monday, January 4. Warmly, the Little Sprouts team',
+    expect: { status: 'not_school', reason: 'daycare' },
+  },
+  {
+    // A camp selling to school families names a school and its break; a camp wrote it.
+    id: 'sender-camp-promo',
+    host: 'maple-camps.example',
+    text: 'Winter camp while school is out! Example Public School families: our camp runs December 21, 2026 to January 1, 2027. Register today and save 10%. Maple Camps',
+    expect: { status: 'not_school' },
+  },
+  {
+    // A school, but not the kid's: an open house for families not there yet.
+    id: 'sender-open-house',
+    host: 'example-academy.example',
+    text: 'Discover Example Academy! Join our Open House on Saturday, November 21 and see why families choose us for JK to Grade 12. Applications for September 2027 are now open. Admissions Office, Example Academy',
+    expect: { status: 'not_school' },
+  },
+];
+
 const EMAIL_CASES = [
   {
     id: 'school-email-states-break',
@@ -134,6 +174,9 @@ const EMAIL_CASES = [
 const ASKED_DAY_BACK =
   'When does winter break start for the kids, and what day are they back at school?';
 const ASKED_LAST_DAY = "What are the first and last days off for the kids' winter break?";
+/** What Hale sent when the school's email stated the break: its days, to confirm. */
+const ASKED_TO_CONFIRM =
+  'Hi! The school email says Winter Break runs Monday, December 21 to Friday, January 1. Is that right for the kids?';
 
 const REPLY_CASES = [
   {
@@ -189,6 +232,20 @@ const REPLY_CASES = [
     text: 'she goes to Maple Grove PS',
     expect: { status: 'nothing_stated' },
   },
+  {
+    // A yes to the days Hale put to them: the days are the question's, no name is theirs.
+    id: 'parent-confirms-proposed-days',
+    question: ASKED_TO_CONFIRM,
+    text: "yep that's right",
+    expect: { status: 'read', firstDay: '2026-12-21', lastDay: '2027-01-01', name: null },
+  },
+  {
+    // A correction: the parent's own days, not the question's.
+    id: 'parent-corrects-proposed-days',
+    question: ASKED_TO_CONFIRM,
+    text: 'no, ours is dec 18 to jan 4',
+    expect: { status: 'read', firstDay: '2026-12-18', lastDay: '2027-01-04', name: null },
+  },
 ];
 
 async function main() {
@@ -198,15 +255,18 @@ async function main() {
   const read = await importTs(join(BREAK_DIR, 'read.ts'));
   const lookupMod = await importTs(join(BREAK_DIR, 'lookup.ts'));
   const reply = await importTs(join(BREAK_DIR, 'reply.ts'));
+  const sender = await importTs(join(BREAK_DIR, 'school-sender.ts'));
   const readSkill = await agent.loadSkill(join(SKILLS, `${read.SCHOOL_BREAK_READ_SKILL}.md`));
   const replySkill = await agent.loadSkill(join(SKILLS, `${reply.SCHOOL_BREAK_REPLY_SKILL}.md`));
+  const senderSkill = await agent.loadSkill(join(SKILLS, `${sender.SCHOOL_SENDER_SKILL}.md`));
   const readLane = agent.pickLane(readSkill.meta.task);
   const replyLane = agent.pickLane(replySkill.meta.task);
+  const senderLane = agent.pickLane(senderSkill.meta.task);
   const getClient = lazyAnthropic('school-break');
   const cost = makeCost();
 
   console.info(
-    `school-break eval${cachedOnly ? ' (cached-only)' : ''} | read=${readLane.model} reply=${replyLane.model}`,
+    `school-break eval${cachedOnly ? ' (cached-only)' : ''} | read=${readLane.model} reply=${replyLane.model} sender=${senderLane.model}`,
   );
   let failed = 0;
   const report = (id, failures, detail) => {
@@ -311,6 +371,34 @@ async function main() {
     report(fixture.id, failures, reading);
   }
 
+  for (const fixture of SENDER_CASES) {
+    const reader = sender.createSchoolSenderReader(async (fromDomain, text) => {
+      const { value } = await cachedToolCall({
+        tag: evalRunTag(`school-mail-sender:${fixture.id}`),
+        lane: senderLane,
+        model: senderLane.model,
+        system: senderSkill.instructions,
+        userMessage: sender.schoolSenderInput(fromDomain, text),
+        toolName: sender.SCHOOL_SENDER_TOOL,
+        toolDescription: sender.SCHOOL_SENDER_DESCRIPTION,
+        toolSchema: sender.SCHOOL_SENDER_SCHEMA,
+        maxTokens: sender.SCHOOL_SENDER_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      return sender.schoolSenderParse.parse(value);
+    });
+    const verdict = await reader({ host: fixture.host, text: fixture.text });
+    const failures = [];
+    const want = fixture.expect;
+    if (verdict.status !== want.status) failures.push(`status ${verdict.status} != ${want.status}`);
+    if (want.reason !== undefined && verdict.reason !== want.reason) {
+      failures.push(`reason ${verdict.reason}`);
+    }
+    report(fixture.id, failures, verdict);
+  }
+
   for (const fixture of REPLY_CASES) {
     const { value } = await cachedToolCall({
       tag: evalRunTag(`school-break-reply:${fixture.id}`),
@@ -333,7 +421,7 @@ async function main() {
     });
     const reading = reply.toSchoolBreakReplyReading(
       reply.schoolBreakReplyParse.parse(value),
-      fixture.text,
+      { text: fixture.text, question: fixture.question },
       SCHOOL_YEAR,
     );
     const failures = [];

@@ -12,9 +12,9 @@ export const maxDuration = 300;
 
 /**
  * GET /api/cron/school-break — VIL-685. Hourly: each school-age family's winter break,
- * read off the calendar page of the school their own kid mail authenticated as (cached
- * per host) or off that school's email text, or one daytime question queued for the
- * proactive decider when neither has it. Its kill switch (SCHOOL_BREAK_ENABLED) defaults
+ * read off the calendar page of the school that wrote their own authenticated kid mail
+ * (cached per host), or else one daytime question queued for the proactive decider,
+ * carrying the days the school's email states for the parent to confirm when it has them. Its kill switch (SCHOOL_BREAK_ENABLED) defaults
  * on; `false` reads nothing.
  *
  * Cron auth is the spend gate: without `Authorization: Bearer <CRON_SECRET>` nothing runs.

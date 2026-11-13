@@ -1,5 +1,6 @@
 {
   "value": {
+    "days_from": "reply",
     "quote": "dec 19, and they go back jan 5",
     "first_day": "2026-12-19",
     "first_day_text": "dec 19",
@@ -10,5 +11,11 @@
     "name": null,
     "confidence": "high"
   },
-  "latencyMs": 932
+  "latencyMs": 2085,
+  "usage": {
+    "input_tokens": 70,
+    "output_tokens": 309,
+    "cache_read_input_tokens": 1635,
+    "cache_creation_input_tokens": 0
+  }
 }

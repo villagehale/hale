@@ -65,14 +65,14 @@ export const WEEKDAY_BREAK_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_bre
 
 /**
  * A school break Hale may name. VIL-685: the family's winter break, read off their own
- * school's calendar page or email, or given by the parent ({@link loadVerifiedSchoolBreak}).
+ * school's calendar page, or given by the parent ({@link loadVerifiedSchoolBreak}).
  * There is still no source for a PA day, and none is built: PA days stay out.
  */
 export interface VerifiedSchoolBreak {
   /** Colon-free, and it ends with the verified ISO date (`winter-break-2026-12-21`). */
   eventKey: string;
-  /** The event's own name, as the page or the school's email printed it or the parent
-   * said it; null when the parent gave none. Never invented here. */
+  /** The event's own name, as the page printed it or the parent said it; null when the
+   * parent gave none. Never invented here. */
   label: string | null;
   /** Family-local day key the source verified: the break's first day. */
   date: string;
@@ -86,7 +86,6 @@ export interface VerifiedSchoolBreak {
 
 const BREAK_SOURCE = {
   board_page: 'school_calendar',
-  school_email: 'connected_email',
   parent: 'parent_said',
 } as const satisfies Record<SchoolBreakFact['source'], VerifiedSchoolBreak['source']>;
 

@@ -103,4 +103,21 @@ export const PROACTIVE_WRITER_FIXTURES = [
     cadenceNote: null,
     expect: { names: ['break'], urls: [] },
   },
+  {
+    // VIL-685 · the school's own email stated the break: its days are put to the parent
+    // to confirm, never filed on the email's word alone.
+    id: 'school-break-ask-proposal',
+    items: [
+      {
+        id: 'break-ask',
+        what: 'winter break 2026-27; the school email gives Winter Break 2026-12-21 to 2027-01-01',
+        why: 'school_break_ask year=2026-27',
+        sourceUrl: null,
+        worthlessAfter: '2026-12-15T17:00:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['21', 'jan'], urls: [] },
+  },
 ];

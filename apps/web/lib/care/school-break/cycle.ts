@@ -32,6 +32,15 @@ export function winterBreakBounds(schoolYear: string): { earliest: string; lates
 }
 
 /**
+ * The last day a family waits on its school's page before it is asked instead: the end
+ * of November. A school whose page could not be read by then (no model client, lookups
+ * deferred) leaves the first half of December to the decider, never the last ask day.
+ */
+export function lastWaitDay(schoolYear: string): string {
+  return addDaysToKey(winterBreakBounds(schoolYear).earliest, -1);
+}
+
+/**
  * The last day asking a parent when their winter break is still buys anything: Dec 15,
  * the candidate's `worthlessAfter`. A break that starts in the second half of December
  * is days away by then, and a question that late arrives too late to plan around. The
