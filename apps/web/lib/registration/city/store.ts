@@ -1,5 +1,5 @@
 import { type CityRegistrationReading, type Database, schema } from '@hale/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { VerifiedRegistrationReading } from '../live-reading';
 import type { CityLookup } from './lookup';
@@ -8,9 +8,15 @@ import { type OwnCity, cityKey } from './place';
 /**
  * VIL-684 · the per-city cache: the newest reading of a city's season wins, and every
  * reading carries the page it came from and when it is read again. A re-read that fails
- * to finish writes nothing (the lookup's `retry`), and a known date gives way to "not
+ * to finish writes no reading (the lookup's `retry`), and a known date gives way to "not
  * found" only when its own page says this season is not out (sweep.ts), so a timeout, a
  * server error, a shaky read or another page's answer never turns it into "not found".
+ *
+ * EVERY LOOKUP MOVES THE CITY'S NEXT TURN. One that wrote no reading is still appended,
+ * as a `retry` row that is never read as the reading, so the city is not due again
+ * straight away: the next sweep first, then each wait twice the last, up to the
+ * "not found" interval. A city whose page stays shaky can never take every lookup of
+ * every run.
  */
 
 /** How long a verified date stands before its page is read again. Cache freshness, not a
@@ -18,6 +24,11 @@ import { type OwnCity, cityKey } from './place';
 export const REVERIFY_VERIFIED_MS = 3 * 86_400_000;
 /** How long "not found" stands before the city is searched again: dates get announced. */
 export const REVERIFY_NOT_FOUND_MS = 2 * 86_400_000;
+
+/** The first wait after a lookup that wrote no reading: the next hourly sweep. */
+export const RETRY_FIRST_MS = 3_600_000;
+
+const READING_STATUSES = ['verified', 'not_found'] as const;
 
 const dateSchema = z.object({
   kind: z.enum(['preview', 'resident_open', 'general_open', 'unclassified_open', 'member_open']),
@@ -65,6 +76,9 @@ export function storedReading(row: CityRegistrationReading): StoredCityReading {
       reverifyAt: row.reverifyAt,
     };
   }
+  if (row.status !== 'not_found') {
+    throw new Error('city registration: a lookup that wrote no reading is not a reading');
+  }
   return {
     status: 'not_found',
     reason: row.reason,
@@ -82,13 +96,77 @@ export async function latestCityReading(
   const [row] = await database
     .select()
     .from(t)
-    .where(and(eq(t.placeKey, cityKey(place)), eq(t.cycleLabel, cycleLabel)))
+    .where(
+      and(
+        eq(t.placeKey, cityKey(place)),
+        eq(t.cycleLabel, cycleLabel),
+        inArray(t.status, [...READING_STATUSES]),
+      ),
+    )
     .orderBy(desc(t.readAt))
     .limit(1);
   return row ? storedReading(row) : null;
 }
 
-/** Append one lookup's outcome. A `retry` is not a reading and is never stored. */
+/** When this city's season is next looked up: set by its newest lookup, whether or not
+ * that lookup wrote a reading. Null when it was never looked up. */
+export async function nextCityLookupAt(
+  database: Database,
+  place: OwnCity,
+  cycleLabel: string,
+): Promise<Date | null> {
+  const t = schema.cityRegistrationReadings;
+  const [row] = await database
+    .select({ reverifyAt: t.reverifyAt })
+    .from(t)
+    .where(and(eq(t.placeKey, cityKey(place)), eq(t.cycleLabel, cycleLabel)))
+    .orderBy(desc(t.readAt))
+    .limit(1);
+  return row?.reverifyAt ?? null;
+}
+
+/** Append a lookup that wrote no reading. It waits twice as long as the one before it
+ * since the last reading, from the next sweep up to the "not found" interval. */
+export async function recordUnfinishedLookup(
+  database: Database,
+  place: OwnCity,
+  cycleLabel: string,
+  reason: string,
+  now: Date,
+): Promise<void> {
+  const t = schema.cityRegistrationReadings;
+  const key = cityKey(place);
+  const reading = await latestCityReading(database, place, cycleLabel);
+  const [{ unfinished } = { unfinished: 0 }] = await database
+    .select({ unfinished: count() })
+    .from(t)
+    .where(
+      and(
+        eq(t.placeKey, key),
+        eq(t.cycleLabel, cycleLabel),
+        eq(t.status, 'retry'),
+        ...(reading === null ? [] : [gt(t.readAt, reading.readAt)]),
+      ),
+    );
+  const wait = Math.min(RETRY_FIRST_MS * 2 ** unfinished, REVERIFY_NOT_FOUND_MS);
+  await database.insert(t).values({
+    placeKey: key,
+    city: place.city,
+    provinceOrState: place.provinceOrState,
+    country: place.country,
+    district: place.district,
+    cycleLabel,
+    status: 'retry',
+    reason,
+    municipality: null,
+    sourceUrl: null,
+    reading: null,
+    readAt: now,
+    reverifyAt: new Date(now.getTime() + wait),
+  });
+}
+
+/** Append one lookup's reading. A `retry` is not a reading (recordUnfinishedLookup). */
 export async function recordCityReading(
   database: Database,
   place: OwnCity,

@@ -12,7 +12,7 @@ import type { CityLookupDeps } from './lookup';
 import { RECHECK_FOUND_MS, cachedOfficialSite } from './official-site';
 import type { OwnCity } from './place';
 import type { PageSearch } from './search';
-import { REVERIFY_VERIFIED_MS } from './store';
+import { REVERIFY_NOT_FOUND_MS, REVERIFY_VERIFIED_MS } from './store';
 import {
   type CityRegistrationSweepDeps,
   MAX_CITY_LOOKUPS_PER_RUN,
@@ -202,6 +202,13 @@ async function tells(familyId: string) {
     .where(eq(schema.proactiveCandidates.familyId, familyId));
 }
 
+/** The stored readings' statuses, without the rows that only say when to look again. */
+async function readingStatuses(): Promise<string[]> {
+  return (await db.database.select().from(schema.cityRegistrationReadings))
+    .filter((row) => row.status !== 'retry')
+    .map((row) => row.status);
+}
+
 describe('the own-city registration sweep', () => {
   it('reads nothing while the switch is off', async () => {
     vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'false');
@@ -380,14 +387,27 @@ describe('the own-city registration sweep', () => {
     ).toEqual([]);
   });
 
-  it('stores nothing when the lookup did not finish, so a busy hour is not "not found"', async () => {
+  it('stores no reading when the lookup did not finish, so a busy hour is not "not found"', async () => {
     await seedFamily('P3A 1A1');
     const failed = scripted({
       search: () => ({ outcome: 'failed', reason: 'stopped:pause_turn' }),
     });
     const result = await runCityRegistrationSweep(db.database, deps(failed), NOW);
     expect(result).toMatchObject({ lookedUp: 1, retry: 1, notKnown: 1 });
-    expect(await db.database.select().from(schema.cityRegistrationReadings)).toEqual([]);
+    // Only when to look again: the next sweep.
+    expect(
+      (await db.database.select().from(schema.cityRegistrationReadings)).map((row) => ({
+        status: row.status,
+        reason: row.reason,
+        reverifyAt: row.reverifyAt,
+      })),
+    ).toEqual([
+      {
+        status: 'retry',
+        reason: 'stopped:pause_turn',
+        reverifyAt: new Date(NOW.getTime() + 3_600_000),
+      },
+    ]);
   });
 
   it('leaves a family the hand-verified radar covers to the radar', async () => {
@@ -500,6 +520,8 @@ describe('one transient failure never cancels a known date or a waiting tell', (
       .set({ status: 'held', holdUntil: new Date('2026-12-09T14:00:00Z') })
       .where(eq(schema.proactiveCandidates.familyId, family.familyId));
 
+    // Each failure a turn later: a lookup that did not finish waits before the next.
+    let at = stale;
     for (const reason of [
       'timeout',
       'network_error',
@@ -507,7 +529,8 @@ describe('one transient failure never cancels a known date or a waiting tell', (
       'extract_failed',
     ] as const) {
       const failing = unread(reason);
-      const result = await runCityRegistrationSweep(db.database, deps(failing), stale);
+      at = new Date(at.getTime() + REVERIFY_NOT_FOUND_MS);
+      const result = await runCityRegistrationSweep(db.database, deps(failing), at);
       expect({ reason, result }).toMatchObject({
         reason,
         result: { retry: 1, notFound: 0, superseded: 0 },
@@ -515,9 +538,7 @@ describe('one transient failure never cancels a known date or a waiting tell', (
       // The known page did not answer: no fresh search on the strength of that.
       expect(failing.searches).toEqual([]);
     }
-    expect(
-      (await db.database.select().from(schema.cityRegistrationReadings)).map((row) => row.status),
-    ).toEqual(['verified']);
+    expect(await readingStatuses()).toEqual(['verified']);
     const [held] = await tells(family.familyId);
     expect(held).toMatchObject({ status: 'held' });
     expect(
@@ -525,7 +546,7 @@ describe('one transient failure never cancels a known date or a waiting tell', (
         db.database,
         family.familyId,
         family.parentIds[0] as string,
-        stale,
+        at,
       ),
     ).toMatchObject([{ town: 'Greater Sudbury', opensFor: 'Dec 16, 8:00 a.m.' }]);
 
@@ -533,7 +554,7 @@ describe('one transient failure never cancels a known date or a waiting tell', (
     const again = await runCityRegistrationSweep(
       db.database,
       deps(scripted()),
-      new Date(stale.getTime() + 3_600_000),
+      new Date(at.getTime() + REVERIFY_NOT_FOUND_MS),
     );
     expect(again).toMatchObject({ verified: 1, queued: 0, duplicate: 1, superseded: 0 });
     expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['held']);
@@ -669,9 +690,10 @@ describe('one transient failure never cancels a known date or a waiting tell', (
         name,
         statuses: ['held'],
       });
-      expect(
-        (await db.database.select().from(schema.cityRegistrationReadings)).map((r) => r.status),
-      ).toEqual(['verified']);
+      expect({ name, readings: await readingStatuses() }).toEqual({
+        name,
+        readings: ['verified'],
+      });
       expect(
         await ownCityRegistrationContext(
           db.database,
@@ -739,6 +761,95 @@ describe('one transient failure never cancels a known date or a waiting tell', (
     expect(
       await ownCityRegistrationContext(db.database, family.familyId, second, NOW),
     ).toMatchObject([{ watching: false }]);
+  });
+});
+
+describe("a lookup that writes no reading still moves the city's next turn", () => {
+  const HOUR = 3_600_000;
+  const failingSearch = () =>
+    scripted({ search: () => ({ outcome: 'failed', reason: 'stopped:pause_turn' }) });
+
+  it('a city whose opening has passed is not looked up again, so it never holds a turn', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    // After the doors opened, the page's yearless row no longer pins a year: every re-read
+    // would come back unconfirmed, for the rest of the season.
+    const yearless = scripted({
+      read: (): LiveRegistrationReading => ({
+        sourceUrl: SUDBURY_PAGE,
+        checkedAt: NOW,
+        reader: 'ai',
+        status: 'unverified',
+        reason: 'incomplete_date',
+        partialDates: [{ kind: 'unclassified_open', quote: 'Wednesday, December 16, 8 a.m.' }],
+      }),
+    });
+    for (const at of ['2026-12-20T15:00:00Z', '2026-12-20T16:00:00Z', '2027-01-10T15:00:00Z']) {
+      const result = await runCityRegistrationSweep(db.database, deps(yearless), new Date(at));
+      expect({ at, result }).toMatchObject({ at, result: { lookedUp: 0, retry: 0, past: 1 } });
+    }
+    expect(yearless.reads).toEqual([]);
+    expect(yearless.searches).toEqual([]);
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['queued']);
+  });
+
+  it('a lookup that did not finish is asked again next hour, then less often, never every hour', async () => {
+    await seedFamily('P3A 1A1');
+    const failing = failingSearch();
+    const looked: number[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const result = await runCityRegistrationSweep(
+        db.database,
+        deps(failing),
+        new Date(NOW.getTime() + hour * HOUR),
+      );
+      if (result.lookedUp > 0) looked.push(hour);
+    }
+    // The next sweep first, then each wait twice the last.
+    expect(looked).toEqual([0, 1, 3, 7, 15]);
+    // Still not a reading: the coach has nothing, and nothing says "not found".
+    expect(
+      (await db.database.select().from(schema.cityRegistrationReadings)).filter(
+        (row) => row.status !== 'retry',
+      ),
+    ).toEqual([]);
+  });
+
+  it('the wait between unfinished lookups stops growing at the "not found" interval', async () => {
+    await seedFamily('P3A 1A1');
+    const failing = failingSearch();
+    let at = NOW.getTime();
+    const gaps: number[] = [];
+    let last = at;
+    for (let step = 0; step < 400; step++) {
+      const result = await runCityRegistrationSweep(db.database, deps(failing), new Date(at));
+      if (result.lookedUp > 0) {
+        if (at !== NOW.getTime()) gaps.push(at - last);
+        last = at;
+      }
+      at += HOUR;
+      if (gaps.length >= 8) break;
+    }
+    expect(Math.max(...gaps)).toBe(REVERIFY_NOT_FOUND_MS);
+  });
+
+  it('cities whose lookups keep failing never starve a city that is due', async () => {
+    // The three busiest cities fail every time; the quiet one must still be read.
+    for (let i = 0; i < 3; i++) await seedFamily('M2N 0A1');
+    for (let i = 0; i < 3; i++) await seedFamily('M1B 1A1');
+    for (let i = 0; i < 3; i++) await seedFamily('M4C 1A1');
+    const quiet = await seedFamily('P3A 1A1');
+    const lookup = scripted({
+      search: (place) =>
+        place.city === 'Toronto'
+          ? { outcome: 'failed', reason: 'stopped:pause_turn' }
+          : { outcome: 'pages', municipality: 'City of Greater Sudbury', urls: [SUDBURY_PAGE] },
+    });
+    for (let hour = 0; hour < 6; hour++) {
+      await runCityRegistrationSweep(db.database, deps(lookup), new Date(NOW.getTime() + hour * HOUR));
+    }
+    expect(lookup.searches.map((s) => s.city)).toContain('Greater Sudbury');
+    expect(await tells(quiet.familyId)).toHaveLength(1);
   });
 });
 

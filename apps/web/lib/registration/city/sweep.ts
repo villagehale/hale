@@ -34,7 +34,14 @@ import {
 import { cachedOfficialSite, wikidataSource } from './official-site';
 import { type OwnCity, cityKey, readOwnCity } from './place';
 import { searchRegistrationPages } from './search';
-import { type StoredCityReading, latestCityReading, recordCityReading } from './store';
+import { familyOpening, openingInstant } from './opening';
+import {
+  type StoredCityReading,
+  latestCityReading,
+  nextCityLookupAt,
+  recordCityReading,
+  recordUnfinishedLookup,
+} from './store';
 
 /**
  * VIL-684 · the hourly own-city sweep. For every family Hale texts, wherever they live:
@@ -51,8 +58,9 @@ import { type StoredCityReading, latestCityReading, recordCityReading } from './
  * A family the hand-verified radar already covers is left to it, so one season never
  * reaches a parent from two sources. A date that moved, or one its own page now says is
  * not out, drops the tell still waiting on the old one. Any other answer drops nothing
- * and keeps the known date (refreshCity): it is asked again next sweep. A date the page confirms again after it was taken back is
- * queued again.
+ * and keeps the known date (refreshCity): it is asked again, the next sweep first and
+ * then less often (store.ts). A date the page confirms again after it was taken back is
+ * queued again. A city whose opening has passed is not looked up again this season.
  */
 
 /** Lookups one run may start. An infra bound on the function's 300 s wall (one lookup is
@@ -74,7 +82,8 @@ export interface CityRegistrationSweepResult {
   lookedUp: number;
   verified: number;
   notFound: number;
-  /** A lookup that did not finish (search failed, reader busy): nothing stored. */
+  /** A lookup that did not finish (search failed, reader busy): no reading stored, only
+   * when to look again. */
   retry: number;
   /** No model client on this deploy: due cities were not looked up. */
   noClient: number;
@@ -275,9 +284,10 @@ async function refreshCity(
   result: CityRegistrationSweepResult,
 ): Promise<StoredCityReading | null> {
   result.lookedUp += 1;
-  const keep = (reason: string) => {
+  const keep = async (reason: string) => {
     result.retry += 1;
     console.info({ reason }, 'own-city registration: lookup did not finish');
+    await recordUnfinishedLookup(database, place, cycleLabel, reason, now);
     return prior;
   };
   let knownPageSaysNotOut = false;
@@ -335,6 +345,17 @@ async function refreshCity(
   return latestCityReading(database, place, cycleLabel);
 }
 
+/** The family's opening on the stored reading has come and gone: there is nothing left
+ * to tell this season, and a page past its opening can no longer confirm it (a yearless
+ * date pins only a future day), so the city is not looked up again until the next. */
+function openingPassed(place: OwnCity, reading: StoredCityReading | null, now: Date): boolean {
+  if (reading?.status !== 'verified') return false;
+  const opening = familyOpening(reading.reading, place);
+  return (
+    opening !== null && openingInstant(reading.reading, opening.own).getTime() <= now.getTime()
+  );
+}
+
 export async function runCityRegistrationSweep(
   database: Database,
   deps: CityRegistrationSweepDeps,
@@ -385,7 +406,10 @@ export async function runCityRegistrationSweep(
     // One city failing is that city's outcome, counted by name, never the other cities'.
     try {
       let reading = await latestCityReading(database, place, cycleLabel);
-      const due = reading === null || reading.reverifyAt.getTime() <= now.getTime();
+      const nextAt = await nextCityLookupAt(database, place, cycleLabel);
+      const due =
+        (nextAt === null || nextAt.getTime() <= now.getTime()) &&
+        !openingPassed(place, reading, now);
       if (due && deps.lookup === null) result.noClient += 1;
       else if (due && lookupsLeft === 0) result.deferred += 1;
       else if (due && deps.lookup !== null) {
