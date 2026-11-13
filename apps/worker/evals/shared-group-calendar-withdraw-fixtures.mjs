@@ -10,7 +10,7 @@ export const SHARED_GROUP_CALENDAR_WITHDRAW_FIXTURES = [
     id: 'en-stop-checking-my-calendar',
     accept: ['withdraw_calendar'],
     input: {
-      text: 'Hale, stop checking my calendar',
+      text: 'Hale, stop checking my calendar!',
       reaction: null,
       language: 'en',
       people: [{ firstName: 'Ada', knownCustomer: true, familyLinked: true }],
