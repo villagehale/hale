@@ -189,11 +189,6 @@ describe('linksOutside: an allowed word counts only whole', () => {
 describe('linkHostname: the host the browser parser reads, or null', () => {
   it.each([
     ['a query that carries another scheme', 'evil.app/x?r=https://villagehale.com', 'evil.app'],
-    [
-      'a backslash, which the parser reads as a slash',
-      'https://evil.app\\@villagehale.com',
-      'evil.app',
-    ],
     ['a port before the path', 'villagehale.com:443/x', 'villagehale.com'],
     ['a scheme-less host', 'Evil.App/slip', 'evil.app'],
     ['a host and a query', 'https://villagehale.com/x?y=1', 'villagehale.com'],
@@ -205,6 +200,8 @@ describe('linkHostname: the host the browser parser reads, or null', () => {
     ['a user part, whose host a reader mistakes', 'https://villagehale.com:443@evil.app/login'],
     ['an address', 'parents@evil.app'],
     ['a word the parser refuses', 'go:https://evil.app'],
+    ['a backslash, which the parser reads as a slash', 'https://evil.app\\@villagehale.com'],
+    ['a backslash before a host the reader sees', 'http://villagehale.com\\@evil.app'],
   ])('null for %s', (_label, word) => {
     expect(linkHostname(word)).toBeNull();
   });

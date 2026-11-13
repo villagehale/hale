@@ -67,9 +67,9 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
   });
 
   it('fails closed: a token the email tokenizer never found is dropped too', () => {
-    const reply = 'The office line is 555-0199 and the site is school.example.';
+    const reply = 'Trip is Friday. The office line is 555-0199 and the site is school.example.';
     const out = drop(reply);
-    expect(out.text).toBe('The office line is and the site is.');
+    expect(out.text).toBe('Trip is Friday.');
     expect(out.dropped).toEqual({ phone: 1, code: 0, host: 1 });
   });
 
@@ -79,37 +79,37 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
 
     it('a spelled-out phone in the email, digits in the reply: dropped', () => {
       const out = only('Call five five five, oh one four two today.', `Call ${ATTACKER.phone}.`);
-      expect(out.text).toBe('Call.');
+      expect(out.text).toBe('');
       expect(out.dropped.phone).toBe(1);
     });
 
     it('a [dot] host in the email, a plain host in the reply: dropped', () => {
       const out = only('Sign at verify-hale [dot] example now.', `Sign at ${ATTACKER.host}.`);
-      expect(out.text).toBe('Sign at.');
+      expect(out.text).toBe('');
       expect(out.dropped.host).toBe(1);
     });
 
     it('a spaced-dot host in the email, a plain host in the reply: dropped', () => {
-      expect(only('Go to evil . example now.', 'Go to evil.example.').text).toBe('Go to.');
+      expect(only('Go to evil . example now.', 'Hi. Go to evil.example.').text).toBe('Hi.');
     });
 
     it('a host the reply itself writes with a bracketed or spaced dot: dropped', () => {
-      expect(only('see the form', 'Go to verify-hale [.] example now.').text).toBe('Go to now.');
-      expect(only('see the form', 'Go to verify-hale . example now.').text).toBe('Go to now.');
+      expect(only('see the form', 'Hi. Go to verify-hale [.] example now.').text).toBe('Hi.');
+      expect(only('see the form', 'Hi. Go to verify-hale . example now.').text).toBe('Hi.');
     });
 
     it('an address at a host: dropped', () => {
-      expect(only('reply to them', `Write to parents@${ATTACKER.host}.`).text).toBe('Write to.');
+      expect(only('reply to them', `Hi. Write to parents@${ATTACKER.host}.`).text).toBe('Hi.');
     });
 
     it('a 6-digit code from the email: dropped', () => {
-      const out = only('Your code is 482913.', 'Enter 482913 to keep the spot.');
-      expect(out.text).toBe('Enter to keep the spot.');
+      const out = only('Your code is 482913.', 'Hi. Enter 482913 to keep the spot.');
+      expect(out.text).toBe('Hi.');
       expect(out.dropped.code).toBe(1);
     });
 
     it('a 4-digit code from the email: dropped', () => {
-      expect(only('PIN 7351', 'The PIN is 7351.').text).toBe('The PIN is.');
+      expect(only('PIN 7351', 'Hi. The PIN is 7351.').text).toBe('Hi.');
     });
   });
 
@@ -118,8 +118,8 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
       dropEmailOnlyTokens(reply, { emails: [email], trusted: [said] });
 
     it("the parent's 7-digit number does not let a 10-digit number ending in it through", () => {
-      const out = parentSaid(`is ${ATTACKER.phone} right?`, `Call 202-${ATTACKER.phone}.`);
-      expect(out.text).toBe('Call.');
+      const out = parentSaid(`is ${ATTACKER.phone} right?`, `Hi. Call 202-${ATTACKER.phone}.`);
+      expect(out.text).toBe('Hi.');
     });
 
     it("positive control: the parent's 10-digit number survives with +1 in front", () => {
@@ -171,8 +171,8 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
     ];
     it.each(cases)('%s is dropped', (_name, token) => {
       const written = token();
-      const out = drop(`Before ${written} after`);
-      expect(out.text).toBe('Before after');
+      const out = drop(`Trip is Friday. Before ${written} after.`);
+      expect(out.text).toBe('Trip is Friday.');
     });
   });
 
@@ -186,9 +186,10 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
       ['Hale’s host as a user part', 'https://villagehale.com:443@evil.app/login'],
       ['a bracketed ideographic full stop', 'evil [\u3002] example'],
       ['a spaced ideographic full stop', 'evil \u3002 example'],
+      ['Hale’s host before a backslash and a user part', 'http://villagehale.com\\@evil.app'],
     ])('%s is dropped', (_label, written) => {
-      const out = only(`Before ${written} after`);
-      expect(out.text).toBe('Before after');
+      const out = only(`Trip is Friday. Before ${written} after.`);
+      expect(out.text).toBe('Trip is Friday.');
       expect(out.dropped.host).toBe(1);
     });
 
@@ -210,20 +211,20 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
 
   describe('a date never hides a phone', () => {
     it.each([['+44 20 2019-2020'], ['+33 1 13.11.2026']])('%s is dropped', (written) => {
-      const out = drop(`Call ${written} today.`);
-      expect(out.text).toBe('Call today.');
+      const out = drop(`Hi. Call ${written} today.`);
+      expect(out.text).toBe('Hi.');
       expect(out.dropped.phone).toBe(1);
     });
 
     it('a vanity number is a phone', () => {
-      const out = drop('Call 1 800 FLOWERS today.');
-      expect(out.text).toBe('Call today.');
+      const out = drop('Hi. Call 1 800 FLOWERS today.');
+      expect(out.text).toBe('Hi.');
       expect(out.dropped.phone).toBe(1);
     });
 
     it('a short prefix plus a date-shaped number is still a phone', () => {
-      const out = drop('Call 20 2019-2020 today.');
-      expect(out.text).toBe('Call today.');
+      const out = drop('Hi. Call 20 2019-2020 today.');
+      expect(out.text).toBe('Hi.');
       expect(out.dropped.phone).toBe(1);
     });
   });
@@ -233,18 +234,13 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
       dropEmailOnlyTokens(reply, { emails: [emailText], trusted });
 
     it.each([
-      [
-        'a code shaped like a quantity',
-        'Your code is 482913ab.',
-        'Enter 482913ab now.',
-        'Enter now.',
-      ],
-      ['a PIN shaped like a year', 'Your PIN is 1987.', 'The PIN is 1987.', 'The PIN is.'],
-      ['a price', 'The fee is $1200.', 'The fee is $1200.', 'The fee is $.'],
-      ['a time range', 'Pickup 4pm-6pm.', 'Pickup is 4pm-6pm.', 'Pickup is.'],
-      ['a date that would read as a phone', 'On 2026-11-13.', 'It is on 2026-11-13.', 'It is on.'],
-    ])('%s', (_label, emailText, reply, kept) => {
-      expect(fromEmail(emailText, reply).text).toBe(kept);
+      ['a code shaped like a quantity', 'Your code is 482913ab.', 'Enter 482913ab now.'],
+      ['a PIN shaped like a year', 'Your PIN is 1987.', 'The PIN is 1987.'],
+      ['a price', 'The fee is $1200.', 'The fee is $1200.'],
+      ['a time range', 'Pickup 4pm-6pm.', 'Pickup is 4pm-6pm.'],
+      ['a date that would read as a phone', 'On 2026-11-13.', 'It is on 2026-11-13.'],
+    ])('%s', (_label, emailText, reply) => {
+      expect(fromEmail(emailText, `Hi. ${reply}`).text).toBe('Hi.');
     });
 
     it("positive control: the parent's own date survives when the email has it too", () => {
@@ -260,11 +256,11 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
 
   it('the email may hide the token too: a spaced phone in the email still matches a plain one', () => {
     const digits = ATTACKER.phone.replace(/\D/g, '');
-    const out = dropEmailOnlyTokens(`Call ${ATTACKER.phone}.`, {
+    const out = dropEmailOnlyTokens(`Hi. Call ${ATTACKER.phone}.`, {
       emails: [`call ${digits.split('').join(' ')}`],
       trusted: [PARENT],
     });
-    expect(out.text).toBe('Call.');
+    expect(out.text).toBe('Hi.');
   });
 
   it('a Chinese reply keeps its sentences: a full stop between CJK words is not a host', () => {
@@ -272,11 +268,104 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
     expect(dropEmailOnlyTokens(zh, { emails: [zh], trusted: [PARENT] }).text).toBe(zh);
   });
 
-  it('a cut does not glue a new host: the tidy step is checked again', () => {
-    const out = drop('Go to evil 482913 .app now.');
-    expect(out.text).toBe('Go to now.');
-    expect(out.text).not.toContain('evil.app');
+  it('a cut does not glue a new host: the sentence goes whole', () => {
+    const out = drop('Hi. Go to evil 482913 .app now.');
+    expect(out.text).toBe('Hi.');
     expect(out.dropped.code).toBeGreaterThan(0);
-    expect(out.dropped.host).toBeGreaterThan(0);
+  });
+
+  describe('a phone is seven digits or more with no letter between them', () => {
+    const TEN = '4165550142';
+    const fromEmail = (reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [`Call ${TEN} for the deposit.`], trusted: [PARENT] });
+
+    it.each([
+      ['slashes', '416/555/014/2'],
+      ['slashes, one group whole', '416/555/0142'],
+      ['commas', '4,1,6,5,5,5,0,1,4,2'],
+      ['long dash runs', '416 -- 555 -- 01 -- 42'],
+      ['underscores', '416_555_014_2'],
+      ['colons', '416:555:0142'],
+      ['line breaks', '416\n555\n0142'],
+      ['keycap digits', [...TEN].map((digit) => `${digit}\ufe0f\u20e3`).join('')],
+    ])('%s: the sentence is dropped whole', (_label, written) => {
+      const out = fromEmail(`The trip is Friday. Call ${written} for the deposit.`);
+      expect(out.text).toBe('The trip is Friday.');
+      expect(out.dropped.phone).toBeGreaterThan(0);
+    });
+
+    it.each([
+      ['lower case', 'Call 1 800 flowers today.'],
+      ['title case, dashed', 'Call 1-800-Flowers today.'],
+    ])('a vanity number in %s is a phone', (_label, written) => {
+      const out = fromEmail(`The trip is Friday. ${written}`);
+      expect(out.text).toBe('The trip is Friday.');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('positive control: a year or a count before a word is not a vanity number', () => {
+      const reply = 'The 2026 summer camps open soon. There were 800 children at the fair.';
+      expect(fromEmail(reply).text).toBe(reply);
+    });
+  });
+
+  describe('a code split into groups is still the code the email gave', () => {
+    const fromEmail = (emailText: string, reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [emailText], trusted: [PARENT] });
+
+    it.each([
+      ['dashed pairs', 'Your code is 482913.', '48-29-13'],
+      ['spaced pairs', 'Your code is 482913.', '48 29 13'],
+      ['two groups of three', 'Your code is 482913.', '482 913'],
+      ['spaced pairs in the email too', 'Your code is 48 29 13.', '48.29.13'],
+      [
+        'Cyrillic letters that look Latin',
+        'Your code is \u0410\u041212\u0421D.',
+        '\u0410\u041212\u0421D',
+      ],
+      [
+        'Latin in the email, Cyrillic in the reply',
+        'Your code is AB12CD.',
+        '\u0410\u041212\u0421D',
+      ],
+    ])('%s: dropped', (_label, emailText, written) => {
+      const out = fromEmail(emailText, `The trip is Friday. Enter ${written} to keep the spot.`);
+      expect(out.text).toBe('The trip is Friday.');
+      expect(out.dropped.code).toBeGreaterThan(0);
+    });
+
+    it('positive control: clock times from the email survive', () => {
+      const reply = 'Pickup is at 10:30. Swim is 9.45 to 10.15.';
+      expect(fromEmail('Pickup 10:30. Swim 9.45 until 10.15.', reply).text).toBe(reply);
+    });
+  });
+
+  describe('what is sent after a cut', () => {
+    const only = (reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [email], trusted: [PARENT] });
+
+    it('every sentence without a dropped token is sent as it was written', () => {
+      const kept = 'Los EE.UU. ganan 👨\u200d👩\u200d👧 y es ½ día.';
+      expect(only(`${kept} Llama al 555-0199.`).text).toBe(kept);
+    });
+
+    it('a sentence never loses only its token', () => {
+      for (const reply of [
+        'Llama al 555-0199.',
+        'Reply to 48291.',
+        `Enter ${ATTACKER.code} now.`,
+      ]) {
+        expect(only(`Hola. ${reply}`).text).toBe('Hola.');
+      }
+    });
+
+    it('a lead-in left pointing at a dropped sentence sends nothing', () => {
+      expect(only('Here is what to do:\nCall 555-0199.').text).toBe('');
+    });
+
+    it('positive control: a reply with nothing to drop comes back byte for byte', () => {
+      const reply = 'Los EE.UU. ganan 👨\u200d👩\u200d👧 y es ½ día.\n\nOk.';
+      expect(only(reply)).toEqual({ text: reply, dropped: { phone: 0, code: 0, host: 0 } });
+    });
   });
 });

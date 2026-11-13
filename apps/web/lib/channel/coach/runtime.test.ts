@@ -20,6 +20,7 @@ import {
 } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
+import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
 import {
@@ -2452,10 +2453,12 @@ describe('a reply written after read_email (VIL-628)', () => {
     watched?: string;
     answer?: string;
     place?: HealthPlace;
+    transcript?: TranscriptMessage[];
   }) {
-    const { parentStated, place } = opts;
+    const { parentStated, place, transcript } = opts;
     const p = ports({
       ...(parentStated ? { loadParentStatedFacts: async () => parentStated } : {}),
+      ...(transcript ? { loadTranscript: async () => transcript } : {}),
       ...(place ? { loadHealthPlace: async () => place } : {}),
       ...(opts.watched
         ? {
@@ -2495,7 +2498,7 @@ describe('a reply written after read_email (VIL-628)', () => {
   it('drops a phone only the email gave', async () => {
     const { reply, emailRead } = await respond({ read: true });
     expect(emailRead).toBe(true);
-    expect(reply).toBe('The trip is Friday. Call for the deposit.');
+    expect(reply).toBe('The trip is Friday.');
   });
 
   it('a turn that read no email is untouched (positive control)', async () => {
@@ -2508,13 +2511,11 @@ describe('a reply written after read_email (VIL-628)', () => {
 
   it('a number the family’s inferred facts hold is still dropped: they can come from email', async () => {
     const { reply } = await respond({ read: true, facts: [`school office ${PHONE}`] });
-    expect(reply).toBe('The trip is Friday. Call for the deposit.');
+    expect(reply).toBe('The trip is Friday.');
   });
 
   it('a number only the provider watch holds is dropped: it is scraped from a page', async () => {
-    expect((await respond({ read: true, watched: PHONE })).reply).toBe(
-      'The trip is Friday. Call for the deposit.',
-    );
+    expect((await respond({ read: true, watched: PHONE })).reply).toBe('The trip is Friday.');
   });
 
   it('a number the parent once told Hale (memory_source parent_message) survives (positive control)', async () => {
@@ -2545,7 +2546,36 @@ describe('a reply written after read_email (VIL-628)', () => {
       read: true,
       answer: 'The trip is Friday. Health811 is there any time.',
     });
-    expect(reply).toBe('The trip is Friday. is there any time.');
+    expect(reply).toBe('The trip is Friday.');
+  });
+
+  it("Hale's own earlier turn does not vouch for a number: an alert can quote the email", async () => {
+    const { reply } = await respond({
+      read: true,
+      transcript: [
+        { role: 'user', content: 'any news from school?' },
+        { role: 'assistant', content: `The school wrote; their office is ${PHONE}.` },
+      ],
+    });
+    expect(reply).toBe('The trip is Friday.');
+  });
+
+  it('positive control: the parent’s own earlier turn vouches for the number', async () => {
+    const { reply } = await respond({
+      read: true,
+      transcript: [{ role: 'user', content: `the office is ${PHONE}, right?` }],
+    });
+    expect(reply).toBe(ANSWER);
+  });
+
+  it('an email number written in another shape is dropped through the runtime too', async () => {
+    for (const written of ['555/014/2', '5,5,5,0,1,4,2', '555 -- 01 -- 42']) {
+      const { reply } = await respond({
+        read: true,
+        answer: `The trip is Friday. Call ${written} for the deposit.`,
+      });
+      expect(reply).toBe('The trip is Friday.');
+    }
   });
 
   it("Hale's own site survives a read turn (positive control)", async () => {

@@ -185,12 +185,15 @@ const LEADING_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
 /**
  * The host a phone opens for a link-shaped word, lowercased, read by the URL parser a
  * browser uses, so no gate reads a host differently from the browser: a scheme inside a
- * query, a backslash or a port is the parser's to read. A word with no scheme is read as
- * an http link. Null when the parser refuses the word, or when it carries a user part
- * ('villagehale.com:443@evil.app', 'parents@evil.app'), whose host a reader mistakes;
- * a gate treats null as a host it does not know.
+ * query or a port is the parser's to read. A word with no scheme is read as an http link.
+ * Null when the parser refuses the word, when it carries a user part
+ * ('villagehale.com:443@evil.app', 'parents@evil.app'), whose host a reader mistakes, or
+ * when it holds a backslash, which the parser reads as a slash and a reader may not
+ * ('http://villagehale.com\\@evil.app' shows evil.app); a gate treats null as a host it
+ * does not know.
  */
 export function linkHostname(word: string): string | null {
+  if (word.includes('\\')) return null;
   let url: URL;
   try {
     url = new URL(LEADING_SCHEME.test(word) ? word : `http://${word}`);
