@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -28,6 +28,7 @@ import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/qu
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { emailAlertAnchorIndex } from '~/lib/crypto/blind-index';
+import { deliverableNow, loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { SourceChange } from '~/lib/loop/reminders/change';
 import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
@@ -207,9 +208,23 @@ export const EMAIL_ALERT_OUTCOMES = [
   'schedule_change_unwritten',
   /** VIL-662 · a matched change, but no claimed 1:1 chat to tell the driver. */
   'no_chat',
+  /** A quiet-hours hold Hale still owes, and the gate still says quiet hours. No Gmail
+   * read and no model call; the debt waits for the next sweep. */
+  'hold_waiting',
+  /** A quiet-hours hold older than {@link EMAIL_ALERT_HOLD_MAX_HOURS}. Closed unsent. */
+  'hold_expired',
+  /** A quiet-hours hold whose email is gone from the mailbox. Closed unsent. */
+  'hold_gone',
+  /** Gmail would not hand a held email back this sweep. The debt stays open. */
+  'hold_reread_failed',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
+
+/** How long Hale keeps owing an email alert quiet hours held. The writer is handed the
+ * email's received time and judges a late alert itself; past this the hold is closed as
+ * `hold_expired` rather than re-offered, so a debt cannot outlive the news it was about. */
+export const EMAIL_ALERT_HOLD_MAX_HOURS = 24;
 
 export type EmailAlertCounts = Record<EmailAlertOutcome, number>;
 
@@ -623,6 +638,8 @@ export interface EmailAlertPorts {
   threadMessage: typeof threadProactiveMessage;
   /** The parent's wall clock — the zone every time in the message is rendered in. */
   timeZone(parentUserId: string): Promise<string>;
+  /** A held message read from Gmail again, for its re-offer. `null` when it is gone. */
+  rereadEnvelope(messageId: string): Promise<GmailAlertEnvelope | null>;
 }
 
 export interface EmailAlertInput {
@@ -928,27 +945,51 @@ export async function alertParentForEmail(
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
   if (!verdict.allowed) {
-    // A RECEIPT, not a claim. Unlike a nudge, a held email alert is not deferred: the
-    // Gmail cursor advanced past this message the moment the sweep read it, so nothing
-    // will offer it again. This row is therefore the whole lasting record that Hale read
-    // a parenting email at 23:40 and chose to stay quiet — a counter in a cron response
-    // is not something a parent or a support agent can ever be shown.
+    // A RECEIPT, not a claim: the lasting record that Hale read a parenting email at
+    // 23:40 and chose to stay quiet. A quiet-hours hold is also a DEBT: the Gmail cursor
+    // advanced past this message the moment the sweep read it, so without the
+    // `email_alert_holds` row below nothing would offer it again. A consent hold is an
+    // answer, not a wait, and writes no debt.
     //
     // The key stays NULL: the unique index is total over non-null dedupe keys, so a
     // suppression carrying it would block the send it is a record of NOT making.
     // The channel is the parent's door: no transport ran, so the row names the pipe the
     // text would have left on, never a hard-coded SMS.
     const door = await resolveMessagingDoor(database, parentUserId);
-    await database.insert(schema.channelMessages).values({
-      familyId,
-      parentUserId,
-      channel: door.channel,
-      direction: 'out',
-      category: 'email_alert',
-      templateKey: EMAIL_ALERT_TEMPLATE_KEY,
-      dedupeKey: null,
-      status: holdStatus(verdict.reason),
-    });
+    const [receipt] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: door.channel,
+        direction: 'out',
+        category: 'email_alert',
+        templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+        dedupeKey: null,
+        status: holdStatus(verdict.reason),
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (verdict.reason === 'quiet_hours' && receipt) {
+      // A re-offer that quiet hours caught again keeps the open debt it came from.
+      await database.transaction(async (tx) => {
+        const [hold] = await tx
+          .insert(schema.emailAlertHolds)
+          .values({ channelMessageId: receipt.id, integrationId, messageId, heldAt: now })
+          .onConflictDoNothing()
+          .returning({ id: schema.emailAlertHolds.id });
+        if (hold) {
+          await tx.insert(schema.auditLog).values({
+            familyId,
+            actor: 'system',
+            actionTaken: 'email_alert_held',
+            audience: parentUserId,
+            targetTable: 'email_alert_holds',
+            targetId: hold.id,
+            after: { reason: verdict.reason },
+          });
+        }
+      });
+    }
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
     return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
   }
@@ -1817,40 +1858,139 @@ export async function alertParentForGmailSweep(
     return outcomes;
   }
 
+  const holds = await openEmailAlertHolds(database, input.integrationId);
   const { skipped, considered } = datedEnvelopes(envelopes);
   const outcomes: EmailAlertResult[] = [...skipped];
-  if (considered.length === 0) {
+  if (considered.length === 0 && holds.length === 0) {
     logSweepOutcomes(input, outcomes);
     return outcomes;
   }
 
   const timeZone = await ports.timeZone(parentUserId);
-  for (const envelope of considered) {
-    outcomes.push(
-      await alertParentForEmail(
-        database,
-        {
-          familyId: input.familyId,
-          parentUserId,
-          integrationId: input.integrationId,
-          messageId: envelope.messageId,
-          threadId: envelope.threadId,
-          labelIds: envelope.labelIds,
-          envelope: {
-            subject: envelope.subject,
-            from: envelope.from,
-            snippet: envelope.snippet,
-            receivedAt: envelope.receivedAt,
-          },
-          timeZone,
-          now: input.now,
+  const alertFor = (envelope: GmailAlertEnvelope & { receivedAt: string }) =>
+    alertParentForEmail(
+      database,
+      {
+        familyId: input.familyId,
+        parentUserId,
+        integrationId: input.integrationId,
+        messageId: envelope.messageId,
+        threadId: envelope.threadId,
+        labelIds: envelope.labelIds,
+        envelope: {
+          subject: envelope.subject,
+          from: envelope.from,
+          snippet: envelope.snippet,
+          receivedAt: envelope.receivedAt,
         },
-        ports,
-      ),
+        timeZone,
+        now: input.now,
+      },
+      ports,
     );
+  // Debts before new news: a held alert is already late.
+  for (const hold of holds) {
+    outcomes.push(await reofferHold(database, hold, input, parentUserId, ports, alertFor));
+  }
+  for (const envelope of considered) {
+    outcomes.push(await alertFor(envelope));
   }
   logSweepOutcomes(input, outcomes);
   return outcomes;
+}
+
+type OpenHold = Pick<typeof schema.emailAlertHolds.$inferSelect, 'id' | 'messageId' | 'heldAt'>;
+
+function openEmailAlertHolds(database: Database, integrationId: string): Promise<OpenHold[]> {
+  return database
+    .select({
+      id: schema.emailAlertHolds.id,
+      messageId: schema.emailAlertHolds.messageId,
+      heldAt: schema.emailAlertHolds.heldAt,
+    })
+    .from(schema.emailAlertHolds)
+    .where(
+      and(
+        eq(schema.emailAlertHolds.integrationId, integrationId),
+        isNull(schema.emailAlertHolds.closedAt),
+      ),
+    )
+    .orderBy(asc(schema.emailAlertHolds.heldAt));
+}
+
+/**
+ * ONE QUIET-HOURS DEBT, re-offered. The gate is asked first, so a night of sweeps costs no
+ * Gmail read and no model call; once it allows the alert, the message is read again and
+ * the whole alert path runs, writer included, so the model still decides whether a late
+ * alert is worth a text. The debt closes with whatever that pass answered, unless quiet
+ * hours caught it again, in which case it stays open.
+ *
+ * A debt also waits out the parent's own quiet window (loop prefs) when it ends later
+ * than the floor: it is already late, and the parent said when they want to hear.
+ */
+async function reofferHold(
+  database: Database,
+  hold: OpenHold,
+  input: GmailSweepAlertInput,
+  parentUserId: string,
+  ports: EmailAlertPorts,
+  alertFor: (envelope: GmailAlertEnvelope & { receivedAt: string }) => Promise<EmailAlertResult>,
+): Promise<EmailAlertResult> {
+  const now = input.now;
+  const closeOnly = (alert: EmailAlertOutcome) =>
+    database.transaction(async (tx) => {
+      await tx
+        .update(schema.emailAlertHolds)
+        .set({ closedAt: now, outcome: alert })
+        .where(eq(schema.emailAlertHolds.id, hold.id));
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'email_alert_hold_closed',
+        audience: parentUserId,
+        targetTable: 'email_alert_holds',
+        targetId: hold.id,
+        after: { outcome: alert },
+      });
+    });
+  const close = async (alert: EmailAlertOutcome): Promise<EmailAlertResult> => {
+    await closeOnly(alert);
+    return { alert, booking: null, going: null };
+  };
+  const waiting: EmailAlertResult = { alert: 'hold_waiting', booking: null, going: null };
+  if (now.getTime() - hold.heldAt.getTime() > EMAIL_ALERT_HOLD_MAX_HOURS * 3_600_000) {
+    return close('hold_expired');
+  }
+  const verdict = await ports.gate({
+    familyId: input.familyId,
+    parentUserId,
+    kind: 'email_alert',
+    now,
+  });
+  if (!verdict.allowed) {
+    if (verdict.reason === 'quiet_hours') return waiting;
+    return close(`gate_refused:${verdict.reason}`);
+  }
+  const prefs = await loadLoopPrefsView(parentUserId, database);
+  if (!deliverableNow(prefs, now, await ports.timeZone(parentUserId), false)) return waiting;
+  let envelope: GmailAlertEnvelope | null;
+  try {
+    envelope = await ports.rereadEnvelope(hold.messageId);
+  } catch (err) {
+    // Caught, because the live envelopes of this sweep come after the debts and a Gmail
+    // blip on one old message must not take them down. The class only (rule #1).
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
+      'email alert: a held email could not be read again - the debt stays open',
+    );
+    return { alert: 'hold_reread_failed', booking: null, going: null };
+  }
+  if (envelope === null) return close('hold_gone');
+  if (envelope.receivedAt === undefined) return close('no_received_at');
+  const result = await alertFor({ ...envelope, receivedAt: envelope.receivedAt });
+  if (result.alert === 'gate_refused:quiet_hours') return result;
+  await closeOnly(result.alert);
+  return result;
 }
 
 // ── The offer, and the folds the rows keep ───────────────────────────────────

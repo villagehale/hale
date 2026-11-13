@@ -9,6 +9,7 @@ import {
   type CalendarMirrorBatch,
   type GmailAlertBatch,
   type GoogleFetch,
+  readGmailAlertEnvelope,
   syncConnection,
 } from './sync';
 import type { OAuthTokens } from './token-vault';
@@ -1931,5 +1932,43 @@ describe('syncConnection — booked-detection backfill', () => {
       historyId: '9100',
       bookedBackfill: { pendingIds: ['old-receipt'], pageToken: 'PAGE2' },
     });
+  });
+});
+
+describe('readGmailAlertEnvelope', () => {
+  it('reads a held message back as the envelope the sweep built, and a deleted one as null', async () => {
+    const { fetchImpl, calls } = routedFetch([
+      { match: 'messages/gone', status: 404, body: {} },
+      {
+        match: 'messages/m9',
+        body: {
+          id: 'm9',
+          threadId: 't9',
+          labelIds: ['INBOX'],
+          snippet: 'Practice moved',
+          internalDate: '1789900000000',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Practice moved to Thursday' },
+              { name: 'From', value: 'Coach <coach@club.example>' },
+            ],
+          },
+        },
+      },
+    ]);
+    await expect(readGmailAlertEnvelope(fetchImpl, 'ya29.fresh', 'm9')).resolves.toEqual({
+      messageId: 'm9',
+      threadId: 't9',
+      labelIds: ['INBOX'],
+      subject: 'Practice moved to Thursday',
+      from: 'Coach <coach@club.example>',
+      snippet: 'Practice moved',
+      receivedAt: new Date(1789900000000).toISOString(),
+    });
+    await expect(readGmailAlertEnvelope(fetchImpl, 'ya29.fresh', 'gone')).resolves.toBeNull();
+    expect(calls.map((c) => c.url)).toEqual([
+      expect.stringContaining('format=metadata'),
+      expect.stringContaining('format=metadata'),
+    ]);
   });
 });

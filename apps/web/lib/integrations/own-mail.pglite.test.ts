@@ -139,6 +139,7 @@ function harness(byMessage: Record<string, SentinelClassification> = {}): Harnes
       transport,
       threadMessage: async () => 'conv-1',
       timeZone: async () => FAMILY_TIMEZONE,
+      rereadEnvelope: async () => null,
     },
   };
   return h;

@@ -304,6 +304,9 @@ export const AUDIT_VERBS = [
   'weekday_care_recorded',
   'followup_daycare_asked',
   'email_alert_sent',
+  // VIL-569 · a quiet-hours hold Hale still owes, and its end (sent, declined or stale).
+  'email_alert_held',
+  'email_alert_hold_closed',
   // VIL-619 · the one-time scrub of the email previews older alerts kept.
   'email_alert_snippets_scrubbed',
   'email_alert_event_added',
@@ -1227,6 +1230,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
     family: 'done',
+  },
+  email_alert_held: {
+    sentence: 'Hale held an email alert for quiet hours',
+    family: 'note',
+  },
+  email_alert_hold_closed: {
+    sentence: 'Hale settled an email alert it had held for quiet hours',
+    family: 'note',
   },
   // A count only, across the family's threads: no row says which adult had alerts.
   email_alert_snippets_scrubbed: {

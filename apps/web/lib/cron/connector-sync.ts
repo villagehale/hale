@@ -61,6 +61,7 @@ import {
   type GoogleFetch,
   type SyncConnectionResult,
   type SyncDeps,
+  readGmailAlertEnvelope,
   syncConnection,
 } from '~/lib/integrations/sync';
 import { decryptTokens } from '~/lib/integrations/token-vault';
@@ -563,6 +564,7 @@ export function emailAlertPorts(
     readAlertBody: (messageId) => fetchGmailMessageBody(messageId, accessToken, googleGetFetch),
     writeNotice: (facts, family, body) =>
       composeEmailAlertNotice(pipelineClient(), facts, family, body),
+    rereadEnvelope: (messageId) => readGmailAlertEnvelope(googleGetFetch, accessToken, messageId),
   };
 }
 

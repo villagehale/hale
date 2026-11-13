@@ -197,6 +197,7 @@ function harness(
         return 'conv-1';
       },
       timeZone: async () => 'America/Toronto',
+      rereadEnvelope: async () => null,
     },
   };
 }

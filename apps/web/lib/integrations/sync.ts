@@ -933,24 +933,15 @@ async function readGmailMessageBatch(
       continue;
     }
     const headers = data.payload?.headers ?? [];
-    const subject = headers.find((h) => h.name === 'Subject')?.value;
-    const from = headers.find((h) => h.name === 'From')?.value;
     events.push(
       ingested('gmail', connection.familyId, {
         id: data.id,
-        subject,
-        from,
+        subject: headers.find((h) => h.name === 'Subject')?.value,
+        from: headers.find((h) => h.name === 'From')?.value,
         snippet: data.snippet,
       }),
     );
-    envelopes.push({
-      messageId: id,
-      ...threadAndLabels(data),
-      subject: subject ?? '',
-      from: from ?? '',
-      snippet: data.snippet ?? '',
-      receivedAt: epochMsToIso(data.internalDate),
-    });
+    envelopes.push(gmailEnvelopeOf(id, data));
   }
   if (skippedNotFound > 0) {
     // The COUNT only: a message id is still a pointer at one family's mail (rule #1).
@@ -973,6 +964,37 @@ async function readGmailMessageBatch(
     );
   }
   return { events, envelopes };
+}
+
+function gmailEnvelopeOf(id: string, data: GmailMessageResponse): GmailAlertEnvelope {
+  const headers = data.payload?.headers ?? [];
+  return {
+    messageId: id,
+    ...threadAndLabels(data),
+    subject: headers.find((h) => h.name === 'Subject')?.value ?? '',
+    from: headers.find((h) => h.name === 'From')?.value ?? '',
+    snippet: data.snippet ?? '',
+    receivedAt: epochMsToIso(data.internalDate),
+  };
+}
+
+/**
+ * One held message read again for the email alert's re-offer of a quiet-hours hold
+ * (email-alert.ts). The same metadata GET the sweep makes. `null` when Gmail no longer
+ * has it. Nothing is enqueued: the ingest already saw this message when it arrived.
+ */
+export async function readGmailAlertEnvelope(
+  googleFetch: GoogleFetch,
+  accessToken: string,
+  messageId: string,
+): Promise<GmailAlertEnvelope | null> {
+  const { status, data } = await getJson<GmailMessageResponse>(
+    googleFetch,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+    accessToken,
+    { allowNotFound: true },
+  );
+  return status === NOT_FOUND ? null : gmailEnvelopeOf(messageId, data);
 }
 
 interface BookedBackfillCursor {
