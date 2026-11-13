@@ -20,6 +20,7 @@ import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { buildDistillTools } from '~/lib/cron/inference-tools';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -539,6 +540,44 @@ describe('asking for a reminder in the group', () => {
 
     expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({ due: 0 });
     expect(tick.direct.sent).toHaveLength(1);
+  });
+
+  it("signs each group ask with its sender, so the nightly distiller reads the parent's and not the grandparent's", async () => {
+    const home = await seedHousehold();
+    const { ports } = turnPorts(reading([ask()]));
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(RUTH, 'Hale, remind me Thursday at 4, Maya has her inhaler check', 'in-ruth-sig'),
+      ports,
+    );
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(PRIYA, 'remind me at 4 to grab Maya', 'in-priya-sig'),
+      ports,
+    );
+
+    const signed = await db.database
+      .select({ role: schema.messages.role, authorUserId: schema.messages.authorUserId })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+      .where(eq(schema.conversations.noteKey, channelGroupNoteKey(CHAT)));
+    expect(signed).toEqual(
+      expect.arrayContaining([
+        { role: 'user', authorUserId: home.ruth },
+        { role: 'user', authorUserId: home.priya },
+      ]),
+    );
+
+    const read = buildDistillTools(db.database, new Date()).find(
+      (tool) => tool.name === 'read_recent_conversations',
+    );
+    if (!read) throw new Error('no read_recent_conversations tool');
+    const { turns } = (await read.handler({}, { familyId: home.familyId, actor: 'system' })) as {
+      turns: { role: string; content: string }[];
+    };
+    expect(turns.map((turn) => `${turn.role}: ${turn.content}`)).toEqual([
+      'user: remind me at 4 to grab Maya',
+    ]);
   });
 
   it('keeps that same parent in the group while the loop cannot send 1:1', async () => {

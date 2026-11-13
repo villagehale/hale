@@ -1,0 +1,11 @@
+-- VIL-597 (G8) · Who wrote a user turn. A group thread holds every seated member's
+-- texts (co-parent, caregiver, a grandparent), so a turn's role alone cannot say it was
+-- the parent's. The channel writers record the sender. Null on assistant turns and on
+-- rows written before this column existed; the nightly distiller reads a group turn only
+-- when its author is a parent of the family.
+--
+-- Additive. Re-runnable: ADD COLUMN IF NOT EXISTS.
+--
+-- Reversible:
+--   ALTER TABLE "messages" DROP COLUMN IF EXISTS "author_user_id";
+ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "author_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL;
