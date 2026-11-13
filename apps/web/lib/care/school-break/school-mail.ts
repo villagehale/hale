@@ -6,6 +6,7 @@ import { CONNECTOR_SCOPES } from '~/lib/integrations/google-oauth';
 import type { GoogleFetch } from '~/lib/integrations/sync';
 import { fetchGmailMessageBody } from '~/lib/sentinel/fetch-body';
 import { type MessageHeaders, alignedSenderHost } from './sender';
+import { isSharedSender } from './shared-senders';
 
 /**
  * VIL-685 · THE KID MAIL HALE ALREADY READS, as the schools it authenticated as.
@@ -18,9 +19,11 @@ import { type MessageHeaders, alignedSenderHost } from './sender';
  * writes no offer row either (rule #1).
  *
  * Of those messages only two headers are read, From and `Authentication-Results`, from a
- * connection that is still active and readable. A message names a school only when Gmail
- * says it authenticated as its From domain (sender.ts); the address is reduced to that
- * domain's registrable domain in memory and never written. A message's text is fetched
+ * connection that is still active and readable. A message can name a school only when
+ * Gmail says it authenticated as its From domain (sender.ts) and that domain is not a
+ * mailbox or a platform that sends for many people (shared-senders.ts); the address is
+ * reduced to that domain's registrable domain in memory and never written. Whether a
+ * school wrote it is the sweep's next question (school-sender.ts). A message's text is fetched
  * only when the sweep reads the break off it (`text`), held for that one reading, and
  * never stored (`BODY_RETENTION` in sentinel/fetch-body.ts).
  */
@@ -28,7 +31,7 @@ import { type MessageHeaders, alignedSenderHost } from './sender';
 /** Messages read per family: the newest alerts. An infra bound, not a rule about mail. */
 export const MAX_ALERTED_MESSAGES = 10;
 
-/** One message that authenticated as a school's host. */
+/** One message that authenticated as its own sender's host: a school's, if one wrote it. */
 export interface SchoolMessage {
   integrationId: string;
   messageId: string;
@@ -42,6 +45,8 @@ export type SchoolMail =
       messages: SchoolMessage[];
       /** Messages read whose From domain did not authenticate: never a school. */
       unaligned: number;
+      /** Messages authenticated as a mailbox or a mail platform: never a school. */
+      shared: number;
     }
   /** Hale has told this family about no kid email it can still read. */
   | { status: 'no_mail' }
@@ -84,6 +89,7 @@ export function schoolMailReader(ports: SchoolMailPorts): SchoolMailReader {
       }
       const messages: SchoolMessage[] = [];
       let unaligned = 0;
+      let shared = 0;
       let readAny = false;
       let unread: string | null = null;
       for (const [integrationId, messageIds] of byConnection) {
@@ -104,14 +110,12 @@ export function schoolMailReader(ports: SchoolMailPorts): SchoolMailReader {
           if (headers === null) continue;
           readAny = true;
           const sender = alignedSenderHost(headers);
-          if (sender.status === 'aligned') {
-            messages.push({ integrationId, messageId, host: sender.host });
-          } else {
-            unaligned += 1;
-          }
+          if (sender.status !== 'aligned') unaligned += 1;
+          else if (isSharedSender(sender.host)) shared += 1;
+          else messages.push({ integrationId, messageId, host: sender.host });
         }
       }
-      if (readAny) return { status: 'read', messages, unaligned };
+      if (readAny) return { status: 'read', messages, unaligned, shared };
       if (unread !== null) return { status: 'unread', reason: unread };
       return { status: 'no_mail' };
     },

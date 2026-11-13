@@ -1,6 +1,7 @@
 {
   "value": {
-    "quote": "I think it's dec 18 to jan 4 for us this year",
+    "days_from": "reply",
+    "quote": "dec 18 to jan 4",
     "first_day": "2026-12-18",
     "first_day_text": "dec 18",
     "last_day": "2027-01-04",
@@ -10,5 +11,11 @@
     "name": null,
     "confidence": "high"
   },
-  "latencyMs": 4370
+  "latencyMs": 2373,
+  "usage": {
+    "input_tokens": 93,
+    "output_tokens": 258,
+    "cache_read_input_tokens": 1635,
+    "cache_creation_input_tokens": 0
+  }
 }

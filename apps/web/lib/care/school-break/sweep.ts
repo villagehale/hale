@@ -20,7 +20,7 @@ import {
 } from '~/lib/channel/weekday-care/key';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { zonedLocalInstant } from '~/lib/plan/spine';
-import { lastAskDay, schoolYearOf } from './cycle';
+import { lastAskDay, lastWaitDay, schoolYearOf } from './cycle';
 import { type SchoolBreakFact, loadSchoolBreak, recordSchoolBreak } from './facts';
 import { schoolBreakEnabled } from './flag';
 import { type BoardLookupDeps, lookupBoardBreak } from './lookup';
@@ -35,6 +35,7 @@ import {
   productionSchoolMailPorts,
   schoolMailReader,
 } from './school-mail';
+import { createLiveSchoolSenderReader } from './school-sender';
 import { searchSchoolCalendar } from './search';
 import {
   MAX_LOOKUP_TRIES,
@@ -53,17 +54,22 @@ import {
  *   1. A parent's own answer stands, and nothing here touches it.
  *   2. Otherwise, THE SCHOOL, named only by the family's own kid mail: the email alerts
  *      Hale already sent them, from senders Gmail says the message authenticated as
- *      (school-mail.ts, sender.ts). That host's own calendar page is looked up (cached per
- *      host, `school_break_readings`) and a verified break is written to the family's fact
- *      with its page and quotes. No host list, and no two schools assumed alike: a host is
- *      read on its own page or not at all, and two schools that give different days are
- *      never settled by picking one: the parent is asked.
- *   3. Otherwise, THE SCHOOL'S OWN EMAIL: with no page giving the days, the text of those
- *      same messages is read for the break, every day quoted from the email.
- *   4. Otherwise, ASK ONCE: one `school_break_ask` candidate per family per school year
+ *      (school-mail.ts, sender.ts), never a mailbox or a mail platform (shared-senders.ts),
+ *      and only when the email shows a school or board wrote it, in its own words
+ *      (school-sender.ts). That host's own calendar page is looked up (cached per host,
+ *      `school_break_readings`) and a verified break is written to the family's fact with
+ *      its page and quotes. No host list, and no two schools assumed alike: a host is read
+ *      on its own page or not at all, and two schools that give different days are never
+ *      settled by picking one: the parent is asked.
+ *   3. Otherwise, ASK ONCE: one `school_break_ask` candidate per family per school year
  *      goes to the proactive decider. The decider decides whether and when, its writer
- *      words it, and the outbound gate keeps it in the parent's daytime. The reply is read
- *      in the router (GATE 2c-bis).
+ *      words it, and the outbound gate keeps it in the parent's daytime. When the school's
+ *      own email states the break, every day quoted from it, those days ride the ask as a
+ *      proposal for the parent to confirm: an email is not filed as fact on its own. The
+ *      reply is read in the router (GATE 2c-bis), against the question as sent.
+ *
+ * A family waiting on its school's page (a lookup not finished or deferred, no model
+ * client) is asked instead once November is over (`lastWaitDay`).
  *
  * A daycare-only family is never here: its closures come only from the parent's own reply.
  * The break question itself ("winter break is coming, want me to find something?") is
@@ -77,7 +83,8 @@ export const MAX_BOARD_LOOKUPS_PER_RUN = 3;
  * same wall. The families served longest ago go first, so a family left over is first
  * next hour. */
 export const MAX_MAIL_READS_PER_RUN = 5;
-/** Email texts read for one family when no page gave the days: its newest kid mail. */
+/** Email texts read for one family per mail read: the newest message of each sender not
+ * already its school on file. An infra bound on model calls per family. */
 export const MAX_EMAIL_TEXTS_PER_FAMILY = 3;
 /** A family's mail, once read and settled, is not read again for this long. Freshness of
  * a cache, not a send rule. */
@@ -107,6 +114,10 @@ export interface SchoolBreakSweepResult {
   mailUnread: number;
   /** Messages whose From domain did not authenticate: named no school. */
   unaligned: number;
+  /** Messages authenticated as a mailbox or a mail platform: named no school. */
+  sharedSender: number;
+  /** Authenticated senders whose email a school did not write, by the sender check. */
+  notSchool: number;
   lookedUp: number;
   verified: number;
   notFound: number;
@@ -122,6 +133,8 @@ export interface SchoolBreakSweepResult {
   recorded: number;
   /** A school is still waiting on a lookup: no ask yet. */
   waiting: number;
+  /** Waiting ran past `lastWaitDay`: the family is asked instead. */
+  waitedOut: number;
   /** Two schools gave different days: nothing filed, the parent is asked. */
   disagreed: number;
   /** The ask's window for this school year has passed. */
@@ -142,6 +155,8 @@ function emptyResult(skipped: SchoolBreakSweepResult['skipped']): SchoolBreakSwe
     mailRead: 0,
     mailUnread: 0,
     unaligned: 0,
+    sharedSender: 0,
+    notSchool: 0,
     lookedUp: 0,
     verified: 0,
     notFound: 0,
@@ -152,6 +167,7 @@ function emptyResult(skipped: SchoolBreakSweepResult['skipped']): SchoolBreakSwe
     deferred: 0,
     recorded: 0,
     waiting: 0,
+    waitedOut: 0,
     disagreed: 0,
     tooLate: 0,
     asked: 0,
@@ -177,6 +193,7 @@ export function boardLookupDeps(client: AgentClient): BoardLookupDeps {
     search: (officialHost, schoolYear) => searchSchoolCalendar(client, officialHost, schoolYear),
     read: createLiveBreakPageReader(client),
     readText: createLiveTextBreakReader(client),
+    readSender: createLiveSchoolSenderReader(client),
   };
 }
 
@@ -349,11 +366,55 @@ async function refreshBoard(
   return latestBoardReading(database, host, schoolYear);
 }
 
+/** A message a school wrote, by the sender check, and its text, held for this run only. */
+interface SchoolEmail {
+  host: string;
+  text: string;
+}
+
 interface FamilyWork {
   familyId: string;
   hosts: string[];
-  messages: SchoolMessage[];
+  emails: SchoolEmail[];
   mailRead: boolean;
+  /** Senders not yet checked (no model client): the family waits on them. */
+  pending: boolean;
+}
+
+/** The newest message of each sender, newest first. */
+function newestPerHost(messages: SchoolMessage[]): SchoolMessage[] {
+  const seen = new Set<string>();
+  return messages.filter((message) => !seen.has(message.host) && seen.add(message.host));
+}
+
+/** The messages, of those given, that a school wrote, each with its text. */
+async function schoolEmails(
+  deps: SchoolBreakSweepDeps,
+  lookup: BoardLookupDeps,
+  familyId: string,
+  messages: SchoolMessage[],
+  result: SchoolBreakSweepResult,
+): Promise<SchoolEmail[]> {
+  const read = await Promise.all(
+    messages.map(async (message): Promise<SchoolEmail | null> => {
+      const text = await deps.schoolMail.text(familyId, message);
+      if (text.status === 'unread') {
+        console.info({ reason: text.reason }, 'school break: school email text not read');
+        return null;
+      }
+      const sender = await lookup.readSender({ host: message.host, text: text.text });
+      if (sender.status !== 'school') {
+        result.notSchool += 1;
+        console.info(
+          { outcome: `${sender.status}:${sender.reason}` },
+          'school break: no school wrote this email',
+        );
+        return null;
+      }
+      return { host: message.host, text: text.text };
+    }),
+  );
+  return read.filter((email): email is SchoolEmail => email !== null);
 }
 
 export async function runSchoolBreakSweep(
@@ -410,6 +471,7 @@ export async function runSchoolBreakSweep(
           if (mail.status === 'read') {
             result.mailRead += 1;
             result.unaligned += mail.unaligned;
+            result.sharedSender += mail.shared;
             messages = mail.messages;
           } else if (mail.status === 'unread') {
             result.mailRead += 1;
@@ -423,16 +485,33 @@ export async function runSchoolBreakSweep(
         }
       }
     }
-    const hosts = [...new Set([...onFile, ...messages.map((m) => m.host)])].sort();
+    const fresh = newestPerHost(messages)
+      .filter((message) => !onFile.includes(message.host))
+      .slice(0, MAX_EMAIL_TEXTS_PER_FAMILY);
+    let emails: SchoolEmail[] = [];
+    let pending = false;
+    if (fresh.length > 0 && deps.lookup === null) {
+      result.noClient += 1;
+      pending = true;
+    } else if (fresh.length > 0 && deps.lookup !== null) {
+      try {
+        emails = await schoolEmails(deps, deps.lookup, familyId, fresh, result);
+      } catch (err) {
+        result.failed += 1;
+        console.error({ fault: faultOf(err) }, 'school break: school email check failed');
+        continue;
+      }
+    }
+    const hosts = [...new Set([...onFile, ...emails.map((email) => email.host)])].sort();
     for (const host of hosts) byHost.set(host, [...(byHost.get(host) ?? []), familyId]);
-    families.push({ familyId, hosts, messages, mailRead });
+    families.push({ familyId, hosts, emails, mailRead, pending });
   }
 
-  // Busiest schools first, so a bounded run reaches the most families.
+  // Schools in the order their families were reached, the family served longest ago
+  // first: a school with one family is never deferred behind busier ones for good.
   const readings = new Map<string, StoredBoardReading | null>();
   let lookupsLeft = MAX_BOARD_LOOKUPS_PER_RUN;
-  const hosts = [...byHost.entries()].sort((a, b) => b[1].length - a[1].length);
-  for (const [host] of hosts) {
+  for (const host of byHost.keys()) {
     // One school failing is that school's outcome, never the others'.
     try {
       let reading = await latestBoardReading(database, host, schoolYear);
@@ -494,10 +573,14 @@ async function settleFamily(
 ): Promise<'settled' | 'waiting'> {
   const { familyId } = work;
   // A school still waiting on its first reading may yet answer, or disagree: nothing is
-  // filed or asked before it does.
-  if (work.hosts.some((host) => (readings.get(host) ?? null) === null)) {
-    result.waiting += 1;
-    return 'waiting';
+  // filed or asked before it does, until waiting would eat into the weeks left to ask.
+  if (work.pending || work.hosts.some((host) => (readings.get(host) ?? null) === null)) {
+    if (dayKeyOf(now, DEFAULT_TIMEZONE) <= lastWaitDay(schoolYear)) {
+      result.waiting += 1;
+      return 'waiting';
+    }
+    result.waitedOut += 1;
+    console.info({ schoolYear }, 'school break: stopped waiting on the school page, asking');
   }
   const verified = work.hosts.flatMap((host) => {
     const reading = readings.get(host) ?? null;
@@ -507,7 +590,7 @@ async function settleFamily(
   // so it files neither and asks.
   if (new Set(verified.map(({ reading }) => daysOf(reading))).size > 1) {
     result.disagreed += 1;
-    await askOnce(database, deps, gate, familyId, schoolYear, now, result);
+    await askOnce(database, deps, gate, familyId, schoolYear, null, now, result);
     return 'settled';
   }
   const fact = await loadSchoolBreak(database, familyId, schoolYear);
@@ -529,57 +612,32 @@ async function settleFamily(
     return 'settled';
   }
   if (fact) return 'settled';
-  if (work.messages.length > 0) {
-    if (deps.lookup === null) {
-      result.noClient += 1;
-      result.waiting += 1;
-      return 'waiting';
-    }
-    const emailed = await readSchoolEmails(deps, deps.lookup, work, schoolYear, result);
-    if (new Set(emailed.map(({ reading }) => daysOf(reading))).size > 1) {
-      result.disagreed += 1;
-      await askOnce(database, deps, gate, familyId, schoolYear, now, result);
-      return 'settled';
-    }
-    const email = emailed[0];
-    if (email) {
-      await recordSchoolBreak(database, {
-        source: 'school_email',
-        familyId,
-        schoolYear,
-        name: email.reading.name,
-        firstDay: email.reading.firstDay,
-        lastDay: email.reading.lastDay,
-        boardHost: email.host,
-        now,
-      });
-      result.recorded += 1;
-      return 'settled';
-    }
+  // No page had the days: a school's own email may state them, but an email is not filed
+  // as fact on its own. Its days ride the one ask, for the parent to confirm or correct.
+  const emailed =
+    deps.lookup === null ? [] : await readSchoolEmails(deps.lookup, work, schoolYear, result);
+  if (new Set(emailed.map(daysOf)).size > 1) {
+    result.disagreed += 1;
+    await askOnce(database, deps, gate, familyId, schoolYear, null, now, result);
+    return 'settled';
   }
-  await askOnce(database, deps, gate, familyId, schoolYear, now, result);
+  await askOnce(database, deps, gate, familyId, schoolYear, emailed[0] ?? null, now, result);
   return 'settled';
 }
 
-/** The breaks the family's newest school emails state, each read off its own text. */
+/** The breaks the family's school emails state, each read off its own text. */
 async function readSchoolEmails(
-  deps: SchoolBreakSweepDeps,
   lookup: BoardLookupDeps,
   work: FamilyWork,
   schoolYear: string,
   result: SchoolBreakSweepResult,
-): Promise<Array<{ host: string; reading: VerifiedBreakReading }>> {
-  const found: Array<{ host: string; reading: VerifiedBreakReading }> = [];
-  for (const message of work.messages.slice(0, MAX_EMAIL_TEXTS_PER_FAMILY)) {
-    const text = await deps.schoolMail.text(work.familyId, message);
-    if (text.status === 'unread') {
-      console.info({ reason: text.reason }, 'school break: school email text not read');
-      continue;
-    }
+): Promise<VerifiedBreakReading[]> {
+  const found: VerifiedBreakReading[] = [];
+  for (const email of work.emails) {
     result.emailRead += 1;
-    const reading = await lookup.readText({ text: text.text, schoolYear });
+    const reading = await lookup.readText({ text: email.text, schoolYear });
     if (reading.status === 'verified') {
-      found.push({ host: message.host, reading });
+      found.push(reading);
     } else {
       console.info(
         { outcome: 'reason' in reading ? `${reading.status}:${reading.reason}` : reading.status },
@@ -596,6 +654,8 @@ async function askOnce(
   gate: OutboundGatePorts,
   familyId: string,
   schoolYear: string,
+  /** The days the school's own email states, quoted from it, put to the parent to confirm. */
+  proposal: VerifiedBreakReading | null,
   now: Date,
   result: SchoolBreakSweepResult,
 ): Promise<void> {
@@ -631,7 +691,10 @@ async function askOnce(
     category: 'nudge',
     templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
     // Item data, like every decider lane's `what`; the writer skill says how to ask.
-    what: `winter break ${schoolYear}`,
+    what:
+      proposal === null
+        ? `winter break ${schoolYear}`
+        : `winter break ${schoolYear}; the school email gives ${proposal.name} ${proposal.firstDay.date} to ${proposal.lastDay.date}`,
     why: askWhy(schoolYear),
     sourceUrl: null,
     worthlessAfter: zonedLocalInstant(lastDay, '12:00', recipient.timeZone),
@@ -649,6 +712,6 @@ async function askOnce(
     actionTaken: 'proactive_cadence_queued',
     targetTable: 'families',
     targetId: familyId,
-    after: { kind: SCHOOL_BREAK_ASK_KIND, schoolYear },
+    after: { kind: SCHOOL_BREAK_ASK_KIND, schoolYear, proposed: proposal !== null },
   });
 }

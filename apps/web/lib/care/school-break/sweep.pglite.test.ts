@@ -13,11 +13,14 @@ import { SCHOOL_BREAK_ENABLED_ENV } from './flag';
 import type { BoardLookupDeps } from './lookup';
 import { type BreakPageReading, type SchoolBreakExtraction, createTextBreakReader } from './read';
 import { productionSchoolMailPorts, schoolMailReader } from './school-mail';
+import { type SchoolSenderExtraction, createSchoolSenderReader } from './school-sender';
 import type { CalendarSearch } from './search';
 import { MAX_LOOKUP_TRIES } from './store';
 import {
+  MAX_BOARD_LOOKUPS_PER_RUN,
   MAX_MAIL_READS_PER_RUN,
   SCHOOL_BREAK_ASK_KIND,
+  SCHOOL_BREAK_MAIL_SERVED_SWEEP,
   type SchoolBreakSweepDeps,
   defaultSchoolBreakSweepDeps,
   runSchoolBreakSweep,
@@ -28,8 +31,9 @@ import {
  * the per-host cache, the family fact, the decider queue and the audit rows are the real
  * ones, and so is the weekday context the break question reads. Only the edges are
  * stipulated: Gmail's answers (headers and bodies, at its fetch), the calendar search and
- * page fetch, and the model's JSON for an email's text, which then goes through the real
- * check (the model's own reading is the school-break eval's, hard rule #8). The gate's
+ * page fetch, and the model's JSON for an email's text (who wrote it, and the break it
+ * states), which then goes through the real checks (the model's own readings are the
+ * school-break eval's, hard rule #8). The gate's
  * consent reads are a port (outbound-gate.test.ts owns them).
  */
 
@@ -87,6 +91,16 @@ const EARLIER: BreakPageReading = {
   lastDay: { date: '2027-01-03', quote: 'Winter break: December 19 to January 3' },
 };
 
+/** The words a school's own email signs with: what the sender check quotes. */
+const SCHOOL_WORDS = 'Example Public School';
+
+/** What the model says of who wrote an email: stipulated JSON, checked by real code. */
+const WROTE_IT: Record<'school' | 'daycare' | 'other', SchoolSenderExtraction> = {
+  school: { reason: 'The school office wrote it.', sender: 'school', school_words: SCHOOL_WORDS },
+  daycare: { reason: 'A child care centre wrote it.', sender: 'daycare', school_words: null },
+  other: { reason: 'A business wrote it.', sender: 'other', school_words: null },
+};
+
 /** What the model returns for an email's text: stipulated JSON, checked by real code. */
 const NO_BREAK_IN_TEXT: SchoolBreakExtraction = {
   board_on_page: null,
@@ -102,11 +116,13 @@ function scripted(
     search?: (host: string) => CalendarSearch;
     read?: (url: string) => BreakPageReading;
     textJson?: (text: string) => SchoolBreakExtraction;
+    senderJson?: (text: string, host: string) => SchoolSenderExtraction;
   } = {},
 ) {
   const searches: string[] = [];
   const reads: string[] = [];
   const texts: string[] = [];
+  const senders: string[] = [];
   const lookup: BoardLookupDeps = {
     search: async (host) => {
       searches.push(host);
@@ -126,8 +142,12 @@ function scripted(
       texts.push(text);
       return over.textJson ? over.textJson(text) : NO_BREAK_IN_TEXT;
     }),
+    readSender: createSchoolSenderReader(async (host, text) => {
+      senders.push(host);
+      return over.senderJson ? over.senderJson(text, host) : WROTE_IT.school;
+    }),
   };
-  return { lookup, searches, reads, texts };
+  return { lookup, searches, reads, texts, senders };
 }
 
 /** How Gmail stamped a message: authenticated as its From domain, not, or not at all,
@@ -277,6 +297,8 @@ async function seedFamily(
 /** One email alert Hale sent this family, about mail from `mail.domain`. */
 async function alertFrom(familyId: string, mail: string | Mail) {
   const { domain, auth, body } = typeof mail === 'string' ? { domain: mail } : mail;
+  // The address a coach or a parent writes from is their own; a school's is the office's.
+  const local = domain === 'gmail.com' ? 'coach.sam' : 'office';
   const [gmail] = await db.database
     .select({ id: schema.integrations.id, userId: schema.integrations.userId })
     .from(schema.integrations)
@@ -284,9 +306,9 @@ async function alertFrom(familyId: string, mail: string | Mail) {
   seq += 1;
   const messageId = `msg-${seq}`;
   inbox.set(messageId, {
-    from: `School Office <office@${domain}>`,
+    from: `School Office <${local}@${domain}>`,
     auth: auth ?? 'aligned',
-    body: body ?? 'Curriculum night is Thursday at 6:30.',
+    body: body ?? `Curriculum night is Thursday at 6:30.\n\n${SCHOOL_WORDS} office`,
   });
   const [message] = await db.database
     .insert(schema.channelMessages)
@@ -317,7 +339,7 @@ async function alertFrom(familyId: string, mail: string | Mail) {
 async function verdictOn(
   familyId: string,
   messageId: string,
-  verdict: 'adult' | 'kid',
+  verdict: 'adult' | 'kid' | 'unsure',
   teen = false,
 ) {
   const [offer] = await db.database
@@ -366,7 +388,7 @@ async function familyOfMessage(messageId: string) {
 }
 
 const EMAIL_RANGE = 'Winter Break runs from Monday, December 21, 2026 to Friday, January 1, 2027.';
-const EMAIL_BODY = `Dear families,\n\nA reminder that ${EMAIL_RANGE} Classes resume on Monday, January 4, 2027.\n\nThe office`;
+const EMAIL_BODY = `Dear families,\n\nA reminder that ${EMAIL_RANGE} Classes resume on Monday, January 4, 2027.\n\n${SCHOOL_WORDS} office`;
 const EMAIL_JSON: SchoolBreakExtraction = {
   board_on_page: null,
   name: 'Winter Break',
@@ -445,6 +467,78 @@ describe('the winter-break sweep: which school', () => {
       boardHost: 'private-school.example',
       firstDay: '2026-12-19',
     });
+  });
+
+  it('never takes a free-mail, mailer or shared platform domain as a school: a coach on gmail, a daycare app, Google Classroom', async () => {
+    // A four-year-old the parent never said is at daycare.
+    const { familyId } = await seedFamily({
+      dateOfBirth: '2022-05-01',
+      mail: [
+        { domain: 'gmail.com', body: `No practice over ${EMAIL_RANGE}` },
+        { domain: 'mybrightwheel.com', body: `The centre is closed: ${EMAIL_RANGE}` },
+        { domain: 'classroom.google.com', body: `${EMAIL_RANGE}\n${SCHOOL_WORDS}` },
+      ],
+    });
+    const script = scripted({ textJson: () => EMAIL_JSON });
+
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+
+    expect(gmailReads).toHaveLength(3);
+    expect(bodyReads).toEqual([]);
+    expect(script.senders).toEqual([]);
+    expect(script.searches).toEqual([]);
+    expect(result).toMatchObject({ sharedSender: 3, recorded: 0, queued: 1 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect((await asks(familyId))[0]?.what).toBe('winter break 2026-27');
+  });
+
+  it('names no school from authenticated mail the email shows a school did not write: a camp, a daycare, an open house', async () => {
+    const { familyId } = await seedFamily({
+      dateOfBirth: '2022-05-01',
+      mail: [
+        { domain: 'camp.example', body: `Winter camp runs while school is out: ${EMAIL_RANGE}` },
+        { domain: 'little-sprouts.example', body: `We are closed ${EMAIL_RANGE}` },
+        { domain: 'private-school.example', body: 'Join our open house for next fall.' },
+      ],
+    });
+    const script = scripted({
+      textJson: () => EMAIL_JSON,
+      senderJson: (_text, host) =>
+        host === 'little-sprouts.example' ? WROTE_IT.daycare : WROTE_IT.other,
+    });
+
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+
+    expect([...script.senders].sort()).toEqual([
+      'camp.example',
+      'little-sprouts.example',
+      'private-school.example',
+    ]);
+    expect(script.searches).toEqual([]);
+    expect(script.texts).toEqual([]);
+    expect(result).toMatchObject({ notSchool: 3, recorded: 0, queued: 1 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect((await asks(familyId))[0]?.what).toBe('winter break 2026-27');
+  });
+
+  it('names no school when the model says school but the email does not carry the words it named', async () => {
+    const { familyId } = await seedFamily({ mail: [{ domain: BOARD, body: 'See you Thursday.' }] });
+    const script = scripted();
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+    expect(script.senders).toEqual([BOARD]);
+    expect(script.searches).toEqual([]);
+    expect(result).toMatchObject({ notSchool: 1, queued: 1 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+  });
+
+  it('reads no mail the kid check was unsure about', async () => {
+    const { familyId } = await seedFamily({ mail: [BOARD] });
+    await verdictOn(familyId, `msg-${seq}`, 'unsure');
+    const script = scripted();
+    await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+    expect(gmailReads).toEqual([]);
+    expect(script.searches).toEqual([]);
+    expect(await asks(familyId)).toHaveLength(1);
   });
 
   it("reads no mail the parent or the kid check called the parent's own, nor a 13+ child's", async () => {
@@ -543,7 +637,7 @@ describe('the winter-break sweep: which dates', () => {
     });
   });
 
-  it("reads the break off the school email's own text when its host has no calendar page, quoted", async () => {
+  it("files nothing off a school email's text: its days are put to the parent, quoted, in the one ask", async () => {
     const { familyId } = await seedFamily({
       mail: [{ domain: 'school.example', body: EMAIL_BODY }],
     });
@@ -554,27 +648,23 @@ describe('the winter-break sweep: which dates', () => {
 
     const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
 
+    expect(script.senders).toEqual(['school.example']);
     expect(script.texts).toEqual([EMAIL_BODY]);
-    expect(result).toMatchObject({ notFound: 1, emailRead: 1, recorded: 1, queued: 0 });
-    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
-      source: 'school_email',
-      name: 'Winter Break',
-      firstDay: '2026-12-21',
-      lastDay: '2027-01-01',
-      sourceUrl: null,
-      boardHost: 'school.example',
-      quotes: [EMAIL_RANGE],
+    expect(bodyReads).toHaveLength(1);
+    expect(result).toMatchObject({ notFound: 1, emailRead: 1, recorded: 0, queued: 1 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect((await loadWeekdayCareContext(db.database, familyId, NOW)).verifiedBreak).toBeNull();
+    const [ask, ...more] = await asks(familyId);
+    expect(more).toEqual([]);
+    expect(ask).toMatchObject({
+      what: 'winter break 2026-27; the school email gives Winter Break 2026-12-21 to 2027-01-01',
+      why: 'school_break_ask year=2026-27',
     });
-    expect((await loadWeekdayCareContext(db.database, familyId, NOW)).verifiedBreak).toMatchObject({
-      source: 'connected_email',
-      date: '2026-12-21',
-    });
-    expect(await asks(familyId)).toEqual([]);
   });
 
-  it('files nothing from an email whose text does not carry the days the model gave', async () => {
+  it('files nothing from an email whose text does not carry the days the model gave, and asks plainly', async () => {
     const { familyId } = await seedFamily({
-      mail: [{ domain: 'school.example', body: 'Curriculum night Thursday.' }],
+      mail: [{ domain: 'school.example', body: `Curriculum night Thursday.\n${SCHOOL_WORDS}` }],
     });
     const script = scripted({
       search: () => ({ outcome: 'none', reason: 'no_calendar_page' }),
@@ -584,6 +674,7 @@ describe('the winter-break sweep: which dates', () => {
     expect(script.texts).toHaveLength(1);
     expect(result).toMatchObject({ emailRead: 1, recorded: 0, queued: 1 });
     expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
+    expect((await asks(familyId))[0]?.what).toBe('winter break 2026-27');
   });
 
   it('asks once, per family, when no page or email has the days, and never again this school year', async () => {
@@ -882,5 +973,36 @@ describe('the winter-break sweep: bounds', () => {
       new Date(NOW.getTime() + 25 * HOUR),
     );
     expect(gmailReads).toHaveLength(2);
+  });
+
+  it('stops waiting on a school it cannot read once December starts, and asks', async () => {
+    const { familyId } = await seedFamily({ mail: [BOARD] });
+    const december = new Date('2026-12-01T15:00:00Z');
+    const result = await runSchoolBreakSweep(db.database, deps(null), december);
+    expect(result).toMatchObject({ noClient: 1, waiting: 0, waitedOut: 1, queued: 1 });
+    expect(await asks(familyId)).toHaveLength(1);
+  });
+
+  it('looks up the school of the family waiting longest first, however few families it has', async () => {
+    const busy = ['busy-a.example', 'busy-b.example', 'busy-c.example'];
+    expect(busy.length).toBe(MAX_BOARD_LOOKUPS_PER_RUN);
+    const lonely = await seedFamily({ mail: ['lonely.example'] });
+    const crowd = [await seedFamily({ mail: busy }), await seedFamily({ mail: busy })];
+    const served = [lonely, ...crowd].map((family, i) => ({
+      familyId: family.familyId,
+      sweep: SCHOOL_BREAK_MAIL_SERVED_SWEEP,
+      sweptAt: new Date(NOW.getTime() - (10 - i) * HOUR),
+    }));
+    await db.database.insert(schema.familySweepMarks).values(served);
+    const script = scripted();
+
+    const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
+
+    expect(script.searches[0]).toBe('lonely.example');
+    expect(script.searches).toHaveLength(MAX_BOARD_LOOKUPS_PER_RUN);
+    expect(result.deferred).toBe(1);
+    expect(await loadSchoolBreak(db.database, lonely.familyId, '2026-27')).toMatchObject({
+      boardHost: 'lonely.example',
+    });
   });
 });

@@ -1,5 +1,6 @@
 {
   "value": {
+    "days_from": "reply",
     "quote": "Dec 19 - Jan 5",
     "first_day": "2026-12-19",
     "first_day_text": "Dec 19",
@@ -10,5 +11,11 @@
     "name": null,
     "confidence": "high"
   },
-  "latencyMs": 3239
+  "latencyMs": 1510,
+  "usage": {
+    "input_tokens": 66,
+    "output_tokens": 235,
+    "cache_read_input_tokens": 1635,
+    "cache_creation_input_tokens": 0
+  }
 }

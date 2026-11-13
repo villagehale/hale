@@ -1,5 +1,6 @@
 {
   "value": {
+    "days_from": null,
     "quote": null,
     "first_day": null,
     "first_day_text": null,
@@ -10,5 +11,11 @@
     "name": null,
     "confidence": "low"
   },
-  "latencyMs": 1058
+  "latencyMs": 1074,
+  "usage": {
+    "input_tokens": 69,
+    "output_tokens": 78,
+    "cache_read_input_tokens": 1635,
+    "cache_creation_input_tokens": 0
+  }
 }

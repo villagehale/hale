@@ -4,6 +4,7 @@ import type {
   TextBreakReader,
   VerifiedBreakReading,
 } from './read';
+import type { SchoolSenderReader } from './school-sender';
 import type { CalendarSearch } from './search';
 
 /**
@@ -39,6 +40,8 @@ export interface BoardLookupDeps {
   read: BreakPageReader;
   /** The same reading, off the text of an email the school sent. */
   readText: TextBreakReader;
+  /** Whether a school or board wrote an email: asked before its host counts as a school. */
+  readSender: SchoolSenderReader;
 }
 
 function outcomeName(reading: BreakPageReading): string {
