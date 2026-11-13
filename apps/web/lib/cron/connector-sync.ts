@@ -560,7 +560,9 @@ export function emailAlertPorts(
     },
     familyChildren: async () => (await loadContext()).children,
     parentLanguage: (parentUserId) => readParentLanguage(database, { familyId, parentUserId }),
-    writeNotice: (facts, family) => composeEmailAlertNotice(pipelineClient(), facts, family),
+    readAlertBody: (messageId) => fetchGmailMessageBody(messageId, accessToken, googleGetFetch),
+    writeNotice: (facts, family, body) =>
+      composeEmailAlertNotice(pipelineClient(), facts, family, body),
   };
 }
 

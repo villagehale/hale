@@ -1,0 +1,14 @@
+{
+  "value": {
+    "intent": "driver_claim",
+    "driverName": "Luis",
+    "driverIsSender": true,
+    "eventLabel": "swim",
+    "pickupDate": "2026-10-31",
+    "pickupTime": "09:00",
+    "pickupPlace": null,
+    "kids": "the kids",
+    "confidence": "high"
+  },
+  "latencyMs": 1645
+}

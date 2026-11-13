@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
 import { conversations } from './conversations.js';
 import {
@@ -117,6 +126,10 @@ export const REPLY_SOURCES = [
 ] as const;
 
 export type ReplySourceValue = (typeof REPLY_SOURCES)[number];
+
+/** The service Linq names on a chat or a message; `other` is a value Linq sent that this
+ * code does not know. Mirrors `LinqChatService` (apps/web/lib/channel/linq/transport.ts). */
+export type LinqServiceValue = 'iMessage' | 'SMS' | 'RCS' | 'other';
 export const channelMessages = pgTable(
   'channel_messages',
   {
@@ -179,12 +192,17 @@ export const channelMessages = pgTable(
     handedOffAt: timestamp('handed_off_at', { withTimezone: true }),
     /**
      * INBOUND only: Linq parts that were not text (kind, https url, mime). Null when
-     * the turn carried none. Bytes are never stored — the coach fetches an image
-     * when it answers, and a re-drive reads this column rather than the job.
+     * the turn carried none. Bytes are never stored — the coach fetches an image,
+     * or a `.vcf` contact card (VIL-482), when it answers, and a re-drive reads this
+     * column rather than the job.
      */
     inboundMedia:
       jsonb('inbound_media').$type<
-        Array<{ kind: 'image' | 'video' | 'audio' | 'file'; url: string | null; mime: string | null }>
+        Array<{
+          kind: 'image' | 'video' | 'audio' | 'file' | 'contact';
+          url: string | null;
+          mime: string | null;
+        }>
       >(),
     /**
      * INBOUND only (VIL-463): whether the door saw this text in a group chat. Null on
@@ -192,6 +210,21 @@ export const channelMessages = pgTable(
      * so a group text is never run as a 1:1 turn.
      */
     inGroup: boolean('in_group'),
+    /**
+     * INBOUND only: the service Linq said carried this text (migration 0233). Linq relays
+     * every chat on the Hale line as `channel = 'imessage'`, green-bubble SMS and RCS
+     * chats included, so this is what says whether the chat is really iMessage. Null on
+     * every other pipe, on outbound rows, on a payload that did not say, and on rows
+     * written before the column existed.
+     */
+    providerService: text('provider_service').$type<LinqServiceValue>(),
+    /**
+     * INBOUND only (migration 0238): the door's opt-out read could not read this text, so
+     * it may be a stop. Written with the row the hand-off needs, so it cannot be lost the
+     * way a separate hold row can: a re-drive and a turn that reads several texts as one
+     * read it here. Null on outbound rows and on rows written before the column existed.
+     */
+    optOutUnread: boolean('opt_out_unread'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -203,7 +236,8 @@ export const channelMessages = pgTable(
     providerIdx: index('channel_messages_provider_msg_idx').on(table.providerMessageId),
     // One inbound row per provider message, enforced by the DATABASE. The webhook's
     // duplicate guard used to be select-then-insert, which two concurrent deliveries of
-    // the same message id both pass — Linq resends on a 15s timeout, so the resend can
+    // the same message id both pass — Linq resends past its 10s webhook timeout
+    // (LINQ_WEBHOOK_TIMEOUT_MS, apps/web/lib/channel/linq/signature.ts), so the resend can
     // land mid-flight. This index is what makes the insert itself the claim: exactly one
     // request wins it and is the one that enqueues. Partial on direction, because
     // outbound rows legitimately share nothing with this rule.

@@ -5,7 +5,9 @@
 // cache and shows up here on the next run. What is REPLICATED rather than imported is
 // the web half — the five tools and the SMS post-processor — for the same reason the
 // nudge / radar / intake evals replicate: those modules sit behind the `~/` alias, which
-// the tsx loader here cannot resolve. Each replicated block names its source file.
+// the tsx loader here could not resolve. Each replicated block names its source file.
+// The loader now reads the web tsconfig (see WEB_TSCONFIG), which is how the production
+// de-identifier behind `search_village` is imported rather than replicated.
 //
 // This is the highest-stakes model surface in the product so far, because it is the
 // first one that can CHANGE something. The gates are ordered by what it costs to get
@@ -100,23 +102,26 @@
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // The stage primitives are IMPORTED, never replicated: the coaching fixtures make a
 // child's age load-bearing (the companion answers a five-month-old and a five-year-old
 // differently), and TEENAGER_START_MONTHS is the floor rule #1 keys off. A hand-rolled
 // copy here is the positional-reader bug STAGE_BOUNDARIES_MONTHS' own comment warns
 // about, one file further from the test that would notice.
 import { TEENAGER_START_MONTHS, ageInMonths, deriveStage } from '@hale/types';
-import { tsImport } from 'tsx/esm/api';
+import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
 import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
+import { gatedSearchVillageHandler, searchedWindow } from './coach-channel-search-village.mjs';
 import {
   COACH_CHANNEL_FIXTURES,
+  FIND_DAY_JUDGE_SYSTEM,
   FIXTURE_CHILDREN,
   FIXTURE_COURSE_ID,
   FIXTURE_DAY_TRUTH,
   FIXTURE_EVENTS,
+  FIXTURE_FAR_EVENTS,
   FIXTURE_FORECAST,
   FIXTURE_NOW,
   FIXTURE_TIMEZONE,
@@ -161,8 +166,10 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
-import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
+import { fixtureEventWhen, fixtureWeek } from './lib/fixture-week.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -179,7 +186,40 @@ const CONTEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts')
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
 /** The REAL family-local clock (VIL-435). It reaches for no `~/` alias. */
 const LOCAL_NOW_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'local-now.ts');
+/**
+ * The REAL activity de-identifier, which every `search_village` query crosses before the
+ * search (village/live.ts). It reaches for `~/`, so it loads with the web tsconfig.
+ */
+const DEIDENTIFY_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'activity',
+  'deidentify.ts',
+);
+/** The REAL place gate a `search_village` `area` crosses before the search (village/live.ts). */
+const NAMED_AREA_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'named-area.ts');
+const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
+
+// ONE loader for every web module, as the other web-importing evals do. A `tsImport` per
+// file stacks a loader each time, and the de-identifier's graph never finished loading
+// behind the ten this suite stacked.
+register({ tsconfig: WEB_TSCONFIG });
+const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const LOCAL_DAY_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-local-day.md');
+/**
+ * VIL-567 · the find-turn addenda the runtime appends. Only a `findTurnPrompt`
+ * fixture gets them, so every other fixture keeps the prompt its recording is
+ * keyed on. Production gates this with a model read (`coach-find-turn`); this
+ * harness uses the fixture flag so standing keys stay put. The reader itself
+ * lives in find-private.ts behind `~/`, which this tsx loader cannot resolve —
+ * its own suite is find-turn-eval.mjs.
+ */
+const FIND_TURN_SKILL_PATHS = ['coach-find-private.md', 'coach-find-day.md'].map((file) =>
+  join(REPO_ROOT, 'packages', 'agent', 'skills', file),
+);
 /** Lit-only card addendum (VIL-500). Appended on experience-card fixtures, never on the rest. */
 const EXPERIENCE_CARD_SKILL_PATH = join(
   REPO_ROOT,
@@ -220,9 +260,9 @@ const AUTONOMY_SWITCH_OFF_SRC = join(
   'autonomy-switch-off-tool.ts',
 );
 
-/** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
+/** Mirrors MAX_STEPS / CHANNEL_COACH_MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
 /** The per-fixture voice FLOOR that sits alongside the corpus mean. See the header for
@@ -663,6 +703,12 @@ function isPrivate(event) {
 
 /** The week exactly as `lookup_week` renders it — what the agent saw, and therefore the
  * only thing the judge may hold it to. */
+/** The later weeks lookup_week returned rows for this turn; absent (and key-neutral) when none. */
+function laterWeeksSeen(toolOutputs) {
+  const laterWeeks = toolOutputs.filter((output) => output?.laterWeek).map((o) => o.laterWeek);
+  return laterWeeks.length > 0 ? { laterWeeks } : {};
+}
+
 function redactedWeek() {
   return FIXTURE_EVENTS.map((event) => ({
     what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
@@ -682,6 +728,12 @@ function redactedWeek() {
  * REPLICATED from apps/web/lib/channel/coach/tools.ts — the seven dates of the week with
  * the weekday each one is, so the model READS a date instead of computing one (VIL-295).
  */
+function addDaysToKey(key, days) {
+  const at = new Date(`${key}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}
+
 function weekDaysFrom(startKey, timeZone) {
   return Array.from({ length: 7 }, (_, i) => {
     const at = new Date(`${startKey}T12:00:00Z`);
@@ -745,7 +797,53 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) {
+/**
+ * VIL-567 · `search_village` as apps/web/lib/coach/tools.ts declares it today: its own
+ * description, `query`, `window`, `date` and `area`, and its examples. The shared fake below predates the
+ * `window` field, and every standing recording is keyed on it, so only a `findTurnPrompt`
+ * fixture gets this one. A search with no window and no date searches the whole year in
+ * production (village/live.ts), so the fixture's `yearVillage` answers it; either gets `village`.
+ */
+const SEARCH_VILLAGE_DESCRIPTION =
+  'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the ask is for one day, pass that day as `date` (YYYY-MM-DD, worked out from `localNow`); a full date written in query or window is removed before the search. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.';
+
+function windowedSearchVillageTool(agent, search, record, village, yearVillage, toolOutputs) {
+  return agent.defineTool({
+    name: 'search_village',
+    description: SEARCH_VILLAGE_DESCRIPTION,
+    inputSchema: z.object({
+      query: z.string().optional(),
+      window: z.string().optional(),
+      area: z.string().min(1).optional(),
+      date: z.string().optional(),
+    }),
+    inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Kingston' }],
+    monetary: false,
+    touchesChildContent: false,
+    handler: gatedSearchVillageHandler({
+      deidentify: search.deidentify,
+      namedArea: search.namedArea,
+      family: search.family,
+      record,
+      village,
+      yearVillage,
+      toolOutputs,
+      linkRef,
+    }),
+  });
+}
+
+function buildFixtureTools(
+  agent,
+  calls,
+  village,
+  spots,
+  webPicks,
+  toolOutputs,
+  searchTown = null,
+  yearVillage = undefined,
+  search = undefined,
+) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -774,27 +872,45 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
   const lookupWeek = agent.defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week, and so on up to 8: for a date further out than next week, read the week that holds it, and check `days` to see you have.",
     inputSchema: passthrough(),
     handler: async (input) => {
       record('lookup_week');
-      // The fixture week is week 0; a next-week lookup is honestly empty rather than a
-      // second copy of the same events, which is what production would return.
-      const empty = (input.weekOffset ?? 0) !== 0;
-      return {
-        weekStart: FIXTURE_WEEK_START,
+      const offset = input.weekOffset ?? 0;
+      // REPLICATED bound: tools.ts LOOKUP_WEEK_MAX_OFFSET (VIL-688).
+      if (!Number.isInteger(offset) || offset < 0 || offset > 8) {
+        throw new Error('weekOffset must be a whole number from 0 to 8');
+      }
+      // The fixture week is week 0. FIXTURE_FAR_EVENTS sit further out and are read the way
+      // production's reader reads them, so a stay that began before a week is in it; any
+      // other week is honestly empty, which is what production would return.
+      const weekStart = addDaysToKey(FIXTURE_WEEK_START, offset * 7);
+      const rows =
+        offset === 0
+          ? FIXTURE_EVENTS
+          : (
+              await fixtureWeek(
+                FIXTURE_FAR_EVENTS,
+                { weekOffset: offset },
+                { now: FIXTURE_NOW, timeZone: FIXTURE_TIMEZONE },
+              )
+            ).events;
+      const result = {
+        weekStart,
         timeZone: FIXTURE_TIMEZONE,
-        days: weekDaysFrom(FIXTURE_WEEK_START, FIXTURE_TIMEZONE),
-        summary: empty ? null : FIXTURE_WEEK_SUMMARY,
-        events: empty
-          ? []
-          : FIXTURE_EVENTS.map((event) => ({
-              eventId: event.eventId,
-              what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
-              when: localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE),
-              where: isPrivate(event) ? null : event.location,
-            })),
+        days: weekDaysFrom(weekStart, FIXTURE_TIMEZONE),
+        summary: offset === 0 ? FIXTURE_WEEK_SUMMARY : null,
+        events: rows.map((event) => ({
+          eventId: event.eventId,
+          what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
+          ...fixtureEventWhen(event, FIXTURE_TIMEZONE),
+          where: isPrivate(event) ? null : event.location,
+        })),
       };
+      // A later week that held rows is what the model saw beyond the fixture week, so it
+      // grounds the reply and goes to the judge with the week (VIL-688).
+      if (offset !== 0 && rows.length > 0) toolOutputs.push({ laterWeek: result });
+      return result;
     },
   });
 
@@ -858,24 +974,26 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
     },
   });
 
-  const searchVillage = agent.defineTool({
-    name: 'search_village',
-    description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
-    inputSchema: passthrough(),
-    handler: async () => {
-      record('search_village');
-      // What the model sees: each page's ref, never its URL (coach/tools.ts).
-      const shown = {
-        ...village,
-        candidates: (village.candidates ?? []).map(({ url, ...candidate }) =>
-          url ? { ...candidate, ref: linkRef(url) } : candidate,
-        ),
-      };
-      toolOutputs.push(shown);
-      return shown;
-    },
-  });
+  const searchVillage = yearVillage
+    ? windowedSearchVillageTool(agent, search, record, village, yearVillage, toolOutputs)
+    : agent.defineTool({
+        name: 'search_village',
+        description:
+          "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+        inputSchema: passthrough(),
+        handler: async () => {
+          record('search_village');
+          // What the model sees: each page's ref, never its URL (coach/tools.ts).
+          const shown = {
+            ...village,
+            candidates: (village.candidates ?? []).map(({ url, ...candidate }) =>
+              url ? { ...candidate, ref: linkRef(url) } : candidate,
+            ),
+          };
+          toolOutputs.push(shown);
+          return shown;
+        },
+      });
 
   // Replicated from apps/web/lib/channel/activity/tools.ts `findActivitiesTool` — behind
   // the `~/` alias (it imports the lane + ledger), so it cannot be imported here. The
@@ -885,20 +1003,27 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
   const findActivities = agent.defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code. The child's age band and the family's home town are attached from their record. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of home. Omit `area` to search around home. Age and that place are the only location and age that leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. A found result carries `family`: the children (age and stage; a teen is a stage only), the home area (where they live; the search used `area` when you passed one), and the family's durable preferences (indoor/outdoor, not scary, stroller, language and the like). Rank by it and let it shape who you say a pick is for, in your own words — never recite it back as a profile, and treat an empty field as unknown, not as something to guess. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the home town are attached from their record; a different place is the `area` you pass.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code. The child's age band and the family's home town are attached from their record. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of home. Omit `area` to search around home. Age and that place are the only location and age that leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. A found result carries `family`: the children (age and stage; a teen is a stage only), the home area (where they live; the search used `area` when you passed one), and the family's durable preferences (indoor/outdoor, not scary, stroller, language and the like). Rank by it and let it shape who you say a pick is for, in your own words — never recite it back as a profile, and treat an empty field as unknown, not as something to guess. `family` is the record and it is current: where the children's ages or the home area in it differ from an earlier message in this thread (an older town, a younger age), the record wins — rank, choose the town, and say who a pick suits from `family`, not from the old mention, unless the parent asks in THIS message about somewhere else. Never tell the parent about a record, profile, memory or mismatch, and never say what you hold on file: just use the right place and age, as a friend who knows them would. Each preference says where it came from (`source`: the parent said it, a calendar or receipt, or `inferred` — your own guess) and when (`seenOn`); lean on what the parent said over what was inferred. `family.preferences` are the only remembered interests in this result. A stale guess is not included, so it must not choose the subject you search, the town, or the pick you hand over, and you must not state an interest or a town you were not given. `recheck` is empty. There is no set sentence. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the home town are attached from their record; a different place is the `area` you pass.",
     inputSchema: z.object({
       subject: z.string().min(1),
       window: z.string().optional(),
       childId: z.string().min(1).optional(),
-      area: z.string().min(1).optional(),
+      area: z.preprocess(
+        (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+        z.string().min(1).optional(),
+      ),
     }),
     inputExamples: [
       { subject: 'toddler gymnastics', window: 'this fall' },
       { subject: 'indoor swim lessons' },
       { subject: 'trick or treat', window: 'this weekend', area: 'Kingston' },
     ],
-    handler: async () => {
-      record('find_activities');
+    handler: async (input) => {
+      // Standing fixtures record the call alone, so their tool-result bytes stay the
+      // ones the cache was recorded against. A postal-town fixture also records the
+      // town the record attached, which is the town the search actually uses.
+      if (searchTown) record('find_activities', { subject: input.subject, town: searchTown });
+      else record('find_activities');
       // What the model sees: each page's ref, never its URL (activity/tools.ts).
       // One pick for the standing corpus — the same object the single-pick path built.
       const result = {
@@ -908,6 +1033,7 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
           const { url, ...shown } = webPick;
           return url ? { ...shown, ref: linkRef(url) } : shown;
         }),
+        ...(searchTown ? { family: { homeArea: searchTown, preferences: [], recheck: [] } } : {}),
       };
       toolOutputs.push(result);
       return result;
@@ -1091,9 +1217,9 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
  * months" would otherwise read as two invented numbers. What the model was HANDED is
  * what grounds it.
  */
-function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
-  // Canada, as every fixture's context says (channelContext `location.country`).
-  const real = frameworkGuidanceTool('CA');
+function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding, country) {
+  // The fixture's own country, as its context says (channelContext `location.country`).
+  const real = frameworkGuidanceTool(country);
   return {
     ...real,
     handler: async (input) => {
@@ -1123,8 +1249,9 @@ function recordingSwitchOffTool(turnOffAutonomyTool, calls, parentWords) {
 /**
  * @param compact  the REAL `compactTranscript` (see CONTEXT_SRC)
  * @param severed  drop the thread entirely — the continuity fixtures' positive control
+ * @param helpLines  the fixture row's help lines, as the runtime hands them (VIL-589)
  */
-function channelContext(fixture, compact, severed = false) {
+function channelContext(fixture, compact, severed, helpLines) {
   const children = childrenFor(fixture);
   // Each child's REAL age and REAL stage, not a stand-in. The corpus used to hand every
   // non-teen `stage: 'child', ageMonths: 60`, which cost nothing while every fixture was
@@ -1155,7 +1282,7 @@ function channelContext(fixture, compact, severed = false) {
     compacted.transcriptSummary === null ? { transcript: compacted.transcript } : compacted;
   return {
     parentName: CONTEXT_PARENT_NAME,
-    location: { city: cityFor(fixture), province: 'ON', country: 'CA' },
+    location: locationFor(fixture),
     planTier: 'free',
     children: injected,
     focusedChild: null,
@@ -1163,6 +1290,9 @@ function channelContext(fixture, compact, severed = false) {
     // VIL-429: a fixture that holds a fact Hale read in email or the calendar carries it
     // here, `seenIn` and all; every other fixture keeps the empty list it recorded with.
     memoryFacts: fixture.memoryFacts ?? [],
+    // Absent on the standing corpus. A present brief is part of this turn's context
+    // only, so other recordings keep the key set they were hashed with.
+    ...(fixture.memoryBrief ? { memoryBrief: fixture.memoryBrief } : {}),
     recentEpisodes: [],
     // The thread so far, THROUGH THE REAL COMPACTOR — verbatim tail plus the digest of
     // what it dropped, exactly the two fields loadAgentContext puts on the context. This
@@ -1178,8 +1308,10 @@ function channelContext(fixture, compact, severed = false) {
     // No appLink, mirroring the runtime: the model is handed no URL, so a link in a
     // reply is one it composed — and the skill's standing rule is that a URL it was
     // not given is a URL it invented.
-    nowIso: NOW.toISOString(),
-    ...localDay,
+    nowIso: (fixture.now ? new Date(fixture.now) : NOW).toISOString(),
+    // Standing fixtures get main's family-local day (#1190). A `findTurnPrompt` fixture
+    // keeps the Sunday clock it was recorded on, so those two keys stay put.
+    ...(fixture.findTurnPrompt ? { localNow: fixtureLocalNow(fixture) } : localDay),
     // What Hale is holding an answer for, in Hale's own words (channel/coach/runtime.ts).
     // Empty is the ordinary case and means Hale is waiting on nothing — which is exactly
     // the state a "yes" that matches nothing arrives in.
@@ -1188,6 +1320,11 @@ function channelContext(fixture, compact, severed = false) {
     // them over. Empty for every fixture that is not about one, which is also the
     // production shape for a family outside the covered set.
     registrationWindows: fixture.registrationWindows ?? [],
+    // The only help lines a reply may name, chosen for where the family is (VIL-589).
+    helpLines,
+    // VIL-679: texts the parent sent back to back, answered as one turn — the runtime adds
+    // this only on a burst, so every other fixture keeps the context it was recorded with.
+    ...(fixture.arrivedTogether ? { arrivedTogether: fixture.arrivedTogether } : {}),
   };
 }
 
@@ -1197,8 +1334,8 @@ function channelContext(fixture, compact, severed = false) {
  * `legs` receives one entry per model call, cached or live. Without it a re-ask is
  * invisible: the loop's own numbers are summed over the turn, so a leg that cost a full
  * budget and said nothing looks exactly like a leg that answered. The re-ask is a MODE
- * change (thinking off at the same max_tokens), so the report has to be able to show
- * which shape each call actually went out in.
+ * change (thinking off, tools dropped, same max_tokens), so the report has to be able
+ * to show which shape each call actually went out in.
  */
 function makeCachedAgentClient(
   tag,
@@ -1234,6 +1371,7 @@ function makeCachedAgentClient(
           legs.push({
             max_tokens: request.max_tokens,
             thinking: request.thinking?.type ?? 'none',
+            tools: Array.isArray(request.tools) && request.tools.length > 0,
             stop_reason: response.stop_reason,
             output_tokens: response.usage?.output_tokens ?? 0,
             thinking_tokens: response.usage?.output_tokens_details?.thinking_tokens ?? null,
@@ -1244,13 +1382,17 @@ function makeCachedAgentClient(
         };
         const cached = await cacheGet(key);
         if (isDryRun()) {
-          // --dry (VIL-467): price this leg as the guard would, cached or not, and never
-          // call. An uncached leg ends the turn with a max-length stand-in reply, so a
-          // tool loop past it is not priced (the worst case is per leg made, see report).
+          // --dry / --estimate: price this leg as the guard would, cached or not, and
+          // never call. An uncached leg ends the turn with a max-length stand-in reply,
+          // so a tool loop past it is not priced (the worst case is per leg made).
+          const priced = dryRequestPlanEntry(`${tag}:agent`, request);
+          priced.key = key;
           DRY_SUBJECT_PLAN.push({
-            ...dryRequestPlanEntry(`${tag}:agent`, request),
+            ...priced,
             cached: Boolean(cached),
+            key,
           });
+          console.log(`cache-key subject ${tag} ${key} ${cached ? 'hit' : 'miss'}`);
           if (!cached) {
             return note({
               id: 'dry',
@@ -1355,6 +1497,34 @@ function longMonth(abbr) {
  * does not also carry that venue, which is what made "Riverdale Farm visit at
  * Riverdale Farm" the thing the model quoted. */
 let spokenFind = (title, venue) => ({ title, venue: venue?.trim() ? venue : null });
+/** Replaced in main() by the REAL family-clock reader (LOCAL_NOW_SRC). */
+let familyLocalNow = null;
+
+function fixtureLocalNow(fixture) {
+  return familyLocalNow(fixture.now ? new Date(fixture.now) : NOW, FIXTURE_TIMEZONE);
+}
+
+/**
+ * What findFamilyActivities hands the de-identifier for this family (village/live.ts):
+ * the town, the youngest non-teen child's stage, every household name and its first word,
+ * and today on the family's clock.
+ */
+function searchFamilyFor(fixture) {
+  const now = fixture.now ? new Date(fixture.now) : NOW;
+  const children = childrenFor(fixture);
+  const youngest = children
+    .filter((child) => teenChildren([child], now).length === 0)
+    .sort((a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now))[0];
+  const local = fixtureLocalNow(fixture);
+  return {
+    town: cityFor(fixture),
+    stage: deriveStage(youngest.dateOfBirth, now),
+    householdNames: [...children.map((child) => child.name), CONTEXT_PARENT_NAME].flatMap(
+      (name) => [name, name.trim().split(/\s+/)[0]],
+    ),
+    today: `${local.date} (${local.weekday})`,
+  };
+}
 
 function presentCandidate(candidate) {
   const spoken = spokenFind(candidate.title, candidate.venue ?? '');
@@ -1374,6 +1544,15 @@ function villageFor(fixture) {
   return presentVillage(fixture.village ?? FIXTURE_VILLAGE);
 }
 
+/** What `search_village` handed back this turn: a `findTurnPrompt` fixture answers by window or date. */
+function returnedVillage(fixture, calls) {
+  if (!fixture.findTurnPrompt) return villageFor(fixture);
+  const windowed = calls.some(
+    (call) => call.tool === 'search_village' && searchedWindow(call) !== null,
+  );
+  return windowed ? villageFor(fixture) : presentVillage(fixture.yearVillage);
+}
+
 /**
  * Where this text's family lives. Toronto for the standing corpus, overridable per
  * fixture — the registration windows are real municipal rows for real towns, and a
@@ -1383,7 +1562,13 @@ function villageFor(fixture) {
  * the corpus itself.
  */
 function cityFor(fixture) {
-  return fixture.city ?? CONTEXT_CITY;
+  return fixture.location?.city ?? fixture.city ?? CONTEXT_CITY;
+}
+
+/** The family row's place: Ontario for the standing corpus, a fixture's own `location`
+ * where the answer turns on the country (VIL-589: 811 is a dig line in the US). */
+function locationFor(fixture) {
+  return fixture.location ?? { city: cityFor(fixture), province: 'ON', country: 'CA' };
 }
 
 /**
@@ -1418,11 +1603,22 @@ function groundedHay(fixture, toolResults) {
   // The parent's own name and town ride on the same context object (loadAgentContext
   // parentName / location), so addressing them by name is recall, not invention.
   parts.push(CONTEXT_PARENT_NAME, cityFor(fixture));
+  for (const fact of fixture.memoryFacts ?? []) {
+    parts.push(
+      fact.factKey,
+      typeof fact.factValue === 'string' ? fact.factValue : JSON.stringify(fact.factValue),
+    );
+  }
   parts.push(...CONNECTABLE_SERVICES);
   // THE THREAD GROUNDS TOO. A venue Hale itself named two messages ago is recall — and
   // on a fixture whose whole subject is a "yes" to that message, every noun in it would
   // otherwise be read as an invention by the gate that exists to catch inventions.
   for (const message of fixture.transcript ?? []) parts.push(message.content);
+  // A `findTurnPrompt` fixture carries its own Sunday clock, which is not the
+  // corpus `localDay`, so today's date and weekday there are recall too.
+  if (fixture.findTurnPrompt) {
+    parts.push(JSON.stringify(fixtureLocalNow(fixture)));
+  }
   // The registration windows on the context ground too, and this is the one source whose
   // facts are DATES — the thing the fabrication gate is most load-bearing about. A date
   // in the reply that is not in this list is one the model made up.
@@ -1436,8 +1632,15 @@ function groundedHay(fixture, toolResults) {
   }
   // Both forms of every day the schedule actually touches: the tools emit "Thu", the
   // model may write "Thursday", and neither is a fabrication.
-  for (const event of FIXTURE_EVENTS) {
-    const label = localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE);
+  // A later week counts only on a turn that read it (VIL-688).
+  const laterLabels = toolResults
+    .flat()
+    .flatMap((output) => output?.laterWeek?.events ?? [])
+    .flatMap((event) => [event.when, event.until ?? '']);
+  for (const label of [
+    ...FIXTURE_EVENTS.map((event) => localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE)),
+    ...laterLabels,
+  ]) {
     const short = label.slice(0, 3).toLowerCase();
     const full = DAY_NAMES.find(([, abbr]) => abbr === short)?.[0];
     parts.push(label, full ?? '');
@@ -1569,6 +1772,27 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
   for (const tool of expect.mustCall ?? []) {
     if (!toolNames.has(tool)) failures.push(`never called ${tool}`);
   }
+  if (expect.searchTown) {
+    const searches = calls.filter((call) => call.tool === 'find_activities');
+    if (searches.length === 0) failures.push('never searched');
+    for (const call of searches) {
+      if (call.town !== expect.searchTown) {
+        failures.push(`searched ${call.town ?? 'no town'}, not ${expect.searchTown}`);
+      }
+    }
+  }
+  if (expect.subjectMustNotName) {
+    const banned = String(expect.subjectMustNotName).toLowerCase();
+    for (const call of calls.filter((call) => call.tool === 'find_activities')) {
+      if (
+        String(call.subject ?? '')
+          .toLowerCase()
+          .includes(banned)
+      ) {
+        failures.push(`search subject names ${expect.subjectMustNotName}`);
+      }
+    }
+  }
   if (expect.cardForUrl) {
     const card = calls.find((call) => call.tool === 'share_experience_card');
     if (card && card.url !== expect.cardForUrl) {
@@ -1580,6 +1804,13 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
   // the model composed.
   for (const tool of expect.mustNotCall ?? []) {
     if (toolNames.has(tool)) failures.push(`called ${tool} with nothing to call it on`);
+  }
+  // VIL-679: a corrected figure must not reach a tool either.
+  const toolInputs = JSON.stringify([calls, auditLog.map((entry) => entry.after ?? null)]);
+  for (const token of expect.toolInputsMustNotSay ?? []) {
+    if (new RegExp(`\\b${token}\\b`).test(toolInputs)) {
+      failures.push(`a tool input says ${JSON.stringify(token)}, which the parent corrected`);
+    }
   }
   if (expect.turnOffWithin) {
     const stray = calls
@@ -1616,6 +1847,9 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
 
   if (expect.mustAsk && !reply.includes('?')) {
     failures.push('never asks the clarifying question the ambiguity requires');
+  }
+  if (expect.mustNotAsk && reply.includes('?')) {
+    failures.push('asks a question where the text asked nothing yet');
   }
 
   // A drafted change is confirmed in an ordinary sentence. The parent answers in
@@ -1808,6 +2042,7 @@ const BROKEN_CALLS = [
 ];
 
 async function main() {
+  if (process.argv.includes('--estimate')) process.env.HALE_EVAL_DRY = '1';
   assertRunFlags([
     '--broken',
     '--show',
@@ -1819,6 +2054,7 @@ async function main() {
     '--min-samples',
     '--env-file',
     '--max-usd',
+    '--estimate',
   ]);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -1849,22 +2085,20 @@ async function main() {
   }
 
   const agent = await loadAgent();
-  ({ spokenFind } = await tsImport(
+  const deidentify = await importTs(DEIDENTIFY_SRC);
+  const namedArea = await importTs(NAMED_AREA_SRC);
+  ({ spokenFind } = await importTs(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
-    import.meta.url,
   ));
-  ({ attachLinks, linkRef } = await tsImport(
+  ({ attachLinks, linkRef } = await importTs(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
-    import.meta.url,
   ));
-  const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
-  const { turnOffAutonomyTool, augmentCoachSkillForAutonomySwitchOff } = await tsImport(
-    AUTONOMY_SWITCH_OFF_SRC,
-    import.meta.url,
-  );
-  const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
-  const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
-  const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
+  const { frameworkGuidanceTool } = await importTs(FRAMEWORK_TOOL_SRC);
+  const { turnOffAutonomyTool, augmentCoachSkillForAutonomySwitchOff } =
+    await importTs(AUTONOMY_SWITCH_OFF_SRC);
+  const { _internal: contextInternal } = await importTs(CONTEXT_SRC);
+  const { sanitizeSpotUrl } = await importTs(SPOTS_URL_SRC);
+  const { readSpot } = await importTs(SPOTS_READ_SRC);
   const spots = {
     sanitizeSpotUrl,
     readSpot,
@@ -1872,6 +2106,9 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
+  if (process.argv.includes('--estimate') && !process.env.HALE_SPEND_LEDGER) {
+    process.env.HALE_SPEND_LEDGER = '/tmp/hale-eval-estimate-ledger.json';
+  }
   installEvalSpendCap();
   const getJudgeClient = lazyAnthropic('coach-channel-judge');
   const getCurrentClient = lazyAnthropic('coach-channel');
@@ -1885,11 +2122,16 @@ async function main() {
     await agent.loadSkill(SKILL_PATH),
     await agent.loadSkill(join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-nearby-find.md')),
   );
-  const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } = await tsImport(
-    EXPERIENCE_CARD_TOOL_SRC,
-    import.meta.url,
+  // Production appends this on every channel turn (VIL-542). Re-record the standing
+  // corpus with the next paid run; this change re-keys every coach-channel subject.
+  const homePlaceSkill = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-home-place.md'),
   );
+  const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } =
+    await importTs(EXPERIENCE_CARD_TOOL_SRC);
   const experienceCardAddendum = await agent.loadSkill(EXPERIENCE_CARD_SKILL_PATH);
+  ({ familyLocalNow } = await importTs(LOCAL_NOW_SRC));
+  const findTurnAddenda = await Promise.all(FIND_TURN_SKILL_PATHS.map((p) => agent.loadSkill(p)));
   // VIL-429: the runtime appends this last, and only on a 1:1 turn holding a fact with
   // `seenIn` (channel/coach/runtime.ts appendFactSourceSkill).
   const factSourceAddendum = await agent.loadSkill(
@@ -1897,7 +2139,6 @@ async function main() {
   );
   // VIL-435: production hands every turn of a family with a zone and an area these facts,
   // and appends the addendum that reads them after the fact-source addendum.
-  const { familyLocalNow } = await tsImport(LOCAL_NOW_SRC, import.meta.url);
   localDay = {
     localNow: familyLocalNow(NOW, FIXTURE_TIMEZONE),
     forecast: forecastFacts(FIXTURE_FORECAST),
@@ -1925,6 +2166,17 @@ async function main() {
     judgeModel,
     JUDGE_SYSTEM,
     'coach-channel',
+    cachedOnly,
+    getJudgeClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+
+  // VIL-567 · the day a find is for, graded by meaning on the fixtures that state one.
+  const dayJudge = makeJudge(
+    judgeModel,
+    FIND_DAY_JUDGE_SYSTEM,
+    'coach-find-day',
     cachedOnly,
     getJudgeClient,
     cost,
@@ -1986,7 +2238,12 @@ async function main() {
     // Built ONCE per turn, and read by both the run and the judge — a judge handed a
     // different thread from the model's is the half-blind grading this harness has
     // already paid for once (see the `knows` comment below).
-    const turnContext = channelContext(fixture, compact, severed);
+    const turnContext = channelContext(
+      fixture,
+      compact,
+      severed,
+      await coachHelpLines(locationFor(fixture)),
+    );
 
     if (broken) {
       // PER FIXTURE where one declares its own stand-in, for the reason the finder
@@ -2006,13 +2263,24 @@ async function main() {
           spots,
           webPicksFor(fixture),
           toolOutputs,
+          fixture.postalTown ?? null,
+          fixture.findTurnPrompt ? presentVillage(fixture.yearVillage) : undefined,
+          fixture.findTurnPrompt
+            ? { deidentify, namedArea, family: searchFamilyFor(fixture) }
+            : undefined,
         ),
-        recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
+        recordingFrameworkTool(
+          frameworkGuidanceTool,
+          calls,
+          guidance,
+          locationFor(fixture).country,
+        ),
         ...(fixture.autonomy
           ? [recordingSwitchOffTool(turnOffAutonomyTool, calls, fixture.text)]
           : []),
       ];
       let turnSkill = augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true);
+      turnSkill = withAddendum(turnSkill, homePlaceSkill);
       // VIL-500: only these fixtures see the card verb and the lit addendum. Every other
       // turn keeps the disk skill and the tool list the cache was recorded against.
       if (fixture.experienceCard) {
@@ -2026,10 +2294,22 @@ async function main() {
           }),
         );
       }
+      // VIL-567: the find-turn addenda, in the runtime's order. Production gates
+      // this with a model read (coach-find-turn). This harness uses the fixture
+      // flag so standing recordings keep their keys; the reader's own suite is
+      // find-turn-eval.mjs. `withAddendum` is the same concat as
+      // `augmentCoachSkillForFindPrivate` (find-private.ts cannot load here: `~/`).
+      if (fixture.findTurnPrompt) {
+        for (const addendum of findTurnAddenda) {
+          turnSkill = withAddendum(turnSkill, addendum);
+        }
+      }
       if (turnContext.memoryFacts.some((fact) => fact.seenIn)) {
         turnSkill = withAddendum(turnSkill, factSourceAddendum);
       }
-      turnSkill = withAddendum(turnSkill, localDayAddendum);
+      if (turnContext.localNow) {
+        turnSkill = withAddendum(turnSkill, localDayAddendum);
+      }
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
         cachedOnly,
@@ -2109,6 +2389,8 @@ async function main() {
       // out of the hay, which is what keeps "a URL Hale was not handed is a URL it
       // invented" a real gate rather than a blanket exemption for one domain.
       calls.some((call) => call.tool === 'share_referral_link') ? FIXTURE_REFERRAL_LINK : null,
+      // The help lines the context handed this turn (VIL-589): "Health811" is quoted, not made up.
+      turnContext.helpLines,
       // The web pick, on the same terms: only a turn that actually called
       // find_activities was handed it, and on every other turn naming it is invention.
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
@@ -2138,6 +2420,9 @@ async function main() {
             // confident wrong one.
             knows: {
               parent: CONTEXT_PARENT_NAME,
+              // Today on the family's clock, as the model was told it. `undefined` off the
+              // `findTurnPrompt` fixtures, so every committed verdict's key stays put.
+              today: fixture.findTurnPrompt ? fixtureLocalNow(fixture) : undefined,
               city: cityFor(fixture),
               // The day facts the model was handed, and what that day really is there.
               ...localDay,
@@ -2184,6 +2469,10 @@ async function main() {
               //
               // `undefined`, not `null`, on every turn without one — JSON.stringify
               // drops undefined, so every judge verdict already committed stays valid.
+              home: fixture.judgeHome === undefined ? undefined : fixture.judgeHome,
+              // VIL-679: the last N user rows arrived back to back and are one turn.
+              // `undefined` off the burst fixtures, so every committed verdict's key stays.
+              arrivedTogether: fixture.arrivedTogether,
               nearbyCountAppended:
                 fixture.nearby &&
                 nearbyCountWasAppended(
@@ -2202,7 +2491,7 @@ async function main() {
               // same four words an invented detail and put a correct reply below the
               // floor. Same half-blindness as `webFind` and `standingPlace` above, same
               // fix: show the judge what the tool showed the model.
-              offerable: villageFor(fixture).candidates.map((c) => {
+              offerable: returnedVillage(fixture, calls).candidates.map((c) => {
                 const line = c.venue
                   ? `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`
                   : `${c.title}, ${c.when} — ${c.summary}`;
@@ -2220,6 +2509,8 @@ async function main() {
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
               registrationWindows: fixture.registrationWindows ?? [],
+              // The help lines the model was handed for where this family is (VIL-589).
+              helpLines: turnContext.helpLines,
               // The family facts the model was handed, `seenIn` included. `undefined`
               // off the fixtures that hold none, so every committed verdict's key stays.
               memoryFacts: fixture.memoryFacts,
@@ -2252,7 +2543,11 @@ async function main() {
                   }
                 : undefined,
             },
-            week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
+            week: {
+              summary: FIXTURE_WEEK_SUMMARY,
+              events: redactedWeek(),
+              ...laterWeeksSeen(toolOutputs),
+            },
             // The thread the model was handed, on the same terms as everything else in
             // `knows`: a judge that cannot see the message a "Yes, please" is answering
             // is scoring the reply half-blind, and this harness has already paid for
@@ -2265,6 +2560,25 @@ async function main() {
             reply,
           });
     const score = verdict === null ? null : verdict.score;
+    const dayFailures = [];
+    if (fixture.expect?.dayJudge) {
+      const day = await dayJudge(fixture.id, {
+        parentText: fixture.text,
+        thread: turnContext.transcript,
+        today: fixtureLocalNow(fixture),
+        dayMeant: fixture.expect.dayJudge.day,
+        searchedWindows: calls.filter((call) => call.tool === 'search_village').map(searchedWindow),
+        finds: returnedVillage(fixture, calls).candidates.map(
+          (c) => `${c.title} at ${c.venue}, ${c.when}`,
+        ),
+        reply,
+      });
+      if (!day.dry && day.score < JUDGE_MIN) {
+        dayFailures.push(
+          `DAY: judge ${day.score} (${(day.samples ?? []).join('/')}) - ${day.reason}`,
+        );
+      }
+    }
 
     results.push({
       fixture,
@@ -2284,6 +2598,7 @@ async function main() {
       failures: [
         ...invented.map((f) => `FABRICATION: ${f}`),
         ...checkFixture(fixture, reply, calls, auditLog, truncatedRetries),
+        ...dayFailures,
       ],
     });
   }
@@ -2304,9 +2619,9 @@ async function main() {
       `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}${result.draws ? ` of ${result.draws.join('/')}` : ''}`}  tools=${reached}${reask}`,
     );
     if (result.truncatedRetries) {
-      for (const leg of (result.legs ?? []).filter((l) => l.thinking === 'disabled')) {
+      for (const leg of (result.legs ?? []).filter((l) => l.tools === false)) {
         console.log(
-          `        · re-ask leg: max_tokens=${leg.max_tokens} thinking=${leg.thinking} stop=${leg.stop_reason} out=${leg.output_tokens}${
+          `        · re-ask leg: max_tokens=${leg.max_tokens} thinking=${leg.thinking} tools=off stop=${leg.stop_reason} out=${leg.output_tokens}${
             leg.thinking_tokens === null ? '' : ` (think ${leg.thinking_tokens})`
           } cache_read=${leg.cache_read} cache_write=${leg.cache_write}`,
         );
@@ -2492,7 +2807,22 @@ async function main() {
     (broken || clashWrong.length === 0);
 
   if (isDryRun()) {
-    console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan]));
+    console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan, dayJudge.plan]));
+    const seen = new Set();
+    for (const row of DRY_SUBJECT_PLAN) {
+      if (!row.key || seen.has(row.key)) continue;
+      seen.add(row.key);
+      console.log(`cache-key subject ${row.tag} ${row.key}`);
+    }
+    for (const row of [
+      ...(judge.plan ?? []),
+      ...(clashJudge.plan ?? []),
+      ...(dayJudge.plan ?? []),
+    ]) {
+      if (!row.key || seen.has(row.key)) continue;
+      seen.add(row.key);
+      console.log(`cache-key judge ${row.tag} ${row.key}`);
+    }
     process.exit(0);
   }
   console.log('\n--- gate ---');

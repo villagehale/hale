@@ -1,0 +1,19 @@
+{
+  "value": {
+    "ops": [
+      {
+        "action": "open",
+        "title": "Winter driving lessons for Morgan",
+        "status": "waiting_on_parent",
+        "nextStep": "Parent picks Northside weekend course or Safe Start evening classes",
+        "childIds": [
+          "6f0d6a5e-2b1c-4c1e-9a7f-0a1b2c3d4e02"
+        ],
+        "activityRefs": [
+          "driving lessons"
+        ]
+      }
+    ]
+  },
+  "latencyMs": 1508
+}

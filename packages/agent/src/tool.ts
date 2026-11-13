@@ -23,7 +23,8 @@ import type { z } from 'zod';
 export interface ToolDefinition<TInput, TOutput> {
   name: string;
   description: string;
-  inputSchema: z.ZodType<TInput>;
+  /** Input is `unknown`: it parses whatever the model sent, so a field may normalise first. */
+  inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
   /**
    * Spends money → the spending-cap hook gates it (rule #7). REQUIRED, and `false`
    * must be written out: an unstated flag would read as "safe" and route around the
@@ -84,17 +85,17 @@ export interface ToolDefinition<TInput, TOutput> {
   /**
    * A rail the CALLER layers onto a tool for one turn (VIL-616): the coach sets it once
    * `read_email` has handed the turn a stranger's words. `ok:false` refuses on the
-   * `untrusted_content` rail BEFORE the audit row, so the refused input, which the email
-   * may have written, never lands in a family-visible `audit_log` row. Absent = no such
-   * rail on this turn. The handler-side check could not do this: the audit is written
-   * before any handler runs.
+   * `untrusted_content` rail. The refused input never lands in a `tool:<name>` audit
+   * row. VIL-635 writes a content-free `tool_refused` row (tool, rail, audience) so
+   * the attempt outlives the log window. Absent = no such rail on this turn.
    */
   untrustedContentGate?: () => GuardResult;
   /**
    * An input-aware check on the `child_content` rail, for a tool whose free text may
    * name a 13+ child whatever childId it carries (VIL-618: the memory saves). It runs
-   * BEFORE the audit row, so a refused input never lands in a family-visible
-   * `audit_log` row (rule #1). Absent = the input has no such text to check.
+   * before the `tool:<name>` audit row, so a refused input never lands there (rule #1).
+   * VIL-635 writes a content-free `tool_refused` row instead. Absent = the input has
+   * no such text to check.
    */
   childContentGate?: (input: TInput, ctx: ToolHandlerContext) => Promise<GuardResult>;
   handler: (input: TInput, ctx: ToolHandlerContext) => Promise<TOutput>;
@@ -105,6 +106,12 @@ export interface ToolHandlerContext {
   familyId: string;
   /** 'system', an agent_run uuid, or a user uuid — written verbatim to audit_log.actor. */
   actor: string;
+  /**
+   * VIL-635. The adult a `tool_refused` row belongs to. Coach turns pass the
+   * signed-in parent as `actor`; when that is a users.id it is used. Cron
+   * (`actor: 'system'`) leaves the row with no audience.
+   */
+  audience?: string | null;
 }
 
 /** `defineTool` is identity with inference — it pins the input/output types from the schema/handler. */
@@ -174,6 +181,8 @@ export interface AuditEntry {
   actionTaken: string;
   /** The validated tool input, recorded as the "after" payload for right-to-access. */
   after: unknown;
+  /** VIL-635. The adult this row belongs to, when it is about one adult. */
+  audience?: string | null;
 }
 
 /** Raised when a guardrail refuses a tool. The handler did NOT run and nothing changed. */
@@ -193,17 +202,18 @@ export class GuardrailError extends Error {
 /**
  * Run a tool through the rails. Order is deliberate:
  *   1. validate input (reject hallucinated args at the boundary)
- *   2. untrusted-content gate (if the caller set one) — throw on reject
- *   3. spending-cap gate (if monetary) — throw on reject
- *   4. child-content gate (if touchesChildContent) — throw on reject
- *   5. input-aware child-content gate (if the tool declares one) — throw on reject
- *   6. ALWAYS write the audit row (rule #6) — even a permitted call is logged
+ *   2. untrusted-content gate (if the caller set one) — content-free refusal audit, throw
+ *   3. spending-cap gate (if monetary) — content-free refusal audit, throw
+ *   4. child-content gate (if touchesChildContent) — content-free refusal audit, throw
+ *   5. input-aware child-content gate (if the tool declares one) — same
+ *   6. ALWAYS write the permitted `tool:<name>` audit row (rule #6)
  *   7. run the handler
  *
- * Audit is written AFTER the gates pass and BEFORE the handler runs: a refused
- * call produces a GuardrailError (and the refusal is itself observable from the
- * thrown error), while a permitted call is recorded the instant it is authorized,
- * so a handler crash can never leave an authorized action unlogged.
+ * Audit is written AFTER the gates pass and BEFORE the handler runs: a permitted
+ * call is recorded the instant it is authorized, so a handler crash can never
+ * leave an authorized action unlogged. A refused call writes a content-free
+ * `tool_refused` row (tool name, rail, audience — never the input) and throws
+ * GuardrailError (VIL-635).
  */
 export async function invokeTool<TInput, TOutput>(
   tool: ToolDefinition<TInput, TOutput>,
@@ -216,6 +226,7 @@ export async function invokeTool<TInput, TOutput>(
   if (tool.untrustedContentGate) {
     const verdict = tool.untrustedContentGate();
     if (!verdict.ok) {
+      await writeRefusalAudit(deps, ctx, tool.name, 'untrusted_content');
       throw new GuardrailError(tool.name, 'untrusted_content', verdict.reason);
     }
   }
@@ -229,6 +240,7 @@ export async function invokeTool<TInput, TOutput>(
     const cost = deps.monetaryCostOf(tool.name, input);
     const verdict = await deps.checkSpendingCap(ctx.familyId, cost);
     if (!verdict.ok) {
+      await writeRefusalAudit(deps, ctx, tool.name, 'spending_cap');
       throw new GuardrailError(tool.name, 'spending_cap', verdict.reason);
     }
   }
@@ -241,6 +253,7 @@ export async function invokeTool<TInput, TOutput>(
     }
     const verdict = await deps.checkChildContentAccess(ctx.familyId, tool.name, input);
     if (!verdict.ok) {
+      await writeRefusalAudit(deps, ctx, tool.name, 'child_content');
       throw new GuardrailError(tool.name, 'child_content', verdict.reason);
     }
   }
@@ -248,6 +261,7 @@ export async function invokeTool<TInput, TOutput>(
   if (tool.childContentGate) {
     const verdict = await tool.childContentGate(input, ctx);
     if (!verdict.ok) {
+      await writeRefusalAudit(deps, ctx, tool.name, 'child_content');
       throw new GuardrailError(tool.name, 'child_content', verdict.reason);
     }
   }
@@ -260,4 +274,27 @@ export async function invokeTool<TInput, TOutput>(
   });
 
   return tool.handler(input, ctx);
+}
+
+/** A users.id is a UUID. 'system' and agent-run ids are not, so they are not an audience. */
+const USER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function refusalAudience(ctx: ToolHandlerContext): string | null {
+  if (ctx.audience !== undefined) return ctx.audience;
+  return USER_UUID.test(ctx.actor) ? ctx.actor : null;
+}
+
+async function writeRefusalAudit(
+  deps: GuardDeps,
+  ctx: ToolHandlerContext,
+  toolName: string,
+  rail: GuardrailError['rail'],
+): Promise<void> {
+  await deps.writeAudit({
+    familyId: ctx.familyId,
+    actor: ctx.actor,
+    actionTaken: 'tool_refused',
+    after: { tool: toolName, rail },
+    audience: refusalAudience(ctx),
+  });
 }

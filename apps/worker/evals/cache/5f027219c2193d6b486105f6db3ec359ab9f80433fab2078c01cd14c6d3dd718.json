@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The line correctly tells Priya she drew Ana, but it also reveals another pairing ('Ben got Cy'), which is a second receiver in a giver's text and directly violates the secret that nobody may learn who any participant drew. This is an automatic 1 regardless of tone or length.",
+    "score": 1
+  }
+}

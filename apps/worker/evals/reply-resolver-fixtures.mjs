@@ -317,6 +317,37 @@ export const REPLY_RESOLVER_FIXTURES = [
       'neverClarify, because the parent was perfectly clear; the coach owns that turn.',
   },
 
+  // ── VIL-302: a reply that names an older ask ───────────────────────────────
+  // Two reads of one text. The newest ask is the plan offer; the parent is declining the
+  // intro asked before it. The router reads the whole open list first and narrows to the
+  // newest ask only when that read is `ambiguous` (route.ts, resolveNaturalReply). The
+  // first fixture is why.
+  {
+    id: 'vil-302-declines-older-ask-newest-only',
+    text: 'no thanks to the intro',
+    questions: [OFFER],
+    // RECORDED HAZARD, not an aspiration (see french-consent below). Shown only the newest
+    // ask, the real model reads the decline as a no to the plan offer. A plan offer has no
+    // writer for a no, so the reading is `not_answerable`, the turn goes to the coach and
+    // the intro decline the parent typed is never recorded. Narrowing first would have
+    // shipped exactly that. If this starts returning none, the narrowed read got safer.
+    expect: { status: 'unresolved', reason: 'not_answerable' },
+    why:
+      'VIL-302 hazard. Only the newest ask is listed and the parent named an older one. ' +
+      'The model places the no on the listed ask anyway, so the router must not read this first.',
+  },
+  {
+    id: 'vil-302-declines-older-ask-full-list',
+    text: 'no thanks to the intro',
+    questions: [OPT_IN, OFFER],
+    expect: {
+      status: 'resolved',
+      questionId: OPT_IN.id,
+      kind: 'intro_optin',
+      polarity: 'no',
+    },
+    why: 'The fallback read: with the intro on the list, the words name it and decline it.',
+  },
   // ── the tripwire ──────────────────────────────────────────────────────────
   {
     id: 'french-consent',

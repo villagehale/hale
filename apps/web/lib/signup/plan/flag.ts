@@ -5,12 +5,14 @@
  * nobody armed. It is separate from AUTHORIZED_SIGNUP_ENABLED and
  * BROWSER_USE_SIGNUP_ENABLED: turning this lane off touches nothing else.
  */
+import { isEnabled } from '@hale/flags';
+
 export const REGISTRATION_PLAN_RUN_ENABLED_ENV = 'REGISTRATION_PLAN_RUN_ENABLED';
 
 export function registrationPlanRunEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env[REGISTRATION_PLAN_RUN_ENABLED_ENV] === 'true';
+  return isEnabled('registration-plan-run', undefined, env);
 }
 
 /**
@@ -24,5 +26,5 @@ export const REGISTRATION_ASSISTED_RUN_ENABLED_ENV = 'REGISTRATION_ASSISTED_RUN_
 export function registrationAssistedRunEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env[REGISTRATION_ASSISTED_RUN_ENABLED_ENV] === 'true';
+  return isEnabled('registration-assisted-run', undefined, env);
 }

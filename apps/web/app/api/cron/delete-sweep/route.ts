@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { purgeExpiredCheckInNotes } from '~/lib/channel/checkin/notes';
 import { sweepRosterRetention } from '~/lib/channel/linq/roster-retention';
+import { sweepSecretSantaRetention } from '~/lib/channel/linq/secret-santa';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { erasureGoogleLogLine, runDeletionSweep, sweepMessageRetention } from '~/lib/rights/delete';
 import { sweepRecordRetention } from '~/lib/rights/record-retention';
 import { remoteProfileDeleterFromEnv } from '~/lib/signup/browser-use/runner';
 import { sweepExpiredProviderSessions } from '~/lib/signup/browser-use/vault';
+import { sweepStaleProviderCredentials } from '~/lib/signup/credentials/store';
 
 // Node runtime: the sweep deletes via the postgres driver (not edge).
 export const runtime = 'nodejs';
@@ -32,6 +34,10 @@ export const runtime = 'nodejs';
  * privacy promise is a year, and a promise that stops when a flag flips is not
  * a promise. The step logs counts only.
  *
+ * NOR IS A SECRET SANTA (VIL-686): a draw left collecting for 14 days, or whose organizer is
+ * gone or stopped, is cancelled, and every draw is deleted 45 days after it was drawn or
+ * cancelled, whatever SECRET_SANTA says.
+ *
  * NOR ARE THE RECORDS WITH NO CLOCK OF THEIR OWN (`sweepRecordRetention`): the words of
  * an episode a parent removed go thirty days after the removal, and a proactive candidate
  * row goes after a year. Counts only.
@@ -40,6 +46,7 @@ export const runtime = 'nodejs';
  * (cookies, never a password) lives at most 48 hours; past that the row and its
  * Browser Use profile are deleted here. Without BROWSER_USE_API_KEY a row that
  * already seeded a remote profile waits (`remotePending`) instead of orphaning it.
+ * Encrypted city credentials older than 45 days with no live plan are deleted here too.
  *
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING — no DB read,
@@ -53,11 +60,15 @@ export const GET = cronRoute('delete-sweep', async () => {
   const messageRetention = await sweepMessageRetention(db());
   const recordRetention = await sweepRecordRetention(db());
   const groupRosterRetention = await sweepRosterRetention(db());
+  const now = new Date();
+  // VIL-686: Secret Santa draws stuck collecting, and every draw 45 days on. Not flag-gated.
+  const secretSantaRetention = await sweepSecretSantaRetention(db(), now);
   const providerSessions = await sweepExpiredProviderSessions(
     db(),
-    new Date(),
+    now,
     remoteProfileDeleterFromEnv(),
   );
+  const providerCredentials = await sweepStaleProviderCredentials(db(), now);
   if (summary.erased > 0) {
     console.info(
       { erased: summary.erased, purgedObjects: summary.purgedObjects },
@@ -104,6 +115,17 @@ export const GET = cronRoute('delete-sweep', async () => {
     // Counts only (rule #1): never a host, a family, or a profile id.
     console.info(providerSessions, 'cron/delete-sweep: deleted provider sessions past 48 hours');
   }
+  if (secretSantaRetention.cancelled > 0 || secretSantaRetention.deleted > 0) {
+    // Counts only (rule #1): never a chat, a person or a name.
+    console.info(secretSantaRetention, 'cron/delete-sweep: secret santa draws cancelled or purged');
+  }
+  if (providerCredentials.deleted > 0) {
+    // Counts only (rule #1): never a host or a family.
+    console.info(
+      providerCredentials,
+      'cron/delete-sweep: deleted provider credentials past 45 days',
+    );
+  }
   return NextResponse.json(
     {
       ok: true,
@@ -116,7 +138,9 @@ export const GET = cronRoute('delete-sweep', async () => {
       messageRetention,
       recordRetention,
       groupRosterRetention,
+      secretSantaRetention,
       providerSessions,
+      providerCredentials,
     },
     { status: 200 },
   );

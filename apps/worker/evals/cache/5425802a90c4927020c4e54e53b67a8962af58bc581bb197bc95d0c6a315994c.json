@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Pour le créneau du sam. 9 h 30, il ne reste qu'une liste d'attente. Je n'en rejoins pas, donc rien n'est réservé. Voici la page d'inscription si tu veux la voir : https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 1651,
+  "usage": {
+    "input_tokens": 134,
+    "output_tokens": 99,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

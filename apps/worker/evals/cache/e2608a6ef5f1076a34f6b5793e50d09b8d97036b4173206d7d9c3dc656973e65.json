@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgxCJCGy3MRcDBVhcKEvP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpggKEAgTGAI4AUIIdGhpbmtpbmcSDOph/+v8WPxBouP+VBoMo8EQxASJk74tidnvIjBnLfcAZf2z8KJpdjAiqysVHnfdqEKkcFglJ6Fb3xXY1uEl+IWkGoIyH2p8tZvM7BsqwwfvQ9SyKmenpbX9GRAQIbqn5BOdnAA8oJDZtf7slH0EZXds+JXrrKLK4x9NDJ4GtNNr0mG7QMQvA2K8riY2pj8R/PvSuoRYs7crRW2XtFtwp5uf5uqjpDaGRJp6VJkbuNn3RQUEJu3u6Skq7ZlJyXQO/VSWJOnZ1a96Ad+3Uj5to8F1aZXkLbYotNREmaXXZtQaBck31T3FDPB40klTMUNOEf+yDLj8U1EsnnuHgZ2/k8MKlpqu3LN36gxlh+OHHckEnNZCYe0Kr1z2m085G+VVNsq2UBXKfCRtfUVzIQ261UT9Zyw+kT2Rq5F05CcjkrkJv7Rk9YDdiTPERUzK6+9I5ouNdJ3jrZ5OshNo+WSwAgBhlvJCRGJy/OImHfvL515jSjkghI/CuzG4XZA5q4DqxG7oUJru3WzrLlg9yIRUTVDFMBWjpbHQX80e3zva+1dwEFPn4T6UNioSURDSLhd//V7vFYFc5FkjGk+SsZjzE9Rea9Hj4CDyJTm9Q136AQYgH4ZXwHqefHnScGAMnrKJEJ/j1iPU152lVrlpmlc8cqlFGO45B1ug92y5jpogSgIL36R7tLTSbuKIcxWbX78sTrk8YFkuVTx9IAecfkdz65GBZtoaNMgOBaPTTl4fhakvLSNblofnH371IiIJPdyRNUq+gNki2EtyzXuyYQRbuq5AjS+7mJloe5/pjqt9YPcIvk3eO9qDdNMI0nz4CpCLT6G7XPODy9U3kcOojB4JiHu0pYyCivERMwjEPJIyW6lLWKSbRbPr5FDCUEvp2bkL3hexAbijF/JrErFbDHciZKGuBn+UoVqroxCA1dAVlrpA1uK+RAgpPURFvpHHzWjYwZiBGpmOI4R1ZjgXB+1SrDXds+ANYhzK713eST69oNdOK7j01RRSU7TXOs1i86rxWiPUaP/F1PoT3tUir4ca1pdtff153flnTp2FvuSHfjfDOn8lWnkc/xIU08whDwaAsUwi7jnGI+FqbwLqSk6fXMAdLdpqkywJmz7fJ1/GJnx4aKvx85CncqNsMQCsJB5FNGaqN1SsLdfgfrJG6SlGnBSMjkLlwU+WmaLz1QdoS/zYiwui/P5gE3C1KWSr7Z1quqIJN8Ck8J2bKSr2cfCTlxioalLecZZHD5ALWFhMWtlHvWo3Z9q8RxwUz5snRuN84HSzs2s97ModUKjdwqwcUAWmMY8wSOnTQuOtJCjxaQY99SqzetdnFyf6Y/VSbNrKDiJiFsrJvGEvVMpgXmoL8OQnZ0firJPdOQhDVvG+1hnEu/wYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "有两个适合20个月宝宝的，都是家长一起下水的班。\n\nWellesley Community Centre pool 的 Parent and tot swim，周六 9:30，1月9日到3月13日，适合6到36个月。[link-fd81ce]\n\nRegent Park Aquatic Centre 的 Little splashers，周日 10:15，1月10日到3月14日，适合12到36个月。[link-bf3175]\n\n两个都是12月1日早上7:00开始报名。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 2068,
+      "cache_read_input_tokens": 17537,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2068,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 287,
+      "output_tokens_details": {
+        "thinking_tokens": 126
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

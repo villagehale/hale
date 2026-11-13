@@ -1,7 +1,8 @@
 /**
  * VIL-226 · snapshots the proactive decider is graded on. Invented households, places
- * and links only. Every fixture reads at Thursday 6:00 PM in the family's own zone,
- * which the runner renders into `localNow` exactly as the runtime does.
+ * and links only. Every fixture reads at Thursday 6:00 PM in the family's own zone
+ * unless it names another clock (the VIL-681 check-backs read in the morning and at
+ * midday), which the runner renders into `localNow` exactly as the runtime does.
  *
  * The keys follow loadFamilySnapshot's order (apps/web/lib/channel/proactive/snapshot.ts)
  * so the model reads the same JSON shape production sends. A candidate is its kind and a
@@ -12,6 +13,16 @@ const TZ = 'America/New_York';
 const THURSDAY_EVENING = '2026-10-08T22:00:00.000Z';
 const HOUSE = { areaCoarse: null, childAgesYears: [8] };
 const LIBRARY = 'https://library.example.test/programs';
+/** VIL-681 · Thursday 8:23 AM and 11:00 AM local: the review after the sweep queued it. */
+const THURSDAY_FIRST_THING = '2026-10-08T12:23:00.000Z';
+const THURSDAY_MIDDAY = '2026-10-08T15:00:00.000Z';
+/** The check-back's one day closes Friday 8:00 AM local. */
+const CHECKBACK = {
+  id: 'checkback',
+  kind: 'next_day_checkback',
+  why: 'next_day_checkback asked=2026-10-08T01:40:00.000Z',
+  worthlessAfter: '2026-10-09T12:00:00.000Z',
+};
 /** A week of home calendar with no free window in it. */
 const FULL_WEEK = [
   { day: '2026-10-08', label: 'piano', allDay: false, start: '16:00', end: '18:30' },
@@ -41,7 +52,7 @@ function candidate(over) {
 function snapshot(over) {
   return {
     timeZone: TZ,
-    now: THURSDAY_EVENING,
+    now: over.now ?? THURSDAY_EVENING,
     household: HOUSE,
     calendar: over.calendar ?? [],
     freeWindows: over.freeWindows ?? [],
@@ -252,5 +263,18 @@ export const PROACTIVE_DECIDER_FIXTURES = [
         }),
       ],
     }),
+  },
+  // VIL-681 · a parent started something yesterday and went quiet. The `why` is the
+  // sweep's names-free label, never the thread's title.
+  {
+    id: 'checkback-first-thing',
+    // The sweep queues it as the day opens; the decider waits for later in their day.
+    expect: { action: 'hold', includes: ['checkback'], frequency: null },
+    snapshot: snapshot({ now: THURSDAY_FIRST_THING, candidates: [candidate(CHECKBACK)] }),
+  },
+  {
+    id: 'checkback-midday',
+    expect: { action: 'send_now', includes: ['checkback'], frequency: null },
+    snapshot: snapshot({ now: THURSDAY_MIDDAY, candidates: [candidate(CHECKBACK)] }),
   },
 ];

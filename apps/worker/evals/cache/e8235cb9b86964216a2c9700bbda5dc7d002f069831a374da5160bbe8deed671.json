@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30这一场,我没能确认报名有没有成功。麻烦你到他们的页面看一下:https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 3331,
+  "usage": {
+    "input_tokens": 137,
+    "output_tokens": 62,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

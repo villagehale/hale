@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent asks to get into a named specialty (speech therapist)",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1068
+}

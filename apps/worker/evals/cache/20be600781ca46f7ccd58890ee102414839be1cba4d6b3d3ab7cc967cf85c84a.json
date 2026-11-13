@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reports a possible ingestion of a button battery, an immediate medical emergency",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1054
+}

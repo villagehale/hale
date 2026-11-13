@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese matching the parent's text, answers the single Sunday question with the named event and its time converted to Toronto local time (2:00 PM from 2:00 in the facts is already local, consistent with the 'Sun, Nov 15, 2:00' fact), and states indoor, free, ages 1-3 accurately. Two bubbles split cleanly: one fact, then a single question in the last bubble with the page link appended by code. Minor flaw: the first bubble is a fairly long single sentence carrying several details (time, venue, indoor, free, age fit) that could be trimmed, and the question is slightly tacked on, but nothing is invented and the structure follows the rules.",
+    "score": 4
+  }
+}

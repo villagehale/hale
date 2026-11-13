@@ -76,6 +76,8 @@ function channelTools(): RegisteredTool[] {
       reader: { householdNames: async () => [] },
       watchConsentGranted: async () => false,
       readClassAvailability: async () => ({ status: 'unknown', reason: 'extract_failed' }),
+      parentWords: '',
+      linksThisTurn: () => [],
     },
     onDraft: () => {},
     onOffer: () => {},

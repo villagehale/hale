@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale promises to text the parent before Maple Bend swim registration opens, which is a registration watch on the winter registration row q1.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      }
+    ]
+  },
+  "latencyMs": 2289
+}

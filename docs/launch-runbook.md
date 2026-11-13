@@ -85,7 +85,8 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 | Route | Schedule | What it does for iMessage |
 | --- | --- | --- |
 | `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. Each run expires active jobs past their expiry before it fetches, so one stuck inbound job cannot stall every family until queue-maintenance is called. |
-| `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). |
+| `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). A failed tick pages #ops at once, at most once an hour: `site inbound_canary_failed`, with the `stage` it failed at (`never_answered` means the drain or the router). |
+| `/api/cron/unanswered` | every 5 minutes | Pages #ops at most once an hour while a real parent's text (not a probe, QA or founder household) has gone 15 minutes with nothing from the router: no answered, unanswered or failed row, and no answer claim except a text folded into itself. `site parent_text_unanswered`, with the `count` from the last hour. A deferred text counts. |
 | `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null, and pages #ops when the Linq line crosses 70% or 90% of its chat IDs ([linq-chat-capacity.md](linq-chat-capacity.md)). |
 | `/api/cron/intake-sitting-reminder` | hourly | One nudge for a parent who stopped on the place or ages question. |
 
@@ -117,9 +118,16 @@ Redeploy steps, same for every flag:
 | `LINQ_GROUP_COPARENT` | `off` | In-group co-parent seating stops. Any other value, including empty, leaves it on. |
 | `LINQ_GROUP_MEMBERS_ENABLED` | empty | Extra household seats stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | empty | Hale's own add to a group is acknowledged and nothing else happens (`signal_from_me`; a `chat.created` answers `chat.created`). No roster is read and no chat is claimed. Rosters and claims already written stay. Trimmed `true` enables it. |
-| `LINQ_GROUP_MENTIONS_ENABLED` | empty | Inbound iMessage mentions are parsed and unused. Group replies go out without a `mention` field. Trimmed `true` enables them only when `VERCEL_ENV` is `preview`. Production stays dark. |
+| `LINQ_GROUP_MENTIONS_ENABLED` | empty | Inbound iMessage mentions are parsed and unused. Group replies go out without a `mention` field. Trimmed `true` enables them in any environment, including production. |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_POLLS_ENABLED` | empty | Parent-made group polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`. |
+| `LINQ_EFFECTS_ENABLED` | empty | iMessage screen and bubble effects stay dark. Trimmed `true` lets the model attach one to a rare celebratory reply in any environment, including production. |
+| `GROUP_POLLS_ENABLED` | empty | VIL-399 RSVP and time polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`; otherwise Hale asks in model-written plain text. Needs migration `0231_linq_group_experience`. |
+| `GROUP_LINK_CARDS_ENABLED` | empty | A posted group link stays an unnamed media part. Trimmed `true` lifts it into text and Hale says the public facts, then registration continues 1:1. |
+| `GROUP_CARPOOL_ENABLED` | empty | Same dark path as `LINQ_GROUP_CARPOOL_ENABLED` unless that flag is already on. |
+| `GROUP_BRING_LIST_ENABLED` | empty | Same dark path as `GROUP_SHARED_LISTS_ENABLED` unless that flag is already on. |
+| `GROUP_PRIVATE_QUESTION_ENABLED` | empty | A private question stays in the group turn. Trimmed `true` moves it 1:1. |
+| `GROUP_MAIL_NOTICE_ENABLED` | empty | A Gmail time-change is not posted into the household group. |
 
 To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-web Production and redeploy with the steps above. The route returns 503 `linq_not_configured` and writes nothing. Linq retries that 503, so put the secret back and redeploy to accept the retries.
 

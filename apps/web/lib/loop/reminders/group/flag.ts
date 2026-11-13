@@ -1,3 +1,4 @@
+import { isEnabled } from '@hale/flags';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { linqGroupTurnAiEnabled } from '~/lib/channel/linq/group-turn-reader';
 
@@ -11,7 +12,7 @@ import { linqGroupTurnAiEnabled } from '~/lib/channel/linq/group-turn-reader';
  * turn reader, then this.
  */
 export function groupRemindersEnabled(): boolean {
-  return process.env.LINQ_GROUP_REMINDERS_ENABLED?.trim() === 'true';
+  return isEnabled('linq-group-reminders');
 }
 
 /**

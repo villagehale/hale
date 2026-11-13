@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "question about Hale itself (account/phone number preference), within coach's remit",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1221
+}

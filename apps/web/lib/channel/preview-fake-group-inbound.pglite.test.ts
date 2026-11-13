@@ -152,6 +152,32 @@ describe('preview fake group door reaches fake households only', () => {
     expect(handleLinqGroupMessage).not.toHaveBeenCalled();
   });
 
+  it('carries a shared .vcf into the group handler as a Linq media part', async () => {
+    await family([FAKE_A, FAKE_B], CHAT);
+    const res = await post({
+      text: '',
+      media: [{ url: 'https://cards.example/files/abc', mime: 'text/vcard' }],
+    });
+    expect(res.status).toBe(200);
+    expect(handleLinqGroupMessage).toHaveBeenCalledTimes(1);
+    const message = (handleLinqGroupMessage.mock.calls[0] as unknown[])[1] as {
+      media?: unknown[];
+    };
+    expect(message.media).toEqual([
+      { kind: 'contact', url: 'https://cards.example/files/abc', mime: 'text/vcard' },
+    ]);
+  });
+
+  it('refuses media that is not https, and an empty post with no media', async () => {
+    await family([FAKE_A, FAKE_B], CHAT);
+    const bad = await post({ text: 'hi', media: [{ url: 'http://cards.example/a.vcf' }] });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'media_invalid' });
+    const empty = await post({ text: '' });
+    expect(empty.status).toBe(400);
+    expect(handleLinqGroupMessage).not.toHaveBeenCalled();
+  });
+
   it('refuses text past the size cap before storing it', async () => {
     await family([FAKE_A, FAKE_B], CHAT);
     const res = await post({ text: 'x'.repeat(MAX_FAKE_GROUP_TEXT + 1) });

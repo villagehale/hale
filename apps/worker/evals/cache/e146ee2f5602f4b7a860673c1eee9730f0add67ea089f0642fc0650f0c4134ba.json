@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single text with calendar facts in the parent's language (English), converts UTC instants to Toronto local time correctly (Nov 16 21:30Z = 4:30pm EST, Nov 17 22:00Z = 5:00pm, Nov 18 14:15Z = 9:15am, Nov 18 21:30Z = 4:30pm, Nov 19 23:00Z = 6:00pm, Nov 21 18:00Z = 1:00pm), and has exactly one question in the last bubble. However, bubble 1 mixes two thoughts (nothing this week plus next week's Monday pickup), bubble 2 bundles four separate events across days into one dense bubble, and the Saturday bubble is a fragment-like single event stretched across a separate bubble; the splitting is uneven rather than one thought per bubble. Nothing is invented.",
+    "score": 3
+  }
+}

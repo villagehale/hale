@@ -81,7 +81,8 @@ export function createCarpoolComposer(options?: {
         await pageUnsent(input.kind, 'skill_unavailable');
         return null;
       }
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client =
+        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const parse = (answer: string | null) => {
         if (!answer) return null;
         const raw = firstJsonObject(answer);

@@ -68,13 +68,20 @@ async function loadSubject() {
 
 /** The production inputs for one fixture, and the alias <-> ref maps for its labels. */
 function prepare(subject, fixture) {
-  const rows = fixture.candidates.map(({ ref, startsAt, opensAt, opensForFamilyAt, ...row }) => ({
-    familyId: FAMILY,
-    ...row,
-    ...(startsAt ? { startsAt: new Date(startsAt) } : {}),
-    ...(row.source === 'live_sequence' ? { opensAt: opensAt ? new Date(opensAt) : null } : {}),
-    ...(opensForFamilyAt ? { opensForFamilyAt: new Date(opensForFamilyAt) } : {}),
-  }));
+  const rows = fixture.candidates.map(
+    ({ ref, startsAt, opensAt, opensForFamilyAt, sentAt, ...row }) => ({
+      familyId: FAMILY,
+      ...row,
+      ...(startsAt
+        ? { startsAt: new Date(startsAt) }
+        : row.source === 'cancelled'
+          ? { startsAt: null }
+          : {}),
+      ...(sentAt ? { sentAt: new Date(sentAt) } : {}),
+      ...(row.source === 'live_sequence' ? { opensAt: opensAt ? new Date(opensAt) : null } : {}),
+      ...(opensForFamilyAt ? { opensForFamilyAt: new Date(opensForFamilyAt) } : {}),
+    }),
+  );
   const refOfRow = new Map(rows.map((row, i) => [row, fixture.candidates[i].ref]));
   const set = subject.candidates.buildClaimCandidates(FAMILY, rows, fixture.timeZone);
   const refOfAlias = new Map([...set.byAlias].map(([alias, row]) => [alias, refOfRow.get(row)]));
