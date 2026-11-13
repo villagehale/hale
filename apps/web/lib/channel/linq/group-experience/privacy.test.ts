@@ -70,4 +70,11 @@ describe('groupLineLeaksPrivate', () => {
     expect(groupLineLeaksPrivate('Bo is in.', ['Bo'])).toBe(true);
     expect(groupLineLeaksPrivate('Bonfire at 7.', ['Bo'])).toBe(false);
   });
+
+  it('a short term split by a zero-width character is still the whole word (M10)', () => {
+    // Short terms are never joined across words, so only the format-character strip catches this.
+    expect(groupLineLeaksPrivate('A\u200Bva is coming.', ['Ava'])).toBe(true);
+    expect(groupLineLeaksPrivate('L\u2060eo plays at 4.', ['Leo'])).toBe(true);
+    expect(groupLineLeaksPrivate('A\u200Bvalanche drills Saturday.', ['Ava'])).toBe(false);
+  });
 });

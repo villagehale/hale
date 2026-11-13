@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { carpoolChatAudience } from '~/lib/channel/linq/carpool';
 import { carpoolReminderFireAt } from '~/lib/channel/linq/carpool-cadence';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -57,9 +58,10 @@ export interface DriverNotifyPorts {
 }
 
 /**
- * The chats a family's own rides live in: the group it claimed and its household roster
- * chats. A ride in a chat several families share is never moved or texted from one
- * family's event, which is that family's private data.
+ * The chats a family's own rides live in: the group it claimed and its roster chats that the
+ * ride audience rule (carpoolChatAudience) calls a household's. A ride in a chat several
+ * families share is never moved or texted from one family's event, which is that family's
+ * private data.
  */
 async function householdChatIds(database: Database, familyId: string): Promise<string[]> {
   const [claimed] = await database
@@ -71,9 +73,11 @@ async function householdChatIds(database: Database, familyId: string): Promise<s
     .select({ chatId: schema.linqGroupRosters.chatId })
     .from(schema.linqGroupRosters)
     .where(eq(schema.linqGroupRosters.familyId, familyId));
-  return [
-    ...new Set([...(claimed?.chatId ? [claimed.chatId] : []), ...rosters.map((row) => row.chatId)]),
-  ];
+  const household: string[] = [];
+  for (const chatId of new Set(rosters.map((row) => row.chatId))) {
+    if ((await carpoolChatAudience(database, chatId)) === 'household') household.push(chatId);
+  }
+  return [...new Set([...(claimed?.chatId ? [claimed.chatId] : []), ...household])];
 }
 
 export async function loadAffectedDrivers(

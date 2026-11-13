@@ -241,6 +241,21 @@ export async function hostFamilyIdForPlan(
 }
 
 /**
+ * Whether this sender is a seated Hale parent of the household that hosts `plan`. Only such a
+ * parent may tie a poll to the plan, move its time, or replace it; nobody else's message does
+ * any of that. A name-derived member key is never proof of who someone is: no user, no.
+ */
+export async function isPlanHostParent(
+  resolver: GroupPlanHouseholdResolver | undefined,
+  input: { chatId: string; userId: string | null | undefined },
+  plan: { familyId: string },
+): Promise<boolean> {
+  if (!resolver || !input.userId) return false;
+  const home = await resolver.resolve({ chatId: input.chatId, userId: input.userId });
+  return home.status === 'one' && home.familyId === plan.familyId;
+}
+
+/**
  * The household whose calendar an OK may touch.
  *
  * A parent of the family that claimed the chat, or a parent of another family

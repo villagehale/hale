@@ -938,6 +938,7 @@ export async function runCarpoolReminders(
       triedDriverThisRun.add(row.id);
       const driverSkipped = await deliverDriverLeg(database, {
         rowId: row.id,
+        chatId: row.chatId,
         groupSentAt: input.now,
         plan,
         now: input.now,
@@ -1023,6 +1024,7 @@ export async function runCarpoolReminders(
     triedDriverThisRun.add(row.id);
     const driverSkipped = await deliverDriverLeg(database, {
       rowId: row.id,
+      chatId: row.chatId,
       groupSentAt: input.now,
       plan,
       now: input.now,
@@ -1073,6 +1075,7 @@ export async function runCarpoolReminders(
     if (!row.reminderGroupSentAt) continue;
     const driverSkipped = await deliverDriverLeg(database, {
       rowId: row.id,
+      chatId: row.chatId,
       groupSentAt: row.reminderGroupSentAt,
       plan,
       now: input.now,
@@ -1114,6 +1117,7 @@ async function deliverDriverLeg(
   database: Database,
   input: {
     rowId: string;
+    chatId: string;
     groupSentAt: Date;
     plan: CarpoolPlanState;
     now: Date;
@@ -1125,8 +1129,9 @@ async function deliverDriverLeg(
   if (!plan.driverHaleCustomer) return 'driver_not_customer';
   if (!plan.driverUserId) return 'no_driver_user';
   // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
-  // starts a 1:1 with its members. Their driver hears it in the group only.
-  if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
+  // starts a 1:1 with its members. Their driver hears it in that group only. A ride
+  // in any other chat is not that group's, so it falls to the texted-Hale gate below.
+  if (await driverFamilyClaimedChat(database, plan.driverUserId, input.chatId)) {
     return 'driver_group_claimed';
   }
   // VIL-689 · never a cold text: whatever kind of chat the ride came from, the driver's 1:1
@@ -1187,13 +1192,17 @@ async function deliverDriverLeg(
   return null;
 }
 
-async function driverFamilyHasClaimedGroup(database: Database, userId: string): Promise<boolean> {
+async function driverFamilyClaimedChat(
+  database: Database,
+  userId: string,
+  chatId: string,
+): Promise<boolean> {
   const rows = await database
     .select({ chatId: schema.families.linqGroupChatId })
     .from(schema.familyMembers)
     .innerJoin(schema.families, eq(schema.families.id, schema.familyMembers.familyId))
     .where(eq(schema.familyMembers.userId, userId));
-  return rows.some((row) => Boolean(row.chatId));
+  return rows.some((row) => row.chatId === chatId);
 }
 
 async function coveringParentUserId(database: Database, familyId: string): Promise<string | null> {

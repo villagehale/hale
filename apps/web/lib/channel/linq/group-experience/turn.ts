@@ -7,9 +7,10 @@ import {
 } from '../config';
 import {
   type GroupPlanHouseholdResolver,
+  hostFamilyIdForPlan,
+  isPlanHostParent,
   postgresGroupPlanHouseholds,
 } from '../group-plan-rsvp/calendar';
-import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { type PlanRef, refPlanId } from '../group-plan-rsvp/plan-identity';
 import { optionKeyAt } from '../group-plan-rsvp/poll-tally';
 import {
@@ -237,14 +238,29 @@ async function planFor(
     : { status: 'none' };
 }
 
+function planHouseholdsOf(ports: GroupExperienceTurnPorts): GroupPlanHouseholdResolver {
+  return ports.planHouseholds ?? postgresGroupPlanHouseholds(ports.database);
+}
+
+/**
+ * A new plan is hosted by the asker's own household, chosen the way the VIL-442 door chooses it
+ * (never whichever household the chat lists first). No household: no plan.
+ */
 async function openPlan(
   input: GroupExperienceTurnInput,
+  ports: GroupExperienceTurnPorts,
   plans: GroupPlanRsvpStore,
   title: string,
-): Promise<GroupPlanRecord> {
+): Promise<GroupPlanRecord | null> {
+  const familyId = await hostFamilyIdForPlan(
+    planHouseholdsOf(ports),
+    await plans.coveringFamily(input.chatId),
+    { chatId: input.chatId, userId: input.senderUserId },
+  );
+  if (!familyId) return null;
   return plans.createPlan({
     chatId: input.chatId,
-    familyId: input.familyId,
+    familyId,
     title,
     startsAt: null,
     location: null,
@@ -463,10 +479,15 @@ async function openRsvp(
       notice: { skipped: 'not_sent' },
     };
   }
-  if (target.status === 'none') {
+  const plan =
+    target.status === 'live'
+      ? target.plan
+      : target.status === 'new'
+        ? await openPlan(input, ports, plans, target.title)
+        : null;
+  if (!plan) {
     return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
   }
-  const plan = target.status === 'live' ? target.plan : await openPlan(input, plans, target.title);
   const options = spoken.options.map((text, index) => ({
     key: optionKeyAt(index),
     text,
@@ -607,11 +628,19 @@ async function openTime(
     // Only a time the reader placed on the asker's clock; the voice's own labels carry none.
     startsAt: fromParent ? (reading.starts[index] ?? null) : null,
   }));
+  // A time poll is tied to an open plan only when its asker hosts that plan: only then can its
+  // lock move the plan. A new event's plan is the asker's own.
   const plan =
     target.status === 'live'
-      ? target.plan
+      ? (await isPlanHostParent(
+          planHouseholdsOf(ports),
+          { chatId: input.chatId, userId: input.senderUserId },
+          target.plan,
+        ))
+        ? target.plan
+        : null
       : target.status === 'new'
-        ? await openPlan(input, plans, target.title)
+        ? await openPlan(input, ports, plans, target.title)
         : null;
   const subjectKey = plan?.id ?? `time:${input.chatId}`;
   let cardResult: 'sent' | { skipped: string } = { skipped: 'polls_off' };
@@ -636,7 +665,6 @@ async function openTime(
       options,
       votes: {},
       card: cardResult === 'sent',
-      createdBy: await senderKeyOf(input),
     },
     now: input.now,
   });
@@ -672,10 +700,6 @@ async function voteTime(
   return { handled: true, outcome: 'group_experience_recorded', count: 'intake' };
 }
 
-async function senderKeyOf(input: GroupExperienceTurnInput): Promise<string> {
-  return senderMemberKey({ handle: input.senderHandle, name: input.senderName }, async () => []);
-}
-
 /**
  * The choice a lock lands on. A choice the message named counts only as a tie-break among the
  * leaders; it never beats an option with more votes. One leader wins on its own. A tie with no
@@ -694,20 +718,20 @@ export function lockedChoice(
 }
 
 /**
- * Whether this sender's lock may move `plan`: the person who opened the poll, or a seated Hale
- * parent of the plan's host household. Anyone else's lock moves no plan.
+ * Whether this sender's lock may move `plan`: a seated Hale parent of the plan's host household.
+ * A poll is tied to a plan only when such a parent opened it, so its creator is one of them.
+ * Anyone else's lock moves no plan.
  */
 async function mayMovePlan(
   input: GroupExperienceTurnInput,
   ports: GroupExperienceTurnPorts,
   plan: GroupPlanRecord,
-  creatorKey: string | null,
 ): Promise<boolean> {
-  if (creatorKey && creatorKey === (await senderKeyOf(input))) return true;
-  if (!input.senderUserId) return false;
-  const households = ports.planHouseholds ?? postgresGroupPlanHouseholds(ports.database);
-  const home = await households.resolve({ chatId: input.chatId, userId: input.senderUserId });
-  return home.status === 'one' && home.familyId === plan.familyId;
+  return isPlanHostParent(
+    planHouseholdsOf(ports),
+    { chatId: input.chatId, userId: input.senderUserId },
+    plan,
+  );
 }
 
 /** A lock that would move a plan, from someone who may not move it: nothing closes or moves. */
@@ -798,8 +822,7 @@ async function lockTime(
   }));
   const planId = typeof live.payload.planId === 'string' ? live.payload.planId : null;
   const plan = planId ? await plans.loadOpenPlan(input.chatId, planId, input.now) : null;
-  const creator = typeof live.payload.createdBy === 'string' ? live.payload.createdBy : null;
-  const authorized = plan ? await mayMovePlan(input, ports, plan, creator) : true;
+  const authorized = plan ? await mayMovePlan(input, ports, plan) : true;
   const choice = lockedChoice(counts, authorized ? named : null);
   if (choice.status === 'tie') {
     const leaders = options.filter((o) => choice.keys.includes(o.key)).map((o) => o.text);
@@ -867,7 +890,7 @@ async function lockGroupPoll(
   const plan = placedPlanId
     ? await plans.loadOpenPlan(input.chatId, placedPlanId, input.now)
     : null;
-  const authorized = plan ? await mayMovePlan(input, ports, plan, poll.createdByMemberKey) : true;
+  const authorized = plan ? await mayMovePlan(input, ports, plan) : true;
   const choice = lockedChoice(
     tally.options.map((option) => ({ key: option.key, votes: option.votes })),
     authorized ? named : null,

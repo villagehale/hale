@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, notExists, sql } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { readGroupMembership } from '../group-membership';
@@ -99,8 +99,18 @@ export type CalendarWithdrawReason = (typeof CALENDAR_WITHDRAW_REASONS)[number];
  */
 export const GROUP_PLAN_PAST_AFTER_MS = 12 * 60 * 60 * 1000;
 
-/** Why a plan closed: its start passed, or a new event in the same chat replaced it by id. */
-export type GroupPlanCloseReason = 'past' | 'superseded';
+/**
+ * How long a plan with no time stays open with nobody touching it (no answer, no new time). A
+ * plan with no time is never known to be ahead, so a new event leaves it open; past this it is
+ * stale, and the next read closes it rather than keep showing it to the reader.
+ */
+export const GROUP_PLAN_UNTIMED_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Why a plan closed: its start passed, a plan with no time sat untouched, or a new event in the
+ * same chat replaced it by id.
+ */
+export type GroupPlanCloseReason = 'past' | 'idle' | 'superseded';
 
 /** The audit verb a moved calendar copy writes; the held notice re-drive reads it back. */
 export const GROUP_PLAN_CALENDAR_MOVED_VERB = 'linq_group_plan_calendar_moved';
@@ -336,6 +346,33 @@ async function closePastPlans(database: Database, chatId: string, now: Date): Pr
     .returning({ id: schema.linqGroupPlans.id, familyId: schema.linqGroupPlans.familyId });
   for (const plan of past) {
     await database.insert(schema.auditLog).values(planClosedAudit(plan, 'past'));
+  }
+  const idleBefore = new Date(now.getTime() - GROUP_PLAN_UNTIMED_IDLE_MS);
+  const idle = await database
+    .update(schema.linqGroupPlans)
+    .set({ closedAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(schema.linqGroupPlans.chatId, chatId),
+        isNull(schema.linqGroupPlans.closedAt),
+        isNull(schema.linqGroupPlans.startsAt),
+        lt(schema.linqGroupPlans.updatedAt, idleBefore),
+        notExists(
+          database
+            .select({ one: sql`1` })
+            .from(schema.linqGroupPlanRsvps)
+            .where(
+              and(
+                eq(schema.linqGroupPlanRsvps.planId, schema.linqGroupPlans.id),
+                gte(schema.linqGroupPlanRsvps.updatedAt, idleBefore),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: schema.linqGroupPlans.id, familyId: schema.linqGroupPlans.familyId });
+  for (const plan of idle) {
+    await database.insert(schema.auditLog).values(planClosedAudit(plan, 'idle'));
   }
 }
 

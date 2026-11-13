@@ -208,8 +208,8 @@ export async function takeGroupPollReading(
     now: Date;
     livePoll: GroupPollRecord | null;
     /**
-     * The open plan this message is about, by an id code resolved from the reader's key. Only
-     * then may a new poll's timed choices place that plan. Null: the poll places no plan.
+     * The open plan a new poll's timed choices place, by an id code resolved from the reader's
+     * key, and only when the asker hosts that plan. Null: the poll places no plan.
      */
     planId?: string | null;
     /** `start_poll`: the household whose ledger carries a new poll, or null when none. */
@@ -298,8 +298,8 @@ async function startPoll(
     return spokenOrUnsent(said, tally);
   }
 
-  // The poll exists, with its household, its plan (by id) and who asked, before anything is
-  // said: the line is ledgered on that household, never on whatever is open in the chat.
+  // The poll exists, with its household and its plan (by id), before anything is said: the
+  // line is ledgered on that household, never on whatever is open in the chat.
   const planId = context.planId ?? null;
   const poll = await deps.store.createPoll({
     chatId: context.chatId,
@@ -313,7 +313,6 @@ async function startPoll(
     expected,
     origin: 'parent',
     providerMessageId: null,
-    createdByMemberKey: context.voter.memberKey,
     now: context.now,
   });
   const opening = await deps.store.loadPollTally(poll.id);
