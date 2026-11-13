@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine health admin: checkup due date",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1039
+}

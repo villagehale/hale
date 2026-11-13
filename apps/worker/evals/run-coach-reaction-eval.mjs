@@ -31,6 +31,7 @@ import {
   COACH_REACTION_NOW,
   COACH_REACTION_WATCH,
 } from './coach-reaction-fixtures.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -66,10 +67,12 @@ const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-reaction');
 
-function contextFor(fixture) {
+const LOCATION = { city: 'Toronto', province: 'ON', country: 'CA' };
+
+function contextFor(fixture, helpLines) {
   return {
     parentName: null,
-    location: { city: 'Toronto', province: 'ON', country: 'CA' },
+    location: LOCATION,
     planTier: 'free',
     children: [COACH_REACTION_CHILD],
     focusedChild: null,
@@ -84,6 +87,7 @@ function contextFor(fixture) {
     nowIso: COACH_REACTION_NOW,
     standingQuestions: [],
     registrationWindows: [],
+    helpLines,
   };
 }
 
@@ -302,7 +306,7 @@ async function main() {
     const run = await agent.runAgent({
       skill,
       systemExtras,
-      context: contextFor(fixture),
+      context: contextFor(fixture, await coachHelpLines(LOCATION)),
       tools: toolsFor(agent, real, fixture, calls, skill.meta.tools, (chosen) => {
         choice = chosen;
       }),

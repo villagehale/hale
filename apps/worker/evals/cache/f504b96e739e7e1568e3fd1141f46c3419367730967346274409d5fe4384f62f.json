@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own, and autonomy for send_email and reply_to_email was turned off this turn, so 'Done' is a true claim, not an overclaim. The reply confirms the change and plainly describes what happens next. It is short and exact, with no greeting, sign-off or machinery talk.",
+    "score": 5
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "weather",
+    "reason": "asks about tomorrow's rain forecast, a plain weather fact",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1053
+}

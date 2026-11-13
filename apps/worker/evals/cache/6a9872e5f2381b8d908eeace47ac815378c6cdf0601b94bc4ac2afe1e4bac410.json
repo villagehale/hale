@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011CgyCqkt9BNbjqzepmZorX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnQYKEAgTGAI4AUIIdGhpbmtpbmcSDMh0Lremv9SM3HkSuRoMoxB/hcRK33/et8HUIjB8CEZ4qvoIyzE7+tZgbpi2YrleTCHhcH+A317yK/l3Gbc+a7vY62cii/Qs3pBwpC0qugU6NKbYJWRbd+T1495F0iQzhdF1t3jTrifUffoHw/QYK/tPugf/q83tjXudIkKEeQEdpcMx0W0oy0Ds+nOGOFVrWE/o1k2Hkw6kMOwbW5BsaOFpOGv3cQ8Dv7TSZAjpSs6+QNFOy4+/EP7f+J3vFy7pSwSfUAyzjhUK70ES7i+m7hQkS+kajvMs8Znzuqmw9z3gPcJzioHkmgf54XnDaIS/+d2ljRT60nFlQkk/1njUC8oEymf4UpKJy4DqnBxXpb1XaGjGeoa2oJusJyu8gNln2XjDClUs/f+EhNpD5OzT6iZBoUe0ibabcYfAekvMfE+p+3Xh8S15blp3WnOFuthF/nEXiK4ndeyf0YiBiksIbLw/MjYfcuQCGUTpr6/w2OzbcPXky0dgIhYR1OUj0xM26YdiGZ3bYiWVcUHL8H4OOsD5Y/BFZovbNZlwtRQ7V+IGx452ka1BtQ+S+eX0tiy2S1e43v/04Iol3kl0+wtDGz1MIJgvq1hQeazWKZScwxXolRj9ZoRYgfjEeT//WunvyuoaHi54OPcIHtcRCYna+AMs/iT0r+N7X6JmYL6wg12klH2PbolzjasBqGeSE9mjYDvGKjGbw0g4oNHZ5e9ctPC2DM1HW+K+6JpsocZ8JGd4+jG0pXXymravEY39hW6dDukSzVT49tjCbRqtmzBeubrliTQy5df54BsA/WMLopJ1w9bc3NIRmywn7+QAXWq3I9SvK2lXdBuzsvM+9BOTuU5gX+GPNiLK14eQiu9+Nj7YZ833VmY0DNe7RlhZZWg9geKlXLg8ELAISxvIz7o8JvfCxYJGXsJNUPC8un+MmOKc2+4C+snZdI9/NiXabOh/YY2KVeiK7B9/hJOh+HnywtEg4aXUpIjZDNSHzB72aDk8hbkXWBMrrYAuBHEO2fNq7qgzfTDmL3yMTRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01BsPES51srEj7FKdfh5q4K6",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017JGoZsfAdzzZL5HquvkdAn",
+        "name": "search_village",
+        "input": {
+          "query": "park"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 768,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23552,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 129,
+      "output_tokens_details": {
+        "thinking_tokens": 56
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2164
+}

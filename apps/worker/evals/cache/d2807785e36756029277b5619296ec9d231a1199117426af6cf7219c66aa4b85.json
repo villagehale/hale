@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a rash on a child and asks if it is normal; symptom state, not development guidance",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1105
+}

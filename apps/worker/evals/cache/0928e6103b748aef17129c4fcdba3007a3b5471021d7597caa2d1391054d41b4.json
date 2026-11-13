@@ -1,0 +1,56 @@
+{
+  "response": {
+    "id": "msg_011CgyBDxNaR74A1zP2mPSTX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2AcKEAgTGAI4AUIIdGhpbmtpbmcSDP+f4oh9Ugq0RFgPdhoM7rLYmw2sUCrVCX7GIjDni7K2nXGIAPPTgIPGoNxoP5nB3QNACPznGjtoLrTIg/T3jqEKz8CK5+Sllx92SqYq9QYMuC4ZWc5CbSlfTdbRLwfNgU9H7HAejnUbczI2C9YNNIanm7vqD3AZso89RHD8GtxeZxPq0MEiF0In0/BzktU1JlJrEarUF1rCHBBQuseDf5uUsQ9j+TjYLeIEXB5nmgnBg5e7b2ys6J+dA2QNFdRtVdPFuJXsVa5KvvHhtVWGU0fdNK4YdjIrft+HpI9ZsIPEQslq4SV/PZAgVwt1kOGorskqkG2/gn8pvY+uMxVUYTOkqMGcYFOPCTb/cyq/RDtPWOHSQKhIvZybVDvaakBw/MiIheE4o51v3L7wH1RjULtJsqqTnv+3EwhwTx/jSe8UZj7ftexbMCIez+BD70pEcr8YUMFeYthw7PFwEKc4j39o7362Dk9sMVGOgn89N2QHqdFvOOxkFVHOWPlakwAZwA0xai4FspHv8kODAwQDQ4jOmmKWg8dSnMvtwejh5syXlURwHkmP7bmoOOeF8XoocngxB/PuiqsD3fruVASQc9KLmCd959RNN1P/u7ZKd4Eq/HMSVHl8Co39GGEGCWziyKWOr0uPGTtu5960b1quavBeokLlCSpcRBOLOxekkvRFj3frbUmLRTjSbqobIluDLny0FpBwgRvX97u/OuG8nYDlikMr492dQAV/44zqLEl/3K2+5a0Hj/jiXzP0p8b4wMNo8dvM7kCRSuzhl7FjTniEQB9/tajHo0M7lnfHBHJT3NCzSpaoL5YxvvxmP+JgjQpGXS5JdeAfgb6wkD4v3qy47R2eaycqWudCRQLRlAj+9UGkS0+uZIX2belhVr1Bqw7puvzIWBi9nOO7o8HQje6fXERJOFnDnXqaxI8Gt0DAsamPCQtOXigmvUn2IEWiMc9KmYZCaVU22pOrwZhwY5OS53S/MxuAlFNkSehgs3imyTZvBrJru5RdliBovHuRgc9Z0HsWXBM0ET5S2QTIukWQMG0JxiQK0pm5hpNPAzRlGq2oKrcr8F1HtctZWkY6pL4MI4nwFzOLLo7mZPu62nfoFZyfS0nc3Ki/MFSfFVo3+SzOfrjIvAfzjH6uj52btYVAbaQ35QGCN8sZ442XWUiv7RPGdiowAg/XjfvuUbXD1T5G2fmcUgT3Dszr8ooleFFidOBGNm9gjrRBXM/YkQqrFtBeyfYJxuf5j/3NFZ2bgvncE3PdjES4uNE7JUQnbxARW0QYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01PtGf6uErwKx7HLYfxx3DtS",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "toddler",
+          "ageMonths": 28
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01FbFw2Fwg6eZX2dneAijce3",
+        "name": "note_capability_correction",
+        "input": {
+          "capability": "sign_up"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 771,
+      "cache_creation_input_tokens": 20294,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 20294
+      },
+      "output_tokens": 246,
+      "output_tokens_details": {
+        "thinking_tokens": 113
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

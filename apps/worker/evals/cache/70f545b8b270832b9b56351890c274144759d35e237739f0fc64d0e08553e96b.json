@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzF3Dfzhox4tF5USqwCn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwQgKEAgTGAI4AUIIdGhpbmtpbmcSDMIyPxXsP88Mhut1NhoMcy81x96D4ZI33PZRIjBXdyUsrEDs6w417h0aYp5c28L1B973cLeLbAmgBgK49EKTMwZoVrQ7Jn00bO9sJcMq3gezdGynrDyT0MvMEe8nU7GhwtjafDSiXZ/OIE9gIEJIev4PwWbKWMm/Mg5+lLQbWcZ/5vkuE0Jg7aDrjsn4ea6XdQJXcHJJx6OeUUTezt9GfPcW2QmuyhEiMlqhYC7r05Kphhm9D2ESVOPGGkPDzNLXNR95XFAGm+AaQXAKW5lKA4DL8MJM6B0JJ5LC/eXWLAmaAZzepjkZ0PqdsyDSt/RKId/BwqaTBnkjQiOvYAf7NSs2dZcZDHrZOC1EYXqMHfk11fOzh4NyBk3GFo7zw6I2+FFORELHgV4qHBXOy8wFIBIzrw6y6iheR3tWrlf/0UL5hpPW0HSoExtIq36jr8Y8t8onUjyVq3yyeqmNVlTTxr/dCtv4vq1dcX2f+w+uVvkH7PyMg9lGiZIiMVkLN5P9WYCzGaovcSVP+hP+7aUu0pacMV2wQuWxNTXBCENStPZK09jyGgz98PpZZ7G6TC2MDsym0VkFMoR2qSprITdWLU9Zm6HRgxX5nInuPMDgTI64CCDpw5Z64yvitZN2glceMsFXu0uQS179dSbWGuYzYeNjIq2142s0lEoHnK1EaEDC7+eGZN4pko5DOnkUZG95LgnMBtIc/e2Y4fmEIW0ALHrTk1ukMXSF0uFHXmD3NZOdsyf1oOBrFt9eAITfezSD1dhk8aQAsBCvhj4QIr8WEJniH+9jEHIF90Hveek7HDeGS/vbkX0YPnLhvN95PJDHLgoov2Be0U6oouCqbNmKpGDzS6p3/xDQxTIJK7tFPg/maX8DPIm7HyDtc4+kCyr/Nc5oBtAWHDDTavRvn7i2RTVjegO9rHOvBJbo5TS6hc4PjRmyMeHtGvtuIszr9MH5gFNDmp1Zo4CXyogAtP00k/LcdswUZEjiB0qpw2YAnJpEKHDAj3yCNhaIfuvpY557hn9W9NtAwJoKjbNkLRulGleKZG4eoGnzHCY9RK8m28OumGZhYerLXpGW530XX+m6BY/TSdLR1T6PQqdYrke3anSJAnT0a50ENaAGwUOnBO4+VpEQ2fiZdEOe5jLwSeOTUbo+7FjtyK5Y767E+sDLQZnFFJn7UfUrkTvvDrcXA/Ay0veteCK0g7IovqL8V7D9K+KxerXmhl3vEc88XpVSXJoiDg+uryqK4BItRc9OtzA4Zd/FZHeVRFQxn9xwfzMxwAbqrlLfVZSh3qnxuwYHtzfvTY9D+OUT6PS0rKtS4DyMu1byJbXDbpoF2hqBU+xa/syCKwCbcuWUPMXyXo6hkbc+AfJbGNV5AyyFt/mEqa+jzwguf9wavO7wdvcb1/UV3LCGQ9FWtracvmtxYI4YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Yes, swim is Thursday at 5:15pm at East pool. Is the two more coming about Thursday, or something else?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1329,
+      "cache_read_input_tokens": 23713,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1329,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 210,
+      "output_tokens_details": {
+        "thinking_tokens": 168
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2261
+}
