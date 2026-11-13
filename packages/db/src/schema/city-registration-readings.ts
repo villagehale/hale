@@ -12,10 +12,11 @@ import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-cor
  * Family-AGNOSTIC, like registration_discovery_readings: a public place name, a cycle
  * label and what a public page said. No family_id, no postal code, no PII (rule #1).
  *
- * Append-only. The newest row by `read_at` for a (place_key, cycle_label) is the
- * reading; an older row is history.
+ * Append-only. The newest `verified` or `not_found` row by `read_at` for a (place_key,
+ * cycle_label) is the reading; an older row is history. A `retry` row is a lookup that
+ * wrote no reading: never the reading, only when the city is next looked up.
  */
-export const CITY_REGISTRATION_READING_STATUSES = ['verified', 'not_found'] as const;
+export const CITY_REGISTRATION_READING_STATUSES = ['verified', 'not_found', 'retry'] as const;
 export type CityRegistrationReadingStatus = (typeof CITY_REGISTRATION_READING_STATUSES)[number];
 
 export const cityRegistrationReadings = pgTable(
