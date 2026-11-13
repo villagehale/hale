@@ -2,10 +2,16 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WEEKDAY_CARE_ASK_TEMPLATE_KEY, WEEKDAY_CARE_FACT_KEY } from '~/lib/care/weekday';
+import {
+  finalizeProactiveSend,
+  recordProactiveSend,
+  writeProactiveAudit,
+} from '~/lib/channel/proactive/finalize';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
 import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -122,6 +128,54 @@ describe('weekdayCareQuestion', () => {
 
     expect(await weekdayCareQuestion(db.database, { ...seeded, now: SAME_DAY })).toBeNull();
   });
+
+  it.each([
+    ['first', ['break', 'other']],
+    ['last', ['other', 'break']],
+  ] as const)(
+    'VIL-685 · stays open when the break ask rode one text with another item, placed %s',
+    async (_place, order) => {
+      const seeded = await seedFamily(`sms:weekday-batch-${order[0]}`);
+      const question = 'When does winter break start for you, and what day are the kids back?';
+      const items = {
+        break: {
+          parentUserId: seeded.parentUserId,
+          category: 'nudge' as const,
+          templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+          dedupeKey: schoolBreakAskDedupeKey(seeded.familyId, '2026-27', seeded.parentUserId),
+        },
+        other: {
+          parentUserId: seeded.parentUserId,
+          category: 'reminder' as const,
+          templateKey: 'reminder:day_before',
+          dedupeKey: `reminder:day_before:${seeded.familyId}:batch`,
+        },
+      };
+
+      await finalizeProactiveSend(
+        db.database,
+        {
+          recordSend: recordProactiveSend,
+          audit: writeProactiveAudit,
+          threadMessage: threadProactiveMessage,
+        },
+        {
+          familyId: seeded.familyId,
+          recipientUserId: seeded.parentUserId,
+          channel: 'sms',
+          providerMessageId: `provider-batch-${order[0]}`,
+          sentAt: new Date(),
+          items: order.map((name) => items[name]),
+          composed: question,
+          audit: { actionTaken: 'proactive_sent', after: {} },
+        },
+      );
+
+      const open = await weekdayCareQuestion(db.database, { ...seeded, now: new Date() });
+
+      expect(open).toMatchObject({ scope: 'break_dates', schoolYear: '2026-27', question });
+    },
+  );
 
   it('closes past the 48h window, and stands inside it', async () => {
     const seeded = await seedFamily();

@@ -99,23 +99,31 @@ export async function finalizeProactiveSend(
     audit: { actionTaken: string; after: Record<string, unknown> };
   },
 ): Promise<string> {
-  let firstId: string | null = null;
-  for (const item of input.items) {
-    const id = await ports.recordSend(database, {
-      familyId: input.familyId,
-      parentUserId: item.parentUserId,
-      channel: input.channel,
-      category: item.category,
-      templateKey: item.templateKey,
-      dedupeKey: item.dedupeKey,
-      status: acceptedStatus(input.channel),
-      providerMessageId: firstId === null ? input.providerMessageId : null,
-      providerChatId: input.providerChatId,
-      sentAt: input.sentAt,
-      ...(BODY_RECORDED_TEMPLATE_KEYS.includes(item.templateKey) ? { body: input.composed } : {}),
-    });
-    firstId ??= id;
-  }
+  // One transaction, so every row of the one text shares one `created_at` (Postgres
+  // `now()` is the transaction's start). Written one by one, an item after a question
+  // would read as something Hale said after it, and close that question at once.
+  const firstId = await database.transaction(async (tx) => {
+    let first: string | null = null;
+    for (const item of input.items) {
+      const id = await ports.recordSend(tx as unknown as Database, {
+        familyId: input.familyId,
+        parentUserId: item.parentUserId,
+        channel: input.channel,
+        category: item.category,
+        templateKey: item.templateKey,
+        dedupeKey: item.dedupeKey,
+        status: acceptedStatus(input.channel),
+        providerMessageId: first === null ? input.providerMessageId : null,
+        providerChatId: input.providerChatId,
+        sentAt: input.sentAt,
+        ...(BODY_RECORDED_TEMPLATE_KEYS.includes(item.templateKey)
+          ? { body: input.composed }
+          : {}),
+      });
+      first ??= id;
+    }
+    return first;
+  });
   if (firstId === null) throw new Error('finalizeProactiveSend: a text that carried no item');
   await ports.audit(database, {
     familyId: input.familyId,

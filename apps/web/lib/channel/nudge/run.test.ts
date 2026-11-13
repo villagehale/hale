@@ -290,8 +290,12 @@ function harness(
   return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
 }
 
+/** The ledger rows of one text are written in one transaction; the fake runs it inline. */
 function db() {
-  return {} as never;
+  const fake = {
+    transaction: async <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(fake),
+  };
+  return fake as never;
 }
 
 function auditActions(writes: Harness['writes']): string[] {
@@ -1332,18 +1336,17 @@ describe('runNudgeCron — the weekday-care ask', () => {
 describe('the call-name line after a find', () => {
   function recordingDb(): { db: never; rows: Record<string, unknown>[] } {
     const rows: Record<string, unknown>[] = [];
-    return {
-      rows,
-      db: {
-        insert: () => ({
-          values: (payload: Record<string, unknown>) => {
-            const row = { id: `row-${rows.length + 1}`, ...payload };
-            rows.push(row);
-            return { returning: () => Promise.resolve([row]) };
-          },
-        }),
-      } as never,
+    const fake = {
+      insert: () => ({
+        values: (payload: Record<string, unknown>) => {
+          const row = { id: `row-${rows.length + 1}`, ...payload };
+          rows.push(row);
+          return { returning: () => Promise.resolve([row]) };
+        },
+      }),
+      transaction: async <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(fake),
     };
+    return { rows, db: fake as never };
   }
 
   it('asks once after a registration find, confirms a Google name, and does not ask again', async () => {
