@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so \"Done\" is true. The reply states the new behaviour plainly: Hale shows each email first and sends only on the parent's say-so. One short line, no greeting, no machinery, nothing invented. It does the job and stops.",
-    "score": 5
-  }
-}

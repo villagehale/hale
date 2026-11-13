@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correctly takes the pasted course link and says Hale is watching it and will text within about ten minutes, which matches the watch capability. It neither stalls nor sends Sam to the app. But it adds two claims not grounded anywhere. The overnight 'hear in the morning' rule is an untraceable product behaviour that also contradicts the ten-minute promise. The waitlist caveat is speculation dressed as fact. That is padding past the job, edging into invention.",
-    "score": 3
-  }
-}

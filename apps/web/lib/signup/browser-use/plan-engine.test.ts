@@ -939,12 +939,15 @@ describe('a plan run longer than one sweep', () => {
     ]);
   });
 
-  it('writes the paying checkpoint before it creates the payment run', async () => {
+  it('writes the review checkpoint before the review run, and the paying one before the payment run', async () => {
     const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
     const order: string[] = [];
     const { input } = plan({
       onCheckpoint: async (token) => {
-        order.push(`${token.phase}:${token.runId ?? 'none'} after ${runPosts(log).length} runs`);
+        const review = token.phase === 'signup' && token.reviewStarted ? '+review' : '';
+        order.push(
+          `${token.phase}${review}:${token.runId ?? 'none'} after ${runPosts(log).length} runs`,
+        );
         return true;
       },
     });
@@ -952,6 +955,8 @@ describe('a plan run longer than one sweep', () => {
 
     expect(order).toEqual([
       'signup:run-1 after 1 runs',
+      // A sweep killed during the review leaves this: a later one cannot read what it did.
+      'signup+review:run-1 after 1 runs',
       'paying:none after 2 runs',
       'paying:run-3 after 3 runs',
     ]);

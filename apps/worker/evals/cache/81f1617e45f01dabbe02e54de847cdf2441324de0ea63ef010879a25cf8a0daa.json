@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The autonomy switch for send_email and reply_to_email was turned off this turn, so 'Done' is true. The reply says plainly what changes: Hale will show each email first and send only once Sam says so. Nothing is invented, and there is no greeting, sign-off or question. It is short and exact.",
-    "score": 5
-  }
-}

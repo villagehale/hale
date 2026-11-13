@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked Hale to stop sending emails on its own and to ask first. `turnedOffThisTurn` shows send_email and reply_to_email were turned off this turn, so the reply's claim is true. It matches the parent's language and is a single plain sentence with no machinery and no extra question. It covers sending; reply_to_email was also switched off, and \"每封发出去之前\" reasonably includes replies.",
-    "score": 5
-  }
-}
