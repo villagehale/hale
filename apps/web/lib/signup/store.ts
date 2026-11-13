@@ -169,7 +169,7 @@ export async function recordSignupOffer(
  * is drawn when a send about it started and kept once that send went ({@link askStamp}):
  * higher started later, and no two are equal. Null: no text about it is known to have
  * reached them. Such an ask ranks below every ask whose text did, the newest offer first
- * among them, and is never the one a bare yes or no answers ({@link loadLastAskedOfferId}).
+ * among them, and is never the one a bare yes or no answers ({@link loadLastAsked}).
  */
 export interface AskOrder {
   lastAskedSeq: number | null;
@@ -225,7 +225,7 @@ export type SendStamp = () => Promise<() => Promise<AskStampOutcome>>;
  * Before the transport call, in one transaction, it draws the next number from
  * `authorized_signup_ask_seq` and marks the parent's order uncertain at that number
  * (`authorized_signup_ask_order_uncertain`). While the mark stands no bare yes or no binds
- * any of their asks ({@link loadLastAskedOfferId}). When that write fails the send is not
+ * any of their asks ({@link loadLastAsked}). When that write fails the send is not
  * made. Once the transport took the text, the number is kept on each ask and the mark is
  * cleared, in one transaction ({@link keepAskNumber}). A send that fails in any way (a
  * refusal, a timeout after the carrier may have taken the text, a 2xx with no id, a crash)
@@ -391,19 +391,28 @@ async function keepMissed(
 }
 
 /**
- * The ask whose text reached this parent last, whatever its status now: the offer, or a later
- * question back, notice or receipt about it ({@link AskOrder}). Null when none of Hale's texts
- * about their asks is known to have reached them: an offer whose text never went is not it.
- * Null too while their order is marked uncertain (a send about one of their asks is out, or
- * ended without its number kept: {@link askStamp}), so no bare answer binds until a later
- * one is kept. An approved, running or finished ask can be it, so
- * a bare yes after its login ask or receipt is never handed to an older ask still waiting on
- * one.
+ * Where Hale's texts about this parent's sign-up asks stand.
+ * - `asked`: the ask whose text reached them last, whatever its status now: the offer, or a
+ *   later question back, notice or receipt about it ({@link AskOrder}). An approved, running
+ *   or finished ask can be it, so a bare yes after its login ask or receipt is never handed
+ *   to an older ask still waiting on one. `askedAt` is when that text's number was kept:
+ *   never an order among sign-up asks, only how they rank against the asks of other lanes
+ *   (`newestAsks`, VIL-302). Null when not known.
+ * - `uncertain`: their order is marked uncertain (a send about one of their asks is out, or
+ *   ended without its number kept: {@link askStamp}), so no bare answer binds until a later
+ *   one is kept.
+ * - `none`: none of Hale's texts about their asks is known to have reached them. An offer
+ *   whose text never went is not asked.
  */
-export async function loadLastAskedOfferId(
+export type LastAsked =
+  | { status: 'asked'; offerId: string; askedAt: Date | null }
+  | { status: 'uncertain' }
+  | { status: 'none' };
+
+export async function loadLastAsked(
   database: Database,
   input: { familyId: string; parentUserId: string },
-): Promise<string | null> {
+): Promise<LastAsked> {
   const uncertain = schema.authorizedSignupAskOrderUncertain;
   const [held] = await database
     .select({ failures: uncertain.failures })
@@ -417,11 +426,11 @@ export async function loadLastAskedOfferId(
       { outcome: 'signup_ask_order_uncertain_held', failures: held.failures },
       'signup asks: the order is uncertain - no ask takes a bare answer',
     );
-    return null;
+    return { status: 'uncertain' };
   }
   const offers = schema.authorizedSignupOffers;
   const [row] = await database
-    .select({ id: offers.id })
+    .select({ id: offers.id, askedAt: offers.lastAskedAt })
     .from(offers)
     .where(
       and(
@@ -432,7 +441,7 @@ export async function loadLastAskedOfferId(
     )
     .orderBy(desc(offers.lastAskedSeq))
     .limit(1);
-  return row?.id ?? null;
+  return row ? { status: 'asked', offerId: row.id, askedAt: row.askedAt } : { status: 'none' };
 }
 
 /** A pending ask with the public facts a parent could name it by, and its {@link AskOrder}. */
