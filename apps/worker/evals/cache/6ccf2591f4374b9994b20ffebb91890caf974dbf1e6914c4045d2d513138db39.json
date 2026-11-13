@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked in Spanish to stop sending emails without asking first. Hale turned off autonomy for send_email and reply_to_email this turn, so the reply is true. It confirms the change in one short Spanish sentence and stops. The 'Listo, Sam' opener is a natural acknowledgement rather than a greeting.",
-    "score": 5
-  }
-}

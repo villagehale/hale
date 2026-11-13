@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply answers the parent's single question with one bubble stating the week is free, which matches weekRead having no events. It is in English, friendly and brief, invents nothing, and has at most one question in the final bubble. The rubric asks for a bubble per day or stretch and no counts or lead-ins; a single bubble is right here since there is one thing to say (the week is open). It is well formed and fully compliant.",
-    "score": 5
-  }
-}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single text in French, is one bubble with one thought, and asks exactly one question in the last bubble. It states the drafted move to Sunday 10:00, which matches the facts. However, the request was to keep the same time, and the drafted slot is 10:00 while the original swim is at 15:00 UTC, which is 10:00 in Toronto on Saturday, so 10:00 Sunday is the same clock time and is correct. The reply is accurate, brief, and in the parent's language.",
+    "score": 5
+  }
+}
