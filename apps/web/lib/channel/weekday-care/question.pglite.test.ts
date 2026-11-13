@@ -246,6 +246,24 @@ describe('weekdayCareQuestion', () => {
     expect(listed?.description).not.toContain('Mia');
     expect(listed?.subject).not.toContain('Mia');
   });
+
+  it('VIL-685 · lists the winter-break dates ask as that, through the reader the router builds', async () => {
+    const seeded = await seedFamily();
+    await seedAsk(seeded, {
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      dedupeKey: schoolBreakAskDedupeKey(seeded.familyId, '2026-27', seeded.parentUserId),
+    });
+
+    const questions = await defaultOpenQuestionReader().open(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      now: SAME_DAY,
+    });
+
+    expect(questions.find((question) => question.kind === 'weekday_care')?.description).toBe(
+      "When this household's winter break starts and ends",
+    );
+  });
 });
 
 /**
