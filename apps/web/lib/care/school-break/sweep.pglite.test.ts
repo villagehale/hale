@@ -6,8 +6,10 @@ import { loadWeekdayCareContext, recordWeekdayCare } from '~/lib/care/weekday';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
 import { SCHOOL_BREAK_ASK_TEMPLATE_KEY, parseWeekdayAskKey } from '~/lib/channel/weekday-care/key';
+import { loadAgentContext } from '~/lib/coach/context';
 import { CONNECTOR_SCOPES } from '~/lib/integrations/google-oauth';
 import type { GoogleFetch } from '~/lib/integrations/sync';
+import { assembleMemoryBrief } from '~/lib/memory/brief';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { SCHOOL_BREAK_FACT_KEY, loadSchoolBreak, recordSchoolBreak } from './facts';
 import { SCHOOL_BREAK_ENABLED_ENV } from './flag';
@@ -1069,6 +1071,68 @@ describe('the winter-break sweep: a filed break stands only on what named it', (
     // With nothing else naming a school, the parent is asked, once.
     expect(await asks(familyId)).toHaveLength(1);
   });
+
+  it.each([
+    ['on', ''],
+    ['off', 'false'],
+  ])(
+    'never shows the coach a board break whose mail was withdrawn or whose child left school age (lane %s)',
+    async (_lane, flag) => {
+      const { familyId, parentIds, childId } = await seedFamily({
+        mail: [BOARD],
+        dateOfBirth: '2022-05-01',
+      });
+      await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
+      vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, flag);
+      // Both ways a fact reaches the coach, which must agree: its memory brief, and its
+      // memory facts.
+      const told = async (): Promise<boolean> => {
+        const brief = (await assembleMemoryBrief(db.database, familyId, 'every_adult', NOW)).text;
+        const context = await loadAgentContext(
+          {
+            familyId,
+            question: 'when is winter break?',
+            intent: null,
+            focusedChildId: null,
+            transcript: [],
+            sourceNote: null,
+          },
+          db.database,
+          NOW,
+        );
+        const inFacts = context.memoryFacts.some((fact) => fact.factKey === SCHOOL_BREAK_FACT_KEY);
+        expect(inFacts).toBe(brief.includes(SCHOOL_BREAK_FACT_KEY));
+        return inFacts;
+      };
+      // Positive control: while it stands, the coach is told it.
+      expect(await told()).toBe(true);
+
+      await recordWeekdayCare(db.database, {
+        familyId,
+        parentUserId: parentIds[0] as string,
+        childId,
+        care: 'daycare',
+        provider: null,
+        now: NOW,
+      });
+      expect(await told()).toBe(false);
+
+      // The parent corrects it: home after all, so the break stands again.
+      await recordWeekdayCare(db.database, {
+        familyId,
+        parentUserId: parentIds[0] as string,
+        childId,
+        care: 'home',
+        provider: null,
+        now: NOW,
+      });
+      expect(await told()).toBe(true);
+      await verdictOn(familyId, `msg-${seq}`, 'adult');
+      expect(await told()).toBe(false);
+      // Still filed: only a sweep retires it, and none has run.
+      expect(await loadSchoolBreak(db.database, familyId, '2026-27')).not.toBeNull();
+    },
+  );
 
   it('keeps a board break while any mail that named the school is still kept kid mail', async () => {
     const { familyId } = await seedFamily({ mail: [BOARD, BOARD] });

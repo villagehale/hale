@@ -54,6 +54,12 @@ export interface SchoolBreakFact extends SchoolBreakFactValue {
   familyId: string;
 }
 
+/** A row this module wrote, read back; null for anything else wearing the key. */
+export function parseSchoolBreakValue(value: unknown): SchoolBreakFactValue | null {
+  const parsed = valueSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * The live break this family holds for `schoolYear`, or null. A row from another school
  * year is not this winter's break, and a row whose value does not parse is skipped:
@@ -77,9 +83,9 @@ export async function loadSchoolBreak(
       ),
     );
   for (const row of rows) {
-    const parsed = valueSchema.safeParse(row.factValue);
-    if (parsed.success && parsed.data.schoolYear === schoolYear) {
-      return { factId: row.factId, familyId, ...parsed.data };
+    const value = parseSchoolBreakValue(row.factValue);
+    if (value !== null && value.schoolYear === schoolYear) {
+      return { factId: row.factId, familyId, ...value };
     }
   }
   return null;
