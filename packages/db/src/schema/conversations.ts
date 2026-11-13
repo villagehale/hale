@@ -11,6 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { children } from './children.js';
 import { families } from './families.js';
+import { users } from './users.js';
 
 /**
  * Multi-turn Ask Hale threads. A conversation is a family-scoped container; its
@@ -124,6 +125,12 @@ export const messages = pgTable(
      * Null on SMS turns and on rows written before this column existed.
      */
     providerMessageId: text('provider_message_id'),
+    /**
+     * VIL-597 (G8) · Who sent a user turn, as the channel writers know it. A group thread
+     * holds every seated member's texts, so `role = 'user'` does not mean the parent. Null
+     * on assistant turns and on rows written before this column existed.
+     */
+    authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
   },
   (table) => ({
     conversationTimeIdx: index('messages_conversation_time_idx').on(
