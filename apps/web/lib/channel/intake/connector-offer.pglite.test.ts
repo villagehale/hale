@@ -5,7 +5,6 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV } from './connector-card-unsent-flag';
 import {
   type ConnectorOfferPorts,
   calendarCardDedupeKey,
@@ -38,7 +37,6 @@ afterAll(async () => {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
-  vi.stubEnv(CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV, 'true');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -75,13 +73,16 @@ async function seedParent(): Promise<{ familyId: string; parentUserId: string }>
   return { familyId, parentUserId };
 }
 
-/** iMessage: the prose goes; the link text is refused when `refuseLink`. */
-function imessageTransport(refuseLink: boolean): ChannelTransport {
+/** iMessage: the prose goes; the link text is refused when `refuseLink`. `linkTexts`
+ * counts the link-text attempts, so a test can see that path was actually tried. */
+function imessageTransport(refuseLink: boolean): ChannelTransport & { linkTexts: number } {
   const real = new FakeTransport();
   return {
+    linkTexts: 0,
     async send(input) {
-      if (refuseLink && input.body.startsWith('https://')) {
-        throw new LinqSendError('21610', 400, true);
+      if (input.body.startsWith('https://')) {
+        this.linkTexts += 1;
+        if (refuseLink) throw new LinqSendError('21610', 400, true);
       }
       const sent = await real.send(input);
       return { ...sent, transport: 'imessage', chatId: CHAT };
@@ -90,12 +91,11 @@ function imessageTransport(refuseLink: boolean): ChannelTransport {
 }
 
 /** The Linq preview bubble refused, so the link's only other path is its own text. */
-function refusePreview(): void {
+function refusePreview(): ReturnType<typeof vi.fn> {
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => Response.json({ error: { code: 2001 } }, { status: 400 })),
-  );
+  const fetchMock = vi.fn(async () => Response.json({ error: { code: 2001 } }, { status: 400 }));
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }
 
 function ports(transport: ChannelTransport): ConnectorOfferPorts {
@@ -138,10 +138,13 @@ async function calendarClaims(familyId: string) {
 describe('a connector card whose link never went', () => {
   it('reads failed with link_unsent and releases the family dedupe key', async () => {
     const parent = await seedParent();
-    refusePreview();
+    const preview = refusePreview();
+    const transport = imessageTransport(true);
 
-    const outcome = await offerCalendar(parent, imessageTransport(true));
+    const outcome = await offerCalendar(parent, transport);
 
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(transport.linkTexts).toBe(1);
     expect(outcome.calendar).toBe('send_failed');
     expect(await calendarClaims(parent.familyId)).toEqual([
       expect.objectContaining({ status: 'failed', errorCode: 'link_unsent', dedupeKey: null }),
@@ -191,14 +194,16 @@ describe('a connector card whose link never went', () => {
     expect(await calendarClaims(parent.familyId)).toHaveLength(2);
   });
 
-  it('dark, a link_unsent claim stays accepted and keeps the family key', async () => {
-    vi.stubEnv(CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV, undefined);
+  it('positive control: the link goes as its own text and the claim stays accepted with the key', async () => {
     const parent = await seedParent();
-    refusePreview();
+    const preview = refusePreview();
+    const transport = imessageTransport(false);
 
-    const outcome = await offerCalendar(parent, imessageTransport(true));
+    const outcome = await offerCalendar(parent, transport);
 
-    expect(outcome.calendar).toBe('send_failed');
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(transport.linkTexts).toBe(1);
+    expect(outcome.calendar).toBe('sent');
     expect(await calendarClaims(parent.familyId)).toEqual([
       expect.objectContaining({
         status: 'sent',
@@ -206,9 +211,5 @@ describe('a connector card whose link never went', () => {
         dedupeKey: calendarCardDedupeKey(parent.familyId),
       }),
     ]);
-
-    const again = await offerCalendar(parent, imessageTransport(false));
-    expect(again.calendar).toBe('already_sent');
-    expect(await calendarClaims(parent.familyId)).toHaveLength(1);
   });
 });

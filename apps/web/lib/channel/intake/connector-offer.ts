@@ -8,7 +8,6 @@ import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { connectorCardUnsentReleaseEnabled } from './connector-card-unsent-flag';
 import { INTAKE_CALENDAR_CARD_TEMPLATE_KEY, INTAKE_GMAIL_CARD_TEMPLATE_KEY } from './copy';
 import type { ChannelTransport } from './transport';
 
@@ -89,17 +88,13 @@ export function connectorOfferLabel(outcome: ConnectorOfferOutcome): ConnectorOf
   return outcome.status === 'sent' ? 'sent' : outcome.reason;
 }
 
-/** A claim whose card did not reach the parent with its link. Lit, its dedupe key
- * is released with it: the key is the family's one offer, and a card that never
- * went has not spent it. Dark, the key stays, matching the pre-VIL-642 receipt. */
+/** A claim whose card did not reach the parent with its link. Its dedupe key is
+ * released with it: the key is the family's one offer, and a card that never went
+ * has not spent it. */
 async function failClaim(database: Database, id: string, errorCode: string): Promise<void> {
   await database
     .update(schema.channelMessages)
-    .set({
-      status: 'failed',
-      errorCode,
-      ...(connectorCardUnsentReleaseEnabled() ? { dedupeKey: null } : {}),
-    })
+    .set({ status: 'failed', errorCode, dedupeKey: null })
     .where(eq(schema.channelMessages.id, id));
 }
 
@@ -343,7 +338,7 @@ async function deliverConnectorCard(
       now: args.now,
     });
     const linked = link.status !== 'not_sent';
-    if (!linked && connectorCardUnsentReleaseEnabled()) {
+    if (!linked) {
       await failClaim(database, claimId, 'link_unsent');
     }
     await ports.threadMessage(database, {

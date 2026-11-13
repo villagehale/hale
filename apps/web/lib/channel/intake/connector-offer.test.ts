@@ -2,7 +2,6 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV } from './connector-card-unsent-flag';
 import {
   type ConnectorOfferPorts,
   calendarCardDedupeKey,
@@ -65,12 +64,10 @@ function ledgerRows(fake: FakeDb) {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
-  vi.stubEnv(CONNECTOR_CARD_UNSENT_RELEASE_ENABLED_ENV, 'true');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 describe('the year-open connector cards', () => {
