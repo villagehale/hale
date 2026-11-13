@@ -146,6 +146,13 @@ export function introAskDedupeKey(familyId: string): string {
   return `village_intro:ask:${familyId}`;
 }
 
+/** The card's idempotency key — one per proposal side. Exported for the same reason as
+ * {@link introAskDedupeKey}: the delivered ledger row under it is what makes the card a
+ * question the router can see. */
+export function introCardDedupeKey(proposalId: string, side: 'a' | 'b'): string {
+  return `village_intro:card:${proposalId}:${side}`;
+}
+
 /** How long a card waits for an answer before the pair lapses. A week covers a busy
  * parent's whole cycle; longer and an intro arrives about a life that has moved on. */
 export const INTRO_EXPIRY_DAYS = 7;
@@ -844,7 +851,7 @@ async function cardUnaskedSides(
       parentUserId: family.parentUserId,
       body: () => composeIntroAsk(deps, request),
       templateKey: 'village_intro:card',
-      dedupeKey: `village_intro:card:${proposal.id}:${side.key}`,
+      dedupeKey: introCardDedupeKey(proposal.id, side.key),
       now,
     });
     if (outcome.skipped) {
