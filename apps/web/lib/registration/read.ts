@@ -23,7 +23,12 @@ import {
   registrationPageUrl,
 } from './page';
 import { type RegistrationPdfRead, registrationPdfText } from './pdf';
-import { type CycleIdentity, type ExtractedWindow, extractPublishedWindow } from './verify-window';
+import {
+  type CycleIdentity,
+  type ExtractedWindow,
+  type SeasonRegistrationWindow,
+  extractPublishedWindow,
+} from './verify-window';
 
 /**
  * VIL-423 — read a registration page live, when a date is needed, and return only what
@@ -87,17 +92,17 @@ function logReading(target: RegistrationTarget, reading: LiveRegistrationReading
 }
 
 /** How a reader reads. `yearFromWeekday` is the own-city lane's (VIL-684): a yearless
- * date's year pinned by its printed weekday (`pinYearByWeekday`). Off for every other
- * reader. */
+ * date's year pinned by its printed weekday, inside the days the season being read
+ * registers in as of the read (`pinYearByWeekday`). Absent for every other reader. */
 export interface RegistrationReaderOptions {
-  yearFromWeekday: boolean;
+  yearFromWeekday?: (now: Date) => SeasonRegistrationWindow;
 }
 
 /** A reader whose cache (bytes and PDF text by URL, readings by target) lives only as
  * long as this reader: one operation. A later send builds a new one. */
 export function createRegistrationReader(
   ports: RegistrationReaderPorts,
-  options: RegistrationReaderOptions = { yearFromWeekday: false },
+  options: RegistrationReaderOptions = {},
 ): RegistrationReader {
   const bodies = new Map<string, Promise<RegistrationPageFetch>>();
   const pdfTexts = new Map<string, Promise<RegistrationPdfRead>>();
@@ -189,7 +194,7 @@ export function createRegistrationReader(
       extracted,
       pageText,
       source,
-      options.yearFromWeekday ? { cycleLabel: target.cycleLabel } : undefined,
+      options.yearFromWeekday?.(now),
     );
   }
 

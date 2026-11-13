@@ -529,6 +529,12 @@ function dateExpression(span: string): PrintedDate | 'date_ambiguous' | null {
   return printed === 'date_unparsed' ? null : printed;
 }
 
+/** How many dates a run of page words prints, each read whole by the date grammar (a
+ * weekday-led date is one). */
+export function datesPrintedIn(text: string): number {
+  return expressionsIn(normalizeQuote(text), dateExpression).length;
+}
+
 /** Every place `span` sits in `quote` as whole words and numbers: starting and ending at a
  * boundary, never inside a run of digits or letters (`sept. 20` is not in `sept. 2026`). */
 function placements(quote: string, span: string): Range[] {
@@ -605,6 +611,13 @@ export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | nul
   return refusals.includes(null) ? null : (refusals[0] ?? null);
 }
 
+/** The days, inclusive, a season's registration opens in (ISO dates): the season being
+ * read, as its lane knows it (`winterRegistrationWindow`). */
+export interface SeasonRegistrationWindow {
+  from: string;
+  through: string;
+}
+
 /**
  * VIL-684 · the year of a date the page prints WITHOUT one, pinned by the weekday it
  * prints beside it (Toronto's district table: "Wednesday, December 9, 7 a.m."). Decided
@@ -614,15 +627,14 @@ export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | nul
  *   - exactly one of this year and next puts that weekday on that month and day (both or
  *     neither is no year at all);
  *   - that date is still ahead of `now`;
- *   - it falls in the season being read: the cycle label's year or the year before it,
- *     the months a season registers in.
+ *   - it falls in the days the season being read registers in (`season`).
  * Anything else is null, and the date stays a partial one. The caller marks a pinned date
  * so it is never mistaken for a year the page printed.
  */
 export function pinYearByWeekday(
   quote: string,
   now: Date,
-  cycleLabel: string,
+  season: SeasonRegistrationWindow,
 ): { date: string; time: string | null } | null {
   const text = normalizeQuote(quote);
   if (yearsIn(text).size > 0) return null;
@@ -634,8 +646,6 @@ export function pinYearByWeekday(
   if (clocks.size > 1) return null;
   const time = [...clocks][0] ?? null;
 
-  const seasonYear = Number(cycleLabel.match(/\b(?:19|20)\d{2}\b/)?.[0]);
-  if (!Number.isInteger(seasonYear)) return null;
   const { weekday, month, day } = only.value;
   const thisYear = now.getUTCFullYear();
   const fits = [thisYear, thisYear + 1].filter((year) => {
@@ -644,9 +654,9 @@ export function pinYearByWeekday(
   });
   const [year] = fits;
   if (fits.length !== 1 || year === undefined) return null;
-  if (year !== seasonYear && year !== seasonYear - 1) return null;
   const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   if (date <= now.toISOString().slice(0, 10)) return null;
+  if (date < season.from || date > season.through) return null;
   return { date, time };
 }
 

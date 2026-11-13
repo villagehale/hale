@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveRegistrationDate, VerifiedRegistrationReading } from '../live-reading';
+import {
+  type LiveRegistrationDate,
+  type VerifiedRegistrationReading,
+  normalizeExtractedRegistration,
+} from '../live-reading';
+import type { ExtractedWindow } from '../verify-window';
 import { familyOpening, openingInstant, openingPhrase } from './opening';
 import type { OwnCity } from './place';
 
@@ -97,6 +102,86 @@ describe('familyOpening for a family whose district registers on its own morning
     expect(familyOpening(reading([general]), NORTH_YORK)).toEqual({ own: general, general: null });
     expect(
       familyOpening(reading([general]), { residencyKnown: true, district: 'etobicoke_york' }),
+    ).toBeNull();
+  });
+});
+
+describe("a district family on the reader's real output: every date carries the section quote", () => {
+  // Toronto's register page, 2026-11-12, in page order. The normalizer gives EVERY date the
+  // model's one section quote, so a section quote naming North York must not qualify a
+  // date that is not inside it.
+  const FREE = 'Free Centres Tuesday, December 1, 7 a.m.';
+  const OLDER = 'Older Adult Monday, December 7, 10 a.m.';
+  const TEY = 'Winter Recreation: Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.';
+  const NYS = 'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.';
+  const PAGE = `City of Toronto. ${FREE} ${OLDER} ${TEY} ${NYS}`;
+  const read = (
+    section: string,
+    partials: Array<{ kind: LiveRegistrationDate['kind']; quote: string }>,
+  ): VerifiedRegistrationReading => {
+    const extracted: ExtractedWindow = {
+      found: true,
+      reason: null,
+      cycleOnPage: null,
+      yearEvidence: null,
+      evidence: section,
+      preview: null,
+      residentOpen: null,
+      generalOpen: null,
+      unclassifiedOpen: null,
+      partialDates: partials as ExtractedWindow['partialDates'],
+      timeZone: 'America/Toronto',
+      timeZoneEvidence: 'City of Toronto',
+      note: null,
+      confidence: 0.9,
+    };
+    const reading = normalizeExtractedRegistration(
+      extracted,
+      PAGE,
+      { sourceUrl: 'https://www.toronto.ca/register/', checkedAt: NOW },
+      { from: '2026-10-01', through: '2027-01-31' },
+    );
+    if (reading.status !== 'verified') throw new Error(`expected verified, got ${reading.status}`);
+    return reading;
+  };
+  const opens = (reading: VerifiedRegistrationReading) => {
+    const found = familyOpening(reading, NORTH_YORK);
+    return found ? `${found.own.date} ${found.own.time}` : null;
+  };
+  const unlabelled = (quote: string) => ({ kind: 'unclassified_open' as const, quote });
+
+  it("takes the district's own date even when another date comes first", () => {
+    expect(
+      opens(
+        read(NYS, [
+          unlabelled('Tuesday, December 1, 7 a.m.'),
+          unlabelled('Wednesday, December 9, 7 a.m.'),
+        ]),
+      ),
+    ).toBe('2026-12-09 07:00');
+    expect(
+      opens(
+        read(NYS, [
+          unlabelled('Monday, December 7, 10 a.m.'),
+          unlabelled('Wednesday, December 9, 7 a.m.'),
+        ]),
+      ),
+    ).toBe('2026-12-09 07:00');
+  });
+
+  it("takes no date the district's section does not hold", () => {
+    expect(opens(read(NYS, [unlabelled('Tuesday, December 1, 7 a.m.')]))).toBeNull();
+    expect(opens(read(NYS, [unlabelled('Tuesday, December 8, 7 a.m.')]))).toBeNull();
+  });
+
+  it('a section quote that spans more than one row ties no date to the district', () => {
+    expect(opens(read(`${TEY} ${NYS}`, [unlabelled('Tuesday, December 8, 7 a.m.')]))).toBeNull();
+    expect(opens(read(`${TEY} ${NYS}`, [unlabelled('Wednesday, December 9, 7 a.m.')]))).toBeNull();
+  });
+
+  it("never takes a residents' morning, even one inside the district's section", () => {
+    expect(
+      opens(read(NYS, [{ kind: 'resident_open', quote: 'Wednesday, December 9, 7 a.m.' }])),
     ).toBeNull();
   });
 });

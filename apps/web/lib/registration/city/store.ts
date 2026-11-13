@@ -9,8 +9,8 @@ import { type OwnCity, cityKey } from './place';
  * VIL-684 · the per-city cache: the newest reading of a city's season wins, and every
  * reading carries the page it came from and when it is read again. A re-read that fails
  * to finish writes nothing (the lookup's `retry`), and a known date gives way to "not
- * found" only when a readable official page says this season is not out (sweep.ts), so
- * a timeout, a server error or a shaky read never turns a known date into "not found".
+ * found" only when its own page says this season is not out (sweep.ts), so a timeout, a
+ * server error, a shaky read or another page's answer never turns it into "not found".
  */
 
 /** How long a verified date stands before its page is read again. Cache freshness, not a

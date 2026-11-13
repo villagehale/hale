@@ -23,8 +23,12 @@ export type CityNotFoundReason =
   | 'no_official_site'
   /** The search named no page on the municipality's official site for this place. */
   | 'no_official_page'
-  /** A page was read and does not publish this season's opening yet. */
+  /** A page was read and said this season's opening is not out yet (announced later, not
+   * published). The only answer that takes back a date Hale already had (sweep.ts). */
   | 'not_published'
+  /** Pages answered, but none states an opening for this family: only a preview, another
+   * season, nothing for this season, or no date for this family's district. Not "later". */
+  | 'no_opening_for_family'
   /** A page prints this season's opening without its year. The stale-year rule reads no
    * year a page does not state, so it is not a date yet (Toronto's table, 2026-11-12). */
   | 'date_without_year'
@@ -73,19 +77,23 @@ function outcomeName(reading: LiveRegistrationReading): string {
   return 'reason' in reading ? `${reading.status}:${reading.reason}` : reading.status;
 }
 
-/** A page that answered and said this season is not out (later, another season only, no
- * date), as opposed to one that could not be read or did not verify. */
-export function pageSaysNotYet(
-  reading: LiveRegistrationReading,
-  place: Pick<OwnCity, 'residencyKnown' | 'district'>,
-): boolean {
-  if (reading.status === 'verified') return !opensForFamily(reading, place);
-  if (reading.status !== 'unverified') return false;
+/** A page that answered, in so many words, that this season is not out yet. A page that
+ * said nothing for the season, showed another season, or verified no date for this family
+ * did not say "later": a reading with no date for this family is not evidence the date
+ * is gone, so it is never this. */
+export function pageSaysSeasonNotOut(reading: LiveRegistrationReading): boolean {
   return (
-    reading.reason === 'announced_later' ||
-    reading.reason === 'different_cycle_only' ||
-    reading.reason === 'not_published' ||
-    reading.reason === 'no_dates_for_cycle'
+    reading.status === 'unverified' &&
+    (reading.reason === 'announced_later' || reading.reason === 'not_published')
+  );
+}
+
+/** A page that answered and stated no opening for this family, short of "later". */
+function pageAnsweredWithoutOpening(reading: LiveRegistrationReading): boolean {
+  if (reading.status === 'verified') return true;
+  return (
+    reading.status === 'unverified' &&
+    (reading.reason === 'different_cycle_only' || reading.reason === 'no_dates_for_cycle')
   );
 }
 
@@ -149,6 +157,7 @@ export async function lookupCityRegistration(
   }
   let unfinished: string | null = null;
   let notYet = false;
+  let noOpening = false;
   let noYear = false;
   for (const url of official) {
     const reading = await readCityPage(
@@ -166,13 +175,20 @@ export async function lookupCityRegistration(
           ? 'reader_busy'
           : `page_unread:${reading.reason}`;
     }
-    if (pageSaysNotYet(reading, place)) notYet = true;
+    if (pageSaysSeasonNotOut(reading)) notYet = true;
+    else if (pageAnsweredWithoutOpening(reading)) noOpening = true;
     if (reading.status === 'unverified' && reading.reason === 'incomplete_date') noYear = true;
   }
   if (unfinished !== null) return { status: 'retry', reason: unfinished };
   return {
     status: 'not_found',
-    reason: noYear ? 'date_without_year' : notYet ? 'not_published' : 'unreadable',
+    reason: noYear
+      ? 'date_without_year'
+      : notYet
+        ? 'not_published'
+        : noOpening
+          ? 'no_opening_for_family'
+          : 'unreadable',
     municipality: search.municipality,
     tried,
   };
