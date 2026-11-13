@@ -144,6 +144,8 @@ describe.each([
     ['another scheme link', `Tap ${LINK} or https://evil.test/x`],
     ['a scheme-less domain beside it', `Tap ${LINK} or bit.ly/x`],
     ['a spaced-dot host after the handed link', `Tap ${LINK}. Then evil . app now`],
+    ['the handed link, a full stop, then a non-ASCII label', `Tap ${LINK}.рф now`],
+    ['the handed link, a full stop, then an accented word', `Tap ${LINK}.Évite now`],
     ['any link when none was handed', `Tap ${LINK}`],
   ])('refuses %s', (label, text) => {
     const handed = label.startsWith('any link') ? [] : [LINK];
