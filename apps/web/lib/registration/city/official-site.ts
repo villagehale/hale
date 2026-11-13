@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { ownRegistrableDomain } from '~/lib/official-host';
 import { type OwnCity, cityKey } from './place';
 
 /**
@@ -16,13 +17,27 @@ import { type OwnCity, cityKey } from './place';
  * places share the name with different sites, has no official site, and the parent hears
  * Hale does not know yet.
  *
+ * ONE VALUE IS NOT ENOUGH (lib/official-host.ts). A site on shared hosting or a public
+ * suffix is never a city's. An unreferenced value is trusted only once the live search
+ * for the city agrees (lookup.ts), and a host that changes is logged and checked again
+ * within a day instead of being trusted for a month.
+ *
  * What crosses to the source is a public place name (rule #1), never anything about a
  * family.
  */
 
 export type OfficialSite =
-  | { status: 'found'; host: string; website: string; source: string }
-  | { status: 'not_found'; reason: 'no_entry' | 'ambiguous' }
+  | {
+      status: 'found';
+      host: string;
+      website: string;
+      source: string;
+      /** The source's statement of this website carries a reference: one of the two
+       * signals that may corroborate it (lib/official-host.ts). */
+      referenced: boolean;
+    }
+  /** `shared_host`: the source names a site on shared hosting or a public suffix. */
+  | { status: 'not_found'; reason: 'no_entry' | 'ambiguous' | 'shared_host' }
   /** The source did not answer. Says nothing about the city: ask again next sweep. */
   | { status: 'retry'; reason: string };
 
@@ -44,6 +59,8 @@ export const MAX_NAME_HITS = 20;
 export const RECHECK_FOUND_MS = 30 * 86_400_000;
 /** How long "no official site" stands before the source is asked again. */
 export const RECHECK_NOT_FOUND_MS = 7 * 86_400_000;
+/** How long a host that just changed stands before the source is asked again. */
+export const RECHECK_CHANGED_MS = 86_400_000;
 
 /** A name as compared: composed, lower-case, every dash a hyphen, single spaces. */
 function foldName(text: string): string {
@@ -68,7 +85,11 @@ const searchSchema = z.object({
 const sparqlSchema = z.object({
   results: z.object({
     bindings: z.array(
-      z.object({ item: z.object({ value: z.string() }), site: z.object({ value: z.string() }) }),
+      z.object({
+        item: z.object({ value: z.string() }),
+        site: z.object({ value: z.string() }),
+        referenced: z.object({ value: z.string() }).optional(),
+      }),
     ),
   }),
 });
@@ -98,10 +119,11 @@ export function placeCheckQuery(
       ? ''
       : `?item wdt:P131+ ?region . ?region rdfs:label ${literal(place.provinceOrState)} .`;
   return [
-    'SELECT DISTINCT ?item ?site WHERE {',
+    'SELECT DISTINCT ?item ?site ?referenced WHERE {',
     `  VALUES ?item { ${items.join(' ')} }`,
     `  ?item wdt:P856 ?site ; wdt:P17 ?country . ?country rdfs:label ${literal(place.country)} .`,
     `  ${region}`,
+    '  BIND(EXISTS { ?item p:P856 ?st . ?st ps:P856 ?site ; prov:wasDerivedFrom ?ref . } AS ?referenced)',
     '}',
   ].join('\n');
 }
@@ -111,6 +133,7 @@ export interface NamedPlace {
   qid: string;
   website: string;
   how: 'label' | 'alias';
+  referenced: boolean;
 }
 
 /** A website's host as compared: lower-case, no trailing dot, no leading `www.`. */
@@ -150,11 +173,14 @@ export function officialSiteOf(places: readonly NamedPlace[]): OfficialSite {
       a.qid.localeCompare(b.qid),
   )[0];
   if (best === undefined) return { status: 'not_found', reason: 'no_entry' };
+  const host = siteHost(best.url);
+  if (ownRegistrableDomain(host) === null) return { status: 'not_found', reason: 'shared_host' };
   return {
     status: 'found',
-    host: siteHost(best.url),
+    host,
     website: best.url.href,
     source: `wikidata:${best.qid}`,
+    referenced: chosen.some((row) => row.referenced),
   };
 }
 
@@ -207,7 +233,8 @@ async function namedPlaces(
   return checked.results.bindings.flatMap((row) => {
     const qid = row.item.value.split('/').pop() ?? '';
     const how = matched.get(qid);
-    return how === undefined ? [] : [{ qid, website: row.site.value, how }];
+    if (how === undefined) return [];
+    return [{ qid, website: row.site.value, how, referenced: row.referenced?.value === 'true' }];
   });
 }
 
@@ -288,16 +315,25 @@ function storedSite(row: typeof schema.cityOfficialSites.$inferSelect): Official
     if (row.host === null || row.website === null || row.source === null) {
       throw new Error('city official site: a found row has no host, website or source');
     }
-    return { status: 'found', host: row.host, website: row.website, source: row.source };
+    return {
+      status: 'found',
+      host: row.host,
+      website: row.website,
+      source: row.source,
+      referenced: row.referenced === true,
+    };
   }
-  return { status: 'not_found', reason: row.reason === 'ambiguous' ? 'ambiguous' : 'no_entry' };
+  const reason =
+    row.reason === 'ambiguous' || row.reason === 'shared_host' ? row.reason : 'no_entry';
+  return { status: 'not_found', reason };
 }
 
 /**
  * The city's official site, from the cache while it is fresh, else asked of the source
  * and appended. A source that does not answer leaves the last answer standing (a site
  * does not stop being official because the source was slow); with no last answer it is
- * a retry.
+ * a retry. A host other than the last one found is logged, and asked about again after
+ * RECHECK_CHANGED_MS rather than the usual month.
  */
 export async function cachedOfficialSite(
   database: Database,
@@ -319,6 +355,13 @@ export async function cachedOfficialSite(
     console.info({ reason: found.reason }, 'own-city registration: official site not answered');
     return row ? storedSite(row) : found;
   }
+  const changed = found.status === 'found' && row?.status === 'found' && row.host !== found.host;
+  if (changed) {
+    console.warn(
+      { municipality: key, from: row.host, to: found.host },
+      'own-city registration: official host changed',
+    );
+  }
   await database.insert(t).values({
     municipalityKey: key,
     city: place.city,
@@ -329,9 +372,15 @@ export async function cachedOfficialSite(
     host: found.status === 'found' ? found.host : null,
     website: found.status === 'found' ? found.website : null,
     source: found.status === 'found' ? found.source : null,
+    referenced: found.status === 'found' ? found.referenced : null,
     checkedAt: now,
     recheckAt: new Date(
-      now.getTime() + (found.status === 'found' ? RECHECK_FOUND_MS : RECHECK_NOT_FOUND_MS),
+      now.getTime() +
+        (changed
+          ? RECHECK_CHANGED_MS
+          : found.status === 'found'
+            ? RECHECK_FOUND_MS
+            : RECHECK_NOT_FOUND_MS),
     ),
   });
   return found;

@@ -9,7 +9,7 @@ import type { RegistrationReader, RegistrationTarget } from '../read';
 import { ownCityRegistrationContext, postalOwnCityQuotes } from './context';
 import { OWN_CITY_REGISTRATION_ENABLED_ENV } from './flag';
 import type { CityLookupDeps } from './lookup';
-import { RECHECK_FOUND_MS, cachedOfficialSite } from './official-site';
+import { RECHECK_CHANGED_MS, RECHECK_FOUND_MS, cachedOfficialSite } from './official-site';
 import type { CityPlace } from './place';
 import type { PageSearch } from './search';
 import { REVERIFY_NOT_FOUND_MS, REVERIFY_VERIFIED_MS } from './store';
@@ -126,6 +126,7 @@ function scripted(
       host: OFFICIAL_HOSTS[place.city] ?? 'example.ca',
       website: `https://www.${OFFICIAL_HOSTS[place.city] ?? 'example.ca'}/`,
       source: 'wikidata:Q1',
+      referenced: true,
     }),
     search: async (place, cycleLabel) => {
       script.searches.push({ city: place.city, cycleLabel });
@@ -584,6 +585,7 @@ describe('each family is told the date for its own residency and district', () =
         host: HOSTS[place.city] ?? 'example.ca',
         website: `https://www.${HOSTS[place.city] ?? 'example.ca'}/`,
         source: 'wikidata:Q1',
+        referenced: true,
       }),
       search: async (place) =>
         place.city === 'Markham'
@@ -754,6 +756,61 @@ describe('each family is told the date for its own residency and district', () =
       north_york: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
       scarborough: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
     });
+  });
+});
+
+describe('a city site one unreferenced source value names must be corroborated', () => {
+  const NEWS = 'https://www.nowtoronto.com/winter-registration-2027';
+  const unreferenced = (search: (place: CityPlace) => PageSearch) => {
+    const lookup = scripted({ search });
+    return {
+      ...lookup,
+      officialSite: async () =>
+        ({
+          status: 'found',
+          host: 'toronto.ca',
+          website: 'https://www.toronto.ca/',
+          source: 'wikidata:Q172',
+          referenced: false,
+        }) as const,
+    };
+  };
+
+  it("is trusted when the live search's top result is on the same domain", async () => {
+    const north = await seedFamily('M2N 0A1');
+    const lookup = unreferenced(() => ({
+      outcome: 'pages',
+      municipality: 'City of Toronto',
+      urls: [TORONTO_PAGE, NEWS],
+    }));
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(result).toMatchObject({ verified: 1, queued: 1 });
+    expect(await tells(north.familyId)).toHaveLength(1);
+  });
+
+  it('is "doesn\'t know yet" when the search does not agree, and no page is read', async () => {
+    const north = await seedFamily('M2N 0A1');
+    const lookup = unreferenced(() => ({
+      outcome: 'pages',
+      municipality: 'City of Toronto',
+      urls: [NEWS, TORONTO_PAGE],
+    }));
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(result).toMatchObject({ verified: 0, notFound: 1, queued: 0 });
+    expect(lookup.reads).toEqual([]);
+    const rows = await db.database.select().from(schema.cityRegistrationReadings);
+    expect(rows.map((row) => [row.status, row.reason])).toEqual([
+      ['not_found', 'official_site_unconfirmed'],
+    ]);
+    expect(await tells(north.familyId)).toEqual([]);
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        north.familyId,
+        north.parentIds[0] as string,
+        NOW,
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -1183,6 +1240,7 @@ describe("the cache of each city's official site", () => {
       host: 'toronto.ca',
       website: 'https://www.toronto.ca/',
       source: 'wikidata:Q172',
+      referenced: false,
     });
     expect(again).toEqual(first);
     expect(asked).toEqual(['search', 'sparql']);
@@ -1191,6 +1249,53 @@ describe("the cache of each city's official site", () => {
       municipalityKey: 'toronto|ontario|canada|',
       source: 'wikidata:Q172',
     });
+  });
+
+  it('logs a changed host and checks it again soon instead of trusting it for a month', async () => {
+    const info = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await cachedOfficialSite(db.database, wikidata(), TORONTO, NOW);
+    const moved = {
+      search: async () => ({ search: [{ id: 'Q172', label: 'Toronto' }] }),
+      sparql: async () => ({
+        results: {
+          bindings: [
+            {
+              item: { value: 'http://www.wikidata.org/entity/Q172' },
+              site: { value: 'https://www.toronto-city.ca/' },
+            },
+          ],
+        },
+      }),
+    };
+    const stale = new Date(NOW.getTime() + RECHECK_FOUND_MS + 60_000);
+    expect(await cachedOfficialSite(db.database, moved, TORONTO, stale)).toMatchObject({
+      status: 'found',
+      host: 'toronto-city.ca',
+    });
+    expect(info).toHaveBeenCalledWith(
+      { municipality: 'toronto|ontario|canada|', from: 'toronto.ca', to: 'toronto-city.ca' },
+      'own-city registration: official host changed',
+    );
+    const rows = await db.database
+      .select()
+      .from(schema.cityOfficialSites)
+      .orderBy(schema.cityOfficialSites.checkedAt);
+    expect(rows.map((row) => row.recheckAt.getTime() - row.checkedAt.getTime())).toEqual([
+      RECHECK_FOUND_MS,
+      RECHECK_CHANGED_MS,
+    ]);
+    // Positive control: the same host again is trusted for the usual month, and not logged.
+    info.mockClear();
+    const later = new Date(stale.getTime() + RECHECK_CHANGED_MS + 60_000);
+    await cachedOfficialSite(db.database, moved, TORONTO, later);
+    expect(info).not.toHaveBeenCalled();
+    const [newest] = await db.database
+      .select()
+      .from(schema.cityOfficialSites)
+      .where(eq(schema.cityOfficialSites.checkedAt, later));
+    expect(newest && newest.recheckAt.getTime() - newest.checkedAt.getTime()).toBe(
+      RECHECK_FOUND_MS,
+    );
   });
 
   it('a source that does not answer leaves the last answer standing, and is a retry with none', async () => {

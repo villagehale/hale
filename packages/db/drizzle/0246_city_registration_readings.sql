@@ -50,4 +50,9 @@ CREATE TABLE IF NOT EXISTS "city_official_sites" (
 CREATE INDEX IF NOT EXISTS "city_official_sites_key_checked_idx"
 	ON "city_official_sites" ("municipality_key", "checked_at");
 --> statement-breakpoint
+-- Whether the source's statement of the website carries a reference: one of the two
+-- signals that may corroborate it. Null on a not_found row. Added in place so a database
+-- that already has the table gains it on a re-run.
+ALTER TABLE "city_official_sites" ADD COLUMN IF NOT EXISTS "referenced" boolean;
+--> statement-breakpoint
 ALTER TABLE "city_official_sites" ENABLE ROW LEVEL SECURITY;

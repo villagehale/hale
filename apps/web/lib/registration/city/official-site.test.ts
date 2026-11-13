@@ -29,13 +29,15 @@ const TORONTO_SITE: OfficialSite = {
   host: 'toronto.ca',
   website: 'https://www.toronto.ca/',
   source: 'wikidata:Q172',
+  referenced: false,
 };
 
-const place = (qid: string, website: string, how: 'label' | 'alias'): NamedPlace => ({
-  qid,
-  website,
-  how,
-});
+const place = (
+  qid: string,
+  website: string,
+  how: 'label' | 'alias',
+  referenced = false,
+): NamedPlace => ({ qid, website, how, referenced });
 
 describe('officialSiteOf', () => {
   it("names the municipality's own host, without its www", () => {
@@ -73,6 +75,31 @@ describe('officialSiteOf', () => {
   it('names a place the source does not know', () => {
     expect(officialSiteOf([])).toEqual({ status: 'not_found', reason: 'no_entry' });
   });
+
+  it('never establishes shared hosting or a public suffix as a city site', () => {
+    for (const website of [
+      'https://smalltown.github.io/',
+      'https://smalltown.blogspot.com/',
+      'https://smalltown.wixsite.com/home',
+      'https://smalltown.squarespace.com/',
+      'https://on.ca/',
+    ]) {
+      expect({ website, site: officialSiteOf([place('Q1', website, 'label', true)]) }).toEqual({
+        website,
+        site: { status: 'not_found', reason: 'shared_host' },
+      });
+    }
+  });
+
+  it("carries whether the source's statement of the site has a reference", () => {
+    expect(officialSiteOf([place('Q44016', 'https://www.markham.ca/', 'label', true)])).toEqual({
+      status: 'found',
+      host: 'markham.ca',
+      website: 'https://www.markham.ca/',
+      source: 'wikidata:Q44016',
+      referenced: true,
+    });
+  });
 });
 
 describe('onOfficialSite', () => {
@@ -107,6 +134,7 @@ describe('onOfficialSite', () => {
       host: 'sites.example.org',
       website: 'https://sites.example.org/view/smalltown/',
       source: 'wikidata:Q1',
+      referenced: true,
     };
     expect(onOfficialSite('https://sites.example.org/view/smalltown/rec', site)).toBe(true);
     expect(onOfficialSite('https://sites.example.org/view/othertown/rec', site)).toBe(false);
@@ -117,6 +145,7 @@ describe('onOfficialSite', () => {
 interface FakeEntity {
   label: string;
   website?: string;
+  referenced?: boolean;
   country?: string;
   parent?: string;
 }
@@ -151,7 +180,11 @@ function wikidata(
         if (!e?.website || entities[e.country ?? '']?.label !== country) return [];
         if (region !== undefined && !labelUp(e.parent, region)) return [];
         return [
-          { item: { value: `http://www.wikidata.org/entity/${id}` }, site: { value: e.website } },
+          {
+            item: { value: `http://www.wikidata.org/entity/${id}` },
+            site: { value: e.website },
+            referenced: { value: String(e.referenced === true) },
+          },
         ];
       });
       return { results: { bindings } };
@@ -196,13 +229,19 @@ describe('lookupOfficialSite', () => {
         Q44016: {
           label: 'Markham',
           website: 'https://www.markham.ca/',
+          referenced: true,
           country: 'Q16',
           parent: 'Q2',
         },
       }),
       { ...TORONTO, city: 'Markham' },
     );
-    expect(found).toMatchObject({ status: 'found', host: 'markham.ca', source: 'wikidata:Q44016' });
+    expect(found).toMatchObject({
+      status: 'found',
+      host: 'markham.ca',
+      source: 'wikidata:Q44016',
+      referenced: true,
+    });
   });
 
   it('reads a double-barrelled name whichever dash the source spells it with', async () => {
@@ -273,5 +312,7 @@ describe('placeCheckQuery', () => {
     expect(query).toContain('VALUES ?item { wd:Q172 }');
     expect(query).toContain('"On\\"tario } #"@en');
     expect(query).toContain('"Canada"@en');
+    // Whether the statement of each website carries a reference, read in the same query.
+    expect(query).toContain('prov:wasDerivedFrom');
   });
 });

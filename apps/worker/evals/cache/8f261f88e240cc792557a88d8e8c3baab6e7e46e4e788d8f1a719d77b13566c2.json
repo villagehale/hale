@@ -2,7 +2,8 @@
   "head": {
     "vars": [
       "item",
-      "site"
+      "site",
+      "referenced"
     ]
   },
   "results": {
@@ -15,6 +16,11 @@
         "site": {
           "type": "uri",
           "value": "https://www.markham.ca/"
+        },
+        "referenced": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "type": "literal",
+          "value": "true"
         }
       }
     ]

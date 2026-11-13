@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 /**
  * VIL-684 · each municipality's own official website, as a structured public source
@@ -31,6 +31,8 @@ export const cityOfficialSites = pgTable(
     website: text('website'),
     /** Where the website came from, e.g. `wikidata:Q172`. */
     source: text('source'),
+    /** The source's statement of the website carries a reference. Null when not found. */
+    referenced: boolean('referenced'),
     checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
     recheckAt: timestamp('recheck_at', { withTimezone: true }).notNull(),
   },
