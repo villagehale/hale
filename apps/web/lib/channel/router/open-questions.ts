@@ -509,15 +509,37 @@ export function latestAsked(
   return top;
 }
 
+/**
+ * VIL-302 · whether an ask off the open-question list (the sign-up lane's last text) keeps a
+ * reply the reader placed on an open question from binding it: that off-list ask is the
+ * newest of all the parent's asks, or ties the newest, or some ask's time is not known.
+ * False when no ask is off the list.
+ */
+export function offListOutranks(
+  questions: readonly OpenQuestion[],
+  offList: readonly Asked[],
+): boolean {
+  if (offList.length === 0) return false;
+  const newest = newestAsks<Asked>([...questions, ...offList]);
+  return newest === null || newest.some((ask) => offList.includes(ask));
+}
+
+/**
+ * Two asks whose sends were recorded this close together are a tie. Carriers deliver texts
+ * sent seconds apart in either order, so the parent cannot know which came last.
+ */
+export const ASK_TIE_WINDOW_MS = 10_000;
+
 /** Anything Hale asked a parent, with when it was put to them. Null: not known. */
 export interface Asked {
   readonly askedAt: Date | null;
 }
 
 /**
- * VIL-302 · THE NEWEST-ASK RULE, the one every lane ranks by: every ask tied at the newest
- * ask time, or null when the list is empty or any ask time is unknown. Recency that cannot
- * be established is not recency.
+ * VIL-302 · THE NEWEST-ASK RULE, the one every lane ranks by: every ask whose send was
+ * recorded less than {@link ASK_TIE_WINDOW_MS} before the newest one's (the newest tie), or
+ * null when the list is empty or any ask time is unknown. Recency that cannot be
+ * established is not recency, and two asks this close are not an order either.
  */
 export function newestAsks<T extends Asked>(asks: readonly T[]): T[] | null {
   if (asks.length === 0) return null;
@@ -527,7 +549,7 @@ export function newestAsks<T extends Asked>(asks: readonly T[]): T[] | null {
     times.push(ask.askedAt.getTime());
   }
   const newest = Math.max(...times);
-  return asks.filter((_, index) => times[index] === newest);
+  return asks.filter((_, index) => newest - (times[index] as number) < ASK_TIE_WINDOW_MS);
 }
 
 /**
@@ -649,37 +671,40 @@ export interface OpenQuestionReaderOptions {
 /**
  * The per-kind readers, injected — each one the function the OWNING module already
  * exports, so this file adds no second opinion about whether anything is open.
+ *
+ * Every `askedAt` is when the outbound row that carried the ask recorded its send
+ * (`channel_messages.send_recorded_at`, channel/ledger.ts `sendRecordedAt`), the one clock
+ * every ask of every lane is ranked by (VIL-302), or null when that is not known.
  */
 export interface OpenQuestionSources {
   /** The approvals spine's own pending list, oldest first. */
   pendingApprovals(database: Database, familyId: string): Promise<PendingAction[]>;
   /** The discoverability ask, when it was delivered to this parent and carries no answer
-   * yet, or null. `askedAt` is when that ask was written to the outbound ledger. */
+   * yet, or null. */
   introOptInOpen(
     database: Database,
     input: { familyId: string; parentUserId: string },
-  ): Promise<{ askedAt: Date } | null>;
-  /** The proposal this parent may answer right now, or null. `askedAt` is when the card
-   * was delivered to this parent on their family's side of the pair. */
+  ): Promise<{ askedAt: Date | null } | null>;
+  /** The proposal this parent may answer right now, or null, dated by the card that was
+   * delivered to this parent on their family's side of the pair. */
   introProposal(
     database: Database,
     familyId: string,
     parentUserId: string,
     now: Date,
-  ): Promise<{ id: string; askedAt: Date } | null>;
-  /** The live, unexpired plan offer, or null. `askedAt` is the commitment row's own
-   * mint time — when the offer sentence went out. */
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
+  /** The live, unexpired plan offer, or null, dated by the message that carried it. */
   planOffer(
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /** The live, unexpired health-checkpoint booking offer, or null. */
   checkupOffer(
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The founder's live, unexpired welcome offer, or null. Null for every other family in
    * the product by construction — the row is only ever written against his.
@@ -688,7 +713,7 @@ export interface OpenQuestionSources {
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The activity follow-up Hale still owes this family, or null.
    *
@@ -699,7 +724,7 @@ export interface OpenQuestionSources {
   activityPromise(
     database: Database,
     familyId: string,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The registration ladder's readiness checklist, while its ask is still Hale's LAST
    * WORD to this parent — or null.
@@ -712,15 +737,15 @@ export interface OpenQuestionSources {
    * interval would have claimed the "yes" a parent said to the coach's own prose
    * question in the middle of it.
    *
-   * `askedAt` is the NEWEST ask, so the battle plan's re-ask the evening before
-   * outranks an older solicited question rather than losing to it.
+   * Dated by the NEWEST ask, so the battle plan's re-ask the evening before outranks an
+   * older solicited question rather than losing to it.
    */
   registrationReadiness(
     database: Database,
     familyId: string,
     parentUserId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The co-parent invite THIS parent still owes a yes/no on, or null (VIL-355).
    *
@@ -732,7 +757,7 @@ export interface OpenQuestionSources {
   coParentAssent(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The email alerts this parent has not answered — a LIST, unlike every other offer
    * here, because the outbound gate permits three a day and each one asks about a
@@ -755,7 +780,7 @@ export interface OpenQuestionSources {
       id: string;
       summary: string;
       subject: string;
-      askedAt: Date;
+      askedAt: Date | null;
       /** The occasion, so a matching calendar draft is the same question. */
       title?: string;
       startsAt?: string;
@@ -771,7 +796,7 @@ export interface OpenQuestionSources {
   eveningCheckIn(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The activity follow-up ask, while it is Hale's last word to this parent and the
    * morning has not come — or null (channel/followup/ask-open.ts).
@@ -783,7 +808,7 @@ export interface OpenQuestionSources {
   activityFollowupAsk(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The weekday-care ask, while it is Hale's last word to this parent and inside its
    * 48h window — or null (VIL-360, channel/weekday-care/question.ts).
@@ -794,7 +819,7 @@ export interface OpenQuestionSources {
   weekdayCare(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The empty-Saturday ask, while it is Hale's last word to this parent and inside
    * its 48h window — or null (VIL-365, channel/nudge/empty-saturday-question.ts).
@@ -802,7 +827,7 @@ export interface OpenQuestionSources {
   emptySaturday(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The daycare follow-up, while its ask is Hale's last word to this parent and inside
    * its window — or null (VIL-360, channel/followup/question.ts).
@@ -812,7 +837,7 @@ export interface OpenQuestionSources {
   daycareFollowup(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The forwarding-address revoke confirm this parent has not answered, or null
    * (VIL-352 round 6, email/forward-request.ts).
@@ -831,7 +856,7 @@ export interface OpenQuestionSources {
   forwardAddressRevoke(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
 }
 
 /**
@@ -1132,9 +1157,11 @@ export function createOpenQuestionReader(
       }
       // OLDEST FIRST — the order the texts reached the phone — because a position printed
       // against two notices about the same occasion has to mean what a parent means by
-      // "the first one".
-      const orderedOffers = [...emailOffers].sort(
-        (a, b) => a.askedAt.getTime() - b.askedAt.getTime(),
+      // "the first one". One whose send time is not known went before the clock existed.
+      const orderedOffers = [...emailOffers].sort((a, b) =>
+        a.askedAt === null || b.askedAt === null
+          ? Number(b.askedAt === null) - Number(a.askedAt === null)
+          : a.askedAt.getTime() - b.askedAt.getTime(),
       );
       const offerPositions = duplicatePositions(orderedOffers.map((offer) => offer.subject));
       for (const [index, emailOffer] of orderedOffers.entries()) {

@@ -19,12 +19,20 @@ export interface AskPlace {
   /**
    * Hale's text about it reached this parent last, of all their asks in any status (the
    * offer, or a question back, notice or receipt about it since), and no open question on
-   * the router's list was asked after it (`newestSignupAsk`). Only this ask is approved,
-   * taken back or picked for. An ask none of whose texts is known to have reached them is
-   * never it. Words that name another of the parent's asks only make Hale ask about that one;
-   * once that question went out, it is the newest, and their next answer is its.
+   * the router's list was asked after it, or so close to it they tie (`newestSignupAsk`).
+   * Only this ask is approved, taken back or picked for by a bare answer. An ask none of
+   * whose texts is known to have reached them is never it. Words that name another of the
+   * parent's asks only make Hale ask about that one; once that question went out, it is the
+   * newest, and their next answer is its.
    */
   newest: boolean;
+  /**
+   * Hale's text about it reached this parent last of all their SIGN-UP asks, whatever the
+   * open questions. When only an open question outranks it (newer, tied, or of unknown
+   * time), words that name it in whole words, checked by code, bind it: a named ask is not
+   * a bare answer, and the other lane's ask is not a sign-up ask the words could mean.
+   */
+  laneNewest: boolean;
 }
 
 /**
@@ -68,7 +76,9 @@ export async function loadLiveAsks(
   const oneShots = (await loadPendingOffers(database, input.familyId)).filter(
     (offer) => !planIds.has(offer.id),
   );
-  const lastAsked = newestSignupAsk(await loadLastAsked(database, input), input.openQuestions);
+  const last = await loadLastAsked(database, input);
+  const laneNewest = last.status === 'asked' ? last.offerId : null;
+  const lastAsked = newestSignupAsk(last, input.openQuestions);
   const asks: LiveAsk[] = [
     ...plans
       .filter((plan) => plan.parentUserId === input.parentUserId)
@@ -77,7 +87,7 @@ export async function loadLiveAsks(
           lane: 'plan',
           offerId: plan.offerId,
           plan,
-          place: { newest: plan.offerId === lastAsked },
+          place: { newest: plan.offerId === lastAsked, laneNewest: plan.offerId === laneNewest },
         }),
       ),
     ...oneShots
@@ -87,7 +97,7 @@ export async function loadLiveAsks(
           lane: 'one_shot',
           offerId: offer.id,
           offer,
-          place: { newest: offer.id === lastAsked },
+          place: { newest: offer.id === lastAsked, laneNewest: offer.id === laneNewest },
         }),
       ),
   ];
@@ -97,17 +107,17 @@ export async function loadLiveAsks(
 /**
  * The sign-up ask a bare yes or no may answer: the one Hale texted this parent about last,
  * while that text is also the newest of all their asks by the one newest-ask rule
- * (`newestAsks`, VIL-302). An open question asked after it, or at the same time, takes the
- * answer instead, and no sign-up ask is the newest. When recency across the two cannot be
- * established (an undated open question, or a text whose time is not known), this lane's
- * own order stands: the router does not narrow to an open question then either.
+ * (`newestAsks`, VIL-302), each dated by the row that recorded its send. An open question
+ * asked after it, or so close to it they tie, takes the answer from it. So does one whose
+ * time, or this text's, is not known: no order can be read then, so nothing here binds and
+ * the coach asks which. With no open question, the lane's own order stands.
  */
 function newestSignupAsk(last: LastAsked, openQuestions: readonly Asked[]): string | null {
   if (last.status !== 'asked') return null;
+  if (openQuestions.length === 0) return last.offerId;
   const signup: Asked = { askedAt: last.askedAt };
   const newest = newestAsks([...openQuestions, signup]);
-  if (newest === null) return last.offerId;
-  return newest.length === 1 && newest[0] === signup ? last.offerId : null;
+  return newest?.length === 1 && newest[0] === signup ? last.offerId : null;
 }
 
 function askOrder(ask: LiveAsk): AskOrder {

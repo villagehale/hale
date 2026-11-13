@@ -75,6 +75,15 @@ function binding(newest: boolean, named: PlanNaming | null): PlanBinding | null 
 }
 
 /**
+ * Whether the parent's answer moves this plan rather than making Hale ask about it: it is
+ * their newest ask, or the sign-up ask Hale asked about last and their own words name it in
+ * whole words while only an open question outranks it (`AskPlace.laneNewest`).
+ */
+function binds(place: AskPlace, named: PlanNaming | null): boolean {
+  return place.newest || (place.laneNewest && named === 'tokens');
+}
+
+/**
  * VIL-558 · the day-before plan conversation, for one plan ask among the live asks Hale
  * made this parent (`loadLiveAsks`, which holds only their own; the walk over them is
  * `runAuthorizedSignup`). A model reads the parent's words ({@link PlanReader}); a yes calls
@@ -129,7 +138,7 @@ export async function runPlanAsk(
   const boundBy = binding(place.newest, reading.named);
   if (!boundBy) return stopped('plan_unnamed', plan);
   if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
-  if (!place.newest) {
+  if (!binds(place, reading.named)) {
     return reply(database, input, deps, plan, 'clarify', {
       question: PLAN_ASK_BACK_QUESTION,
       boundBy,
@@ -263,7 +272,7 @@ async function runMismatchTurn(
   // A pick parks the plan or emails the provider from the parent's Gmail: never from a
   // group seat that may not authorize a sign-up, as for any other ask.
   if (deps.declineSeat && (await deps.declineSeat())) return groupSeatDeclined();
-  if (!place.newest) {
+  if (!binds(place, named ? 'tokens' : null)) {
     return reply(database, input, deps, plan, 'clarify', {
       question: PICK_ASK_BACK_QUESTION,
       boundBy,

@@ -994,6 +994,10 @@ describe('sweepMessageRetention on a database without migration 0167', () => {
     await before0167.exec(
       'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS opt_out_unread boolean',
     );
+    // And the recorded send time (0249, VIL-302), which drizzle names on every ledger row.
+    await before0167.exec(
+      'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS send_recorded_at timestamptz',
+    );
   });
 
   afterAll(async () => {

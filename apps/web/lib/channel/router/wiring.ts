@@ -17,7 +17,7 @@ import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/acti
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { recordCapabilityNotes } from '~/lib/channel/capabilities/ledger';
-import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
+import { loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { createEveningRequestReader } from '~/lib/channel/checkin/request';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
@@ -38,7 +38,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
-import { deliveredAsk } from '~/lib/channel/ledger';
+import { deliveredAsk, sendRecordedAt } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
@@ -984,7 +984,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
           deliveredAsk(database, introAskDedupeKey(familyId)),
           discoverabilityAsked(database, parentUserId),
         ]);
-        return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.sentAt } : null;
+        return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.askedAt } : null;
       },
       introProposal: async (database, familyId, parentUserId, now) => {
         // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
@@ -993,8 +993,8 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // it to resolve a question that is already closed.
         const proposal = await intros.answerableProposal(database, familyId, now);
         if (proposal?.standing !== 'unanswered') return null;
-        // Open, and dated, only once the card reached this side. The proposal's own
-        // per-side stamp is written when the provider accepts the send, and a receipt
+        // Open only once the card reached this side, and dated by its row. The proposal's
+        // own per-side stamp is written when the provider accepts the send, and a receipt
         // can still say it never arrived.
         //
         // ASKED THIS PARENT, for the same reason as the opt-in above: the card is keyed
@@ -1003,7 +1003,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         const side = proposal.familyAId === familyId ? 'a' : 'b';
         const card = await deliveredAsk(database, introCardDedupeKey(proposal.id, side));
         return card?.parentUserId === parentUserId
-          ? { id: proposal.id, askedAt: card.sentAt }
+          ? { id: proposal.id, askedAt: card.askedAt }
           : null;
       },
       planOffer: async (database, familyId, now) => {
@@ -1013,14 +1013,23 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // answerable. Reporting one as a question would let a parent accept a plan the
         // handler behind it is about to decline.
         if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-        return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+        return {
+          id: offer.id,
+          summary: offer.summary,
+          askedAt: await askSent(database, familyId, offer.createdFrom),
+        };
       },
       // The health nudge's booking offer. Its TTL is applied inside the reader, so an
       // offer past its week can never be listed, named in a clarifying sentence, or
       // resolved — the same discipline the plan offer keeps one line above.
       checkupOffer: async (database, familyId, now) => {
         const offer = await loadOpenCheckupOffer(database, familyId, now);
-        return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
+        if (!offer) return null;
+        return {
+          id: offer.id,
+          summary: offer.summary,
+          askedAt: await askSent(database, familyId, offer.askedVia),
+        };
       },
       // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
       // offers above keep: an expired offer is still an open ledger row, it has simply
@@ -1029,20 +1038,36 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       founderWelcomeOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
         if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-        return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+        return {
+          id: offer.id,
+          summary: offer.summary,
+          askedAt: await askSent(database, familyId, offer.createdFrom),
+        };
       },
       // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
       // does not stop being owed by getting late (commitment.ts), so it is listed until the
       // sweep keeps it or a cancellation voids it.
       activityPromise: async (database, familyId) => {
         const promise = await loadOpenActivityPromise(database, familyId);
-        return promise && { id: promise.id, summary: promise.summary, askedAt: promise.askedAt };
+        if (!promise) return null;
+        return {
+          id: promise.id,
+          summary: promise.summary,
+          askedAt: await askSent(database, familyId, promise.askedVia),
+        };
       },
       // The registration ladder's readiness checklist. Its whole TTL is the last-word rule
       // inside the reader — the question closes the moment anything else goes out to this
       // parent — so, unlike the offers above, there is no window to apply here.
-      registrationReadiness: (database, familyId, parentUserId, now) =>
-        readinessQuestion(database, familyId, parentUserId, now),
+      registrationReadiness: async (database, familyId, parentUserId, now) => {
+        const readiness = await readinessQuestion(database, familyId, parentUserId, now);
+        if (!readiness) return null;
+        return {
+          id: readiness.id,
+          summary: readiness.summary,
+          askedAt: await askSent(database, familyId, readiness.askedVia),
+        };
+      },
       // The co-parent scope question (VIL-355), read through the invite module's own
       // `loadPendingAssent` — which also applies the 72h expiry on read, so a lapsed ask
       // is never listed. Filtered to the co-parent role here rather than in the reader: a
@@ -1053,44 +1078,49 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // discipline the readiness question keeps, and for the same reason: openness is
       // already implied by the message ledger, so a stored flag would be a second answer
       // every other sender in the product would have to remember to clear.
-      eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
+      eveningCheckIn: async (database, input) =>
+        datedByItsRow(database, input.familyId, await eveningCheckInQuestion(database, input)),
       // The activity follow-up ask, read through the followup lane's own last-word reader
       // — the same discipline the readiness question and the evening check-in keep, and
       // the line that stops a bare "yes" meant for "how did swim go?" approving a drafted
       // calendar write.
-      activityFollowupAsk: (database, input) => activityFollowupAskOpen(database, input),
+      activityFollowupAsk: async (database, input) =>
+        datedByItsRow(database, input.familyId, await activityFollowupAskOpen(database, input)),
       // VIL-360 · the weekday-care ask, through the same kind of last-word reader. It has
       // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
       // arrangement does not go stale by breakfast.
-      weekdayCare: (database, input) => weekdayCareQuestion(database, input),
-      emptySaturday: (database, input) => emptySaturdayQuestion(database, input),
+      weekdayCare: async (database, input) =>
+        datedByItsRow(database, input.familyId, await weekdayCareQuestion(database, input)),
+      emptySaturday: async (database, input) =>
+        datedByItsRow(database, input.familyId, await emptySaturdayQuestion(database, input)),
       // VIL-360 · the daycare check-in. The follow-up lane registers nothing when it
       // sends, so this reader is the only thing that makes its ask a question the router
       // can see - and a bare "yes" near it safe.
-      daycareFollowup: (database, input) => daycareFollowupQuestion(database, input),
+      daycareFollowup: async (database, input) =>
+        datedByItsRow(database, input.familyId, await daycareFollowupQuestion(database, input)),
       coParentAssent: async (database, { parentUserId, familyId, now }) => {
         const pending = await loadPendingAssent(database, parentUserId, now);
         if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;
-        // The ask went out with the invite, so the invite's own clock is when it was put to
-        // them: `expiresAt` is 72h after that, by construction.
-        return {
-          id: pending.id,
-          askedAt: new Date(pending.expiresAt.getTime() - INVITE_SILENCE_MS),
-        };
+        // The ask went out in the reply to the turn that started the invite, and no row
+        // names that message, so when it went is not known: a bare yes beside another ask
+        // makes Hale ask which (VIL-302).
+        return { id: pending.id, askedAt: null };
       },
       // The Gmail alerts this parent has not answered. Its TTL is applied inside the reader,
-      // the same discipline the three offers above keep — and `askedAt` is the row's own mint
-      // time, which is the moment the text went out, because the row is written at send.
+      // the same discipline the three offers above keep, and each is dated by the alert
+      // that carried it.
       emailAlertOffers: async (database, input) => {
         const offers = await loadOpenEmailAlertOffers(database, input);
-        return offers.map((offer) => ({
-          id: offer.id,
-          summary: emailAlertOfferSummary(offer),
-          subject: emailAlertOfferSubject(offer),
-          askedAt: offer.askedAt,
-          title: offer.title,
-          startsAt: offer.startsAt.toISOString(),
-        }));
+        return Promise.all(
+          offers.map(async (offer) => ({
+            id: offer.id,
+            summary: emailAlertOfferSummary(offer),
+            subject: emailAlertOfferSubject(offer),
+            askedAt: await askSent(database, input.familyId, offer.askedVia),
+            title: offer.title,
+            startsAt: offer.startsAt.toISOString(),
+          })),
+        );
       },
       // The email forwarding door is retired with the email channel, so no revoke
       // confirm can be standing any more.
@@ -1098,4 +1128,24 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
     },
     options,
   );
+}
+
+/** When the row that carried an ask recorded its send: the one clock every ask is ranked
+ * by (VIL-302, channel/ledger.ts `sendRecordedAt`). Null when not known. */
+function askSent(
+  database: Database,
+  familyId: string,
+  channelMessageId: string,
+): Promise<Date | null> {
+  return sendRecordedAt(database, { familyId, channelMessageId });
+}
+
+/** A ledger-read question whose id is the row that carried it, dated by that row. */
+async function datedByItsRow(
+  database: Database,
+  familyId: string,
+  question: { id: string } | null,
+): Promise<{ id: string; askedAt: Date | null } | null> {
+  if (!question) return null;
+  return { id: question.id, askedAt: await askSent(database, familyId, question.id) };
 }
