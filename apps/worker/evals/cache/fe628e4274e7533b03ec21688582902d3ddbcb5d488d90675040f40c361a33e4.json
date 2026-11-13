@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply answers the parent's question directly: the week is empty per weekRead with no events, and it says so as a fact without inventing details. It is in English, matching the parent's text. It is a single bubble carrying one thought, warm and brief. The one question sits in the last bubble and is a reasonable follow-up to plan around work. No lead-in or count bubble. Minor nit: it says 'Thursday through the weekend' which the given facts don't specify beyond the calendar being empty, but that is consistent with an empty weekRead.",
-    "score": 5
-  }
-}

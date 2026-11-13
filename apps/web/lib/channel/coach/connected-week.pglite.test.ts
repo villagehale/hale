@@ -321,6 +321,39 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
     });
   });
 
+  it('an all-day block sits on its own local day, never in the week before it (VIL-688)', async () => {
+    // Stored at UTC midnight, so in Toronto the Monday block starts at 8pm Sunday local:
+    // inside the previous week's instant window, though Monday is not one of its days.
+    await seedBlock({
+      eventId: 'monday-all-day',
+      startAt: new Date('2026-08-03T00:00:00.000Z'),
+      endAt: new Date('2026-08-04T00:00:00.000Z'),
+      allDay: true,
+      title: 'Library day',
+      kidRelated: true,
+    });
+    await seedBlock({
+      eventId: 'sunday-all-day',
+      startAt: new Date('2026-08-02T00:00:00.000Z'),
+      endAt: new Date('2026-08-03T00:00:00.000Z'),
+      allDay: true,
+      title: 'Park day',
+      kidRelated: true,
+    });
+
+    const thisWeek = (await harness().call('lookup_week', {})) as {
+      events: Array<Record<string, unknown>>;
+    };
+    const nextWeek = (await harness().call('lookup_week', { weekOffset: 1 })) as {
+      events: Array<Record<string, unknown>>;
+    };
+
+    expect(thisWeek.events.map((event) => event.what)).toEqual(['Park day']);
+    expect(nextWeek.events).toEqual([
+      { kind: 'calendar', what: 'Library day', when: 'Mon, Aug 3', until: null, allDay: true },
+    ]);
+  });
+
   it('never returns a title for a non-kid block, and withholds a teen name', async () => {
     await db.database.execute(
       sql`alter table parent_calendar_blocks drop constraint parent_calendar_blocks_title_kid_only`,

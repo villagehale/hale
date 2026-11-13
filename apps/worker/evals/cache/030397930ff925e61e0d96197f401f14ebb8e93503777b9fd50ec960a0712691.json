@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is a connect ask the deterministic branch missed, and the reply has the required shape. It says the link is a text away, quotes the plain words verbatim, and mentions the 15-minute expiry. There is no URL, no app referral, no greeting or sign-off. The opening \"Yes, I can.\" is a small extra but fine.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so 'Done' is true and nothing is overclaimed. The reply states the new behavior plainly and accurately: Sam sees each email before it goes. It is short, has no greeting, sign-off or machinery, and stops. One nit: it could also cover email replies explicitly, but 'any emails' covers both.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply answers the parent's question directly: the calendar for the week is empty, so it is free, which is a fact from weekRead. It is in English, matches the text's language, and is one thought in one bubble with no heading or count. It ends with a single question-like offer placed in the last bubble, which is acceptable. The only minor issue is that the offer is phrased as a conditional request rather than a question, but it stays within the rubric and invents nothing.",
-    "score": 5
-  }
-}

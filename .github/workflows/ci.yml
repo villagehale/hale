@@ -357,6 +357,14 @@ jobs:
       - name: Shared list owners eval broken calibration (cached-only)
         run: pnpm --filter @hale/worker eval:shared-group-list-turn:broken
 
+      # VIL-686 Secret Santa: the turn read, every line, the RSVP cross-door gate and the
+      # turn read's token budget; the broken run must fail every known-bad line.
+      - name: Secret Santa eval (cached-only)
+        run: pnpm --filter @hale/worker eval:secret-santa
+
+      - name: Secret Santa eval broken calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:secret-santa:broken
+
       - name: Coach local day eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:coach-local-day
