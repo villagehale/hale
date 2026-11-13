@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { type SQL, and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { type SQL, and, asc, eq, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { noteGroupChatMemberAdded } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { acceptReplyLanguage } from '~/lib/channel/language';
@@ -1028,9 +1028,12 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
 type PersonRow = typeof schema.linqSharedGroupPeople.$inferSelect;
 
 /** Linq's participant list for the chat, or null when it could not be asked. */
-async function participantsOf(chatId: string): Promise<ParticipantRead | null> {
+async function participantsOf(
+  chatId: string,
+  list: ListChatHandles = listLinqParticipantHandles,
+): Promise<ParticipantRead | null> {
   try {
-    return await listLinqParticipantHandles({ chatId });
+    return await list({ chatId });
   } catch (err) {
     if (err instanceof LinqSendError) return null;
     throw err;
@@ -1586,15 +1589,22 @@ export async function takeMultiFamilyTurn(
   if (!phone) return { handled: false };
 
   const wired: MultiFamilyTurnPorts = { ...ports, send: ports.send ?? input.send };
-  // VIL-687: the seats this turn found. Only they can be cleared for a hidden gift written
-  // now, or count as placed when one is read; anyone the turn seats below is new.
+  // VIL-687: the seats this turn found, seated by the time the message was sent. Only they
+  // can be cleared for a hidden gift written now, or count as placed when one is read; anyone
+  // the turn seats below, or seated after the message went out (a retried hide), is new.
   const people = schema.linqSharedGroupPeople;
   const settledIds = new Set(
     (
       await database
         .select({ id: people.id })
         .from(people)
-        .where(and(eq(people.chatId, input.chatId), isNull(people.stoppedAt)))
+        .where(
+          and(
+            eq(people.chatId, input.chatId),
+            isNull(people.stoppedAt),
+            lte(people.seatedAt, input.receivedAt),
+          ),
+        )
     ).map((row) => row.id),
   );
   const sender = await rememberHandle(database, {
@@ -1685,10 +1695,11 @@ export async function takeMultiFamilyTurn(
           text: input.text,
           language: wired.language ?? null,
           speaker: me,
-          // Linq is asked who is here only when an item in the chat is hidden.
+          // Linq is asked who is here only when an item in the chat is hidden, and each time
+          // afresh: the list read above, before the model call, is never reused for a line.
           ...sharedListAudience(live, settledIds, async () =>
             listedReaders(
-              participants ?? (await participantsOf(input.chatId)),
+              await participantsOf(input.chatId, wired.listHandles),
               me.phoneE164Hash,
               haleLine,
             ),

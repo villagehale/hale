@@ -96,21 +96,30 @@ function kidKey(name: string | null): string | null {
  * is only ever taken away (a kid-parent claim, leaving, erasure).
  */
 export interface SharedListAudience {
-  /** Everyone with a seat row in this chat, for the model's refs. */
+  /**
+   * Everyone with a seat row in this chat when the turn began, for the model's refs. A live
+   * seat outside it was written by someone else during the turn, and hides every hidden item.
+   */
   people: readonly SharedListPerson[];
   /**
-   * Seats that existed, not stopped, before this turn began. A seat the turn itself wrote
-   * (the sender or someone the provider listed) is never cleared at a hide and never counts
-   * as placed at a read.
+   * Seats that were live before this turn began and were seated no later than the message
+   * was sent. A seat the turn itself wrote (the sender or someone the provider listed), or
+   * one written after the message went out, is never cleared at a hide and never counts as
+   * placed at a read.
    */
   settledIds: ReadonlySet<string>;
   /**
    * The blind indexes of everyone who can read the chat now, from the provider's
    * participant list, or null when it could not be read in full (failed, not a group, empty,
    * without the speaker, or a handle that is not a number). Asked only when an item in the
-   * chat is hidden, and at most once a turn.
+   * chat is hidden, and kept until `reask`.
    */
   readers: () => Promise<readonly string[] | null>;
+  /**
+   * Asks the provider again if it was asked before, since a list read before the model call
+   * is stale by the time the line is checked. Null, asking nothing, when it was never asked.
+   */
+  reask: () => Promise<readonly string[] | null> | null;
 }
 
 export function sharedListAudience(
@@ -119,11 +128,12 @@ export function sharedListAudience(
   readers: () => Promise<readonly string[] | null>,
 ): SharedListAudience {
   let asked: Promise<readonly string[] | null> | null = null;
-  const once = () => {
+  const kept = () => {
     asked ??= readers();
     return asked;
   };
-  return { people, settledIds, readers: once };
+  const reask = () => (asked ? (asked = readers()) : null);
+  return { people, settledIds, readers: kept, reask };
 }
 
 /** The children's names in each Hale family's own record, by family id. Never sent to a model. */
@@ -198,7 +208,9 @@ interface Viewers {
 
 /**
  * Everyone who can read the chat now, each matched by number to a live seat that predates
- * this turn, with what Hale knows about them read fresh. Null when anyone cannot be placed.
+ * this turn, with what Hale knows about them read fresh. Null when anyone cannot be placed,
+ * or when someone was seated in the chat since the turn began (the provider may not list
+ * them yet).
  */
 async function viewersNow(
   database: Database,
@@ -207,7 +219,10 @@ async function viewersNow(
 ): Promise<Viewers | null> {
   const hashes = await audience.readers();
   if (!hashes || hashes.length === 0) return null;
-  const seats = new Map((await liveSeats(database, chatId)).map((row) => [row.phoneE164Hash, row]));
+  const live = await liveSeats(database, chatId);
+  const known = new Set(audience.people.map((person) => person.id));
+  if (live.some((seat) => !known.has(seat.id))) return null;
+  const seats = new Map(live.map((row) => [row.phoneE164Hash, row]));
   const people: SharedListPerson[] = [];
   for (const hash of hashes) {
     const seat = seats.get(hash);
@@ -878,10 +893,11 @@ async function applyLocked(
   current: { snapshot: Snapshot; decision: SharedListDecision },
   now: Date,
 ): Promise<Pass> {
-  // A hide needs the participant list, for who it clears and for its line. It is asked here,
-  // outside the lock, so a provider call never holds the chat's lock open; a chat already
-  // holding a hidden item asked it when the list was read.
-  if (current.decision.hide) await context.readers();
+  // Who can read the chat is asked after the model call, outside the lock, so the check
+  // below sees anyone added while the model was reading, and a provider call never holds
+  // the chat's lock open. A list read for the snapshot is asked again; a hide asks it for who
+  // it clears and for its line.
+  await (context.reask() ?? (current.decision.hide ? context.readers() : null));
   return withSharedListLock(database, context.chatId, async (tx) => {
     const applied = await applyOnce(tx, context, current.snapshot, current.decision, now);
     const ids = [
