@@ -89,4 +89,34 @@ describe('redactEventPayload', () => {
     // and the whole thing passes the fail-closed check
     expect(() => assertNoPII(JSON.stringify(out), ['Maya'])).not.toThrow();
   });
+
+  // Google sync stores this payload (events.payload), and the Gmail draft path reads
+  // `id` back as the message id. Each id below holds a ZIP or a Canadian code glued to
+  // letters, which the shared matcher takes out of free text.
+  it.each([
+    ['gmail', { id: '0e14f18e70064eda', subject: 'Swim', snippet: 'pool near 99999' }],
+    ['gcal', { id: 'k9k9k9q2e1v0u7a3', summary: 'Swim', description: 'pool near 99999' }],
+    ['gdrive', { id: '1aB2Z9Z9Z9xYz0000aaaa', name: 'Swim', mimeType: 'text/plain' }],
+  ])('leaves a %s id as the provider sent it', (_provider, payload) => {
+    const out = redactEventPayload(payload, []);
+    expect(out.id).toBe(payload.id);
+    // Positive control: the same string in a text field is rewritten, so the id above
+    // was kept by the redactor, not missed by the matcher.
+    expect(redactEventPayload({ note: payload.id }, []).note).not.toBe(payload.id);
+  });
+
+  it('still scrubs the text fields beside a provider id', () => {
+    const out = redactEventPayload({ id: '0e14f18e70064eda', snippet: 'pool near 99999' }, []);
+    expect(out.snippet).toBe('pool near [POSTAL]');
+  });
+
+  it('scrubs a top-level id that holds text rather than an opaque token', () => {
+    expect(redactEventPayload({ id: 'near 99999' }, []).id).toBe('near [POSTAL]');
+    expect(redactEventPayload({ id: 'a@b.ca' }, []).id).toBe('[EMAIL]');
+  });
+
+  it('scrubs a nested id, which no provider sends, as text', () => {
+    const out = redactEventPayload({ extra: { id: 'near 99999' } }, []);
+    expect(out.extra.id).toBe('near [POSTAL]');
+  });
 });
