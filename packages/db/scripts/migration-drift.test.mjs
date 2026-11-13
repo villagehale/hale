@@ -75,6 +75,7 @@ describe('catalog history cutover', () => {
       '0240_agent_commitments_ask_language',
       '0241_shared_group_list_items',
       '0245_secret_santa',
+      '0246_messages_author_user_id',
     ]);
   });
 });

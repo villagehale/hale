@@ -6,6 +6,7 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { buildDistillTools } from '~/lib/cron/inference-tools';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -274,6 +275,36 @@ describe('one parent, two doors, one conversation', () => {
           replyToMessageId: 'in-group',
           service: null,
         },
+      ]);
+    });
+
+    it("signs the parent's group turn, so the nightly distiller reads it and not Hale's group answer", async () => {
+      const grouped = await inbound(
+        'imessage',
+        'Hale, Wren starts swim on Tuesdays',
+        'in-sig',
+        GROUP,
+      );
+      await routeChannelMessage(deps('Got it, swim on Tuesdays.'), grouped);
+
+      const rows = await db.database
+        .select({ role: schema.messages.role, authorUserId: schema.messages.authorUserId })
+        .from(schema.messages)
+        .orderBy(asc(schema.messages.createdAt));
+      expect(rows).toEqual([
+        { role: 'user', authorUserId: parentUserId },
+        { role: 'assistant', authorUserId: null },
+      ]);
+
+      const read = buildDistillTools(db.database, NOW).find(
+        (tool) => tool.name === 'read_recent_conversations',
+      );
+      if (!read) throw new Error('no read_recent_conversations tool');
+      const { turns } = (await read.handler({}, { familyId, actor: 'system' })) as {
+        turns: { role: string; content: string }[];
+      };
+      expect(turns.map((turn) => `${turn.role}: ${turn.content}`)).toEqual([
+        'user: Hale, Wren starts swim on Tuesdays',
       ]);
     });
 
