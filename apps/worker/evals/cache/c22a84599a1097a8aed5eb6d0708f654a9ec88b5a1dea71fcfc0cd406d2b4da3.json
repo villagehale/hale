@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Priya asks Hale to track picnic attendance; start_tracking with addressed true and planKey other fits, since no tracked plan exists yet."
+  }
+}

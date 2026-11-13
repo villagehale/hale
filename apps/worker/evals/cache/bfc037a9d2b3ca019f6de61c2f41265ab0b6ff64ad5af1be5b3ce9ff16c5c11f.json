@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Sender asks Hale to settle the open zoo poll now with no choice named, so close_poll with null pollChoice matches the situation."
+  }
+}

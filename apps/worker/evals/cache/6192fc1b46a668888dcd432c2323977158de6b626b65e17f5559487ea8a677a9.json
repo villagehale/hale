@@ -1,0 +1,34 @@
+{
+  "value": {
+    "intent": "start_poll",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "planKey": "p1",
+    "replacesPlanKey": null,
+    "addressed": true,
+    "pollQuestion": "picnic time",
+    "pollOptions": [
+      "Saturday 10",
+      "Sunday 2"
+    ],
+    "pollStarts": [
+      "2026-11-14T10:00:00-05:00",
+      "2026-11-15T14:00:00-05:00"
+    ],
+    "pollChoice": null
+  },
+  "latencyMs": 9071,
+  "usage": {
+    "input_tokens": 348,
+    "output_tokens": 590,
+    "cache_read_input_tokens": 6821,
+    "cache_creation_input_tokens": 0
+  }
+}

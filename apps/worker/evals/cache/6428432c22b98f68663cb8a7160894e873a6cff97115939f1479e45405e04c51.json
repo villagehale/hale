@@ -1,0 +1,34 @@
+{
+  "value": {
+    "intent": "start_poll",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "planKey": null,
+    "replacesPlanKey": null,
+    "addressed": true,
+    "pollQuestion": "Saturday — park or the pool?",
+    "pollOptions": [
+      "park",
+      "the pool"
+    ],
+    "pollStarts": [
+      null,
+      null
+    ],
+    "pollChoice": null
+  },
+  "latencyMs": 1848,
+  "usage": {
+    "input_tokens": 73,
+    "output_tokens": 158,
+    "cache_read_input_tokens": 3411,
+    "cache_creation_input_tokens": 0
+  }
+}

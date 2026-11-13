@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "This camp is $120 for two sessions, with 4 spots left: https://park.example/camp",
+    "options": [],
+    "why": "link_facts"
+  },
+  "latencyMs": 1856,
+  "usage": {
+    "input_tokens": 103,
+    "output_tokens": 56,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

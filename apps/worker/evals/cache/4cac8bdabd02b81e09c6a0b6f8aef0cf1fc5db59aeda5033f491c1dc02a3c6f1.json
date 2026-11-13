@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "Thanks for flagging Mira's peanut allergy. I hold that allergy note, but I don't know what's in the snack itself, so please check the ingredients or ask the organizer before Mira eats anything.",
+    "options": [],
+    "why": "private_1to1: answer from facts, state what is held and what is unknown"
+  },
+  "latencyMs": 1259,
+  "usage": {
+    "input_tokens": 127,
+    "output_tokens": 111,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}
