@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks when registration opens for Markham Skating Club, which is a club the facts do not name; the facts cover Markham Winter 2027 registration, not this club.",
+    "reading": "other"
+  },
+  "latencyMs": 1115,
+  "usage": {
+    "input_tokens": 95,
+    "output_tokens": 70,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

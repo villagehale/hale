@@ -22,6 +22,11 @@ Return one `reading`:
   sign-up opens, where or how to register or sign in, how the waitlist or wishlist
   works, or whether a portal still exists. A text that asks this AND something else
   is still `answers`.
+
+  The facts cover only what they name: their town, their programs, their season, and
+  the things they say. A question about another town, a club or camp the facts do not
+  name, another season, or something the facts do not say (when it closes, what it
+  costs) is `other`, even though it is about registering.
 - `other`: anything else. Pickups, drop-offs, rides, who is taking a child, running
   late, a cancelled or moved class, a note about how a class went, a question about
   a class the family is already in, a message for someone else in the chat. Hale

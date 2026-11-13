@@ -103,6 +103,8 @@ export interface CityRegistrationSweepResult {
   duplicate: number;
   /** Tells for a date the page no longer states, dropped. */
   superseded: number;
+  /** Waiting tells for the same dates whose words changed (a moved time), rewritten. */
+  refreshed: number;
   /** Cities whose lookup or tells threw. */
   failed: number;
 }
@@ -127,6 +129,7 @@ function emptyResult(skipped: CityRegistrationSweepResult['skipped']) {
     queued: 0,
     duplicate: 0,
     superseded: 0,
+    refreshed: 0,
     failed: 0,
   } satisfies CityRegistrationSweepResult;
 }
@@ -166,14 +169,15 @@ export function defaultCityRegistrationSweepDeps(
   };
 }
 
-/** One tell per parent per opening, ever: the city, the season and the calendar day. A
- * moved day is a new key; a re-read that prints (or drops) the time is not. */
+/** One tell per parent per opening, ever: the city, the season and every calendar day the
+ * tell states. A moved day, either of them, is a new key; a re-read that prints (or drops)
+ * the time is not, and a waiting tell takes the new time in place (refreshTell). */
 export function registrationOpeningDedupeKey(input: {
   familyId: string;
   parentUserId: string;
   place: Pick<OwnCity, 'city' | 'provinceOrState' | 'country' | 'district'>;
   cycleLabel: string;
-  openingDate: string;
+  statedDates: readonly string[];
 }): string {
   return [
     REGISTRATION_OPENING_TEMPLATE_KEY,
@@ -181,7 +185,7 @@ export function registrationOpeningDedupeKey(input: {
     input.parentUserId,
     cityKey(input.place),
     input.cycleLabel.replace(/\s+/g, '-'),
-    input.openingDate,
+    input.statedDates.join('+'),
   ].join(':');
 }
 
@@ -213,10 +217,10 @@ async function existingTell(
   database: Database,
   familyId: string,
   dedupeKey: string,
-): Promise<{ id: string; status: string; reason: string | null } | undefined> {
+): Promise<{ id: string; status: string; reason: string | null; what: string } | undefined> {
   const t = schema.proactiveCandidates;
   const [row] = await database
-    .select({ id: t.id, status: t.status, reason: t.reason })
+    .select({ id: t.id, status: t.status, reason: t.reason, what: t.what })
     .from(t)
     .where(and(eq(t.familyId, familyId), eq(t.dedupeKey, dedupeKey)))
     .limit(1);
@@ -506,6 +510,38 @@ export async function runCityRegistrationSweep(
   return result;
 }
 
+/** A tell still waiting for the same dates takes the page's words as they stand now (a
+ * moved time), so it is never sent with the old ones. A held one goes back to the decider,
+ * whose hold was chosen for the old opening. A row already sent, or one the decider
+ * settled, is left as it is. */
+async function refreshTell(database: Database, id: string, draft: CandidateDraft) {
+  const t = schema.proactiveCandidates;
+  const refreshed = await database
+    .update(t)
+    .set({
+      status: 'queued',
+      holdUntil: null,
+      decision: null,
+      decidedAt: null,
+      what: draft.what,
+      why: draft.why,
+      sourceUrl: draft.sourceUrl,
+      worthlessAfter: draft.worthlessAfter,
+    })
+    .where(and(eq(t.id, id), inArray(t.status, ['queued', 'held'])))
+    .returning({ id: t.id });
+  if (refreshed.length === 0) return false;
+  await database.insert(schema.auditLog).values({
+    familyId: draft.familyId,
+    actor: 'system',
+    actionTaken: 'proactive_cadence_queued',
+    targetTable: 'families',
+    targetId: draft.familyId,
+    after: { kind: REGISTRATION_OPENING_KIND, sourceUrl: draft.sourceUrl, refreshed: id },
+  });
+  return true;
+}
+
 /** Put a tell the sweep itself took back on the queue again, as a fresh candidate. */
 async function requeueTell(
   database: Database,
@@ -576,16 +612,31 @@ async function tellFamily(
       parentUserId,
       place,
       cycleLabel,
-      openingDate: facts.openingDate,
+      statedDates: facts.statedDates,
     });
     result.superseded += await dropStaleTells(
       database,
       { familyId, parentUserId, keep: dedupeKey, reason: 'date_changed' },
       now,
     );
+    const draft: CandidateDraft = {
+      familyId,
+      parentUserId,
+      kind: 'registration_opening',
+      category: 'nudge',
+      templateKey: REGISTRATION_OPENING_TEMPLATE_KEY,
+      what: boundedLine(facts.line),
+      why: `registration_opening read=${reading.readAt.toISOString()}`,
+      sourceUrl: reading.sourceUrl,
+      worthlessAfter: facts.opensAt,
+      parentRequested: false,
+      dedupeKey,
+    };
     const existing = await existingTell(database, familyId, dedupeKey);
     if (existing !== undefined && !droppedBySweep(existing)) {
-      result.duplicate += 1;
+      if (existing.what !== draft.what && (await refreshTell(database, existing.id, draft))) {
+        result.refreshed += 1;
+      } else result.duplicate += 1;
       continue;
     }
     // Before the queue, so a parent the gate refuses now is asked again next hour.
@@ -597,22 +648,6 @@ async function tellFamily(
       result.held += 1;
       continue;
     }
-    const general = facts.generalOpens ? `; everyone else ${facts.generalOpens}` : '';
-    const draft: CandidateDraft = {
-      familyId,
-      parentUserId,
-      kind: 'registration_opening',
-      category: 'nudge',
-      templateKey: REGISTRATION_OPENING_TEMPLATE_KEY,
-      what: boundedLine(
-        `${facts.town} ${facts.programs} registration opens ${facts.opensFor}${general}`,
-      ),
-      why: `registration_opening read=${reading.readAt.toISOString()}`,
-      sourceUrl: reading.sourceUrl,
-      worthlessAfter: facts.opensAt,
-      parentRequested: false,
-      dedupeKey,
-    };
     const queued =
       existing === undefined
         ? await deps.queueCandidate(database, draft)

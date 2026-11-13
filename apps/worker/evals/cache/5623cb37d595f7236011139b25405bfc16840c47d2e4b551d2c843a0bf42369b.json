@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks when winter registration closes, but the facts only give the opening dates and do not say when it closes.",
+    "reading": "other"
+  },
+  "latencyMs": 1167,
+  "usage": {
+    "input_tokens": 89,
+    "output_tokens": 49,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

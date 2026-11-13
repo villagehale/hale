@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cityRecLine } from '~/lib/channel/rec-morning';
+import type { CityOpeningFacts } from '~/lib/registration/city/context';
 import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
@@ -30,6 +31,18 @@ const RETURN = 'Still want me watching the registration dates?';
 
 /** No own-city reading for the parent's town (VIL-684): the rec-morning lane may answer. */
 const noOwnTown = async () => null;
+
+/** A town with an opening on file, as postalOwnCityOpening returns it. */
+const MARKHAM_OPENING: CityOpeningFacts = {
+  town: 'Markham',
+  programs: 'Winter 2027',
+  opensFor: 'Dec 1, 6:30 a.m.',
+  opensAt: new Date('2026-12-01T11:30:00Z'),
+  statedDates: ['2026-12-01'],
+  generalOpens: null,
+  line: 'Markham Winter 2027 registration opens Dec 1, 6:30 a.m.',
+  phrases: ['Dec 1, 6:30 a.m.'],
+};
 
 const LONG_ANSWER = [
   ...Array(6).fill('Most kids get a vision check at their regular visit, and it is free.'),
@@ -241,7 +254,7 @@ describe('intake answer · the emergency tripwire', () => {
     const asked: string[] = [];
     const markhamRead = async (postal: string) => {
       asked.push(postal);
-      return ['Winter registration for residents: December 1, 2026, at 6:30 AM'];
+      return MARKHAM_OPENING;
     };
     atRecMorningNow();
     const outcome = await createIntakeAnswerComposer(exploding, markhamRead).compose({
@@ -274,7 +287,7 @@ describe('intake answer · the emergency tripwire', () => {
     atRecMorningNow();
     const outcome = await createIntakeAnswerComposer(exploding, async (postal) => {
       asked.push(postal);
-      return ['Winter registration for residents: December 1, 2026, at 6:30 AM'];
+      return MARKHAM_OPENING;
     }).compose({
       ...INPUT,
       parentWords: 'When does Toronto swim registration open?',
