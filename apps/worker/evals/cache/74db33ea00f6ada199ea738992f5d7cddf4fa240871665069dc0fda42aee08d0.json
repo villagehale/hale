@@ -1,0 +1,68 @@
+{
+  "stopReason": "end_turn",
+  "content": [
+    {
+      "type": "server_tool_use"
+    },
+    {
+      "type": "web_search_tool_result",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://ottawa.ca/en/city-hall/city-news/newsroom/registration-opens-november-17-and-19-city-ottawa-winter-activities",
+          "title": "Registration opens November 17 and 19 for City of Ottawa winter activities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://ottawa.ca/en/city-hall/city-news/newsroom/embrace-season-and-register-recreation-and-culture-winter-programs",
+          "title": "Archived - Embrace the season and register for recreation and culture winter programs"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://ottawa.ca/en/recreation-and-parks/register-courses-and-camps/registration-terms-and-cancellations/registration-dates",
+          "title": "Registration dates - Registration, terms and cancellations"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.rideau-rockcliffe.ca/upcoming_city_of_ottawa_swimming_and_winter_recreation_registration_dates",
+          "title": "Upcoming City of Ottawa swimming and winter recreation registration dates - Councillor Rawlson King"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.davidhillbarrhaven.ca/post/city-recreation-information-and-registration-dates",
+          "title": "City recreation registration - information and dates"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://ottawa.ca/en/recreation-and-parks/register-courses-and-camps/registration-terms-and-cancellations/browse-and-register-courses-and-camps",
+          "title": "Browse and register for courses and camps - Registration, terms and cancellations"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://en.wikipedia.org/wiki/Winterlude",
+          "title": "Winterlude"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://eawaz.com/sports-news/register-ottawa-sports-cultural-activities/",
+          "title": "Registration opens Nov 17-19 for City of Ottawa sports, cultural activities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://ottawarecsports.com/multi-sports/",
+          "title": "Multi-Sports - Ottawa Rec Sports"
+        }
+      ]
+    },
+    {
+      "type": "thinking"
+    },
+    {
+      "type": "text",
+      "text": "{\n  \"municipality\": \"City of Ottawa\",\n  \"pages\": [\n    \"https://ottawa.ca/en/recreation-and-parks/register-courses-and-camps/registration-terms-and-cancellations/registration-dates\",\n    \"https://ottawa.ca/en/city-hall/city-news/newsroom/registration-opens-november-17-and-19-city-ottawa-winter-activities\",\n    \"https://ottawa.ca/en/recreation-and-parks/register-courses-and-camps/registration-terms-and-cancellations/browse-and-register-courses-and-camps\"\n  ],\n  \"note\": null\n}"
+    }
+  ],
+  "searches": 1,
+  "latencyMs": 5845,
+  "recordedAt": "2026-11-12T20:00:00.000Z"
+}

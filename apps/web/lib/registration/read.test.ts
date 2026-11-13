@@ -204,6 +204,26 @@ describe('a PDF source, and failed reads that never fall back', () => {
   });
 });
 
+describe('a page with no words on it', () => {
+  it('is unreadable, and never reaches the model (a bot challenge is not "not published")', async () => {
+    // ottawa.ca to the pinned fetcher, 2026-11-12: a 200 with an Incapsula challenge.
+    const challenge = Buffer.from(
+      '<html>\r\n<head>\r\n<META NAME="robots" CONTENT="noindex,nofollow">\r\n<script src="/_Incapsula_Resource?SWJIYLWA=5074a744">\r\n</script>\r\n<body>\r\n</body></html>\r\n',
+    );
+    const p = ports(challenge, async () => {
+      throw new Error('an empty page must not reach the model');
+    });
+    const window = registrationWindowFixture({ cycleLabel: 'Winter 2027' });
+    const reading = await createRegistrationReader(p)(windowReadTarget(window), NOW);
+    expect(reading).toMatchObject({ status: 'unreadable', reason: 'empty_page' });
+    expect(p.extract).not.toHaveBeenCalled();
+    // Positive control: a page with words on it is read.
+    const words = ports(html(PAGE));
+    await createRegistrationReader(words)(windowReadTarget(window), NOW);
+    expect(words.extract).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('busy: Hale is out of capacity right now, which says nothing about the page', () => {
   const window = registrationWindowFixture({ cycleLabel: 'Fall 2026' });
   const pdf = registrationPdfFixture([

@@ -26,6 +26,7 @@ import {
   type CityLookup,
   type CityLookupDeps,
   lookupCityRegistration,
+  opensForFamily,
   pageSaysNotYet,
   readCityPage,
   readDidNotFinish,
@@ -285,7 +286,7 @@ async function refreshCity(
       { place, cycleLabel, municipality: prior.municipality, sourceUrl: prior.sourceUrl },
       now,
     );
-    if (again.status === 'verified' && again.dates.some((date) => date.kind !== 'preview')) {
+    if (again.status === 'verified' && opensForFamily(again, place)) {
       await recordCityReading(
         database,
         place,
@@ -304,7 +305,7 @@ async function refreshCity(
     if (readDidNotFinish(again)) {
       return keep(`known_page_unread:${'reason' in again ? again.reason : again.status}`);
     }
-    knownPageSaysNotYet = pageSaysNotYet(again);
+    knownPageSaysNotYet = pageSaysNotYet(again, place);
   }
   const found = await lookupCityRegistration(lookup, place, cycleLabel, now);
   let outcome: Exclude<CityLookup, { status: 'retry' }>;

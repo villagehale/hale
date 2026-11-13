@@ -34,7 +34,10 @@ const verified = (url: string, kinds: Array<'preview' | 'unclassified_open'>) =>
       kind,
       date: kind === 'preview' ? '2026-11-17' : '2026-12-09',
       time: kind === 'preview' ? null : '07:00',
-      evidence: ['Wednesday, December 9, 7 a.m.'],
+      evidence: [
+        'Wednesday, December 9, 7 a.m.',
+        'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.',
+      ],
     })),
     partialDates: [],
   }) satisfies LiveRegistrationReading;
@@ -196,6 +199,42 @@ describe('lookupCityRegistration', () => {
       tried: [],
     });
     expect(asked).toEqual([]);
+  });
+});
+
+describe("a page with no opening for this family's district", () => {
+  it('is read past, so the page that names the district wins', async () => {
+    const early = {
+      ...verified(A, ['unclassified_open']),
+      dates: [
+        {
+          kind: 'resident_open' as const,
+          date: '2026-12-01',
+          time: '07:00',
+          evidence: [
+            'Early registration begins Tuesday, December 1, at 7 a.m. for eligible residents',
+          ],
+        },
+      ],
+    };
+    const district = {
+      ...verified(B, ['unclassified_open']),
+      dates: [
+        {
+          kind: 'unclassified_open' as const,
+          date: '2026-12-09',
+          time: '07:00',
+          evidence: ['Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.'],
+        },
+      ],
+    };
+    const found = await lookupCityRegistration(
+      deps(pages([A, B]), { [A]: early, [B]: district }),
+      NORTH_YORK,
+      'Winter 2027',
+      NOW,
+    );
+    expect(found).toMatchObject({ status: 'verified', sourceUrl: B });
   });
 });
 

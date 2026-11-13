@@ -1,0 +1,518 @@
+{
+  "searchinfo": {
+    "search": "Ottawa"
+  },
+  "search": [
+    {
+      "id": "Q1930",
+      "title": "Q1930",
+      "pageid": 2819,
+      "concepturi": "http://www.wikidata.org/entity/Q1930",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q1930",
+      "display": {
+        "label": {
+          "value": "Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "capital city of Canada",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa",
+      "description": "capital city of Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa"
+      }
+    },
+    {
+      "id": "Q993732",
+      "title": "Q993732",
+      "pageid": 943293,
+      "concepturi": "http://www.wikidata.org/entity/Q993732",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q993732",
+      "display": {
+        "label": {
+          "value": "Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "village in Putnam County, Ohio, United States",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa",
+      "description": "village in Putnam County, Ohio, United States",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa"
+      }
+    },
+    {
+      "id": "Q203013",
+      "title": "Q203013",
+      "pageid": 199522,
+      "concepturi": "http://www.wikidata.org/entity/Q203013",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q203013",
+      "display": {
+        "label": {
+          "value": "Ottawa Senators",
+          "language": "en"
+        },
+        "description": {
+          "value": "National Hockey League team in Ottawa, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa Senators",
+      "description": "National Hockey League team in Ottawa, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa Senators"
+      }
+    },
+    {
+      "id": "Q1913965",
+      "title": "Q1913965",
+      "pageid": 1843784,
+      "concepturi": "http://www.wikidata.org/entity/Q1913965",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q1913965",
+      "display": {
+        "label": {
+          "value": "Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "city in Kansas, United States",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa",
+      "description": "city in Kansas, United States",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa"
+      }
+    },
+    {
+      "id": "Q576209",
+      "title": "Q576209",
+      "pageid": 541918,
+      "concepturi": "http://www.wikidata.org/entity/Q576209",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q576209",
+      "display": {
+        "label": {
+          "value": "Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "city in Illinois, United States",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa",
+      "description": "city in Illinois, United States",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa"
+      }
+    },
+    {
+      "id": "Q536116",
+      "title": "Q536116",
+      "pageid": 504801,
+      "concepturi": "http://www.wikidata.org/entity/Q536116",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q536116",
+      "display": {
+        "label": {
+          "value": "Odawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "indigenous people in what is known as Michigan and Ontario",
+          "language": "en"
+        }
+      },
+      "label": "Odawa",
+      "description": "indigenous people in what is known as Michigan and Ontario",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Ottawa"
+      },
+      "aliases": [
+        "Ottawa"
+      ]
+    },
+    {
+      "id": "Q627969",
+      "title": "Q627969",
+      "pageid": 590578,
+      "concepturi": "http://www.wikidata.org/entity/Q627969",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q627969",
+      "display": {
+        "label": {
+          "value": "University of Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "public research university in Ottawa, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "University of Ottawa",
+      "description": "public research university in Ottawa, Ontario, Canada",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Ottawa U"
+      },
+      "aliases": [
+        "Ottawa U"
+      ]
+    },
+    {
+      "id": "Q60974",
+      "title": "Q60974",
+      "pageid": 63727,
+      "concepturi": "http://www.wikidata.org/entity/Q60974",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q60974",
+      "display": {
+        "label": {
+          "value": "Ottawa River",
+          "language": "en"
+        },
+        "description": {
+          "value": "major river in Ontario and Quebec, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa River",
+      "description": "major river in Ontario and Quebec, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa River"
+      }
+    },
+    {
+      "id": "Q27543820",
+      "title": "Q27543820",
+      "pageid": 29265568,
+      "concepturi": "http://www.wikidata.org/entity/Q27543820",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q27543820",
+      "display": {
+        "label": {
+          "value": "Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "family name",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa",
+      "description": "family name",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa"
+      }
+    },
+    {
+      "id": "Q1072047",
+      "title": "Q1072047",
+      "pageid": 1020516,
+      "concepturi": "http://www.wikidata.org/entity/Q1072047",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q1072047",
+      "display": {
+        "label": {
+          "value": "Ottawan",
+          "language": "en"
+        },
+        "description": {
+          "value": "French disco music group",
+          "language": "en"
+        }
+      },
+      "label": "Ottawan",
+      "description": "French disco music group",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawan"
+      }
+    },
+    {
+      "id": "Q133678",
+      "title": "Q133678",
+      "pageid": 135445,
+      "concepturi": "http://www.wikidata.org/entity/Q133678",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q133678",
+      "display": {
+        "label": {
+          "value": "Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "dialect of the Ojibwa language",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa",
+      "description": "dialect of the Ojibwa language",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa"
+      }
+    },
+    {
+      "id": "Q570224",
+      "title": "Q570224",
+      "pageid": 536406,
+      "concepturi": "http://www.wikidata.org/entity/Q570224",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q570224",
+      "display": {
+        "label": {
+          "value": "Ottawa Treaty",
+          "language": "en"
+        },
+        "description": {
+          "value": "treaty aimed at eliminating anti-personnel landmines around the world",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa Treaty",
+      "description": "treaty aimed at eliminating anti-personnel landmines around the world",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa Treaty"
+      }
+    },
+    {
+      "id": "Q3361518",
+      "title": "Q3361518",
+      "pageid": 3203835,
+      "concepturi": "http://www.wikidata.org/entity/Q3361518",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3361518",
+      "display": {
+        "label": {
+          "value": "Ottawa Rough Riders",
+          "language": "en"
+        },
+        "description": {
+          "value": "former Canadian Football League franchise",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa Rough Riders",
+      "description": "former Canadian Football League franchise",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa Rough Riders"
+      }
+    },
+    {
+      "id": "Q94673",
+      "title": "Q94673",
+      "pageid": 96855,
+      "concepturi": "http://www.wikidata.org/entity/Q94673",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q94673",
+      "display": {
+        "label": {
+          "value": "Ottawa County",
+          "language": "en"
+        },
+        "description": {
+          "value": "county in Michigan, United States",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa County",
+      "description": "county in Michigan, United States",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa County"
+      }
+    },
+    {
+      "id": "Q11777991",
+      "title": "Q11777991",
+      "pageid": 12914734,
+      "concepturi": "http://www.wikidata.org/entity/Q11777991",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q11777991",
+      "display": {
+        "label": {
+          "value": "ecclesiastical province of Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "ecclesiastical province of the Catholic Church",
+          "language": "en"
+        }
+      },
+      "label": "ecclesiastical province of Ottawa",
+      "description": "ecclesiastical province of the Catholic Church",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Ottawa"
+      },
+      "aliases": [
+        "Ottawa"
+      ]
+    },
+    {
+      "id": "Q3095844",
+      "title": "Q3095844",
+      "pageid": 2958584,
+      "concepturi": "http://www.wikidata.org/entity/Q3095844",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3095844",
+      "display": {
+        "label": {
+          "value": "Ottawa station",
+          "language": "en"
+        },
+        "description": {
+          "value": "main inter-city railway station in Ottawa, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa station",
+      "description": "main inter-city railway station in Ottawa, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa station"
+      }
+    },
+    {
+      "id": "Q7109330",
+      "title": "Q7109330",
+      "pageid": 7004398,
+      "concepturi": "http://www.wikidata.org/entity/Q7109330",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7109330",
+      "display": {
+        "label": {
+          "value": "Ottaway",
+          "language": "en"
+        },
+        "description": {
+          "value": "family name",
+          "language": "en"
+        }
+      },
+      "label": "Ottaway",
+      "description": "family name",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottaway"
+      }
+    },
+    {
+      "id": "Q7109139",
+      "title": "Q7109139",
+      "pageid": 7004205,
+      "concepturi": "http://www.wikidata.org/entity/Q7109139",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7109139",
+      "display": {
+        "label": {
+          "value": "Ottawa",
+          "language": "en"
+        },
+        "description": {
+          "value": "tugboat that sank in Lake Superior",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa",
+      "description": "tugboat that sank in Lake Superior",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa"
+      }
+    },
+    {
+      "id": "Q28163348",
+      "title": "Q28163348",
+      "pageid": 29861303,
+      "concepturi": "http://www.wikidata.org/entity/Q28163348",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q28163348",
+      "display": {
+        "label": {
+          "value": "Ottawa River drainage basin",
+          "language": "en"
+        },
+        "description": {
+          "value": "drainage basin of the Ottawa River, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa River drainage basin",
+      "description": "drainage basin of the Ottawa River, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa River drainage basin"
+      }
+    },
+    {
+      "id": "Q485596",
+      "title": "Q485596",
+      "pageid": 457100,
+      "concepturi": "http://www.wikidata.org/entity/Q485596",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q485596",
+      "display": {
+        "label": {
+          "value": "Ottawa County",
+          "language": "en"
+        },
+        "description": {
+          "value": "county in Ohio, United States",
+          "language": "en"
+        }
+      },
+      "label": "Ottawa County",
+      "description": "county in Ohio, United States",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Ottawa County"
+      }
+    }
+  ],
+  "search-continue": 20,
+  "success": 1
+}

@@ -63,6 +63,8 @@ export type UnreadableReadingReason =
   | 'redirected'
   /** The page's server answered 5xx: its trouble, not the page's answer. */
   | 'http_server_error'
+  /** The page came back with no words on it (a bot challenge served as a 200). */
+  | 'empty_page'
   | 'extract_failed'
   | RegistrationPdfRefusal
   | 'pdf_reader_fault'
