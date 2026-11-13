@@ -5,11 +5,7 @@ import type {
   RenderedContent,
   TemplateRenderer,
 } from '~/lib/channel/types';
-import {
-  calendarInviteLinkHashEnabled,
-  familyEventIdFromInviteUrl,
-  inviteLinkHash,
-} from '~/lib/loop/calendar-invite-link-hash';
+import { inviteLinkHash } from '~/lib/loop/calendar-invite-link-hash';
 
 /**
  * The calendar invite as a TEXT: one line, one link, tap to add.
@@ -47,6 +43,8 @@ export function inviteWhenLabel(startsAt: Date, timeZone: string): string {
 }
 
 export interface CalendarInviteSmsPayload {
+  /** The placement the link is for. Its hash is what the ledger keeps, not the url. */
+  familyEventId: string;
   /** The event's descriptor, already rendered at this parent's privacy level. */
   summary: string;
   /** The start, formatted in the family's timezone (inviteWhenLabel). */
@@ -94,6 +92,7 @@ export function asCalendarInviteSmsPayload(
   // own timezone, the minted link, the model's line). A missing one is a caller that
   // skipped the composer — a wiring bug, not a state to render around (rule #8).
   if (
+    !p.familyEventId ||
     !p.summary ||
     !p.when ||
     !p.url ||
@@ -118,20 +117,14 @@ export const calendarInviteSmsRenderer: TemplateRenderer = {
     const payload = asCalendarInviteSmsPayload(message.payload);
     const line = payload.line.trim();
     const texts = splitInviteSms(line);
-    const eventId = familyEventIdFromInviteUrl(payload.url);
-    const hashLink = calendarInviteLinkHashEnabled();
     return {
       kind: 'sms',
       text: texts.join('\n\n'),
       modelWritten: true,
-      // Flag off: the sent words stay on the ledger so a later pass can see
-      // whether the part that carries the link actually went out. Flag on: that
-      // pass reads a hash of the event id instead, so the signed URL is not kept.
-      // A URL we cannot parse never goes on the ledger either.
-      recordBody: !hashLink,
-      ...(hashLink && eventId
-        ? { linkHash: inviteLinkHash(eventId), linkHashFor: payload.url }
-        : {}),
+      // A later pass has to see whether the part that carries the link went out. It
+      // reads this hash, so the signed URL is never kept on the ledger.
+      linkHash: inviteLinkHash(payload.familyEventId),
+      linkHashFor: payload.url,
       ...(texts.length > 1 ? { texts } : {}),
     };
   },

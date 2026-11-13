@@ -185,7 +185,6 @@ Built from every `process.env.X`, `process.env['X']`, `env.X`, `env['X']`, `_ENV
 
 | Flag | Parser (file:line) | On value | Unset | Owner |
 | --- | --- | --- | --- | --- |
-| `CALENDAR_INVITE_LINK_HASH_ENABLED` | `apps/web/lib/loop/calendar-invite-link-hash.ts:18` | `true` (exact, no trim) | OFF | unassigned |
 | `CALENDAR_WRITE_NOTICE_ENABLED` | `apps/web/lib/channel/calendar-write/notice.ts:29` | `true` (trimmed) | OFF | unassigned |
 | `GROUP_PLAN_CALENDAR_REPORT_ENABLED` | `apps/web/lib/channel/group-plan/report.ts:28` | `true` (trimmed) | OFF | unassigned |
 | `HALE_LLM_NO_STREAM` | `apps/web/lib/pipeline/structured.ts:20` | `1` (exact): plain `create` instead of a stream. A transport knob, not a product flag | OFF | unassigned |

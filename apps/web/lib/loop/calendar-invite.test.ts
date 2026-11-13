@@ -20,7 +20,6 @@ import {
   createCalendarInviteVoice,
 } from '~/lib/loop/voice/calendar-invite-voice';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { inviteLinkHash } from './calendar-invite-link-hash';
 import {
   CANCEL_RETRY_MAX_ATTEMPTS,
   CANCEL_RETRY_MAX_EVENTS,
@@ -28,6 +27,7 @@ import {
   retryDeferredCalendarCancels,
   retryIsDue,
 } from './calendar-invite';
+import { inviteLinkHash } from './calendar-invite-link-hash';
 import { eventInviteToken, eventInviteUrl } from './ics-invite';
 
 /**
@@ -292,7 +292,6 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(rows.length).toBe(sms.calls.length);
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((row) => row.status === 'queued' && row.channel === 'sms')).toBe(true);
-    expect(rows.some((row) => row.body?.includes('/api/ics/event/'))).toBe(true);
   });
 
   /**
@@ -1008,11 +1007,7 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(inviteCalls).toHaveLength(1);
   });
 
-  describe('VIL-588 · the ledger stores a hash of the link, not the signed URL', () => {
-    beforeEach(() => {
-      vi.stubEnv('CALENDAR_INVITE_LINK_HASH_ENABLED', 'true');
-    });
-
+  describe('the ledger stores a hash of the link, not the signed URL', () => {
     it('keeps the signed URL off the ledger and still on the wire', async () => {
       const { familyId } = await textOnlyFamily();
       const familyEventId = await seedPlacement(familyId);
@@ -1056,7 +1051,7 @@ describe('the tap-to-add link a text-only family gets', () => {
       expect(cancelCalls).toHaveLength(1);
     });
 
-    it('a row that still holds the signed URL (flag was off) is still the invite', async () => {
+    it('a row written before this change, holding the signed URL, is still the invite', async () => {
       const { familyId, parentUserId } = await textOnlyFamily();
       const familyEventId = await seedPlacement(familyId);
       const url = `https://app.villagehale.com/api/ics/event/${familyEventId}.legacy`;
@@ -1079,6 +1074,32 @@ describe('the tap-to-add link a text-only family gets', () => {
         parents: [expect.objectContaining({ channel: 'sms', outcome: 'already_sent' })],
       });
       expect(sms.calls).toHaveLength(0);
+    });
+
+    it('a cancel still finds a parent whose row holds the signed URL from before', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      await db.database.insert(schema.channelMessages).values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'approval',
+        templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+        dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms`,
+        status: 'sent',
+        body: `Swim class. https://app.villagehale.com/api/ics/event/${familyEventId}.legacy`,
+        sentAt: NOON,
+      });
+      await softDelete(familyEventId);
+
+      const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+      });
+      expect(cancelCalls).toHaveLength(1);
     });
 
     it('a first part with no hash and no url is not the invite', async () => {

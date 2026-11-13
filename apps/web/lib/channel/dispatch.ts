@@ -77,7 +77,7 @@ export interface LedgerWrite {
   relatedConversationId?: string | null;
   sentAt?: Date | null;
   /** The sent text, only for a rendered message that asks for it (`recordBody`),
-   * or the invite link hash when the renderer asked for that instead. */
+   * or the calendar invite's link hash (`linkHash`). */
   body?: string | null;
 }
 
@@ -555,17 +555,11 @@ function claimText(rendered: RenderedContent): string {
   return rendered.text;
 }
 
-/** The single point every terminal channel_messages write goes through: it writes
- * the ledger row AND fires the paired X1 taxonomy event, so "one ledger row ⇒
- * exactly one analytics event" holds by construction rather than by every call
- * site remembering both halves. `reason` carries the full ledger status (not just
- * a boolean) so the founder digest's suppression breakdown can distinguish WHY a
- * leg failed — safe to send (an enum, not user content). */
 /**
  * What `channel_messages.body` holds for this send. The reminder keeps the sent
- * words (`recordBody`). A calendar invite, when the hash flag is on, stores the
- * hash only on the part that actually carries the link — a first bubble with no
- * url is not the invite.
+ * words (`recordBody`). A calendar invite stores its link hash, and only on
+ * the part that actually carries the link — a first bubble with no url is not the
+ * invite.
  */
 function ledgerBodyWrite(
   rendered: RenderedContent,
@@ -578,6 +572,12 @@ function ledgerBodyWrite(
   return {};
 }
 
+/** The single point every terminal channel_messages write goes through: it writes
+ * the ledger row AND fires the paired X1 taxonomy event, so "one ledger row ⇒
+ * exactly one analytics event" holds by construction rather than by every call
+ * site remembering both halves. `reason` carries the full ledger status (not just
+ * a boolean) so the founder digest's suppression breakdown can distinguish WHY a
+ * leg failed — safe to send (an enum, not user content). */
 async function writeLedgerRow(
   ports: DispatchPorts,
   msg: LoopMessage,

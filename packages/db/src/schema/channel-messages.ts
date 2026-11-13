@@ -35,9 +35,9 @@ import { users } from './users.js';
  * approval's legal instrument (locked cross-ticket contract). An outbound row carries
  * a body only when the message was written whole by the model from the parent's own
  * facts and is no longer reconstructable from template + payload (the reminder, via
- * `RenderedContent.recordBody`), or — when `CALENDAR_INVITE_LINK_HASH_ENABLED` is on —
- * a sha256 of the calendar-invite event id, so the signed ICS URL is not kept. Every
- * other outbound row stores none (rule #1).
+ * `RenderedContent.recordBody`), or a sha256 of the calendar-invite event id
+ * (`RenderedContent.linkHash`), so the signed ICS URL is not kept. Every other
+ * outbound row stores none (rule #1).
  */
 
 /**

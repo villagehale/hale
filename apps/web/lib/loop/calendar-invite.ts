@@ -194,11 +194,10 @@ async function alreadyTextedThisLink(
 }
 
 /**
- * The part that carries this event's link: a hash of the event id (flag on), or
- * the signed URL in the stored text (flag off, or a row written before the flag).
- * The LIKE is the event's path, not the current signature, so a body stored
- * under the old flag still matches after a remint. A null body is not a hit
- * here — that is only a cancel-side legacy read.
+ * The part that carries this event's link: a hash of the event id, or, on a row
+ * written before the hash, the signed URL in the stored text. The LIKE is the
+ * event's path, not the current signature, so such a row still matches after a
+ * remint. A null body is not a hit here — that is only a cancel-side legacy read.
  */
 function bodyCarriesInviteLink(body: typeof schema.channelMessages.body, familyEventId: string) {
   return or(
@@ -322,6 +321,7 @@ async function textOneParent(
   }
 
   const payload: CalendarInviteSmsPayload = {
+    familyEventId: job.familyEventId,
     summary: composed.summary,
     when,
     url: composed.url,

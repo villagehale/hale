@@ -116,9 +116,9 @@ export type RenderedContent = {
    * whose whole text is model-written from the parent's own facts (the reminder). */
   recordBody?: boolean;
   /**
-   * VIL-588 · a hash to store on the ledger instead of the sent text, only on the
-   * part whose text contains {@link RenderedContent.linkHashFor}. The calendar
-   * invite uses this so the signed ICS URL is not kept for a year.
+   * A hash to store on the ledger instead of the sent text, only on the part whose
+   * text contains {@link RenderedContent.linkHashFor}. The calendar invite uses this
+   * so the signed ICS URL is not kept for a year.
    */
   linkHash?: string;
   /** The token {@link RenderedContent.linkHash} is stored for. Absent unless `linkHash` is. */
