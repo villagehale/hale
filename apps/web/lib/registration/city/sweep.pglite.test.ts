@@ -466,6 +466,38 @@ describe('the own-city registration sweep', () => {
     expect(await tells(toronto.familyId)).toHaveLength(1);
   });
 
+  it('a city whose lookup threw waits its turn like any unfinished lookup, never every hour', async () => {
+    await seedFamily('P3A 1A1');
+    const lookup = scripted();
+    const broken = {
+      ...lookup,
+      search: async (place: CityPlace, cycleLabel: string, today: string) => {
+        await lookup.search(place, cycleLabel, today);
+        throw new TypeError('reader bug');
+      },
+    };
+    const HOUR = 3_600_000;
+    const looked: number[] = [];
+    for (let hour = 0; hour < 8; hour++) {
+      const before = lookup.searches.length;
+      const result = await runCityRegistrationSweep(
+        db.database,
+        deps(broken),
+        new Date(NOW.getTime() + hour * HOUR),
+      );
+      if (lookup.searches.length > before) {
+        looked.push(hour);
+        expect(result).toMatchObject({ failed: 1 });
+      }
+    }
+    // Next hour, then after two, then four: the same backoff as a lookup that timed out.
+    expect(looked).toEqual([0, 1, 3, 7]);
+    const rows = await db.database.select().from(schema.cityRegistrationReadings);
+    expect(rows.map((row) => [row.status, row.reason])).toEqual(
+      looked.map(() => ['retry', 'lookup_threw:TypeError']),
+    );
+  });
+
   it('names a deploy with no model client, and looks nothing up', async () => {
     await seedFamily('P3A 1A1');
     const result = await runCityRegistrationSweep(db.database, deps(null), NOW);
