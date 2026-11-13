@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale says it cancelled the Saturday swim lesson. The only row is an open swim lesson, not a cancelled one, so the cancellation claim has no backing row. The charge remark is a consequence, not a separate claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "cancelled",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2579
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 states the child is registered for Saturday swimming; row r1 is a confirmed registration_done for the Saturday swim program, so it backs the claim. The calendar row e1 is only planned and does not show a place was taken.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "r1"
+      }
+    ]
+  },
+  "latencyMs": 1484
+}

@@ -179,19 +179,22 @@ describe('PostHog evaluation', () => {
 });
 
 describe('multivariate claim-reader-mode', () => {
-  it('env path: exact shadow/enforce, no trim', () => {
-    expect(flagValue('claim-reader-mode', undefined, {})).toBe('off');
+  it('env path: enforce by default; off, trimmed, is the kill; arming values are exact', () => {
+    expect(flagValue('claim-reader-mode', undefined, {})).toBe('enforce');
     expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'shadow' })).toBe(
       'shadow',
     );
-    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'enforce' })).toBe(
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off' })).toBe('off');
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off\n' })).toBe('off');
+    // The launch kill switch is `=false`, as on every boolean; it kills here too.
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'false' })).toBe('off');
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'false\n' })).toBe('off');
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'shadow\n' })).toBe(
       'enforce',
     );
-    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'enforce\n' })).toBe(
-      'off',
-    );
+    expect(isEnabled('claim-reader-mode', undefined, {})).toBe(true);
     expect(isEnabled('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'shadow' })).toBe(true);
-    expect(isEnabled('claim-reader-mode', undefined, {})).toBe(false);
+    expect(isEnabled('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off\n' })).toBe(false);
   });
 
   it('kill switch forces off even when PostHog returns enforce', () => {
@@ -199,11 +202,26 @@ describe('multivariate claim-reader-mode', () => {
     expect(flagValue('claim-reader-mode', 'fam-a', { ...ON, CLAIM_READER_MODE: 'off' })).toBe(
       'off',
     );
+    expect(isEnabled('claim-reader-mode', 'fam-a', { ...ON, CLAIM_READER_MODE: 'off' })).toBe(
+      false,
+    );
+  });
+
+  it('a PostHog flag switched off is the off variant, not the default', () => {
+    setFlagEvaluatorForTests(() => false);
+    expect(flagValue('claim-reader-mode', 'fam-a', { ...ON })).toBe('off');
+    expect(isEnabled('claim-reader-mode', 'fam-a', { ...ON })).toBe(false);
   });
 
   it('PostHog variant wins when the env is not a kill', () => {
     setFlagEvaluatorForTests(() => 'shadow');
     expect(flagValue('claim-reader-mode', 'fam-a', { ...ON })).toBe('shadow');
+  });
+
+  it('a default-off multivariate keeps its exact parse', () => {
+    expect(flagValue('proactive-cadence', undefined, {})).toBe('off');
+    expect(flagValue('proactive-cadence', undefined, { PROACTIVE_CADENCE: 'live\n' })).toBe('off');
+    expect(isEnabled('proactive-cadence', undefined, { PROACTIVE_CADENCE: 'live' })).toBe(true);
   });
 });
 
