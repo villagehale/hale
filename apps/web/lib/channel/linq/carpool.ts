@@ -704,14 +704,23 @@ export async function considerSharedCarpoolTurn(
   return { handled: true, outcome, ...(notice ? { notice } : {}) };
 }
 
-/** A chat some family claimed as its household group. Anything else is a shared chat. */
+/**
+ * A household group: a family claimed the chat, or it has a household roster. A chat with
+ * neither is a shared chat (multi-family chats keep no roster).
+ */
 async function chatIsHouseholdGroup(database: Database, chatId: string): Promise<boolean> {
-  const [row] = await database
+  const [claimed] = await database
     .select({ id: schema.families.id })
     .from(schema.families)
     .where(eq(schema.families.linqGroupChatId, chatId))
     .limit(1);
-  return Boolean(row);
+  if (claimed) return true;
+  const [roster] = await database
+    .select({ id: schema.linqGroupRosters.id })
+    .from(schema.linqGroupRosters)
+    .where(eq(schema.linqGroupRosters.chatId, chatId))
+    .limit(1);
+  return Boolean(roster);
 }
 
 /** The driver has texted Hale 1:1 before: Hale never opens a 1:1 with someone who has not. */
