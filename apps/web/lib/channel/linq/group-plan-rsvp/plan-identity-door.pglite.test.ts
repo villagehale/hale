@@ -567,8 +567,9 @@ describe('a chat holds several open plans; each message binds to one only by its
 
 describe('a plan time with no offset is placed on the household clock (start_tracking)', () => {
   it('"Sunday at 2" read as a wall-clock time lands at 2 pm on the household clock, never the server one', async () => {
-    // Vancouver is neither UTC (CI) nor Toronto (a laptop): a server-clock parse fails on both.
-    await seedFamily(PARENT_A, 'Ada', 'America/Vancouver');
+    // Regina is neither UTC (CI) nor Toronto (a laptop), so a server-clock parse fails on both,
+    // and it keeps UTC-6 all year, so the expected instant does not depend on tz data releases.
+    await seedFamily(PARENT_A, 'Ada', 'America/Regina');
     await seedFamily(PARENT_B, 'Bao');
     linqWire();
     await say(
@@ -586,7 +587,7 @@ describe('a plan time with no offset is placed on the household clock (start_tra
       .select()
       .from(schema.linqGroupPlans)
       .where(and(eq(schema.linqGroupPlans.chatId, CHAT), eq(schema.linqGroupPlans.title, 'zoo')));
-    expect(zoo?.startsAt?.toISOString()).toBe('2026-11-15T22:00:00.000Z');
+    expect(zoo?.startsAt?.toISOString()).toBe('2026-11-15T20:00:00.000Z');
   });
 
   it('positive control: a time with its own offset is kept as given', async () => {
