@@ -13,9 +13,11 @@ import { usableBreakName } from './read';
  * wrong read is a break Hale later names as fact, so anything short of a high-confidence
  * reading of both days, quoted from the parent's own words, each day printed there and
  * stating exactly that day (the board pages' date grammar), inside this school year's
- * winter, is `nothing_stated`. The coach still replies. A parent asked when the kids are
- * back answers with the day back, not the last day off: that day is read as said, and
- * the last day off is the day before it, by calendar arithmetic.
+ * winter, is `nothing_stated`. The coach still replies. The reader is given the question
+ * Hale asked, as sent, so a bare range ("Dec 19 - Jan 5") answering "when are the kids
+ * back?" ends on the day back, not the last day off: that day is read as said, and the
+ * last day off is the day before it, by calendar arithmetic. The break's name is the
+ * parent's own when they gave one, and null when they did not: none is made up.
  *
  * A missing client, a missing skill, or a model failure is the same outcome, and the log
  * names which. The parent's text is never in that line (rule #1, rule #11).
@@ -56,7 +58,7 @@ export const SCHOOL_BREAK_REPLY_SCHEMA = {
     name: {
       type: ['string', 'null'],
       description:
-        "What the break is called, in the parent's words or language. Given whenever the days are.",
+        'What the parent called the break, in their own words, or null when they named it nothing.',
     },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
   },
@@ -87,17 +89,24 @@ export const schoolBreakReplyParse = z.object({
 
 export type SchoolBreakReplyExtraction = z.infer<typeof schoolBreakReplyParse>;
 
-/** The user message: the parent's words, today and the school year. Nothing else. */
-export function schoolBreakReplyUserMessage(
-  text: string,
-  today: string,
-  schoolYear: string,
-): string {
-  return JSON.stringify({ text: text.slice(0, MAX_TEXT_CHARS), today, school_year: schoolYear });
+/** The user message: the question Hale asked as sent, the parent's words, today and the
+ * school year. Nothing else. */
+export function schoolBreakReplyUserMessage(input: {
+  question: string | null;
+  text: string;
+  today: string;
+  schoolYear: string;
+}): string {
+  return JSON.stringify({
+    question: input.question === null ? null : input.question.slice(0, MAX_TEXT_CHARS),
+    text: input.text.slice(0, MAX_TEXT_CHARS),
+    today: input.today,
+    school_year: input.schoolYear,
+  });
 }
 
 export type SchoolBreakReplyReading =
-  | { status: 'read'; firstDay: string; lastDay: string; name: string; quote: string }
+  | { status: 'read'; firstDay: string; lastDay: string; name: string | null; quote: string }
   | { status: 'nothing_stated' };
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -141,13 +150,16 @@ export function toSchoolBreakReplyReading(
     if (refusal !== null) return { status: 'nothing_stated' };
   }
   if (!isWinterBreak(schoolYear, firstDay, lastDay)) return { status: 'nothing_stated' };
+  // A name the parent did not write is not theirs: it is dropped, never filed.
   const name = usableBreakName(raw.name);
-  if (name === null) return { status: 'nothing_stated' };
-  return { status: 'read', firstDay, lastDay, name, quote: quote.trim() };
+  const named = name !== null && normalizeQuote(text).includes(normalizeQuote(name));
+  return { status: 'read', firstDay, lastDay, name: named ? name : null, quote: quote.trim() };
 }
 
 export interface SchoolBreakReplyReader {
   read(input: {
+    /** The question Hale asked, as sent; null when the ledger holds no text for it. */
+    question: string | null;
     text: string;
     today: string;
     schoolYear: string;
@@ -167,7 +179,8 @@ function nothing(reason: string, detail?: string): SchoolBreakReplyReading {
  * must not throw. It is `nothing_stated`, named in the log. */
 export function createSchoolBreakReplyReader(client: () => AgentClient): SchoolBreakReplyReader {
   return {
-    async read({ text, today, schoolYear }) {
+    async read(input) {
+      const { text, schoolYear } = input;
       let resolved: AgentClient;
       try {
         resolved = client();
@@ -185,7 +198,7 @@ export function createSchoolBreakReplyReader(client: () => AgentClient): SchoolB
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
-          userMessage: schoolBreakReplyUserMessage(text, today, schoolYear),
+          userMessage: schoolBreakReplyUserMessage(input),
           toolName: SCHOOL_BREAK_REPLY_TOOL,
           toolDescription: SCHOOL_BREAK_REPLY_DESCRIPTION,
           inputJsonSchema: SCHOOL_BREAK_REPLY_SCHEMA,

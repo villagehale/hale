@@ -6,8 +6,11 @@
 //     reading, then code's check of every quote, day and year against the page);
 //   - the board lookup (lookup.ts) over that reader, so a page with no winter break
 //     comes out `not_found: not_published`: the case where Hale asks the parent once;
+//   - the same skill through read.ts's text reader, on the text of an email a school
+//     sent: the break is filed only when every day is quoted from the email;
 //   - packages/agent/skills/school-break-reply.md through reply.ts: the parent's answer
-//     to that one question, then code's check of it.
+//     to that one question, read against the question Hale sent, then code's check of it
+//     (a name is filed only when the parent wrote one).
 // The pages are fixtures on reserved .example hosts, fetched by a scripted port. Nothing here
 // is a real school's calendar and no family is in any payload.
 //
@@ -98,27 +101,91 @@ const PAGE_CASES = [
   },
 ];
 
-const REPLY_CASES = [
+/** A school's own email: the break in its words, beside a PA day that is not it. */
+const EMAIL_TEXT = `Dear families,
+
+A reminder that Friday, November 13, 2026 is a PA Day and there is no school for students.
+
+Winter Break runs from Monday, December 21, 2026 to Friday, January 1, 2027. Classes resume on Monday, January 4, 2027.
+
+Thank you,
+The office`;
+
+const EMAIL_CASES = [
   {
-    id: 'parent-gives-days',
-    text: "I think it's dec 18 to jan 4 for us this year",
-    expect: { status: 'read', firstDay: '2026-12-18', lastDay: '2027-01-04' },
+    id: 'school-email-states-break',
+    text: EMAIL_TEXT,
+    expect: {
+      status: 'verified',
+      name: 'Winter Break',
+      firstDay: '2026-12-21',
+      lastDay: '2027-01-01',
+    },
   },
   {
-    // Asked when the kids are back, a parent gives the day back: the last day off is the
-    // day before it.
+    // Kid mail about something else: no break, so the parent is asked once.
+    id: 'school-email-no-break',
+    text: 'Hi families, curriculum night is Thursday, November 19 at 6:30 pm in the gym. See you there!',
+    expect: { status: 'not_published' },
+  },
+];
+
+/** What Hale sent: the writer asks when it starts and what day the kids are back. */
+const ASKED_DAY_BACK =
+  'When does winter break start for the kids, and what day are they back at school?';
+const ASKED_LAST_DAY = "What are the first and last days off for the kids' winter break?";
+
+const REPLY_CASES = [
+  {
+    // No question on record: a range is the first and the last day off. No name given.
+    id: 'parent-gives-days',
+    question: null,
+    text: "I think it's dec 18 to jan 4 for us this year",
+    expect: { status: 'read', firstDay: '2026-12-18', lastDay: '2027-01-04', name: null },
+  },
+  {
+    // Asked what day they are back, a bare range ends on the day back.
+    id: 'range-answers-day-back',
+    question: ASKED_DAY_BACK,
+    text: 'Dec 19 - Jan 5',
+    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-04', name: null },
+  },
+  {
+    // Asked for the last day off, the same range ends on the last day off.
+    id: 'range-answers-last-day',
+    question: ASKED_LAST_DAY,
+    text: 'Dec 19 - Jan 5',
+    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-05', name: null },
+  },
+  {
+    // The parent says the day back in so many words: the last day off is the day before.
     id: 'parent-gives-day-back',
+    question: ASKED_DAY_BACK,
     text: 'dec 19, and they go back jan 5',
-    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-04' },
+    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-04', name: null },
+  },
+  {
+    // The parent's own name for it is the one filed.
+    id: 'parent-names-the-break',
+    question: null,
+    text: 'our christmas break is dec 21 to jan 1',
+    expect: {
+      status: 'read',
+      firstDay: '2026-12-21',
+      lastDay: '2027-01-01',
+      name: 'christmas break',
+    },
   },
   {
     // A rough time is not a day: nothing is filed, and Hale never names a guessed break.
     id: 'parent-says-around-christmas',
+    question: ASKED_DAY_BACK,
     text: 'not sure, around christmas i think',
     expect: { status: 'nothing_stated' },
   },
   {
     id: 'parent-names-school-only',
+    question: ASKED_DAY_BACK,
     text: 'she goes to Maple Grove PS',
     expect: { status: 'nothing_stated' },
   },
@@ -211,13 +278,51 @@ async function main() {
     report(fixture.id, failures, reading);
   }
 
+  for (const fixture of EMAIL_CASES) {
+    const reader = read.createTextBreakReader(async (schoolYear, text) => {
+      const { value } = await cachedToolCall({
+        tag: evalRunTag(`school-break-read:${fixture.id}`),
+        lane: readLane,
+        model: readLane.model,
+        system: readSkill.instructions,
+        userMessage: read.schoolBreakReadInput(schoolYear, text),
+        toolName: read.SCHOOL_BREAK_READ_TOOL,
+        toolDescription: read.SCHOOL_BREAK_READ_DESCRIPTION,
+        toolSchema: read.SCHOOL_BREAK_READ_SCHEMA,
+        maxTokens: read.SCHOOL_BREAK_READ_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      return read.schoolBreakReadParse.parse(value);
+    });
+    const reading = await reader({ text: fixture.text, schoolYear: SCHOOL_YEAR });
+    const failures = [];
+    const want = fixture.expect;
+    if (reading.status !== want.status) failures.push(`status ${reading.status} != ${want.status}`);
+    if (want.name !== undefined && reading.name !== want.name)
+      failures.push(`name ${reading.name}`);
+    if (want.firstDay !== undefined && reading.firstDay?.date !== want.firstDay) {
+      failures.push(`first day ${reading.firstDay?.date}`);
+    }
+    if (want.lastDay !== undefined && reading.lastDay?.date !== want.lastDay) {
+      failures.push(`last day ${reading.lastDay?.date}`);
+    }
+    report(fixture.id, failures, reading);
+  }
+
   for (const fixture of REPLY_CASES) {
     const { value } = await cachedToolCall({
       tag: evalRunTag(`school-break-reply:${fixture.id}`),
       lane: replyLane,
       model: replyLane.model,
       system: replySkill.instructions,
-      userMessage: reply.schoolBreakReplyUserMessage(fixture.text, '2026-11-12', SCHOOL_YEAR),
+      userMessage: reply.schoolBreakReplyUserMessage({
+        question: fixture.question,
+        text: fixture.text,
+        today: '2026-11-12',
+        schoolYear: SCHOOL_YEAR,
+      }),
       toolName: reply.SCHOOL_BREAK_REPLY_TOOL,
       toolDescription: reply.SCHOOL_BREAK_REPLY_DESCRIPTION,
       toolSchema: reply.SCHOOL_BREAK_REPLY_SCHEMA,
@@ -239,6 +344,9 @@ async function main() {
     }
     if (want.lastDay !== undefined && reading.lastDay !== want.lastDay) {
       failures.push(`last day ${reading.lastDay}`);
+    }
+    if (want.name !== undefined && reading.name !== want.name) {
+      failures.push(`name ${reading.name}`);
     }
     report(fixture.id, failures, reading);
   }

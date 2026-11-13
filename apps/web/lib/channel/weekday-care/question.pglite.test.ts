@@ -77,6 +77,7 @@ async function seedAsk(
     status?: 'queued' | 'failed';
     dedupeKey?: string;
     templateKey?: string;
+    body?: string;
   } = {},
 ): Promise<void> {
   await db.database.insert(schema.channelMessages).values({
@@ -91,6 +92,7 @@ async function seedAsk(
       weekdayCareDedupeKey(seeded.familyId, seeded.childId, seeded.parentUserId),
     status: overrides.status ?? 'queued',
     createdAt: overrides.createdAt ?? ASKED_AT,
+    body: overrides.body ?? null,
   });
 }
 
@@ -255,11 +257,13 @@ describe('weekdayCareAnswerTarget, as the router builds it', () => {
     });
   });
 
-  it('VIL-685 · opens the winter-break dates ask as break_dates, with its school year', async () => {
+  it('VIL-685 · opens the winter-break dates ask as break_dates, with its school year and the text sent', async () => {
     const seeded = await seedFamily('sms:weekday-break-dates');
+    const question = 'When does winter break start for you, and what day are the kids back?';
     await seedAsk(seeded, {
       templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
       dedupeKey: schoolBreakAskDedupeKey(seeded.familyId, '2026-27', seeded.parentUserId),
+      body: question,
     });
     const inboundChannelMessageId = await inbound(seeded, 'sms');
 
@@ -270,7 +274,12 @@ describe('weekdayCareAnswerTarget, as the router builds it', () => {
       now: SAME_DAY,
     });
 
-    expect(target).toEqual({ status: 'open', scope: 'break_dates', schoolYear: '2026-27' });
+    expect(target).toEqual({
+      status: 'open',
+      scope: 'break_dates',
+      schoolYear: '2026-27',
+      question,
+    });
   });
 
   it('refuses an email answer to a question Hale put on a phone', async () => {

@@ -55,6 +55,8 @@ export type WeekdayCareQuestion =
       /** VIL-685 · "when is your winter break?" — the one ask when no page has the days. */
       scope: 'break_dates';
       schoolYear: string;
+      /** The text Hale sent, so the reply is read as an answer to it. */
+      question: string | null;
     };
 
 /** Per PARENT, not per family: the question went to one phone, and a co-parent who
@@ -68,6 +70,7 @@ export async function weekdayCareQuestion(
       id: schema.channelMessages.id,
       createdAt: schema.channelMessages.createdAt,
       dedupeKey: schema.channelMessages.dedupeKey,
+      body: schema.channelMessages.body,
     })
     .from(schema.channelMessages)
     .where(
@@ -112,6 +115,7 @@ export async function weekdayCareQuestion(
       askedAt: ask.createdAt,
       scope: 'break_dates',
       schoolYear: parsed.schoolYear,
+      question: ask.body,
     };
   }
   if (parsed.scope === 'search') {

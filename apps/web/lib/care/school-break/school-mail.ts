@@ -1,49 +1,73 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, notExists } from 'drizzle-orm';
+import { and, desc, eq, notExists, or } from 'drizzle-orm';
 import { googleGetFetch } from '~/lib/cron/connector-sync';
 import { integrationAccessToken } from '~/lib/integrations/gmail-draft-service';
 import { CONNECTOR_SCOPES } from '~/lib/integrations/google-oauth';
 import type { GoogleFetch } from '~/lib/integrations/sync';
-import { senderDomainOf } from './official-board';
+import { fetchGmailMessageBody } from '~/lib/sentinel/fetch-body';
+import { type MessageHeaders, alignedSenderHost } from './sender';
 
 /**
- * VIL-685 · THE SCHOOL MAIL HALE ALREADY READS, as the domains it came from.
+ * VIL-685 · THE KID MAIL HALE ALREADY READS, as the schools it authenticated as.
  *
  * The mail is the email alerts Hale already sent this family (`email_alert_offers`): mail
- * from a parent's own connected Gmail that the sentinel read as about the kids and Hale
- * told them about. A 13+ child's mail writes no offer row, so it is never here (rule #1).
- * Mail since called the parent's own (the parent's "that's mine", or the kid check's
- * `adult` verdict) is not school mail either: withdrawing its offer only ends the offer's
- * answerable window, so the verdict is what leaves it out.
- * Only the From header of those messages is fetched, from a connection that is still
- * active and readable. The address is reduced to its domain in memory and never written;
- * whether that domain is a board's own site is official-board.ts's question.
+ * from a parent's own connected Gmail that the sentinel kept as about the kids and Hale
+ * told them about. Mail is left out when it is no longer plain kid mail: any kid-relevance
+ * verdict of `adult` (the kid check's, or the parent's own, which is what an untrack such
+ * as "that's mine" writes), of `unsure`, or on a 13+ child's mail. A 13+ child's mail
+ * writes no offer row either (rule #1).
+ *
+ * Of those messages only two headers are read, From and `Authentication-Results`, from a
+ * connection that is still active and readable. A message names a school only when Gmail
+ * says it authenticated as its From domain (sender.ts); the address is reduced to that
+ * domain's registrable domain in memory and never written. A message's text is fetched
+ * only when the sweep reads the break off it (`text`), held for that one reading, and
+ * never stored (`BODY_RETENTION` in sentinel/fetch-body.ts).
  */
 
 /** Messages read per family: the newest alerts. An infra bound, not a rule about mail. */
 export const MAX_ALERTED_MESSAGES = 10;
-/** Distinct domains handed on per family. */
-export const MAX_SENDER_DOMAINS = 5;
 
-export type SchoolMailDomains =
-  | { status: 'read'; domains: string[] }
-  /** Hale has told this family about no email it can still read. */
+/** One message that authenticated as a school's host. */
+export interface SchoolMessage {
+  integrationId: string;
+  messageId: string;
+  host: string;
+}
+
+export type SchoolMail =
+  | {
+      status: 'read';
+      /** Newest first. */
+      messages: SchoolMessage[];
+      /** Messages read whose From domain did not authenticate: never a school. */
+      unaligned: number;
+    }
+  /** Hale has told this family about no kid email it can still read. */
   | { status: 'no_mail' }
   /** Mail was there and could not be read: a token or Google failure, by name. */
   | { status: 'unread'; reason: string };
 
+export type SchoolMailText =
+  | { status: 'read'; text: string }
+  | { status: 'unread'; reason: string };
+
 export interface SchoolMailPorts {
-  /** This family's email alerts, newest first: the connection and the message id. */
+  /** This family's kept kid-mail alerts, newest first: the connection and the message id. */
   alertedMail(familyId: string): Promise<Array<{ integrationId: string; messageId: string }>>;
   /** The connection is this family's, active, and still holds the read scope. */
   readable(familyId: string, integrationId: string): Promise<boolean>;
   accessToken(integrationId: string): Promise<string | null>;
-  /** The message's From header; null when the message is gone. Throws on any other failure. */
-  fromHeader(messageId: string, accessToken: string): Promise<string | null>;
+  /** The message's From and Authentication-Results headers, in order; null when the
+   * message is gone. Throws on any other failure. */
+  headers(messageId: string, accessToken: string): Promise<MessageHeaders | null>;
+  /** The message's text. Throws on any failure. */
+  body(messageId: string, accessToken: string): Promise<string>;
 }
 
 export interface SchoolMailReader {
-  domains(familyId: string): Promise<SchoolMailDomains>;
+  schoolMail(familyId: string): Promise<SchoolMail>;
+  text(familyId: string, message: SchoolMessage): Promise<SchoolMailText>;
 }
 
 function failureName(err: unknown): string {
@@ -52,13 +76,14 @@ function failureName(err: unknown): string {
 
 export function schoolMailReader(ports: SchoolMailPorts): SchoolMailReader {
   return {
-    async domains(familyId) {
+    async schoolMail(familyId) {
       const alerted = await ports.alertedMail(familyId);
       const byConnection = new Map<string, string[]>();
       for (const { integrationId, messageId } of alerted.slice(0, MAX_ALERTED_MESSAGES)) {
         byConnection.set(integrationId, [...(byConnection.get(integrationId) ?? []), messageId]);
       }
-      const domains: string[] = [];
+      const messages: SchoolMessage[] = [];
+      let unaligned = 0;
       let readAny = false;
       let unread: string | null = null;
       for (const [integrationId, messageIds] of byConnection) {
@@ -69,23 +94,38 @@ export function schoolMailReader(ports: SchoolMailPorts): SchoolMailReader {
           continue;
         }
         for (const messageId of messageIds) {
-          let from: string | null;
+          let headers: MessageHeaders | null;
           try {
-            from = await ports.fromHeader(messageId, token);
+            headers = await ports.headers(messageId, token);
           } catch (err) {
             unread = `google_failed:${failureName(err)}`;
             break;
           }
-          if (from === null) continue;
+          if (headers === null) continue;
           readAny = true;
-          const domain = senderDomainOf(from);
-          if (domain !== null && !domains.includes(domain)) domains.push(domain);
-          if (domains.length === MAX_SENDER_DOMAINS) return { status: 'read', domains };
+          const sender = alignedSenderHost(headers);
+          if (sender.status === 'aligned') {
+            messages.push({ integrationId, messageId, host: sender.host });
+          } else {
+            unaligned += 1;
+          }
         }
       }
-      if (readAny) return { status: 'read', domains };
+      if (readAny) return { status: 'read', messages, unaligned };
       if (unread !== null) return { status: 'unread', reason: unread };
       return { status: 'no_mail' };
+    },
+    async text(familyId, { integrationId, messageId }) {
+      if (!(await ports.readable(familyId, integrationId))) {
+        return { status: 'unread', reason: 'connection_unreadable' };
+      }
+      const token = await ports.accessToken(integrationId);
+      if (token === null) return { status: 'unread', reason: 'token_unavailable' };
+      try {
+        return { status: 'read', text: await ports.body(messageId, token) };
+      } catch (err) {
+        return { status: 'unread', reason: `google_failed:${failureName(err)}` };
+      }
     },
   };
 }
@@ -123,7 +163,11 @@ export function productionSchoolMailPorts(
                     eq(verdicts.source, 'gmail'),
                     eq(verdicts.integrationId, offers.integrationId),
                     eq(verdicts.itemKey, offers.messageId),
-                    eq(verdicts.verdict, 'adult'),
+                    or(
+                      eq(verdicts.verdict, 'adult'),
+                      eq(verdicts.verdict, 'unsure'),
+                      eq(verdicts.teen, true),
+                    ),
                   ),
                 ),
             ),
@@ -147,9 +191,9 @@ export function productionSchoolMailPorts(
       return row !== undefined && CONNECTOR_SCOPES.gmail.every((s) => row.scopes.includes(s));
     },
     accessToken: (integrationId) => integrationAccessToken(database, integrationId),
-    fromHeader: async (messageId, accessToken) => {
+    headers: async (messageId, accessToken) => {
       const res = await googleFetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=From`,
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=From&metadataHeaders=Authentication-Results`,
         accessToken,
       );
       if (res.status === NOT_FOUND) return null;
@@ -157,7 +201,13 @@ export function productionSchoolMailPorts(
       const data = (await res.json()) as {
         payload?: { headers?: Array<{ name?: string; value?: string }> };
       };
-      return data.payload?.headers?.find((h) => h.name === 'From')?.value ?? null;
+      return (data.payload?.headers ?? []).flatMap((h) =>
+        typeof h.name === 'string' && typeof h.value === 'string'
+          ? [{ name: h.name, value: h.value }]
+          : [],
+      );
     },
+    body: (messageId, accessToken) =>
+      fetchGmailMessageBody(encodeURIComponent(messageId), accessToken, googleFetch),
   };
 }

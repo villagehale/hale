@@ -1,9 +1,14 @@
-import type { BreakPageReader, BreakPageReading, VerifiedBreakReading } from './read';
+import type {
+  BreakPageReader,
+  BreakPageReading,
+  TextBreakReader,
+  VerifiedBreakReading,
+} from './read';
 import type { CalendarSearch } from './search';
 
 /**
- * VIL-685 · one board's winter break for one school year, looked up live: search the
- * board's own host for its calendar, then read the break off each page. The first page
+ * VIL-685 · one school's winter break for one school year, looked up live: search the
+ * school's own host for its calendar, then read the break off each page. The first page
  * that verifies wins. Nothing here guesses: a board whose page names no winter break,
  * whose pages could not be read, or that has no calendar page Hale could find, is
  * `not_found` with the reason named, and the family is asked once instead.
@@ -32,6 +37,8 @@ export type BoardLookup =
 export interface BoardLookupDeps {
   search(officialHost: string, schoolYear: string): Promise<CalendarSearch>;
   read: BreakPageReader;
+  /** The same reading, off the text of an email the school sent. */
+  readText: TextBreakReader;
 }
 
 function outcomeName(reading: BreakPageReading): string {

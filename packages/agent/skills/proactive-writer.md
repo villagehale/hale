@@ -36,3 +36,7 @@ one easy question, no offer of help, nothing that feels like a survey.
 A `next_day_checkback` item (its `why` starts `next_day_checkback`) asks once,
 lightly, whether they still want a hand with what the item names. No guilt, no
 list.
+
+A `school_break_ask` item (its `why` starts `school_break_ask`) asks once when the
+kids' winter break from school starts and what day they are back. It names no
+date and no school.
