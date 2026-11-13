@@ -158,8 +158,9 @@ function scripted(
 }
 
 /** How Gmail stamped a message: authenticated as its From domain, not, or not at all,
- * with a stamp the sender wrote below Gmail's own. */
-type Auth = 'aligned' | 'unaligned' | 'forged_below';
+ * with a stamp the sender wrote below Gmail's own, or failed with a quoted envelope
+ * sender that Gmail's SPF comment repeats as given. */
+type Auth = 'aligned' | 'unaligned' | 'forged_below' | 'quoted_comment_forge';
 
 interface FakeMessage {
   from: string;
@@ -176,6 +177,16 @@ function gmailStamp(domain: string, pass: boolean): string {
   ].join(';\r\n       ');
 }
 
+function quotedCommentForge(domain: string): string {
+  const mailfrom = `"x);dmarc=pass header.from=${domain};("@evil.example`;
+  return [
+    'mx.google.com',
+    'dkim=pass header.i=@evil.example header.s=s1',
+    `spf=pass (google.com: domain of ${mailfrom} designates 192.0.2.1 as permitted sender) smtp.mailfrom=${mailfrom}`,
+    `dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=${domain}`,
+  ].join(';\r\n       ');
+}
+
 function headersOf(message: FakeMessage) {
   const domain = message.from.slice(message.from.lastIndexOf('@') + 1).replace(/>$/, '');
   const stamps =
@@ -183,7 +194,9 @@ function headersOf(message: FakeMessage) {
       ? [gmailStamp(domain, true)]
       : message.auth === 'unaligned'
         ? [gmailStamp(domain, false)]
-        : [gmailStamp(domain, false), gmailStamp(domain, true)];
+        : message.auth === 'quoted_comment_forge'
+          ? [quotedCommentForge(domain)]
+          : [gmailStamp(domain, false), gmailStamp(domain, true)];
   return [
     ...stamps.map((value) => ({ name: 'Authentication-Results', value })),
     { name: 'From', value: message.from },
@@ -445,16 +458,17 @@ describe('the winter-break sweep: which school', () => {
       mail: [
         { domain: BOARD, auth: 'unaligned' },
         { domain: OTHER_BOARD, auth: 'forged_below' },
+        { domain: 'third-board.example', auth: 'quoted_comment_forge' },
       ],
     });
     const script = scripted();
 
     const result = await runSchoolBreakSweep(db.database, deps(script.lookup), NOW);
 
-    expect(gmailReads).toHaveLength(2);
+    expect(gmailReads).toHaveLength(3);
     expect(script.searches).toEqual([]);
     expect(bodyReads).toEqual([]);
-    expect(result).toMatchObject({ unaligned: 2, recorded: 0, queued: 1 });
+    expect(result).toMatchObject({ unaligned: 3, recorded: 0, queued: 1 });
     expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
     expect(await asks(familyId)).toHaveLength(1);
   });
