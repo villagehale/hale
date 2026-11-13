@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correctly hands Sam the family's own referral link and says to forward it themselves; there is no app redirect and no invented URL. It runs a bit long, though: the 'since I won't be texting your friend first' clause and the product description add padding beyond what the answer needed.",
-    "score": 4
-  }
-}

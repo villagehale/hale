@@ -426,6 +426,13 @@ async function drivePlan(
     if (!input.paymentEnabled) return { ...checkout, detail: 'payment_off' };
     if (!ids.sessionId) return checkout;
 
+    await input.onCheckpoint({
+      phase: 'signup',
+      runId,
+      sessionId: ids.sessionId,
+      browserId: tracker.browserId,
+      reviewStarted: true,
+    });
     tracker.reviewStarted = true;
     const review = await reviewCheckout(input, deps, tracker, ids.sessionId);
     const reviewed: BrowserUsePlanResult = {

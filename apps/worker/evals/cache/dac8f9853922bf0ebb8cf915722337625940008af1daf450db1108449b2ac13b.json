@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked Hale to stop sending email on its own and to ask first. Autonomy for send_email and reply_to_email was turned off this turn, so the confirmation is true. It is one short sentence in the parent's language, with no machinery and no greeting. It covers the sending side, which is what the parent asked about, and does the job completely.",
-    "score": 5
-  }
-}
