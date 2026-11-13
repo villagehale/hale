@@ -535,6 +535,7 @@ async function commit(
       appendMessage(input.conversationId, 'user', input.candidate.body, tx, {
         childId: null,
         topic: null,
+        authorUserId: job.parent_user_id,
         ...(providerMessageId ? { providerMessageId } : {}),
       }),
     );

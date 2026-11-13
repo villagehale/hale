@@ -1236,6 +1236,7 @@ async function routeChannelMessageInner(
       await appendMessage(conversationId, 'user', text.body, deps.database, {
         childId: null,
         topic: null,
+        authorUserId: job.parent_user_id,
         ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
       });
     }

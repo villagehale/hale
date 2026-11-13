@@ -309,6 +309,8 @@ export interface MessageScope {
   providerMessageId?: string | null;
   /** What a proactive turn was about (messages.source, 0212). Omitted = null. */
   source?: schema.MessageSource | null;
+  /** Who sent this user turn (messages.author_user_id, 0247). Omitted = null. */
+  authorUserId?: string | null;
 }
 
 /** Appends one message turn to a conversation, carrying its scope (child + topic).
@@ -331,6 +333,7 @@ export async function appendMessage(
     topic: scope.topic,
     ...(scope.source ? { source: scope.source } : {}),
     ...(scope.providerMessageId ? { providerMessageId: scope.providerMessageId } : {}),
+    ...(scope.authorUserId ? { authorUserId: scope.authorUserId } : {}),
   };
   // Fakes record Drizzle inserts and have no execute. A real insert names every
   // column, including source, so it goes through SQL that omits the column until
@@ -348,13 +351,15 @@ export async function appendMessage(
   if (scope.source != null && !keepSource) noteSourceColumnAbsent();
   const providerColumn = scope.providerMessageId ? sql`, provider_message_id` : sql``;
   const providerValue = scope.providerMessageId ? sql`, ${scope.providerMessageId}` : sql``;
+  const authorColumn = scope.authorUserId ? sql`, author_user_id` : sql``;
+  const authorValue = scope.authorUserId ? sql`, ${scope.authorUserId}` : sql``;
   const inserted = await database.execute(
     keepSource
-      ? sql`insert into messages (conversation_id, role, content, child_id, topic, source${providerColumn})
-            values (${conversationId}, ${role}, ${values.content}, ${scope.childId}, ${scope.topic}, ${JSON.stringify(scope.source)}::jsonb${providerValue})
+      ? sql`insert into messages (conversation_id, role, content, child_id, topic, source${providerColumn}${authorColumn})
+            values (${conversationId}, ${role}, ${values.content}, ${scope.childId}, ${scope.topic}, ${JSON.stringify(scope.source)}::jsonb${providerValue}${authorValue})
             returning id`
-      : sql`insert into messages (conversation_id, role, content, child_id, topic${providerColumn})
-            values (${conversationId}, ${role}, ${values.content}, ${scope.childId}, ${scope.topic}${providerValue})
+      : sql`insert into messages (conversation_id, role, content, child_id, topic${providerColumn}${authorColumn})
+            values (${conversationId}, ${role}, ${values.content}, ${scope.childId}, ${scope.topic}${providerValue}${authorValue})
             returning id`,
   );
   const id = insertedId(inserted);
