@@ -14,22 +14,48 @@ import { parse } from 'tldts';
  */
 
 /**
- * Page builders and hosts where anyone can make a page, which the public-suffix list does
- * not list as shared: a site there names the builder's domain, not the institution's.
+ * Page builders, blogs and social sites where anyone can make a page, which the
+ * public-suffix list does not list as shared: a site there names the platform's domain,
+ * not the institution's. Matched on the name before the suffix, so every country code a
+ * platform runs under (blogspot.ca, weebly.ca) is covered by one entry.
  */
-const SHARED_HOSTS_OUTSIDE_PSL: readonly string[] = [
-  'squarespace.com',
-  'wordpress.com',
-  'weebly.com',
-  'godaddysites.com',
-  'google.com',
-];
+const SHARED_PLATFORM_NAMES: ReadonlySet<string> = new Set([
+  'blogspot',
+  'edublogs',
+  'facebook',
+  'godaddysites',
+  'google',
+  'instagram',
+  'jimdosite',
+  'linkedin',
+  'linktr',
+  'medium',
+  'mystrikingly',
+  'ning',
+  'site123',
+  'squarespace',
+  'substack',
+  'tumblr',
+  'twitter',
+  'typepad',
+  'weebly',
+  'wix',
+  'wordpress',
+  'youtube',
+]);
+
+/** Shared platforms whose name alone is too short or too common to match on. */
+const SHARED_PLATFORM_DOMAINS: readonly string[] = ['x.com', 'business.site'];
 
 /** The institution's own registrable domain for a host, or null when it cannot be one. */
 export function ownRegistrableDomain(host: string): string | null {
   const parsed = parse(host, { allowPrivateDomains: true });
   if (parsed.isIp || parsed.isPrivate || parsed.domain === null) return null;
-  return SHARED_HOSTS_OUTSIDE_PSL.includes(parsed.domain) ? null : parsed.domain;
+  if (SHARED_PLATFORM_DOMAINS.includes(parsed.domain)) return null;
+  return parsed.domainWithoutSuffix !== null &&
+    SHARED_PLATFORM_NAMES.has(parsed.domainWithoutSuffix)
+    ? null
+    : parsed.domain;
 }
 
 function urlHost(raw: string): string | null {

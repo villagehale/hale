@@ -30,6 +30,38 @@ describe('ownRegistrableDomain', () => {
     }
   });
 
+  it('refuses social and user-content hosts the list does not mark as shared, under any country code', () => {
+    for (const host of [
+      'facebook.com',
+      'www.facebook.com',
+      'instagram.com',
+      'x.com',
+      'twitter.com',
+      'linkedin.com',
+      'youtube.com',
+      'linktr.ee',
+      'medium.com',
+      'mytown.substack.com',
+      'mytown.tumblr.com',
+      'mytown.jimdosite.com',
+      'mytown.mystrikingly.com',
+      'wix.com',
+      'mytown.business.site',
+      'mytown.site123.me',
+      'mytown.weebly.ca',
+      'mytown.blogspot.ca',
+      'mytown.blogspot.co.uk',
+      'wordpress.org',
+      'mytown.edublogs.org',
+      'mytown.typepad.com',
+      'mytown.ning.com',
+    ]) {
+      expect({ host, domain: ownRegistrableDomain(host) }).toEqual({ host, domain: null });
+    }
+    // Positive control: a town whose own domain merely contains such a word.
+    expect(ownRegistrableDomain('www.mediumtown.ca')).toBe('mediumtown.ca');
+  });
+
   it('refuses an IP address', () => {
     expect(ownRegistrableDomain('192.0.2.10')).toBeNull();
   });
