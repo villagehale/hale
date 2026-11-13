@@ -233,6 +233,7 @@ export const AUDIT_VERBS = [
   'linq_multi_family_calendar_withdrawn',
   'linq_multi_family_refused',
   'linq_multi_family_reply_sent',
+  'linq_multi_family_list_turn',
   'linq_multi_family_common_time_proposed',
   'linq_multi_family_common_time_unsent',
   'linq_multi_family_common_time_picked',
@@ -1040,6 +1041,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_multi_family_reply_sent: {
     sentence: 'Hale replied in a shared thread from what was already said',
     family: 'done',
+  },
+  linq_multi_family_list_turn: {
+    sentence: 'Hale kept track of who is bringing or giving what in a shared thread',
+    family: 'note',
   },
   linq_multi_family_common_time_proposed: {
     sentence: 'Hale suggested times that work for the families in a shared thread',

@@ -384,6 +384,11 @@
     "version": null,
     "sha256": "9fbd622e31b7491cdce4a3d1cafacf5fbf6ef00bf9dca3b9c86d44c8746a1590"
   },
+  "judges/shared-group-list-turn": {
+    "name": "judges/shared-group-list-turn",
+    "version": null,
+    "sha256": "7f75092c1cf42cfb3e4c4d597f77c5932a9bde5e33a63e8be6513bd6faf6dcd1"
+  },
   "judges/shared-group-voice": {
     "name": "judges/shared-group-voice",
     "version": null,
