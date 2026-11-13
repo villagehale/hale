@@ -1,5 +1,5 @@
 import type { FamilyStage } from '@hale/types';
-import { nameAnywhere } from '~/lib/channel/coach/reply';
+import { namesAChild } from '~/lib/channel/child-name-scrub';
 import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
 
 /**
@@ -122,14 +122,11 @@ export type ActivityDeidResult =
   | { ok: true; query: ActivityQuery }
   | { ok: false; refusal: ActivityDeidRefusal };
 
-/** True when `text` names any member of this household, as a whole word in any alphabet
- * ({@link nameAnywhere} — the boundary the outbound redactor uses, so the set of names
- * this refuses is exactly the set that one replaces). */
+/** True when `text` names any member of this household, by the matcher the intake
+ * searches refuse through ({@link namesAChild}): a name in a script written without spaces
+ * wherever it stands ("小明的游泳课"), and a name without its accent ("Zoe" for Zoé). */
 export function namesAPerson(text: string, householdNames: readonly string[]): boolean {
-  return householdNames.some((name) => {
-    const trimmed = name.trim();
-    return trimmed !== '' && nameAnywhere(trimmed).test(text);
-  });
+  return namesAChild(text, householdNames);
 }
 
 /**

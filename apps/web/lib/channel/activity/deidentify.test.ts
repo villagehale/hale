@@ -40,6 +40,25 @@ describe('a name never crosses the border', () => {
     expect(label).toBeTypeOf('string');
   });
 
+  it.each([
+    ['a name in a script written without spaces', ['小明'], '小明的游泳课'],
+    ['a name typed without its accent', ['Zoé'], 'swim lessons for Zoe'],
+  ])('refuses %s, by the matcher the intake searches use', (_label, householdNames, subject) => {
+    expect(deidentifyActivityQuery({ ...base, householdNames, subject })).toEqual({
+      ok: false,
+      refusal: 'names_a_person',
+    });
+  });
+
+  it('POSITIVE CONTROL - the same households let a subject without the name through', () => {
+    for (const [householdNames, subject] of [
+      [['小明'], '幼儿游泳课'],
+      [['Zoé'], 'toddler swim lessons'],
+    ] as const) {
+      expect(deidentifyActivityQuery({ ...base, householdNames, subject }).ok).toBe(true);
+    }
+  });
+
   it('POSITIVE CONTROL - lets an ordinary subject through the same call', () => {
     const result = deidentifyActivityQuery({ ...base, subject: 'toddler gymnastics' });
     expect(result).toEqual({

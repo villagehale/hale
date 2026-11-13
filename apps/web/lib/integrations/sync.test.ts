@@ -787,6 +787,31 @@ describe('syncConnection — Gmail', () => {
     logged.mockRestore();
   });
 
+  it('enqueues the Gmail message id as Gmail sent it, beside a redacted snippet', async () => {
+    // The id holds a ZIP glued to hex letters. The draft path reads events.payload.id back
+    // as the message id, so a scrubbed id is a message Hale can no longer find.
+    const glued = '0e14f18e70064eda';
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes(`/messages/${glued}`)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: glued, snippet: 'pool near 99999', payload: { headers: [] } }),
+        };
+      }
+      if (url.includes('/profile')) {
+        return { ok: true, status: 200, json: async () => ({ historyId: '9002' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ messages: [{ id: glued }] }) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', {}), deps);
+
+    const event = onlyEvent(cap);
+    expect(event.payload.id).toBe(glued);
+    expect(event.payload.snippet).toBe('pool near [POSTAL]');
+  });
+
   it('a history.list 404 re-seeds like a first run and does not alert on the old mail', async () => {
     // Gmail's history window moved past the stored historyId. The recovery is the
     // seeding run: profile cursor, a bounded page of mail already in the mailbox,

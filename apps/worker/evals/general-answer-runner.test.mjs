@@ -37,8 +37,8 @@ const PLACE_SRC = fileURLToPath(
 
 /**
  * answer-request.ts, imported ONCE. Every tsImport call stacks another loader, and a file
- * with a relative import of its own (place-token.ts) is resolved through all of them: the
- * sixth import took 6 s and the seventh never finished.
+ * with an import of its own is resolved through all of them: the sixth import took 6 s and
+ * the seventh never finished.
  */
 let answerRequestModule;
 async function answerRequest() {
