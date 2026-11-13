@@ -814,10 +814,15 @@ export function readLinqPollEnvelope(
   return { messageId, options };
 }
 
+/** A participant Linq listed whose handle could not be read: no caller can place it. */
+const UNREADABLE_HANDLE = '';
+
 /** Non-me handles of the people in the chat now, emails included. Linq keeps a person
  * who left listed; only an explicit status `left` or `removed` drops them. Any other
  * status, or none, counts as present, and `left_at` alone never drops anyone: a person
- * added back can carry a stale one, and an audience gate must not lose them.
+ * added back can carry a stale one, and an audience gate must not lose them. A present
+ * record without a readable handle is still someone in the chat, so it is returned as
+ * UNREADABLE_HANDLE, which every audience check holds on, rather than skipped.
  * Phones stay in the return value for the caller to hash; this function does not log them. */
 export function readLinqChatHandles(payload: unknown): string[] {
   if (!isRecord(payload)) return [];
@@ -825,9 +830,13 @@ export function readLinqChatHandles(payload: unknown): string[] {
   const handles = Array.isArray(chat.handles) ? chat.handles : [];
   const out: string[] = [];
   for (const handle of handles) {
-    if (!isRecord(handle) || handle.is_me === true) continue;
+    if (!isRecord(handle)) {
+      out.push(UNREADABLE_HANDLE);
+      continue;
+    }
+    if (handle.is_me === true) continue;
     if (handle.status === 'left' || handle.status === 'removed') continue;
-    if (typeof handle.handle === 'string' && handle.handle) out.push(handle.handle);
+    out.push(typeof handle.handle === 'string' ? handle.handle : UNREADABLE_HANDLE);
   }
   return out;
 }

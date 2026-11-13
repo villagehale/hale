@@ -14,12 +14,13 @@
 -- person who said they are a child's family without naming the child. Both are presence
 -- data and go with the seat.
 --
--- The backfill clears, for each item already hidden, the people seated in its chat now who
--- have not stopped, are not named on it and not in a named family. Anyone it misses is hidden
--- from (fail closed); anyone it clears who is the child's family is still hidden from by the
--- read-time check while they are here, and is taken off when they leave.
+-- An item hidden before this migration starts with nobody cleared (fail closed): who was in
+-- the chat when it was hidden was never recorded, and clearance is never added later. The
+-- group can hide it again. A seat that already gave a family role without a child is kept as
+-- a claim on an unnamed child.
 --
--- Additive. Re-runnable: IF NOT EXISTS, and the backfills only fill empty arrays.
+-- Additive. Re-runnable: IF NOT EXISTS, and each backfill only ever adds a claim, so a re-run
+-- never adds clearance.
 --
 -- Reversible:
 --   ALTER TABLE shared_group_list_items DROP COLUMN IF EXISTS hidden_cleared_phone_hashes;
@@ -32,16 +33,9 @@ UPDATE "linq_shared_group_people"
 SET "inferred_kid_names" = ARRAY["inferred_kid_name"]
 WHERE "inferred_kid_name" IS NOT NULL
 	AND cardinality("inferred_kid_names") = 0;--> statement-breakpoint
-UPDATE "shared_group_list_items" AS "item"
-SET "hidden_cleared_phone_hashes" = ARRAY(
-	SELECT DISTINCT "person"."phone_e164_hash"
-	FROM "linq_shared_group_people" AS "person"
-	WHERE "person"."chat_id" = "item"."chat_id"
-		AND "person"."stopped_at" IS NULL
-		AND NOT ("person"."id" = ANY("item"."hidden_from_person_ids"))
-		AND ("person"."family_id" IS NULL OR NOT ("person"."family_id" = ANY("item"."hidden_from_family_ids")))
-)
-WHERE ("item"."hidden_for_kid" IS NOT NULL
-		OR cardinality("item"."hidden_from_person_ids") > 0
-		OR cardinality("item"."hidden_from_family_ids") > 0)
-	AND cardinality("item"."hidden_cleared_phone_hashes") = 0;
+UPDATE "linq_shared_group_people"
+SET "claims_unnamed_kid" = true
+WHERE "inferred_role" IS NOT NULL
+	AND "inferred_role" NOT IN ('guest', 'unclear')
+	AND "inferred_kid_name" IS NULL
+	AND cardinality("inferred_kid_names") = 0;

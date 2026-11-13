@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
 import { type SQL, and, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import type { FamilyClaim } from '~/lib/channel/linq/shared-group-reading';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -89,8 +90,10 @@ function kidKey(name: string | null): string | null {
  * that item when it was hidden, and who is not, by anything Hale knows now, the child's
  * family. Anyone else (new, unseated, rejoined on any row, stopped, an Apple ID, a number Hale
  * never seated) hides it, and so does a participant list Hale could not read in full.
- * Clearance is written once, at the hide, from seats that predate the turn; afterwards it is
- * only ever taken away (a kid-parent claim, leaving, erasure).
+ * Clearance is written once, at the hide, for the people Linq listed in the chat at that
+ * moment on seats that predate the turn (a seat whose person was not listed, such as one
+ * written from a webhook that still carries someone who left, is not cleared); afterwards it
+ * is only ever taken away (a kid-parent claim, leaving, erasure).
  */
 export interface SharedListAudience {
   /** Everyone with a seat row in this chat, for the model's refs. */
@@ -661,12 +664,14 @@ async function applyOnce(
     hiddenFromFamilyIds: hideFamilies,
     hiddenClearedPhoneHashes: [],
   };
-  // Cleared at the hide: seats that predate this turn and are still live now, read under the
-  // chat's lock so a leave or a kid-parent claim that landed during the model call counts,
-  // and not the child's family by anything Hale knows now. Never anyone else, ever after.
+  // Cleared at the hide: people Linq lists in the chat now, each on a seat that predates this
+  // turn and is still live, read under the chat's lock so a leave or a kid-parent claim that
+  // landed during the model call counts, and not the child's family by anything Hale knows
+  // now. A list Hale could not read clears nobody. Never anyone else, ever after.
+  const present = new Set(decision.hide ? ((await context.readers()) ?? []) : []);
   const settled = decision.hide
-    ? (await liveSeats(database, context.chatId)).filter((person) =>
-        context.settledIds.has(person.id),
+    ? (await liveSeats(database, context.chatId)).filter(
+        (person) => context.settledIds.has(person.id) && present.has(person.phoneE164Hash),
       )
     : [];
   const settledKids = await haleKidsOf(database, settled);
@@ -873,9 +878,9 @@ async function applyLocked(
   current: { snapshot: Snapshot; decision: SharedListDecision },
   now: Date,
 ): Promise<Pass> {
-  // A hide needs the participant list for its line. It is asked here, outside the lock, so
-  // a provider call never holds the chat's lock open; a chat already holding a hidden item
-  // asked it when the list was read.
+  // A hide needs the participant list, for who it clears and for its line. It is asked here,
+  // outside the lock, so a provider call never holds the chat's lock open; a chat already
+  // holding a hidden item asked it when the list was read.
   if (current.decision.hide) await context.readers();
   return withSharedListLock(database, context.chatId, async (tx) => {
     const applied = await applyOnce(tx, context, current.snapshot, current.decision, now);
@@ -941,9 +946,6 @@ export async function applySharedListTurn(
   return { handled: true, line, lineWhy: 'model', counts };
 }
 
-/** What a person said in the chat about whose family they are. */
-export type KidClaim = { kids: readonly string[] } | 'unnamed';
-
 /**
  * A kid-parent claim made in the chat. The seat keeps every child named, added to what it
  * held (never replaced), and the person's number comes off every hidden gift for any of
@@ -953,7 +955,7 @@ export type KidClaim = { kids: readonly string[] } | 'unnamed';
  */
 export async function recordKidClaim(
   database: Database,
-  input: { chatId: string; seatId: string; claim: KidClaim },
+  input: { chatId: string; seatId: string; claim: FamilyClaim },
 ): Promise<void> {
   const people = schema.linqSharedGroupPeople;
   const items = schema.sharedGroupListItems;
