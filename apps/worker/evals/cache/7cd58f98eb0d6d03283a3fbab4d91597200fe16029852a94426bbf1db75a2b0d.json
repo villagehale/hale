@@ -1,0 +1,51 @@
+{
+  "response": {
+    "id": "msg_011CgzUgKoP86acTFScJ3KBW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2QgKEAgTGAI4AUIIdGhpbmtpbmcSDCihguCQtHQhhxwznBoMGJfHSHflPQBgzS0GIjB2+UkRixOatkeDchTcLbkDnNo8ZRWBaMk7jd7kq9DXYKrIEXvyEG5Oy5vC95FsboUq9gc0u6pWReZDDot+9d+t/rM59Zee4DgETZihA+C42EVok8QEoj3QAwvcjkEWIywwQQCJXPNcInWqi5ax5IOxTJ8Fw0hm+H68w6iFoTBECRUkfT/zBWrSus0yztXviLW55z1u2T6QmhqYkg055pqyaUUcKfBHKGZUjQvz5uKsS6MMlGxamz3BXCT+SfiLjiBoLlxw+6p/mEk5O2R/+8bF9aVoOL+3NtV4S93Bjr9jQ5sc5lRDRJFC8rULLz8TKkp2qAKxjE603SgD1Ah/pnqrK0vTdBCK9ynumxa1KWvZYXBoyR/mDQbYJDsxtGc194FYpdnRquG7rUbTlzVb758rpuBezfUBTgHenPPdzmI5eq6wqwtaNyaYYfqrAu3Wo+GTHpmoJ2GXvqf5C3cxHD6F2uJm5sF91scGjGY4jRnEheKB4EqP2LIU59y85Rpdm0F6TwBiuwqQI4QA07gjKf8I0nKYs91V2FdduYI2gHXKFm2drxsHVNcqeuSp+YnMdph5Kwntht4ku30k9JsiKXZom+iyLedV42K97bVFoJ6DQOeiD3ghNbNSe0ITuFhXv3V3lGk5jbwPhlnWXBRolWylcVZbWUP4HUW7Pl5k9QOKpgH2AYmBd7N5iqfD8+VFYIlWVYXcXZQBdXsF/gbeZoGnL7Ap8/grlWzZ3FdHfZt1GjsivbH8HPvdJAMgn2ooOrd7tPMlEP+JYGx3xXKqkb2MTwrPFKEw2tSTYV0WJdyDBd4FKPYojjwsaSui4CQOe/HdakvIxWTETw7u4GVrIIMwWNuQEP4bh/K3S+C9oAEInfeshGr7T9tb8+wI2A6PidAVi15DZZaVvp7iiVQStG6rJI0H4GVj+2vtaRc7BHHiSW/UrQCoNWnmWbnHoVmZNWt3wHxpCX5CMo0wNsckushtnlsUf30FCL0M8lKlL0VWpx1dLSaWL+UtIfarbIIM0L31RoYG1k4PSbzSKZyXDIavhc4MiyRu8JbMygLgWPext4bEKwX05dTJKmfBXHkMggxGwCxcxXk31SAwdGXdCA3WVlaM6n0On7MS5K5C9XCRTqNR2OT//Ax97xmSfZ2lf1DwWe5YWFfeV8Te/PRLwiVywcpuBcWV2SdIagq+L4ZLaHVwP5S1+28CYe0TNjSlGvY/asfnPriaR3BVpLfXE8E8FypjouxvOSbemzIAQUQ3BPgx3mhChNgTeCjnnTT2pzg8ipwbQ/1eXfYwvTOQLQ2QgdzTCvcVsLzI3qS5HsfFnuVINIAeWlmy+IAko5JXsbwzcmE47DYomWjW75PsT3CoB3W4r9m0ZePfDMZD22cEPscgNYjqzK/2/gfYHi1TiKfAXAGj6p5dA8AYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DxmKRdsdXGWMJ9uhK3rCE7",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01BX9WW2UUbzoWtdQDCDry8h",
+        "name": "reply_as_voice_memo",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 381,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19210,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 239,
+      "output_tokens_details": {
+        "thinking_tokens": 180
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

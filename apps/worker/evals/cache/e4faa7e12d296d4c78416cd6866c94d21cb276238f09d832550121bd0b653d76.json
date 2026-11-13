@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's question directly: the week is empty on the calendar, which is a fact from weekRead. The single bubble is one coherent thought, in English matching the parent's text, with no heading or count. It ends with one question in the last bubble, which satisfies the one-question rule. Nothing is invented; the offer to look for drop-ins is a reasonable next step rather than a fabricated fact.",
+    "score": 5
+  }
+}

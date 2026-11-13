@@ -543,3 +543,53 @@ describe('family_memory_facts source user', () => {
     expect(swim.rows[0]?.n).toBe(4);
   });
 });
+
+/** VIL-553 · what a hold row holds, found by suffix so it survives renumbering at merge. */
+describe('opt_out_held_messages kind', () => {
+  const KIND_FILE = migrationFiles().find((f) => f.endsWith('_opt_out_held_messages_kind.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(KIND_FILE as string) - 1];
+  let db: TestDb;
+  const column = async () =>
+    (
+      await db.client.query<{
+        column_name: string;
+        is_nullable: string;
+        data_type: string;
+        column_default: string;
+      }>(
+        "SELECT column_name, is_nullable, data_type, column_default FROM information_schema.columns WHERE table_name = 'opt_out_held_messages' AND column_name = 'kind'",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice, adds one NOT NULL text column, and names every standing row a message hold', async () => {
+    expect(KIND_FILE).toMatch(/^\d{4}_opt_out_held_messages_kind\.sql$/);
+    // Positive control: the column is not there before the file.
+    expect(await column()).toEqual([]);
+    await db.exec(
+      "INSERT INTO opt_out_held_messages (provider_message_id, phone_hash, held_at, next_read_at) VALUES ('pm-standing', 'hash-standing', now(), now())",
+    );
+
+    await db.applyMigration(KIND_FILE as string);
+    await expect(db.applyMigration(KIND_FILE as string)).resolves.toBeUndefined();
+
+    expect(await column()).toEqual([
+      {
+        column_name: 'kind',
+        is_nullable: 'NO',
+        data_type: 'text',
+        column_default: "'message'::text",
+      },
+    ]);
+    const rows = await db.client.query<{ kind: string }>('SELECT kind FROM opt_out_held_messages');
+    expect(rows.rows).toEqual([{ kind: 'message' }]);
+  });
+});
