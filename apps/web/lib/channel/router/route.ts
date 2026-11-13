@@ -465,6 +465,15 @@ export interface DeterministicHandler {
    * handler that starts owning a kind says so in its own definition.
    */
   readonly resolves?: ReadonlySet<OpenQuestionKind>;
+  /**
+   * True for a handler whose asks are not on the open-question list and are ranked by an
+   * order of its own (the sign-up lane: `last_asked_seq`, signup/store.ts askStamp). No
+   * open question's ask time compares with that order, so while {@link detects} says this
+   * handler would take the text, the router does not narrow a bare answer to the newest
+   * open question (VIL-302, `latestAsked`): the answer stays unplaced and reaches this
+   * handler, which binds it by its own order.
+   */
+  readonly ownsAsksOffList?: true;
   handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict>;
   /**
    * Would {@link handle} take this text? Its own matcher, run with no claim and no side
@@ -2262,10 +2271,13 @@ async function resolveNaturalReply(
   // ask: a bare "yes" after a search offer is the search. Narrowing first is unsafe: shown
   // only the newest ask, the real model put a decline of an older intro on the newest
   // offer (the `vil-302-declines-*` eval fixtures). If the newest ask is itself two
-  // offers, the second read is still `ambiguous`, and Hale asks which.
+  // offers, the second read is still `ambiguous`, and Hale asks which. A live ask ranked
+  // off this list (the sign-up lane's) means the newest open question may not be the last
+  // thing Hale asked, so nothing is narrowed and the answer reaches that lane unplaced.
   const whole = await readOpenQuestions(deps, turn, questions);
-  const latest =
+  const narrowable =
     whole.status === 'unresolved' && whole.reason === 'ambiguous' ? latestAsked(questions) : null;
+  const latest = narrowable && !(await offListAskLive(deps, turn)) ? narrowable : null;
   const read = latest ? await readOpenQuestions(deps, turn, latest) : whole;
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
@@ -2369,6 +2381,15 @@ async function resolveNaturalReply(
       handler: owner.name,
     },
   };
+}
+
+/** Whether a handler that ranks its own asks off the open-question list would take this
+ * text ({@link DeterministicHandler.ownsAsksOffList}). */
+async function offListAskLive(deps: ChannelRouterDeps, turn: HandlerContext): Promise<boolean> {
+  for (const handler of deps.handlers) {
+    if (handler.ownsAsksOffList && (await handler.detects(deps.database, turn))) return true;
+  }
+  return false;
 }
 
 /**

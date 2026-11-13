@@ -30,6 +30,7 @@ export function authorizedSignupHandler(
 ): DeterministicHandler {
   return {
     name: 'authorized_signup',
+    ownsAsksOffList: true,
     // Any live ask of theirs: which one a text answers is the consent model's to read.
     async detects(database, ctx) {
       if (!authorizedSignupEnabled()) return false;

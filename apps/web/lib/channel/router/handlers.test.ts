@@ -820,10 +820,21 @@ describe('the shipped order', () => {
   // cold CI worker that import exceeds Vitest's 5s test budget (the suite's
   // hookTimeout is 30s for the same reason). Load it once, then assert.
   let names: string[] = [];
+  let offList: string[] = [];
 
   beforeAll(async () => {
     const { defaultHandlers } = await import('./wiring');
-    names = defaultHandlers().map((handler) => handler.name);
+    const chain = defaultHandlers();
+    names = chain.map((handler) => handler.name);
+    offList = chain.filter((handler) => handler.ownsAsksOffList).map((handler) => handler.name);
+  });
+
+  // VIL-302 · the router narrows a bare answer to the newest open question only while no
+  // handler ranking its own asks off that list would take the text. The sign-up lane's
+  // asks are ranked by `last_asked_seq`; if it stopped declaring so, the newest open
+  // question would capture a yes meant for the sign-up offer Hale texted last.
+  it('marks the sign-up lane, and only it, as ranking its asks off the open-question list', () => {
+    expect(offList).toEqual(['authorized_signup']);
   });
 
   it('is village_intro, approval, connector_link, connector_disconnect, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', () => {

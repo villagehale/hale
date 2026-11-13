@@ -3838,6 +3838,72 @@ describe('natural reply resolution', () => {
     });
 
     /**
+     * The sign-up lane's asks are not on the open-question list. Each is ranked by the
+     * sequence number its text drew when the send started (signup/store.ts askStamp), and
+     * no open question's ask time can be compared with that number. Narrowing to the
+     * newest open question would bind a bare yes to the search offer even when Hale's last
+     * text was a sign-up offer, so while a sign-up ask is live the router does not narrow:
+     * the answer stays unplaced and reaches the sign-up lane, which acts only on its own
+     * newest ask.
+     */
+    function signupLane(live: boolean) {
+      const seen: unknown[] = [];
+      return {
+        seen,
+        handler: {
+          name: 'authorized_signup',
+          ownsAsksOffList: true,
+          detects: async () => live,
+          async handle(_db: unknown, ctx: { resolved?: unknown }) {
+            seen.push(ctx.resolved);
+            if (!live) return { claimed: false };
+            return { claimed: true, outcome: 'approved', reply: 'Booked for the open.' };
+          },
+        } as unknown as DeterministicHandler,
+      };
+    }
+
+    it('does not narrow past a live sign-up ask: the bare yes reaches the sign-up lane', async () => {
+      const introOwner = owningHandler('intro_optin');
+      const offerOwner = owningHandler('email_alert_add');
+      const signup = signupLane(true);
+      const r = readers();
+      const h = harness({
+        context: { body: 'yes' },
+        handlers: [introOwner.handler, offerOwner.handler, signup.handler],
+        questions: fakeQuestions([datedOptIn(), searchOffer()]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result).toMatchObject({ status: 'handled', handler: 'authorized_signup' });
+      expect(offerOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+      expect(introOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+      expect(r.lists).toEqual([['opt-in', 'search-offer']]);
+    });
+
+    it('still narrows when the sign-up lane has no live ask', async () => {
+      const offerOwner = owningHandler('email_alert_add');
+      const signup = signupLane(false);
+      const r = readers();
+      const h = harness({
+        context: { body: 'yes' },
+        handlers: [offerOwner.handler, signup.handler],
+        questions: fakeQuestions([datedOptIn(), searchOffer()]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result).toMatchObject({ status: 'resolved', handler: 'owner_email_alert_add' });
+      expect(signup.seen).toEqual([]);
+      expect(r.lists).toEqual([['opt-in', 'search-offer'], ['search-offer']]);
+    });
+
+    /**
      * REPLAY OF THE REAL MODEL. Both readings are the reply-resolver eval's recorded
      * answers (apps/worker/evals/reply-resolver-fixtures.mjs, the two
      * `vil-302-declines-older-ask-*` fixtures), passed through the production `toReading`.
