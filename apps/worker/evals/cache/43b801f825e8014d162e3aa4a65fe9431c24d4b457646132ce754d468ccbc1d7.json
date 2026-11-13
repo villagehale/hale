@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je suis bloquĂ© sur le site : il demande de rĂ©soudre un captcha, et ça, c'est Ă  toi de le faire.\nJ'ai laissĂ© une fenĂȘtre ouverte sur leur site, mais elle ne rĂ©serve aucune place : https://live.browser-use.com/s/fixture-live-view-token\nC'est pour le crĂ©neau de sam. 9 h 30. Une fois le captcha fait, tu peux finir l'inscription lĂ -bas."
+  },
+  "latencyMs": 2884,
+  "usage": {
+    "input_tokens": 143,
+    "output_tokens": 186,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -286,4 +286,11 @@ export const SIGNUP_OUTCOME_REPLY_BROKEN = [
     text: `C'est fait, l'inscription pour sam. 9 h 30 est confirmée. Tu peux vérifier ici : ${REC}`,
     breaks: 'says signed up when the run could not confirm it',
   },
+  // A draft the writer produced and the judge scored 5 (gate on PR #1212): accents garbled.
+  {
+    id: 'garbled-accents',
+    fixtureId: 'fr-reached-checkout-live',
+    text: `Je suis arrivĂ© jusqu'au paiement pour le crĂ©neau de sam. 9 h 30, mais c'est Ă  toi de payer. Rien n'est rĂ©servĂ© pour l'instant. Voici la fenĂŞtre que j'ai laissĂ©e ouverte sur le site : ${LIVE} — elle reste ouverte 12 minutes.`,
+    breaks: 'accents came out garbled (UTF-8 read back in windows-1250)',
+  },
 ];
