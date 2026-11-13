@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgx31Nd3C3rDioLgGve5k",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSowkKEAgTGAI4AUIIdGhpbmtpbmcSDHq3mad0+kCy5xwSgxoMzeL9Ol0TUrVhLAzmIjBaNu3LPvLToB5qHh6Za+IFrubk16ShYq3SuWDbBvgbi9ZupD0Rwjj4tQXHn+f5ZJsqwAgWet3htuZCbh71a8O7Wi0vuRcVDm9MDz2aVHe3rI+n2yUexVurL81dh1CV1V2jXV6soUHbjvdNej3dUT82V/ISVQZsMlZh+c2DocIsLWhzh0jrlIDZWl6zI3QPdj3xuYFdJwdTDN30azdxqJtZXuDP7zpOY+d5djDb98XImRhDOTxZcM3vozQdjHjX8BOlbW5YKz7tOWK/GaI576vFvgjO3Kg4HGY62yDSeRgNCKrEecYRzJGu/cMTY0FVHhGL1U+zSw8AZHMVRm9unFiklVOAV6gzQYKH6tLizjGwCZURFFkN5ZsyKELAmP6MAS9xyK3Z/Ybmu+I/iNiMJNGq18udxGdh2RPt9fbrfGj5jjtZOStmSxtfCyuk7uEyvnuISNlEKGqwoMTEHrs5L+l3eB/O0XrUxTtZ7U+ZK51EBsX24AzghTO6EvTaa8TZJX2+UIvyc3F29FNnU5/dGVjcbCPsIYWdFcalW1WrZnoDXUgQI5knLag5O92stcZ0C17+blJDp3AjIoVqR3FPxOYw8hwxudyGpK8CQQPJpl+YA/5ACju1IjO1Q5bozF4sbKOJ0K2WMZA3vCecXfuZ1gXVmLZb4fCsMPb5J1xeHO4Y8hKxFFjF/QIX/sWwL1jRZ7vLeU3GYeRmGwJYeThh0mWUTOo4ajgr6LUYbssGVQBuNNxdVk+xjOIZJ1BnFZp8MjB/1MqtjWLrXANw8uZUfKgvHtyO+gXkpjzngM6QGp/lNx3wdtWCybgmVL99smCp3JC6uefrG2jhpjsYezXYlJMNP/tVtXQULEJ5R8jz7eCSCNN9ZdfZdImcMcxZa833fztPX4qMqiDwYImPoHORkPhLBafq/LY22pC7wKa4Wy4zr9lbzVQDsANrcMy2hvTJPawux91PKZ+5Gtq2un2wARYjftDC6NgsYKgXEmyra8JJmrTu2IYKsuK9xk6ppKuM1Rdf7fMDIF60zmdPhNLq7mSJIdnDPb+Msm+klFO/lJ+8e5jAv/9t4cIwt/y3vbrQr5HTjCddFuLUkmYGK8x1/Mt8hNcwMEHZ2cVv39VLRWb6WtP1SAw2F5UMS8+6QHAnJfMfLgzemSw8XE5Kza6R9TNX3TJEuk/1oJJE6e68Ey/CkaJKJU08g9NFyseMj1s0VmmeD3uJwXFVa+VXOcKt17EpB8l82reruxJTTLdc3Bknadtlin2wSCDi8akVnE6YVAU1qqXTOVBnTi5ZjM67Bj9vPaD1MPmGDb8+ByeW4i70QXXOLyMxpt8P1aJnmtJJHzxRbegaeF650P+J9Uqx6FEk59zk6cPnbut9AqLeew1j6EriN1KkLWrb4Izuku66RkgqQmp33UEyG2necSY+Xh8f5/fXl0OE0HLs5YPvwqFnW4ysIVwJvE+YutMwl0hit9hTghLJuQHV9y6gaHcvyYjCPPUpwkCvX/zdAFXnHxG3qnkPFxgB"
+      },
+      {
+        "type": "text",
+        "text": "Your day is open. Indoor open play gym at Riverbend Community Centre is Saturdays 9 a.m. to noon, $6 per child, so you still have time to catch it. It's for ages 1 to 5, per their program page. [link-187000]\n\nThe weather's nice too. Cedar Park Conservancy's Toddler nature walk (outdoor trail) is Saturdays at 10 a.m. and free, but it's already underway. [link-0b6114]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 307,
+      "cache_read_input_tokens": 22096,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 307,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 319,
+      "output_tokens_details": {
+        "thinking_tokens": 167
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

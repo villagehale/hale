@@ -46,6 +46,8 @@ import type { CarpoolReader } from './carpool-reading';
 import type { CarpoolComposer } from './carpool-voice';
 import { type CommonTimePlanPorts, productionCommonTimePlanPorts } from './common-time-plan';
 import {
+  groupExperienceTurnEnabled,
+  groupPollsEnabled,
   linqGroupCarpoolEnabled,
   linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
@@ -58,6 +60,16 @@ import {
   linqWebhookSecret,
 } from './config';
 import { type OneToOneSend, privateAsideOneToOne, resumeConnectLink } from './connect-link-1to1';
+import {
+  type SecretSantaLineWriter,
+  type SecretSantaTurnModel,
+  chatHasCollectingDraw,
+  secretSantaEnabled,
+  secretSantaRunsInChat,
+  sharedSecretSantaLineWriter,
+} from './secret-santa';
+import { releaseHeldDrawsForCustomer } from './secret-santa-send';
+import { recordLinqEditWebhook } from './edit';
 import { familySpeechLanguage } from './family-outbound';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
@@ -74,6 +86,7 @@ import {
   linqGroupTriggerInOneToOne,
   mapGroupHandlesToFamily,
   matchLinqGroupTrigger,
+  noteGroupBackgroundChange,
 } from './group';
 import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import {
@@ -84,6 +97,13 @@ import {
   steerNotedCoparentOneToOne,
 } from './group-coparent';
 import {
+  considerGroupExperience,
+  considerGroupExperiencePollVote,
+  groupExperienceTakesTheTurn,
+} from './group-experience';
+import type { GroupExperienceReader } from './group-experience/reading';
+import type { GroupExperienceComposer } from './group-experience/voice';
+import {
   holdTrueStrangerOnce,
   retryMemberWelcome,
   seatParticipantAdded,
@@ -93,7 +113,13 @@ import {
 import { groupMentionFactsFor } from './group-mention-reader';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
 import type { GroupPickupClaimReader } from './group-pickup-claim';
-import { considerGroupPlanRsvp, considerGroupPollCardVote } from './group-plan-rsvp/inbound';
+import type { CalendarConsentReader } from './group-plan-rsvp/calendar';
+import {
+  considerCalendarTapback,
+  considerGroupPlanRsvp,
+  considerGroupPollCardVote,
+  considerPrivateCalendarReply,
+} from './group-plan-rsvp/inbound';
 import type { GroupPollCardPort } from './group-plan-rsvp/poll-turn';
 import { isGroupPollCardKind } from './group-plan-rsvp/poll-turn';
 import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
@@ -114,6 +140,7 @@ import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
 import {
   forgetSharedGroupPresence,
   noticeSharedGroupAdded,
+  presentHouseholds,
   takeMultiFamilyReaction,
   takeMultiFamilyTurn,
   unseatMultiFamilyMember,
@@ -132,7 +159,11 @@ import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import type { SharedGroupComposer } from './shared-group-voice';
-import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
+import {
+  LINQ_WEBHOOK_TIMEOUT_MS,
+  LINQ_WEBHOOK_VERSION,
+  verifyLinqWebhookSignature,
+} from './signature';
 import { type LinqEffectResult, type LinqTapback, listLinqParticipantHandles } from './transport';
 
 /**
@@ -223,12 +254,22 @@ export async function handleLinqInboundRequest(
     groupPlanRsvpReader?: GroupPlanRsvpReader;
     /** VIL-442 test seam. Production composes with the model when the flag is on. */
     groupPlanRsvpComposer?: GroupPlanRsvpComposer;
+    /** VIL-503 test seam. Production uses the shared calendar consent reader. */
+    groupPlanCalendarConsentReader?: CalendarConsentReader;
     /** VIL-457 test seam. Production uses the shared private-aside model. */
     privateAsideModel?: PrivateAsideModel;
     /** VIL-471 test seam. Production sends the native card through sendChoicePoll. */
     groupPollCard?: GroupPollCardPort;
+    /** VIL-399 test seam. Production uses the shared experience reader when the flag is on. */
+    groupExperienceReader?: GroupExperienceReader;
+    /** VIL-399 test seam. Production composes with the model when the flag is on. */
+    groupExperienceComposer?: GroupExperienceComposer;
     /** VIL-459 test seam. Production places a picked common time with the real invite sender. */
     commonTimePlan?: CommonTimePlanPorts;
+    /** VIL-686 test seam. Production reads a Secret Santa turn with the model. */
+    secretSantaTurn?: SecretSantaTurnModel;
+    /** VIL-686 test seam. Production writes every Secret Santa line with the model. */
+    secretSantaLine?: SecretSantaLineWriter;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -248,15 +289,18 @@ export async function handleLinqInboundRequest(
     return json({ error: 'linq_not_configured' }, 503);
   }
 
+  const timestamp = req.headers.get('webhook-timestamp');
   const valid = verifyLinqWebhookSignature({
     secret,
     rawBody,
     webhookId: req.headers.get('webhook-id'),
-    timestamp: req.headers.get('webhook-timestamp'),
+    timestamp,
     signature: req.headers.get('webhook-signature'),
     now: deps.now?.(),
   });
   if (!valid) return json({ error: 'invalid_signature' }, 403);
+  // Signed, so a number: when Linq stops waiting for this attempt.
+  const answerBy = new Date(Number(timestamp) * 1000 + LINQ_WEBHOOK_TIMEOUT_MS);
 
   const version = new URL(req.url).searchParams.get('version');
   if (version !== LINQ_WEBHOOK_VERSION) {
@@ -298,6 +342,20 @@ export async function handleLinqInboundRequest(
     await deps.countOutcome('receipt');
     return json({ outcome: 'receipt', apply });
   }
+  if (parsed.kind === 'edit') {
+    const apply = await recordLinqEditWebhook(deps.database, parsed.edit);
+    deps.log.info(
+      {
+        apply,
+        providerMessageId: parsed.edit.messageId,
+        partIndex: parsed.edit.partIndex,
+        isFromMe: parsed.edit.isFromMe,
+      },
+      'linq edit',
+    );
+    await deps.countOutcome('message_edited');
+    return json({ outcome: 'message_edited', apply });
+  }
   if (parsed.kind === 'ignored') {
     const outcome = IGNORE_OUTCOME[parsed.reason];
     deps.log.info({ outcome }, 'linq inbound: ignored');
@@ -334,7 +392,7 @@ export async function handleLinqInboundRequest(
           outcome = nudge.count;
           answered = nudge.body;
         } else {
-          outcome = await routeOneToOne(deps, message);
+          outcome = await routeOneToOne(deps, message, answerBy);
         }
       } else {
         if (linqGroupOnboardingV2Enabled()) {
@@ -350,8 +408,35 @@ export async function handleLinqInboundRequest(
             deps.log.info({ outcome: resumed.outcome }, 'linq inbound: connect link resumed 1:1');
           }
         }
-        outcome = await routeOneToOne(deps, message);
+        const calendarReply = await privateCalendarReply(deps, message);
+        if (calendarReply) {
+          outcome = calendarReply.count;
+          answered = calendarReply.body;
+        } else {
+          outcome = await routeOneToOne(deps, message, answerBy);
+        }
       }
+    }
+    // VIL-686: a customer's held Secret Santa draw goes as a reply to their own text, after
+    // their turn (a STOP in it has already revoked the channel, which then resolves to
+    // nobody). A miss is named and never fails the turn.
+    try {
+      const released = await releaseHeldDrawsForCustomer(
+        deps.database,
+        { phone: message.senderHandle, now: deps.now?.() ?? new Date() },
+        { writer: deps.secretSantaLine ?? sharedSecretSantaLineWriter(), oneToOne: deps.oneToOne },
+      );
+      if (released.outcomes.length > 0) {
+        deps.log.info(
+          { outcome: 'secret_santa_released', delivered: released.delivered },
+          'linq inbound: held secret santa draws released 1:1',
+        );
+      }
+    } catch (err) {
+      deps.log.error(
+        { outcome: 'secret_santa_release_failed', err: err instanceof Error ? err.name : 'unknown' },
+        'linq inbound: held secret santa draws not released',
+      );
     }
   } finally {
     try {
@@ -455,6 +540,7 @@ async function handleLinqLocation(
 async function routeOneToOne(
   deps: LinqDoorDeps,
   message: LinqInboundText,
+  answerBy: Date,
 ): Promise<InboundRouteOutcome> {
   // A forwarded link is queued for extraction. The reply the parent was already
   // going to get does not change, and a failure here is named rather than fatal.
@@ -484,6 +570,8 @@ async function routeOneToOne(
     isGroup: message.isGroup,
     providerAnsweredKeyword: null,
     media: message.media,
+    ...(message.service ? { service: message.service } : {}),
+    answerBy,
   });
 }
 
@@ -513,14 +601,137 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
     send: deps.sendGroupText,
     listHandles: deps.listChatHandles,
     composer: deps.sharedGroupVoice,
+    santaTurn: deps.secretSantaTurn,
+    santaLine: deps.secretSantaLine,
   };
 }
 
 /**
- * VIL-442 — RSVP for any plan, including people who never signed up.
- * Banter and a missed read stay quiet and leave the rest of the group door
- * (find, multi-family, inbox) the turn.
+ * VIL-399 — RSVP/time polls, a posted link, or a private question, behind the
+ * new default-off flags. Chatter and a missed read stay quiet and leave the
+ * rest of the group door the turn.
  */
+async function privateCalendarReply(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+): Promise<{ count: InboundRouteOutcome; body: Record<string, unknown> } | null> {
+  const mapped = await mapGroupHandlesToFamily(deps.database, {
+    sender: message.senderHandle,
+    others: [],
+  });
+  if (mapped.status !== 'same_family') return null;
+  const reply = await considerPrivateCalendarReply(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      composer: deps.groupPlanRsvpComposer,
+      reader: deps.groupPlanRsvpReader,
+      consentReader: deps.groupPlanCalendarConsentReader,
+      oneToOne: deps.oneToOne,
+    },
+    {
+      senderUserId: mapped.userId,
+      senderName: null,
+      chatId: message.chatId,
+      text: message.text,
+    },
+  );
+  if (!reply.handled) return null;
+  deps.log.info({ outcome: reply.outcome }, 'linq inbound: private calendar reply');
+  return {
+    count: reply.count,
+    body: {
+      outcome: reply.outcome,
+      ...(reply.notice ? { notice: reply.notice } : {}),
+    },
+  };
+}
+
+async function tryGroupExperienceTurn(
+  deps: LinqDoorDeps,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    text: string;
+  },
+): Promise<Response | null> {
+  if (!groupExperienceTurnEnabled()) return null;
+  const covering =
+    (await familyIdForClaimedChat(deps.database, input.chatId)) ??
+    (
+      await presentHouseholds(deps.database, input.chatId, {
+        includeStopped: false,
+        includeLeft: false,
+      })
+    )[0] ??
+    null;
+  if (!covering) return null;
+  const mappedSender = await mapGroupHandlesToFamily(deps.database, {
+    sender: input.senderHandle,
+    others: [],
+  });
+  const result = await considerGroupExperience(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      reader: deps.groupExperienceReader,
+      composer: deps.groupExperienceComposer,
+    },
+    {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
+      senderFamilyId: mappedSender.status === 'same_family' ? mappedSender.familyId : null,
+      coveringFamilyId: covering,
+      text: input.text,
+    },
+  );
+  if (!groupExperienceTakesTheTurn(result)) return null;
+  deps.log.info({ outcome: result.outcome }, 'linq inbound: group experience');
+  await deps.countOutcome(result.count);
+  return json({
+    outcome: result.outcome,
+    ...(result.notice ? { notice: result.notice } : {}),
+  });
+}
+
+async function tryGroupExperiencePollVote(
+  deps: LinqDoorDeps,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    optionId: string;
+    event: 'added' | 'removed';
+  },
+): Promise<Response | null> {
+  if (!groupPollsEnabled()) return null;
+  const mappedSender = await mapGroupHandlesToFamily(deps.database, {
+    sender: input.senderHandle,
+    others: [],
+  });
+  const vote = await considerGroupExperiencePollVote(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      composer: deps.groupExperienceComposer,
+    },
+    {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
+      optionId: input.optionId,
+      event: input.event,
+    },
+  );
+  if (!vote.handled) return null;
+  deps.log.info({ outcome: vote.outcome }, 'linq inbound: group experience poll vote');
+  await deps.countOutcome(vote.count);
+  return json({ outcome: vote.outcome });
+}
+
+/** VIL-442 — RSVP for any plan. Banter and a missed read leave the rest of the door the turn. */
 async function tryGroupPlanRsvpTurn(
   deps: LinqDoorDeps,
   input: {
@@ -528,6 +739,7 @@ async function tryGroupPlanRsvpTurn(
     senderHandle: string;
     text: string;
     tapback: LinqTapback | null;
+    tapbackMessageId?: string | null;
   },
 ): Promise<Response | null> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return null;
@@ -543,6 +755,8 @@ async function tryGroupPlanRsvpTurn(
       reader: deps.groupPlanRsvpReader,
       composer: deps.groupPlanRsvpComposer,
       pollCard: deps.groupPollCard,
+      consentReader: deps.groupPlanCalendarConsentReader,
+      oneToOne: deps.oneToOne,
     },
     {
       chatId: input.chatId,
@@ -550,6 +764,8 @@ async function tryGroupPlanRsvpTurn(
       senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
       text: input.text,
       tapback: input.tapback,
+      tapbackMessageId: input.tapbackMessageId,
+      secretSanta: await secretSantaRunsInChat(deps.database, input.chatId),
     },
   );
   if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
@@ -632,6 +848,25 @@ export function handleLinqGroupMessage(
 }
 
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  // VIL-686: while this chat's Secret Santa is collecting, "I'm in" and "count me out" are
+  // its words, so the RSVP door waits until the shared-group turn has read them. A row,
+  // not words, decides it.
+  const santaCollecting =
+    linqMultiFamilyGroupsEnabled() &&
+    secretSantaEnabled() &&
+    (await chatHasCollectingDraw(deps.database, message.chatId));
+  // A plan ask in a multi-family chat must run before the shared-group reader,
+  // or it is handed back as a question and falls into the mixed-family hold.
+  const rsvpFirst = santaCollecting
+    ? null
+    : await tryGroupPlanRsvpTurn(deps, {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        tapback: null,
+      });
+  if (rsvpFirst) return rsvpFirst;
+
   if (linqMultiFamilyGroupsEnabled()) {
     const shared = await takeMultiFamilyTurn(
       deps.database,
@@ -711,6 +946,12 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
   if (optOut !== 'stop') {
+    const experience = await tryGroupExperienceTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+    });
+    if (experience) return experience;
     const rsvp = await tryGroupPlanRsvpTurn(deps, {
       chatId: message.chatId,
       senderHandle: message.senderHandle,
@@ -792,6 +1033,12 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
     }
   }
   if (!stopping) {
+    const experience = await tryGroupExperienceTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+    });
+    if (experience) return experience;
     const rsvp = await tryGroupPlanRsvpTurn(deps, {
       chatId: message.chatId,
       senderHandle: message.senderHandle,
@@ -1261,6 +1508,12 @@ async function recordHandledInbound(
     .returning({ id: schema.channelMessages.id });
   const id = row?.id;
   if (!id) return null;
+  // The door answers this text itself, so it holds the text's answer claim: no C1 turn
+  // may fold it into another ask (router/burst.ts reads the same claim table).
+  await deps.database
+    .insert(schema.channelTurnAnswerClaims)
+    .values({ channelMessageId: id })
+    .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId });
   await deps.database.insert(schema.auditLog).values({
     familyId: owner.familyId,
     actor: owner.userId,
@@ -1286,6 +1539,16 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     },
     'linq signal',
   );
+  if (signal.event === 'chat.background_updated') {
+    const outcome = signal.chatId
+      ? await noteGroupBackgroundChange(deps.database, {
+          chatId: signal.chatId,
+          isFromMe: signal.isFromMe,
+        })
+      : 'linq_background_no_family';
+    await deps.countOutcome('ignored');
+    return json({ outcome });
+  }
   if (signal.event === 'participant.removed' && signal.chatId) {
     await forgetSharedGroupPresence(deps.database, {
       chatId: signal.chatId,
@@ -1360,6 +1623,13 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     signal.senderHandle &&
     signal.chatId
   ) {
+    const experienceVote = await tryGroupExperiencePollVote(deps, {
+      chatId: signal.chatId,
+      senderHandle: signal.senderHandle,
+      optionId: signal.optionId,
+      event: signal.event === 'poll.vote.added' ? 'added' : 'removed',
+    });
+    if (experienceVote) return experienceVote;
     const groupVote = await tryGroupPollCardVote(deps, {
       chatId: signal.chatId,
       senderHandle: signal.senderHandle,
@@ -1668,12 +1938,42 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       }
     }
   }
+  if (signal.event === 'reaction.added' && signal.senderHandle && signal.messageId) {
+    const mapped = await mapGroupHandlesToFamily(deps.database, {
+      sender: signal.senderHandle,
+      others: [],
+    });
+    const calendarTap = await considerCalendarTapback(
+      {
+        database: deps.database,
+        now: deps.now?.() ?? new Date(),
+        composer: deps.groupPlanRsvpComposer,
+        consentReader: deps.groupPlanCalendarConsentReader,
+        oneToOne: deps.oneToOne,
+      },
+      {
+        senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
+        senderName: null,
+        messageId: signal.messageId,
+        tapback: parseLinqTapback(signal.reactionType),
+      },
+    );
+    if (calendarTap.handled) {
+      deps.log.info({ outcome: calendarTap.outcome }, 'linq inbound: calendar tapback');
+      await deps.countOutcome(calendarTap.count);
+      return json({
+        outcome: calendarTap.outcome,
+        ...(calendarTap.notice ? { notice: calendarTap.notice } : {}),
+      });
+    }
+  }
   if (signal.event === 'reaction.added' && signal.senderHandle && signal.chatId) {
     const rsvp = await tryGroupPlanRsvpTurn(deps, {
       chatId: signal.chatId,
       senderHandle: signal.senderHandle,
       text: '',
       tapback: parseLinqTapback(signal.reactionType),
+      tapbackMessageId: signal.messageId,
     });
     if (rsvp) return rsvp;
   }

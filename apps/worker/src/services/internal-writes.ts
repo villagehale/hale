@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import { captureProductEvent } from '../analytics/product.js';
 import { db } from '../db.js';
 import { type Tx, recordTransition } from './memory-writer.js';
 
@@ -197,13 +198,15 @@ export interface CalendarPlacementInput {
 }
 
 /**
- * calendar_move: the target row (reversalHandle) plus its new time — and nothing else.
+ * calendar_move: the target row (reversalHandle) plus its new time — and, only
+ * when `updateLocation` is true, a new place (VIL-662 team schedule changes).
  *
- * A move RE-TIMES a row the database already holds; it does not re-describe it. There
- * is deliberately no `title`/`location` here, which is what lets the channel project a
- * private row before it drafts (VIL-270): the draft carries a handle, the row keeps its
- * own words, and no payload can overwrite a teen's real title with the placeholder the
- * model was shown. A future "rename while moving" is a new action, not a field.
+ * A coach move RE-TIMES a row the database already holds; it does not re-describe
+ * it. There is deliberately no `title` here, which is what lets the channel
+ * project a private row before it drafts (VIL-270): the draft carries a handle,
+ * the row keeps its own words, and no payload can overwrite a teen's real title
+ * with the placeholder the model was shown. Location rides only when the
+ * schedule-change path sets `updateLocation: true`.
  */
 export interface CalendarMoveInput {
   familyId: string;
@@ -211,6 +214,10 @@ export interface CalendarMoveInput {
   reversalHandle: string;
   startsAt: Date;
   endsAt: Date | null;
+  /** Set only with {@link updateLocation}. Scrubbed place; never a link or phone. */
+  location?: string | null;
+  /** When true, the UPDATE writes `location`. Coach moves omit this. */
+  updateLocation?: boolean;
 }
 
 /** calendar_cancel: just the target row to soft-delete. */
@@ -281,11 +288,11 @@ function placementSkippedAudit(familyId: string, actionId: string, auditAction: 
  * below keep the audit read: their target row is already unique (the reversalHandle),
  * so a doubled UPDATE cannot double anything a parent sees.
  */
-export function addToCalendar(
+export async function addToCalendar(
   input: CalendarPlacementInput,
   database: Database = db(),
 ): Promise<CalendarWriteResult> {
-  return recordTransition<CalendarWriteResult>(async (tx) => {
+  const result = await recordTransition<CalendarWriteResult>(async (tx) => {
     const inserted = await tx
       .insert(schema.familyEvents)
       .values({
@@ -349,6 +356,14 @@ export function addToCalendar(
       },
     };
   }, database);
+  if (result.outcome === 'written') {
+    captureProductEvent({
+      event: 'task_completed',
+      familyId: input.familyId,
+      properties: { type: 'calendar_change', source: 'worker' },
+    });
+  }
+  return result;
 }
 
 /**
@@ -372,10 +387,18 @@ export function moveCalendarEvent(
 
     const updated = await tx
       .update(schema.familyEvents)
-      .set({
-        startsAt: input.startsAt,
-        endsAt: input.endsAt,
-      })
+      .set(
+        input.updateLocation === true
+          ? {
+              startsAt: input.startsAt,
+              endsAt: input.endsAt,
+              location: input.location ?? null,
+            }
+          : {
+              startsAt: input.startsAt,
+              endsAt: input.endsAt,
+            },
+      )
       .where(
         and(
           eq(schema.familyEvents.id, input.reversalHandle),

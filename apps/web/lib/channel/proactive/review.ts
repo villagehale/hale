@@ -35,6 +35,12 @@ import {
   familyOutboundTarget,
   householdCopies,
 } from '~/lib/channel/linq/family-outbound';
+import { onCheckbackClock } from '~/lib/channel/next-day-checkback/clock';
+import {
+  type OpenAskClosedReason,
+  type RecheckOpenAsk,
+  defaultRecheckOpenAsk,
+} from '~/lib/channel/next-day-checkback/recheck';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -56,6 +62,7 @@ import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
 import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
+import { applyCandidateAfterSend, payloadOf } from './after-send';
 import { type WriterResult, composeProactiveBatch } from './compose';
 import {
   type DecideResult,
@@ -74,6 +81,7 @@ import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
+import { isVerbatimKind } from './verbatim';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -143,6 +151,9 @@ export interface ProactiveReviewDeps {
   threadMessage: typeof threadProactiveMessage;
   /** The sweep's own close of the first-find promise. Required, as in the sweep. */
   fulfillCommitment: typeof fulfillCommitment;
+  /** VIL-681 · is a next-day check-back still unfinished at send time. Required: a
+   * check-back sent without it could text a parent about something they already did. */
+  recheckOpenAsk: RecheckOpenAsk;
   fetch?: typeof fetch;
 }
 
@@ -159,6 +170,7 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
     outboundTarget: familyOutboundTarget,
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
+    recheckOpenAsk: defaultRecheckOpenAsk(),
   };
 }
 
@@ -193,6 +205,7 @@ interface QueuedItem extends OpenCandidate {
   category: (typeof schema.channelMessages.$inferInsert)['category'];
   templateKey: string;
   dedupeKey: string;
+  payload: Record<string, unknown> | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -448,6 +461,7 @@ async function loadOpenItems(
       category: row.category,
       templateKey: row.templateKey,
       dedupeKey: row.dedupeKey,
+      payload: row.payload ?? null,
       what: row.what,
       why: row.why,
       decision: row.decision,
@@ -465,10 +479,15 @@ async function loadOpenItems(
 }
 
 /**
- * Kinds with no sweep of their own left to send them: the evening check-in and the
- * VIL-393 mid-activity ask. They are reviewed live even while the cadence flag is off.
+ * Kinds with no sweep of their own left to send them: the evening check-in, the VIL-393
+ * mid-activity ask and the VIL-681 next-day check-back. They are reviewed live even while
+ * the cadence flag is off.
  */
-const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = ['evening_check_in', 'mid_activity_ask'];
+const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
+  'evening_check_in',
+  'mid_activity_ask',
+  'next_day_checkback',
+];
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);
@@ -537,7 +556,8 @@ type SettledReason =
   | 'parent_not_in_family'
   | 'already_sent'
   | 'already_asked'
-  | 'requested_drop_after_parent_text';
+  | 'requested_drop_after_parent_text'
+  | OpenAskClosedReason;
 
 /**
  * Moves this family's candidate rows. The family is in the write, not only the caller.
@@ -693,6 +713,62 @@ async function dropAlreadySent(
 }
 
 /**
+ * VIL-681 · a next-day check-back is read again at send time: still the ask the sweep
+ * queued, the parent still quiet, and not already signed up for somewhere Hale did not
+ * see. A closed ask is dropped by its name before the writer; one that could not be read
+ * is held with no clock. The rest of the batch goes on. An owed ask comes back with its
+ * asker's clock, which the gate's quiet floor reads for that parent.
+ */
+async function dropClosedAsks(
+  database: Database,
+  deps: ProactiveReviewDeps,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<{ kept: QueuedItem[]; clocks: Map<string, string> }> {
+  const kept: QueuedItem[] = [];
+  const clocks = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind !== 'next_day_checkback') {
+      kept.push(item);
+      continue;
+    }
+    const recheck = await deps.recheckOpenAsk(database, {
+      familyId,
+      parentUserId: item.parentUserId,
+      dedupeKey: item.dedupeKey,
+      payload: item.payload,
+      now,
+    });
+    if (recheck.verdict === 'owed') {
+      kept.push(item);
+      clocks.set(item.parentUserId, recheck.timeZone);
+      continue;
+    }
+    if (recheck.verdict === 'unchecked') {
+      await holdByName(database, familyId, [item], recheck.reason, now);
+      summary.held += 1;
+      continue;
+    }
+    await mark(database, familyId, [item.id], {
+      status: 'dropped',
+      reason: recheck.reason,
+      decision: 'send_now',
+      holdUntil: null,
+      now,
+    });
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: recheck.reason,
+      itemIds: [item.id],
+      mode: 'live',
+    });
+    summary.dropped += 1;
+  }
+  return { kept, clocks };
+}
+
+/**
  * The seat is read again at send time: a parent can leave between the load and the send,
  * and the gate would not notice (it reads per user, in any family). Their chosen rows are
  * dropped by name, not texted.
@@ -753,6 +829,19 @@ function writerItem(item: QueuedItem): ToolCandidate {
     worthlessAfter: item.worthlessAfter,
     parentRequested: item.parentRequested,
   };
+}
+
+/** The queued CTAs, in the order they were queued, without rewriting any of them. */
+function joinVerbatim(items: readonly QueuedItem[]): string {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const item of items) {
+    const key = `${item.kind}\n${item.what}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(item.what);
+  }
+  return lines.join('\n\n');
 }
 
 async function reviewFamily(
@@ -996,13 +1085,23 @@ const SEND_VERB: Partial<Record<ProactiveSendKind, string>> = {
   evening_check_in: 'evening_check_in_sent',
   co_parent_departed: 'co_parent_departure_notice_sent',
   travel_brief: 'travel_brief_sent',
+  village_intro: 'village_intro_card_sent',
+  followup: 'followup_activity_asked',
+  plan_check_in: 'coach_plan_check_in_sent',
+  activity_followup: 'activity_followup_sent',
+  spot_open: 'watched_spot_opened_sent',
+  email_alert: 'email_alert_sent',
+  calendar_alert: 'calendar_alert_sent',
+  duty_ask: 'proactive_cadence_sent',
 };
 
 /** The trail verb for one sent batch. A mixed batch stays the generic cadence send. */
 function sendAuditVerb(items: readonly QueuedItem[]): string {
   const kinds = new Set(items.map((item) => item.kind));
   const [only] = kinds;
-  return (kinds.size === 1 && only !== undefined && SEND_VERB[only]) || 'proactive_cadence_sent';
+  if (kinds.size !== 1 || only === undefined) return 'proactive_cadence_sent';
+  const fromPayload = payloadOf(items[0]?.payload)?.auditVerb;
+  return fromPayload ?? SEND_VERB[only] ?? 'proactive_cadence_sent';
 }
 
 /**
@@ -1016,10 +1115,18 @@ async function afterClassSend(
   now: Date,
 ): Promise<void> {
   for (const item of items) {
-    if (item.kind !== 'travel_brief') continue;
-    const tripId = tripIdFromBriefDedupeKey(item.dedupeKey);
-    if (tripId === null) throw new Error('proactive review: a travel brief with no trip key');
-    await closeBriefedTrip(database, { tripId, channelMessageId, now });
+    if (item.kind === 'travel_brief') {
+      const tripId = tripIdFromBriefDedupeKey(item.dedupeKey);
+      if (tripId === null) throw new Error('proactive review: a travel brief with no trip key');
+      await closeBriefedTrip(database, { tripId, channelMessageId, now });
+    }
+    await applyCandidateAfterSend(database, {
+      familyId: item.familyId,
+      parentUserId: item.parentUserId,
+      channelMessageId,
+      payload: payloadOf(item.payload),
+      now,
+    });
   }
 }
 
@@ -1037,7 +1144,15 @@ async function sendChosen(
 ): Promise<void> {
   const { familyId, now, summary } = input;
   const seated = await dropUnseated(database, familyId, input.chosen, now, summary);
-  const chosen = await dropAlreadySent(database, familyId, seated, now, summary);
+  const unsent = await dropAlreadySent(database, familyId, seated, now, summary);
+  const { kept: chosen, clocks } = await dropClosedAsks(
+    database,
+    deps,
+    familyId,
+    unsent,
+    now,
+    summary,
+  );
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.
@@ -1079,7 +1194,7 @@ async function sendChosen(
     copies = perParent.map((copy) => ({ ...copy, members: [copy.parentUserId] }));
   }
 
-  const gate = deps.buildGate(database);
+  const gate = onCheckbackClock(deps.buildGate(database), clocks);
   const gated: Array<{
     parentUserId: string;
     items: QueuedItem[];
@@ -1109,11 +1224,19 @@ async function sendChosen(
 
   // One text per distinct set of items: parents who share the same items share one
   // composition, and a parent is never texted about an item that is not theirs.
+  // VIL-612 · a class that queued its own CTA is sent as that sentence. The writer
+  // must not rewrite it.
   const writtenFor = new Map<string, WriterResult>();
   const voiced: Array<(typeof gated)[number] & { message: string }> = [];
   for (const copy of gated) {
+    const verbatim = copy.items.filter((item) => isVerbatimKind(item.kind));
+    const rest = copy.items.filter((item) => !isVerbatimKind(item.kind));
+    if (verbatim.length > 0) {
+      voiced.push({ ...copy, items: verbatim, message: joinVerbatim(verbatim) });
+    }
+    if (rest.length === 0) continue;
     const distinct = new Map<string, ToolCandidate>();
-    for (const item of copy.items) {
+    for (const item of rest) {
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
@@ -1134,11 +1257,11 @@ async function sendChosen(
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {
-      await holdByName(database, familyId, copy.items, `unvoiced:${written.skipped}`, now);
+      await holdByName(database, familyId, rest, `unvoiced:${written.skipped}`, now);
       summary.held += 1;
       continue;
     }
-    voiced.push({ ...copy, message: written.message });
+    voiced.push({ ...copy, items: rest, message: written.message });
   }
 
   const finalizer: SendFinalizerPorts = {

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 claims a dentist visit is booked (scheduled_event). The only row is a swim lesson, a different appointment, so it does not back the claim; cite none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1185
+}

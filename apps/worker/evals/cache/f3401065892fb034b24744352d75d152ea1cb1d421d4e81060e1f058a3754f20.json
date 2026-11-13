@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale is watching one class (Tuesday gymnastics) for an opening, which is a spot_watch. The only row is a Saturday swim watch, which is a different class, so the claim is cited to none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "spot_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2091
+}

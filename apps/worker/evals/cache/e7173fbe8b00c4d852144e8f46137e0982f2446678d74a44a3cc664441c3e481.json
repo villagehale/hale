@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for something Hale cannot do and needs to know the reminder is still active. Sending only a like tapback leaves the parent believing the request was handled, and the reply that carried the limitation was dropped. The tapback-only choice withheld information the parent needs, so this is a clear failure.",
+    "score": 1
+  }
+}

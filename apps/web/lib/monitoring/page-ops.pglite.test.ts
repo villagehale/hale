@@ -199,6 +199,20 @@ describe('pageOps: the one primitive', () => {
     expect(posted).toHaveLength(3);
   });
 
+  it("a registration's possible charge pages once per run: another family's in the same hour pages too", async () => {
+    const at = new Date(BASE.getTime() + 100 * HOUR);
+    const run = (ref: string) => ({ site: 'registration_review_unread' as const, facts: {}, ref });
+    const first = '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f';
+    const second = '2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a';
+    expect(await pageOps(db.database, run(first), { post, now: at })).toBe('paged');
+    expect(await pageOps(db.database, run(first), { post, now: at })).toBe('already_paged');
+    expect(await pageOps(db.database, run(second), { post, now: at })).toBe('paged');
+    expect(posted).toEqual([
+      `Hale: ops page. site registration_review_unread. ref ${first}.`,
+      `Hale: ops page. site registration_review_unread. ref ${second}.`,
+    ]);
+  });
+
   it('a post that did not leave releases the claim, so the next occurrence pages', async () => {
     const page = { site: 'group_plan_unwritten' as const, facts: { change: 'moved' as const } };
     const refused = async () => 'failed' as const;
@@ -275,6 +289,24 @@ describe('pageOps: the one primitive', () => {
     expect(posted[0]).toContain(`ref ${ref}.`);
     expect(posted[1]).not.toContain('5555550199');
     expect(posted[1]).toContain('ref redacted.');
+  });
+
+  it('a count travels as a short number: anything phone-shaped, negative or fractional is redacted', async () => {
+    const at = (hours: number) => ({ post, now: new Date(BASE.getTime() + hours * HOUR) });
+    const page = (count: number): OpsPage => ({ site: 'parent_text_unanswered', facts: {}, count });
+    await pageOps(db.database, page(3), at(100));
+    await pageOps(db.database, page(4375550100), at(101));
+    await pageOps(db.database, page(-2), at(102));
+    await pageOps(db.database, page(1.5), at(103));
+    expect(posted[0]).toBe('Hale: ops page. site parent_text_unanswered. count 3.');
+    expect(posted[1]).not.toContain('4375550100');
+    expect(posted.slice(1)).toEqual(
+      Array(3).fill('Hale: ops page. site parent_text_unanswered. count redacted.'),
+    );
+    const urgent = vi
+      .mocked(console.error)
+      .mock.calls.find((call) => call[1] === 'URGENT: parent_text_unanswered - paging #ops');
+    expect(urgent?.[0]).toEqual({ count: '3', page: 'parent_text_unanswered' });
   });
 
   it("a key outside its site's list never travels, and is counted", async () => {

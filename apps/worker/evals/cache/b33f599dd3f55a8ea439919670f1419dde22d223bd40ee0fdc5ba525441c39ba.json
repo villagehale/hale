@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzUPiTSRcycrH5ZzdZCx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "I don't see a separate reminder on the week, just the swim lesson itself on Saturday at 10 at the Community pool. Did you want the lesson itself cancelled?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1797,
+      "cache_read_input_tokens": 18193,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1797,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 342,
+      "output_tokens_details": {
+        "thinking_tokens": 286
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

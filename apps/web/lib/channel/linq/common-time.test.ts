@@ -136,8 +136,22 @@ describe('commonTimeFacts', () => {
     expect(Object.keys(facts).sort()).toEqual(
       ['askFamilies', 'checkedFamilies', 'option1', 'proposalCount', 'searchedDays'].sort(),
     );
+    expect(facts.fromBusyTimes).toBeUndefined();
     expect(facts.option1).toContain('America/Vancouver');
     expect(facts.askFamilies).toBe('the Ruiz family');
+  });
+
+  it('the first proposal built from busy times carries that as a fact; a later one does not', () => {
+    const input = { families: [chens, ruiz], now: NOW };
+    const first = commonTimeFacts(
+      { ...input, firstFromBusy: true },
+      [at('2026-10-27T22:00:00Z')],
+      'en',
+    );
+    expect(first.fromBusyTimes).toBe('first time using the busy times those families shared');
+    expect(
+      commonTimeFacts(input, [at('2026-10-27T22:00:00Z')], 'en').fromBusyTimes,
+    ).toBeUndefined();
   });
 });
 

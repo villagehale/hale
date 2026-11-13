@@ -1,0 +1,17 @@
+{
+  "value": {
+    "reason": "Clear go-ahead with session order, price ceiling and waiver permission",
+    "said": "Yes please! Sunday first, Saturday if Sunday's gone.",
+    "named": null,
+    "verdict": "approve",
+    "choiceIds": [
+      "sun-1000",
+      "sat-0900"
+    ],
+    "maxPriceCents": 11000,
+    "waiverSaid": "You can tick the waiver.",
+    "waiverAccepted": true,
+    "question": null
+  },
+  "latencyMs": 2491
+}

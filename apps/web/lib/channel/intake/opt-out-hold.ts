@@ -5,7 +5,11 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import { INTAKE_CONTENT_REDACTED, redactIntakeSessionsById } from '~/lib/rights/message-retention';
-import { decodeIntakeForRecovery, isUnreadableIntakeBlob } from './session';
+import {
+  INTAKE_SESSION_LIFETIME_MS,
+  decodeIntakeForRecovery,
+  isUnreadableIntakeBlob,
+} from './session';
 
 /** Joins a colliding provider id to a digest of the second number. The digest is not the
  * number: phone_hash stays its own column, and a replay of the same pair writes this same
@@ -184,6 +188,33 @@ export interface UndecodableIntakeOutcome {
 
 const UNDECODABLE_REASON = 'intake_session_undecodable';
 
+/** A session the erased family owns: the provisioned row, the signup tie, or — when
+ * neither exists — a family-less row on their number inside the session lifetime
+ * before first verification and not after they let the number go. */
+function sessionBelongsToErasedFamily(
+  session: {
+    familyId: string | null;
+    becameFamilyId: string | null;
+    phoneHash: string;
+    createdAt: Date;
+  },
+  familyIds: ReadonlySet<string>,
+  heldFrom: ReadonlyMap<string, Date>,
+  heldUntil: ReadonlyMap<string, Date | null>,
+): boolean {
+  if (session.familyId !== null && familyIds.has(session.familyId)) return true;
+  if (session.becameFamilyId !== null && familyIds.has(session.becameFamilyId)) return true;
+  if (session.familyId !== null) return false;
+  const until = heldUntil.get(session.phoneHash);
+  if (until !== null && until !== undefined && session.createdAt > until) return false;
+  const firstVerified = heldFrom.get(session.phoneHash);
+  if (firstVerified !== undefined) {
+    const startBound = new Date(firstVerified.getTime() - INTAKE_SESSION_LIFETIME_MS);
+    if (session.createdAt < startBound) return false;
+  }
+  return until === null || (until !== undefined && session.createdAt <= until);
+}
+
 /** The inbound texts a session's transcript names, or `undecodable` for a blob that will
  * not open (a corrupt row, a rotated key): one such session must never stop an erasure. Any
  * other throw is a fault in the code, not the row, and stops the sweep. */
@@ -224,6 +255,8 @@ export async function erasedFamilyHolds(
     .select({
       phoneHash: schema.parentChannels.phoneE164Hash,
       revokedAt: schema.parentChannels.revokedAt,
+      verifiedAt: schema.parentChannels.verifiedAt,
+      createdAt: schema.parentChannels.createdAt,
     })
     .from(schema.parentChannels)
     .where(inArray(schema.parentChannels.familyId, [...familyIds]));
@@ -249,16 +282,25 @@ export async function erasedFamilyHolds(
             ),
           );
   const heldIds = new Set(held.map((row) => row.id));
-  // Until when the erased families held each number: null while they still do. A session
-  // with no family yet on that number, opened by then, is theirs from before they signed
-  // up; one opened after is its next holder's.
+  const familyIdSet = new Set(familyIds);
+  // Until when the erased families held each number: null while they still do. A
+  // family-less session on that number is theirs only with an explicit signup tie
+  // (became_family_id), or — for older rows with no tie — when it opened inside
+  // the session lifetime before the channel's first verification and not after
+  // they let the number go (VIL-649). A session older than that window is a
+  // previous holder's; one opened after is the next holder's.
   const heldUntil = new Map<string, Date | null>();
+  const heldFrom = new Map<string, Date>();
   for (const row of channels) {
     const until = heldUntil.get(row.phoneHash);
-    if (until === null) continue;
-    if (row.revokedAt === null || until === undefined || row.revokedAt > until) {
-      heldUntil.set(row.phoneHash, row.revokedAt);
+    if (until !== null) {
+      if (row.revokedAt === null || until === undefined || row.revokedAt > until) {
+        heldUntil.set(row.phoneHash, row.revokedAt);
+      }
     }
+    const start = row.verifiedAt ?? row.createdAt;
+    const from = heldFrom.get(row.phoneHash);
+    if (from === undefined || start < from) heldFrom.set(row.phoneHash, start);
   }
   const sessions = (
     await database
@@ -266,6 +308,7 @@ export async function erasedFamilyHolds(
         id: schema.smsIntakeSessions.id,
         phoneHash: schema.smsIntakeSessions.phoneHash,
         familyId: schema.smsIntakeSessions.familyId,
+        becameFamilyId: schema.smsIntakeSessions.becameFamilyId,
         createdAt: schema.smsIntakeSessions.createdAt,
         dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
       })
@@ -273,6 +316,7 @@ export async function erasedFamilyHolds(
       .where(
         or(
           inArray(schema.smsIntakeSessions.familyId, [...familyIds]),
+          inArray(schema.smsIntakeSessions.becameFamilyId, [...familyIds]),
           phoneHashes.length === 0
             ? undefined
             : and(
@@ -281,11 +325,7 @@ export async function erasedFamilyHolds(
               ),
         ),
       )
-  ).filter((session) => {
-    if (session.familyId !== null) return true;
-    const until = heldUntil.get(session.phoneHash);
-    return until === null || (until !== undefined && session.createdAt <= until);
-  });
+  ).filter((session) => sessionBelongsToErasedFamily(session, familyIdSet, heldFrom, heldUntil));
   const intakeTexts: string[] = [];
   const undecodable: { id: string; phoneHash: string }[] = [];
   for (const session of sessions) {

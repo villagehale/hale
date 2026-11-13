@@ -38,8 +38,9 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
-import { READ_EMAIL_FIXTURES } from './read-email-fixtures.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { READ_EMAIL_FIXTURES } from './read-email-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -70,10 +71,12 @@ function transcriptFor(fixture, emailSourceTurns) {
   return [...alert, { role: 'user', content: fixture.text }];
 }
 
-function contextFor(fixture, transcript) {
+const LOCATION = { city: null, province: 'ON', country: 'CA' };
+
+function contextFor(fixture, transcript, helpLines) {
   return {
     parentName: null,
-    location: { city: null, province: 'ON', country: 'CA' },
+    location: LOCATION,
     planTier: 'free',
     children: [
       { id: 'kid-1', stage: 'preschooler', name: 'Ava', ageMonths: 50, teenRedacted: false },
@@ -111,6 +114,7 @@ function contextFor(fixture, transcript) {
     standingQuestions: [],
     ...(fixture.audience === 'group' ? { audience: 'group' } : {}),
     registrationWindows: [],
+    helpLines,
   };
 }
 
@@ -251,7 +255,11 @@ async function main() {
     const tools = isGroup ? scope.groupScopedTools(built) : built;
     const offered = tools.map((t) => t.name);
     if (!lit && offered.includes('read_email')) failures.push('read_email_offered_unlit');
-    const context = contextFor(fixture, transcriptFor(fixture, emailSourceTurns));
+    const context = contextFor(
+      fixture,
+      transcriptFor(fixture, emailSourceTurns),
+      await coachHelpLines(LOCATION, isGroup ? 'group' : 'direct'),
+    );
 
     let reply = BROKEN_REPLY;
     if (!broken) {

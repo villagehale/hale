@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Only the person who started this Secret Santa can draw the names or call it off, so that one's not mine to do. Hang tight and they can take it from here!"
+  },
+  "latencyMs": 1695,
+  "usage": {
+    "input_tokens": 55,
+    "output_tokens": 54,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

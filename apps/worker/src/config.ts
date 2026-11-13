@@ -13,6 +13,12 @@ const envSchema = z.object({
   // so it cannot reach production. Connecting still goes through requireDatabaseUrl.
   DATABASE_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  // LLM-generation tracing. Unset = dark. posthog.ts reads process.env directly
+  // (same key); listed here so Prod config names the var. Blank is "not set".
+  POSTHOG_PROJECT_API_KEY: z.preprocess(blankToUndefined, z.string().min(1).optional()),
+  POSTHOG_HOST: z.preprocess(blankToUndefined, z.string().url().optional()),
+  POSTHOG_ID_SALT: z.preprocess(blankToUndefined, z.string().min(1).optional()),
+  POSTHOG_LLM_CONTENT_ENABLED: z.preprocess(blankToUndefined, z.string().optional()),
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_HOST: z.string().url().optional(),

@@ -73,6 +73,31 @@ describe('compileToolSchema', () => {
     });
   });
 
+  it('sends a preprocessed field as the schema it normalises into, unchanged on the wire', () => {
+    const plain = compileToolSchema(z.object({ area: z.string().min(1).optional() }));
+    const normalised = compileToolSchema(
+      z.object({
+        area: z.preprocess(
+          (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+          z.string().min(1).optional(),
+        ),
+      }),
+    );
+
+    expect(normalised).toEqual(plain);
+    expect(normalised.schema.required).toEqual([]);
+    expect(normalised.schema.properties.area).toEqual({
+      type: 'string',
+      description: 'At least 1 characters.',
+    });
+  });
+
+  it('still refuses a refinement it cannot express', () => {
+    expect(() =>
+      compileToolSchema(z.object({ n: z.string().refine((s) => s.length % 2 === 0) })),
+    ).toThrow(/ZodEffects/);
+  });
+
   it('emits format:uuid, which the strict compiler supports', () => {
     const { schema } = compileToolSchema(z.object({ childId: z.string().uuid() }));
 

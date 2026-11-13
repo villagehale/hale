@@ -1,21 +1,32 @@
 import type { Database } from '@hale/db';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
+import { readParentLanguage } from '~/lib/channel/parent-language';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import {
   BrowserUseEngineThrew,
   PAYMENT_RUN_MAX_COST_USD,
   SIGNUP_RUN_MAX_COST_USD,
 } from '../browser-use/engine';
-import type {
-  BrowserUsePlanCheckpoint,
-  BrowserUsePlanInput,
-  BrowserUsePlanResult,
-  PlanEngineDetail,
-  PlanEngineOutcome,
-  PlanPaymentInput,
-  PlanResumeToken,
+import { browserUseSignupPaymentEnabled } from '../browser-use/flag';
+import {
+  type BrowserUsePlanCheckpoint,
+  type BrowserUsePlanInput,
+  type BrowserUsePlanResult,
+  CHECKOUT_REVIEW_RUN_MAX_COST_USD,
+  type PlanCharged,
+  type PlanEngineDetail,
+  type PlanEngineOutcome,
+  PlanEngineThrew,
+  type PlanPaymentInput,
+  type PlanResumeToken,
 } from '../browser-use/plan-engine';
 import { browserUseProxyFor } from '../browser-use/proxy';
 import { loadProviderSession, recordBrowserUseProfile } from '../browser-use/vault';
 import { signupProviderHost, typedOutsideGrant } from '../consent';
+import { providerAccountCreateEnabled, providerCredentialsEnabled } from '../credentials/flag';
+import { loadCredentialsForRun, markCredentialsStale } from '../credentials/store';
+import { loginLinkExpiresAt } from '../login-link/code';
+import { mintFreshLoginLink } from '../login-link/store';
 import { BROWSER_USE_REGISTRATION_RESERVE_USD, signupSpendingCap } from '../run';
 import {
   loadSignupIdentity,
@@ -24,12 +35,21 @@ import {
   reserveBrowserUseAllowance,
 } from '../store';
 import { registrationUrlAllowed } from '../url';
+import { childFirstName, parentTimeZone } from './conversation';
 import { registrationPlanRunEnabled } from './flag';
+import { signupPlanPrepDepsFromEnv } from './notice';
+import {
+  type PlanNoticeKind,
+  type PlanPrepDeps,
+  firstChoiceLabel,
+  sendSignupPlanNotice,
+} from './prep';
 import {
   type ClaimedPlan,
   claimDuePlan,
   claimResumablePlan,
   loadPlanConsent,
+  parkSignupPlan,
   planFieldsToType,
   planLapse,
   planTakenBack,
@@ -37,6 +57,7 @@ import {
   writePlanAudit,
 } from './store';
 import { planModeFor } from './towns';
+import { planOpensAtLocal } from './writer';
 
 /** Hale joins the open this long before it, the way a punctual parent would. */
 export const PLAN_JOIN_LEAD_MS = 3 * 60_000;
@@ -54,8 +75,12 @@ export const PLAN_SWEEP_BUDGET_MS = 10 * 60_000;
 export const PLAN_LEASE_MS = 15 * 60_000;
 /** Plans one sweep starts at most. Each family still gets one session at a time. */
 export const PLAN_SWEEP_MAX = 10;
-/** The signup and saved-card payment agent caps, plus $1 for browser time and seeding. */
-export const PLAN_RUN_ALLOWANCE_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
+/**
+ * The signup, checkout review and saved-card payment agent caps, plus $1 for browser time
+ * and seeding.
+ */
+export const PLAN_RUN_ALLOWANCE_USD =
+  SIGNUP_RUN_MAX_COST_USD + CHECKOUT_REVIEW_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
 
 export interface PlanSignupRunner {
   run(input: BrowserUsePlanInput): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>;
@@ -75,6 +100,8 @@ export interface PlanOutcomeNotice {
   choiceIndex: number | null;
   cartTotalCents: number | null;
   amountChargedCents: number | null;
+  /** What the run charged, from the engine; `unknown` once a payment may exist and none was read. */
+  charged: PlanCharged;
   confirmationNumber: string | null;
   liveViewUrl: string | null;
   holdExpiresAt: Date | null;
@@ -115,6 +142,8 @@ export interface PlanRunDeps {
   ) => Promise<{ ok: boolean; reason: string }>;
   /** Undefined uses `PLAN_AUTO_HOSTS`. */
   autoHosts?: readonly string[];
+  /** Event notices (rejected password, mismatched options). Undefined uses env wiring. */
+  prep?: PlanPrepDeps;
 }
 
 export type PlanRunSummary =
@@ -129,8 +158,11 @@ export type PlanSweepResult =
 /**
  * VIL-558 · carries out every day-before plan whose open is now. Dark behind its own
  * kill switch. Each plan writes one audit row per step: started, checkout, spending
- * cap, payment, finished (rule #6). A plan whose yes no longer stands ({@link planLapse},
- * read at the claim and again before payment) ends `cancelled` and texts no one.
+ * cap, final total, spending cap, payment, finished (rule #6). A plan whose yes no longer
+ * stands ({@link planLapse}, read at the claim and again before payment) ends `cancelled`
+ * and texts no one. The saved card is used only while the env-only payment switch
+ * (`BROWSER_USE_SIGNUP_PAYMENT_ENABLED`) is exactly `true`; otherwise the plan stops at
+ * checkout and the parent pays on the live browser.
  *
  * A run still going when the sweep's budget runs out is checkpointed, not cancelled: the
  * offer stays `submitting` with its resume token, the browser keeps the family's place in
@@ -223,6 +255,27 @@ async function runOnePlan(
   // A run an earlier sweep started already holds its allowance.
   let allowanceHeld = held !== null;
   let engineRan = false;
+  // Once a paying checkpoint stands, a payment run may exist: an engine that throws after it
+  // cannot say nothing was charged.
+  let paymentMayExist = held?.phase === 'paying';
+  // The checkout review is never meant to pay. A charge Hale cannot rule out while no payment
+  // run may exist came from it: it placed the order, its answer was never read, or the engine
+  // threw once it had started. A human looks at that one.
+  const pageIfReviewMayHavePlaced = async (charged: PlanCharged, detail: PlanRunDetail) => {
+    if (charged !== 'unknown' || paymentMayExist) return;
+    const page = await pageOps(database, {
+      site:
+        detail === 'review_placed_order'
+          ? 'registration_review_placed_order'
+          : 'registration_review_unread',
+      facts: {},
+      ref: plan.offerId,
+    });
+    console.warn(
+      { offerId: plan.offerId, detail, page },
+      'signup plans: the checkout review may have placed the order',
+    );
+  };
   const end = async (
     result: Omit<PlanOutcomeNotice, 'offerId' | 'familyId' | 'parentUserId'> & {
       costUsd?: string | null;
@@ -275,6 +328,7 @@ async function runOnePlan(
       choiceIndex: result.choiceIndex,
       cartTotalCents: result.cartTotalCents,
       amountChargedCents: result.amountChargedCents,
+      charged: result.charged,
       confirmed: result.confirmationNumber !== null,
       holdExpiresAt: result.holdExpiresAt?.toISOString() ?? null,
       costUsd: costUsd ?? null,
@@ -282,6 +336,20 @@ async function runOnePlan(
       notice,
       host,
     });
+    if (result.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: plan.familyId,
+        providerDomain: host,
+        stage: result.detail,
+        source: mode === 'assisted' ? 'assisted' : 'plan',
+      });
+    } else if (result.outcome === 'completed') {
+      noteTaskCompleted({
+        familyId: plan.familyId,
+        type: 'registration',
+        source: mode === 'assisted' ? 'assisted' : 'plan',
+      });
+    }
     return { offerId: plan.offerId, outcome: result.outcome, detail: result.detail, notice };
   };
   const handBack = (detail: PlanRunDetail, outcome: PlanRunOutcome = 'needs_human') =>
@@ -291,6 +359,7 @@ async function runOnePlan(
       choiceIndex: null,
       cartTotalCents: null,
       amountChargedCents: null,
+      charged: 'nothing',
       confirmationNumber: null,
       liveViewUrl: null,
       holdExpiresAt: null,
@@ -309,12 +378,16 @@ async function runOnePlan(
         'signup plans: browser use engine threw',
       );
       const ids = err instanceof BrowserUseEngineThrew ? err : null;
+      const reviewStarted = err instanceof PlanEngineThrew && err.reviewStarted;
+      const charged = paymentMayExist || reviewStarted ? 'unknown' : 'nothing';
+      await pageIfReviewMayHavePlaced(charged, 'engine_threw');
       return end({
         outcome: 'error',
         detail: 'engine_threw',
         choiceIndex: null,
         cartTotalCents: null,
         amountChargedCents: null,
+        charged,
         confirmationNumber: null,
         liveViewUrl: null,
         holdExpiresAt: null,
@@ -333,6 +406,10 @@ async function runOnePlan(
       await audit({ step: 'plan_checkpointed', phase: result.resume.phase, host });
       return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
     }
+    if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
+      return parkAndTell(database, plan, result, now, host, deps);
+    }
+    await pageIfReviewMayHavePlaced(result.charged, result.detail);
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
     return end({
       outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,
@@ -340,6 +417,7 @@ async function runOnePlan(
       choiceIndex: result.choiceIndex,
       cartTotalCents: result.cartTotalCents,
       amountChargedCents: result.amountChargedCents,
+      charged: result.charged,
       confirmationNumber: result.confirmationNumber,
       liveViewUrl: result.liveViewUrl,
       holdExpiresAt: result.holdExpiresAt,
@@ -355,13 +433,29 @@ async function runOnePlan(
   if (held?.phase === 'paying') {
     return carry(() => runner.settlePayment({ resume: held, waitUntil: sweep.waitUntil, onStep }));
   }
+  // An earlier sweep died during the checkout review. What the review did was never read and
+  // it may have placed the order, so a charge may exist, whatever the plan's state now.
+  if (held?.phase === 'signup' && held.reviewStarted) {
+    await pageIfReviewMayHavePlaced('unknown', 'total_unread');
+    return end({
+      outcome: 'needs_human',
+      detail: 'total_unread',
+      choiceIndex: null,
+      cartTotalCents: null,
+      amountChargedCents: null,
+      charged: 'unknown',
+      confirmationNumber: null,
+      liveViewUrl: null,
+      holdExpiresAt: null,
+    });
+  }
   const lapse = plan.takenBack ? 'taken_back' : await planLapse(database, plan);
   if (lapse) {
     console.info({ offerId: plan.offerId, lapse }, 'signup plans: the yes no longer stands');
     return handBack('authorization_lapsed', 'cancelled');
   }
   if (!allowed.ok || !host) return handBack('url_refused');
-  if (now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) {
+  if (!plan.alreadyOpen && now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) {
     return held ? handBack('open_window_passed', 'not_open') : handBack('missed_open');
   }
   if (mode === 'parent') return handBack('parent_town');
@@ -391,7 +485,14 @@ async function runOnePlan(
     providerHost,
     now,
   });
-  if (!stored) return handBack('no_provider_session', 'needs_login');
+  const credentials = providerCredentialsEnabled()
+    ? await loadCredentialsForRun(database, {
+        familyId: plan.familyId,
+        providerHost,
+        now,
+      })
+    : null;
+  if (!stored && !credentials) return handBack('no_provider_session', 'needs_login');
   if (!held) {
     const reserved = await reserveBrowserUseAllowance(database, {
       offerId: plan.offerId,
@@ -405,6 +506,7 @@ async function runOnePlan(
   }
 
   const cap = deps.checkSpendingCap ?? signupSpendingCap(plan.maxPriceCents);
+  const pick = typeof plan.availability?.kind === 'string' ? plan.availability.kind : null;
   return carry(() =>
     runner.run({
       mode,
@@ -415,12 +517,21 @@ async function runOnePlan(
       choices,
       maxPriceCents: plan.maxPriceCents,
       waiverAccepted: plan.waiverAccepted,
-      providerSession: {
-        storageState: stored.storageState,
-        browserUseProfileId: stored.browserUseProfileId,
-      },
+      paymentEnabled: browserUseSignupPaymentEnabled(),
+      credentials,
+      accountCreate: providerAccountCreateEnabled(),
+      joinWaitlist: pick === 'join_waitlist',
+      askedStart: askedStartFromAvailability(plan.availability),
+      providerSession: stored
+        ? {
+            storageState: stored.storageState,
+            browserUseProfileId: stored.browserUseProfileId,
+          }
+        : { storageState: { cookies: [], origins: [] }, browserUseProfileId: null },
       onProfileCreated: (profileId) =>
-        recordBrowserUseProfile(database, { sessionRowId: stored.id, profileId }),
+        stored
+          ? recordBrowserUseProfile(database, { sessionRowId: stored.id, profileId })
+          : Promise.resolve(),
       proxyCountryCode: browserUseProxyFor(providerHost),
       checkSpendingCap: (amountCents) =>
         cap(plan.familyId, { amountUsd: amountCents / 100, category: 'registration' }),
@@ -438,13 +549,134 @@ async function runOnePlan(
       onStep,
       resume: held,
       waitUntil: sweep.waitUntil,
-      onCheckpoint: (resume) =>
-        savePlanResume(database, {
+      onCheckpoint: async (resume) => {
+        const saved = await savePlanResume(database, {
           offerId: plan.offerId,
           familyId: plan.familyId,
           resume,
           letGo: false,
-        }),
+        });
+        if (saved && resume.phase === 'paying') paymentMayExist = true;
+        return saved;
+      },
     }),
   );
+}
+
+function askedStartFromAvailability(availability: Record<string, unknown> | null): string | null {
+  if (!availability) return null;
+  if (
+    availability.kind === 'take_option' &&
+    availability.choice &&
+    typeof availability.choice === 'object'
+  ) {
+    const starts = (availability.choice as { starts_at?: unknown }).starts_at;
+    if (typeof starts === 'string' && starts.trim()) return starts;
+  }
+  return typeof availability.askedStart === 'string' ? availability.askedStart : null;
+}
+
+async function parkAndTell(
+  database: Database,
+  plan: ClaimedPlan,
+  result: BrowserUsePlanResult,
+  now: Date,
+  host: string | null,
+  deps: PlanRunDeps,
+): Promise<PlanRunSummary> {
+  const passwordRejected = result.detail === 'password_rejected';
+  if (passwordRejected) {
+    await markCredentialsStale(database, {
+      familyId: plan.familyId,
+      providerHost: host ?? new URL(plan.registrationUrl).hostname,
+      now,
+    });
+  }
+  // The card names the open only while it is still ahead for the card's whole life; the
+  // run has usually reached the open by now, so the card is for finishing the session.
+  const loginCard = passwordRejected
+    ? {
+        sessionLabel: firstChoiceLabel(plan.sessions, plan.choiceIds),
+        opensAt:
+          plan.opensAt.getTime() > loginLinkExpiresAt(now).getTime()
+            ? planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId))
+            : null,
+      }
+    : null;
+  await parkSignupPlan(database, {
+    offerId: plan.offerId,
+    familyId: plan.familyId,
+    availability: passwordRejected
+      ? { kind: 'password_rejected' }
+      : {
+          kind: 'options_mismatch',
+          choices: result.siteChoices ?? [],
+          askedStart: plan.sessions[0]?.label ?? null,
+        },
+    now,
+  });
+  if (result.sessionCostUsd) {
+    await recordBrowserUseCost(database, {
+      offerId: plan.offerId,
+      familyId: plan.familyId,
+      sessionCostUsd: result.sessionCostUsd,
+      now,
+    });
+  }
+  const kind: PlanNoticeKind = passwordRejected ? 'password_rejected' : 'options_mismatch';
+  const facts = {
+    kind,
+    childFirstName: await childFirstName(database, {
+      familyId: plan.familyId,
+      childId: plan.childId,
+    }),
+    opensAt: planOpensAtLocal(plan.opensAt, await parentTimeZone(database, plan.parentUserId)),
+    host: host ?? new URL(plan.registrationUrl).hostname,
+    language: await readParentLanguage(database, {
+      familyId: plan.familyId,
+      parentUserId: plan.parentUserId,
+    }),
+    passwordRejectionMessage: result.passwordRejectionMessage ?? null,
+    passwordRule: result.passwordRule ?? null,
+    siteChoices: result.siteChoices ?? [],
+    askedStart: plan.sessions[0]?.label ?? null,
+    loginCard,
+  };
+  const sent = await sendSignupPlanNotice(
+    database,
+    {
+      familyId: plan.familyId,
+      parentUserId: plan.parentUserId,
+      offerId: plan.offerId,
+      providerHost: host ?? new URL(plan.registrationUrl).hostname,
+      kind,
+      facts,
+      mintLink: loginCard
+        ? (card) =>
+            mintFreshLoginLink(database, {
+              familyId: plan.familyId,
+              parentUserId: plan.parentUserId,
+              offerId: plan.offerId,
+              providerHost: host ?? new URL(plan.registrationUrl).hostname,
+              purpose: { kind: 'password_rejected', ...loginCard, card },
+              now,
+            })
+        : undefined,
+      linkAfter: 0,
+      now,
+    },
+    deps.prep ?? signupPlanPrepDepsFromEnv(database),
+  );
+  await writePlanAudit(database, {
+    familyId: plan.familyId,
+    actor: plan.parentUserId,
+    offerId: plan.offerId,
+    after: { step: 'plan_parked', kind, host },
+  });
+  return {
+    offerId: plan.offerId,
+    outcome: result.outcome,
+    detail: result.detail,
+    notice: sent ? 'sent' : 'failed',
+  };
 }

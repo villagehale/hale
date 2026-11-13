@@ -658,6 +658,133 @@ describe('friend voice onboarding', () => {
     expect(bodies[2]).toBe('What should I call you?');
     expect(bodies.join('\n')).not.toMatch(/postal code|how old|which of these/i);
   });
+
+  it('stores a named birth date as that calendar day and does not ask the age (VIL-531, VIL-532)', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    deps.friendVoice = {
+      async compose() {
+        return {
+          reply: 'Got Lin. What should I call you?',
+          capture: {
+            ...EMPTY_ONBOARDING_CAPTURE,
+            postalCode: 'M5V 2T6',
+            children: [
+              {
+                name: 'Lin',
+                ageMonths: null,
+                agePrecision: null,
+                dateOfBirth: '2016-05-01',
+              },
+            ],
+          },
+        };
+      },
+    };
+    deps.radar = {
+      async compose() {
+        return {
+          message: '1. Swim (ages 3-5) - Saturday',
+          itemCount: 1,
+          followUpNeeded: false,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          findWon: true,
+          firstFindPromised: false,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: null,
+        };
+      },
+    };
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const done = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'Lin was born May 1, 2016, M5V 2T6'),
+      deps,
+    );
+
+    expect(done.status).toBe('provisioned');
+    const lin = fake.rows(schema.children).find((row) => row.name === 'Lin');
+    expect(lin?.dateOfBirth).toBe('2016-05-01');
+    expect(lin?.dobPrecision).toBe('exact');
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.familyId).toBeTruthy();
+    expect(session?.userId).toBeTruthy();
+    expect(transport.bodies().join('\n')).not.toMatch(/how old/i);
+  });
+
+  it('links the session before a post-provision throw, and a later age text does not insert a second SMS channel (VIL-532)', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const scripted = deps.friendVoice;
+    if (!scripted) throw new Error('harness has no voice');
+    deps.friendVoice = {
+      async compose(input, options) {
+        if (/born May 1|She's 10/i.test(input.parentWords)) {
+          return {
+            reply: 'Got Lin. What should I call you?',
+            capture: {
+              ...EMPTY_ONBOARDING_CAPTURE,
+              postalCode: 'M5V 2T6',
+              children: [
+                {
+                  name: 'Lin',
+                  ageMonths: null,
+                  agePrecision: null,
+                  dateOfBirth: '2016-05-01',
+                },
+              ],
+            },
+          };
+        }
+        return scripted.compose(input, options);
+      },
+    };
+    let finds = 0;
+    deps.radar = {
+      async compose() {
+        finds += 1;
+        if (finds === 1) throw new Error('radar failed after channel insert');
+        return {
+          message: '1. Swim (ages 3-5) - Saturday',
+          itemCount: 1,
+          followUpNeeded: false,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          findWon: true,
+          firstFindPromised: false,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: null,
+        };
+      },
+    };
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
+    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
+
+    await expect(
+      handleInboundSms(fake.db, inbound(transport, 'Lin was born May 1, 2016'), deps),
+    ).rejects.toThrow('radar failed after channel insert');
+
+    expect(fake.rows(schema.parentChannels)).toHaveLength(1);
+    const interrupted = await loadOpenSession(fake.db, PHONE);
+    expect(interrupted?.familyId).toBeTruthy();
+    expect(interrupted?.userId).toBeTruthy();
+    expect(interrupted?.state).toBe('awaiting_ages');
+    expect(fake.rows(schema.families)[0]?.onboardingStage).toBe('sms_intake');
+
+    const retry = await handleInboundSms(fake.db, inbound(transport, "She's 10."), deps);
+    expect(retry.status).toBe('provisioned');
+    expect(fake.rows(schema.parentChannels)).toHaveLength(1);
+    expect(fake.rows(schema.families)).toHaveLength(1);
+    const linked = await loadOpenSession(fake.db, PHONE);
+    expect(linked?.familyId).toBe(interrupted?.familyId);
+    expect(linked?.userId).toBe(interrupted?.userId);
+    expect(fake.rows(schema.children).find((row) => row.name === 'Lin')?.dateOfBirth).toBe(
+      '2016-05-01',
+    );
+  });
+
   it('keeps a name given out of order and still asks for the postal code first', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, "Maya is 4 and I'm Dana"), deps);

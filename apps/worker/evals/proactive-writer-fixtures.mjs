@@ -70,4 +70,21 @@ export const PROACTIVE_WRITER_FIXTURES = [
     cadenceNote: null,
     expect: { names: ['swim'], urls: [] },
   },
+  {
+    // VIL-681 · one check-back on something the parent started yesterday: the thread's
+    // own title and next step, no link.
+    id: 'next-day-checkback',
+    items: [
+      {
+        id: 'checkback',
+        what: 'Fall swim registration for the 4 year old: pick a session',
+        why: 'next_day_checkback asked=2026-10-08T01:40:00.000Z',
+        sourceUrl: null,
+        worthlessAfter: '2026-10-09T12:00:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['swim'], urls: [] },
+  },
 ];

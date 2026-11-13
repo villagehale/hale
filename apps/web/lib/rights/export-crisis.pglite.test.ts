@@ -6,6 +6,7 @@ import {
   CRISIS_UNANSWERED_AUDIT_ACTION,
   failurePageCrisisPager,
 } from '~/lib/monitoring/failure-page';
+import { AUDIT_LOG_AUDIENCE_ENABLED_ENV } from '~/lib/privacy/audit-audience';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
 
@@ -30,6 +31,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users, rate_limits cascade');
 });
 
@@ -128,5 +130,33 @@ describe('a crisis flag in the family data export', () => {
       now: NOW,
     });
     expect(own.trail.filter((row) => row.id !== older?.id)).toHaveLength(50);
+  }, 30_000);
+
+  it("with audience rows lit, an own row written before the column is still in its adult's copy only", async () => {
+    vi.stubEnv(AUDIT_LOG_AUDIENCE_ENABLED_ENV, 'true');
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Hazel Family');
+    const coParent = await seedCoParent(familyId);
+    const [heldRead] = await db.database
+      .insert(schema.auditLog)
+      .values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'opt_out_hold_read',
+        targetTable: 'users',
+        targetId: parentUserId,
+      })
+      .returning({ id: schema.auditLog.id, audience: schema.auditLog.audience });
+    expect(heldRead?.audience).toBeNull();
+
+    const own = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    expect(own.trail.map((row) => row.id)).toEqual([heldRead?.id]);
+    const other = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: coParent,
+      now: NOW,
+    });
+    expect(other.trail.map((row) => row.id)).not.toContain(heldRead?.id);
   }, 30_000);
 });

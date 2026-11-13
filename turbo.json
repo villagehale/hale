@@ -19,7 +19,10 @@
         "LANGFUSE_HOST",
         "APP_URL",
         "POSTHOG_PERSONAL_API_KEY",
-        "POSTHOG_PROJECT_ID"
+        "POSTHOG_PROJECT_ID",
+        "POSTHOG_FLAGS_ENABLED",
+        "POSTHOG_FEATURE_FLAGS_KEY",
+        "POSTHOG_ID_SALT"
       ]
     },
     "dev": {

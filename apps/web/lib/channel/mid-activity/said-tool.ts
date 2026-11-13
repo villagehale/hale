@@ -1,5 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import type { Database } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import type { OfferedCandidate } from '~/lib/coach/tools';
 import { zonedLocalInstant } from '~/lib/plan/spine';
@@ -20,7 +21,7 @@ export const MID_ACTIVITY_SIGNUP_TOOL_ENV = 'MID_ACTIVITY_SIGNUP_TOOL_ENABLED';
 export function midActivitySignupToolEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env[MID_ACTIVITY_SIGNUP_TOOL_ENV] === 'true';
+  return isEnabled('mid-activity-signup-tool', undefined, env);
 }
 
 export interface SaidSignupToolPorts {

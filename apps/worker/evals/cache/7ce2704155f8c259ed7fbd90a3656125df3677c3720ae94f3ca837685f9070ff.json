@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The only sentence says nothing is booked, which is a negation and makes no claim. No rows exist to cite.",
+    "claims": []
+  },
+  "latencyMs": 1072
+}

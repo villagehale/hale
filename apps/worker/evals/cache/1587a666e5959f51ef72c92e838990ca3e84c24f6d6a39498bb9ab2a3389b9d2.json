@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "All drawn! 🎅 Each of you gets yours privately from Hale, so keep it to yourself. One of you still needs to text Hale first so your draw can reach you."
+  },
+  "latencyMs": 2241,
+  "usage": {
+    "input_tokens": 48,
+    "output_tokens": 62,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1139
+  }
+}

@@ -209,6 +209,28 @@ describe('routing', () => {
     expect(revoked.length).toBeGreaterThan(0);
   });
 
+  it('a STOP sent while the parent’s turn is still running is the door’s: never queued, so no turn — side or queued — reads it', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+    const imessage = { transport: 'imessage' as const, chatId: 'chat-1', isGroup: false };
+
+    // Positive control: an ordinary text from the same parent in the same chat is queued.
+    await routeInboundText(h.deps, { ...inbound({ providerId: 'msg-ask' }), ...imessage });
+    const stop = await routeInboundText(h.deps, {
+      ...inbound({ body: 'stop', providerId: 'msg-stop' }),
+      ...imessage,
+    });
+
+    expect(stop).toBe('intake');
+    expect(h.transport.bodies()).toEqual([SCRIPTED_STOP_CONFIRMATION]);
+    expect(h.jobs.map((j) => j.provider_message_id)).toEqual(['msg-ask']);
+    const handedToC1 = h.fake
+      .rows(schema.channelMessages)
+      .filter((r) => r.direction === 'in' && r.category === 'reply');
+    expect(handedToC1.map((r) => r.providerMessageId)).toEqual(['msg-ask']);
+  });
+
   it('hands an enrolled photo to the coach and stores the part, with no fixed line', async () => {
     const h = harness();
     const { familyId, userId } = enrol(h.fake);
@@ -386,6 +408,7 @@ describe('handoff to C1', () => {
         channel_message_id: message?.id,
         provider_message_id: 'SM11111111111111111111111111111111',
         received_at: NOW.toISOString(),
+        opt_out_unread: false,
       },
     ]);
   });
@@ -748,6 +771,7 @@ describe('handoff to C1', () => {
           channel_message_id: message?.id,
           provider_message_id: 'SM11111111111111111111111111111111',
           received_at: NOW.toISOString(),
+          opt_out_unread: false,
         },
       ]);
       expect(h.transport.bodies()).toEqual([]);

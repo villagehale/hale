@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly reports both sessions full, no registration, no charge, and the single ask about other sessions is fine. However it says Hale 'was in at the open' and mentions 'Registration opened at 7:00 tonight' which matches facts, but offers to look at other sessions, which is a next step not in the facts and sits close to a follow-up promise. Minor issues, otherwise accurate and privacy-clean.",
+    "score": 4
+  }
+}
