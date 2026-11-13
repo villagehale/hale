@@ -449,12 +449,17 @@ async function organizerIsGone(database: Database, draw: Draw): Promise<boolean>
   return !row || row.stoppedAt !== null;
 }
 
-async function cancelDraw(database: Database, drawId: string, now: Date): Promise<boolean> {
+async function cancelDraw(
+  database: Database,
+  drawId: string,
+  now: Date,
+  from: readonly ('collecting' | 'drawn')[],
+): Promise<boolean> {
   const draws = schema.secretSantaDraws;
   const [row] = await database
     .update(draws)
     .set({ status: 'cancelled', cancelledAt: now })
-    .where(and(eq(draws.id, drawId), inArray(draws.status, ['collecting', 'drawn'])))
+    .where(and(eq(draws.id, drawId), inArray(draws.status, [...from])))
     .returning({ id: draws.id });
   return Boolean(row);
 }
@@ -746,17 +751,22 @@ export async function applySecretSantaTurn(
   if (decision.cancel && draw) {
     if (draw.organizerPersonId !== speaker) {
       refusals.push({ outcome: 'not_organizer' });
-    } else if (await cancelDraw(database, draw.id, options.now)) {
+    } else if (await cancelDraw(database, draw.id, options.now, ['collecting', 'drawn'])) {
       outcomes.push('cancelled');
       draw = null;
     }
   }
 
   if (decision.start && context.customer) {
-    if (draw && (await organizerIsGone(database, draw))) {
-      await cancelDraw(database, draw.id, options.now);
-      draw = null;
-      outcomes.push('restarted');
+    // A start replaces only an orphaned collecting draw. A drawn draw ends by its
+    // organizer's cancel or the retention purge, never by someone else's start.
+    if (draw?.status === 'collecting' && (await organizerIsGone(database, draw))) {
+      if (await cancelDraw(database, draw.id, options.now, ['collecting'])) {
+        draw = null;
+        outcomes.push('restarted');
+      } else {
+        draw = await liveSecretSantaDraw(database, context.chatId);
+      }
     }
     if (!draw) {
       const [created] = await database

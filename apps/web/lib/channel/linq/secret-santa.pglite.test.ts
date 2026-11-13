@@ -407,6 +407,39 @@ describe('starting and joining, through the group door', () => {
     expect(rows.map((r) => r.status).sort()).toEqual(['cancelled', 'collecting']);
     expect(rows.find((r) => r.status === 'collecting')?.organizerPersonId).toBe(await personId(ADA));
   });
+
+  it("a non-organizer's start after the draw, with the organizer gone, leaves the drawn draw standing", async () => {
+    await seedChat();
+    const w = wire();
+    await fiveDrawn(w);
+    const [before] = await draws();
+    const pairing = await truePairing();
+    await db.database
+      .update(schema.linqSharedGroupPeople)
+      .set({ stoppedAt: NOON })
+      .where(eq(schema.linqSharedGroupPeople.id, await personId(MEI)));
+    const groupBefore = w.group.length;
+    const directBefore = w.direct.length;
+    const restart = santaScript({
+      "let's do Secret Santa! I'm Ada": {
+        start: true,
+        joinSelf: { called: 'Ada' },
+        reply: 'Love it. Say you’re in with the name to use.',
+      },
+    });
+    await say(deps(w, restart.model, lines().writer), ADA, "let's do Secret Santa! I'm Ada");
+    // Positive control: the model was asked, and read it as a start.
+    expect(restart.inputs.map((i) => i.text)).toContain("let's do Secret Santa! I'm Ada");
+    const rows = await draws();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: before?.id, status: 'drawn', cancelledAt: null });
+    expect(await truePairing()).toEqual(pairing);
+    expect((await participants()).map((p) => p.called).sort()).toEqual(['Ada', 'Gia', 'Gus', 'Ken', 'Mei']);
+    expect(w.direct.length).toBe(directBefore);
+    for (const g of w.group.slice(groupBefore)) {
+      for (const name of Object.values(NAMES)) expect(g.text).not.toContain(name);
+    }
+  });
 });
 
 describe('door order while a draw is collecting', () => {
