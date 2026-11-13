@@ -203,7 +203,12 @@ export const AUDIT_VERBS = [
   'linq_group_plan_calendar_written',
   'linq_group_plan_calendar_removed',
   'linq_group_plan_calendar_withdrawn',
+  'linq_group_plan_calendar_moved',
+  'linq_group_plan_calendar_which_asked',
+  'linq_group_plan_closed',
+  'linq_group_plan_time_set',
   'linq_group_poll_started',
+  'linq_group_poll_closed',
   'linq_group_poll_vote_recorded',
   'linq_group_poll_vote_removed',
   'group_line_unsent',
@@ -916,8 +921,28 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale set aside the calendar question',
     family: 'note',
   },
+  linq_group_plan_calendar_moved: {
+    sentence: 'Hale moved a group plan on your household calendar to the time the group picked',
+    family: 'done',
+  },
+  linq_group_plan_calendar_which_asked: {
+    sentence: 'Hale asked which group plan you meant before putting one on your calendar',
+    family: 'awaiting',
+  },
+  linq_group_plan_closed: {
+    sentence: 'Hale stopped counting who is coming to a plan in your family group',
+    family: 'note',
+  },
+  linq_group_plan_time_set: {
+    sentence: 'Hale set the time the group picked for a plan in your family group',
+    family: 'done',
+  },
   linq_group_poll_started: {
     sentence: 'Hale started a poll in your family group',
+    family: 'done',
+  },
+  linq_group_poll_closed: {
+    sentence: 'Hale closed a poll in your family group once the group settled it',
     family: 'done',
   },
   linq_group_poll_vote_recorded: {

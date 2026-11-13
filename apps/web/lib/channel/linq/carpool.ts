@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, isNotNull, isNull, lt, lte } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
+import { resolveMessagingDoor, textedHaleOneToOne } from '~/lib/channel/messaging-door';
 import {
   PROACTIVE_CATEGORY,
   assertProactiveSendAllowed,
@@ -723,22 +723,6 @@ async function chatIsHouseholdGroup(database: Database, chatId: string): Promise
   return Boolean(roster);
 }
 
-/** The driver has texted Hale 1:1 before: Hale never opens a 1:1 with someone who has not. */
-async function hasTextedHaleOneToOne(database: Database, userId: string): Promise<boolean> {
-  const [row] = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.parentUserId, userId),
-        eq(schema.channelMessages.direction, 'in'),
-        eq(schema.channelMessages.inGroup, false),
-      ),
-    )
-    .limit(1);
-  return Boolean(row);
-}
-
 export async function considerCarpoolTapback(
   database: Database,
   input: {
@@ -1122,7 +1106,7 @@ async function deliverDriverLeg(
   if (!plan.driverHaleCustomer) return 'driver_not_customer';
   if (!plan.driverUserId) return 'no_driver_user';
   if (input.shared) {
-    if (!(await hasTextedHaleOneToOne(database, plan.driverUserId))) {
+    if (!(await textedHaleOneToOne(database, plan.driverUserId))) {
       return 'driver_never_texted';
     }
   } else if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
