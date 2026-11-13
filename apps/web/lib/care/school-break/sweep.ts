@@ -29,13 +29,13 @@ import {
   retireSchoolBreak,
 } from './facts';
 import { schoolBreakEnabled } from './flag';
+import type { MailKey } from './kept-mail';
 import { type BoardLookupDeps, lookupBoardBreak } from './lookup';
 import {
   type VerifiedBreakReading,
   createLiveBreakPageReader,
   createLiveTextBreakReader,
 } from './read';
-import type { MailKey } from './kept-mail';
 import {
   type SchoolMailReader,
   type SchoolMessage,
@@ -43,8 +43,8 @@ import {
   schoolMailReader,
 } from './school-mail';
 import { createLiveSchoolSenderReader } from './school-sender';
-import { boardBreakStanding, hasSchoolAgeChild } from './standing';
 import { searchSchoolCalendar } from './search';
+import { boardBreakStanding, hasSchoolAgeChild } from './standing';
 import {
   MAX_LOOKUP_TRIES,
   type StoredBoardReading,
@@ -364,7 +364,9 @@ async function refreshBoard(
 interface SchoolEmail {
   host: string;
   text: string;
-  mail: MailKey;
+  /** Every kept message from this school the run read, the one the check read first:
+   * the break filed for it stands while any of them is still kid mail. */
+  mail: MailKey[];
 }
 
 interface FamilyWork {
@@ -384,12 +386,14 @@ function newestPerHost(messages: SchoolMessage[]): SchoolMessage[] {
 }
 
 /** The messages, of those given, that a school wrote, each with its text; `unread` when
- * one of them could not be read or checked this run. */
+ * one of them could not be read or checked this run. `kept` is every message the run
+ * read, so a school's email carries all of that school's mail. */
 async function schoolEmails(
   deps: SchoolBreakSweepDeps,
   lookup: BoardLookupDeps,
   familyId: string,
   messages: SchoolMessage[],
+  kept: SchoolMessage[],
   result: SchoolBreakSweepResult,
 ): Promise<{ emails: SchoolEmail[]; unread: boolean }> {
   let unread = false;
@@ -417,7 +421,9 @@ async function schoolEmails(
         );
         return null;
       }
-      const mail = { integrationId: message.integrationId, messageId: message.messageId };
+      const mail = [message, ...kept.filter((other) => other !== message)]
+        .filter((other) => other.host === message.host)
+        .map(({ integrationId, messageId }) => ({ integrationId, messageId }));
       return { host: message.host, text: text.text, mail };
     }),
   );
@@ -515,6 +521,7 @@ export async function runSchoolBreakSweep(
           deps.lookup,
           familyId,
           fresh,
+          messages,
           result,
         ));
       } catch (err) {
@@ -622,7 +629,7 @@ async function settleFamily(
     if (sameBreak(fact, 'board_page', board.reading, board.reading.sourceUrl)) return 'settled';
     const sourceMail = uniqueMail([
       ...(fact?.source === 'board_page' && fact.boardHost === board.host ? fact.sourceMail : []),
-      ...work.emails.filter((email) => email.host === board.host).map((email) => email.mail),
+      ...work.emails.filter((email) => email.host === board.host).flatMap((email) => email.mail),
     ]);
     await recordSchoolBreak(database, {
       source: 'board_page',
