@@ -3,8 +3,8 @@
  * find, an unapproved registration). Queued for the proactive decider; the
  * model writes the line. A miss sends nothing.
  *
- * Off unless NEXT_DAY_CHECKBACK_ENABLED is exactly `true`. A trailing newline
- * from `vercel env add` stays off. Unset stays off. There is no allowlist.
+ * A kill switch: on unless NEXT_DAY_CHECKBACK_ENABLED is `false` (trimmed).
+ * Unset stays on. There is no allowlist.
  */
 import { isEnabled } from '@hale/flags';
 

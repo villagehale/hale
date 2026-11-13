@@ -2,17 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { NEXT_DAY_CHECKBACK_ENABLED_ENV, nextDayCheckbackEnabled } from './flag';
 
 describe('nextDayCheckbackEnabled', () => {
-  it('is on only for the exact string true', () => {
+  it('is on when unset, and for any value but false', () => {
+    expect(nextDayCheckbackEnabled({})).toBe(true);
     expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'true' })).toBe(true);
+    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'true\n' })).toBe(true);
+    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: '' })).toBe(true);
+    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'TRUE' })).toBe(true);
+    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: '1' })).toBe(true);
+    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'on' })).toBe(true);
   });
 
-  it('stays off for every other value, including a trailing newline and unset', () => {
-    expect(nextDayCheckbackEnabled({})).toBe(false);
-    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: '' })).toBe(false);
-    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'true\n' })).toBe(false);
-    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'TRUE' })).toBe(false);
-    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: '1' })).toBe(false);
-    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'on' })).toBe(false);
+  it('is off for false, trimmed', () => {
     expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'false' })).toBe(false);
+    expect(nextDayCheckbackEnabled({ [NEXT_DAY_CHECKBACK_ENABLED_ENV]: 'false\n' })).toBe(false);
   });
 });
