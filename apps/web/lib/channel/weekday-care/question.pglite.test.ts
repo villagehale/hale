@@ -10,8 +10,8 @@ import {
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
 import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';

@@ -116,9 +116,7 @@ export async function finalizeProactiveSend(
         providerMessageId: first === null ? input.providerMessageId : null,
         providerChatId: input.providerChatId,
         sentAt: input.sentAt,
-        ...(BODY_RECORDED_TEMPLATE_KEYS.includes(item.templateKey)
-          ? { body: input.composed }
-          : {}),
+        ...(BODY_RECORDED_TEMPLATE_KEYS.includes(item.templateKey) ? { body: input.composed } : {}),
       });
       first ??= id;
     }
