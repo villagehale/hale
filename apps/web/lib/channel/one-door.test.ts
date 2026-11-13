@@ -67,7 +67,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/edit.ts':
     'VIL-479 edits one text part of a bubble Hale already sent; editLinqMessage runs only after the model writes the replacement, the original channel_messages row is the audit target (linq_message_edited), a linq:edit receipt is inserted after Linq accepts, and a refusal sends the follow-up instead',
   'apps/web/lib/channel/linq/tapback.ts':
-    'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
+    "a tapback that replaces a throwaway ack, or (VIL-680, LINQ_REACTIONS_ENABLED) the tapback the coach chose; reactToParentMessage reacts only on the parent's inbound message id, and moments.ts writes the linq:tapback row and linq_tapback audit when the reaction is accepted",
   'apps/web/lib/channel/linq/effect.ts':
     "Hale's reply sent with an iMessage effect when the model chooses one; the router's sendReply writes its channel_messages row and sms_reply_sent audit as for any reply",
   'apps/web/lib/channel/linq/link-preview.ts':
