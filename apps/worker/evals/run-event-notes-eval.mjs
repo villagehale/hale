@@ -60,8 +60,13 @@ const TOOL_SCHEMA = {
   required: ['parking', 'bring'],
 };
 
-/** Mirrors `eventNotesUserMessage` in event-notes.ts. */
-const userMessage = (f) => JSON.stringify({ title: f.title, description: f.description });
+/** Mirrors `eventNotesUserMessage` in event-notes.ts, untrusted mark included (VIL-560). */
+const { markUntrusted } = await tsImport(AGENT_SRC, import.meta.url);
+const userMessage = (f) =>
+  JSON.stringify({
+    title: markUntrusted('calendar', 'title', f.title),
+    description: markUntrusted('calendar', 'description', f.description),
+  });
 
 // ── the judge: MEANING only ─────────────────────────────────────────────────
 
