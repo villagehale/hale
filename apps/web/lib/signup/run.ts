@@ -7,7 +7,6 @@ import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import type { Asked } from '~/lib/channel/router/open-questions';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import type { Asked } from '~/lib/channel/router/open-questions';
 import {
   type AskPlace,
   SIGNUP_ASK_BACK_QUESTION,

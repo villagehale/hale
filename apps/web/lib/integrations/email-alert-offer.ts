@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
+import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import {
   calendarInstantsClose,
   matchingCalendarAddId,
