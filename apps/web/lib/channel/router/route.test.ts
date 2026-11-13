@@ -9147,7 +9147,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
     result: Partial<ChannelTurnResult> & { reply: string },
     options: { route?: ReplyRoute; body?: string; lit?: boolean } = {},
   ) {
-    if (options.lit !== false) vi.stubEnv('LINQ_REACTIONS_ENABLED', 'true');
+    vi.stubEnv('LINQ_REACTIONS_ENABLED', options.lit === false ? 'false' : 'true');
     const coach = seeingCoach(result);
     const h = harness({
       coach,

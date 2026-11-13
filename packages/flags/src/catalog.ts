@@ -172,8 +172,8 @@ export const FLAGS = [
   trimmed('linq-multi-family-groups', 'LINQ_MULTI_FAMILY_GROUPS_ENABLED'),
   trimmed('linq-stickers', 'LINQ_STICKERS_ENABLED'),
   trimmed('linq-reactions', 'LINQ_REACTIONS_ENABLED', {
-    allowlistEnv: 'LINQ_REACTIONS_FAMILY_ALLOWLIST',
-    allowlistMode: 'arm',
+    parser: 'trimmed-not-false',
+    default: true,
   }),
   trimmed('linq-voice-memos', 'LINQ_VOICE_MEMOS_ENABLED'),
   trimmed('linq-experiences', 'LINQ_EXPERIENCES_ENABLED'),

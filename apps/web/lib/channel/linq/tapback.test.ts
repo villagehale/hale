@@ -78,16 +78,20 @@ afterEach(() => {
 });
 
 describe('linqReactionsEnabled', () => {
-  it('is off unless the trimmed flag is true, and the allowlist arms only its families', () => {
+  it('unset: on for every family', () => {
+    vi.stubEnv('LINQ_REACTIONS_ENABLED', undefined);
+    expect(linqReactionsEnabled(FAMILY)).toBe(true);
+    expect(linqReactionsEnabled(OTHER_FAMILY)).toBe(true);
+  });
+
+  it('"false" (trimmed): off for every family, and only "false" turns it off', () => {
+    vi.stubEnv('LINQ_REACTIONS_ENABLED', 'false');
     expect(linqReactionsEnabled(FAMILY)).toBe(false);
-    vi.stubEnv('LINQ_REACTIONS_ENABLED', 'TRUE');
+    expect(linqReactionsEnabled(OTHER_FAMILY)).toBe(false);
+    vi.stubEnv('LINQ_REACTIONS_ENABLED', ' false\n');
     expect(linqReactionsEnabled(FAMILY)).toBe(false);
     vi.stubEnv('LINQ_REACTIONS_ENABLED', 'true\n');
     expect(linqReactionsEnabled(FAMILY)).toBe(true);
-    vi.stubEnv('LINQ_REACTIONS_ENABLED', '');
-    vi.stubEnv('LINQ_REACTIONS_FAMILY_ALLOWLIST', FAMILY);
-    expect(linqReactionsEnabled(FAMILY)).toBe(true);
-    expect(linqReactionsEnabled(OTHER_FAMILY)).toBe(false);
   });
 });
 
@@ -172,6 +176,7 @@ describe('considerLinqReply · the reaction step', () => {
   const BESIDE: ReactionPlan = { kind: 'beside', reaction: LOVE, why: 'not_asked' };
 
   it("dark: today's word-list tapback, byte for byte, and a plan is never read", async () => {
+    vi.stubEnv('LINQ_REACTIONS_ENABLED', 'false');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fake = makeFakeDb();
     const f = linqFetch();

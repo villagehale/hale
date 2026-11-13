@@ -117,9 +117,8 @@ export async function applyLinqTapback(input: {
 }
 
 /**
- * VIL-680 — the model chooses the tapback. Trimmed `true` lights every family; while it
- * is off, `LINQ_REACTIONS_FAMILY_ALLOWLIST` arms the families it names (`linq-reactions`
- * in packages/flags/src/catalog.ts).
+ * VIL-680 — the model chooses the tapback. On by default for every family; trimmed
+ * `false` is the kill switch (`linq-reactions` in packages/flags/src/catalog.ts).
  */
 export function linqReactionsEnabled(familyId: string): boolean {
   return isEnabled('linq-reactions', familyId);
