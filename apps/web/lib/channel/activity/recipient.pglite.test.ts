@@ -177,6 +177,7 @@ describe('resolveFollowUpRecipient: the thread, lit', () => {
  */
 describe('resolveFollowUpRecipient: the thread, dark', () => {
   it('a promise made in a 1:1 iMessage chat has no thread', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'false');
     const seeded = await seedFamily(db.database);
     await inbound(seeded, 'chat-one', false, EARLIER);
     const recipient = await resolveFollowUpRecipient(
@@ -187,9 +188,10 @@ describe('resolveFollowUpRecipient: the thread, dark', () => {
     expect(recipient?.thread).toBeNull();
   });
 
-  it("another family's allowlist entry does not light this one", async () => {
-    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', 'fam-someone-else');
+  it('the family on the retired allowlist does not relight it once it is set to false', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'false');
     const seeded = await seedFamily(db.database);
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', seeded.familyId);
     await inbound(seeded, 'chat-one', false, EARLIER);
     const recipient = await resolveFollowUpRecipient(
       db.database,
@@ -198,9 +200,9 @@ describe('resolveFollowUpRecipient: the thread, dark', () => {
     expect(recipient?.thread).toBeNull();
   });
 
-  it('the allowlist lights the family it names', async () => {
+  it('unset is lit: the same ask gets its thread', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', undefined);
     const seeded = await seedFamily(db.database);
-    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', seeded.familyId);
     const ask = await inbound(seeded, 'chat-one', false, EARLIER);
     const recipient = await resolveFollowUpRecipient(
       db.database,
@@ -210,10 +212,6 @@ describe('resolveFollowUpRecipient: the thread, dark', () => {
   });
 });
 
-/**
- * THE LANGUAGE THE ANSWER IS WRITTEN IN. The family is French and the parent has set
- * Spanish, so every wrong source gives a different answer from the ask's own Chinese.
- */
 describe('resolveFollowUpRecipient: the language', () => {
   async function multilingual(): Promise<SeededFamily> {
     const seeded = await seedFamily(db.database);
@@ -286,6 +284,7 @@ describe('resolveFollowUpRecipient: the language', () => {
   // `parentLanguage(users.proactive_language, families.primary_language)`, whatever the
   // ask was written in.
   it("dark: the parent's stored language, whatever the ask was written in", async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'false');
     const seeded = await multilingual();
     const recipient = await resolveFollowUpRecipient(
       db.database,
