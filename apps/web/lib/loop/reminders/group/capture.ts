@@ -376,7 +376,11 @@ export async function takeGroupReminderTurn(
     channelGroupNoteKey(message.chatId),
     database,
   );
-  await appendMessage(conversationId, 'user', message.text, database);
+  await appendMessage(conversationId, 'user', message.text, database, {
+    childId: null,
+    topic: null,
+    authorUserId: member.userId,
+  });
   await appendMessage(conversationId, 'assistant', text, database);
 
   console.info(

@@ -7,8 +7,10 @@ import {
   namesAnyIn,
   teenRoster,
 } from '@hale/worker/memory-context';
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { PARENT_ROLES } from '~/lib/channel/role-scope';
+import { isChannelGroupNoteKey } from '~/lib/coach/note-key';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import {
   commitClassifiedMemory,
@@ -433,11 +435,47 @@ async function loadDistillTurns(
     .map((c) => c.name);
 
   const familyConversations = await database
-    .select({ id: schema.conversations.id })
+    .select({ id: schema.conversations.id, noteKey: schema.conversations.noteKey })
     .from(schema.conversations)
     .where(eq(schema.conversations.familyId, familyId));
-  const conversationIds = familyConversations.map((c) => c.id);
-  if (conversationIds.length === 0) return [];
+  const ownIds = familyConversations
+    .filter((c) => !isChannelGroupNoteKey(c.noteKey))
+    .map((c) => c.id);
+  const groupIds = familyConversations
+    .filter((c) => isChannelGroupNoteKey(c.noteKey))
+    .map((c) => c.id);
+
+  // VIL-597 (G8): the skill reads every `user` turn as the parent. A group thread holds
+  // every seated member's texts (a caregiver, a grandparent) and Hale's answers to any of
+  // them, so only a turn a parent of this family signed is read from it. An unsigned
+  // group turn, from before the author was recorded, is not.
+  const parentIds =
+    groupIds.length === 0
+      ? []
+      : (
+          await database
+            .select({ userId: schema.familyMembers.userId })
+            .from(schema.familyMembers)
+            .where(
+              and(
+                eq(schema.familyMembers.familyId, familyId),
+                inArray(schema.familyMembers.role, [...PARENT_ROLES]),
+              ),
+            )
+        ).map((row) => row.userId);
+  const readable = [
+    ...(ownIds.length > 0 ? [inArray(schema.messages.conversationId, ownIds)] : []),
+    ...(groupIds.length > 0 && parentIds.length > 0
+      ? [
+          and(
+            inArray(schema.messages.conversationId, groupIds),
+            eq(schema.messages.role, 'user'),
+            inArray(schema.messages.authorUserId, parentIds),
+          ),
+        ]
+      : []),
+  ];
+  if (readable.length === 0) return [];
 
   const turnRows = await database
     .select({
@@ -449,7 +487,7 @@ async function loadDistillTurns(
     .from(schema.messages)
     .where(
       and(
-        inArray(schema.messages.conversationId, conversationIds),
+        or(...readable),
         gte(schema.messages.createdAt, since),
         isNull(schema.messages.deletedAt),
         // VIL-616: a reply written after `read_email` may repeat a stranger's name,
