@@ -94,6 +94,8 @@ async function play(input: {
   const store = createMemoryGroupPlanRsvpStore(world);
   const transcript: PreviewTranscriptLine[] = [];
   let now = new Date('2026-10-28T16:00:00.000Z');
+  /** The last Hale plan line: a tapback in this script lands on it. */
+  let lastPlanLineId: string | null = null;
   let lastTally: PreviewConversationResult['tally'] = null;
 
   for (const line of input.lines) {
@@ -113,6 +115,7 @@ async function play(input: {
         senderName: person.name,
         text: line.text,
         tapback: line.tapback ?? null,
+        tapbackMessageId: line.tapback ? lastPlanLineId : null,
         language: input.language,
         now,
       },
@@ -120,9 +123,14 @@ async function play(input: {
         store,
         reader: readerFor(line),
         composer: input.composer,
-        send: async ({ text }) => {
+        send: async ({ text, planId }) => {
           texts.push(text);
-          return { providerMessageId: `preview-${texts.length}` };
+          const providerMessageId = `preview-${input.chatId}-${now.getTime()}-${texts.length}`;
+          if (planId) {
+            world.planLines.set(providerMessageId, { chatId: input.chatId, planId });
+            lastPlanLineId = providerMessageId;
+          }
+          return { providerMessageId };
         },
         enabled: () => true,
       },
@@ -247,7 +255,9 @@ function startPicnic(): GroupPlanRsvpReading {
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
-    samePlan: true,
+    planKey: null,
+    replacesPlanKey: null,
+    addressed: true,
   };
 }
 
@@ -302,7 +312,9 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
-          samePlan: true,
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         },
       },
       {
@@ -319,6 +331,9 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
+          planKey: null,
+          replacesPlanKey: null,
+          addressed: false,
         },
       },
       {
@@ -335,7 +350,9 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
-          samePlan: true,
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         },
       },
       {
@@ -352,7 +369,9 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
-          samePlan: true,
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         },
       },
     ],
@@ -405,7 +424,9 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: 'the Chens',
           coversNames: ['Wei'],
           confidence: 'high',
-          samePlan: true,
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         },
       },
     ],
@@ -459,7 +480,9 @@ export async function runPreviewGroupPlanConversations(
           householdLabel: null,
           coversNames: [],
           confidence: 'high',
-          samePlan: true,
+          planKey: 'p1',
+          replacesPlanKey: null,
+          addressed: false,
         },
       },
     ],

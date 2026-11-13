@@ -8,6 +8,7 @@ import {
   settleGroupPlanCalendarAfterRsvp,
 } from '../group-plan-rsvp/inbound';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
+import type { PlanRef } from '../group-plan-rsvp/plan-identity';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import type { GroupPlanRsvpComposer } from '../group-plan-rsvp/voice';
 import { readFamilySliceForAudience } from '../multi-family';
@@ -103,7 +104,7 @@ export async function considerGroupExperience(
     messageId: string;
     decided?: 'time_lock';
     lockChoice?: string;
-    otherEvent?: true;
+    planRef?: PlanRef;
   },
 ): Promise<GroupExperienceTurnOutcome> {
   if (!groupExperienceTurnEnabled()) return { handled: false };
@@ -124,7 +125,7 @@ export async function considerGroupExperience(
       now: ports.now,
       ...(input.decided ? { decided: input.decided } : {}),
       ...(input.lockChoice ? { lockChoice: input.lockChoice } : {}),
-      ...(input.otherEvent ? { otherEvent: input.otherEvent } : {}),
+      ...(input.planRef ? { planRef: input.planRef } : {}),
     },
     {
       database: ports.database,
@@ -187,6 +188,10 @@ export async function considerGroupExperiencePollVote(
   if (option.pollKind === 'group_rsvp' && option.choiceValue && option.subjectKey) {
     const response = option.choiceValue;
     if (response !== 'yes' && response !== 'no' && response !== 'maybe') return { handled: false };
+    // The card names its plan by id; a closed plan takes no more answers.
+    if (!(await plans.loadOpenPlan(input.chatId, option.subjectKey, ports.now))) {
+      return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
+    }
     await plans.upsertRsvp({
       planId: option.subjectKey,
       memberKey,

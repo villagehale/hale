@@ -280,7 +280,9 @@ describe('postgres household calendar copy', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high' as const,
-            samePlan: true,
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
       },
@@ -887,7 +889,9 @@ describe('the private reply and a tapback use the household language', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
-            samePlan: true,
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
         oneToOne: {
@@ -994,7 +998,9 @@ describe('the private reply and a tapback use the household language', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
-            samePlan: true,
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
         oneToOne: {
@@ -1157,7 +1163,9 @@ describe('a claimed group with no member seat', () => {
       householdLabel: null,
       coversNames: [],
       confidence: 'high' as const,
-      samePlan: true,
+      planKey: 'p1',
+      replacesPlanKey: null,
+      addressed: false,
     };
     await considerGroupPlanRsvp(
       {
@@ -1541,7 +1549,9 @@ describe('a multi-family chat with no covering family', () => {
       householdLabel: null,
       coversNames: [] as string[],
       confidence: 'high' as const,
-      samePlan: true,
+      planKey: 'p1',
+      replacesPlanKey: null,
+      addressed: false,
     };
   }
 
@@ -1607,7 +1617,9 @@ describe('a multi-family chat with no covering family', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
-            samePlan: true,
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
         consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },

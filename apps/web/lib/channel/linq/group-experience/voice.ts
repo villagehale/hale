@@ -15,6 +15,7 @@ export type GroupExperienceVoiceKind =
   | 'rsvp_tally'
   | 'time_open'
   | 'time_lock'
+  | 'time_tie'
   | 'link_facts'
   | 'registration_1to1'
   | 'private_hold'

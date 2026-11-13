@@ -16,9 +16,13 @@ import {
 import {
   type CalendarEffect,
   answerPendingCalendarAsk,
+  householdWhen,
   settleCalendarAfterAnswer,
 } from './calendar-turn';
-import { groupPlanRsvpLineInput } from './facts';
+import { zonedLocalInstant } from '~/lib/plan/spine';
+import { placedInstant } from '../group-experience/reading';
+import { type PlanRef, planReadViews, refPlanId, resolvePlanKey } from './plan-identity';
+import { groupPlanRsvpLineInput, groupPlanWhichLineInput } from './facts';
 import { memberKeyFromName, senderMemberKey } from './member-key';
 import type { GroupPollTally } from './poll-tally';
 import {
@@ -33,8 +37,12 @@ import {
   isGroupPollIntent,
   sharedGroupPlanRsvpReader,
 } from './reading';
-import { GroupPlanRsvpHeld } from './send';
-import type { GroupPlanRsvpStore } from './store';
+import {
+  GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
+  GROUP_PLAN_RSVP_TEMPLATE,
+  GroupPlanRsvpHeld,
+} from './send';
+import type { GroupPlanRecord, GroupPlanRsvpStore } from './store';
 import { type PlanTally, isMeaningfulTallyChange } from './tally';
 import {
   type GroupPlanRsvpComposer,
@@ -66,6 +74,7 @@ export type GroupPlanRsvpTurnOutcome =
         | 'group_plan_spoken'
         | 'group_plan_unread'
         | 'group_plan_line_unsent'
+        | 'group_plan_which_asked'
         | 'group_poll_lock_asked'
         | 'group_poll_spoken'
         | 'group_poll_recorded'
@@ -83,6 +92,8 @@ export type GroupPlanRsvpTurnOutcome =
       pollTally?: GroupPollTally;
       /** `group_poll_lock_asked`: the open poll's option key the lock named, when it named one. */
       lockChoice?: string;
+      /** The plan this message is about, as code resolved it; later readers bind only to this. */
+      planRef?: PlanRef;
     };
 
 /** Banter and a missed read stay quiet without stealing the rest of the group door. */
@@ -94,6 +105,7 @@ export function groupPlanRsvpTakesTheTurn(
     (outcome.outcome === 'group_plan_spoken' ||
       outcome.outcome === 'group_plan_recorded' ||
       outcome.outcome === 'group_plan_line_unsent' ||
+      outcome.outcome === 'group_plan_which_asked' ||
       outcome.outcome === 'group_poll_spoken' ||
       outcome.outcome === 'group_poll_recorded' ||
       outcome.outcome === 'group_poll_line_unsent' ||
@@ -102,6 +114,17 @@ export function groupPlanRsvpTakesTheTurn(
       outcome.outcome === 'group_plan_calendar_asked' ||
       outcome.outcome === 'group_plan_calendar_unwritten')
   );
+}
+
+/** A group line and, by id, the household and plan it is about. */
+export interface GroupPlanLine {
+  chatId: string;
+  text: string;
+  kind?: 'plan' | 'poll';
+  /** The household that owns the plan or poll: its ledger row is theirs. */
+  familyId: string;
+  /** The plan the line is about, when it is about one: a reaction on it is about that plan. */
+  planId?: string | null;
 }
 
 export interface GroupPlanRsvpTurnInput {
@@ -132,11 +155,8 @@ export interface GroupPlanRsvpTurnDeps {
   store: GroupPlanRsvpStore;
   reader?: GroupPlanRsvpReader;
   composer?: GroupPlanRsvpComposer;
-  send: (input: {
-    chatId: string;
-    text: string;
-    kind?: 'plan' | 'poll';
-  }) => Promise<{ providerMessageId: string }>;
+  /** One group line, ledgered on the household that owns the plan or poll it is about. */
+  send: (input: GroupPlanLine) => Promise<{ providerMessageId: string }>;
   /** Plan RSVPs (LINQ_GROUP_PLAN_RSVP_ENABLED). */
   enabled?: () => boolean;
   /** Calendar copy after an OK (LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED). Default off. */
@@ -167,6 +187,54 @@ function coversKeysFor(
   return keys;
 }
 
+/**
+ * An instant the reader named. An ISO time with its offset is taken as is; a wall-clock time
+ * with no offset is placed on the household's own zone, never the server's. No zone, no time.
+ */
+export function instantOnClock(
+  value: string | null | undefined,
+  timeZone: string | null,
+): Date | null {
+  const placed = placedInstant(value);
+  if (placed) return new Date(placed);
+  const wall = value?.trim().match(WALL_CLOCK);
+  const day = wall?.[1];
+  const time = wall?.[2];
+  if (!day || !time || !timeZone) return null;
+  // A wall clock that names no real day (the model's own slip) places nothing.
+  if (Number.isNaN(Date.parse(`${day}T${time}:00Z`))) return null;
+  try {
+    return zonedLocalInstant(day, time, timeZone);
+  } catch (err) {
+    // A zone name the platform does not know places nothing.
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
+}
+
+const WALL_CLOCK = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?$/;
+
+/** The calendar ask, among the open plans, that this household still has to answer: one, or none. */
+async function pendingAskPlan(
+  deps: GroupPlanRsvpTurnDeps,
+  input: { chatId: string; userId: string | null; tapbackMessageId?: string | null },
+  open: readonly GroupPlanRecord[],
+): Promise<GroupPlanRecord | null> {
+  if (input.tapbackMessageId) {
+    const found = await deps.store.findCalendarAskByMessage(input.tapbackMessageId);
+    return found ? (open.find((plan) => plan.id === found.plan.id) ?? null) : null;
+  }
+  if (!deps.households || !input.userId) return null;
+  const home = await deps.households.resolve({ chatId: input.chatId, userId: input.userId });
+  if (home.status !== 'one') return null;
+  const pending: GroupPlanRecord[] = [];
+  for (const plan of open) {
+    const row = await deps.store.loadCalendarConsent(plan.id, home.familyId);
+    if (row && (row.status === 'asked' || row.status === 'declined')) pending.push(plan);
+  }
+  return pending.length === 1 ? (pending[0] ?? null) : null;
+}
+
 export async function takeGroupPlanRsvpTurn(
   input: GroupPlanRsvpTurnInput,
   deps: GroupPlanRsvpTurnDeps,
@@ -175,19 +243,22 @@ export async function takeGroupPlanRsvpTurn(
   const pollsOn = (deps.pollsEnabled ?? linqGroupPollsEnabled)();
   if (!rsvpOn && !pollsOn) return { handled: false };
 
-  const live = rsvpOn ? await deps.store.loadLivePlan(input.chatId, input.now) : null;
+  const open = rsvpOn ? await deps.store.listOpenPlans(input.chatId, input.now) : [];
   const livePoll = pollsOn ? await deps.store.loadLivePoll(input.chatId) : null;
   const reader = deps.reader ?? sharedGroupPlanRsvpReader();
   const seated = await deps.store.seatedExpected(input.chatId);
-  const liveTally = live ? await deps.store.loadTally(live.id) : null;
-  const somethingLive = Boolean(live || livePoll);
+  const tallies = new Map<string, Awaited<ReturnType<GroupPlanRsvpStore['loadTally']>>>();
+  for (const plan of open) tallies.set(plan.id, await deps.store.loadTally(plan.id));
+  const somethingLive = open.length > 0 || Boolean(livePoll);
   const calendarOn = rsvpOn && (deps.calendarEnabled ?? linqGroupPlanRsvpCalendarEnabled)();
   const calendarLanguage =
     input.calendarLanguage === undefined ? input.language : input.calendarLanguage;
   const senderKey = await senderMemberKey(
     { handle: input.senderHandle, name: input.senderName },
     async () => [
-      ...(liveTally ? [...liveTally.rows, ...liveTally.expected].map((row) => row.memberKey) : []),
+      ...[...tallies.values()].flatMap((loaded) =>
+        [...loaded.rows, ...loaded.expected].map((row) => row.memberKey),
+      ),
       ...(livePoll ? await deps.store.pollVoterKeys(livePoll.id) : []),
     ],
   );
@@ -195,11 +266,23 @@ export async function takeGroupPlanRsvpTurn(
   const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
   const calendarUserId = input.senderUserId ?? senderSeat?.userId ?? null;
 
-  if (calendarOn && live) {
+  const askPlan =
+    calendarOn && open.length > 0
+      ? await pendingAskPlan(
+          deps,
+          {
+            chatId: input.chatId,
+            userId: calendarUserId,
+            tapbackMessageId: input.tapbackMessageId,
+          },
+          open,
+        )
+      : null;
+  if (askPlan) {
     const answered = await answerPendingCalendarAsk(
       {
         chatId: input.chatId,
-        plan: live,
+        plan: askPlan,
         userId: calendarUserId,
         senderName: input.senderName,
         text: input.text,
@@ -218,7 +301,7 @@ export async function takeGroupPlanRsvpTurn(
       },
     );
     if (answered.consumed) {
-      const tally = (await deps.store.loadTally(live.id)).tally;
+      const tally = (await deps.store.loadTally(askPlan.id)).tally;
       const outcome =
         answered.kind === 'written'
           ? 'group_plan_calendar_written'
@@ -238,42 +321,58 @@ export async function takeGroupPlanRsvpTurn(
     }
   }
 
+  const tapped = input.tapback && !input.text.trim();
   const reading = await reader.read({
     text: input.text,
     tapback: input.tapback,
     senderName: input.senderName,
-    plan: live
-      ? {
-          title: live.title,
-          deadline: live.rsvpDeadlineAt?.toISOString() ?? null,
-          yesNames: liveTally?.tally.yesNames ?? [],
-          waitingNames: liveTally?.tally.waitingNames ?? [],
-        }
-      : null,
+    plans: planReadViews(
+      open.map((plan) => ({ plan, tally: tallies.get(plan.id)?.tally ?? null })),
+    ),
     recent: [],
     ...(pollsOn ? { polls: { live: livePoll ? pollReadView(livePoll) : null } } : {}),
     ...(input.secretSanta ? { secretSanta: true as const } : {}),
     clock: input.timeZone ? { now: input.now.toISOString(), timeZone: input.timeZone } : null,
   });
 
+  // An answer or count ask spoken to Hale that could be about more than one open plan binds
+  // nothing; Hale asks which. The reader may mark it low confidence for that very doubt, and
+  // asking changes no state, so the doubt about the plan does not silence the ask.
+  if (
+    reading &&
+    !tapped &&
+    open.length > 1 &&
+    reading.addressed &&
+    resolvePlanKey(reading.planKey, open).status === 'unclear' &&
+    (reading.intent === 'rsvp' || reading.intent === 'edit' || reading.intent === 'ask_tally')
+  ) {
+    return askWhichPlan(input, deps, open);
+  }
+
   if (!reading || reading.confidence !== 'high') {
     if (!somethingLive) return { handled: false };
     return {
       handled: true,
-      outcome: live ? 'group_plan_unread' : 'group_poll_unread',
+      outcome: open.length > 0 ? 'group_plan_unread' : 'group_poll_unread',
       count: 'ignored',
     };
   }
 
+  // The plan this message is about, by an id code resolved: the Hale line a tapback landed on,
+  // or the open plan whose key the reader named. Never the only, or the newest, open plan.
+  const ref: PlanRef = tapped
+    ? await tapbackPlanRef(deps, input, open)
+    : resolvePlanKey(reading.planKey, open);
+
   if (reading.intent === 'chatter' || reading.intent === 'unclear') {
     if (!somethingLive) return { handled: false };
-    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored', planRef: ref };
   }
 
   if (isGroupPollIntent(reading.intent)) {
     if (!pollsOn) {
       if (!somethingLive) return { handled: false };
-      return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+      return { handled: true, outcome: 'group_plan_chatter', count: 'ignored', planRef: ref };
     }
     // A poll's ledger household is chosen the way a plan's is: the asker's own household
     // here, else the family that claimed the chat. A chat several families share has polls.
@@ -288,14 +387,14 @@ export async function takeGroupPlanRsvpTurn(
             },
           )
         : null;
-    return takeGroupPollReading(
+    const polled = await takeGroupPollReading(
       reading,
       {
         chatId: input.chatId,
         language: input.language,
         now: input.now,
         livePoll,
-        livePlanId: live?.id ?? null,
+        planId: refPlanId(ref),
         pollFamilyId,
         seated,
         voter: {
@@ -312,45 +411,48 @@ export async function takeGroupPlanRsvpTurn(
         card: deps.pollCard,
       },
     );
+    return polled.handled ? { ...polled, planRef: ref } : polled;
   }
 
   if (!rsvpOn) {
     if (!somethingLive) return { handled: false };
-    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored', planRef: ref };
   }
 
-  // Only the reader's yes ties a message to the live plan. An opening for another event
-  // opens its own plan (closing the live one); anything else about another event changes nothing.
-  const aboutLive = live !== null && reading.samePlan === true;
-  let plan = aboutLive ? live : null;
-  if (reading.intent === 'start_tracking') {
-    if (!plan && (!live || reading.samePlan === false)) {
-      const cover = await deps.store.coveringFamily(input.chatId);
-      const familyId = await hostFamilyIdForPlan(deps.households, cover, {
-        chatId: input.chatId,
-        userId: input.senderUserId,
-      });
-      const title = reading.planTitle?.trim();
-      if (!familyId || !title) return { handled: false };
-      plan = await deps.store.createPlan({
-        chatId: input.chatId,
-        familyId,
-        title,
-        startsAt: reading.startsAt ? new Date(reading.startsAt) : null,
-        location: reading.location,
-        rsvpDeadlineAt: reading.deadline ? new Date(reading.deadline) : null,
-        createdByUserId: input.senderUserId ?? null,
-        expected: seated,
-        now: input.now,
-      });
-    }
+  let plan: GroupPlanRecord | null =
+    ref.status === 'plan' ? (open.find((row) => row.id === ref.planId) ?? null) : null;
+  const aboutOpenPlan = plan !== null;
+  if (
+    reading.intent === 'start_tracking' &&
+    !plan &&
+    (ref.status === 'other' || open.length === 0)
+  ) {
+    const cover = await deps.store.coveringFamily(input.chatId);
+    const familyId = await hostFamilyIdForPlan(deps.households, cover, {
+      chatId: input.chatId,
+      userId: input.senderUserId,
+    });
+    const title = reading.planTitle?.trim();
+    if (!familyId || !title) return { handled: false };
+    const replaces = resolvePlanKey(reading.replacesPlanKey, open);
+    plan = await deps.store.createPlan({
+      chatId: input.chatId,
+      familyId,
+      title,
+      startsAt: instantOnClock(reading.startsAt, input.timeZone ?? null),
+      location: reading.location,
+      rsvpDeadlineAt: instantOnClock(reading.deadline, input.timeZone ?? null),
+      createdByUserId: input.senderUserId ?? null,
+      expected: seated,
+      now: input.now,
+      replacesPlanId: refPlanId(replaces),
+    });
   }
 
   if (!plan) {
     if (!somethingLive) return { handled: false };
-    // Read as about an event other than the open plan, or not tied to it: no later reader of
-    // this message may bind it to the open plan either.
-    return { handled: true, outcome: 'group_plan_other_event', count: 'ignored' };
+    // Not tied by id to any open plan: no later reader of this message may bind it to one.
+    return { handled: true, outcome: 'group_plan_other_event', count: 'ignored', planRef: ref };
   }
 
   const before = (await deps.store.loadTally(plan.id)).tally;
@@ -387,7 +489,7 @@ export async function takeGroupPlanRsvpTurn(
   const householdAnswer = Boolean(reading.householdLabel || reading.coversNames.length > 0);
   const speak = isMeaningfulTallyChange({
     intent: reading.intent,
-    before: aboutLive ? before : null,
+    before: aboutOpenPlan ? before : null,
     after,
     householdAnswer,
   });
@@ -462,7 +564,13 @@ export async function takeGroupPlanRsvpTurn(
   }
 
   try {
-    await deps.send({ chatId: input.chatId, text: spoken.line, kind: 'plan' });
+    await deps.send({
+      chatId: input.chatId,
+      text: spoken.line,
+      kind: 'plan',
+      familyId: plan.familyId,
+      planId: plan.id,
+    });
   } catch (err) {
     console.error(
       {
@@ -490,5 +598,97 @@ export async function takeGroupPlanRsvpTurn(
     notice: 'sent',
     tally: after,
     ...(calendar ? { calendar } : {}),
+  };
+}
+
+/** The plan of the Hale plan line a reaction landed on, while it is still open here. */
+async function tapbackPlanRef(
+  deps: GroupPlanRsvpTurnDeps,
+  input: GroupPlanRsvpTurnInput,
+  open: readonly GroupPlanRecord[],
+): Promise<PlanRef> {
+  if (!input.tapbackMessageId) return { status: 'none' };
+  const planId = await deps.store.planOfGroupLine(input.chatId, input.tapbackMessageId, [
+    GROUP_PLAN_RSVP_TEMPLATE,
+    GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
+  ]);
+  const plan = planId ? open.find((row) => row.id === planId) : undefined;
+  return plan ? { status: 'plan', planId: plan.id } : { status: 'none' };
+}
+
+/**
+ * The message spoke to Hale about a plan, but it could be more than one open plan: one
+ * model-written group line asking which, naming them. Nothing is recorded on any plan. The
+ * line is the asker's own household's (it is about no single plan), or nothing is sent.
+ */
+async function askWhichPlan(
+  input: GroupPlanRsvpTurnInput,
+  deps: GroupPlanRsvpTurnDeps,
+  open: readonly GroupPlanRecord[],
+): Promise<GroupPlanRsvpTurnOutcome> {
+  const familyId = await hostFamilyIdForPlan(
+    deps.households,
+    await deps.store.coveringFamily(input.chatId),
+    { chatId: input.chatId, userId: input.senderUserId },
+  );
+  if (!familyId) {
+    console.info(
+      { outcome: 'group_plan_which_unsent', reason: 'asker_unknown' },
+      'group plan rsvp: which-plan ask has no household to ledger it, nothing sent',
+    );
+    return {
+      handled: true,
+      outcome: 'group_plan_other_event',
+      count: 'ignored',
+      planRef: { status: 'unclear' },
+    };
+  }
+  const spoken = await composeGroupPlanRsvpLine(
+    groupPlanWhichLineInput({
+      language: input.language,
+      choices: open.map((plan) => ({
+        title: plan.title,
+        startsAt: householdWhen(plan.startsAt, input.timeZone ?? null),
+      })),
+    }),
+    deps.composer ?? productionGroupPlanRsvpComposer(),
+  );
+  if (spoken.status === 'skipped') {
+    console.warn(
+      { outcome: 'group_plan_which_unsent', reason: spoken.reason },
+      'group plan rsvp: which-plan ask not written',
+    );
+    return {
+      handled: true,
+      outcome: 'group_plan_line_unsent',
+      count: 'ignored',
+      notice: { skipped: spoken.reason },
+      planRef: { status: 'unclear' },
+    };
+  }
+  try {
+    await deps.send({ chatId: input.chatId, text: spoken.line, kind: 'plan', familyId });
+  } catch (err) {
+    console.error(
+      {
+        err: err instanceof Error ? err.name : 'unknown',
+        reason: err instanceof GroupPlanRsvpHeld ? err.reason : undefined,
+      },
+      'group plan rsvp: which-plan ask send failed',
+    );
+    return {
+      handled: true,
+      outcome: 'group_plan_line_unsent',
+      count: 'ignored',
+      notice: { skipped: err instanceof GroupPlanRsvpHeld ? err.reason : 'not_sent' },
+      planRef: { status: 'unclear' },
+    };
+  }
+  return {
+    handled: true,
+    outcome: 'group_plan_which_asked',
+    count: 'intake',
+    notice: 'sent',
+    planRef: { status: 'unclear' },
   };
 }

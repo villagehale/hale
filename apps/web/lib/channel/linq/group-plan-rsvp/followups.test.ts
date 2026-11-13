@@ -70,7 +70,9 @@ describe('runGroupPlanFollowups', () => {
     expect(first.deduped).toBe(0);
     expect(texts).toHaveLength(1);
     const line = composer.calls[0]?.input;
-    if (line?.skill !== 'group-plan-rsvp-voice') throw new Error('expected a plan line');
+    if (line?.skill !== 'group-plan-rsvp-voice' || line.kind === 'which_plan') {
+      throw new Error('expected a plan line');
+    }
     expect(line.kind).toBe('follow_up');
     expect(line.facts.title).toBe('soccer Saturday');
     expect(line.facts.waitingNames).toEqual(['Ben']);

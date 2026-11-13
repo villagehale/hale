@@ -207,7 +207,7 @@
   "judges/group-plan-rsvp-read": {
     "name": "judges/group-plan-rsvp-read",
     "version": 2,
-    "sha256": "24759df1bd6b77612e6d9bd8abd766daa2cb2495d5583072756a1cde7571ae4b"
+    "sha256": "0ee2586a3f81d20f7ead577537ba29be2f811e0395307e0df8df6dea6c3e1629"
   },
   "judges/group-plan-rsvp-voice": {
     "name": "judges/group-plan-rsvp-voice",
@@ -217,7 +217,7 @@
   "judges/group-poll-read": {
     "name": "judges/group-poll-read",
     "version": null,
-    "sha256": "19c2989839778b05615850c93a2fd8c250972b69d50d6c7d6e3efd4fdc4cac69"
+    "sha256": "a213d89436dd24b8faba2680afa9190dbc51f4f99b99b9e9453785a8e68846b2"
   },
   "judges/group-poll-voice": {
     "name": "judges/group-poll-voice",

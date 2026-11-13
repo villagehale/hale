@@ -54,6 +54,8 @@ export const linqGroupPolls = pgTable(
     expected: jsonb('expected').$type<LinqGroupPollExpectedJson[]>().notNull().default([]),
     providerMessageId: text('provider_message_id'),
     origin: text('origin').notNull(),
+    /** Member key of the person who asked for the poll; null for an adopted Hale card. */
+    createdByMemberKey: text('created_by_member_key'),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

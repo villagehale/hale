@@ -152,7 +152,9 @@ function rsvpReading(partial: Partial<GroupPlanRsvpReading>): GroupPlanRsvpReadi
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
-    samePlan: null,
+    planKey: null,
+    replacesPlanKey: null,
+    addressed: false,
     pollQuestion: null,
     pollOptions: [],
     pollChoice: null,
@@ -238,12 +240,14 @@ async function openPicnic(familyId: string, userId: string) {
     rsvpDeadlineAt: null,
     createdByUserId: userId,
     expected: [],
-    now: NOW,
+    // Opened an hour before the messages below, so it is the older open plan (`p2` once a
+    // newer one opens).
+    now: new Date(NOW.getTime() - 60 * 60 * 1000),
   });
 }
 
 describe('the first reader binds a plan opening to the plan it is about (gate REFUTED 1)', () => {
-  it('"who is in for the zoo" with a picnic open opens a zoo plan, closes the picnic, and asks about the zoo', async () => {
+  it('"who is in for the zoo" with a picnic open opens a zoo plan, keeps the picnic (still ahead) open, and asks about the zoo', async () => {
     const a = await seedFamily(PARENT_A, 'Ada');
     const b = await seedFamily(PARENT_B, 'Bao');
     const picnic = await openPicnic(a.familyId, a.userId);
@@ -258,7 +262,7 @@ describe('the first reader binds a plan opening to the plan it is about (gate RE
           intent: 'start_tracking',
           planTitle: 'zoo',
           startsAt: SUNDAY_14,
-          samePlan: false,
+          planKey: 'other',
         }),
       }),
       PARENT_A,
@@ -266,7 +270,7 @@ describe('the first reader binds a plan opening to the plan it is about (gate RE
       "Hale who's in for the zoo Sunday at 2?",
     );
     await send(
-      door({ group, dms, rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', samePlan: true }) }),
+      door({ group, dms, rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', planKey: 'p1' }) }),
       PARENT_B,
       'm2',
       "we're in!",
@@ -276,12 +280,13 @@ describe('the first reader binds a plan opening to the plan it is about (gate RE
     const zoo = plans.find((plan) => plan.title === 'zoo');
     expect(zoo?.closedAt).toBeNull();
     expect(zoo?.startsAt?.toISOString()).toBe(new Date(SUNDAY_14).toISOString());
-    expect(plans.find((plan) => plan.id === picnic.id)?.closedAt).not.toBeNull();
+    // A new event never supersedes a plan that is still ahead: the picnic stays open.
+    expect(plans.find((plan) => plan.id === picnic.id)?.closedAt).toBeNull();
     const closed = await db.database
       .select()
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'linq_group_plan_closed'));
-    expect(closed.map((row) => (row.after as { reason?: string }).reason)).toEqual(['superseded']);
+    expect(closed).toEqual([]);
 
     const rsvps = await db.database.select().from(schema.linqGroupPlanRsvps);
     expect(rsvps.map((row) => [row.planId, row.response])).toEqual([[zoo?.id, 'yes']]);
@@ -302,7 +307,7 @@ describe('the first reader binds a plan opening to the plan it is about (gate RE
       door({
         group,
         dms: [],
-        rsvp: rsvpReading({ intent: 'start_tracking', planTitle: 'picnic', samePlan: true }),
+        rsvp: rsvpReading({ intent: 'start_tracking', planTitle: 'picnic', planKey: 'p1' }),
       }),
       PARENT_A,
       'm1',
@@ -321,7 +326,7 @@ describe('the first reader binds a plan opening to the plan it is about (gate RE
       door({
         group,
         dms: [],
-        rsvp: rsvpReading({ intent: 'start_tracking', planTitle: 'zoo', samePlan: null }),
+        rsvp: rsvpReading({ intent: 'start_tracking', planTitle: 'zoo', planKey: null }),
       }),
       PARENT_A,
       'm1',
@@ -341,7 +346,7 @@ describe('the first reader binds a plan opening to the plan it is about (gate RE
       door({
         group: [],
         dms,
-        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', samePlan: false }),
+        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', planKey: 'other' }),
       }),
       PARENT_B,
       'm1',
@@ -381,7 +386,7 @@ describe('the group-moment RSVP vote binds only to the plan it is about (gate R1
       door({
         group,
         dms,
-        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', samePlan: false }),
+        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', planKey: 'other' }),
         experience: vote(null),
       }),
       PARENT_B,
@@ -403,7 +408,7 @@ describe('the group-moment RSVP vote binds only to the plan it is about (gate R1
       door({
         group: [],
         dms,
-        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', samePlan: false }),
+        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', planKey: 'other' }),
         experience: vote(true),
       }),
       PARENT_B,
@@ -429,12 +434,30 @@ describe('the group-moment RSVP vote binds only to the plan it is about (gate R1
     expect(dms).toEqual([]);
   });
 
-  it('a vote the second reader ties to the open plan lands on it (control)', async () => {
+  it('the second reader alone never records an answer, even one it ties to the open plan', async () => {
     const a = await seedFamily(PARENT_A, 'Ada');
     await seedFamily(PARENT_B, 'Bao');
     const picnic = await openPicnic(a.familyId, a.userId);
     await send(
       door({ group: [], dms: [], rsvp: rsvpReading({ intent: 'chatter' }), experience: vote(true) }),
+      PARENT_B,
+      'm1',
+      'count us in',
+    );
+    expect(await picnicRsvps(picnic.id)).toEqual([]);
+  });
+
+  it('an answer the first reader ties to the open plan by its key lands on it (control)', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const picnic = await openPicnic(a.familyId, a.userId);
+    await send(
+      door({
+        group: [],
+        dms: [],
+        rsvp: rsvpReading({ intent: 'rsvp', response: 'yes', planKey: 'p1' }),
+        experience: vote(true),
+      }),
       PARENT_B,
       'm1',
       'count us in',
@@ -535,7 +558,7 @@ describe('in a chat several families share, a poll about the open plan carries p
         rsvpInputs,
         rsvp: rsvpReading({
           intent: 'start_poll',
-          samePlan: true,
+          planKey: 'p1',
           pollQuestion: 'picnic time?',
           pollOptions: ['Saturday 10', 'Sunday 2'],
           pollStarts: [SATURDAY_10, SUNDAY_14],
@@ -557,9 +580,9 @@ describe('in a chat several families share, a poll about the open plan carries p
       door({
         group,
         dms: [],
-        rsvp: rsvpReading({ intent: 'close_poll', samePlan: true, pollChoice: 'o2' }),
+        rsvp: rsvpReading({ intent: 'close_poll', planKey: 'p1', pollChoice: 'o2' }),
       }),
-      PARENT_B,
+      PARENT_A,
       'lock-1',
       'Sunday, lock it in Hale',
     );
@@ -585,7 +608,7 @@ describe('in a chat several families share, a poll about the open plan carries p
         dms: [],
         rsvp: rsvpReading({
           intent: 'start_poll',
-          samePlan: false,
+          planKey: 'other',
           pollQuestion: 'zoo when?',
           pollOptions: ['Saturday 10', 'Sunday 2'],
           pollStarts: [SATURDAY_10, SUNDAY_14],

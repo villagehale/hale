@@ -36,7 +36,13 @@ export interface GroupPlanFollowupResult {
 export interface GroupPlanFollowupDeps {
   store: GroupPlanRsvpStore;
   composer?: GroupPlanRsvpComposer;
-  send: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+  /** One follow-up, ledgered on the plan's own household and keyed to that plan. */
+  send: (input: {
+    chatId: string;
+    text: string;
+    familyId: string;
+    planId: string;
+  }) => Promise<{ providerMessageId: string }>;
   language?: ReplyLanguage;
   enabled?: () => boolean;
 }
@@ -99,7 +105,12 @@ export async function runGroupPlanFollowups(
       continue;
     }
     try {
-      await deps.send({ chatId: item.plan.chatId, text: spoken.line });
+      await deps.send({
+        chatId: item.plan.chatId,
+        text: spoken.line,
+        familyId: item.plan.familyId,
+        planId: item.plan.id,
+      });
       await deps.store.markFollowupSent(item.plan.id, GROUP_PLAN_FOLLOWUP_WAVE, now);
       result.sent += 1;
     } catch (err) {

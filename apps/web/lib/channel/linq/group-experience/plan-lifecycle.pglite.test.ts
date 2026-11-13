@@ -240,8 +240,8 @@ async function planRow(id: string) {
 }
 
 describe('a time poll binds to the plan it is about (probe P6)', () => {
-  it('a poll for another event opens its own plan, closes the older one, and never re-times it', async () => {
-    const { a, b, picnic } = await picnicWithAdaYes(null);
+  it('a poll for another event opens its own plan, keeps the older one (still ahead) open, and never re-times it', async () => {
+    const { a, picnic } = await picnicWithAdaYes(null);
     const open = directPorts(
       reading({
         kind: 'time_open',
@@ -259,6 +259,7 @@ describe('a time poll binds to the plan it is about (probe P6)', () => {
       coveringFamilyId: a.familyId,
       text: 'Hale can you poll Saturday 10 or Sunday 2 for the zoo?',
       messageId: 'm-1',
+      planRef: { status: 'other' },
     });
     const [poll] = await db.database
       .select()
@@ -269,7 +270,7 @@ describe('a time poll binds to the plan it is about (probe P6)', () => {
     expect(pollPlanId).not.toBe(picnic.id);
     const zoo = await planRow(pollPlanId as string);
     expect(zoo?.title).toBe('zoo');
-    expect((await planRow(picnic.id))?.closedAt).not.toBeNull();
+    expect((await planRow(picnic.id))?.closedAt).toBeNull();
     const closed = await db.database
       .select({ after: schema.auditLog.after })
       .from(schema.auditLog)
@@ -279,7 +280,7 @@ describe('a time poll binds to the plan it is about (probe P6)', () => {
           eq(schema.auditLog.targetId, picnic.id),
         ),
       );
-    expect(closed.map((row) => (row.after as { reason: string }).reason)).toEqual(['superseded']);
+    expect(closed).toEqual([]);
 
     await createPostgresGroupExperienceStore(db.database).patchPayload(
       poll?.id as string,
@@ -292,9 +293,9 @@ describe('a time poll binds to the plan it is about (probe P6)', () => {
     const lock = directPorts(reading({ kind: 'time_lock' }));
     await considerGroupExperience(lock.ports, {
       chatId: CHAT,
-      senderHandle: PARENT_B,
-      senderUserId: b.userId,
-      senderFamilyId: b.familyId,
+      senderHandle: PARENT_A,
+      senderUserId: a.userId,
+      senderFamilyId: a.familyId,
       coveringFamilyId: a.familyId,
       text: 'Sunday it is, lock it in Hale',
       messageId: 'm-2',
@@ -361,7 +362,7 @@ describe('a plan whose start has passed closes', () => {
   it('is no longer the live plan, and its close is audited', async () => {
     const past = new Date(NOW.getTime() - 2 * 24 * 60 * 60 * 1000);
     const { picnic, plans } = await picnicWithAdaYes(past);
-    expect(await plans.loadLivePlan(CHAT, NOW)).toBeNull();
+    expect(await plans.listOpenPlans(CHAT, NOW)).toEqual([]);
     expect((await planRow(picnic.id))?.closedAt).not.toBeNull();
     const closed = await db.database
       .select({ after: schema.auditLog.after })
@@ -372,21 +373,21 @@ describe('a plan whose start has passed closes', () => {
 
   it('a plan still ahead stays live (positive control)', async () => {
     const { picnic, plans } = await picnicWithAdaYes(new Date(SATURDAY_10));
-    expect((await plans.loadLivePlan(CHAT, NOW))?.id).toBe(picnic.id);
+    expect((await plans.listOpenPlans(CHAT, NOW)).map((plan) => plan.id)).toEqual([picnic.id]);
   });
 });
 
 describe('a lock that moves a plan moves the copies households already have (probe P1)', () => {
   it('moves the written copy and sends that household one notice, by day', async () => {
-    const { a, b, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
+    const { a, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
     await writeAdaCopy(picnic.id, a.familyId, a.userId);
     await seedTimePoll(a.familyId, picnic.id);
     const lock = directPorts(reading({ kind: 'time_lock' }));
     await considerGroupExperience(lock.ports, {
       chatId: CHAT,
-      senderHandle: PARENT_B,
-      senderUserId: b.userId,
-      senderFamilyId: b.familyId,
+      senderHandle: PARENT_A,
+      senderUserId: a.userId,
+      senderFamilyId: a.familyId,
       coveringFamilyId: a.familyId,
       text: 'Sunday it is, lock it in Hale',
       messageId: 'm-5',
@@ -405,15 +406,15 @@ describe('a lock that moves a plan moves the copies households already have (pro
   });
 
   it('at night the copy moves now and the notice waits for the morning', async () => {
-    const { a, b, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
+    const { a, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
     await writeAdaCopy(picnic.id, a.familyId, a.userId);
     await seedTimePoll(a.familyId, picnic.id);
     const lock = directPorts(reading({ kind: 'time_lock' }), NIGHT);
     await considerGroupExperience(lock.ports, {
       chatId: CHAT,
-      senderHandle: PARENT_B,
-      senderUserId: b.userId,
-      senderFamilyId: b.familyId,
+      senderHandle: PARENT_A,
+      senderUserId: a.userId,
+      senderFamilyId: a.familyId,
       coveringFamilyId: a.familyId,
       text: 'Sunday it is, lock it in Hale',
       messageId: 'm-6',
@@ -487,6 +488,9 @@ describe('probe P7 through the real group door, every group flag on', () => {
               householdLabel: null,
               coversNames: [],
               confidence: 'high',
+              planKey: null,
+              replacesPlanKey: null,
+              addressed: false,
             }),
           },
           groupPlanRsvpComposer: fakeGroupPlanRsvpComposer(),
@@ -583,7 +587,7 @@ describe('scene 03 when VIL-471 owns the poll', () => {
     expect(await plans.loadLivePoll(CHAT)).toBeNull();
   });
 
-  it('a tie locks nothing and keeps the poll open (control)', async () => {
+  it('a tie locks nothing, keeps the poll open, and asks which in one line (control)', async () => {
     const a = await seedFamily(PARENT_A, 'Ada');
     const b = await seedFamily(PARENT_B, 'Bao');
     const plans = createPostgresGroupPlanRsvpStore(db.database);
@@ -625,7 +629,8 @@ describe('scene 03 when VIL-471 owns the poll', () => {
       text: 'lock it in Hale',
       messageId: 'm-8',
     });
-    expect(lock.group).toEqual([]);
+    expect(lock.group).toHaveLength(1);
+    expect(lock.group[0]).toContain('time_tie');
     expect((await plans.loadLivePoll(CHAT))?.id).toBe(poll.id);
   });
 });
@@ -661,9 +666,10 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
     return { plans, poll };
   }
 
+  /** `by` sends the lock: the plan's host (Ada) unless a test says otherwise. */
   async function lockWith(
     a: { familyId: string },
-    b: { familyId: string; userId: string },
+    by: { familyId: string; userId: string; handle: string },
     lockChoice?: string,
   ) {
     const lock = directPorts(reading({ kind: 'none' }));
@@ -671,14 +677,14 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
     lock.ports.composer = fakeGroupExperienceComposer({
       body: (input) => {
         facts.push(input.facts);
-        return `${input.kind}.`;
+        return input.questions === 1 ? `${input.kind}?` : `${input.kind}.`;
       },
     });
     await considerGroupExperience(lock.ports, {
       chatId: CHAT,
-      senderHandle: PARENT_B,
-      senderUserId: b.userId,
-      senderFamilyId: b.familyId,
+      senderHandle: by.handle,
+      senderUserId: by.userId,
+      senderFamilyId: by.familyId,
       coveringFamilyId: a.familyId,
       text: 'Sunday it is, lock it in Hale',
       messageId: 'm-lock',
@@ -689,10 +695,10 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
   }
 
   it('locking Sunday moves the plan to Sunday 2, moves the household copy, and tells that household once', async () => {
-    const { a, b, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
+    const { a, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
     await writeAdaCopy(picnic.id, a.familyId, a.userId);
     const { plans } = await placedPoll(picnic.id, a.familyId, ['o2', 'o2']);
-    const lock = await lockWith(a, b);
+    const lock = await lockWith(a, { ...a, handle: PARENT_A });
     expect(lock.facts).toEqual([{ winner: 'Sunday 2' }]);
     expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SUNDAY_14));
     const copies = await db.database
@@ -704,11 +710,69 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
     expect(await plans.loadLivePoll(CHAT)).toBeNull();
   });
 
-  it('a lock that names a choice locks that choice, not the leader', async () => {
-    const { a, b, picnic } = await picnicWithAdaYes(new Date(SUNDAY_14));
+  it('a named choice never beats the leader: Saturday named while Sunday leads locks Sunday', async () => {
+    const { a, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
     await placedPoll(picnic.id, a.familyId, ['o2', 'o2']);
-    const lock = await lockWith(a, b, 'o1');
+    const lock = await lockWith(a, { ...a, handle: PARENT_A }, 'o1');
+    expect(lock.facts).toEqual([{ winner: 'Sunday 2' }]);
+    expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SUNDAY_14));
+  });
+
+  it('a named choice breaks a tie among the leaders when the host locks', async () => {
+    const { a, picnic } = await picnicWithAdaYes(new Date(SUNDAY_14));
+    await placedPoll(picnic.id, a.familyId, ['o1', 'o2']);
+    const lock = await lockWith(a, { ...a, handle: PARENT_A }, 'o1');
     expect(lock.facts).toEqual([{ winner: 'Saturday 10' }]);
+    expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SATURDAY_10));
+  });
+
+  it('a lock from another household that would move the plan closes nothing and moves nothing', async () => {
+    const { a, b, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
+    await writeAdaCopy(picnic.id, a.familyId, a.userId);
+    const { plans } = await placedPoll(picnic.id, a.familyId, ['o2', 'o2']);
+    const lock = await lockWith(a, { ...b, handle: PARENT_B }, 'o2');
+    expect(lock.group).toEqual([]);
+    expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SATURDAY_10));
+    expect(await plans.loadLivePoll(CHAT)).not.toBeNull();
+    expect(lock.texted).toEqual([]);
+  });
+
+  it('positive control: the poll creator may lock it even from another household', async () => {
+    const { a, b, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
+    const plans = createPostgresGroupPlanRsvpStore(db.database);
+    await plans.createPoll({
+      chatId: CHAT,
+      familyId: b.familyId,
+      question: 'picnic when?',
+      options: [
+        {
+          text: 'Saturday 10',
+          providerOptionId: null,
+          places: { planId: picnic.id, startsAt: SATURDAY_10 },
+        },
+        {
+          text: 'Sunday 2',
+          providerOptionId: null,
+          places: { planId: picnic.id, startsAt: SUNDAY_14 },
+        },
+      ],
+      expected: [],
+      origin: 'parent',
+      providerMessageId: null,
+      createdByMemberKey: phoneBlindIndex(PARENT_B),
+      now: NOW,
+    });
+    const lock = await lockWith(a, { ...b, handle: PARENT_B }, 'o2');
+    expect(lock.facts).toEqual([{ winner: 'Sunday 2' }]);
+    expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SUNDAY_14));
+  });
+
+  it('a tie with only an unauthorized pick asks which, in one line, and moves nothing', async () => {
+    const { a, b, picnic } = await picnicWithAdaYes(new Date(SATURDAY_10));
+    await placedPoll(picnic.id, a.familyId, ['o1', 'o2']);
+    const lock = await lockWith(a, { ...b, handle: PARENT_B }, 'o2');
+    expect(lock.facts).toEqual([{ leaders: ['Saturday 10', 'Sunday 2'] }]);
+    expect(lock.group).toEqual(['time_tie?']);
     expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SATURDAY_10));
   });
 
@@ -720,7 +784,7 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
       .update(schema.linqGroupPlans)
       .set({ closedAt: NOW })
       .where(eq(schema.linqGroupPlans.id, picnic.id));
-    const lock = await lockWith(a, b);
+    const lock = await lockWith(a, { ...b, handle: PARENT_B });
     expect((await planRow(picnic.id))?.startsAt).toEqual(new Date(SATURDAY_10));
     expect(lock.texted).toEqual([]);
   });
@@ -728,14 +792,14 @@ describe('a VIL-471 lock on a poll about the open plan moves the plan and its co
 
 describe('the OK asks a lock sends to yes households go out by day only', () => {
   async function lockAt(now: Date) {
-    const { a, b, picnic } = await picnicWithAdaYes(null);
+    const { a, picnic } = await picnicWithAdaYes(null);
     await seedTimePoll(a.familyId, picnic.id);
     const lock = directPorts(reading({ kind: 'time_lock' }), now);
     await considerGroupExperience(lock.ports, {
       chatId: CHAT,
-      senderHandle: PARENT_B,
-      senderUserId: b.userId,
-      senderFamilyId: b.familyId,
+      senderHandle: PARENT_A,
+      senderUserId: a.userId,
+      senderFamilyId: a.familyId,
       coveringFamilyId: a.familyId,
       text: 'Sunday it is, lock it in Hale',
       messageId: `m-${now.getTime()}`,

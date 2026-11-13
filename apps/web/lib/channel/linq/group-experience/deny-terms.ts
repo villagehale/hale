@@ -1,3 +1,5 @@
+import { DENY_TERM_MIN_LETTERS } from './privacy';
+
 /** One household's private terms, as `readFamilyPrivateSlice` holds them. */
 export interface DenySlice {
   children: readonly string[];
@@ -20,5 +22,5 @@ export function denyTermsFromSlices(slices: readonly DenySlice[]): string[] {
     // Calendar titles block leaks too; the clock suffix is not a deny token.
     tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));
   }
-  return tokens.filter((token) => token.trim().length >= 3);
+  return tokens.filter((token) => token.trim().length >= DENY_TERM_MIN_LETTERS);
 }

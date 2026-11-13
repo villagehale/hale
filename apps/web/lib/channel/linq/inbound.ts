@@ -125,6 +125,7 @@ import type { GroupPollCardPort } from './group-plan-rsvp/poll-turn';
 import { isGroupPollCardKind } from './group-plan-rsvp/poll-turn';
 import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
 import { parseLinqTapback } from './group-plan-rsvp/reading';
+import type { PlanRef } from './group-plan-rsvp/plan-identity';
 import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
 import type { GroupPlanRsvpComposer } from './group-plan-rsvp/voice';
 import { type PrivateAsideModel, sharedPrivateAsideModel } from './group-private-aside';
@@ -656,16 +657,18 @@ async function privateCalendarReply(
 
 /**
  * One group message's read state across the door. `done`: the group moment already read it.
- * `lockAsked`: the VIL-442 reader, which runs first, read a lock on the open poll, so the group
- * moment locks without reading the message again. `otherEvent`: the VIL-442 reader did not tie
- * this message to the open plan, so the group moment never counts it there.
+ * `planRead`: the VIL-442 reader, which runs first, already read it (it is never read twice).
+ * `lockAsked`: that reader read a lock on the open poll, so the group moment locks without
+ * reading the message again. `planRef`: the plan that reader resolved the message to, by id;
+ * the group moment binds the message to no other plan.
  */
 interface GroupMessageRead {
   done: boolean;
+  planRead?: boolean;
   lockAsked?: boolean;
   /** With `lockAsked`: the open poll's option key the lock named. */
   lockChoice?: string;
-  otherEvent?: boolean;
+  planRef?: PlanRef;
 }
 
 async function runGroupExperience(
@@ -714,7 +717,7 @@ async function runGroupExperience(
       messageId: input.messageId,
       ...(read.lockAsked ? { decided: 'time_lock' as const } : {}),
       ...(read.lockAsked && read.lockChoice ? { lockChoice: read.lockChoice } : {}),
-      ...(read.otherEvent ? { otherEvent: true as const } : {}),
+      ...(read.planRef ? { planRef: read.planRef } : {}),
     },
   );
   return groupExperienceTakesTheTurn(result) ? result : null;
@@ -795,6 +798,8 @@ async function tryGroupPlanRsvpTurn(
   read?: GroupMessageRead,
 ): Promise<Response | null> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return null;
+  if (read?.planRead) return null;
+  if (read) read.planRead = true;
   const mappedSender = await mapGroupHandlesToFamily(deps.database, {
     sender: input.senderHandle,
     others: [],
@@ -824,7 +829,7 @@ async function tryGroupPlanRsvpTurn(
     read.lockAsked = true;
     read.lockChoice = rsvp.lockChoice;
   }
-  if (rsvp.handled && rsvp.outcome === 'group_plan_other_event' && read) read.otherEvent = true;
+  if (rsvp.handled && rsvp.planRef && read) read.planRef = rsvp.planRef;
   if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
   deps.log.info(
     { outcome: rsvp.outcome },
@@ -1047,12 +1052,16 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
       experienceRead,
     );
     if (experience) return experience;
-    const rsvp = await tryGroupPlanRsvpTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-      tapback: null,
-    });
+    const rsvp = await tryGroupPlanRsvpTurn(
+      deps,
+      {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        tapback: null,
+      },
+      experienceRead,
+    );
     if (rsvp) return rsvp;
   }
 
@@ -1143,12 +1152,16 @@ async function routeClaimedGroup(
       experienceRead,
     );
     if (experience) return experience;
-    const rsvp = await tryGroupPlanRsvpTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-      tapback: null,
-    });
+    const rsvp = await tryGroupPlanRsvpTurn(
+      deps,
+      {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        tapback: null,
+      },
+      experienceRead,
+    );
     if (rsvp) return rsvp;
   }
   const mapped = await mapGroupHandlesToFamily(deps.database, {
