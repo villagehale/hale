@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French and keeps the date, time, link and child name right. Each listed text appears with its timing. It says Hale never registers for them, and it rightly gives no course-link tip. But it ends with 'Voulez-vous que je lance ce plan ?', and approval_card asks nothing. Telling the parent to approve would be fine, but a question is not. That alone scores 2 or lower. 'Je vous prépare l'inscription' also risks implying Hale is preparing the registration itself, and 'pour tout le monde' slightly stretches a null residentsFirstDays, though both are minor.",
-    "score": 2
-  }
-}

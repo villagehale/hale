@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "An outcome_missed message. It answers the miss, makes only the handed promise to flag the next window early, asks nothing, invents no facts, and reads naturally in English.",
-    "score": 5
-  }
-}

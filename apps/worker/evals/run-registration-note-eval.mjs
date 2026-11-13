@@ -59,17 +59,17 @@ const TEXT_SCHEMA = {
 const JUDGE_SYSTEM = judgePrompt('registration-note');
 
 /**
- * Cached-only expected-fail list (VIL-554). The judge is right on each recorded draft: the
- * Haiku writer invited a reply, asked a question on the card, or invented a cause, a date
- * or a later promise. These are writer misses to fix in the product, not in the judge. A
+ * Cached-only expected-fail list (VIL-554). These four drafts are recorded against the skill
+ * as it is on main, and the judge is right on each: the writer offered to change a kept
+ * morning, repeated "may not have loaded", claimed "everything else is set", and ended the
+ * card with a question. These are writer misses to fix in the product, not in the judge. A
  * listed case that passes turns the check red, so the list cannot go stale. Live runs
  * ignore it: every case must pass.
  */
 export const EXPECTED_FAIL = Object.freeze([
-  'readiness-answer-yes',
-  'course-bound-full',
-  'course-refused-wrong-town',
-  'course-refused-unreadable-fr',
+  'course-refused-different-season',
+  'course-throttled',
+  'course-throttled-already-bound',
   'approval-card-unpublished-fr',
 ]);
 

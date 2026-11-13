@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French and answers the parent's waitlisted report without asking anything. With no response window it correctly says the town publishes none, so there is no clock to set. It handles the missing position honestly and invents no reminder, child or date. Telling the parent to watch their email for an offer is allowed. The tone is slightly formal but still reads as friendly.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is a correct outcome_waitlisted note in French. It acknowledges the waitlist report for Riverton. It does not invent a waitlist position, since position is null. It says the town publishes no response window, so there is no clock to set, which is right because responseHours and deadline are null. Telling the parent to watch their email for an offer is allowed. It asks nothing and names no child. The tone is warm and natural.",
-    "score": 5
-  }
-}

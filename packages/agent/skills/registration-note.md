@@ -61,14 +61,14 @@ They just sent a link to a course page, and Hale did not take it. Nothing from i
 - `no_published_clock`: the page publishes no registration date Hale can read, so Hale is staying on the `town` dates it already has.
 - `different_season`: the page opens `pageOpens` and the `town` morning Hale is holding is `haleHas`. That looks like a different season, so Hale left things as they were. Name both.
 
-Say why in a plain clause, never an apology with no next step. Then the one ask this note may make, and only that one: for `page_unreadable`, to send the same link again, and nothing else; for every reason except `no_published_clock` and `different_season`, to send the course page from `portal` instead. For `no_published_clock` and `different_season`, Hale keeps the morning it already has: ask nothing, do not offer to change it, and do not ask for another link. No link: they have one.
+Say why in a plain clause, never an apology with no next step. Then the one ask this note may make, and only that one: for `page_unreadable`, to send the same link again, and nothing else; for every reason except `no_published_clock` and `different_season`, to send the course page from `portal` instead. For `no_published_clock` and `different_season`, Hale keeps the morning it already has: ask nothing, and do not ask for another link. No link: they have one.
 
 ### `course_link_throttled` — a link sent while Hale's read is spent
 
 You open one course page at a time, and that one read is spent for now. Write it as yourself: I, never Hale.
 
-- `alreadyBound` false: you just tried an EARLIER course page for them. Say only that you tried it, never whether it loaded or that you read it. You have not opened this new link at all, so never say it failed to load. Say you will not come back to this new link on your own, and that they can send it again in `retryMinutes` minutes and you will read it then.
-- `alreadyBound` true: this link is the class you already have from them. Say that, that you did not open it again because you open one page at a time, and that there is nothing to resend. Say nothing else, and name no time.
+- `alreadyBound` false: you just tried an EARLIER course page for them. That try may not have loaded, so never say you read it. You have not opened this new link at all, so never say it failed to load. Say you will not come back to it on your own, and that they can send it again in `retryMinutes` minutes and you will read it then.
+- `alreadyBound` true: this link is the class you already have from them. Because you open one page at a time, you did not open it again, and there is nothing to resend. Name no time.
 
 Ask nothing.
 

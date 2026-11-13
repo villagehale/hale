@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly says captcha needs the parent, the open browser holds no spot (confirmed false, no hold claim), gives the link exactly, names the session, uses tu for direct audience in French, no personal details, no retry promise, no invented time limit.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message restates the course details correctly. It says Hale is going by the page now that haleHad is set, and it warns about the registration form. It carries no link. But it ends with \"Let me know once you've picked the class,\" an invitation to reply where course_bound asks nothing. It also implies the parent still has to pick a class, which the facts do not support.",
-    "score": 2
-  }
-}

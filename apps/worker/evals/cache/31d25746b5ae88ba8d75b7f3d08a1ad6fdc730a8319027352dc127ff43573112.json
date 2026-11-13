@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French, explains that Hale could not read the page, carries no link and asks once for the same link, as page_unreadable requires. But it makes two claims the facts do not support. It guesses a cause, a temporary connection problem on Hale's side, that the facts never give. It also says Hale already has a registration date for Riverton that stays the same, while haleHas is null. Both are invented claims.",
-    "score": 2
-  }
-}
