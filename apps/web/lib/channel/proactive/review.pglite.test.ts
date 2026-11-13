@@ -17,8 +17,10 @@ import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/ou
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  schoolBreakAskDedupeKey,
   weekdayFinderDedupeKey,
 } from '~/lib/channel/weekday-care/key';
+import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
 import { listDueWorkstreams } from '~/lib/memory/workstreams';
@@ -291,6 +293,42 @@ describe('runProactiveReview', () => {
         offered: ids.length,
       });
     }
+  });
+
+  it('VIL-685 · records the winter-break question as sent, so the reply is read against it; other rows keep no body', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await enqueue(schoolBreakAskDedupeKey(familyId, '2026-27', parentUserId), {
+      kind: 'school_break_ask',
+      category: 'nudge',
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      what: 'winter break 2026-27',
+      why: 'school_break_ask year=2026-27',
+      sourceUrl: null,
+      worthlessAfter: new Date('2026-12-15T17:00:00.000Z'),
+    });
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const open = await weekdayCareQuestion(db.database, {
+      familyId,
+      parentUserId,
+      now: new Date(THURSDAY_EVENING.getTime() + 60_000),
+    });
+    expect(open).toMatchObject({ scope: 'break_dates', schoolYear: '2026-27', question: MESSAGE });
+
+    await enqueue('nudge:weather:w41');
+    await runProactiveReview(db.database, harness(sendAll).deps, THURSDAY_EVENING);
+    const rows = await db.database
+      .select({ templateKey: schema.channelMessages.templateKey, body: schema.channelMessages.body })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+    expect(rows.map((row) => [row.templateKey, row.body]).sort()).toEqual(
+      [
+        [SCHOOL_BREAK_ASK_TEMPLATE_KEY, MESSAGE],
+        ['proactive_nudge:weather_swap', null],
+      ].sort(),
+    );
   });
 
   it('sends an evening check-in in shadow, and still shadows a nudge', async () => {
