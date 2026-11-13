@@ -28,6 +28,9 @@ const INPUT: IntakeAnswerInput = {
 
 const RETURN = 'Still want me watching the registration dates?';
 
+/** No own-city reading for the parent's town (VIL-684): the rec-morning lane may answer. */
+const noOwnTown = async () => false;
+
 const LONG_ANSWER = [
   ...Array(6).fill('Most kids get a vision check at their regular visit, and it is free.'),
   'Do it.',
@@ -161,7 +164,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, noOwnTown);
     atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
@@ -189,7 +192,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, noOwnTown);
     atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
@@ -215,7 +218,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, noOwnTown);
     atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
@@ -227,6 +230,60 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
   });
 
+  it("leaves a town's date question to the read once that town's own page has a date", async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the intake model was asked');
+        },
+      },
+    } as never;
+    const asked: string[] = [];
+    const markhamRead = async (postal: string) => {
+      asked.push(postal);
+      return true;
+    };
+    atRecMorningNow();
+    const outcome = await createIntakeAnswerComposer(exploding, markhamRead).compose({
+      ...INPUT,
+      parentWords: 'when does winter rec registration open?',
+      postalCode: 'L3R',
+    });
+    // Not the hand dataset's "not posted yet": the turn goes on to the grounded answer
+    // (here a model that throws, so nothing at all).
+    expect(outcome).toMatchObject({ status: 'unavailable' });
+    expect(asked).toEqual(['L3R']);
+    // Positive control: with no reading for the town, the rec-morning lane answers it.
+    const control = await createIntakeAnswerComposer(exploding, noOwnTown).compose({
+      ...INPUT,
+      parentWords: 'when does winter rec registration open?',
+      postalCode: 'L3R',
+    });
+    expect(control.status).toBe('answered');
+  });
+
+  it('asks about the own town only for a question about that town', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const asked: string[] = [];
+    atRecMorningNow();
+    const outcome = await createIntakeAnswerComposer(exploding, async (postal) => {
+      asked.push(postal);
+      return true;
+    }).compose({
+      ...INPUT,
+      parentWords: 'When does Toronto swim registration open?',
+      postalCode: 'L3R',
+    });
+    expect(outcome.status).toBe('answered');
+    expect(asked).toEqual([]);
+  });
+
   it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
     const exploding = {
       messages: {
@@ -235,7 +292,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, noOwnTown);
 
     const first = await composer.compose({
       parentWords: 'I wanna learn swimming',
@@ -318,7 +375,7 @@ describe('intake answer · the emergency tripwire', () => {
           url: 'https://example.org/rec',
         },
       );
-      const outcome = await createIntakeAnswerComposer(client).compose({
+      const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
         ...ASK,
         parentWords: 'Quand ouvrent les inscriptions à la natation?',
       });
@@ -335,7 +392,7 @@ describe('intake answer · the emergency tripwire', () => {
         { askKind: 'program_dates' },
         { notes: 'The city has not announced winter dates.', url: 'https://example.org/rec' },
       );
-      const outcome = await createIntakeAnswerComposer(client).compose({
+      const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
         ...ASK,
         parentWords: '冬令营什么时候开始报名？',
       });
@@ -350,7 +407,7 @@ describe('intake answer · the emergency tripwire', () => {
           url: 'https://example.org/sleep',
         },
       );
-      const outcome = await createIntakeAnswerComposer(client).compose({
+      const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
         ...ASK,
         parentWords: '¿Cuándo deja la segunda siesta?',
       });
@@ -363,7 +420,7 @@ describe('intake answer · the emergency tripwire', () => {
     it('a current_source read search cannot ground owes the no-source line', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const { client } = wire({ askKind: 'current_source' }, { notes: '', url: 'https://x.org' });
-      const outcome = await createIntakeAnswerComposer(client).compose({
+      const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
         ...ASK,
         parentWords: '¿Cómo hago para que duerma la siesta?',
       });
@@ -395,7 +452,7 @@ describe('intake answer · the emergency tripwire', () => {
         it(`${askKind} for ${name}: searched, without the name`, async () => {
           vi.spyOn(console, 'error').mockImplementation(() => {});
           const { client, searched, searchedWords } = wire({ askKind }, NOTES);
-          await createIntakeAnswerComposer(client).compose({
+          await createIntakeAnswerComposer(client, noOwnTown).compose({
             pendingAsk: COLD_START_ASK,
             children: [{ name, ageMonths: 48, agePrecision: 'years' }],
             parentWords: words,
@@ -408,7 +465,7 @@ describe('intake answer · the emergency tripwire', () => {
       it('a name the scrub cannot remove stops the search, and owes the line', async () => {
         const error = vi.spyOn(console, 'error').mockImplementation(() => {});
         const { client, searched } = wire({ askKind: 'program_dates' }, NOTES);
-        const outcome = await createIntakeAnswerComposer(client).compose({
+        const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
           pendingAsk: COLD_START_ASK,
           children: [{ name: 'Zoé', ageMonths: 48, agePrecision: 'years' }],
           parentWords: 'Quand ouvrent les inscriptions au camp pour Zoe?',
@@ -463,7 +520,7 @@ describe('intake answer · the emergency tripwire', () => {
           },
           null,
         );
-        const outcome = await createIntakeAnswerComposer(client).compose({
+        const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
           ...ASK,
           parentWords: SICK,
         });
@@ -474,7 +531,7 @@ describe('intake answer · the emergency tripwire', () => {
         it(`${askKind}: a 911 the model or its search wrote sends the safety line`, async () => {
           vi.spyOn(console, 'error').mockImplementation(() => {});
           const { client } = wire({ askKind, ...read }, search);
-          const outcome = await createIntakeAnswerComposer(client).compose({
+          const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
             ...ASK,
             parentWords: SICK,
           });
@@ -484,7 +541,7 @@ describe('intake answer · the emergency tripwire', () => {
         it(`${askKind}: positive control, the same text with no 911 keeps its path`, async () => {
           vi.spyOn(console, 'error').mockImplementation(() => {});
           const { client } = wire({ askKind }, clean);
-          const outcome = await createIntakeAnswerComposer(client).compose({
+          const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
             ...ASK,
             parentWords: SICK,
           });
@@ -499,7 +556,7 @@ describe('intake answer · the emergency tripwire', () => {
         { askKind: 'current_source' },
         { notes: 'Most toddlers drop to one nap by 18 months.', url: 'https://x.org' },
       );
-      const outcome = await createIntakeAnswerComposer(client).compose({
+      const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
         pendingAsk: COLD_START_ASK,
         children: [{ name: 'Zoé', ageMonths: 30, agePrecision: 'years' }],
         parentWords: 'Comment aider Zoe à faire la sieste?',
@@ -514,7 +571,7 @@ describe('intake answer · the emergency tripwire', () => {
 
     it('a cheer_up read owes the cheer-up line and searches nothing', async () => {
       const { client, searched } = wire({ askKind: 'cheer_up' }, null);
-      const outcome = await createIntakeAnswerComposer(client).compose({
+      const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
         ...ASK,
         parentWords: '今天好累，给我打打气吧',
       });
@@ -533,7 +590,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
         null,
       );
-      const outcome = await createIntakeAnswerComposer(client).compose({
+      const outcome = await createIntakeAnswerComposer(client, noOwnTown).compose({
         ...ASK,
         parentWords: 'When does swim registration open? Can you book the swimming lessons?',
       });

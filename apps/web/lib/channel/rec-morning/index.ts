@@ -13,6 +13,7 @@ export {
   YMCA_FOLLOW,
   recMorningBody,
   recMorningCatalog,
+  recMorningIntakeAsksOwnTown,
   recMorningIntakeReply,
   recMorningReply,
   recMorningTopicsForCity,
@@ -38,7 +39,7 @@ export {
   type RecMorningTopic,
   type RecMorningWhere,
   matchRecMorning,
-  recMorningTopicCity,
+  recMorningAsksOwnTown,
   resolveHelloCity,
   resolveRecMorningWhere,
 } from './match';

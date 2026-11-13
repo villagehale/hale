@@ -6,7 +6,7 @@ import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
-import { ownCityRegistrationContext } from './context';
+import { ownCityRegistrationContext, postalOwnCityOpens } from './context';
 import { OWN_CITY_REGISTRATION_ENABLED_ENV } from './flag';
 import type { CityLookupDeps } from './lookup';
 import { RECHECK_FOUND_MS, cachedOfficialSite } from './official-site';
@@ -850,6 +850,33 @@ describe("a lookup that writes no reading still moves the city's next turn", () 
     }
     expect(lookup.searches.map((s) => s.city)).toContain('Greater Sudbury');
     expect(await tells(quiet.familyId)).toHaveLength(1);
+  });
+});
+
+describe('a parent mid-signup: does their postal code\'s town have its own opening', () => {
+  it('reads the town off the code, and answers only from a verified opening still ahead', async () => {
+    // No reading for the town yet.
+    expect(await postalOwnCityOpens(db.database, 'P3A', NOW)).toBe(false);
+    await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    expect(await postalOwnCityOpens(db.database, 'P3A', NOW)).toBe(true);
+    expect(await postalOwnCityOpens(db.database, 'P3A 1A1', NOW)).toBe(true);
+    // Another town, and the same town once its doors have opened.
+    expect(await postalOwnCityOpens(db.database, 'K2P', NOW)).toBe(false);
+    expect(await postalOwnCityOpens(db.database, 'P3A', new Date('2026-12-17T15:00:00Z'))).toBe(
+      false,
+    );
+    // The kill switch.
+    vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'false');
+    expect(await postalOwnCityOpens(db.database, 'P3A', NOW)).toBe(false);
+  });
+
+  it("reads a Toronto code's own district", async () => {
+    await seedFamily('M2N 0A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    expect(await postalOwnCityOpens(db.database, 'M2N', NOW)).toBe(true);
+    // Toronto, East York: a district with no reading of its own.
+    expect(await postalOwnCityOpens(db.database, 'M4C', NOW)).toBe(false);
   });
 });
 

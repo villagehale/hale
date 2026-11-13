@@ -41,9 +41,8 @@ import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
   type RecMorningPlace,
-  matchRecMorning,
+  recMorningAsksOwnTown,
   recMorningReply,
-  recMorningTopicCity,
   resolveRecMorningWhere,
   writeRecMorningReply,
 } from '~/lib/channel/rec-morning';
@@ -1273,6 +1272,21 @@ async function loadFamilyRecWhere(
  * handler's stub-database tests can say "none"; production reads the cache. */
 export type OwnCityOpeningRead = typeof ownCityRegistrationContext;
 
+/**
+ * VIL-684: a date question about the family's own town, once that town's own page has
+ * been read, is the coach's: it answers from that reading, and this lane's hand dataset
+ * (an older season, or "not posted yet") must never contradict it.
+ */
+async function ownTownReadingAnswers(
+  database: Database,
+  ctx: Pick<HandlerContext, 'familyId' | 'parentUserId' | 'body' | 'now'>,
+  where: ReturnType<typeof resolveRecMorningWhere>,
+  ownCity: OwnCityOpeningRead,
+): Promise<boolean> {
+  if (!recMorningAsksOwnTown(ctx.body, where)) return false;
+  return (await ownCity(database, ctx.familyId, ctx.parentUserId, ctx.now)).length > 0;
+}
+
 export function recMorningHandler(
   ownCity: OwnCityOpeningRead = ownCityRegistrationContext,
 ): DeterministicHandler {
@@ -1280,6 +1294,7 @@ export function recMorningHandler(
     name: 'rec_morning',
     async detects(database, ctx) {
       const where = resolveRecMorningWhere(await loadFamilyRecWhere(database, ctx.familyId));
+      if (await ownTownReadingAnswers(database, ctx, where, ownCity)) return false;
       return recMorningReply(ctx.body, ctx.now, where) !== null;
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
@@ -1291,17 +1306,7 @@ export function recMorningHandler(
       // VIL-591: the facts are GTA facts, so the family's stored place - never the
       // words of the text - decides whether this lane answers. No GTA place: unclaimed.
       const where = resolveRecMorningWhere(await loadFamilyRecWhere(database, ctx.familyId));
-      // VIL-684: a date question about the family's own town, once that town's own page
-      // has been read, is the coach's: it answers from that reading, and this lane's hand
-      // dataset (an older season, or "not posted yet") must never contradict it.
-      const topic = where === null ? null : matchRecMorning(ctx.body, where);
-      if (
-        topic !== null &&
-        recMorningTopicCity(topic) === where?.municipality &&
-        (await ownCity(database, ctx.familyId, ctx.parentUserId, ctx.now)).length > 0
-      ) {
-        return { claimed: false };
-      }
+      if (await ownTownReadingAnswers(database, ctx, where, ownCity)) return { claimed: false };
       const reply = await writeRecMorningReply(ctx.body, ctx.now, where, language);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };

@@ -5,7 +5,7 @@ import type { VerifiedRegistrationReading } from '../live-reading';
 import { winterCycleLabel } from './cycle';
 import { ownCityRegistrationEnabled } from './flag';
 import { familyOpening, openingInstant, openingPhrase } from './opening';
-import { type OwnCity, readOwnCity } from './place';
+import { type OwnCity, ownCityOfRow, readOwnCity } from './place';
 import { latestCityReading } from './store';
 
 /**
@@ -75,6 +75,40 @@ async function tellPending(
   return row !== undefined;
 }
 
+/** This place's own opening off its own page, or null: none on file, or already open. */
+async function ownCityOpening(
+  database: Database,
+  place: OwnCity,
+  now: Date,
+): Promise<CityOpeningFacts | null> {
+  const cycleLabel = winterCycleLabel(now);
+  const stored = await latestCityReading(database, place, cycleLabel);
+  if (stored?.status !== 'verified') return null;
+  return cityOpeningFacts(place, cycleLabel, stored.reading, now);
+}
+
+/**
+ * A parent mid-signup, before there is a family: whether the town their postal code is
+ * in has its own opening on file. Read the way a family's place is read (place.ts), off
+ * the code alone. The rec-morning lane's postal is Canadian (rec-morning/copy.ts).
+ */
+export async function postalOwnCityOpens(
+  database: Database,
+  postal: string,
+  now: Date,
+): Promise<boolean> {
+  if (!ownCityRegistrationEnabled()) return false;
+  const own = await ownCityOfRow({
+    country: 'CA',
+    province: null,
+    city: null,
+    postalCode: postal,
+    areaCoarse: null,
+  });
+  if (own.status !== 'known') return false;
+  return (await ownCityOpening(database, own.place, now)) !== null;
+}
+
 export async function ownCityRegistrationContext(
   database: Database,
   familyId: string,
@@ -84,10 +118,7 @@ export async function ownCityRegistrationContext(
   if (!ownCityRegistrationEnabled()) return [];
   const own = await readOwnCity(database, familyId);
   if (own.status !== 'known') return [];
-  const cycleLabel = winterCycleLabel(now);
-  const stored = await latestCityReading(database, own.place, cycleLabel);
-  if (stored?.status !== 'verified') return [];
-  const facts = cityOpeningFacts(own.place, cycleLabel, stored.reading, now);
+  const facts = await ownCityOpening(database, own.place, now);
   if (facts === null) return [];
   return [
     {
