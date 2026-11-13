@@ -8789,6 +8789,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
   });
 
   it('dispatches the deep pass once for a set, as the parent who asked', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     const dispatches: Array<{ payload: unknown; askedBy: string }> = [];
     const { h } = bubbleTurn(
       { reply: THREE, activityPromise: PROMISE },
