@@ -11,7 +11,7 @@ import {
 vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson: vi.fn() }));
 vi.mock('~/lib/cron/skill', () => ({
   loadCronSkill: async () => ({
-    meta: { name: 'group-reminder-voice', whenToUse: 'x', task: 'speak', tools: [] },
+    meta: { name: 'group-reminder-voice', whenToUse: 'x', task: 'acknowledge', tools: [] },
     instructions: 'write',
   }),
 }));

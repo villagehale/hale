@@ -273,25 +273,16 @@ describe('the --dry worst case', () => {
 });
 
 describe('registerFinding', () => {
-  it('flags the familiar singular in a text the whole group reads, softly in French', () => {
-    expect(
-      registerFinding({ audience: 'group', language: 'fr', address: 'familiar_singular' }),
-    ).toEqual({
-      finding: 'register: group text addressed in the familiar singular',
-      soft: true,
-    });
+  it('fails the familiar singular in a text the whole group reads, French included', () => {
+    expect(registerFinding({ audience: 'group', address: 'familiar_singular' })).toBe(
+      'register: group text addressed in the familiar singular',
+    );
   });
 
-  it('flags the plural or formal form in a direct text', () => {
-    expect(
-      registerFinding({ audience: 'direct', language: 'fr-CA', address: 'plural_or_formal' }),
-    ).toEqual({ finding: 'register: direct text addressed in the plural or formal', soft: true });
-  });
-
-  it('blocks outside the languages still on probation', () => {
-    expect(
-      registerFinding({ audience: 'group', language: 'es', address: 'familiar_singular' })?.soft,
-    ).toBe(false);
+  it('fails the plural or formal form in a direct text', () => {
+    expect(registerFinding({ audience: 'direct', address: 'plural_or_formal' })).toBe(
+      'register: direct text addressed in the plural or formal',
+    );
   });
 
   it('passes the register that fits who is reading, and a text with no "you" at all', () => {
@@ -302,14 +293,13 @@ describe('registerFinding', () => {
       { audience: 'direct', address: 'none' },
       { audience: 'group', address: 'one_form' },
     ];
-    for (const read of fits) expect(registerFinding({ language: 'fr', ...read }), read).toBeNull();
+    for (const read of fits) expect(registerFinding(read), read).toBeNull();
   });
 
   it('fails a verdict that never said how the text addresses its readers', () => {
-    expect(registerFinding({ audience: 'group', language: 'en', address: undefined })).toEqual({
-      finding: 'register: the judge did not say how the text addresses its readers',
-      soft: false,
-    });
+    expect(registerFinding({ audience: 'group', address: undefined })).toBe(
+      'register: the judge did not say how the text addresses its readers',
+    );
   });
 });
 
