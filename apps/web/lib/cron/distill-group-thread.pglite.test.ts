@@ -97,6 +97,8 @@ describe('the distiller reads a group thread as the parents said it, and nothing
     await say(group, 'user', 'Our Juno has a heart condition.', other.parentUserId);
     await say(group, 'user', 'Wren hates the bath.', null);
     await say(group, 'assistant', 'Noted: peanuts are out, and Juno is resting.', null);
+    // Hale's group reply never comes from a parent, even on a row that names one.
+    await say(group, 'assistant', 'Juno is cleared for swim again.', coParentId);
 
     const window = await readWindow(familyId);
 
