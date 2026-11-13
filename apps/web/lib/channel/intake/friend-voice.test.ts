@@ -20,7 +20,9 @@ import {
   lastInboundFact,
   nameAskVoiceInput,
   onboardingReplyToolSchema,
+  parseReplyTool,
   readGroupLeads,
+  retryProblem,
   speakFriend,
   tidyProse,
 } from './friend-voice';
@@ -2223,7 +2225,7 @@ describe('a declined postal code', () => {
     try {
       const fields = {
         asks: true,
-        parentQuestion: false,
+        messageIsQuestion: false,
         connectorsOffered: [],
         joinPointer: null,
         claimsSaved: false,
@@ -2316,10 +2318,10 @@ describe('a garbled parentQuestion', () => {
   it('counts a present non-boolean as a question, and an absent one as none', async () => {
     const read = async (input: Record<string, unknown>) =>
       (await composerReplying(input).compose(gmailAsk)).parentQuestion;
-    expect(await read({ ...fields, parentQuestion: 'true' })).toBe(true);
+    expect(await read({ ...fields, messageIsQuestion: 'true' })).toBe(true);
     expect(await read(fields)).toBe(false);
-    expect(await read({ ...fields, parentQuestion: true })).toBe(true);
-    expect(await read({ ...fields, parentQuestion: false })).toBe(false);
+    expect(await read({ ...fields, messageIsQuestion: true })).toBe(true);
+    expect(await read({ ...fields, messageIsQuestion: false })).toBe(false);
   });
 
   // VIL-617 follow-up: a consent turn the model did not mark keeps no yes.
@@ -2330,14 +2332,14 @@ describe('a garbled parentQuestion', () => {
     expect(await read({ ...fields, connectCalendar: true })).toBe(true);
     // Positive control: with no yes in the turn, a missing value is no question.
     expect(await read({ ...fields, connectGmail: false })).toBe(false);
-    expect(await read({ ...fields, connectGmail: true, parentQuestion: false })).toBe(false);
+    expect(await read({ ...fields, connectGmail: true, messageIsQuestion: false })).toBe(false);
   });
 
-  it('pins parentQuestion: null as a question', async () => {
+  it('pins messageIsQuestion: null as a question', async () => {
     const read = async (input: Record<string, unknown>) =>
       (await composerReplying(input).compose(gmailAsk)).parentQuestion;
-    expect(await read({ ...fields, parentQuestion: null })).toBe(true);
-    expect(await read({ ...fields, parentQuestion: null, connectGmail: false })).toBe(true);
+    expect(await read({ ...fields, messageIsQuestion: null })).toBe(true);
+    expect(await read({ ...fields, messageIsQuestion: null, connectGmail: false })).toBe(true);
   });
 
   it('keeps no Gmail yes on a draw that left parentQuestion out', async () => {
@@ -2376,13 +2378,13 @@ describe('a garbled parentQuestion', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     try {
       const declined = await speakFriend(
-        composerReplying({ ...reply, parentQuestion: false, placeDeclined: true }),
+        composerReplying({ ...reply, messageIsQuestion: false, placeDeclined: true }),
         placeAsk,
         { page: async () => undefined },
       );
       expect(declined.capture.placeDeclined).toBe(true);
       const open = await speakFriend(
-        composerReplying({ ...reply, parentQuestion: false }),
+        composerReplying({ ...reply, messageIsQuestion: false }),
         placeAsk,
         { page: async () => undefined },
       );
@@ -2394,7 +2396,7 @@ describe('a garbled parentQuestion', () => {
 
   it('refuses a draw with call markup in a field instead of reading it', async () => {
     await expect(
-      composerReplying({ ...fields, parentQuestion: GARBLED }).compose(gmailAsk),
+      composerReplying({ ...fields, messageIsQuestion: GARBLED }).compose(gmailAsk),
     ).rejects.toMatchObject({ outcome: 'tool_markup' });
   });
 
@@ -2404,8 +2406,8 @@ describe('a garbled parentQuestion', () => {
     try {
       const retried = await speakFriend(
         composerReplying(
-          { ...fields, connectGmail: true, parentQuestion: GARBLED },
-          { ...fields, parentQuestion: true },
+          { ...fields, connectGmail: true, messageIsQuestion: GARBLED },
+          { ...fields, messageIsQuestion: true },
         ),
         gmailAsk,
         { page: async () => undefined, linkFollows: true },
@@ -2429,7 +2431,7 @@ describe('a garbled parentQuestion', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const garbled = await speakFriend(
-        composerReplying({ ...fields, connectGmail: true, parentQuestion: GARBLED }),
+        composerReplying({ ...fields, connectGmail: true, messageIsQuestion: GARBLED }),
         gmailAsk,
         { page: async () => undefined, linkFollows: true },
       );
@@ -2437,7 +2439,7 @@ describe('a garbled parentQuestion', () => {
       expect(garbled.capture.connectGmail).not.toBe(true);
 
       const clean = await speakFriend(
-        composerReplying({ ...fields, connectGmail: true, parentQuestion: false }),
+        composerReplying({ ...fields, connectGmail: true, messageIsQuestion: false }),
         blank({ ...gmailAsk, parentWords: 'sure' }),
         { page: async () => undefined, linkFollows: true },
       );
@@ -2679,7 +2681,7 @@ describe('a declined place, closed in code', () => {
         messages: { create: next, stream: () => ({ finalMessage: next }) },
       } as never);
     };
-    const fields = { reply: 'What are your kids called?', asks: true, parentQuestion: false };
+    const fields = { reply: 'What are your kids called?', asks: true, messageIsQuestion: false };
     expect(
       (await composerReplying({ ...fields, placeAsk: 'coarse' }).compose(secondNo)).placeAsk,
     ).toBe('coarse');
@@ -2809,6 +2811,43 @@ describe('model fields, not ? or word lists (VIL-541)', () => {
     ).toEqual({ ok: false, reason: 'identity' });
   });
 
+  it('a reply with more than one question goes back with a note to ask only one', () => {
+    const place = blank({ step: 'place', parentWords: 'je préfère ne pas donner mon code postal' });
+    const judged = judgeFriendReply(
+      'Tu peux me dire ta ville? Ou juste les trois premiers caractères?',
+      place,
+      { asksCount: 2 },
+    );
+    expect(judged).toEqual({ ok: false, reason: 'question', detail: 'too_many' });
+    expect(retryProblem('question', 'too_many', place)).toMatch(
+      /^It asked more than one question\. Ask only one question: /,
+    );
+    // One question short is not too many: that note does not speak of a second one.
+    expect(judgeFriendReply('Pas de souci.', place, { asksCount: 0 })).toEqual({
+      ok: false,
+      reason: 'question',
+    });
+    expect(retryProblem('question', undefined, place)).not.toContain('more than one');
+  });
+
+  it('reads the decisions from wire names that do not start the way `parameter` does', () => {
+    // VIL-541: 15 of 120 live draws closed `parentQuestion` with `</parentQuestion>`; the
+    // same turns under these names leaked 0 of 120.
+    const schema = onboardingReplyToolSchema(blank({ step: 'email' }));
+    expect(schema.required.filter((name) => name.startsWith('par'))).toEqual([]);
+    const composed = parseReplyTool({
+      reply: 'Dana? Nice to meet you. What are the kids called?',
+      asks: true,
+      asksCount: 1,
+      messageIsQuestion: true,
+      messageIsYes: true,
+      messageOnlyName: 'Dana',
+    });
+    expect(composed.parentQuestion).toBe(true);
+    expect(composed.parentPlainYes).toBe(true);
+    expect(composed.parentLoneName).toBe('Dana');
+  });
+
   it('the connector ask is on topic by connectorsOffered, not by naming it', () => {
     const email = blank({ step: 'email', parentWords: 'sure' });
     expect(
@@ -2923,8 +2962,8 @@ describe('model fields, not ? or word lists (VIL-541)', () => {
         'asksName',
         'speaksAsParent',
         'joinInProse',
-        'parentPlainYes',
-        'parentLoneName',
+        'messageIsYes',
+        'messageOnlyName',
       ]),
     );
   });

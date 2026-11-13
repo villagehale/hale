@@ -66,9 +66,11 @@ import {
  * returns an opener, a bubble per group (up to three) and the kids; a cut-off at max_tokens
  * is a failed attempt, so the budget is well over what a good reply uses. The short
  * retry has the same budget: its prompt is smaller, its answer is not. A reply that
- * fills every optional field ran past 600 tokens live (VIL-617).
+ * fills every optional field ran past 600 tokens live (VIL-617). Each field the call
+ * fills costs tokens of its own: in 120 live map draws the longest ran to 1225, and a
+ * calendar receipt with 21 fields to 832, so 1000 cut good replies off (VIL-541).
  */
-const MAX_TOKENS = 1000;
+const MAX_TOKENS = 2000;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
 export const ONBOARDING_REPLY_TOOL = 'reply';
@@ -309,7 +311,7 @@ export interface FriendComposed {
   groupLeads?: readonly string[] | null;
   /** This reply asks the parent something. Omitted means the model did not say. */
   asks?: boolean;
-  /** Their message is a question, not a yes to Gmail, the calendar, or the group. */
+  /** Their message is a question, not a yes to Gmail, the calendar, or the group (`messageIsQuestion`). */
   parentQuestion?: boolean;
   /** Every connector this reply asks, offers, or agrees to connect. */
   connectorsOffered?: readonly OfferedConnector[];
@@ -327,9 +329,9 @@ export interface FriendComposed {
   speaksAsParent?: boolean;
   /** This reply writes the join number or phrase that code places under it. */
   joinInProse?: boolean;
-  /** Their message is a yes to the open item. */
+  /** Their message is a yes to the open item (`messageIsYes`). */
   parentPlainYes?: boolean;
-  /** Their message is only their own name, answering the name ask. */
+  /** Their message is only their own name, answering the name ask (`messageOnlyName`). */
   parentLoneName?: string | null;
 }
 
@@ -550,7 +552,7 @@ const replyFields = z.object({
   asks: z.boolean().optional().default(false).catch(false),
   // Read with the rest of the turn below: whether a missing value is a question
   // depends on whether the turn holds a yes.
-  parentQuestion: z.unknown(),
+  messageIsQuestion: z.unknown(),
   claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
@@ -569,8 +571,8 @@ const replyFields = z.object({
   asksName: z.boolean().optional(),
   speaksAsParent: z.boolean().optional(),
   joinInProse: z.boolean().optional(),
-  parentPlainYes: z.boolean().optional(),
-  parentLoneName: z.string().nullable().optional().default(null).catch(null),
+  messageIsYes: z.boolean().optional(),
+  messageOnlyName: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
 });
@@ -586,17 +588,17 @@ const replySchema = replyFields.transform((value) => ({
  * holds a yes, because a consent turn the model did not mark must not keep one.
  */
 function readParentQuestion(value: {
-  parentQuestion?: unknown;
+  messageIsQuestion?: unknown;
   connectGmail: boolean | null;
   connectCalendar: boolean | null;
   coparentGroup: boolean | null;
 }): boolean {
-  if (value.parentQuestion === undefined) {
+  if (value.messageIsQuestion === undefined) {
     return (
       value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true
     );
   }
-  return value.parentQuestion !== false;
+  return value.messageIsQuestion !== false;
 }
 
 const replyJsonSchema = {
@@ -659,7 +661,7 @@ const replyJsonSchema = {
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
     asks: { type: 'boolean' },
-    parentQuestion: { type: 'boolean' },
+    messageIsQuestion: { type: 'boolean' },
     connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
     joinPointer: {
       type: ['string', 'null'],
@@ -672,14 +674,16 @@ const replyJsonSchema = {
     asksName: { type: 'boolean' },
     speaksAsParent: { type: 'boolean' },
     joinInProse: { type: 'boolean' },
-    parentPlainYes: { type: 'boolean' },
-    parentLoneName: { type: ['string', 'null'] },
+    messageIsYes: { type: 'boolean' },
+    messageOnlyName: { type: ['string', 'null'] },
   },
-  // Code reads these instead of the reply's words, so the model always says.
+  // Code reads these instead of the reply's words, so the model always says. None starts
+  // with `par`: Haiku closed a field so named with its own name (`</parentQuestion>`)
+  // instead of `</parameter>`, and the markup guard refused the draw (VIL-541).
   required: [
     'reply',
     'asks',
-    'parentQuestion',
+    'messageIsQuestion',
     'connectorsOffered',
     'joinPointer',
     'claimsSaved',
@@ -687,8 +691,8 @@ const replyJsonSchema = {
     'asksName',
     'speaksAsParent',
     'joinInProse',
-    'parentPlainYes',
-    'parentLoneName',
+    'messageIsYes',
+    'messageOnlyName',
   ],
 } as const;
 
@@ -1027,7 +1031,7 @@ function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): Onb
 }
 
 /**
- * A question is not a yes. The model says so with `parentQuestion`; a question
+ * A question is not a yes. The model says so with `messageIsQuestion`; a question
  * mark in the parent's words, in any script, is not the signal.
  */
 function noYesInAQuestion(capture: OnboardingCapture, parentQuestion: boolean): OnboardingCapture {
@@ -1621,11 +1625,8 @@ export function judgeFriendReply(
     (options.yesToLink === true && LINK_STEPS.has(input.step)) ||
     options.scheduleRecorded === true;
   if (typeof asked !== 'number') return { ok: false, reason: 'question' };
-  if (flex) {
-    if (asked > 1) return { ok: false, reason: 'question' };
-  } else if (asked !== needed) {
-    return { ok: false, reason: 'question' };
-  }
+  if (asked > 1) return { ok: false, reason: 'question', detail: 'too_many' };
+  if (!flex && asked !== needed) return { ok: false, reason: 'question' };
   if (options.asksName === true && !NAME_STEPS.has(input.step)) {
     return { ok: false, reason: 'question' };
   }
@@ -2423,8 +2424,11 @@ export function retryProblem(
     case 'unbacked_claim':
       return 'It promised something Hale does not do from here (an invite, or a change to how Hale texts). Leave that promise out.';
     case 'question':
-      return input && ZERO_QUESTION_STEPS.has(input.step)
-        ? 'This message asks nothing. No question mark.'
+      if (input && ZERO_QUESTION_STEPS.has(input.step)) {
+        return 'This message asks nothing. No question mark.';
+      }
+      return detail === 'too_many'
+        ? `It asked more than one question. Ask only one question: ${askInWords(input?.step, input)}, and nothing after it. Never ask for something already known.`
         : `Exactly one question: ${askInWords(input?.step, input)}. Never ask for something already known.`;
     case 'privacy':
       return 'It made a privacy claim that is not true. Google shares the whole inbox or calendar with Hale; Hale keeps and uses only what is about the kids. Do not say Hale only reads, only sees, or never sees some of it.';
@@ -2689,8 +2693,8 @@ function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
     asksName: value.asksName,
     speaksAsParent: value.speaksAsParent,
     joinInProse: value.joinInProse,
-    parentPlainYes: value.parentPlainYes,
-    parentLoneName: value.parentLoneName,
+    parentPlainYes: value.messageIsYes,
+    parentLoneName: value.messageOnlyName,
   };
 }
 

@@ -18,17 +18,17 @@ describe('everyReplyMisses', () => {
     asksName: false,
     speaksAsParent: false,
     joinInProse: false,
-    parentPlainYes: false,
-    parentLoneName: null,
+    messageIsYes: false,
+    messageOnlyName: null,
   };
 
   it('passes a reply with every field, and names each one left out or mistyped', () => {
     expect(everyReplyMisses(full)).toEqual([]);
     const { asksCount: _count, ...noCount } = full;
     expect(everyReplyMisses(noCount)).toEqual(['asksCount:omitted']);
-    expect(everyReplyMisses({ ...full, asksCount: 1.5, parentLoneName: 3 })).toEqual([
+    expect(everyReplyMisses({ ...full, asksCount: 1.5, messageOnlyName: 3 })).toEqual([
       'asksCount:omitted',
-      'parentLoneName:omitted',
+      'messageOnlyName:omitted',
     ]);
   });
 
@@ -47,12 +47,12 @@ describe('friendMarksMisses', () => {
 
   it('passes a co-parent yes that points below', () => {
     expect(
-      friendMarksMisses(join, { asks: false, parentQuestion: false, joinPointer: 'below' }),
+      friendMarksMisses(join, { asks: false, messageIsQuestion: false, joinPointer: 'below' }),
     ).toEqual([]);
   });
 
   it('fails when the pointer the send depends on is omitted', () => {
-    expect(friendMarksMisses(join, { asks: false, parentQuestion: false })).toEqual([
+    expect(friendMarksMisses(join, { asks: false, messageIsQuestion: false })).toEqual([
       'joinPointer:omitted',
       'joinPointer:null',
     ]);
@@ -60,50 +60,48 @@ describe('friendMarksMisses', () => {
 
   it('fails a pointer that is not below, and a value outside the enum', () => {
     expect(
-      friendMarksMisses(join, { asks: false, parentQuestion: false, joinPointer: 'missing' }),
+      friendMarksMisses(join, { asks: false, messageIsQuestion: false, joinPointer: 'missing' }),
     ).toEqual(['joinPointer:"missing"']);
     expect(
-      friendMarksMisses(join, { asks: false, parentQuestion: false, joinPointer: 'under' }),
+      friendMarksMisses(join, { asks: false, messageIsQuestion: false, joinPointer: 'under' }),
     ).toEqual(['joinPointer:omitted', 'joinPointer:"under"']);
   });
 
   it('fails a question read as agreement, and an omitted asks', () => {
     expect(
-      friendMarksMisses(zh, { asks: true, parentQuestion: true, connectorsOffered: ['gmail'] }),
+      friendMarksMisses(zh, { asks: true, messageIsQuestion: true, connectorsOffered: ['gmail'] }),
     ).toEqual([]);
-    expect(friendMarksMisses(zh, { parentQuestion: false, connectorsOffered: ['gmail'] })).toEqual([
-      'asks:omitted',
-      'parentQuestion:false',
-    ]);
+    expect(
+      friendMarksMisses(zh, { messageIsQuestion: false, connectorsOffered: ['gmail'] }),
+    ).toEqual(['asks:omitted', 'messageIsQuestion:false']);
   });
 
   it('fails a question turned into a yes the code would keep, or not read as a question', () => {
     const marks = { asks: true, connectorsOffered: ['gmail'] };
-    expect(friendMarksMisses(fr, { ...marks, parentQuestion: true, connectGmail: null })).toEqual(
-      [],
-    );
-    expect(friendMarksMisses(fr, { ...marks, parentQuestion: true, connectGmail: true })).toEqual(
-      [],
-    );
-    expect(friendMarksMisses(fr, { ...marks, parentQuestion: false, connectGmail: null })).toEqual([
-      'parentQuestion:false',
-    ]);
-    expect(friendMarksMisses(fr, { ...marks, parentQuestion: false, connectGmail: true })).toEqual([
-      'connectGmail:yes_kept',
-      'parentQuestion:false',
-    ]);
+    expect(
+      friendMarksMisses(fr, { ...marks, messageIsQuestion: true, connectGmail: null }),
+    ).toEqual([]);
+    expect(
+      friendMarksMisses(fr, { ...marks, messageIsQuestion: true, connectGmail: true }),
+    ).toEqual([]);
+    expect(
+      friendMarksMisses(fr, { ...marks, messageIsQuestion: false, connectGmail: null }),
+    ).toEqual(['messageIsQuestion:false']);
+    expect(
+      friendMarksMisses(fr, { ...marks, messageIsQuestion: false, connectGmail: true }),
+    ).toEqual(['connectGmail:yes_kept', 'messageIsQuestion:false']);
     // The English question with no question mark is held to the same.
     const bare = FRIEND_MARKS_FIXTURES.find(
       (fixture) => fixture.id === 'email-question-en-no-mark',
     );
     expect(
-      friendMarksMisses(bare, { ...marks, parentQuestion: false, connectGmail: true }),
-    ).toEqual(['connectGmail:yes_kept', 'parentQuestion:false']);
+      friendMarksMisses(bare, { ...marks, messageIsQuestion: false, connectGmail: true }),
+    ).toEqual(['connectGmail:yes_kept', 'messageIsQuestion:false']);
   });
 
   it('fails a Gmail pitch on a turn that answers their own other question', () => {
     const own = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'ages-own-question');
-    const marks = { asks: true, parentQuestion: true };
+    const marks = { asks: true, messageIsQuestion: true };
     expect(friendMarksMisses(own, { ...marks, connectorsOffered: [] })).toEqual([]);
     expect(friendMarksMisses(own, { ...marks, connectorsOffered: ['gmail'] })).toEqual([
       'connectorsOffered:["gmail"]',
@@ -213,7 +211,7 @@ describe('friendMarksMisses', () => {
   });
 
   it('fails a calendar ask that offers Gmail under the calendar link', () => {
-    const marks = { asks: true, parentQuestion: false };
+    const marks = { asks: true, messageIsQuestion: false };
     const calendar = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'calendar-yes');
     expect(friendMarksMisses(calendar, { ...marks, connectorsOffered: ['calendar'] })).toEqual([]);
     expect(
