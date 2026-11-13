@@ -1,0 +1,21 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": {
+      "called": "小明"
+    },
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "zh",
+    "reply": "小明加入啦,欢迎!🎅"
+  },
+  "latencyMs": 1999,
+  "usage": {
+    "input_tokens": 159,
+    "output_tokens": 83,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

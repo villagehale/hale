@@ -118,6 +118,8 @@ export interface GroupPlanRsvpTurnInput {
    */
   calendarLanguage?: ReplyLanguage | null;
   now: Date;
+  /** VIL-686: Secret Santa runs in this chat; its asks are not a plan. */
+  secretSanta?: boolean;
 }
 
 export interface GroupPlanRsvpTurnDeps {
@@ -244,6 +246,7 @@ export async function takeGroupPlanRsvpTurn(
       : null,
     recent: [],
     ...(pollsOn ? { polls: { live: livePoll ? pollReadView(livePoll) : null } } : {}),
+    ...(input.secretSanta ? { secretSanta: true as const } : {}),
   });
 
   if (!reading || reading.confidence !== 'high') {

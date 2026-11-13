@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Group refusal in French using vous, correct language. No secrets, no pairing hints, no names after a draw. Facts are respected: outcome is name_needed, the line asks for a name and invents nothing (no counts, dates, budgets). Tone is short, warm, one bubble, one request, no filing language, no command keyword, doesn't claim to be human. It is not a first one-to-one text, so no intro is required. Minor nit: 'vous êtes bien dans le Secret Santa' slightly confirms the join without a name, but that matches the facts (speaker counted as in, name null).",
+    "score": 5
+  }
+}

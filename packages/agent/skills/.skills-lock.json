@@ -351,6 +351,10 @@
     "file": "group-plan-rsvp-calendar-voice.md",
     "sha256": "9212bdc688d722c6492b288ed25693ec7f9b7c7b8b0b54ddab51dd17bc413850"
   },
+  "group-plan-rsvp-read-secret-santa.md": {
+    "file": "group-plan-rsvp-read-secret-santa.md",
+    "sha256": "b4cfadf529d9c585f8b2bff2a1da577dac60faa9ad2b75842ca75119de8c81d3"
+  },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",
     "sha256": "86bdc136dc1d4f8adbf6b24f1018d8bd8a4b1b230d21bf7c82e120e36a2bfe92"
@@ -610,6 +614,14 @@
   "said-line.md": {
     "file": "said-line.md",
     "sha256": "2cc922ae1a7db57f1f1c0e7b4de8fbfdc9103d49a9a98c384f03c6b66e6f6570"
+  },
+  "secret-santa-line.md": {
+    "file": "secret-santa-line.md",
+    "sha256": "3b0131a78f3ac13bfa1cc8ff3646821192400ab2fa0ab253298439a55e42ac0f"
+  },
+  "secret-santa-turn.md": {
+    "file": "secret-santa-turn.md",
+    "sha256": "d9a2b44c9d7bfbcce55ee986442fb4f9b7a724d3630a30d7aa466a1f6de00039"
   },
   "shared-group-list-turn.md": {
     "file": "shared-group-list-turn.md",
