@@ -433,6 +433,22 @@ async function runOnePlan(
   if (held?.phase === 'paying') {
     return carry(() => runner.settlePayment({ resume: held, waitUntil: sweep.waitUntil, onStep }));
   }
+  // An earlier sweep died during the checkout review. What the review did was never read and
+  // it may have placed the order, so a charge may exist, whatever the plan's state now.
+  if (held?.phase === 'signup' && held.reviewStarted) {
+    await pageIfReviewMayHavePlaced('unknown', 'total_unread');
+    return end({
+      outcome: 'needs_human',
+      detail: 'total_unread',
+      choiceIndex: null,
+      cartTotalCents: null,
+      amountChargedCents: null,
+      charged: 'unknown',
+      confirmationNumber: null,
+      liveViewUrl: null,
+      holdExpiresAt: null,
+    });
+  }
   const lapse = plan.takenBack ? 'taken_back' : await planLapse(database, plan);
   if (lapse) {
     console.info({ offerId: plan.offerId, lapse }, 'signup plans: the yes no longer stands');
