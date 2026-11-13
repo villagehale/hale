@@ -95,6 +95,20 @@ describe('the payload carries a lane, a class, and a hashed family — nothing e
         .properties.error_class,
     ).toBe('first_find');
   });
+
+  it('reports a claim-reader failure on its own lane and event', () => {
+    expect(
+      buildAgentErrorPayload({ lane: 'claim_read', reason: 'unreachable', familyId: FAMILY }),
+    ).toEqual({
+      event: 'agent_claim_read_failed',
+      distinctId: hashFamilyId(FAMILY),
+      properties: {
+        lane: 'claim_read',
+        error_class: 'unreachable',
+        family_hash: hashFamilyId(FAMILY),
+      },
+    });
+  });
 });
 
 describe('the family id never leaves as itself', () => {
@@ -129,6 +143,13 @@ describe('no free text can reach the payload (poisoned fixtures)', () => {
     expect(out).not.toContain('fever');
     expect(out).not.toContain(POISON.parentText);
     expect(out).toContain('unclassified');
+  });
+
+  it('a claim-read failure drops a body passed as the reason', () => {
+    const out = serialized({ lane: 'claim_read', reason: POISON.parentText, familyId: FAMILY });
+    expect(out).not.toContain('fever');
+    expect(out).toContain('unclassified');
+    expect(out).toContain('agent_claim_read_failed');
   });
 
   it("a child's name passed as a commitment kind is dropped", () => {

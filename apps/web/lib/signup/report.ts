@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
+import type { SendStamp } from './store';
 
 export interface GroupSignupDelivery {
   familyId: string;
@@ -10,6 +11,9 @@ export interface GroupSignupDelivery {
   body: string;
   dedupeKey: string;
   now: Date;
+  /** The ask this result is about: brackets the send (`askStamp`). A row that already
+   * went (`already_sent`) is not sent again, and the attempt that sent it stamped it. */
+  stamp: SendStamp;
 }
 
 const refusedNewThread: ChannelTransport = {
@@ -46,6 +50,7 @@ export async function sendSignupToGroup(
   const row = inserted[0];
   if (!row) return 'already_sent';
   try {
+    const keep = await input.stamp();
     const delivered = await deliverFamilyOutbound(database, {
       familyId: input.familyId,
       body: input.body,
@@ -60,6 +65,7 @@ export async function sendSignupToGroup(
       await markFailed(database, row.id, input.familyId, delivered.reason);
       return 'failed';
     }
+    await keep();
     await database
       .update(schema.channelMessages)
       .set({

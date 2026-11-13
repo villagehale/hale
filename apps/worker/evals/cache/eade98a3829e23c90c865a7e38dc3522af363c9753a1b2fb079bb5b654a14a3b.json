@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in Chinese, says login failed so nothing was registered or paid, does not claim a spot, and asks no question. However it instructs the parent to register themselves and says the session is 周日10:00, which matches the facts; the only minor issue is the phrase '尽快自己到链接去报名' is a single ask, acceptable. Facts and tone are accurate, with no invented details.",
+    "score": 5
+  }
+}

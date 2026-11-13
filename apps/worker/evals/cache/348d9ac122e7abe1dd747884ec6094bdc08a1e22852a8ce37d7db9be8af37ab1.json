@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "The reply is about meeting another family, which does not match the only open offer about Toddler Swim, so it does not answer that offer."
+  },
+  "latencyMs": 4333
+}

@@ -11,7 +11,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
-import { GOING_COUNT_ENABLED_ENV } from '~/lib/integrations/going';
+import { GOING_COUNT_ENABLED_ENV, recordGoingCountShare } from '~/lib/integrations/going';
 import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
@@ -147,6 +147,7 @@ beforeEach(async () => {
   // The pglite instance is shared across this file and the count reads ACROSS families, so
   // the previous test's households would be counted into this one's sentence.
   await db.database.delete(schema.activityBookings);
+  await db.database.delete(schema.goingCountOptIns);
   await db.database.delete(schema.auditLog);
   await db.database.delete(schema.channelMessages);
 });
@@ -194,6 +195,11 @@ async function household(displayName: string): Promise<Household> {
     },
     RECEIPT_AT,
   );
+  await recordGoingCountShare(db.database, {
+    familyId,
+    parentUserId,
+    granted: true,
+  });
   return { familyId, parentUserId, phone, integrationId: randomUUID() };
 }
 
@@ -375,6 +381,8 @@ describe('the third family into the class hears a number', () => {
       'activity_booking_recorded',
       'email_alert_sent',
       'email_alert_sent',
+      'going_count_opt_in_recorded',
+      'going_count_opt_in_recorded',
       'proactive_watch_granted',
       'proactive_watch_granted',
     ]);

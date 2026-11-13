@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reasoning": "m1 asks for activity options with a budget of 600 $ this fall; m2 'non 900 $' is a correction changing the budget figure in m1, so they form one ask.",
+    "groups": [
+      [
+        "m1",
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1293
+}

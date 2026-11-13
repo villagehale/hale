@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks Hale to find a place nearby, which is local place-finding for the family's outings and falls under Hale's job",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 3367
+}

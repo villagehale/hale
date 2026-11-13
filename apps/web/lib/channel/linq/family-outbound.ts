@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, eq, inArray, isNull } from 'drizzle-orm';
+import { groupLineLabels, noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
@@ -178,6 +179,9 @@ function isCoparentAsk(body: string): boolean {
  * already in, or a spot they asked to hear about. Pass `bubbleKind` when the
  * send has a named quiet-hours class. The co-parent ask never leaves into a
  * claimed group. There is no count.
+ *
+ * `replyIn` is a later answer to an ask made in a 1:1 chat: it goes back into that
+ * chat on the legacy transport, threaded, and never to the household group.
  */
 export async function deliverFamilyOutbound(
   database: Database,
@@ -191,10 +195,13 @@ export async function deliverFamilyOutbound(
     shareGroupCap?: boolean;
     bubbleKind?: GroupBubbleKind;
     mediaUrls?: string[];
+    replyIn?: { chatId: string; messageId: string };
     now?: Date;
   },
 ): Promise<FamilyOutboundDelivery> {
-  const target = input.target ?? (await familyOutboundTarget(database, input.familyId));
+  const target: FamilyOutboundTarget = input.replyIn
+    ? { channel: 'legacy' }
+    : (input.target ?? (await familyOutboundTarget(database, input.familyId)));
   if (target.channel === 'group') {
     if (isCoparentAsk(input.body)) {
       console.warn(
@@ -242,6 +249,7 @@ export async function deliverFamilyOutbound(
       to: input.to,
       body: input.body,
       mediaUrls: input.mediaUrls,
+      ...(input.replyIn ? { replyIn: input.replyIn } : {}),
     });
     const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
     return {
@@ -796,6 +804,13 @@ export async function sendClaimedGroupLine(
       targetId: claimed.id,
       after: { templateKey: input.templateKey },
     });
+    noteMessage({
+      direction: 'out',
+      familyId: input.familyId,
+      channel: 'imessage',
+      ...groupLineLabels(input.chatId),
+      database,
+    });
     return 'sent';
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
@@ -803,6 +818,12 @@ export async function sendClaimedGroupLine(
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
+    noteSendFailed({
+      familyId: input.familyId,
+      channel: 'imessage',
+      ...groupLineLabels(input.chatId),
+      reason: code,
+    });
     return 'not_sent';
   }
 }

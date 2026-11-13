@@ -816,9 +816,29 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, connector_link, connector_disconnect, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  // The production chain is one dynamic import of the whole handler graph. On a
+  // cold CI worker that import exceeds Vitest's 5s test budget (the suite's
+  // hookTimeout is 30s for the same reason). Load it once, then assert.
+  let names: string[] = [];
+  let offList: string[] = [];
+
+  beforeAll(async () => {
     const { defaultHandlers } = await import('./wiring');
-    expect(defaultHandlers().map((h) => h.name)).toEqual([
+    const chain = defaultHandlers();
+    names = chain.map((handler) => handler.name);
+    offList = chain.filter((handler) => handler.offListAsks).map((handler) => handler.name);
+  });
+
+  // VIL-302 · the router ranks Hale's last text about the sign-up lane's asks with the open
+  // questions before it narrows a bare answer to the newest of them. If the lane stopped
+  // reporting it, the newest open question would capture a yes meant for the sign-up offer
+  // Hale texted last.
+  it('marks the sign-up lane, and only it, as ranking its asks off the open-question list', () => {
+    expect(offList).toEqual(['authorized_signup']);
+  });
+
+  it('is village_intro, approval, connector_link, connector_disconnect, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', () => {
+    expect(names).toEqual([
       'village_intro',
       'approval',
       // Claims only an explicit connect-verb + provider-noun pair — a shape no other
@@ -899,9 +919,7 @@ describe('the shipped order', () => {
    * health outcome and "we got in" is a registration result, and a family with an open
    * name ask must be able to answer one without being renamed for it.
    */
-  it('puts the name capture behind every handler that matches a specific word', async () => {
-    const { defaultHandlers } = await import('./wiring');
-    const names = defaultHandlers().map((h) => h.name);
+  it('puts the name capture behind every handler that matches a specific word', () => {
     expect(names.at(-1)).toBe('inbound_canary');
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('rec_morning'));
@@ -917,10 +935,7 @@ describe('the shipped order', () => {
    * plan is three texts of advice. So the plan lane is last of the three, and a parent
    * with a draft pending still means the draft when they type YES.
    */
-  it('puts the plan lane behind both of the other yes-claimers', async () => {
-    const { defaultHandlers } = await import('./wiring');
-    const names = defaultHandlers().map((h) => h.name);
-
+  it('puts the plan lane behind both of the other yes-claimers', () => {
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('approval'));
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('health'));
   });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubble 1 is a lead-in count ('有两个适合…的'), which the rubric explicitly forbids; the first bubble should be the first item itself. Otherwise the reply is in Chinese, names both classes with day and time, states the Dec 1 7:00 registration, and the page link is last. Bubble 4 also bundles the registration fact with the links, which is acceptable. The lead-in breaks point 3, so the score is 3.",
+    "score": 3
+  }
+}

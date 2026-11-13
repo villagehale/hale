@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgwpDZ1CkrSbagTaFRu1w",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "体操那个先不报了。\n\nAda 的 Little Kickers 报名将于 12 月 1 日(周二)早上 7:00 开放,目前看到的是周六 9:30 这一场。你想报哪些场次?请按优先顺序告诉我。如果你也自己在手机或电脑上排队,家里就会在队伍里占两个位置。\nhttps://kickers.example-sport.test/register/little-kickers-sat-0930"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1606,
+      "cache_read_input_tokens": 21624,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1606,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 148,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

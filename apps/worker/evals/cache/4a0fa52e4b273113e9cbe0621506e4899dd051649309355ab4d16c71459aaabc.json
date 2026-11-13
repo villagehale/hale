@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The next-day check-back should reach the parent during their day, not first thing in the morning at 8:23 AM, and it stays useful until tomorrow noon UTC, so I'll hold it until mid-morning local.",
+    "action": "hold",
+    "item_ids": [
+      "checkback"
+    ],
+    "hold_until": "2026-10-08T10:00:00-04:00",
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

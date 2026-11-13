@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgwWYAhSxquwSZ4wqjQof",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3wUKEAgTGAI4AUIIdGhpbmtpbmcSDAB1l0fStHOlIAy9yRoMOCZ3XvQcVnTZye6KIjDKuHZ6Ehbv2yabMkJxX1ERgCf3iOHDAql1NLhRIn2Nm4iaejY+7pFJAWP9YXFd05oq/AQ/83ycoVaBRxUGkytven8BVmBp7gfKqfYJhC+RonFuIsrdFo8J62h8S6qw0A438o2gDgllXlyxMz2Bodt3oc0GQdgsBoGLqO9wfpDRECUL4palXcebsc0psqygDQo/jJbwtDVl2B80ncbz4PuLxHfo74LJglSWbEY7vLD8XXpBBo9GIYnnQHqao51dUgZtnVfAfQS84ObJrFVH+fxK9g/ccBIJ8nLk0c+NgxJWzWMqw/tsGZPLZOzMnZ9VZPQq8TeWiQmTZmPkeEYgHhjQjcUnYYh9qV+EZ+2vA6T6Qzz5xNclsHw+WWzmxER7SQyWEyL1hIrAUZcq/6inn84Uu6VT+sRc9p1oFboqy0w+XyUKN2i0bwurjx/G7rThA+rH9vIZ6mq3sacpRSE6xDsyK9sUL5AxeR/dQgHNIuwYtGqmZ2b5ASrPOfH5ZGbO2Dl+f0A4T6RlOJzQ5U6Q06ZJSMM2WqznlVdRG9wfUSdK4+WRgIJtbKog5ZoYPqz4fh0XNMJPS3Qo9lU2UJYOmw8JaRZfUzSPFsAqV2xib1jz0eHrGRXvARqvCPyooSDCbNwnPMq1fDXs9+pwj+IRUECVPcCmutZT3iXIRKcGOTYjz3weKevKYdkvM6po+Mhc7DGV/I9tilQ2z0Wa1ckZ6gN+P+tLnXou0+bJiZyheUzCjnuUAsAEve1st+UqomE8mvA9f7t99O96hZK523H6rVSndCbLXNQFxTyhjqXiD2/LrGtLhUI2PH+IYe0nPr92Azh+KVG56sIaF8ooumC3H7TAD/A6OTx0VAJ5I91MUyPDXcv65T377yCQTT4uvg5RWQngwJiyLJ6bXhrs9KmIUO8YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents, and I'm on it. I'll text you before it opens. Tiny Tumblers parent & tot suits Remy, for walking to 3 years. It runs Saturday mornings this fall, per the venue's own program page. They didn't post a price, so I can't give you one. [link-7ad114]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 182,
+      "cache_read_input_tokens": 24340,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 182,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 156,
+      "output_tokens_details": {
+        "thinking_tokens": 30
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2138
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "santaTurn": false,
+    "start": false,
+    "joinSelf": null,
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "en",
+    "reply": null
+  },
+  "latencyMs": 1186,
+  "usage": {
+    "input_tokens": 142,
+    "output_tokens": 59,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

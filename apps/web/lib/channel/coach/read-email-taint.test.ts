@@ -100,7 +100,8 @@ describe('taintTurnOnEmailRead (VIL-615)', () => {
     const { call } = turnTools(READ, ran, audits);
     await call(READ_EMAIL_TOOL);
     await call('propose_calendar_add').catch(() => {});
-    expect(audits.map((a) => a.actionTaken)).toEqual([`tool:${READ_EMAIL_TOOL}`]);
+    // VIL-635: the refusal is a content-free tool_refused row, never a tool:<name> row.
+    expect(audits.map((a) => a.actionTaken)).toEqual([`tool:${READ_EMAIL_TOOL}`, 'tool_refused']);
   });
 
   it('a write before the read is audited as usual (positive control for the row above)', async () => {

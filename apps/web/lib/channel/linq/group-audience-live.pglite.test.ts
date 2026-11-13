@@ -335,4 +335,23 @@ describe('groupAudienceAllows reads the live participant list', () => {
     expect(schedule).not.toHaveBeenCalled();
     expect(reply).not.toHaveBeenCalled();
   });
+
+  it('a shared group with no household roster may hear an event_logistics plan line', async () => {
+    const familyId = await seedFamily(null);
+    await db.database.insert(schema.linqMultiFamilyJoins).values({
+      chatId: OTHER_CHAT,
+      familyId,
+      joinedAt: new Date('2026-10-28T16:00:00.000Z'),
+    });
+    const logistics = listOf([MOM, DAD]);
+    const schedule = listOf([MOM, DAD]);
+    await expect(
+      groupAudienceAllows(db.database, OTHER_CHAT, 'event_logistics', logistics),
+    ).resolves.toEqual({ allowed: true, reason: 'not_household_group' });
+    await expect(
+      groupAudienceAllows(db.database, OTHER_CHAT, 'schedule', schedule),
+    ).resolves.toEqual({ allowed: false, reason: 'group_roles_unconfirmed' });
+    expect(logistics).not.toHaveBeenCalled();
+    expect(schedule).not.toHaveBeenCalled();
+  });
 });

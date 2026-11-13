@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, isNotNull, notInArray } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, notInArray } from 'drizzle-orm';
 import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transport';
 import { type ContentClass, ROLE_SCOPE } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -168,6 +168,24 @@ function refused(reason: GroupHoldReason, lineClass: GroupLineClass): GroupAudie
   return { allowed: false, reason };
 }
 
+/** A consented shared group has no household roster; a plan tally is not household-year content. */
+async function liveSharedGroup(database: Database, chatId: string): Promise<boolean> {
+  const [join] = await database
+    .select({ id: schema.linqMultiFamilyJoins.id })
+    .from(schema.linqMultiFamilyJoins)
+    .where(
+      and(eq(schema.linqMultiFamilyJoins.chatId, chatId), isNull(schema.linqMultiFamilyJoins.leftAt)),
+    )
+    .limit(1);
+  if (join) return true;
+  const [plan] = await database
+    .select({ id: schema.linqGroupPlans.id })
+    .from(schema.linqGroupPlans)
+    .where(and(eq(schema.linqGroupPlans.chatId, chatId), isNull(schema.linqGroupPlans.closedAt)))
+    .limit(1);
+  return Boolean(plan);
+}
+
 export async function groupAudienceAllows(
   database: Database,
   chatId: string,
@@ -185,6 +203,9 @@ export async function groupAudienceAllows(
       .limit(1);
     if (lineClass === 'reply') {
       return { allowed: true, reason: holder ? 'in_scope' : 'not_household_group' };
+    }
+    if (!holder && lineClass === 'event_logistics' && (await liveSharedGroup(database, chatId))) {
+      return { allowed: true, reason: 'not_household_group' };
     }
     return refused('group_roles_unconfirmed', lineClass);
   }

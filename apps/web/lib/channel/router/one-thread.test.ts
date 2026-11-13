@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import { buildDistillTools } from '~/lib/cron/inference-tools';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
@@ -13,6 +14,7 @@ import { createDisambiguationStore } from './disambiguation';
 import { FakeReplyTransport } from './reply-route';
 import type { ChannelCoachRuntime, ChannelRouterDeps } from './route';
 import { routeChannelMessage } from './route';
+import { darkSideTurn } from './side-turn.fixture';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
 
 /**
@@ -32,6 +34,8 @@ import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wir
 
 const NOW = new Date('2026-08-12T12:00:00.000Z');
 const PHONE = '+14165551234';
+const CO_PARENT_PHONE = '+14165550198';
+const NANNY_PHONE = '+14165550199';
 const EMAIL = 'sam@example.com';
 
 describe('one parent, two doors, one conversation', () => {
@@ -106,6 +110,8 @@ describe('one parent, two doors, one conversation', () => {
       coach: coach(reply),
       smokeAlarm: auditSmokeAlarmClaim(db.database),
       turns: auditTurnLedger(db.database),
+      burst: { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
+      sideTurn: darkSideTurn(),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
@@ -156,12 +162,13 @@ describe('one parent, two doors, one conversation', () => {
     body: string,
     providerMessageId: string,
     providerChatId: string | null = null,
+    senderUserId: string = parentUserId,
   ): Promise<ChannelMessageReceivedJob> {
     const [row] = await db.database
       .insert(schema.channelMessages)
       .values({
         familyId,
-        parentUserId,
+        parentUserId: senderUserId,
         channel,
         direction: 'in',
         category: 'reply',
@@ -175,7 +182,7 @@ describe('one parent, two doors, one conversation', () => {
     if (!row) throw new Error('inbound: insert returned no row');
     return {
       family_id: familyId,
-      parent_user_id: parentUserId,
+      parent_user_id: senderUserId,
       channel_message_id: row.id,
       provider_message_id: providerMessageId,
       received_at: NOW.toISOString(),
@@ -204,7 +211,14 @@ describe('one parent, two doors, one conversation', () => {
     expect(transport.sent).toEqual([
       { route: { channel: 'sms', to: PHONE }, body: 'Yes — from 10.' },
       {
-        route: { channel: 'imessage', to: PHONE, chatId: 'chat-direct', replyToMessageId: 'in-1' },
+        route: {
+          channel: 'imessage',
+          to: PHONE,
+          chatId: 'chat-direct',
+          replyToMessageId: 'in-1',
+          // The row has no service: this fixture's door did not say.
+          service: null,
+        },
         body: 'Sunday it opens at 11.',
       },
     ]);
@@ -250,9 +264,119 @@ describe('one parent, two doors, one conversation', () => {
       // The group turn never read the parent's 1:1 history.
       expect(transcripts[1]).toEqual(['Hale what time is pickup?']);
       expect(transport.sent.map((sent) => sent.route)).toEqual([
-        { channel: 'imessage', to: PHONE, chatId: DIRECT, replyToMessageId: 'in-direct' },
-        { channel: 'imessage', to: PHONE, chatId: GROUP, replyToMessageId: 'in-group' },
+        {
+          channel: 'imessage',
+          to: PHONE,
+          chatId: DIRECT,
+          replyToMessageId: 'in-direct',
+          service: null,
+        },
+        {
+          channel: 'imessage',
+          to: PHONE,
+          chatId: GROUP,
+          replyToMessageId: 'in-group',
+          service: null,
+        },
       ]);
+    });
+
+    it("signs the parent's group turn, so the nightly distiller reads it and not Hale's group answer", async () => {
+      const grouped = await inbound(
+        'imessage',
+        'Hale, Wren starts swim on Tuesdays',
+        'in-sig',
+        GROUP,
+      );
+      await routeChannelMessage(deps('Got it, swim on Tuesdays.'), grouped);
+
+      const rows = await db.database
+        .select({ role: schema.messages.role, authorUserId: schema.messages.authorUserId })
+        .from(schema.messages)
+        .orderBy(asc(schema.messages.createdAt));
+      expect(rows).toEqual([
+        { role: 'user', authorUserId: parentUserId },
+        { role: 'assistant', authorUserId: null },
+      ]);
+
+      const read = buildDistillTools(db.database, NOW).find(
+        (tool) => tool.name === 'read_recent_conversations',
+      );
+      if (!read) throw new Error('no read_recent_conversations tool');
+      const { turns } = (await read.handler({}, { familyId, actor: 'system' })) as {
+        turns: { role: string; content: string }[];
+      };
+      expect(turns.map((turn) => `${turn.role}: ${turn.content}`)).toEqual([
+        'user: Hale, Wren starts swim on Tuesdays',
+      ]);
+    });
+
+    it("signs a co-parent's group turn with the co-parent, not the household's first parent", async () => {
+      const [coParent] = await db.database
+        .insert(schema.users)
+        .values({ email: 'alex@example.com', name: 'Alex' })
+        .returning({ id: schema.users.id });
+      if (!coParent) throw new Error('no co-parent');
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId, userId: coParent.id, role: 'co_parent' });
+      await db.database.insert(schema.parentChannels).values({
+        familyId,
+        userId: coParent.id,
+        kind: 'sms',
+        phoneE164Encrypted: encryptString(CO_PARENT_PHONE),
+        phoneE164Hash: phoneBlindIndex(CO_PARENT_PHONE),
+        verifiedAt: NOW,
+      });
+      const grouped = await inbound(
+        'imessage',
+        'Hale, Wren starts swim on Tuesdays',
+        'in-co',
+        GROUP,
+        coParent.id,
+      );
+      await routeChannelMessage(deps('Got it, swim on Tuesdays.'), grouped);
+
+      const rows = await db.database
+        .select({ role: schema.messages.role, authorUserId: schema.messages.authorUserId })
+        .from(schema.messages)
+        .orderBy(asc(schema.messages.createdAt));
+      expect(rows).toEqual([
+        { role: 'user', authorUserId: coParent.id },
+        { role: 'assistant', authorUserId: null },
+      ]);
+    });
+
+    it("never writes a caregiver's group turn into a family thread", async () => {
+      const [nanny] = await db.database
+        .insert(schema.users)
+        .values({ email: 'nanny@example.com', name: 'Nanny' })
+        .returning({ id: schema.users.id });
+      if (!nanny) throw new Error('no nanny');
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId, userId: nanny.id, role: 'nanny' });
+      await db.database.insert(schema.parentChannels).values({
+        familyId,
+        userId: nanny.id,
+        kind: 'sms',
+        phoneE164Encrypted: encryptString(NANNY_PHONE),
+        phoneE164Hash: phoneBlindIndex(NANNY_PHONE),
+        verifiedAt: NOW,
+      });
+      const grouped = await inbound(
+        'imessage',
+        'Hale, Wren is allergic to peanuts',
+        'in-nanny',
+        GROUP,
+        nanny.id,
+      );
+      const routed = await routeChannelMessage(deps('Thanks, noted.'), grouped);
+
+      expect(routed.status).toBe('not_a_parent');
+      expect(await db.database.select({ id: schema.messages.id }).from(schema.messages)).toEqual(
+        [],
+      );
     });
 
     it('routes a group turn as today when the flag is dark', async () => {

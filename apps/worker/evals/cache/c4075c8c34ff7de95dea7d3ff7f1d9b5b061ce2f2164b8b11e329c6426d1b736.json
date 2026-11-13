@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "weather",
+    "reason": "asks about the weather itself, a fact about the world",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 941
+}

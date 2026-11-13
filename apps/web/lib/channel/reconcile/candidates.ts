@@ -3,7 +3,7 @@ import type { ClaimRowLabel } from './claim-label';
 /**
  * VIL-581 · the rows a claim may cite, and the names the model cites them by.
  *
- * The alias enum is the same 94 values on every call, so the output grammar never
+ * The alias enum is the same 124 values on every call, so the output grammar never
  * changes per request. The per-call map is built only from rows read under this
  * family's id: an alias that is not in it backs nothing, whatever the model says —
  * another family's row, an earlier turn's alias, an invented one.
@@ -23,7 +23,17 @@ export const CLAIM_ROW_MAX_WHAT_CHARS = 160;
 /** The DNS name limit. */
 export const CLAIM_ROW_MAX_HOST_CHARS = 253;
 
-export const CLAIM_ROW_SLOTS = { e: 50, s: 20, c: 5, g: 10, q: 5, w: 1 } as const;
+export const CLAIM_ROW_SLOTS = {
+  e: 50,
+  s: 20,
+  c: 5,
+  g: 10,
+  q: 5,
+  w: 1,
+  r: 10,
+  m: 10,
+  x: 10,
+} as const;
 type Slot = keyof typeof CLAIM_ROW_SLOTS | 'p1' | 'p2';
 
 export type ClaimRowAlias =
@@ -34,6 +44,9 @@ export type ClaimRowAlias =
   | `g${number}`
   | `q${number}`
   | `w${number}`
+  | `r${number}`
+  | `m${number}`
+  | `x${number}`
   | 'p1'
   | 'p2';
 
@@ -83,16 +96,54 @@ export type ClaimCandidateRow =
       opensForFamilyAt: Date;
     }
   | { familyId: string; source: 'pending'; kind: 'activity_followup'; what: ClaimRowLabel }
-  | { familyId: string; source: 'pending'; kind: 'spot_watch'; what: ClaimRowLabel };
+  | { familyId: string; source: 'pending'; kind: 'spot_watch'; what: ClaimRowLabel }
+  /** A registration Hale's own signup run finished with a confirmation. */
+  | { familyId: string; source: 'signup_confirmed'; kind: 'registration_done'; what: ClaimRowLabel }
+  /** A booking a provider's confirmation email recorded, not called off since. */
+  | {
+      familyId: string;
+      source: 'booking';
+      kind: 'registration_done';
+      what: ClaimRowLabel;
+      startsAt: Date;
+    }
+  /** The parent said the child got in (registration_sequences.outcome). */
+  | { familyId: string; source: 'reported_outcome'; kind: 'registration_done'; what: ClaimRowLabel }
+  /** A send that left: the provider took it, and `delivered` when it said it arrived. */
+  | {
+      familyId: string;
+      source: 'send_receipt';
+      kind: 'send_done';
+      what: ClaimRowLabel;
+      sentAt: Date;
+      delivered: boolean;
+    }
+  /** Something removed or called off: a calendar row, a booking, a watch, a signup plan.
+   * `startsAt` is when it was going to happen, when it had a time. */
+  | {
+      familyId: string;
+      source: 'cancelled';
+      kind: 'cancelled';
+      what: ClaimRowLabel;
+      startsAt: Date | null;
+    };
 
 export interface ProjectedRow {
   a: ClaimRowAlias;
   kind: ClaimCandidateRow['kind'];
-  state: 'open' | 'pending' | 'mintable' | 'live';
+  state:
+    | 'open'
+    | 'pending'
+    | 'mintable'
+    | 'live'
+    | 'confirmed'
+    | 'sent'
+    | 'delivered'
+    | 'cancelled';
   what: string;
   when?: string;
   host?: string;
-  source?: 'parent_stated';
+  source?: 'parent_stated' | 'confirmation_email' | 'hale_signup';
 }
 
 const BUILT: unique symbol = Symbol('ClaimCandidateSet');
@@ -131,6 +182,14 @@ function slotOf(row: ClaimCandidateRow): Slot {
       return 'w';
     case 'pending':
       return row.kind === 'activity_followup' ? 'p1' : 'p2';
+    case 'signup_confirmed':
+    case 'booking':
+    case 'reported_outcome':
+      return 'r';
+    case 'send_receipt':
+      return 'm';
+    case 'cancelled':
+      return 'x';
   }
 }
 
@@ -174,6 +233,27 @@ function project(row: ClaimCandidateRow, a: ClaimRowAlias, when: (at: Date) => s
       } satisfies ProjectedRow;
     case 'pending':
       return { ...base, state: 'pending' } satisfies ProjectedRow;
+    case 'signup_confirmed':
+      return { ...base, state: 'confirmed', source: 'hale_signup' } satisfies ProjectedRow;
+    case 'booking':
+      return {
+        ...base,
+        state: 'confirmed',
+        source: 'confirmation_email',
+        when: when(row.startsAt),
+      } satisfies ProjectedRow;
+    case 'reported_outcome':
+      return { ...base, state: 'confirmed', source: 'parent_stated' } satisfies ProjectedRow;
+    case 'send_receipt':
+      return {
+        ...base,
+        state: row.delivered ? 'delivered' : 'sent',
+        when: when(row.sentAt),
+      } satisfies ProjectedRow;
+    case 'cancelled':
+      return row.startsAt
+        ? ({ ...base, state: 'cancelled', when: when(row.startsAt) } satisfies ProjectedRow)
+        : ({ ...base, state: 'cancelled' } satisfies ProjectedRow);
   }
 }
 

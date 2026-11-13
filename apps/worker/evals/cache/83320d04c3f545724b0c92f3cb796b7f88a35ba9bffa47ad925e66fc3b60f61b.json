@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Point 1 is met: one answer with exactly one question, placed in the last bubble. Point 2 holds: both bubbles are in English, matching the parent's text. Point 3 holds: each bubble is a whole, warm, brief thought, and neither is a fragment, heading, or count of items that follow. Point 4: two bubbles fit two separate thoughts (the week is open, and an offer to plan around work), so the split is reasonable and not over-split. Point 5: the calendar is empty per weekRead, so saying the week is open is grounded in the facts, and nothing is invented. The rubric is satisfied.",
+    "score": 5
+  }
+}

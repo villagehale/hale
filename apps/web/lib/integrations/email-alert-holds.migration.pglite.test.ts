@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, migrationFiles, seedFamily } from '~/lib/testing/pglite';
 
-const MIGRATION = '0225_email_alert_holds.sql';
+const MIGRATION = '0251_email_alert_holds.sql';
 
 let db: TestDb;
 
@@ -14,7 +14,7 @@ afterAll(async () => {
   await db.close();
 });
 
-describe('0225 email alert holds', () => {
+describe('0251 email alert holds', () => {
   it('is in the migration chain', () => {
     expect(migrationFiles()).toContain(MIGRATION);
   });

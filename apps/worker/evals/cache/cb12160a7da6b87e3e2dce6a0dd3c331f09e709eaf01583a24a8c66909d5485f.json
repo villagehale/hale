@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the Tuesday 9:00 swimming booking is reserved, which claims a scheduled placement. Row e1 is the swimming class on Tue Nov 10 at 9:00 AM, so it is the matching row.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 1939
+}

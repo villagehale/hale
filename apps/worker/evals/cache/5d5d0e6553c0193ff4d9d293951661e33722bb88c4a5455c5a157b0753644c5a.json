@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale cancelled the Thursday dentist appointment, which is a cancelled claim. The only dentist row (e1) is an open calendar entry, not a cancelled row, so the claim is not backed.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "cancelled",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2242
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is first person, in English, and says the answer is still being worked on and is coming to this thread. It does not hint at the substance, claim specific actions, apologise, or add greetings or emoji. However, 'It'll land here in this thread' slightly implies timing and location of delivery, which the watchFor asks to avoid, so it falls just short of perfect.",
+    "score": 4
+  }
+}

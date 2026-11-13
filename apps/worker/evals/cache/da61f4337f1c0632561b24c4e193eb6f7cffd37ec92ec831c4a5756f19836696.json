@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch for sending and replying to email was turned off this turn, so the confirmation is true. It answers in the parent's own language. The second sentence mostly repeats the first, which is a small redundancy, but the reply does the job.",
+    "score": 4
+  }
+}

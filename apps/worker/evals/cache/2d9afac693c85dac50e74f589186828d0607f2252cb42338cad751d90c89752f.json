@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text asks Milo's age, a fact about this family present in family.children: Milo is 4 years, 2 months. It is a standalone question needing only words, so Hale can answer it now without touching the Saturday art class search.",
+    "verdict": "answer",
+    "reply": "Milo is 4 years and 2 months old."
+  },
+  "latencyMs": 2047
+}

@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, LaneConfig, ModelId } from '@hale/agent';
-import { SONNET_MODEL, pickLane } from '@hale/agent';
+import { SONNET_MODEL, SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { redactEventPayload } from '@hale/worker/redaction';
 import { z } from 'zod';
@@ -151,6 +151,7 @@ export async function classifyEvent(
       client,
       lane,
       system: skill.instructions,
+      cacheTtl: SPARSE_CACHE_TTL,
       userMessage,
       toolName: 'classification',
       toolDescription: 'Return the structured classification of the inbound signal.',

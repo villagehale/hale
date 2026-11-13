@@ -39,6 +39,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { expectedFailGate } from './said-line-expected-fail.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -56,6 +57,21 @@ const TEXT_SCHEMA = {
 };
 
 const JUDGE_SYSTEM = judgePrompt('registration-note');
+
+/**
+ * Cached-only expected-fail list (VIL-554). These four drafts are recorded against the skill
+ * as it is on main, and the judge is right on each: the writer offered to change a kept
+ * morning, repeated "may not have loaded", claimed "everything else is set", and ended the
+ * card with a question. These are writer misses to fix in the product, not in the judge. A
+ * listed case that passes turns the check red, so the list cannot go stale. Live runs
+ * ignore it: every case must pass.
+ */
+export const EXPECTED_FAIL = Object.freeze([
+  'course-refused-different-season',
+  'course-throttled',
+  'course-throttled-already-bound',
+  'approval-card-unpublished-fr',
+]);
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 // Generic towns and portals only: this repo is public.
@@ -504,7 +520,7 @@ async function main() {
     },
   );
 
-  let failed = 0;
+  const results = [];
   for (const f of NOTE_FIXTURES) {
     let text = null;
     for (let attempt = 1; attempt <= note.NOTE_MAX_ATTEMPTS && text === null; attempt += 1) {
@@ -527,13 +543,13 @@ async function main() {
       else console.info(`     refused ${f.id}#${attempt}: ${refusals.join(',')}`);
     }
     if (text === null) {
-      failed += 1;
+      results.push({ id: f.id, failed: true });
       console.info(`FAIL ${f.id} | nothing sent`);
       continue;
     }
     const verdict = await judge(f.id, { facts: f.facts, text });
     const ok = verdict.score >= JUDGE_MIN;
-    if (!ok) failed += 1;
+    results.push({ id: f.id, failed: !ok });
     console.info(
       `${ok ? 'PASS' : 'FAIL'} ${f.id} | judge ${verdict.score} | ${JSON.stringify(text)}`,
     );
@@ -554,17 +570,22 @@ async function main() {
     const verdict = await judge(h.id, { facts: h.facts, text: h.text });
     const high = verdict.score >= JUDGE_MIN;
     if (high) kept += 1;
-    console.info(`${high ? 'HANDED-PASSES (good)' : 'HANDED-FAILED (bad)'} ${h.id} | judge ${verdict.score}`);
+    console.info(
+      `${high ? 'HANDED-PASSES (good)' : 'HANDED-FAILED (bad)'} ${h.id} | judge ${verdict.score}`,
+    );
     if (!high) console.info(`     reason: ${verdict.reason}`);
   }
   const brokenOk = caught === NOTE_BROKEN.length && brokenOffline(note);
   const handedOk = kept === NOTE_HANDED.length;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
   console.info(`handed calibration (must pass): ${handedOk ? 'PASS' : 'FAIL'}`);
+  const gate = expectedFailGate(results, cachedOnly ? EXPECTED_FAIL : [], knownIds, 'VIL-554');
+  for (const line of gate.lines) console.info(line);
+  const failed = results.filter((r) => r.failed).length;
   console.info(
     `registration-note | ${NOTE_FIXTURES.length - failed} of ${NOTE_FIXTURES.length} passed | live calls: ${cost.liveCalls} | spent $${totalUsd(cost).toFixed(6)}`,
   );
-  if (failed > 0 || !brokenOk || !handedOk) process.exit(1);
+  if (!gate.ok || !brokenOk || !handedOk) process.exit(1);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { BUBBLE_GAP_MS, bubbleGaps, sentUnlessThrown } from './linq/bubble-gap';
 import { sendTexts, textDedupeKey } from './outbound-transport';
 
 /** VIL-467 · the shared multi-text sender. Fakes only; no provider is reached. */
@@ -133,5 +134,75 @@ describe('sendTexts', () => {
       { chatId: 'chat-1', text: 'a' },
       { chatId: 'chat-1', text: 'b' },
     ]);
+  });
+});
+
+/** VIL-682 K5 · several bubbles of one message on iMessage land one by one, not at once. */
+describe('sendTexts paced between bubbles', () => {
+  const log = { info: () => {}, warn: () => {} };
+  let typing: number[];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    typing = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        if (init?.method === 'POST' && String(url).endsWith('/chats/chat-1/typing')) {
+          typing.push(Date.now());
+        }
+        return new Response(null, { status: 204 });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('three bubbles: two gaps of about two seconds, typing up before each later bubble', async () => {
+    const gaps = bubbleGaps({ chatId: 'chat-1', service: 'iMessage', log });
+    if (!gaps) throw new Error('an iMessage chat must be paced');
+    const start = Date.now();
+    const sends: Array<[number, string]> = [];
+    const out = sendTexts({
+      texts: ['one', 'two', 'three'],
+      setKey: 'set',
+      send: async (text) => {
+        sends.push([Date.now(), text]);
+        return text;
+      },
+      record: async () => {},
+      pace: (send) => gaps(send, sentUnlessThrown),
+    });
+    await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+    expect((await out).status).toBe('sent');
+    expect(sends).toEqual([
+      [start, 'one'],
+      [start + 2_000, 'two'],
+      [start + 4_000, 'three'],
+    ]);
+    expect(typing).toEqual([start, start + 2_000]);
+  });
+
+  it('paces only after a text this call sent, handed that text’s result', async () => {
+    const paced: string[] = [];
+    await sendTexts({
+      texts: ['a', 'b', 'c', 'd'],
+      setKey: 'k',
+      // A retry: the first two went on an earlier attempt, long ago.
+      alreadySent: async (key) => key === textDedupeKey('k', 0) || key === textDedupeKey('k', 1),
+      send: async (text) => `sent-${text}`,
+      record: async () => {},
+      pace: async (send, previous) => {
+        paced.push(previous);
+        return send();
+      },
+    });
+    expect(paced).toEqual(['sent-c']);
   });
 });

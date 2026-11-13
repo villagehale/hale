@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the parent's no warmly and asks one question: just the first three characters of the postal code (the FSA), which is exactly what watchFor calls right for Canada. The line about finding things by area only applies once they share it, so it is not a promise made while no place is known. It does not ask for a street or treat a town as enough, does not press, and is short and plain.",
+    "score": 5
+  }
+}
