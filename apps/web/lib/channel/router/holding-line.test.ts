@@ -344,8 +344,8 @@ describe('armHoldingLine — one line, only on a slow turn', () => {
     vi.unstubAllEnvs();
   });
 
-  it('dark unless HOLDING_LINE_ENABLED is exactly true: composes nothing and settles as lane_off', async () => {
-    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'True');
+  it('dark when HOLDING_LINE_ENABLED is false: composes nothing and settles as lane_off', async () => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'false');
     vi.useFakeTimers();
     const c = composer("I'm on it.");
     const send = vi.fn();
@@ -572,47 +572,39 @@ describe('armHoldingLine — a read that throws', () => {
   });
 });
 
-describe('armHoldingLine — lit per family', () => {
+describe('armHoldingLine — a kill switch, with no family allowlist', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it('a listed family gets its line while the global flag is unset; another family stays dark', async () => {
-    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, '');
-    vi.stubEnv('HOLDING_LINE_FAMILY_ALLOWLIST', 'fam-a');
+  it('unset is lit: a family gets its line', async () => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, undefined);
     vi.useFakeTimers();
-    const arm = (familyId: string) => {
-      const c = composer("I'm on it.");
-      const sent: string[] = [];
-      const holding = armHoldingLine({
-        afterMs: 8_000,
-        familyId,
-        read: writeIn('en'),
-        composer: c,
-        send: async (line) => {
-          sent.push(line);
-        },
-        log: log(),
-      });
-      return { holding, c, sent };
-    };
-    const listed = arm('fam-a');
-    const other = arm('fam-b');
+    const c = composer("I'm on it.");
+    const sent: string[] = [];
+    const holding = armHoldingLine({
+      afterMs: 8_000,
+      familyId: 'fam-a',
+      read: writeIn('en'),
+      composer: c,
+      send: async (line) => {
+        sent.push(line);
+      },
+      log: log(),
+    });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(await listed.holding.settle()).toBe('sent');
-    expect(listed.sent).toEqual(["I'm on it."]);
-    expect(await other.holding.settle()).toBe('lane_off');
-    expect(other.c.calls).toBe(0);
+    expect(await holding.settle()).toBe('sent');
+    expect(sent).toEqual(["I'm on it."]);
   });
 
-  it('a piped global value (a trailing newline) stays dark for a family not on the list', async () => {
-    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true\n');
+  it('false stays dark even for a family on the retired allowlist', async () => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'false');
     vi.stubEnv('HOLDING_LINE_FAMILY_ALLOWLIST', 'fam-a');
     vi.useFakeTimers();
     const c = composer("I'm on it.");
     const holding = armHoldingLine({
       afterMs: 8_000,
-      familyId: 'fam-b',
+      familyId: 'fam-a',
       read: writeIn('en'),
       composer: c,
       send: vi.fn(),

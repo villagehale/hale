@@ -283,9 +283,9 @@ describe('the question-time answer and the hourly decider', () => {
     expect(db.inserted).toEqual([]);
   });
 
-  it('lit for this family by the allowlist: never queues for the decider', async () => {
+  it('unset is lit: never queues for the decider', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', `fam-other,${FAMILY}`);
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', undefined);
     const h = harness();
     const db = cadenceDatabase();
 
@@ -300,7 +300,7 @@ describe('the question-time answer and the hourly decider', () => {
   // `queued` delivery as `left_open` / `deferred` — nothing sent, the promise still open.
   it('dark: hands off on the candidate lane, so a live cadence holds it for the hourly decider', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    vi.stubEnv('DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST', 'fam-other');
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'false');
     const h = harness();
     const db = cadenceDatabase();
 

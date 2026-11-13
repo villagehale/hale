@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own, and the autonomy switch was turned off this turn for both send_email and reply_to_email. The reply confirms this plainly and correctly, in the parent's language, and stops. It covers replies as well as sends, since replying is still sending. No greeting, no machinery, no padding.",
+    "score": 5
+  }
+}

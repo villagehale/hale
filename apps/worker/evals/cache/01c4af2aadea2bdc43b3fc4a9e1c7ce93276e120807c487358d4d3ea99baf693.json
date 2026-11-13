@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "child reports a head injury with ongoing distress, a current physical state",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1092
+}

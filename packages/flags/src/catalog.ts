@@ -88,8 +88,8 @@ export const FLAGS = [
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
   exact('coach-bubbles', 'COACH_BUBBLES_ENABLED', {
-    allowlistEnv: 'COACH_BUBBLES_FAMILY_ALLOWLIST',
-    allowlistMode: 'arm',
+    parser: 'trimmed-not-false',
+    default: true,
   }),
   exact('cold-start-ladder', 'COLD_START_LADDER_ENABLED'),
   exact('coparent-duty-asks', 'COPARENT_DUTY_ASKS_ENABLED', {
@@ -104,8 +104,8 @@ export const FLAGS = [
     allowlistMode: 'arm',
   }),
   exact('deep-followup-now', 'DEEP_FOLLOWUP_NOW_ENABLED', {
-    allowlistEnv: 'DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST',
-    allowlistMode: 'arm',
+    parser: 'trimmed-not-false',
+    default: true,
   }),
   exact('email-alert', 'EMAIL_ALERT_ENABLED'),
   exact('email-alert-body', 'EMAIL_ALERT_BODY_ENABLED'),
@@ -124,12 +124,12 @@ export const FLAGS = [
   exact('google-push-sync', 'GOOGLE_PUSH_SYNC_ENABLED'),
   exact('google-write-scopes', 'GOOGLE_WRITE_SCOPES_ENABLED'),
   exact('holding-line', 'HOLDING_LINE_ENABLED', {
-    allowlistEnv: 'HOLDING_LINE_FAMILY_ALLOWLIST',
-    allowlistMode: 'arm',
+    parser: 'trimmed-not-false',
+    default: true,
   }),
   exact('inbound-burst', 'INBOUND_BURST_ENABLED', {
-    allowlistEnv: 'INBOUND_BURST_FAMILY_ALLOWLIST',
-    allowlistMode: 'arm',
+    parser: 'trimmed-not-false',
+    default: true,
   }),
   exact('inbound-midturn', 'INBOUND_MIDTURN_ENABLED', {
     parser: 'trimmed-not-false',
@@ -145,7 +145,10 @@ export const FLAGS = [
   exact('memory-synthesis-apply', 'MEMORY_SYNTHESIS_APPLY'),
   exact('mid-activity-ask', 'MID_ACTIVITY_ASK_ENABLED'),
   exact('mid-activity-signup-tool', 'MID_ACTIVITY_SIGNUP_TOOL_ENABLED'),
-  exact('next-day-checkback', 'NEXT_DAY_CHECKBACK_ENABLED'),
+  exact('next-day-checkback', 'NEXT_DAY_CHECKBACK_ENABLED', {
+    parser: 'trimmed-not-false',
+    default: true,
+  }),
   exact('orphan-user-sweep', 'ORPHAN_USER_SWEEP_ENABLED'),
   exact('parent-calendar-mirror', 'PARENT_CALENDAR_MIRROR_ENABLED'),
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),

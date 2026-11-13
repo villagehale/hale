@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for both sending and replying to email, so 'Done' is true. The reply confirms in plain words that the parent will see each email first, which is exactly what Sam asked. It is short, has no greeting or machinery, and stops.",
+    "score": 5
+  }
+}

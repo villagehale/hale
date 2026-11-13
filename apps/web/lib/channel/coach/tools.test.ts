@@ -213,6 +213,28 @@ describe('lookup_week', () => {
 
     expect(h.audit).toHaveLength(1);
   });
+
+  // VIL-688: "who has the kids over the holidays" asked weeks ahead reads those weeks.
+  it('reads a week up to eight weeks ahead, and no further', async () => {
+    const h = harness();
+
+    const far = (await h.call('lookup_week', { weekOffset: 8 })) as {
+      weekStart: string;
+      days: Array<{ date: string }>;
+    };
+    expect(far.weekStart).toBe('2026-09-21');
+    expect(far.days.map((d) => d.date)).toEqual([
+      '2026-09-21',
+      '2026-09-22',
+      '2026-09-23',
+      '2026-09-24',
+      '2026-09-25',
+      '2026-09-26',
+      '2026-09-27',
+    ]);
+
+    await expect(h.call('lookup_week', { weekOffset: 9 })).rejects.toThrow();
+  });
 });
 
 afterEach(() => {

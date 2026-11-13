@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is a single French bubble that answers the parent's one request and asks one confirming question in the last (only) bubble. It is in the parent's language and places no invented facts. However, the facts show the Swim lesson is at 15:00 UTC Saturday, which is 10:00 Toronto time, so 'même heure' is accurate; the reply states the move to Sunday 15 November at 10h, which matches the drafted time. The bubble is a proposal-confirmation rather than a lead-in, and the rubric is met, though it reads slightly as a restatement with a question rather than a warm friend register.",
+    "score": 4
+  }
+}

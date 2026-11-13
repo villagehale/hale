@@ -1,0 +1,49 @@
+{
+  "response": {
+    "id": "msg_011CgyBY3WQNMzrdWTXLYaeN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStgoKEAgTGAI4AUIIdGhpbmtpbmcSDG4zyy426s8y345dRBoMfP3Ug72Q1oL3YQGcIjDizn24/QTg8HyaZJzYn8J57UD41lU9iOeV5/VwsSJSTrZ4ELwSWwcA9mg/pMbXE6cq0wl3LGKHcsrnO1MdRpPgGj5KlHHC+tUhfvYtPi9DGaBwv54JOi0v+2OOvx4b8ef9OrZYxHux+LjwDUzZ7sGFmL9IQK4vJ823xkq9/DtX9ChPsaSVPzWT2cVpDaT4fwFOUHHqXpoNEFtwG1kPhxkZxQoWpTsYZnIRUHmlvzOHakxEFQNz9+31CXYCGbrQi8tf3moitDlH4SLTaBG9U0hBQQ1abhEiDxJtU6HtqgETRlt52rxvYKLrJFp4auXrFxurm9HfpJmWJ92wIsjmrzj1cVjtO/fUNV5s79oNHB/ssIlDKCzGCbdHZ8EOIGtNu0mHoZXcm/EFa9Ph/hllaNYzRyPmHyJDhHeg+PP6OAeP+QVl2yrLD0Xe0m6sENyiNN35WkmbCbQnO2mOhx7JrT/kaevng4B0ft8xCEjWYDR5BIhnu5P6eZoYuTaIyBWOEJLPN/3ojamGsY8O1I3UrAjoPxHY+BgiPaEXuQs1m7tvjBGDJKn+BuGMP6QT8kLIAjwjS4dQdl0hw2yO7i5FXjmbFrXU5rw/7kE2NXx6ZOfdig2CbWVm3Tz1A+bivhE9Ee0PP/wbtfWN7RRTma8ntMa8UmItHBXhAFSdBKqxo4mj4HkYXZk36LObQQMiSCV7FhbgWjanpC6gZgr6/PDFu7l+qBrVLvQPvsGTIKt6qF9h6lmlND0zcEZ3V7ljKiuDufBMVix6Ua5QboSgTdV4dDnioIkHxqOGSl8U/idsSsHQuHEV/rlt1PM6k0fZ5MbQXL+8zaNyTmySkQ7n/1l/jjMDw9uhpxwyL3d70ctbzPsL0s6i131kj9J8Ft/VaVdM4CA/HBccWw0TG2g/Cr4iqETbOr4gNaj6ohXDlEYf0yHn2TGuMvWutSHSlbPZ9+K109vyR43yX6imQg/lzY1zNQSpgFvg29CpqXJO7aYcvqOvnwicA9lCvO3JH6gHSOEsru4yREz3b3PLDNAk+Z0ZioC5xnVT516r2MspJ/mXK2ipljOQK01VaWbepGVTEPaZfY5rnX7GIPAUE+VwcPBX3avP59tqvOAgSje075/c9VSostt1pcEPOpqcR8fENjU/S6JKnZeKjvJbFydaRoWcaXrGgCQMrWFbGKF67zy7cZMT5rrjAZu3/+QtK768oUuAVy1dR9L+pgoby1hAtv+39jwOVtiPp7Xmsm55eh/H4V1+gxN+MxGNG1DIm+KQiWDIY5K//md8GwSni51u4DrsUSc1Nk14bwNMcpCd2So3ZP4wO/hEsm6niZYm0rajf/gXruWwKhu2ubp5U7vi27JGoolnH1dx0S3mk6aD86a1hqOSRWlIsRqz73SDOaauyms2ORgumDiBsQ2s8c10JOIwCiyeQLHWk67Tdb5Yk4zBUJ1fH9idJbe7Cg4xCFcuGQ0L8aHV8rdZxYRkkVP10Tzsx5/8r7HqqZc4NpBojZC+W2x+DNew7BiJWE87JvBMPI4bokH0UVFYREiRul6DJjDW51z8xGNhB7BpLcN6UdtX2e6G9g9BgFHxnKtjO0OR7ttisAVPN55QXT2FJlMPoyxucobV/kx8aErkMHaq5FZlyq41pR6vBcx6X+5o3c5qR/WENFdJNLVivHzGzIpk2IsOcEOeEkgu2Qhz17jPMQdLnhKOyIQLdx5bIRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0145m1r6NzH7VR11nPdCULZD",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Shift at the rink",
+          "date": "2026-11-14",
+          "weekday": "Saturday",
+          "startTime": "16:00",
+          "endTime": "20:00",
+          "childId": "child-teen"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1862,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20605,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 455,
+      "output_tokens_details": {
+        "thinking_tokens": 269
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

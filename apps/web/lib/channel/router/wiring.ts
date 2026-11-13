@@ -849,8 +849,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
     turns: auditTurnLedger(database),
-    // Back-to-back texts read as one turn, on the same lazy client as the screen. Dark
-    // unless INBOUND_BURST_ENABLED or the family allowlist lights it.
+    // Back-to-back texts read as one turn, on the same lazy client as the screen. On
+    // unless INBOUND_BURST_ENABLED is `false`.
     burst: createInboundBurst(database, {
       enabled: (familyId) => isEnabled('inbound-burst', familyId),
       reader: createBurstReader(screenClient),

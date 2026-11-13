@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CgyBQdcXZQFEspj3z3wLE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSmwYKEAgTGAI4AUIIdGhpbmtpbmcSDJLjPqzf5+UzFtZ06BoMtPKJICEMHXpnL/W3IjBN1jdK0u1M2E7PD3y77SaKXV3qDpNJQbvazgorDIOo3A6s1gFrzai35RD7CwFH6w8quAWiNwYNXMSRjWa7V4MVtQJKlUrBvXmMEw71xvf7NaGBO2moLBwX02iDg3uu01XMfJpVbggNZ/9kS56fQrsCDau5v1iEdVm53xCfJn/d0puIum4Kd9ZOREZAr0N750kHjrzlO2U6EpRKDCy35y/ip9uUn5JTzM0I3T46+/woekLyJhN3xCEiBdhd00lk3Bqy6JzlunCUmeaCc1Zt9SueEUlTmoNo6fibsDwewrbdXS56b3RNfVOChbzuR0HJn8NkEaLWH9z5wRU/MROSTp92s2qloM0tnrERtleoKYSeHzPoEHA+1ZZlq4mjQ0ueb/1Oc3Liy4qLKxrrdSOMkHWozMwLm8X8hZfLWNS4v4m0CbAely28W2fdWIS4DPpe6TPb5ZBYXRDR2v5zcuu+yvyDJIMqAzhVW1NfNWLztxuPmb2qlykUZb5WA69iFaTout60IAzwYgFgjI/jamzxPjXhsKKoFsBqXr2yIjpQgXyq1xTuZy3TzTt2ssTvPAbkPja6/OnWDYWUpU3jYFy2/4nsQxkL7gFp4zlh93h2CndYQ3cU4ZvTVLWTBEA3KYoKtYhiMtvlzNELxbO22GqstQ6rChSbjq/QHxUL/By25hzJ3t1tZ17F/w4m0xzKFqXILoXEWAf+DAXc1NriUN8I162+F/ciKS9+40HT5SOrhTEpcFPNbKyn8dBaWH2JlnTJ5y41F6ABjMELNmhyjiY9JvIH9Ik2f0t8afv6/zvGRFfW67Njd+mIMF0NBqLH+w2lPpc8FFHlh3Ocph8P1xIkD6Xy8MfAn4oHhH0onV56qVLG0keC81AtdC+HEu7TplTtNyRosJljPjsFiohMJy51tB/EPtk29dTsLLyaw+GulXjcwi6kpJ2RKiX0+VkobHEfcHGErUHIfTksULKrVSWGzgTpzPTlppKGBTKqOokYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01NkWA68KJvRksRGWRvKJmhp",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1857,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20605,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 78,
+      "output_tokens_details": {
+        "thinking_tokens": 51
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

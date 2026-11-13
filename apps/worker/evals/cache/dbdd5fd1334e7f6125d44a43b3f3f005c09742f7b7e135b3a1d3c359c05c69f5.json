@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly ties the yes to the last message, and the follow-up is backed by `knows.promises`. But it invents a timeline: 'text you what I find within the day'. The thread said the fall dates aren't up and Hale would text when they post, which could be weeks away. That promise is misleading and unbacked. The opening 'Done.' is also slightly off, since nothing was completed.",
+    "score": 2
+  }
+}

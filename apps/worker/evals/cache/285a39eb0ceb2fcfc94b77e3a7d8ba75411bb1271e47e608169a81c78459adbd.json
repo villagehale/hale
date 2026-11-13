@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "picky-eating guidance question about normal development, coachable",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1270
+}

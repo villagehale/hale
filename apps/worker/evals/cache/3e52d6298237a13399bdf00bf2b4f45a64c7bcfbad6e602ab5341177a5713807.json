@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgzF2NBgSdi1Sf8DPrvkv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSiQYKEAgTGAI4AUIIdGhpbmtpbmcSDJXPXLkcHSxINEQBLBoM13s4FqmrfvjH1JXFIjAKb8yD7YScduibY5Xp+Vvcd/p1Qae6akMAk6XlibuWWimNFbFfCC2VixSvhd39g60qpgXQVh9wijEggfxhVhb4foy3YpO9bQyh9DH5XS1miP4LRSNm9lQg1228OcxCfaQ8pv7vY89uSt26CXMsw/urmE0kAm96FIsY724jDkIkBdyqqTNG8rLveyTiCO0EzfMPudZVtGvS2ehvfIKulHRH2Cg3s+WgBMcFxvSlHoh47QiQ3cmPu47tsUy1n9LmqO/UMzM+yMdZ1Nu3yeSo8TuB+Rw5h8jvYw/ipguLilgHU9bMJProhxpIJwLFomcpruB4QgScAzdsOLRCbfOOeqyYr1sbYg8eLn/veBYkbU573uePVPIAiM1IQw2Fi8mT/2TEPf0IEzKIF63fr/wkk5vLtn7tazA9RA0k2xHkBDBl0Gx/cZh6gAv2AqD/eZ4r9GKqpXh3jonfKz1HE+imJxmfWImrfEUicAIpdU5KRVw2dHUCjHMGam5nL3hojcXXxWsalbNQgsPuXguAHls14DPbUxryUCJfZm6mTh2STbp/u6FMRXsaq/kxg7X4w5AlXJ9U5YtJlCHXpzmEQOCwnSnj0p+HxVY5Rjr5oUyX4EnW+Aa3H4W4k1sWt9h260FhDz78+t6+4jlMJl6mtEYJsBclxwMXZBPQ4MaGxySsRs0kbwaLscB2MSgmnNv+UsJEmWsel+NFrREJUIM+mT+PsR2Fc0wf4W+tEEaiFqMES7oXkkNgueqB9m9eY9L4iFY+0fj5c2cvPp10H8aPZ3CuUo7tdAa5MF9KiYRAro+NfGXkGxk+Ecg8dT+KAzkwmAGlpQ1OMx7FI8Kvz3mFB/y2UXfVsOT0F2FK/nUx8708mHZ5buqr2FHSXNv9eDZRJzape/u/BwcG59n/ftEH4Tvl1M9a2qrigwqlsM7m27OCKZrppUdB+1PTzvnfMa5hTeQ4cJGtnx+IwChvBN8YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XVH3gavC7cvWvHpC8rbVBi",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall classes for 8 year old",
+          "childId": "kid-ada",
+          "area": ""
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1169,
+      "cache_read_input_tokens": 23713,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1169,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 134,
+      "output_tokens_details": {
+        "thinking_tokens": 27
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1923
+}

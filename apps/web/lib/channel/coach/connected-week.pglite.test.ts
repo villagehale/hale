@@ -56,6 +56,7 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
     eventId: string;
     startAt: Date | null;
     endAt?: Date | null;
+    allDay?: boolean;
     title?: string | null;
     kidRelated: boolean;
     status?: string;
@@ -70,6 +71,7 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
       userId: values.userId ?? parentUserId,
       startAt: values.startAt,
       endAt: values.endAt ?? null,
+      allDay: values.allDay ?? false,
       kidRelated: values.kidRelated,
       title: values.title ?? null,
       status: values.status ?? 'confirmed',
@@ -247,6 +249,76 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
       events: Array<{ what?: string }>;
     };
     expect(next.events.map((event) => event.what)).toEqual(['Next week swim']);
+  });
+
+  it('lists what began before the week and runs into it, dated, with its end (VIL-688)', async () => {
+    // The week read is Mon Aug 3 to Sun Aug 9. Google stores an all-day item at UTC
+    // midnight with an exclusive end date (household-calendar.ts parseGoogleWhen).
+    await db.database.insert(schema.familyEvents).values([
+      {
+        familyId,
+        title: "Kids at their dad's",
+        startsAt: new Date('2026-08-01T14:00:00.000Z'),
+        endsAt: new Date('2026-08-05T22:00:00.000Z'),
+        source: 'parent',
+      },
+      {
+        familyId,
+        title: 'Weekend away',
+        startsAt: new Date('2026-07-31T14:00:00.000Z'),
+        endsAt: new Date('2026-08-02T22:00:00.000Z'),
+        source: 'parent',
+      },
+    ]);
+    await seedBlock({
+      eventId: 'grandma',
+      startAt: new Date('2026-08-01T00:00:00.000Z'),
+      endAt: new Date('2026-08-08T00:00:00.000Z'),
+      allDay: true,
+      title: 'Grandma has the kids',
+      kidRelated: true,
+    });
+    await seedBlock({
+      eventId: 'ends-sunday',
+      startAt: new Date('2026-07-31T00:00:00.000Z'),
+      endAt: new Date('2026-08-03T00:00:00.000Z'),
+      allDay: true,
+      title: 'Cottage weekend',
+      kidRelated: true,
+    });
+
+    const week = (await harness().call('lookup_week', { weekOffset: 1 })) as {
+      days: Array<{ date: string }>;
+      events: Array<Record<string, unknown>>;
+    };
+
+    expect(week.days[0]?.date).toBe('2026-08-03');
+    expect(week.events).toEqual([
+      {
+        kind: 'calendar',
+        what: 'Grandma has the kids',
+        when: 'Sat, Aug 1',
+        until: 'Fri, Aug 7',
+        allDay: true,
+      },
+      expect.objectContaining({
+        kind: 'event',
+        what: "Kids at their dad's",
+        when: 'Sat, Aug 1, 10:00am',
+        until: 'Wed, Aug 5, 6:00pm',
+      }),
+    ]);
+
+    const before = (await harness().call('lookup_week', {})) as {
+      events: Array<Record<string, unknown>>;
+    };
+    expect(before.events).toContainEqual({
+      kind: 'calendar',
+      what: 'Cottage weekend',
+      when: 'Fri, Jul 31',
+      until: 'Sun, Aug 2',
+      allDay: true,
+    });
   });
 
   it('never returns a title for a non-kid block, and withholds a teen name', async () => {
