@@ -23,7 +23,8 @@ import { onOfficialHost } from './host';
  *   - the page was served from the board's official host (`onOfficialHost`);
  *   - each day's quote is on the page, its span is in the quote, and the span states the
  *     day extracted (the registration reader's `dateSpanRefusal` grammar);
- *   - the year of each day is printed, in its own quote or in `year_evidence` on the page;
+ *   - the year of each day is printed, in its own quote or in `year_evidence` heading the
+ *     calendar block that quote sits in (`datesBlockOf`), never any other line;
  *   - both days fall inside this school year's winter (`isWinterBreak`);
  *   - the break's own name, as printed, can ride a text as itself.
  * Anything short of that is a named outcome, never a guessed date. PA days are not asked
@@ -144,6 +145,25 @@ function realDay(date: string): boolean {
   return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === date;
 }
 
+const PRINTED_YEAR = /\b(?:19|20)\d{2}\b/g;
+
+/**
+ * Whether `evidence` dates the calendar block `quote` sits in: it is printed at or above
+ * the quote (a heading dates what follows it, never what came before), and nothing
+ * between them prints a year it does not, which would be another block's heading.
+ * Both are normalized page text.
+ */
+function datesBlockOf(page: string, evidence: string, quote: string): boolean {
+  const own = new Set(evidence.match(PRINTED_YEAR) ?? []);
+  for (let q = page.indexOf(quote); q !== -1; q = page.indexOf(quote, q + 1)) {
+    for (let e = page.indexOf(evidence); e !== -1 && e <= q; e = page.indexOf(evidence, e + 1)) {
+      const between = page.slice(e + evidence.length, q).match(PRINTED_YEAR) ?? [];
+      if (between.every((year) => own.has(year))) return true;
+    }
+  }
+  return false;
+}
+
 /** The break's name a text may carry as itself, or null. */
 export function usableBreakName(name: string | null): string | null {
   if (name === null) return null;
@@ -190,9 +210,14 @@ export function checkBreakReading(
     });
     if (refusal !== null) return { refused: 'day_mismatch' };
     const year = day.date.slice(0, 4);
+    const evidence = extraction.year_evidence;
     const yearInQuote = day.quote.includes(year);
-    const yearOnPage = onPage(extraction.year_evidence) && extraction.year_evidence?.includes(year);
-    if (!yearInQuote && !yearOnPage) return { refused: 'year_unstated' };
+    const yearOverQuote =
+      evidence !== null &&
+      onPage(evidence) &&
+      evidence.includes(year) &&
+      datesBlockOf(page, normalizeQuote(evidence), normalizeQuote(day.quote));
+    if (!yearInQuote && !yearOverQuote) return { refused: 'year_unstated' };
   }
   if (!isWinterBreak(schoolYear, first.date, last.date)) return { refused: 'not_winter' };
   const name = usableBreakName(extraction.name);

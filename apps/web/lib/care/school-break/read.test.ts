@@ -89,6 +89,29 @@ describe('checkBreakReading', () => {
     ).toMatchObject({ firstDay: { date: '2026-12-21' } });
   });
 
+  it('takes the year only from the calendar block the dates sit in, never another line that prints it', () => {
+    const range = 'Winter Break: December 22 to January 2';
+    const reading = extraction({
+      name: 'Winter Break',
+      year_evidence: 'Kindergarten registration for 2026-2027',
+      first_day: { quote: range, date_text: 'December 22', date: '2026-12-22' },
+      last_day: { quote: range, date_text: 'January 2', date: '2027-01-02' },
+    });
+    // Last year's calendar, with next year's registration printed after it.
+    const after = `2025-2026 Calendar. ${range}. Kindergarten registration for 2026-2027.`;
+    expect(checkBreakReading(reading, after, '2026-27')).toEqual({ refused: 'year_unstated' });
+    // The same registration line printed above last year's calendar heading.
+    const above = `Kindergarten registration for 2026-2027. 2025-2026 Calendar. ${range}.`;
+    expect(checkBreakReading(reading, above, '2026-27')).toEqual({ refused: 'year_unstated' });
+    // Positive control: this year's heading over the dates, with lines between it and the
+    // break that print only its own years, stands.
+    const heading = '2026-2027 School Year Calendar';
+    const block = `${heading}\nFirst day of school: September 2, 2026\n${range}\nKindergarten registration for 2027-2028`;
+    expect(
+      checkBreakReading({ ...reading, year_evidence: heading }, block, '2026-27'),
+    ).toMatchObject({ firstDay: { date: '2026-12-22' }, lastDay: { date: '2027-01-02' } });
+  });
+
   it('refuses a PA day dressed as the winter break', () => {
     const pa = 'PA Day: Friday, November 13, 2026';
     expect(
