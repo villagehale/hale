@@ -180,7 +180,12 @@ describe('a PDF source, and failed reads that never fall back', () => {
     ['an unreadable PDF', Buffer.from('%PDF-1.4 broken'), 'pdf_unreadable'],
     ['a PDF with no text', registrationPdfFixture(['']), 'pdf_no_text'],
     ['a redirect', { outcome: 'redirected', location: 'https://example.net/queue' }, 'redirected'],
-    ['a refused status', { outcome: 'refused', reason: 'http_status', status: 503 }, 'http_status'],
+    ['a refused status', { outcome: 'refused', reason: 'http_status', status: 404 }, 'http_status'],
+    [
+      'a server error, which says nothing about the page',
+      { outcome: 'refused', reason: 'http_status', status: 503 },
+      'http_server_error',
+    ],
     ['an oversized page', { outcome: 'refused', reason: 'too_large' }, 'too_large'],
     ['a timeout', { outcome: 'failed', reason: 'timeout' }, 'timeout'],
     ['a network error', { outcome: 'failed', reason: 'network_error' }, 'network_error'],

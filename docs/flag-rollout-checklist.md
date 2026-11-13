@@ -112,7 +112,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `NEXT_PUBLIC_POSTHOG_WEB_ENABLED` | `apps/web/lib/analytics/flags.ts:14`; also `apps/site/lib/analytics/flags.ts:11` | `true` (exact, no trim) | OFF | unset, or anything except exact `true` | Noah |
 | `ONBOARDING_FRIEND_VOICE_ENABLED` | none on main (#868) | none | no reader on main | none (no reader) | unassigned |
 | `ORPHAN_USER_SWEEP_ENABLED` | `apps/web/lib/rights/orphan-users.ts:124` | `true` | OFF | `false` | Noah |
-| `OWN_CITY_REGISTRATION_ENABLED` | `apps/web/lib/registration/city/flag.ts:15` | `true` | OFF | `false` | Noah |
+| `OWN_CITY_REGISTRATION_ENABLED` | `apps/web/lib/registration/city/flag.ts:15` | unset or anything but `false` (trimmed) | ON | `false` | Noah |
 | `PARENT_CALENDAR_MIRROR_ENABLED` | `apps/web/lib/channel/lanes.ts:19` (compared at :26) | `true` | OFF | unset | Barton |
 | `PROACTIVE_CADENCE` | `apps/web/lib/channel/proactive/flag.ts:63` (exact `shadow` or `live` at :64, no trim, :14; anything else is `off`) | `shadow` or `live` (exact, no trim) | `off` mode | unset (anything except exact `shadow` or `live`) | unassigned |
 | `REGISTRATION_DATE_CHECK` | `apps/web/lib/registration/date-check.ts:31` (exact `shadow` or `enforce` at :32, no trim; anything else is `off`) | `shadow`, then `enforce` (exact, no trim) | `off` mode | unset (anything except exact `shadow` or `enforce`) | Barton |

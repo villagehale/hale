@@ -1592,10 +1592,10 @@
       "breakpoints": true
     },
     {
-      "idx": 231,
+      "idx": 232,
       "version": "7",
-      "when": 1794365239000,
-      "tag": "0241_city_registration_readings",
+      "when": 1794365260000,
+      "tag": "0242_city_registration_readings",
       "breakpoints": true
     }
   ]

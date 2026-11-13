@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LiveRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
 import { type CityLookupDeps, lookupCityRegistration, readCycleLabel } from './lookup';
+import type { OfficialSite } from './official-site';
 import type { OwnCity } from './place';
 import type { PageSearch } from './search';
 
@@ -38,10 +39,19 @@ const verified = (url: string, kinds: Array<'preview' | 'unclassified_open'>) =>
     partialDates: [],
   }) satisfies LiveRegistrationReading;
 
+const TORONTO_SITE: OfficialSite = {
+  status: 'found',
+  host: 'toronto.ca',
+  website: 'https://www.toronto.ca/',
+  source: 'wikidata:Q172',
+};
+
 function deps(
   search: PageSearch,
   readings: Record<string, LiveRegistrationReading>,
   asked: RegistrationTarget[] = [],
+  site: OfficialSite = TORONTO_SITE,
+  searched: string[] = [],
 ): CityLookupDeps {
   const read: RegistrationReader = async (target) => {
     asked.push(target);
@@ -49,7 +59,14 @@ function deps(
     if (!reading) throw new Error(`no scripted reading for ${target.sourceUrl}`);
     return reading;
   };
-  return { search: async () => search, read };
+  return {
+    officialSite: async () => site,
+    search: async (place) => {
+      searched.push(place.city);
+      return search;
+    },
+    read,
+  };
 }
 
 const pages = (urls: string[]): PageSearch => ({
@@ -179,6 +196,109 @@ describe('lookupCityRegistration', () => {
       tried: [],
     });
     expect(asked).toEqual([]);
+  });
+});
+
+describe('a page read that did not finish', () => {
+  it('a timeout, network error, server error or failed extraction is asked again, never "not found"', async () => {
+    for (const reason of [
+      'timeout',
+      'network_error',
+      'http_server_error',
+      'extract_failed',
+    ] as const) {
+      const found = await lookupCityRegistration(
+        deps(pages([A, B]), {
+          [A]: { ...source(A), status: 'unreadable', reason },
+          [B]: { ...source(B), status: 'unverified', reason: 'announced_later', partialDates: [] },
+        }),
+        NORTH_YORK,
+        'Winter 2027',
+        NOW,
+      );
+      expect({ reason, found }).toEqual({
+        reason,
+        found: { status: 'retry', reason: `page_unread:${reason}` },
+      });
+    }
+  });
+
+  it('a page that refuses for good (a 4xx) is still a named "not found"', async () => {
+    const found = await lookupCityRegistration(
+      deps(pages([A]), { [A]: { ...source(A), status: 'unreadable', reason: 'http_status' } }),
+      NORTH_YORK,
+      'Winter 2027',
+      NOW,
+    );
+    expect(found).toMatchObject({ status: 'not_found', reason: 'unreadable' });
+  });
+});
+
+describe("the city's official site", () => {
+  const NEWS =
+    'https://nowtoronto.com/news/torontonians-can-now-register-for-winter-recreation-and-march-break-programs-including-swimming-skating-and-camps/';
+  const COUNCILLOR = 'https://www.councillorpaulafletcher.ca/fall-and-winter-recreation-programs';
+  const AGGREGATOR = 'https://sporting.ca/toronto/registration-dates';
+  const MAYOR =
+    'https://www.mayoroliviachow.ca/city_of_toronto_announces_early_registration_for_older_adult_winter_programs_opens_tomorrow';
+
+  it('reads only the pages on it, and names the ones it refused', async () => {
+    const asked: RegistrationTarget[] = [];
+    const found = await lookupCityRegistration(
+      deps(pages([NEWS, AGGREGATOR, A]), { [A]: verified(A, ['unclassified_open']) }, asked),
+      NORTH_YORK,
+      'Winter 2027',
+      NOW,
+    );
+    expect(found).toMatchObject({ status: 'verified', sourceUrl: A });
+    expect(asked.map((target) => target.sourceUrl)).toEqual([A]);
+  });
+
+  it('a search that named only pages off the site is "no official page", and nothing is read', async () => {
+    const asked: RegistrationTarget[] = [];
+    const found = await lookupCityRegistration(
+      deps(pages([NEWS, COUNCILLOR, AGGREGATOR, MAYOR]), {}, asked),
+      NORTH_YORK,
+      'Winter 2027',
+      NOW,
+    );
+    expect(found).toEqual({
+      status: 'not_found',
+      reason: 'no_official_page',
+      municipality: 'City of Toronto',
+      tried: [NEWS, COUNCILLOR, AGGREGATOR, MAYOR].map((url) => ({
+        url,
+        outcome: 'not_official_site',
+      })),
+    });
+    expect(asked).toEqual([]);
+  });
+
+  it('a city whose official site cannot be established is not searched', async () => {
+    const searched: string[] = [];
+    const found = await lookupCityRegistration(
+      deps(pages([A]), {}, [], { status: 'not_found', reason: 'ambiguous' }, searched),
+      NORTH_YORK,
+      'Winter 2027',
+      NOW,
+    );
+    expect(found).toEqual({
+      status: 'not_found',
+      reason: 'no_official_site',
+      municipality: null,
+      tried: [],
+    });
+    expect(searched).toEqual([]);
+  });
+
+  it('a source that did not answer is asked again', async () => {
+    const found = await lookupCityRegistration(
+      deps(pages([A]), {}, [], { status: 'retry', reason: 'source_failed:TypeError' }),
+      NORTH_YORK,
+      'Winter 2027',
+      NOW,
+    );
+    expect(found).toEqual({ status: 'retry', reason: 'official_site:source_failed:TypeError' });
   });
 });
 

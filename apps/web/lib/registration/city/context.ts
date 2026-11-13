@@ -2,7 +2,6 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { RegistrationWindowContext } from '~/lib/channel/coach/registration-context';
 import type { VerifiedRegistrationReading } from '../live-reading';
-import { PROGRAM_DOMAIN_LABEL } from '../sequence/shortlist';
 import { winterCycleLabel } from './cycle';
 import { ownCityRegistrationEnabled } from './flag';
 import { familyOpening, openingInstant, openingPhrase } from './opening';
@@ -21,9 +20,14 @@ export const REGISTRATION_OPENING_KIND = 'registration_opening';
 
 export interface CityOpeningFacts {
   town: string;
+  /** The page's own name for the programs, or the season alone where the page gives
+   * none: never a broader label than the page's. */
   programs: string;
   opensFor: string;
   opensAt: Date;
+  /** The opening's calendar day as the page prints it: what a tell is keyed on, so a
+   * re-read that drops the printed time is still the same opening. */
+  openingDate: string;
   generalOpens: string | null;
 }
 
@@ -35,27 +39,34 @@ export function cityOpeningFacts(
   reading: VerifiedRegistrationReading,
   now: Date,
 ): CityOpeningFacts | null {
-  const opening = familyOpening(reading, place.residencyKnown);
+  const opening = familyOpening(reading, place);
   if (opening === null) return null;
   const opensAt = openingInstant(reading, opening.own);
   if (opensAt.getTime() <= now.getTime()) return null;
   return {
     town: place.city,
-    programs: `${cycleLabel} ${PROGRAM_DOMAIN_LABEL.rec_program}`,
+    programs: reading.programOnPage ?? cycleLabel,
     opensFor: openingPhrase(reading, opening.own, now),
     opensAt,
+    openingDate: opening.own.date,
     generalOpens: opening.general ? openingPhrase(reading, opening.general, now) : null,
   };
 }
 
-/** A tell is queued or held for this family: Hale will text them before it opens. */
-async function tellPending(database: Database, familyId: string): Promise<boolean> {
+/** A tell is queued or held for THIS parent: Hale will text them before it opens. A
+ * co-parent's tell is not this parent's, and the gate may have held theirs. */
+async function tellPending(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<boolean> {
   const [row] = await database
     .select({ id: schema.proactiveCandidates.id })
     .from(schema.proactiveCandidates)
     .where(
       and(
         eq(schema.proactiveCandidates.familyId, familyId),
+        eq(schema.proactiveCandidates.parentUserId, parentUserId),
         eq(schema.proactiveCandidates.kind, REGISTRATION_OPENING_KIND),
         inArray(schema.proactiveCandidates.status, ['queued', 'held']),
       ),
@@ -67,6 +78,7 @@ async function tellPending(database: Database, familyId: string): Promise<boolea
 export async function ownCityRegistrationContext(
   database: Database,
   familyId: string,
+  parentUserId: string,
   now: Date,
 ): Promise<RegistrationWindowContext[]> {
   if (!ownCityRegistrationEnabled()) return [];
@@ -85,7 +97,7 @@ export async function ownCityRegistrationContext(
       residentsFirst: facts.generalOpens !== null,
       generalOpens: facts.generalOpens,
       ageApproximate: false,
-      watching: await tellPending(database, familyId),
+      watching: await tellPending(database, familyId, parentUserId),
     },
   ];
 }

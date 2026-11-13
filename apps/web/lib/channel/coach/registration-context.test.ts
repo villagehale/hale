@@ -49,7 +49,7 @@ const OWN_CITY = {
 
 describe('the coach registration context', () => {
   it('gives the family their OWN date, with the general one named as the later alternative', async () => {
-    const [window] = await loadRegistrationWindows(ports(), 'fam-1', TZ, NOW);
+    const [window] = await loadRegistrationWindows(ports(), 'fam-1', 'parent-1', TZ, NOW);
 
     // Published: taxpayers Tuesday September 1 at 7 a.m.; everyone else seven days later.
     expect(window).toMatchObject({
@@ -63,12 +63,13 @@ describe('the coach registration context', () => {
   });
 
   it('reports watching exactly as the ladder is armed, in both directions', async () => {
-    const [armed] = await loadRegistrationWindows(ports(), 'fam-1', TZ, NOW);
+    const [armed] = await loadRegistrationWindows(ports(), 'fam-1', 'parent-1', TZ, NOW);
     expect(armed?.watching).toBe(true);
 
     const [dark] = await loadRegistrationWindows(
       ports({ watching: () => false }),
       'fam-1',
+      'parent-1',
       TZ,
       NOW,
     );
@@ -83,6 +84,7 @@ describe('the coach registration context', () => {
     const outside = await loadRegistrationWindows(
       ports({ areaCoarse: async () => 'M9J' }),
       'fam-1',
+      'parent-1',
       TZ,
       NOW,
     );
@@ -91,6 +93,7 @@ describe('the coach registration context', () => {
     const noArea = await loadRegistrationWindows(
       ports({ areaCoarse: async () => null }),
       'fam-1',
+      'parent-1',
       TZ,
       NOW,
     );
@@ -101,6 +104,7 @@ describe('the coach registration context', () => {
     const afterOpen = await loadRegistrationWindows(
       ports(),
       'fam-1',
+      'parent-1',
       TZ,
       new Date('2026-09-02T12:00:00Z'),
     );
@@ -109,14 +113,15 @@ describe('the coach registration context', () => {
 
   it("falls to the family's own city when no hand-verified window is theirs", async () => {
     const asked: string[] = [];
-    const ownCity = async (familyId: string) => {
-      asked.push(familyId);
+    const ownCity = async (familyId: string, parentUserId: string) => {
+      asked.push(`${familyId}/${parentUserId}`);
       return [OWN_CITY];
     };
 
     const outside = await loadRegistrationWindows(
       ports({ areaCoarse: async () => 'P3A', ownCity }),
       'fam-1',
+      'parent-1',
       TZ,
       NOW,
     );
@@ -125,11 +130,12 @@ describe('the coach registration context', () => {
     const noArea = await loadRegistrationWindows(
       ports({ areaCoarse: async () => null, ownCity }),
       'fam-2',
+      'parent-1',
       TZ,
       NOW,
     );
     expect(noArea).toEqual([OWN_CITY]);
-    expect(asked).toEqual(['fam-1', 'fam-2']);
+    expect(asked).toEqual(['fam-1/parent-1', 'fam-2/parent-1']);
   });
 
   it('never asks the own city for a family the hand radar already covers', async () => {
@@ -142,6 +148,7 @@ describe('the coach registration context', () => {
         },
       }),
       'fam-1',
+      'parent-1',
       TZ,
       NOW,
     );

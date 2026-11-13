@@ -35,6 +35,8 @@ import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
   type RecMorningPlace,
+  matchRecMorning,
+  recMorningTopicCity,
   resolveRecMorningWhere,
   writeRecMorningReply,
 } from '~/lib/channel/rec-morning';
@@ -56,6 +58,7 @@ import {
 } from '~/lib/integrations/google-disconnect';
 import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { ownCityRegistrationContext } from '~/lib/registration/city/context';
 import {
   type PrepareReplyDeps,
   handleCourseBind,
@@ -1171,7 +1174,13 @@ async function loadFamilyRecWhere(
   };
 }
 
-export function recMorningHandler(): DeterministicHandler {
+/** The family's own city's reading, as the coach reads it (VIL-684). A port so the
+ * handler's stub-database tests can say "none"; production reads the cache. */
+export type OwnCityOpeningRead = typeof ownCityRegistrationContext;
+
+export function recMorningHandler(
+  ownCity: OwnCityOpeningRead = ownCityRegistrationContext,
+): DeterministicHandler {
   return {
     name: 'rec_morning',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
@@ -1183,6 +1192,17 @@ export function recMorningHandler(): DeterministicHandler {
       // VIL-591: the facts are GTA facts, so the family's stored place - never the
       // words of the text - decides whether this lane answers. No GTA place: unclaimed.
       const where = resolveRecMorningWhere(await loadFamilyRecWhere(database, ctx.familyId));
+      // VIL-684: a date question about the family's own town, once that town's own page
+      // has been read, is the coach's: it answers from that reading, and this lane's hand
+      // dataset (an older season, or "not posted yet") must never contradict it.
+      const topic = where === null ? null : matchRecMorning(ctx.body, where);
+      if (
+        topic !== null &&
+        recMorningTopicCity(topic) === where?.municipality &&
+        (await ownCity(database, ctx.familyId, ctx.parentUserId, ctx.now)).length > 0
+      ) {
+        return { claimed: false };
+      }
       const reply = await writeRecMorningReply(ctx.body, ctx.now, where, language);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };

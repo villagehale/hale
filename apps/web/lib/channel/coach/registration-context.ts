@@ -74,9 +74,9 @@ export interface RegistrationContextPorts {
   /**
    * VIL-684 · the family's own city's opening, read off that city's official page and
    * cached per city. Asked only when no hand-verified window matches the family, so one
-   * season is never two sources.
+   * season is never two sources. Per parent: whether a tell is waiting is this parent's.
    */
-  ownCity(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
+  ownCity(familyId: string, parentUserId: string, now: Date): Promise<RegistrationWindowContext[]>;
 }
 
 /** The hand-verified windows this family can still act on. Empty with no area on file. */
@@ -105,11 +105,12 @@ export async function matchHandWindows(
 export async function loadRegistrationWindows(
   ports: RegistrationContextPorts,
   familyId: string,
+  parentUserId: string,
   timeZone: string,
   now: Date,
 ): Promise<RegistrationWindowContext[]> {
   const matches = await matchHandWindows(ports, familyId, now);
-  if (matches.length === 0) return ports.ownCity(familyId, now);
+  if (matches.length === 0) return ports.ownCity(familyId, parentUserId, now);
 
   const watching = ports.watching(familyId);
   return matches.map((match) => {
@@ -158,8 +159,8 @@ export function productionRegistrationContextPorts(database: Database): Registra
     // Optional data, like the provider watch: a failed read leaves the city out rather
     // than failing the parent's turn, and the coach then has no date for their town. The
     // line names the fault class only.
-    ownCity: (familyId, now) =>
-      ownCityRegistrationContext(database, familyId, now).catch((err: unknown) => {
+    ownCity: (familyId, parentUserId, now) =>
+      ownCityRegistrationContext(database, familyId, parentUserId, now).catch((err: unknown) => {
         console.error(
           { fault: err instanceof Error ? err.name : typeof err },
           'coach: own-city registration context unavailable',

@@ -565,9 +565,11 @@ describe('recMorningHandler', () => {
     } as unknown as Database;
   }
   const TORONTO_FAMILY = familyRow({ primaryLanguage: null, city: 'Toronto' });
+  /** The stub database holds no own-city reading (the GTA block below reads the real one). */
+  const noOwnCity = async () => [];
 
   it("answers a Toronto swim clock question with the dataset's Toronto dates", async () => {
-    const verdict = await recMorningHandler().handle(
+    const verdict = await recMorningHandler(noOwnCity).handle(
       TORONTO_FAMILY,
       turn('When does Toronto swim registration open?'),
     );
@@ -585,7 +587,7 @@ describe('recMorningHandler', () => {
   });
 
   it("answers a named Markham rec ask with Markham's own cycle, not Toronto", async () => {
-    const verdict = await recMorningHandler().handle(
+    const verdict = await recMorningHandler(noOwnCity).handle(
       TORONTO_FAMILY,
       turn('Markham fall rec dates?'),
     );
@@ -608,7 +610,7 @@ describe('recMorningHandler', () => {
     });
     const database = familyRow({ primaryLanguage: 'zh', city: 'Toronto' });
     try {
-      const verdict = await recMorningHandler().handle(
+      const verdict = await recMorningHandler(noOwnCity).handle(
         database,
         turn('When does Toronto swim registration open?'),
       );
@@ -627,7 +629,7 @@ describe('recMorningHandler', () => {
       return 'other';
     });
     try {
-      expect(await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).toEqual({
+      expect(await recMorningHandler(noOwnCity).handle(TORONTO_FAMILY, turn(pickup))).toEqual({
         claimed: false,
       });
       expect(texts).toEqual([pickup]);
@@ -635,16 +637,18 @@ describe('recMorningHandler', () => {
       setSharedRecMorningReader(scriptedRecMorningReader);
     }
     // Positive control: the same text, read as answered, is claimed by the lane.
-    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).claimed).toBe(true);
+    expect((await recMorningHandler(noOwnCity).handle(TORONTO_FAMILY, turn(pickup))).claimed).toBe(
+      true,
+    );
   });
 
   it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
-    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn('waitlisted #3'))).claimed).toBe(
-      false,
-    );
+    expect(
+      (await recMorningHandler(noOwnCity).handle(TORONTO_FAMILY, turn('waitlisted #3'))).claimed,
+    ).toBe(false);
     expect(
       (
-        await recMorningHandler().handle(
+        await recMorningHandler(noOwnCity).handle(
           TORONTO_FAMILY,
           turn('can you watch swim registration for Milo this fall?'),
         )
@@ -800,6 +804,68 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
     expect(await handleFor(vancouver, 'both parents need the login')).toEqual({
       claimed: false,
     });
+  });
+
+  it("leaves a date question to the coach once the family's own city has a reading", async () => {
+    const markham = await familyAt({
+      countryCode: 'CA',
+      country: 'Canada',
+      city: 'Markham',
+      postalCode: 'L3R 1A1',
+      areaCoarse: 'L3R',
+    });
+    await primaryParentIn(markham, 'America/Toronto');
+    const asks = [
+      'when does winter rec registration open?',
+      'Markham recreation registration for winter?',
+      'when does swim registration open for winter?',
+      'skate lessons this winter, when can we register?',
+      'when do winter camps open for registration',
+    ];
+    // Positive control: with no reading, the hand dataset's lane claims every wording.
+    for (const ask of asks) {
+      expect({ ask, claimed: (await handleFor(markham, ask)).claimed }).toEqual({
+        ask,
+        claimed: true,
+      });
+    }
+    await placeDb.database.insert(schema.cityRegistrationReadings).values({
+      placeKey: 'markham|ontario|canada|',
+      city: 'Markham',
+      provinceOrState: 'Ontario',
+      country: 'Canada',
+      district: null,
+      cycleLabel: 'Winter 2027',
+      status: 'verified',
+      municipality: 'City of Markham',
+      sourceUrl: 'https://www.markham.ca/registration',
+      reading: {
+        sourceUrl: 'https://www.markham.ca/registration',
+        checkedAt: TURN_NOW.toISOString(),
+        reader: 'ai',
+        status: 'verified',
+        timeZone: 'America/Toronto',
+        dates: [
+          {
+            kind: 'resident_open',
+            date: '2026-12-01',
+            time: '06:30',
+            evidence: ['December 1, 2026, at 6:30 AM'],
+          },
+        ],
+        partialDates: [],
+      },
+      readAt: TURN_NOW,
+      reverifyAt: new Date(TURN_NOW.getTime() + 86_400_000),
+    });
+    for (const ask of asks) {
+      expect({ ask, verdict: await handleFor(markham, ask) }).toEqual({
+        ask,
+        verdict: { claimed: false },
+      });
+    }
+    // Another town's question is still this lane's: the reading is Markham's only.
+    expect((await handleFor(markham, 'Vaughan swim registration?')).claimed).toBe(true);
   });
 
   it('still answers a family with a Toronto FSA texting "waitlist" (positive control)', async () => {
