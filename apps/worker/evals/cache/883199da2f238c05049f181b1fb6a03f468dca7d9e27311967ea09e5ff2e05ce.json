@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked Hale to stop sending email on its own, and `turnedOffThisTurn` shows the switch was actually flipped. The reply confirms that truthfully in one plain line, in the parent's own language. It has no greeting, no sign-off and no machinery talk. A short, exact confirmation is the job done.",
-    "score": 5
-  }
-}

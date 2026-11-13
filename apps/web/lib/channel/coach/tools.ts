@@ -1,7 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
-import { and, asc, count, eq, gt, gte, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gt, gte, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
@@ -23,7 +23,7 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
-import { dayKeyIn, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import { addDaysToKey, dayKeyIn, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { teenNameIn } from '~/lib/privacy/teen-name';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
@@ -1156,6 +1156,11 @@ async function readConnectedWeek(
 ): Promise<ConnectedWeekRead> {
   const firstDay = dayKeys[0];
   const lastDay = dayKeys[dayKeys.length - 1];
+  if (firstDay === undefined || lastDay === undefined) {
+    throw new Error('connectedWeek needs the dates of the week it reads');
+  }
+  const allDayFrom = new Date(`${firstDay}T00:00:00.000Z`);
+  const allDayUntil = new Date(`${addDaysToKey(lastDay, 1)}T00:00:00.000Z`);
 
   const [connections, children, blockRows, countRows, activityRows, tripRows] = await Promise.all([
     database
@@ -1182,10 +1187,25 @@ async function readConnectedWeek(
         and(
           eq(schema.parentCalendarBlocks.familyId, familyId),
           eq(schema.parentCalendarBlocks.status, 'confirmed'),
-          lte(schema.parentCalendarBlocks.startAt, end),
           or(
-            gte(schema.parentCalendarBlocks.startAt, start),
-            gt(schema.parentCalendarBlocks.endAt, start),
+            and(
+              eq(schema.parentCalendarBlocks.allDay, false),
+              lte(schema.parentCalendarBlocks.startAt, end),
+              or(
+                gte(schema.parentCalendarBlocks.startAt, start),
+                gt(schema.parentCalendarBlocks.endAt, start),
+              ),
+            ),
+            // An all-day block is a run of dates stored at UTC midnight, not an instant
+            // in the family's zone, so it is read against the week's own dates.
+            and(
+              eq(schema.parentCalendarBlocks.allDay, true),
+              lt(schema.parentCalendarBlocks.startAt, allDayUntil),
+              or(
+                gte(schema.parentCalendarBlocks.startAt, allDayFrom),
+                gt(schema.parentCalendarBlocks.endAt, allDayFrom),
+              ),
+            ),
           ),
         ),
       )

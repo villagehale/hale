@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is one bubble in French, matching the parent's text. It answers the request by proposing the move to Sunday at 10:00, which matches the drafted slot, and ends with the single confirmation question. Note the time-zone check: the swim was 15:00 UTC on Nov 14, which is 10:00 Toronto time, so the same-time move to Sunday 10:00 is correct. The location is kept as given, and nothing is invented. One thought, one question, in the last bubble.",
-    "score": 5
-  }
-}
