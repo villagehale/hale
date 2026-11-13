@@ -10,10 +10,12 @@ import {
   type SharedListTurnModel,
   applySharedListTurn,
   forgetSharedListPeople,
+  type KidClaim,
   readSharedListTurn,
+  recordKidClaim,
   sharedListAudience,
   sharedListTurnModel,
-  unclearKidFamily,
+  withSharedListLock,
 } from '~/lib/channel/lists/shared-group-lists';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
@@ -52,7 +54,7 @@ import { familyFreeBusy, formatWhen } from './household-calendar';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
-import { reactionAsVote, sharedGroupReader } from './shared-group-reading';
+import { kidNamesOf, reactionAsVote, sharedGroupReader } from './shared-group-reading';
 import type { SharedGroupComposer } from './shared-group-voice';
 import { composeSharedGroupLine } from './shared-group-voice';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
@@ -728,42 +730,59 @@ export async function forgetSharedGroupPeople(
   reason: SharedListForgetReason,
 ): Promise<number> {
   const people = schema.linqSharedGroupPeople;
-  // VIL-687: their list items go first; a stopped row stays, so its cascade never fires.
-  const scoped = await database.select({ id: people.id }).from(people).where(scope);
-  await forgetSharedListPeople(
-    database,
-    scoped.map((row) => row.id),
-    reason,
-  );
-  const forgotten = await database
-    .delete(people)
-    .where(and(scope, isNull(people.stoppedAt)))
-    .returning({ id: people.id });
-  const tombstoned = await database
-    .update(people)
-    .set({
-      phoneE164Encrypted: null,
-      familyId: null,
-      userId: null,
-      firstName: null,
-      inferredKidName: null,
-      inferredFamilyLabel: null,
-      inferredRole: null,
-      updatedAt: now,
-    })
-    .where(and(scope, isNotNull(people.stoppedAt)))
-    .returning({ id: people.id });
-  if (forgotten.length + tombstoned.length > 0) {
+  const chats = [
+    ...new Set(
+      (await database.select({ chatId: people.chatId }).from(people).where(scope)).map(
+        (row) => row.chatId,
+      ),
+    ),
+  ];
+  let count = 0;
+  let stopsKept = 0;
+  // VIL-687: one chat at a time under its list lock, so a hidden gift written at the same
+  // time never clears a number that is leaving.
+  for (const chatId of chats) {
+    const inChat = and(scope, eq(people.chatId, chatId));
+    const forgot = await withSharedListLock(database, chatId, async (tx) => {
+      // Their list items go first; a stopped row stays, so its cascade never fires.
+      const scoped = await tx.select({ id: people.id }).from(people).where(inChat);
+      await forgetSharedListPeople(
+        tx,
+        scoped.map((row) => row.id),
+        reason,
+      );
+      const forgotten = await tx
+        .delete(people)
+        .where(and(inChat, isNull(people.stoppedAt)))
+        .returning({ id: people.id });
+      const tombstoned = await tx
+        .update(people)
+        .set({
+          phoneE164Encrypted: null,
+          familyId: null,
+          userId: null,
+          firstName: null,
+          inferredKidName: null,
+          inferredKidNames: [],
+          claimsUnnamedKid: false,
+          inferredFamilyLabel: null,
+          inferredRole: null,
+          updatedAt: now,
+        })
+        .where(and(inChat, isNotNull(people.stoppedAt)))
+        .returning({ id: people.id });
+      return { forgotten: forgotten.length, tombstoned: tombstoned.length };
+    });
+    count += forgot.forgotten;
+    stopsKept += forgot.tombstoned;
+  }
+  if (count + stopsKept > 0) {
     console.info(
-      {
-        outcome: 'shared_group_presence_forgotten',
-        count: forgotten.length,
-        stopsKept: tombstoned.length,
-      },
+      { outcome: 'shared_group_presence_forgotten', count, stopsKept },
       'linq multi-family: presence forgotten',
     );
   }
-  return forgotten.length + tombstoned.length;
+  return count + stopsKept;
 }
 
 /**
@@ -1000,30 +1019,38 @@ async function participantsOf(chatId: string): Promise<ParticipantRead | null> {
 }
 
 /**
- * VIL-687: true only when Linq's participant list was read, is a group's, names the
- * speaker, and every handle on it is a number seated in this chat. An Apple ID email, a
- * number nobody seated, or a failed read leaves someone Hale cannot place, and the shared
- * list then hides every hidden gift. A list without the speaker is not this chat as it is
- * now (an empty one included, which is what a 200 with no or unreadable body parses to).
- * Linq's list already leaves out people who left or were removed (readLinqChatHandles).
+ * VIL-687: the blind indexes of everyone Linq lists in the chat, or null when the list does
+ * not place everyone: a failed read, a chat that is not a group, or a list without the
+ * speaker (an empty one included, which is what a 200 with no or unreadable body parses
+ * to), or a handle that is not a number (an Apple ID email). Linq's list already leaves out
+ * people who left or were removed (readLinqChatHandles); Hale's own line is not a reader.
  */
-function everyoneSeated(
-  live: readonly PersonRow[],
-  speaker: PersonRow,
-  listed: ParticipantRead | null,
-): boolean {
-  if (listed?.status !== 'ok' || listed.isGroup === false) return false;
-  const seated = new Set(live.map((row) => row.phoneE164Hash));
-  const listedHashes = new Set<string>();
+function listedReaders(listed: ParticipantRead | null, speakerHash: string): string[] | null {
+  if (listed?.status !== 'ok' || listed.isGroup === false) return null;
+  const hashes = new Set<string>();
   for (const handle of listed.handles) {
     const phone = normalizePhoneE164(handle);
-    if (phone === null) return false;
+    if (phone === null) return null;
     if (haleLine(phone)) continue;
-    const hash = phoneBlindIndex(phone);
-    if (!seated.has(hash)) return false;
-    listedHashes.add(hash);
+    hashes.add(phoneBlindIndex(phone));
   }
-  return listedHashes.has(speaker.phoneE164Hash);
+  return hashes.has(speakerHash) ? [...hashes] : null;
+}
+
+/**
+ * VIL-687: what a who_i_am or join reading says about whose family the speaker is. Every
+ * child named counts, whatever the role. A family role with no child named ("I'm the
+ * birthday girl's mom") is a claim on an unnamed child. A guest or an unclear role with no
+ * child is not a claim.
+ */
+function kidClaimOf(
+  intent: SharedGroupReading['intent'],
+  reading: SharedGroupReading,
+): KidClaim | null {
+  const kids = kidNamesOf(reading);
+  if (kids.length > 0) return { kids };
+  if (intent !== 'who_i_am' || reading.role === 'guest' || reading.role === 'unclear') return null;
+  return 'unnamed';
 }
 
 async function peopleInChat(database: Database, chatId: string): Promise<PersonRow[]> {
@@ -1575,6 +1602,17 @@ export async function takeMultiFamilyTurn(
   if (!phone) return { handled: false };
 
   const wired: MultiFamilyTurnPorts = { ...ports, send: ports.send ?? input.send };
+  // VIL-687: the seats this turn found. Only they can be cleared for a hidden gift written
+  // now, or count as placed when one is read; anyone the turn seats below is new.
+  const people = schema.linqSharedGroupPeople;
+  const settledIds = new Set(
+    (
+      await database
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.chatId, input.chatId), isNull(people.stoppedAt)))
+    ).map((row) => row.id),
+  );
   const sender = await rememberHandle(database, {
     chatId: input.chatId,
     handle: input.senderHandle,
@@ -1663,11 +1701,10 @@ export async function takeMultiFamilyTurn(
           text: input.text,
           language: wired.language ?? null,
           speaker: me,
-          ...(await sharedListAudience(
-            database,
-            live,
-            everyoneSeated(live, me, participants ?? (await participantsOf(input.chatId))),
-          )),
+          // Linq is asked who is here only when an item in the chat is hidden.
+          ...sharedListAudience(live, settledIds, async () =>
+            listedReaders(participants ?? (await participantsOf(input.chatId)), me.phoneE164Hash),
+          ),
         }
       : null;
   const listModel = listContext ? (wired.listTurn ?? sharedListTurnModel()) : null;
@@ -1833,13 +1870,8 @@ export async function takeMultiFamilyTurn(
         updatedAt: input.now,
       })
       .where(eq(schema.linqSharedGroupPeople.id, me.id));
-    if (reading.kidName) {
-      await unclearKidFamily(database, {
-        chatId: input.chatId,
-        phoneE164Hash: me.phoneE164Hash,
-        kidName: reading.kidName,
-      });
-    }
+    const claim = kidClaimOf(intent, reading);
+    if (claim) await recordKidClaim(database, { chatId: input.chatId, seatId: me.id, claim });
     // A household joins only on its own parent's words here; nothing joins it for them.
     if (intent === 'join' && channel) {
       const joined = await joinFamilyToSharedGroup(database, {

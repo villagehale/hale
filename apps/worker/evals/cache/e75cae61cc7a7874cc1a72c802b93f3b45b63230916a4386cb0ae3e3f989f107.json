@@ -1,0 +1,13 @@
+{
+  "value": {
+    "intent": "withdraw_calendar",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidNames": [],
+    "confidence": "high",
+    "ruledOut": [],
+    "picked": null,
+    "planTitle": null
+  },
+  "latencyMs": 2868
+}

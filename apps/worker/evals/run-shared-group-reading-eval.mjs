@@ -95,7 +95,7 @@ async function main() {
   for (const fixture of SHARED_GROUP_READING_FIXTURES) {
     const offered = (fixture.input.offered ?? []).map((slot) => slot.start);
     const reading = broken
-      ? { intent: 'question', ruledOut: [], picked: null, planTitle: null }
+      ? { intent: 'question', ruledOut: [], picked: null, planTitle: null, kidNames: [] }
       : parseSharedGroupReading(
           (
             await cachedToolCall({
@@ -122,10 +122,15 @@ async function main() {
       !(fixture.open ?? []).some((iso) => held(spans, iso));
     const pickOk = !fixture.picked || reading.picked?.toISOString() === fixture.picked;
     const titleOk = !fixture.titled || Boolean(reading.planTitle);
+    const fold = (names) => [...names].map((name) => name.toLowerCase()).sort();
+    const kids = reading.kidNames ?? [];
+    const kidsOk =
+      !fixture.kids || JSON.stringify(fold(kids)) === JSON.stringify(fold(fixture.kids));
     results.push({
       fixture,
       intent,
-      pass: fixture.accept.includes(intent) && timesOk && pickOk && titleOk,
+      pass: fixture.accept.includes(intent) && timesOk && pickOk && titleOk && kidsOk,
+      kids,
       spans,
       picked: reading.picked ? reading.picked.toISOString() : null,
       title: reading.planTitle ?? null,
@@ -133,7 +138,7 @@ async function main() {
   }
   for (const r of results) {
     console.log(
-      `${r.pass ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(32)} intent=${r.intent} accept=${r.fixture.accept.join('|')} ruledOut=${r.spans.length} picked=${r.picked ?? '-'} title=${r.title ?? '-'}`,
+      `${r.pass ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(32)} intent=${r.intent} accept=${r.fixture.accept.join('|')} ruledOut=${r.spans.length} picked=${r.picked ?? '-'} title=${r.title ?? '-'} kids=${r.kids.join('+') || '-'}`,
     );
     if (!r.pass && r.spans.length > 0) {
       console.log(
