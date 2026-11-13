@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30这个班目前只开放候补名单,没有名额了。Hale不会替你加入候补。如果你想自己排候补,这是他们的报名页面:https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 1734,
+  "usage": {
+    "input_tokens": 132,
+    "output_tokens": 81,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -121,6 +121,8 @@ describe.each([
       `[${LINK}]`,
       `Tap ${LINK}!`,
       `"${LINK}", then reply`,
+      `The registration page is ${LINK}. Max's age fits the band.`,
+      `The page is ${LINK}! Mia is just outside it.`,
     ]) {
       expect(hasLinkBeyond(text, [LINK])).toBe(false);
       expect(foreignLinks(text, { handed: [LINK], email: null, words: [] })).toEqual([]);
@@ -144,6 +146,9 @@ describe.each([
     ['the handed link with a dotted host glued on', `Tap ${LINK}.evil.tld now`],
     ['another scheme link', `Tap ${LINK} or https://evil.test/x`],
     ['a scheme-less domain beside it', `Tap ${LINK} or bit.ly/x`],
+    ['a spaced-dot host after the handed link', `Tap ${LINK}. Then evil . app now`],
+    ['the handed link, a full stop, then a non-ASCII label', `Tap ${LINK}.рф now`],
+    ['the handed link, a full stop, then an accented word', `Tap ${LINK}.Évite now`],
     ['any link when none was handed', `Tap ${LINK}`],
   ])('refuses %s', (label, text) => {
     const handed = label.startsWith('any link') ? [] : [LINK];
