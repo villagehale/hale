@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
+import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
@@ -367,6 +368,43 @@ describe('the own-city registration sweep', () => {
     ).toEqual([]);
   });
 
+  it("a known page no longer on the city's official site is never re-read or told again", async () => {
+    const family = await seedFamily('P3A 1A1');
+    const ATTACKER_PAGE = 'https://www.attacker.example/sudbury-winter';
+    // A vandalised official-site value: the page it names verifies and is told.
+    const vandalised = scripted({
+      search: () => ({
+        outcome: 'pages',
+        municipality: 'City of Greater Sudbury',
+        urls: [ATTACKER_PAGE],
+      }),
+      read: () => verified(ATTACKER_PAGE, '2026-12-05', '08:00'),
+    });
+    vandalised.officialSite = async () => ({
+      status: 'found',
+      host: 'attacker.example',
+      website: 'https://www.attacker.example/',
+      source: 'wikidata:Q1',
+      referenced: true,
+    });
+    await runCityRegistrationSweep(db.database, deps(vandalised), NOW);
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['queued']);
+
+    // The value is reverted; the city's search finds nothing new this hour.
+    const reverted = scripted({ search: () => ({ outcome: 'none', reason: 'no_official_page' }) });
+    const stale = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+    const result = await runCityRegistrationSweep(db.database, deps(reverted), stale);
+
+    expect(reverted.reads).toEqual([]);
+    expect(result).toMatchObject({ notFound: 1, superseded: 1, queued: 0 });
+    const [dropped] = await tells(family.familyId);
+    expect(dropped).toMatchObject({ status: 'dropped', reason: 'date_unconfirmed' });
+    const latest = (await db.database.select().from(schema.cityRegistrationReadings))
+      .filter((row) => row.status !== 'retry')
+      .sort((a, b) => b.readAt.getTime() - a.readAt.getTime())[0];
+    expect(latest).toMatchObject({ status: 'not_found', reason: 'known_page_off_official_site' });
+  });
+
   it('stores "not found" for a city with no official page, and tells nobody', async () => {
     const family = await seedFamily('R3C 1A1');
     const result = await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
@@ -694,6 +732,51 @@ describe('each family is told the date for its own residency and district', () =
     expect(await coachOf(inDoubt)).toEqual([]);
   });
 
+  it("a family in doubt still hears everyone's morning once the residents' one has passed", async () => {
+    const inDoubt = await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents, nonResidents])), NOW);
+    // 7:00 on Dec 1 in Ontario: the residents' morning is gone, everyone's is tomorrow.
+    const between = new Date('2026-12-01T12:00:00Z');
+    const lookup = york([residents, nonResidents]);
+
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), between);
+
+    // Still due: one family here has a morning ahead.
+    expect(result).toMatchObject({ lookedUp: 1, past: 0, queued: 0, duplicate: 1 });
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        inDoubt.familyId,
+        inDoubt.parentIds[0] as string,
+        between,
+      ),
+    ).toMatchObject([{ town: 'Markham', opensFor: 'Dec 2, 6:30 a.m.', generalOpens: null }]);
+
+    // A family in doubt that joins in between is told everyone's morning, and only that
+    // (at 9:00, inside the parent's daytime).
+    const late = await seedFamily('L3T 2B2');
+    await runCityRegistrationSweep(db.database, deps(lookup), new Date('2026-12-01T14:00:00Z'));
+    const [tell] = await tells(late.familyId);
+    expect(tell).toMatchObject({
+      what: 'Markham Winter 2027 registration opens Dec 2, 6:30 a.m.',
+      worthlessAfter: new Date('2026-12-02T11:30:00Z'),
+    });
+  });
+
+  it("a city stays due while any family there has no opening on the page, even once another family's has passed", async () => {
+    await seedFamily('L3P 1A1');
+    // No date for everyone: the family in doubt has no opening on this page.
+    await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents])), NOW);
+    const after = new Date('2026-12-01T12:00:00Z');
+    const lookup = york([residents]);
+
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), after);
+
+    expect(result).toMatchObject({ lookedUp: 1 });
+    expect(lookup.reads.map((target) => target.sourceUrl)).toEqual([MARKHAM_PAGE]);
+  });
+
   it('Toronto: each district hears its own morning, and none hears the Free Centres one', async () => {
     const districts = {
       toronto_east_york: await seedFamily('M4C 1A1'),
@@ -755,6 +838,196 @@ describe('each family is told the date for its own residency and district', () =
       etobicoke_york: ['Toronto Winter 2027 registration opens Dec 8, 7:00 a.m.'],
       north_york: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
       scarborough: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
+    });
+  });
+});
+
+describe("a family Hale cannot place in its own district or residency is never told another one's date", () => {
+  /** Toronto's Winter 2027 table as read 2026-11-12, under each kind labelling a reader may give it. */
+  const torontoTable = (kinds: readonly [string, string, string]): LiveRegistrationReading => ({
+    sourceUrl: TORONTO_PAGE,
+    checkedAt: NOW,
+    reader: 'ai',
+    status: 'verified',
+    timeZone: 'America/Toronto',
+    partialDates: [],
+    dates: [
+      {
+        kind: kinds[0] as 'unclassified_open',
+        date: '2026-12-01',
+        time: '07:00',
+        evidence: [
+          'Tuesday, December 1, 7 a.m.',
+          'Winter Recreation: Free Centres (for eligible residents) Tuesday, December 1, 7 a.m.',
+        ],
+      },
+      {
+        kind: kinds[1] as 'unclassified_open',
+        date: '2026-12-08',
+        time: '07:00',
+        evidence: [
+          'Tuesday, December 8, 7 a.m.',
+          'Winter Recreation: Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.',
+        ],
+      },
+      {
+        kind: kinds[2] as 'unclassified_open',
+        date: '2026-12-09',
+        time: '07:00',
+        evidence: [
+          'Wednesday, December 9, 7 a.m.',
+          'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.',
+        ],
+      },
+    ],
+  });
+
+  async function seedRow(values: {
+    country: string;
+    city?: string;
+    postalCode?: string;
+  }): Promise<{ familyId: string; parentIds: string[] }> {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({
+        displayName: 'Test household',
+        country: values.country,
+        city: values.city ?? null,
+        postalCode: values.postalCode ?? null,
+        areaCoarse: values.postalCode?.slice(0, 3) ?? null,
+      })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ name: 'Parent 0', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user?.id as string, role: 'primary_parent' });
+    await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Robin', dateOfBirth: '2021-03-01' });
+    return { familyId, parentIds: [user?.id as string] };
+  }
+
+  const coachOf = async (family: { familyId: string; parentIds: string[] }) =>
+    ownCityRegistrationContext(db.database, family.familyId, family.parentIds[0] as string, NOW);
+
+  for (const kinds of [
+    ['unclassified_open', 'unclassified_open', 'unclassified_open'],
+    ['resident_open', 'general_open', 'general_open'],
+    ['unclassified_open', 'general_open', 'general_open'],
+  ] as const) {
+    it(`a Toronto family with no district is told no morning, and Toronto is not looked up for it (${kinds.join(', ')})`, async () => {
+      const family = await seedRow({ country: 'Canada', city: 'Toronto' });
+      const lookup = scripted({ read: () => torontoTable(kinds) });
+
+      const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+
+      expect(result).toMatchObject({ placeUnknown: 1, lookedUp: 0, queued: 0 });
+      expect(lookup.reads).toEqual([]);
+      expect(await tells(family.familyId)).toEqual([]);
+      expect(await coachOf(family)).toEqual([]);
+    });
+  }
+
+  it('a North York family whose parent texted "Toronto" is never told another district\'s morning', async () => {
+    const family = await seedFamily('M2N 0A1');
+    await db.database
+      .update(schema.families)
+      .set({ createdAt: new Date(NOW.getTime() - 10 * 86_400_000) })
+      .where(eq(schema.families.id, family.familyId));
+    const said = new Date(NOW.getTime() - 86_400_000);
+    await writeFact(db.database, {
+      familyId: family.familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'lives_in',
+      factValue: { record: 'place', text: 'Toronto' },
+      confidence: 0.9,
+      inferredBy: 'test',
+      heard: 'unrecorded',
+      validFrom: said,
+      memoryKind: 'lasting',
+      memorySource: 'parent_message',
+      sourcedAt: said,
+    } as never);
+    const lookup = scripted({
+      read: () => torontoTable(['unclassified_open', 'unclassified_open', 'unclassified_open']),
+    });
+
+    await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+
+    expect(await tells(family.familyId)).toEqual([]);
+    expect(await coachOf(family)).toEqual([]);
+  });
+
+  describe('a US family: a ZIP names its postal city, not the town it lives in', () => {
+    const FAIRFAX_PAGE = 'https://www.fairfaxva.gov/recreation/registration';
+    const fairfax = (
+      dates: LiveRegistrationReading extends infer R
+        ? R extends { status: 'verified'; dates: infer D }
+          ? D
+          : never
+        : never,
+    ) => ({
+      ...scripted({
+        search: () => ({
+          outcome: 'pages' as const,
+          municipality: 'City of Fairfax',
+          urls: [FAIRFAX_PAGE],
+        }),
+        read: (): LiveRegistrationReading => ({
+          sourceUrl: FAIRFAX_PAGE,
+          checkedAt: NOW,
+          reader: 'ai',
+          status: 'verified',
+          timeZone: 'America/New_York',
+          partialDates: [],
+          dates,
+        }),
+      }),
+      officialSite: async () =>
+        ({
+          status: 'found',
+          host: 'fairfaxva.gov',
+          website: 'https://www.fairfaxva.gov/',
+          source: 'wikidata:Q1',
+          referenced: true,
+        }) as const,
+    });
+    const residents = {
+      kind: 'resident_open' as const,
+      date: '2026-12-01',
+      time: '09:00',
+      evidence: ['Winter registration for City residents: December 1, 2026 at 9 a.m.'],
+    };
+    const everyone = {
+      kind: 'general_open' as const,
+      date: '2026-12-08',
+      time: '09:00',
+      evidence: ['Non-residents: December 8, 2026 at 9 a.m.'],
+    };
+
+    it("is told both mornings, each with who it is for, never the residents' as its own", async () => {
+      const family = await seedRow({ country: 'United States', postalCode: '22030' });
+
+      await runCityRegistrationSweep(db.database, deps(fairfax([residents, everyone])), NOW);
+
+      expect((await tells(family.familyId)).map((row) => row.what)).toEqual([
+        'Fairfax Winter 2027 registration opens Dec 1, 9:00 a.m. if they live in Fairfax, otherwise Dec 8, 9:00 a.m.',
+      ]);
+    });
+
+    it('is told the one date when the page has one for everyone (positive control)', async () => {
+      const family = await seedRow({ country: 'United States', postalCode: '22030' });
+
+      await runCityRegistrationSweep(db.database, deps(fairfax([everyone])), NOW);
+
+      expect((await tells(family.familyId)).map((row) => row.what)).toEqual([
+        'Fairfax Winter 2027 registration opens Dec 8, 9:00 a.m.',
+      ]);
     });
   });
 });

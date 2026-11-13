@@ -37,7 +37,10 @@ export type CityNotFoundReason =
    * year a page does not state, so it is not a date yet (Toronto's table, 2026-11-12). */
   | 'date_without_year'
   /** Every page refused or failed to load, or its dates did not verify. */
-  | 'unreadable';
+  | 'unreadable'
+  /** The page the known date came from is no longer on the city's official site as the
+   * source now names it (a reverted edit), and no official page confirms a date. */
+  | 'known_page_off_official_site';
 
 export type CityLookup =
   | {

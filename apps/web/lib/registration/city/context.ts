@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { RegistrationWindowContext } from '~/lib/channel/coach/registration-context';
+import { matchPostalToken } from '~/lib/channel/off-domain/place';
 import type { VerifiedRegistrationReading } from '../live-reading';
 import { winterCycleLabel } from './cycle';
 import { ownCityRegistrationEnabled } from './flag';
@@ -44,7 +45,22 @@ export function cityOpeningFacts(
   const opening = familyOpening(reading, place);
   if (opening === null) return null;
   const opensAt = openingInstant(reading, opening.own);
-  if (opensAt.getTime() <= now.getTime()) return null;
+  if (opensAt.getTime() <= now.getTime()) {
+    // In doubt, the residents' morning may never have been theirs: everyone's still is.
+    // Keyed on the first opening, so a parent already told both is not told again.
+    const later = opening.residencyInDoubt ? opening.general : null;
+    if (later === null) return null;
+    const laterAt = openingInstant(reading, later);
+    if (laterAt.getTime() <= now.getTime()) return null;
+    return {
+      town: place.city,
+      programs: reading.programOnPage ?? cycleLabel,
+      opensFor: openingPhrase(reading, later, now),
+      opensAt: laterAt,
+      openingDate: opening.own.date,
+      generalOpens: null,
+    };
+  }
   const own = openingPhrase(reading, opening.own, now);
   const general = opening.general ? openingPhrase(reading, opening.general, now) : null;
   return {
@@ -105,7 +121,7 @@ async function ownCityOpening(
  * the town their postal code is in, or null with none on file. Read the way a family's
  * place is read (place.ts), off the code alone, and chosen the way the family's own tell
  * is (familyOpening), so the answer mid-signup is the date they are later told. The
- * rec-morning lane's postal is Canadian (rec-morning/copy.ts).
+ * country is the code's own: a Canadian FSA or a US ZIP.
  */
 export async function postalOwnCityQuotes(
   database: Database,
@@ -113,8 +129,10 @@ export async function postalOwnCityQuotes(
   now: Date,
 ): Promise<string[] | null> {
   if (!ownCityRegistrationEnabled()) return null;
+  const token = matchPostalToken(postal);
+  if (token === null) return null;
   const own = await ownCityOfRow({
-    country: 'CA',
+    country: token.countryName,
     province: null,
     city: null,
     postalCode: postal,

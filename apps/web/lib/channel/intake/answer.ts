@@ -411,18 +411,21 @@ async function answerFromCurrentSource(
  * none on file (VIL-684). */
 export type IntakeOwnTownQuotes = (postal: string, now: Date) => Promise<readonly string[] | null>;
 
+type OwnTownRead = () => Promise<readonly string[] | null>;
+
 export function createIntakeAnswerComposer(
   client: AgentClient,
   ownTownQuotes: IntakeOwnTownQuotes,
 ): IntakeAnswerComposer {
-  /** VIL-684: once the parent's own town has a date off its own page, a question for that
-   * town's dates is not this lane's hand dataset's to answer ("not posted yet", an older
-   * season): the grounded answer below answers it from that page. */
-  const ownTownReading = async (input: IntakeAnswerInput): Promise<readonly string[] | null> => {
+  /** VIL-684: the page's own words for the opening of the parent's own town (the reading
+   * the family is later told from), read at most once a turn; null with none on file. */
+  const ownTownOf = (input: IntakeAnswerInput): OwnTownRead => {
+    let read: Promise<readonly string[] | null> | undefined;
     const postal = input.postalCode ?? null;
-    if (postal === null) return null;
-    if (!recMorningIntakeAsksOwnTown({ parentWords: input.parentWords, postal })) return null;
-    return ownTownQuotes(postal, new Date());
+    return () => {
+      read ??= postal === null ? Promise.resolve(null) : ownTownQuotes(postal, new Date());
+      return read;
+    };
   };
   return {
     async compose(input) {
@@ -450,16 +453,20 @@ export function createIntakeAnswerComposer(
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
       // VIL-508: reviewed facts, model-written words; a miss falls through, nothing fixed.
-      const ownTown = await ownTownReading(input);
-      const recMorning =
-        ownTown !== null
-          ? null
-          : await writeRecMorningIntakeReply({
-              parentWords: input.parentWords,
-              pendingAsk: input.pendingAsk,
-              postal: input.postalCode,
-              language: input.language ?? null,
-            });
+      // VIL-684: once the parent's own town has a date off its own page, a question for that
+      // town's dates is not the hand dataset's to answer ("not posted yet", an older season).
+      const ownTown = ownTownOf(input);
+      const ownTownFirst =
+        recMorningIntakeAsksOwnTown({ parentWords: input.parentWords, postal: input.postalCode }) &&
+        (await ownTown()) !== null;
+      const recMorning = ownTownFirst
+        ? null
+        : await writeRecMorningIntakeReply({
+            parentWords: input.parentWords,
+            pendingAsk: input.pendingAsk,
+            postal: input.postalCode,
+            language: input.language ?? null,
+          });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
@@ -504,11 +511,13 @@ async function answerTheRead(
   client: AgentClient,
   value: z.infer<typeof answerSchema>,
   input: IntakeAnswerInput,
-  ownTown: readonly string[] | null,
+  ownTown: OwnTownRead,
 ): Promise<IntakeAnswerOutcome> {
   switch (value.askKind) {
+    // Any program-dates question, in any wording: a town with a reading on file is answered
+    // from it, so the answer mid-signup is the date the family is later told.
     case 'program_dates':
-      return answerFromOfficialPages(client, input, ownTown);
+      return answerFromOfficialPages(client, input, await ownTown());
     case 'current_source':
       return answerFromCurrentSource(client, input);
     case 'cheer_up':
