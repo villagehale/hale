@@ -1,0 +1,21 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": {
+      "called": "Hélène"
+    },
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "fr",
+    "reply": "Avec plaisir Hélène, bienvenue dans la partie !"
+  },
+  "latencyMs": 2020,
+  "usage": {
+    "input_tokens": 161,
+    "output_tokens": 93,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

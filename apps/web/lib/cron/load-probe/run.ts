@@ -192,6 +192,8 @@ export async function runDrainLoadProbe(input: ProbeRunInput): Promise<ProbeRunR
     rerank: notInProbe('village.rerank'),
     channelSend: notInProbe('channel.send'),
     channelSendDead: notInProbe('channel.send.dead'),
+    // The probe's turns never fold a burst.
+    foldedInto: async () => [],
     deepResearch: notInProbe('deep.research'),
     autonomyNotices: notInProbe('autonomy notices'),
   };

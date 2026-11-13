@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text asks a fact about the family's schedule that is visible in the thread: Ada's swim is Thursday at 4:30 at the Y. This is a standalone question needing only words, so I answer it now.",
+    "verdict": "answer",
+    "reply": "Ada's swim is Thursday at 4:30 at the Y."
+  },
+  "latencyMs": 1940
+}

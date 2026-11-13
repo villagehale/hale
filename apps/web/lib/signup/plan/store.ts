@@ -11,7 +11,13 @@ import {
   signupProviderHost,
 } from '../consent';
 import { LINK_SPEND_CEILING_CENTS } from '../link/client';
-import { isOneSubmittingViolation, loadPendingOffer, loadSignupIdentity } from '../store';
+import {
+  ASKED_LAST_FIRST,
+  type AskOrder,
+  isOneSubmittingViolation,
+  loadPendingOffer,
+  loadSignupIdentity,
+} from '../store';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
 
@@ -58,9 +64,12 @@ export async function approveSignupPlan(
     opensAt: Date;
     waiverAccepted: boolean;
     now: Date;
+    /** Program is already open: a yes now is a register-now, not a day-before. */
+    alreadyOpen?: boolean;
   },
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
-  const offer = await loadPendingOffer(database, input.familyId);
+  // The named ask, not the newest: a family can hold several, and a yes may name an older one.
+  const offer = await loadPendingOffer(database, input.familyId, input.offerId);
   if (!offer || offer.id !== input.offerId) return { ok: false, reason: 'no_offer' };
   // The run types this parent's details and pays with their city account's saved card, and
   // re-checks their standing before paying. Only their own yes can consent to that.
@@ -82,7 +91,9 @@ export async function approveSignupPlan(
   ) {
     return { ok: false, reason: 'max_price' };
   }
-  if (input.opensAt.getTime() <= input.now.getTime()) return { ok: false, reason: 'opens_at' };
+  if (!input.alreadyOpen && input.opensAt.getTime() <= input.now.getTime()) {
+    return { ok: false, reason: 'opens_at' };
+  }
   const allowed = registrationUrlAllowed(offer.registrationUrl);
   if (!allowed.ok) return { ok: false, reason: 'url_refused' };
   const identity = await loadSignupIdentity(database, {
@@ -112,6 +123,7 @@ export async function approveSignupPlan(
       planWaiverAccepted: input.waiverAccepted,
       planApprovedAt: input.now,
       authorizingMessageId: input.messageId,
+      planAlreadyOpen: input.alreadyOpen === true,
       updatedAt: input.now,
     })
     .where(
@@ -139,6 +151,42 @@ export async function approveSignupPlan(
   return { ok: true };
 }
 
+/**
+ * Put a running plan back to `planned` with what the site showed, so Hale waits
+ * on the parent instead of handing the offer back. Used for a rejected password
+ * and for options that do not match what they asked for.
+ */
+export async function parkSignupPlan(
+  database: Database,
+  input: {
+    offerId: string;
+    familyId: string;
+    availability: Record<string, unknown>;
+    now: Date;
+  },
+): Promise<boolean> {
+  const offers = schema.authorizedSignupOffers;
+  const rows = await database
+    .update(offers)
+    .set({
+      status: 'planned',
+      planResume: null,
+      planLeaseUntil: null,
+      planAvailability: input.availability,
+      planAvailabilityAt: input.now,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(offers.id, input.offerId),
+        eq(offers.familyId, input.familyId),
+        inArray(offers.status, ['planned', 'submitting']),
+      ),
+    )
+    .returning({ id: offers.id });
+  return rows.length > 0;
+}
+
 export interface ClaimedPlan {
   offerId: string;
   familyId: string;
@@ -156,6 +204,8 @@ export interface ClaimedPlan {
   resume: AuthorizedSignupPlanResume | null;
   /** The parent took the plan back while its run was going. */
   takenBack: boolean;
+  alreadyOpen: boolean;
+  availability: Record<string, unknown> | null;
 }
 
 type OfferRow = typeof schema.authorizedSignupOffers.$inferSelect;
@@ -184,6 +234,8 @@ function claimedPlan(row: OfferRow, resume: AuthorizedSignupPlanResume | null): 
     messageId: row.authorizingMessageId,
     resume,
     takenBack: row.planCancelRequestedAt !== null,
+    alreadyOpen: row.planAlreadyOpen === true,
+    availability: row.planAvailability,
   };
 }
 
@@ -214,6 +266,10 @@ export async function claimDuePlan(
         select o.id from authorized_signup_offers o
         where o.status = 'planned'
           and o.plan_opens_at <= ${dueBy}::timestamptz
+          and (
+            o.plan_availability is null
+            or o.plan_availability->>'kind' in ('join_waitlist', 'take_option')
+          )
           and not exists (
             select 1 from authorized_signup_offers busy
             where busy.family_id = o.family_id and busy.status = 'submitting'
@@ -357,7 +413,8 @@ export async function planLapse(
 /**
  * A parent of the family takes back a plan, with one audit row either way.
  *
- * - `cancelled`: before the open, `planned` to `handed_back`.
+ * - `cancelled`: before the open, `planned` to `handed_back`, with the take-back time stamped
+ *   so the claim reader has the row that backs "I cancelled it".
  * - `cancel_requested`: its run is going (a queue, perhaps checkpointed between sweeps). The
  *   take-back is marked on the offer; the next sweep lets the run go instead of resuming it,
  *   and no payment starts after it ({@link savePlanResume}).
@@ -373,7 +430,7 @@ export async function cancelSignupPlan(
   const ours = and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId));
   const rows = await database
     .update(offers)
-    .set({ status: 'handed_back', updatedAt: input.now })
+    .set({ status: 'handed_back', planCancelRequestedAt: input.now, updatedAt: input.now })
     .where(and(ours, eq(offers.status, 'planned')))
     .returning({ id: offers.id });
   if (rows.length > 0) {
@@ -408,35 +465,51 @@ export async function cancelSignupPlan(
  * A family's offer the day-before conversation can still act on: before its open, or
  * `running` while its run is going and the parent has not taken it back yet.
  */
-export interface ConversablePlan {
+export interface ConversablePlan extends AskOrder {
   offerId: string;
   childId: string;
+  /** The parent Hale asked: only their words may set the plan or take it back. */
+  parentUserId: string;
   status: 'pending' | 'planned' | 'running';
+  /** The program's public name, or null for an offer recorded before names were kept. */
+  activityLabel: string | null;
+  providerHost: string;
   registrationUrl: string;
   sessions: SignupSession[];
   approvedPriceCents: number | null;
   opensAt: Date;
   plan: { choiceIds: string[]; maxPriceCents: number; waiverAccepted: boolean } | null;
+  alreadyOpen: boolean;
+  availability: Record<string, unknown> | null;
 }
 
 /**
- * The offer with a known open still ahead: a `pending` offer the coach recorded with its
+ * The offers with a known open still ahead: a `pending` offer the coach recorded with its
  * open time, or a `planned` one the parent may still take back. A plan whose run is going
- * (possibly checkpointed between sweeps) can still be taken back too. The earliest open first.
+ * (possibly checkpointed between sweeps) can still be taken back too. In `AskOrder`, the
+ * one whose text reached the parent last first; which of the family's asks a message answers
+ * is `loadLiveAsks`'s ordering, plans and one-shot asks together.
  */
-export async function loadConversablePlan(
+export async function loadConversablePlans(
   database: Database,
   input: { familyId: string; now: Date },
-): Promise<ConversablePlan | null> {
+): Promise<ConversablePlan[]> {
   const offers = schema.authorizedSignupOffers;
-  const [row] = await database
+  const rows = await database
     .select()
     .from(offers)
     .where(
       and(
         eq(offers.familyId, input.familyId),
         or(
-          and(inArray(offers.status, ['pending', 'planned']), gt(offers.planOpensAt, input.now)),
+          and(
+            inArray(offers.status, ['pending', 'planned']),
+            or(
+              gt(offers.planOpensAt, input.now),
+              eq(offers.planAlreadyOpen, true),
+              sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected')`,
+            ),
+          ),
           and(
             eq(offers.status, 'submitting'),
             isNotNull(offers.planResume),
@@ -445,34 +518,44 @@ export async function loadConversablePlan(
         ),
       ),
     )
-    .orderBy(offers.planOpensAt)
-    .limit(1);
-  if (!row?.planOpensAt) return null;
-  const status =
-    row.status === 'submitting'
-      ? 'running'
-      : row.status === 'pending' || row.status === 'planned'
-        ? row.status
+    .orderBy(...ASKED_LAST_FIRST);
+  return rows.flatMap((row) => {
+    if (!row.planOpensAt) return [];
+    const status =
+      row.status === 'submitting'
+        ? 'running'
+        : row.status === 'pending' || row.status === 'planned'
+          ? row.status
+          : null;
+    if (!status) return [];
+    const planned =
+      status !== 'pending' && row.planChoiceIds && row.planMaxPriceCents !== null
+        ? {
+            choiceIds: row.planChoiceIds,
+            maxPriceCents: row.planMaxPriceCents,
+            waiverAccepted: row.planWaiverAccepted === true,
+          }
         : null;
-  if (!status) return null;
-  const planned =
-    status !== 'pending' && row.planChoiceIds && row.planMaxPriceCents !== null
-      ? {
-          choiceIds: row.planChoiceIds,
-          maxPriceCents: row.planMaxPriceCents,
-          waiverAccepted: row.planWaiverAccepted === true,
-        }
-      : null;
-  return {
-    offerId: row.id,
-    childId: row.childId,
-    status,
-    registrationUrl: row.registrationUrl,
-    sessions: row.sessions,
-    approvedPriceCents: row.approvedPriceCents,
-    opensAt: row.planOpensAt,
-    plan: planned,
-  };
+    return [
+      {
+        offerId: row.id,
+        childId: row.childId,
+        parentUserId: row.parentUserId,
+        lastAskedSeq: row.lastAskedSeq,
+        createdAt: row.createdAt,
+        status,
+        activityLabel: row.activityLabel,
+        providerHost: row.providerHost,
+        registrationUrl: row.registrationUrl,
+        sessions: row.sessions,
+        approvedPriceCents: row.approvedPriceCents,
+        opensAt: row.planOpensAt,
+        plan: planned,
+        alreadyOpen: row.planAlreadyOpen === true,
+        availability: row.planAvailability,
+      },
+    ];
+  });
 }
 
 /**

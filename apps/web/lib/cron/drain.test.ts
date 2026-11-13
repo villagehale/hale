@@ -184,6 +184,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
       channelSend: vi.fn(async () => undefined),
       channelSendDead: vi.fn(async () => undefined),
       channelMessage: vi.fn(async () => undefined),
+      foldedInto: vi.fn(async () => []),
       deepResearch: vi.fn(async () => undefined),
       autonomyNotices: vi.fn(async () => undefined),
       ...overrides,
@@ -694,6 +695,57 @@ describe('channel.message.received', () => {
   });
 
   /**
+   * Texts folded into a dead turn were never answered either, and their own jobs already
+   * stopped at `folded`. The dead letter is the one place left that knows them.
+   */
+  it('names the texts folded into an expired turn on the same log line', async () => {
+    const folded = ['33333333-3333-4333-8333-0000000000f2', '33333333-3333-4333-8333-0000000000f3'];
+    const foldedInto = vi.fn(async () => folded);
+    const { boss, completed } = makeFakeBoss({
+      [DEAD]: [{ id: 'd2', data: inbound('SM8') }],
+    });
+    const deps = makeDeps(boss, { foldedInto });
+
+    await drainHotQueues(deps);
+
+    expect(foldedInto).toHaveBeenCalledWith({
+      familyId: FAMILY,
+      channelMessageId: inbound('SM8').channel_message_id,
+    });
+    expect(deps.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: TURN_EXPIRED_UNANSWERED,
+        channelMessageId: inbound('SM8').channel_message_id,
+        foldedMemberIds: folded,
+      }),
+      expect.stringContaining('never answered'),
+    );
+    expect(completed(DEAD)).toEqual(['d2']);
+  });
+
+  it('names a fold lookup that failed, and the dead letter still completes', async () => {
+    const foldedInto = vi.fn(async () => {
+      throw new Error('pooler gone');
+    });
+    const { boss, completed } = makeFakeBoss({
+      [DEAD]: [{ id: 'd3', data: inbound('SM7') }],
+    });
+    const deps = makeDeps(boss, { foldedInto });
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: TURN_EXPIRED_UNANSWERED,
+        foldedMemberIds: 'lookup_failed',
+      }),
+      expect.stringContaining('never answered'),
+    );
+    expect(completed(DEAD)).toEqual(['d3']);
+    expect(summary.dropped).toBe(1);
+  });
+
+  /**
    * An inbound turn is claimed only when it is about to run. A claimed row is `active`,
    * and every drain's expiry sweep reaps an `active` row past 180s, so a batch fetched
    * ahead of its turns would age its unstarted rows into the sweep. The claim skips held
@@ -757,6 +809,19 @@ describe('channel.message.received', () => {
 
     expect(deps.handlers.channelMessage).toHaveBeenCalledWith(
       expect.objectContaining({ provider_message_id: 'SM1', in_group: true }),
+    );
+  });
+
+  it("keeps the door's unread opt-out read through contract validation", async () => {
+    const { boss } = makeFakeBoss({
+      [INBOUND]: [{ id: 'i1', data: { ...inbound('SM1'), opt_out_unread: true } }],
+    });
+    const deps = makeDeps(boss);
+
+    await drainHotQueues(deps);
+
+    expect(deps.handlers.channelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider_message_id: 'SM1', opt_out_unread: true }),
     );
   });
 

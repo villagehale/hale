@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply names the wrong owner: facts show Priya has the cupcakes, but it says Sam, a name that doesn't exist in the chat. This is an invented/misspelled name and a factual error, even though it correctly tells Jordan the cupcakes are taken and correctly suggests the open fruit tray. Tone, brevity and language are fine, but the wrong name is a critical failure.",
+    "score": 1
+  }
+}

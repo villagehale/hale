@@ -1,0 +1,15 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Noah",
+        "age_months": 24,
+        "age_precision": "months",
+        "date_of_birth": null
+      }
+    ],
+    "postal_code": "L6C",
+    "confidence": 0.9
+  },
+  "latencyMs": 1522
+}

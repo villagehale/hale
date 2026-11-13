@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { parentUserIdFromSmsNoteKey } from '~/lib/coach/note-key';
 
 /**
  * VIL-619 · the one-time scrub of sender words that email alerts stored before the private
@@ -8,8 +9,9 @@ import { sql } from 'drizzle-orm';
  * child's mail). Soft-deleted rows are scrubbed too. Running it twice changes nothing.
  *
  * It deletes data, so it runs against prod only with Barton's OK
- * (scripts/scrub-email-alert-snippets.ts). Each family gets one audit row with the count.
- * The count covers the whole family's threads, so no row says which adult had alerts.
+ * (scripts/scrub-email-alert-snippets.ts). Each (family, audience) pair gets one audit
+ * row with the count. A 1:1 SMS thread names that parent as audience; a family thread
+ * stays null.
  */
 
 export interface EmailAlertSnippetScrubSummary {
@@ -48,19 +50,31 @@ export async function scrubEmailAlertSnippets(
       )
       from conversations c
       where c.id = m.conversation_id and ${HAS_SNIPPET}
-      returning c.family_id as "familyId", (m.source ->> 'private')::boolean as "isPrivate"
+      returning c.family_id as "familyId",
+                (m.source ->> 'private')::boolean as "isPrivate",
+                c.note_key as "noteKey"
     `);
     const rows = rowsOf(result);
-    const perFamily = new Map<string, number>();
-    for (const row of rows) perFamily.set(row.familyId, (perFamily.get(row.familyId) ?? 0) + 1);
-    if (perFamily.size > 0) {
+    const perAudience = new Map<
+      string,
+      { familyId: string; audience: string | null; count: number }
+    >();
+    for (const row of rows) {
+      const audience = parentUserIdFromSmsNoteKey(row.noteKey ?? null);
+      const key = `${row.familyId}\0${audience ?? ''}`;
+      const existing = perAudience.get(key);
+      if (existing) existing.count += 1;
+      else perAudience.set(key, { familyId: row.familyId, audience, count: 1 });
+    }
+    if (perAudience.size > 0) {
       await tx.insert(schema.auditLog).values(
-        [...perFamily].map(([familyId, count]) => ({
-          familyId,
+        [...perAudience.values()].map((group) => ({
+          familyId: group.familyId,
           actor: 'system',
           actionTaken: 'email_alert_snippets_scrubbed',
           targetTable: 'messages',
-          after: { rows: count },
+          after: { rows: group.count },
+          ...(group.audience ? { audience: group.audience } : {}),
         })),
       );
     }
@@ -71,6 +85,7 @@ export async function scrubEmailAlertSnippets(
 interface ScrubRow {
   familyId: string;
   isPrivate: boolean;
+  noteKey?: string | null;
 }
 
 function rowsOf(result: unknown): ScrubRow[] {

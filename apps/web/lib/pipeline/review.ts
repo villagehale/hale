@@ -16,7 +16,12 @@ import { eq } from 'drizzle-orm';
 
 export interface ReviewResult {
   verdict: ReviewerVerdict;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
   /** The loop's own cost. runReviewer already prices its turns through the shared
    * @hale/agent rate table, and its `promptTokens` above is the collapsed total
    * (full-rate + cache reads) — so this is carried, never re-derived downstream. */
@@ -51,6 +56,8 @@ export async function reviewAction(
     usage: {
       promptTokens: runMetrics.promptTokens,
       completionTokens: runMetrics.completionTokens,
+      cacheReadTokens: runMetrics.cacheReadTokens,
+      cacheWriteTokens: runMetrics.cacheWriteTokens,
     },
     costUsd: runMetrics.costUsd,
     model: runMetrics.modelUsed,

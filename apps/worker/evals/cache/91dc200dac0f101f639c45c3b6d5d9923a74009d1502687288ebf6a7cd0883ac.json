@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale promises to text the parent before Riverford's winter registration opens, which is a registration_watch claim. The only row is a spot watch on a different class, so it does not back this claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1640
+}

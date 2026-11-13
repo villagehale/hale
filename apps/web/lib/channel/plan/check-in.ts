@@ -12,6 +12,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -73,6 +74,8 @@ export interface PlanCheckInResult {
   /** Due and allowed, but nothing sendable came back from the composer. The promise
    * stays open for the next tick — never a canned sentence in its place. */
   deferred: number;
+  /** VIL-612 · live cadence queued the composed check-in for the hourly decider. */
+  queued: number;
   failed: number;
 }
 
@@ -84,6 +87,7 @@ function emptyResult(enabled: boolean): PlanCheckInResult {
     held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
     unsendable: 0,
     deferred: 0,
+    queued: 0,
     failed: 0,
   };
 }
@@ -213,6 +217,10 @@ async function sendOne(
 
   const dedupeKey = `coach_plan:checkin:${commitment.id}`;
   if (await deps.dedupeActive(dedupeKey, database)) return;
+  if (await isQueuedForDecider(database, commitment.familyId, dedupeKey)) {
+    result.queued += 1;
+    return;
+  }
 
   // Composed only AFTER the gate and the dedupe: a family who is over their budget or
   // already asked must not cost a model call.
@@ -244,6 +252,39 @@ async function sendOne(
     // The gate just said this parent has a live channel, so there IS one — a missing
     // number here is a contradiction, not a state to paper over.
     throw new Error(`coach plan check-in: no send target for parent ${recipient.parentUserId}`);
+  }
+
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: commitment.familyId,
+        parentUserId: recipient.parentUserId,
+        kind: 'plan_check_in',
+        category: 'plan_check_in',
+        templateKey: `coach_plan:check_in:${commitment.topic}`,
+        what: composed.message,
+        why: 'plan_check_in',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey,
+        payload: { auditVerb: 'coach_plan_check_in_sent', fulfillKind: 'plan_check_in' },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: commitment.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'agent_commitments',
+      targetId: commitment.id,
+      after: { kind: 'plan_check_in' },
+    });
+    result.queued += 1;
+    return;
   }
 
   const body = withOptOut(composed.message, verdict.optOut);

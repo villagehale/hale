@@ -7,6 +7,7 @@ import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import type { ChannelRouterDeps, HandlerContext } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
+import { darkSideTurn } from '~/lib/channel/router/side-turn.fixture';
 import {
   auditSmokeAlarmClaim,
   auditTurnLedger,
@@ -553,6 +554,8 @@ describe('a diary answer through the real router', () => {
       },
       smokeAlarm: auditSmokeAlarmClaim(db.database),
       turns: auditTurnLedger(db.database),
+      burst: { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
+      sideTurn: darkSideTurn(),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply groups every find by day and gets the times, places and free/indoor details right. The forecast and URLs all trace to known data. Weaknesses: it renames 'High Park playground' as 'the Jamie Bell Adventure Playground at High Park' instead of quoting the title. It adds a speculative aside about which child Swim Kids 3 suits, and the weather commentary pads past a plain grouped list.",
+    "score": 3
+  }
+}

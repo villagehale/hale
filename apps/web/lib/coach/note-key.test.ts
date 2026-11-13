@@ -4,6 +4,7 @@ import {
   NOTE_KEY_RE,
   channelSmsNoteKey,
   isChannelSmsNoteKey,
+  parentUserIdFromSmsNoteKey,
 } from './note-key';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -25,6 +26,13 @@ describe('channelSmsNoteKey', () => {
     expect(isChannelSmsNoteKey(null)).toBe(false);
     expect(isChannelSmsNoteKey('channel-sms')).toBe(false);
     expect(isChannelSmsNoteKey('')).toBe(false);
+  });
+
+  it('reads the parent id back from a 1:1 SMS key', () => {
+    expect(parentUserIdFromSmsNoteKey(channelSmsNoteKey(USER_ID))).toBe(USER_ID);
+    expect(parentUserIdFromSmsNoteKey(`digest-${USER_ID}`)).toBeNull();
+    expect(parentUserIdFromSmsNoteKey(null)).toBeNull();
+    expect(parentUserIdFromSmsNoteKey('channel-sms:')).toBeNull();
   });
 
   /**

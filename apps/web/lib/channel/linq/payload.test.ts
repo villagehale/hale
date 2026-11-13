@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseLinqWebhook } from './payload';
 
 /** The 2026-02-03 message.received shape from Linq's public event guide.
@@ -47,8 +47,32 @@ describe('parseLinqWebhook', () => {
         otherHandles: [],
         isGroup: false,
         mentions: [],
+        service: 'iMessage',
       },
     });
+  });
+
+  /**
+   * Linq relays green-bubble chats on the same line, so the service is what says whether a
+   * chat is iMessage. A value this code does not know is `other`, and a payload that said
+   * nothing says nothing.
+   */
+  it('reads the service that carried the text, and says nothing when Linq did not', () => {
+    const service = (value: unknown) => {
+      const body = received();
+      if (value === undefined) Reflect.deleteProperty(body.data, 'service');
+      else (body.data as { service: unknown }).service = value;
+      const parsed = parseLinqWebhook(body, FALLBACK);
+      if (parsed.kind !== 'message') throw new Error('not a message');
+      return parsed.message;
+    };
+
+    expect(service('SMS').service).toBe('SMS');
+    expect(service('RCS').service).toBe('RCS');
+    expect(service('iMessage').service).toBe('iMessage');
+    expect(service('Pigeon').service).toBe('other');
+    expect(service(undefined)).not.toHaveProperty('service');
+    expect(service(7)).not.toHaveProperty('service');
   });
 
   /**
@@ -110,6 +134,30 @@ describe('parseLinqWebhook', () => {
     expect(parsed.message.mentions).toEqual([]);
   });
 
+  it('keeps a link part as media while GROUP_LINK_CARDS_ENABLED is off', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'link', value: 'https://park.example/camp' }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('');
+    expect(parsed.message.mediaCount).toBe(1);
+  });
+
+  it('lifts a link part into text when GROUP_LINK_CARDS_ENABLED is on', () => {
+    vi.stubEnv('GROUP_LINK_CARDS_ENABLED', 'true');
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'link', value: 'https://park.example/camp' }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    vi.unstubAllEnvs();
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('https://park.example/camp');
+    expect(parsed.message.mediaCount).toBe(0);
+  });
+
   it('counts a media part and keeps the text beside it', () => {
     const body = received();
     const data = body.data as { parts: unknown[] };
@@ -140,6 +188,27 @@ describe('parseLinqWebhook', () => {
       { kind: 'image', url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
       { kind: 'video', url: 'https://cdn.example/clip.mp4', mime: 'video/mp4' },
       { kind: 'image', url: null, mime: 'image/png' },
+    ]);
+  });
+
+  it('classifies a .vcf as a contact card rather than a generic file', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [
+      { type: 'text', value: 'my mom' },
+      {
+        type: 'media',
+        url: 'https://cdn.example/Jane.vcf',
+        mime_type: 'text/vcard',
+        filename: 'Jane.vcf',
+      },
+    ];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('my mom');
+    expect(parsed.message.media).toEqual([
+      { kind: 'contact', url: 'https://cdn.example/Jane.vcf', mime: 'text/vcard' },
     ]);
   });
 
@@ -190,6 +259,43 @@ describe('parseLinqWebhook', () => {
         errorCode: '4001',
       },
     });
+
+    const edited = {
+      ...received(),
+      event_type: 'message.edited',
+      data: {
+        id: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+        direction: 'outbound',
+        chat: { id: '8f392755-6865-4b18-880a-227f9d8b458f' },
+        sender_handle: { handle: '+12025550123', is_me: true },
+        part: { index: 0, text: 'Swim is at 5.' },
+        edited_at: '2026-03-05T02:12:46.487Z',
+      },
+    };
+    // Dark (LINQ_MESSAGE_EDIT_ENABLED unset): an edit is the ignored event it was before VIL-479.
+    expect(parseLinqWebhook(edited, FALLBACK)).toEqual({
+      kind: 'ignored',
+      reason: 'not_message_received',
+    });
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    expect(parseLinqWebhook({ ...received(), event_type: 'message.edited' }, FALLBACK)).toEqual({
+      kind: 'ignored',
+      reason: 'malformed',
+    });
+    expect(parseLinqWebhook(edited, FALLBACK)).toEqual({
+      kind: 'edit',
+      edit: {
+        messageId: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+        chatId: '8f392755-6865-4b18-880a-227f9d8b458f',
+        partIndex: 0,
+        text: 'Swim is at 5.',
+        editedAt: new Date('2026-03-05T02:12:46.487Z'),
+        direction: 'outbound',
+        isFromMe: true,
+      },
+    });
+    vi.unstubAllEnvs();
 
     expect(parseLinqWebhook({ ...received(), event_type: 'message.read' }, FALLBACK)).toEqual({
       kind: 'receipt',

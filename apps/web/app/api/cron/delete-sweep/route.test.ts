@@ -27,9 +27,15 @@ vi.mock('~/lib/channel/checkin/notes', () => ({ purgeExpiredCheckInNotes: async 
 vi.mock('~/lib/channel/linq/roster-retention', () => ({
   sweepRosterRetention: async () => ({ outcome: 'not_migrated' }),
 }));
+vi.mock('~/lib/channel/linq/secret-santa', () => ({
+  sweepSecretSantaRetention: async () => ({ cancelled: 0, deleted: 0 }),
+}));
 vi.mock('~/lib/signup/browser-use/runner', () => ({ remoteProfileDeleterFromEnv: () => null }));
 vi.mock('~/lib/signup/browser-use/vault', () => ({
   sweepExpiredProviderSessions: async () => ({ deleted: 0, remotePending: 0, remoteFailed: 0 }),
+}));
+vi.mock('~/lib/signup/credentials/store', () => ({
+  sweepStaleProviderCredentials: async () => ({ deleted: 0 }),
 }));
 
 function summaryWithGoogleRow(): DeletionSweepSummary {

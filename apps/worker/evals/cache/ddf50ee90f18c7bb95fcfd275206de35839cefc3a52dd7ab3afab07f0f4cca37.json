@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Generic thanks, plan still stands; no change or cancellation",
+    "said": null,
+    "named": null,
+    "verdict": "unrelated",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1939
+}

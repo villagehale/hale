@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reasoning": "m1 is an image with no text and m2 asks to add this to the calendar. An attachment and the words about it are one ask, so both refs form a single group.",
+    "groups": [
+      [
+        "m1",
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1175
+}

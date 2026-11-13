@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzSppfwk64EF6uFPXEKg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSswUKEAgTGAI4AUIIdGhpbmtpbmcSDJDYfBVQ1gdb2PDDiBoMycNeEiJxpB4+CJB9IjApevcJA434e2YFSEPLl+AQasaOGP0/eqAtx/7ZV6f1hsbNZ0RoAXFSxGwPM9TxAlAq0ARGb2ZfFyv/FWWLrsM7RBoB09Pmj9l7Z2fUrBRXHKwy5c9dj48UvDlZ2733zv+O6GyRJKLRZeEAzL59c6WSNzjhNQCoIZyzpZZ/c4j4kVL/b9CdO0yoj3BQyiu/lHt9B3p8k9W6GbYQHCnnajVtsfDnuUkT5he5PXJCjsLJX7kelu1v0Hjbw8pov3mlq3f+j+V9/3ewMlZxpdeWIDdg+ccWtRITqXz1u7eHF6vlJkAMz67TVPWAVT19NZcncz4cT42xK8b7wL5FgZ3kboq6WRu5mjechBzJ7b5NrB1pXOt2bbo92s9bmzYWd7/WRmQdAP3U3QvcJdyuEjzEmPBoVircHCD/AXxItzWc5+7xzr/G/GbaqwGO0GLIo/EYftPlPpfSaA3RZGc8CTmgtVhST9EwqdFzbV/sk7WxDkr7pqiTLCNbTgTVG/C8h4B7PQ8ILOtu/v4bTGvD7usbLJd9F+hPrdygXVr29J807MSG1ZdTGzcL0baE2dB2UF4Y0avBQZUnCNRQ7tzmDmM2T3cmOGmjacACZYcf0EOGZQ81HRQR7umTlMYkjdK0493QxbtFzb5sm+MCOpB5Jhff3AREjxQnoJnZndF7nrtg+8TtC4lJ4kVJUHhqwkapL6n2J8BxIPmpX2QCCNrShXy8en2V3VKMbCDLnmAhokic/3zzYSF1DHwJPyL/TQb405JBQim79xCRrhlwcmt7deu2dYDjQ/93OTwptjxbQwvW5zZyGMPjaqG8hzJouUMLCxye0WiI7bYHth+v4UFIzX9T6nWawTuyGAE="
+      },
+      {
+        "type": "text",
+        "text": "I don't see piano on this week. Want me to check next week?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1275,
+      "cache_read_input_tokens": 23770,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1275,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 36,
+      "output_tokens_details": {
+        "thinking_tokens": 16
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1423
+}

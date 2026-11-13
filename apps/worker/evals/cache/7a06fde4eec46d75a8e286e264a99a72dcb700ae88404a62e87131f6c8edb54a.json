@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubble 1 is a lead-in count ('有两个适合…的…'), which the rubric explicitly forbids; the first bubble should already be the first item or the answer. Otherwise the reply is in Chinese, names both classes with day/time, gives the Dec 1 7:00 registration, and the page links sit at the end. Only one flaw, but it is the lead-in, which is never a small stylistic flaw.",
+    "score": 3
+  }
+}

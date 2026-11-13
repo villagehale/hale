@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Thursday 6 PM local is the pre-weekend evening outside quiet hours, Saturday is open and fits the library session, the parent is engaged with no unanswered streak, so send the weekend find now.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

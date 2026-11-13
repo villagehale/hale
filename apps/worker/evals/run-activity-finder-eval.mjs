@@ -88,13 +88,13 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   pageCarriesSchedule,
   preparePage,
   statesAFigure,
   statesNoCost,
 } from './lib/quote-match.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');

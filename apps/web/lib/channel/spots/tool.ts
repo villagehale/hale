@@ -11,6 +11,7 @@ import type {
 import { registrationPageUrl } from '~/lib/registration/page';
 import { zonedNaiveInstant } from '~/lib/registration/sequence/prepare';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
+import { urlSeenThisTurn } from '~/lib/signup/offer-tool';
 import { type SpotReading, readSpot } from './availability';
 import { anyPageSpotWatchEnabled, watchedSpotsEnabled } from './flag';
 import type { SpotWatchIntent } from './store';
@@ -60,6 +61,11 @@ export interface SpotWatchPorts {
   /** A page outside the PerfectMind registry, read by the model on the DNS-pinned
    * fetcher (registration/class-availability.ts). Asked only while that flag is on. */
   readClassAvailability: ClassAvailabilityReader;
+  /** The parent's message this turn, verbatim. */
+  parentWords: string;
+  /** Pages a tool put in front of the parent this turn. Never a URL read off a photo or a
+   * PDF that the parent did not type (photoFactWatchLinks). */
+  linksThisTurn: () => readonly { title: string; url: string }[];
 }
 
 export interface SpotWatchToolArgs extends SpotWatchPorts {
@@ -130,6 +136,10 @@ function readingRefusal(reading: SpotReading, portalLabel: string): string | nul
 
 const PAGE_URL_REFUSAL =
   'That link is not one I will read - it has to be the plain public web address of the class page. Ask the parent to copy it from their browser bar on the page itself.';
+
+/** WHY A LINK THE PARENT DID NOT SEND IS NOT WATCHED, even one a photo or a file showed. */
+const NOT_SENT_REFUSAL =
+  'The parent did not send that link in this message - a link read off a photo or a file does not count - so I have not started watching anything. Ask them to paste the link from the course page itself, as a question with a question mark.';
 
 /** WHY THIS PAGE IS NOT WATCHABLE, off what the model reader's checked reading returned. */
 function pageReadingRefusal(reading: ClassAvailabilityReading): string | null {
@@ -231,6 +241,13 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       if (!link.ok && page === null) throw new Error(urlRefusal(link.reason));
       if (page?.outcome === 'refused') throw new Error(PAGE_URL_REFUSAL);
 
+      // THE LINK IS THE PARENT'S, the guard offer_signup uses: the whole URL as they typed
+      // it, or one a tool put in front of them this turn. A URL the model typed, or one
+      // only a photo or PDF carried, is refused before anything reads it.
+      if (!urlSeenThisTurn(input.url, args.parentWords, args.linksThisTurn())) {
+        throw new Error(NOT_SENT_REFUSAL);
+      }
+
       // THE LABEL IS THE ONE FREE-TEXT FIELD THAT SURVIVES THIS TURN. It is stored until
       // the class starts and printed inside a text Hale sends unprompted, so it crosses the
       // same gate as a search subject — and then two more, because that gate is allowed
@@ -274,8 +291,9 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
           label: collapsed,
           instant: input.instant ?? false,
           lastState: read.state as 'full' | 'waitlist_full',
-          // No session start this reader can stand behind: the sixty-day bound holds.
-          sessionStartsAt: null,
+          // The listing's own first-class date when the reader could stand behind it;
+          // null keeps the sixty-day bound for a page that never printed one.
+          sessionStartsAt: read.sessionStartsAt,
           sessionAnchor: read.session,
         });
         return { watching: true as const };

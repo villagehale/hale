@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "That's completely fair, and you don't have to share your exact spot. A rough area works too: just the first three characters of your postal code, or the first five digits of a US ZIP, so I can find things nearby without knowing your street. What would you be comfortable with?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "postalCode": null,
+    "placeDeclined": false,
+    "language": "en"
+  },
+  "latencyMs": 2011
+}

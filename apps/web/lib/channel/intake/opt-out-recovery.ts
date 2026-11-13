@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
-import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { threadIfParent } from '~/lib/channel/thread';
 import {
@@ -26,7 +26,7 @@ import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/pr
 import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { crisisRegionForPlace } from './derive';
 import { type Inbound, handleStop, writeChannelMessage } from './machine';
-import { releaseHeldMessage } from './opt-out-hold';
+import { MESSAGE_HOLD, placeHold, releaseHeldMessage } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
 import {
   type IntakeSession,
@@ -54,7 +54,9 @@ import type { ChannelTransport } from './transport';
  * A stop is settled against {@link numberHolderTimeline}, latest row wins: it stops the
  * holder of its number at the time only while they still hold it and the number's owner
  * has done nothing from it since. Then it runs the live stop path ({@link handleStop}) on
- * that number alone.
+ * that number alone, silently: a stop read late is applied at once and nothing is texted
+ * to the number, day or night. Its owner already said stop; only a text they send later,
+ * which the live path answers, opens the thread again.
  *
  * VIL-602 · a text read late as a crisis gets the live crisis reply ({@link
  * deliverCrisisReply}: the same writer, check, re-ask and pager), one-to-one, while the
@@ -67,10 +69,8 @@ import type { ChannelTransport } from './transport';
  */
 
 export const HELD_READ_OUTCOMES = [
-  'stopped',
-  'stopped_confirmation_unsent',
-  /** Revoked, but the confirmation send threw: kept held and read again. */
-  'stopped_confirmation_failed',
+  /** Revoked, withdrawn and audited at once; no confirmation is sent. Released. */
+  'stopped_late_unconfirmed',
   /** Whoever holds the number did something from it after the stop: verified a channel on
    * it (a START writes one) or texted it into a new intake. The newer row wins, nobody is
    * stopped, nothing is sent. */
@@ -105,13 +105,15 @@ export const HELD_READ_OUTCOMES = [
   'recovery_failed',
   'no_channel',
   'claimed_elsewhere',
+  /** A collision hold, or a kind this code does not know: never read, never released by a
+   * pass. Kept (fail closed) until an operator clears it. */
+  'held_for_operator',
 ] as const;
 
 export type HeldReadOutcome = (typeof HELD_READ_OUTCOMES)[number];
 
 /** Outcomes that leave the row standing. Every other outcome read the text and released it. */
 const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
-  'stopped_confirmation_failed',
   'stop_failed',
   'timeline_unresolved',
   'recovery_failed',
@@ -119,13 +121,14 @@ const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'not_yet_recorded',
   'unrecorded',
   'claimed_elsewhere',
+  'held_for_operator',
   'crisis_unanswered',
   'crisis_reply_in_flight',
 ]);
 
 export interface OptOutRecoveryDeps {
   reader: OptOutReader;
-  /** The confirmation of a stop, or the reply to a crisis, read late — REQUIRED (rule #11). */
+  /** Sends the reply to a crisis read late — REQUIRED (rule #11). A stop read late sends nothing. */
   transport: ChannelTransport;
   /** Writes the reply to a crisis read late — REQUIRED (rule #11). */
   saidLine: SaidLineWriter;
@@ -268,6 +271,7 @@ async function recoverRow(
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   if (claimed.length === 0) return 'claimed_elsewhere';
+  if (row.kind !== MESSAGE_HOLD) return 'held_for_operator';
   // A reply to this text was sent: nothing is read, and nothing is sent again. One still
   // leaving is waited for; one that never left is not a reply.
   const reply = await crisisReplyState(database, row.providerMessageId, now);
@@ -317,6 +321,7 @@ async function recoverRow(
       actionTaken: 'opt_out_hold_read',
       // About one adult, the parent who texted, so History and the family copy leave it
       // out. It names no outcome: a stop or a crisis is not another adult's to read.
+      audience: held.authorUserId,
       targetTable: 'users',
       targetId: held.authorUserId,
     });
@@ -358,7 +363,7 @@ async function settleReading(
         reading,
       );
     case 'stop':
-      return lateStop(database, deps, row, held, reading.confirmation);
+      return lateStop(database, deps, row, held);
   }
 }
 
@@ -367,7 +372,6 @@ async function lateStop(
   deps: OptOutRecoveryDeps,
   row: HeldRow,
   held: HeldText,
-  confirmation: string,
 ): Promise<HeldReadOutcome> {
   const timeline = await numberHolderTimeline(database, row.phoneHash);
   const verdict = lateStopVerdict(timeline, held.inbound.receivedAt, held.authorUserId);
@@ -386,7 +390,9 @@ async function lateStop(
   const open = verdict === 'holder' ? await loadOpenSession(database, held.phoneE164) : null;
   const sendable = verdict === 'holder' && (await stillSendable(database, held.phoneE164));
   try {
-    const stopped = await handleStop(
+    // No confirmation: texting a number hours after its owner said stop is the one thing
+    // a stop forbids. The live STOP path still confirms.
+    await handleStop(
       database,
       {
         phoneE164: held.phoneE164,
@@ -396,36 +402,22 @@ async function lateStop(
         session: open ? { ...open, familyId: null, userId: null } : null,
         now: deps.now,
         providerAnswered: false,
-        // A number that already stopped is not told twice.
-        confirmation: sendable ? confirmation : '',
       },
       { transport: deps.transport },
     );
-    if (!sendable) return 'already_stopped';
-    if (stopped.status === 'stopped' && stopped.ack === 'voice_unsent') {
-      console.error(
-        { outcome: 'stopped_confirmation_unsent' },
-        'opt-out recovery: stop read late, revoked - confirmation not sent',
-      );
-      return 'stopped_confirmation_unsent';
-    }
-    return 'stopped';
   } catch (err) {
-    const name = errName(err);
-    // Nothing was to be sent, or the number can still be texted: the stop itself failed.
-    if (!sendable || (await stillSendable(database, held.phoneE164))) {
-      console.error(
-        { outcome: 'stop_failed', err: name },
-        'opt-out recovery: stop read late but the stop path failed - kept held; the opt-out hold sweep pages it',
-      );
-      return 'stop_failed';
-    }
     console.error(
-      { outcome: 'stopped_confirmation_failed', err: name },
-      'opt-out recovery: stop read late, revoked - confirmation send failed, kept held',
+      { outcome: 'stop_failed', err: errName(err) },
+      'opt-out recovery: stop read late but the stop path failed - kept held; the opt-out hold sweep pages it',
     );
-    return 'stopped_confirmation_failed';
+    return 'stop_failed';
   }
+  if (!sendable) return 'already_stopped';
+  console.info(
+    { outcome: 'stopped_late_unconfirmed' },
+    'opt-out recovery: stop read late, revoked - nothing sent',
+  );
+  return 'stopped_late_unconfirmed';
 }
 
 const LATE_READ = 'late_read';
@@ -630,8 +622,9 @@ async function isParentOf(
 
 /** One holding of a number: a parent channel until it is revoked, an intake session
  * until it closes, a caregiver invite until it closes, or a guest's reminder opt-in. Only
- * a channel or a session names who holds the number. An invite or an opt-in is a record
- * someone else made about the number; it only scopes what a stop reaches. */
+ * a verified channel or a session names who holds the number. An invite or an opt-in is a
+ * record someone else made about the number; it only scopes what a stop reaches. An
+ * unverified channel is a number typed into a form, and names nobody. */
 export interface NumberHolding {
   kind: 'channel' | 'session' | 'invite' | 'guest_reminders';
   id: string;
@@ -777,7 +770,7 @@ function onePerson(holdings: NumberHolding[]): NumberHolding | null | 'ambiguous
 }
 
 function namesHolder(holding: NumberHolding): boolean {
-  return holding.kind === 'channel' || holding.kind === 'session';
+  return (holding.kind === 'channel' || holding.kind === 'session') && holding.ownerMade;
 }
 
 /** Who held the number when `at` came: 'ambiguous' when two people did. */
@@ -994,17 +987,16 @@ async function repointLegacyHold(
   // read is gone, so holding them again would re-read it every tick. Once nothing is
   // left to place, the row goes after one last pass (a repeat read at most once).
   if (ids.length > 0 && (row.repointedAt === null || unplaceable === 0)) {
-    await database
-      .insert(schema.optOutHeldMessages)
-      .values(
-        ids.map((providerMessageId) => ({
-          providerMessageId,
-          phoneHash: row.phoneHash,
-          heldAt: row.heldAt,
-          nextReadAt: now,
-        })),
-      )
-      .onConflictDoNothing();
+    // One at a time through the shared writer: an id another number holds becomes this
+    // number's collision hold, never a silent no-op that lets the legacy row go.
+    for (const providerMessageId of ids) {
+      await placeHold(database, {
+        providerMessageId,
+        phoneHash: row.phoneHash,
+        heldAt: row.heldAt,
+        nextReadAt: now,
+      });
+    }
     result.repointed += ids.length;
   }
   if (unplaceable > 0) {

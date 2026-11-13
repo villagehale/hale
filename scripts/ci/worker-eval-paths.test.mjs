@@ -144,6 +144,7 @@ describe('the committed pnpm-lock.yaml', () => {
       'apps/worker',
       'packages/agent',
       'packages/db',
+      'packages/flags',
       'packages/tools-contracts',
       'packages/types',
     ]);
@@ -240,7 +241,7 @@ describe('ci.yml wiring', () => {
     expect(buildAt).toBeGreaterThan(-1);
     expect(firstEval).toBeGreaterThan(buildAt);
     expect(evals).toContain(
-      'pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build',
+      'pnpm --filter @hale/db --filter @hale/types --filter @hale/flags --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build',
     );
     const commands = [
       'eval:classifier',
@@ -259,6 +260,8 @@ describe('ci.yml wiring', () => {
       'eval:medical-symptom',
       'eval:turn-apology',
       'eval:holding-line',
+      'eval:holding-line-judge',
+      'eval:holding-line-judge:dry',
       'eval:followup-voice',
       'eval:identity-ask',
       'eval:reminder',
@@ -292,5 +295,14 @@ describe('ci.yml wiring', () => {
     expect(at).toBeGreaterThan(-1);
     expect(evals.slice(Math.max(0, at - 250), at)).not.toContain('continue-on-error');
     expect(jobBlock('verify')).not.toContain('eval:name-takeback');
+  });
+
+  it('runs the holding-line judge eval as a hard cached-only gate', () => {
+    const evals = jobBlock('worker-evals');
+    const at = evals.indexOf('run: pnpm --filter @hale/worker eval:holding-line-judge\n');
+    expect(at).toBeGreaterThan(-1);
+    const stepStart = evals.lastIndexOf('- name:', at);
+    expect(evals.slice(stepStart, at)).toContain('Holding-line judge (cached-only)');
+    expect(evals.slice(stepStart, at)).not.toContain('continue-on-error');
   });
 });

@@ -50,6 +50,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   normalizeForCompare,
   skillSampleSentences,
@@ -57,7 +58,6 @@ import {
   variationLines,
 } from './lib/variation.mjs';
 import { APOLOGY_FIXTURES, MIN_DISTINCT } from './turn-apology-fixtures.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');

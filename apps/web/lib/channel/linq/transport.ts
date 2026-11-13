@@ -31,8 +31,9 @@ import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
 
 const LINQ_API_BASE = 'https://api.linqapp.com/api/partner/v3';
 
-/** Inside Linq's 10s webhook budget when a keyword ack sends inline, and short
- * enough that a hung partner fails the turn instead of holding the instance. */
+/** Inside Linq's webhook timeout (LINQ_WEBHOOK_TIMEOUT_MS, signature.ts) when a keyword
+ * ack sends inline, and short enough that a hung partner fails the turn instead of holding
+ * the instance. */
 export const SEND_TIMEOUT_MS = 8_000;
 
 const TEXT_MAX = 10_000;
@@ -407,6 +408,8 @@ export async function sendLinqParts(input: {
   chatId: string;
   parts: readonly LinqOutboundPart[];
   replyTo?: LinqReplyTarget;
+  /** iMessage only; Linq ignores this on SMS and RCS. */
+  effect?: LinqMessageEffect;
   /** The caller's identity for this one send (see `linqSendKey`). */
   sendKey?: string;
   fetch?: typeof fetch;
@@ -421,6 +424,9 @@ export async function sendLinqParts(input: {
       message_id: input.replyTo.messageId,
       ...(input.replyTo.partIndex !== undefined ? { part_index: input.replyTo.partIndex } : {}),
     };
+  }
+  if (input.effect) {
+    message.effect = { type: input.effect.type, name: input.effect.name };
   }
   const armed = cadenceArmed();
   if (armed) message.idempotency_key = linqSendKey(input.sendKey);
@@ -505,6 +511,7 @@ export async function sendLinqChatMessage(input: {
   /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
   decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
+  effect?: LinqMessageEffect;
   /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
   mention?: string;
   /** The caller's identity for this one send (see `linqSendKey`). */
@@ -529,6 +536,7 @@ export async function sendLinqChatMessage(input: {
         },
       ],
       replyTo,
+      effect: input.effect,
       sendKey,
       fetch: input.fetch,
     });
@@ -580,6 +588,51 @@ export async function sendLinqChatMessage(input: {
       input.sendKey === undefined ? undefined : `${input.sendKey}:plain`,
     );
   }
+}
+
+/**
+ * VIL-479 · Replace one text part of a message Hale already sent.
+ *
+ * `PATCH /v3/messages/{messageId}` with `part_index` and the new `text`. iMessage
+ * only, text parts only, and Linq keeps the same message id. There is no unsend:
+ * this is the correction, and the wording is the caller's — this function sends
+ * `text` and nothing else.
+ *
+ * https://docs.linqapp.com/channel/imessage/api/resources/messages/methods/update/
+ */
+export async function editLinqMessage(input: {
+  messageId: string;
+  text: string;
+  /** 0-based. Omitted means the first part, which is the only part of a text bubble. */
+  partIndex?: number;
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  const partIndex = input.partIndex ?? 0;
+  if (
+    !input.messageId ||
+    input.text.length === 0 ||
+    input.text.length > TEXT_MAX ||
+    !Number.isInteger(partIndex) ||
+    partIndex < 0
+  ) {
+    throw new LinqSendError('invalid_edit', 400, true);
+  }
+  const result = await linqRequest({
+    method: 'PATCH',
+    path: `/messages/${encodeURIComponent(input.messageId)}`,
+    body: { text: input.text, part_index: partIndex },
+    fetch: input.fetch,
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const providerMessageId = readLinqMessageId(result.payload) ?? topLevelId(result.payload);
+  return { providerMessageId: providerMessageId ?? input.messageId };
+}
+
+function topLevelId(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  return typeof payload.id === 'string' && payload.id ? payload.id : null;
 }
 
 /**
@@ -848,6 +901,24 @@ export async function updateLinqGroupChat(input: {
     method: 'PUT',
     path: `/chats/${encodeURIComponent(input.chatId)}`,
     body,
+    fetch: input.fetch,
+  });
+}
+
+/**
+ * VIL-478 — set a named colour swatch behind a chat. Colour only: no dynamic, no
+ * photo. Linq answers 202 (accepted, not applied); the result lands on
+ * `chat.background_updated`. Sends no message bubble.
+ */
+export async function setLinqChatBackground(input: {
+  chatId: string;
+  variant: 'ice';
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  return linqEffect({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/background`,
+    body: { type: 'color', variant: input.variant },
     fetch: input.fetch,
   });
 }
@@ -1205,36 +1276,51 @@ export const LINQ_BUBBLE_EFFECTS = ['slam', 'loud', 'gentle', 'invisible'] as co
 
 export type LinqScreenEffect = (typeof LINQ_SCREEN_EFFECTS)[number];
 export type LinqBubbleEffect = (typeof LINQ_BUBBLE_EFFECTS)[number];
+export type LinqMessageEffect =
+  | { type: 'screen'; name: LinqScreenEffect }
+  | { type: 'bubble'; name: LinqBubbleEffect };
+
+const SCREEN_EFFECTS: ReadonlySet<string> = new Set(LINQ_SCREEN_EFFECTS);
+const BUBBLE_EFFECTS: ReadonlySet<string> = new Set(LINQ_BUBBLE_EFFECTS);
+
+/** True when `value` is a screen or bubble effect Linq will accept. */
+export function isLinqMessageEffect(value: unknown): value is LinqMessageEffect {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as { type?: unknown; name?: unknown };
+  if (typeof record.name !== 'string') return false;
+  if (record.type === 'screen') return SCREEN_EFFECTS.has(record.name);
+  if (record.type === 'bubble') return BUBBLE_EFFECTS.has(record.name);
+  return false;
+}
 
 /**
- * Send one text with an iMessage effect. Helper only — no product moment calls
- * this. Confetti and invisible ink stay off the kids-year path until Design
- * names a moment.
+ * Send one text with an iMessage effect (VIL-473). The product moment is
+ * `applyLinqEffect`: the model chooses the effect, this helper posts it.
+ * Cadence and a refused `replyTo` follow {@link sendLinqChatMessage}.
  *
  * https://docs.linqapp.com/guides/messaging/message-effects/
  */
 export async function sendLinqEffect(input: {
   chatId: string;
   text: string;
-  effect: { type: 'screen'; name: LinqScreenEffect } | { type: 'bubble'; name: LinqBubbleEffect };
+  effect: LinqMessageEffect;
+  replyTo?: LinqReplyTarget;
+  /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
+  mention?: string;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   if (!input.text.trim()) throw new LinqSendError('invalid_parts', 400, true);
-  const result = await linqRequest({
-    method: 'POST',
-    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
-    body: {
-      message: {
-        parts: [{ type: 'text', value: input.text }],
-        effect: { type: input.effect.type, name: input.effect.name },
-      },
-    },
+  return sendLinqChatMessage({
+    chatId: input.chatId,
+    text: input.text,
+    replyTo: input.replyTo,
+    effect: input.effect,
+    ...(input.mention ? { mention: input.mention } : {}),
+    ...(input.sendKey ? { sendKey: input.sendKey } : {}),
     fetch: input.fetch,
   });
-  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
-  const providerMessageId = readLinqMessageId(result.payload);
-  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
-  return { providerMessageId };
 }
 
 const URL_IN_TEXT = /https?:\/\//i;
@@ -1267,6 +1353,11 @@ async function findLinqDirectChat(input: {
 export type LinqChatService = 'iMessage' | 'SMS' | 'RCS' | 'other';
 
 const LINQ_CHAT_SERVICES: ReadonlySet<string> = new Set(['iMessage', 'SMS', 'RCS']);
+
+/** A service string Linq sent, or `other` for one this code does not know. */
+export function linqChatService(value: string): LinqChatService {
+  return LINQ_CHAT_SERVICES.has(value) ? (value as LinqChatService) : 'other';
+}
 
 /** One page of the account's chats, reduced to what a count needs. Handles and
  * display names never leave the parser (rule #1). */
@@ -1353,7 +1444,7 @@ export async function listLinqChatsPage(input: {
  */
 export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   return {
-    async send({ to, body, mediaUrls, decorations }) {
+    async send({ to, body, mediaUrls, decorations, replyIn }) {
       if (mediaUrls && mediaUrls.length === 0) {
         throw new LinqSendError('invalid_parts', 400, true);
       }
@@ -1362,6 +1453,46 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
       }
       const from = linqFromE164();
       if (!from) throw new LinqSendError('not_configured', 0, true);
+
+      // A later answer goes into the ask's own chat, under the message given, but only
+      // while that chat is still this parent's 1:1 on this line — found the way a link
+      // send finds its chat, by Hale's line and the parent's number now. A number or a
+      // line that moved since the ask, no 1:1 at all, or a lookup Linq failed or refused,
+      // sends as any other text below, unthreaded, and says why. A thread target Linq
+      // refuses is resent plain in that same chat (sendLinqChatMessage).
+      if (replyIn) {
+        if (mediaUrls) throw new LinqSendError('invalid_parts', 400, true);
+        const current = await findLinqDirectChat({ from, to, fetch: deps.fetch }).catch(
+          (err: unknown) => {
+            if (!(err instanceof LinqSendError)) throw err;
+            return err;
+          },
+        );
+        if (current instanceof LinqSendError) {
+          console.warn(
+            { reason: 'lookup_failed', code: current.code },
+            "linq: could not read this parent's 1:1 on this line - sending unthreaded",
+          );
+        } else if (current === replyIn.chatId) {
+          const sent = await sendLinqChatMessage({
+            chatId: replyIn.chatId,
+            text: body,
+            decorations,
+            replyTo: { messageId: replyIn.messageId },
+            fetch: deps.fetch,
+          });
+          return {
+            providerMessageId: sent.providerMessageId,
+            transport: 'imessage' as const,
+            chatId: replyIn.chatId,
+          };
+        } else {
+          console.warn(
+            { reason: current === null ? 'no_direct_chat' : 'chat_moved' },
+            "linq: the ask's chat is not this parent's 1:1 on this line - sending unthreaded",
+          );
+        }
+      }
 
       const media = mediaUrls ?? [];
       const hasUrl = URL_IN_TEXT.test(body);

@@ -110,6 +110,10 @@ function fakeDb(args: {
     createdAt: Date;
     revokedAt: Date | null;
   }[];
+  goingCountOptIns?: {
+    createdAt: Date;
+    revokedAt: Date | null;
+  }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -196,6 +200,11 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.sameActivityOptIns ?? []) };
   });
 
+  const goingCountOptInsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.goingCountOptIns ?? []) };
+  });
+
   const requesterWhere = vi.fn((cond: unknown) => {
     whereFamilyIds.push(cond);
     return {
@@ -245,37 +254,38 @@ function fakeDb(args: {
     if (which === 13) return { from: () => ({ where: signupsWhere }) };
     if (which === 14) return { from: () => ({ where: consentsWhere }) };
     if (which === 15) return { from: () => ({ where: optInsWhere }) };
+    if (which === 16) return { from: () => ({ where: goingCountOptInsWhere }) };
     // The four memory reads (facts, episodes, workstreams, commitments), empty here;
     // export.pglite.test.ts covers their content against real Postgres.
-    if (which >= 16 && which <= 19) {
+    if (which >= 17 && which <= 20) {
       return { from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([]) }) }) };
     }
     // How often each workstream was written, from the audit trail; none here.
-    if (which === 20) {
+    if (which === 21) {
       return { from: () => ({ where: () => ({ groupBy: vi.fn().mockResolvedValue([]) }) }) };
     }
     // The household section (export-household.ts): the calendar, the shared threads,
     // this family's seats and the group lists; export-household.pglite.test.ts covers
     // the content.
-    if (which === 21) return { from: () => ({ where: householdOrderedWhere }) };
-    if (which === 22)
+    if (which === 22) return { from: () => ({ where: householdOrderedWhere }) };
+    if (which === 23)
       return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
-    if (which === 23) return { from: () => ({ where: seatsWhere }) };
-    if (which === 24)
+    if (which === 24) return { from: () => ({ where: seatsWhere }) };
+    if (which === 25)
       return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
     // The requester's own section (export-requester.ts): their language settings, their
     // 1:1 thread, their language changes, consent rows, connections, calendar mirrors and
     // private asides; export.pglite.test.ts, export-household.pglite.test.ts and
     // group-private-aside.pglite.test.ts cover the content.
-    if (which === 25) return { from: () => ({ where: requesterWhere }) };
-    if (which === 26) {
+    if (which === 26) return { from: () => ({ where: requesterWhere }) };
+    if (which === 27) {
       return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
     }
-    if (which >= 27 && which <= 29) return { from: () => ({ where: requesterOrderedWhere }) };
-    if (which === 30) {
+    if (which >= 28 && which <= 30) return { from: () => ({ where: requesterOrderedWhere }) };
+    if (which === 31) {
       return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
     }
-    if (which === 31) return { from: () => ({ where: requesterOrderedWhere }) };
+    if (which === 32) return { from: () => ({ where: requesterOrderedWhere }) };
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -350,6 +360,7 @@ describe('assembleFamilyExport', () => {
     expect(doc.authorizedSignups).toEqual([]);
     expect(doc.signupFieldConsents).toEqual([]);
     expect(doc.sameActivityOptIns).toEqual([]);
+    expect(doc.goingCountOptIns).toEqual([]);
   });
 
   it('exports this household same-activity yes and not another household', async () => {
@@ -381,6 +392,33 @@ describe('assembleFamilyExport', () => {
       },
     ]);
     expect(JSON.stringify(doc.sameActivityOptIns)).not.toContain(OTHER_FAMILY_ID);
+  });
+
+  it('exports this household going-count yes and not another household', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      goingCountOptIns: [
+        {
+          createdAt: new Date('2026-10-01T12:00:00.000Z'),
+          revokedAt: null,
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.goingCountOptIns).toEqual([
+      {
+        createdAt: '2026-10-01T12:00:00.000Z',
+        revokedAt: null,
+      },
+    ]);
+    expect(JSON.stringify(doc.goingCountOptIns)).not.toContain(OTHER_FAMILY_ID);
   });
 
   it('exports an unconfirmed Google given name apart from the confirmed call name', async () => {
@@ -704,7 +742,7 @@ describe('assembleFamilyExport', () => {
     // asides) each recorded a
     // where-condition; none was left unscoped. (The condition objects are opaque
     // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(27);
+    expect(spies.whereFamilyIds).toHaveLength(28);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

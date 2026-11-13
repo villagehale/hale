@@ -139,7 +139,7 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const client = apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS) : null;
+  const client = apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' }) : null;
   return {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),

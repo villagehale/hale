@@ -5,8 +5,8 @@
 //   packages/agent/skills/group-plan-rsvp-voice.md + groupPlanRsvpLineInput
 // A judge scores meaning, 1-5. No word-matching gate.
 //
-// This file is not named run-*.mjs, so the Monday eval sweep does not pick it up.
-// It is not in ci.yml.
+// ci.yml replays it cached-only (`eval:group-plan-rsvp`). It is not named run-*.mjs,
+// so the Monday eval sweep does not pick it up.
 //
 //   node evals/group-plan-rsvp-eval.mjs --estimate
 //   HALE_SPEND_LEDGER=... node evals/group-plan-rsvp-eval.mjs --live --max-usd 0.03

@@ -4,6 +4,7 @@ import { and, desc, eq, gte, isNotNull, like, lte } from 'drizzle-orm';
 import { linqInboundConfigured, linqWebhookSecret } from '~/lib/channel/linq/config';
 import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import {
   CANARY_ANSWERED_ACTION,
   CANARY_BODY,
@@ -26,10 +27,11 @@ import { seedCanaryHousehold } from './seed';
  * the door answers 200 for every authentic request by design, so its response
  * proves only that the door is up.
  *
- * Nothing here is caught. `cronRoute` stamps the dead-man ledger only when the
- * handler RETURNS, so every throw below withholds the stamp and, at
- * 2×600+900 = 2100s, `inbound-canary` reads stale and pages: one failed tick
- * never wakes the founder, three consecutive do.
+ * Nothing here is swallowed. A failed tick pages #ops at once through the pager
+ * (VIL-602: a thrown error is a log line, and a log line pages nobody), one page per
+ * hour, naming the stage it failed at. Then it throws on: `cronRoute` stamps the dead-man
+ * ledger only when the handler RETURNS, so `inbound-canary` still reads stale at
+ * 2×600+900 = 2100s and the off-Vercel check pages too.
  */
 
 export interface InboundCanaryDeps {
@@ -38,6 +40,27 @@ export interface InboundCanaryDeps {
    * without a way to post is a monitor that silently monitors nothing. */
   fetch: typeof globalThis.fetch;
   now: () => Date;
+  /** Non-nullable (rule #11): a canary that fails with no way to page is a log line. */
+  pager: OpsPager;
+}
+
+/** Where a tick failed. The same closed list the `inbound_canary_failed` page carries. */
+export type InboundCanaryStage =
+  | 'not_configured'
+  | 'household'
+  | 'injection'
+  | 'not_landed'
+  | 'never_answered';
+
+/** A tick that failed at a known stage. Anything else that throws pages as `unexpected`. */
+export class InboundCanaryFailure extends Error {
+  override name = 'InboundCanaryFailure';
+  constructor(
+    readonly stage: InboundCanaryStage,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 /** Marks a `channel_messages` row as this cron's own, for the verify read. */
@@ -84,7 +107,7 @@ function signLinqBody(
 
 async function inject(deps: InboundCanaryDeps, now: Date): Promise<void> {
   const secret = linqWebhookSecret();
-  if (!secret) throw new Error('inbound canary: not configured');
+  if (!secret) throw new InboundCanaryFailure('not_configured', 'inbound canary: not configured');
   const url = `${appBaseUrl()}/api/channels/linq/inbound?version=${LINQ_WEBHOOK_VERSION}`;
   const messageId = canarySid(now);
   const rawBody = JSON.stringify({
@@ -117,7 +140,10 @@ async function inject(deps: InboundCanaryDeps, now: Date): Promise<void> {
   if (!response.ok) {
     // 503 is linq_not_configured, 403 is a signature the door will not accept —
     // either way the webhook is the thing to look at, and the status says which.
-    throw new Error(`inbound canary: the door refused the injection (${response.status})`);
+    throw new InboundCanaryFailure(
+      'injection',
+      `inbound canary: the door refused the injection (${response.status})`,
+    );
   }
 }
 
@@ -139,7 +165,8 @@ async function verifyPreviousTick(database: Database, familyId: string, now: Dat
     .limit(1);
 
   if (!prior?.sentAt) {
-    throw new Error(
+    throw new InboundCanaryFailure(
+      'not_landed',
       'inbound canary: no injection in the last 22 minutes landed as an inbound row — the door, the signature, or the canary channel is broken',
     );
   }
@@ -160,7 +187,8 @@ async function verifyPreviousTick(database: Database, familyId: string, now: Dat
     .limit(1);
 
   if (!answered) {
-    throw new Error(
+    throw new InboundCanaryFailure(
+      'never_answered',
       `inbound canary: the turn recorded at ${prior.sentAt.toISOString()} was never answered — the drain handler or the router is failing`,
     );
   }
@@ -177,9 +205,23 @@ async function verifyPreviousTick(database: Database, familyId: string, now: Dat
  *   3. INJECT, then
  *   4. VERIFY THE PREVIOUS TICK — in that order, so a broken lane keeps being
  *      probed and the alarm clears itself on the tick after a fix lands.
+ *
+ * Whatever throws pages #ops with its stage, then throws on.
  */
 export async function runInboundCanary(deps: InboundCanaryDeps): Promise<void> {
-  if (!linqInboundConfigured()) throw new Error('inbound canary: not configured');
+  try {
+    await runTick(deps);
+  } catch (err) {
+    const stage = err instanceof InboundCanaryFailure ? err.stage : 'unexpected';
+    await deps.pager.page({ site: 'inbound_canary_failed', facts: { stage } });
+    throw err;
+  }
+}
+
+async function runTick(deps: InboundCanaryDeps): Promise<void> {
+  if (!linqInboundConfigured()) {
+    throw new InboundCanaryFailure('not_configured', 'inbound canary: not configured');
+  }
 
   // Self-heal after a roster wipe: the canary household is data, not schema, and
   // a hard-delete of test families can take it with them. Seed is idempotent and
@@ -188,12 +230,15 @@ export async function runInboundCanary(deps: InboundCanaryDeps): Promise<void> {
   if (!household) {
     const seeded = await seedCanaryHousehold(deps.database);
     if (seeded.status === 'inactive') {
-      throw new Error(
+      throw new InboundCanaryFailure(
+        'household',
         `inbound canary: household inactive on family ${seeded.familyId} — re-activate deliberately`,
       );
     }
     household = await canaryChannel(deps.database);
-    if (!household) throw new Error('inbound canary: household not seeded');
+    if (!household) {
+      throw new InboundCanaryFailure('household', 'inbound canary: household not seeded');
+    }
   }
 
   const now = deps.now();

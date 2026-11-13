@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { type GroupHoldReason, groupAudienceAllows } from '../group-audience';
@@ -12,7 +12,10 @@ import { LinqSendError, listLinqParticipantHandles } from '../transport';
  * and (VIL-471) a group poll line.
  *
  * Claims the channel_messages row before Linq hears the line. A refusal marks
- * that same row failed. The covering family's primary parent owns the row.
+ * that same row failed. The covering family's primary parent owns the row on a
+ * claimed household chat. A shared multi-family chat has no covering family;
+ * the live plan's host household owns the row. That host is the sender who
+ * opened the plan, never another family in the chat.
  *
  * Before the claim, the family-chat floor reads who is in the chat now: a tally, a
  * follow-up and a poll line are `event_logistics`. A refused verdict claims nothing,
@@ -22,12 +25,39 @@ import { LinqSendError, listLinqParticipantHandles } from '../transport';
 export const GROUP_PLAN_RSVP_TEMPLATE = 'linq:group_plan_rsvp';
 export const GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE = 'linq:group_plan_rsvp_followup';
 export const GROUP_POLL_TEMPLATE = 'linq:group_poll';
+export const GROUP_PLAN_CALENDAR_ASK_TEMPLATE = 'linq:group_plan_calendar_ask';
+export const GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE = 'linq:group_plan_calendar_written';
+export const GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE = 'linq:group_plan_calendar_removed';
 
 export class GroupPlanRsvpHeld extends Error {
   constructor(readonly reason: GroupHoldReason) {
     super(`group plan rsvp: the family group may not hear it (${reason})`);
     this.name = 'GroupPlanRsvpHeld';
   }
+}
+
+async function ledgerFamilyForGroupPlanLine(
+  database: Database,
+  chatId: string,
+): Promise<{ id: string } | null> {
+  const [covering] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  if (covering) return covering;
+  const [plan] = await database
+    .select({ familyId: schema.linqGroupPlans.familyId })
+    .from(schema.linqGroupPlans)
+    .where(and(eq(schema.linqGroupPlans.chatId, chatId), isNull(schema.linqGroupPlans.closedAt)))
+    .limit(1);
+  if (plan) return { id: plan.familyId };
+  const [poll] = await database
+    .select({ familyId: schema.linqGroupPolls.familyId })
+    .from(schema.linqGroupPolls)
+    .where(and(eq(schema.linqGroupPolls.chatId, chatId), isNull(schema.linqGroupPolls.closedAt)))
+    .limit(1);
+  return poll ? { id: poll.familyId } : null;
 }
 
 export async function sendGroupPlanRsvpLine(
@@ -38,16 +68,15 @@ export async function sendGroupPlanRsvpLine(
     templateKey:
       | typeof GROUP_PLAN_RSVP_TEMPLATE
       | typeof GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE
-      | typeof GROUP_POLL_TEMPLATE;
+      | typeof GROUP_POLL_TEMPLATE
+      | typeof GROUP_PLAN_CALENDAR_ASK_TEMPLATE
+      | typeof GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE
+      | typeof GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE;
     now: Date;
     listChatHandles?: ListChatHandles;
   },
 ): Promise<{ providerMessageId: string }> {
-  const [family] = await database
-    .select({ id: schema.families.id })
-    .from(schema.families)
-    .where(eq(schema.families.linqGroupChatId, input.chatId))
-    .limit(1);
+  const family = await ledgerFamilyForGroupPlanLine(database, input.chatId);
   if (!family) {
     console.warn({ outcome: 'no_covering_family' }, 'group plan rsvp: send not ledgered');
     throw new Error('group plan rsvp: no covering family');

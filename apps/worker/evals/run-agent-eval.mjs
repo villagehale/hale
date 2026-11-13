@@ -43,6 +43,7 @@ import {
   judgeLaneFor,
   lazyAnthropic,
   liveStructuredCall,
+  withoutCacheTtl,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 
@@ -92,7 +93,9 @@ async function loadFixtures(dirName) {
 // generator calls from the judge calls.
 
 function cacheKey(tag, payload) {
-  return createHash('sha256').update(`${tag}\n${payload}`).digest('hex');
+  return createHash('sha256')
+    .update(`${tag}\n${withoutCacheTtl(payload)}`)
+    .digest('hex');
 }
 
 async function cacheGet(key) {
