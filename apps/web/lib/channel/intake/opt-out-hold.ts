@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
@@ -9,6 +10,25 @@ import {
   decodeIntakeForRecovery,
   isUnreadableIntakeBlob,
 } from './session';
+
+/** Joins a colliding provider id to a digest of the second number. The digest is not the
+ * number: phone_hash stays its own column, and a replay of the same pair writes this same
+ * key, so two deliveries cannot leave two rows. */
+const COLLISION_KEY_INFIX = '#collision:';
+
+function collisionKeyOf(providerMessageId: string, phoneHash: string): string {
+  return `${providerMessageId}${COLLISION_KEY_INFIX}${createHash('sha256').update(phoneHash).digest('hex')}`;
+}
+
+/** A hold on one text, released once that text is read. */
+export const MESSAGE_HOLD = 'message';
+/** A number whose text shares its provider id with another number's hold. No store can
+ * place it, so only an operator clears it ({@link clearCollisionHold}). */
+export const ID_COLLISION_HOLD = 'id_collision';
+
+/** The only rows a read or a recovery pass may release. A kind this code does not know is
+ * not one, so it is kept like a collision (fail closed). */
+const releasableHold = eq(schema.optOutHeldMessages.kind, MESSAGE_HOLD);
 
 /**
  * #868 · the hold after an opt-out read fails twice. No keyword list stands behind the
@@ -21,32 +41,121 @@ import {
 export async function holdSender(
   database: Database,
   input: { phoneHash: string; providerMessageId: string; now: Date },
-): Promise<'held' | 'already_held'> {
-  const inserted = await database
-    .insert(schema.optOutHeldMessages)
-    .values({
-      providerMessageId: input.providerMessageId,
-      phoneHash: input.phoneHash,
-      heldAt: input.now,
-      nextReadAt: input.now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.optOutHeldMessages.providerMessageId });
+): Promise<HoldOutcome> {
   console.warn(
     { hold: 'opt_out_unread' },
     'opt-out read failed twice - sender held from proactive sends until the text is re-read; the opt-out hold sweep pages it',
   );
-  return inserted.length > 0 ? 'held' : 'already_held';
+  return placeHold(database, {
+    phoneHash: input.phoneHash,
+    providerMessageId: input.providerMessageId,
+    heldAt: input.now,
+    nextReadAt: input.now,
+  });
 }
 
-/** This exact text has been read. Releases its own row and no other. */
+export type HoldOutcome = 'held' | 'already_held' | 'held_id_collision';
+
+/**
+ * Holds one text of one number: every writer of a hold row comes through here (the live
+ * hold above, and the legacy re-point in opt-out-recovery.ts). The provider id is the key
+ * across every transport, so an id another number's text already holds never holds this
+ * number by nothing. Fail closed: this number gets a collision hold of its own, under a key
+ * no store can place, which only an operator clears. The key names no number. A second
+ * delivery of the same pair writes that same key and returns already_held, so it cannot
+ * leave a second row.
+ */
+export async function placeHold(
+  database: Database,
+  input: { phoneHash: string; providerMessageId: string; heldAt: Date; nextReadAt: Date },
+): Promise<HoldOutcome> {
+  const inserted = await database
+    .insert(schema.optOutHeldMessages)
+    .values({ ...input, kind: MESSAGE_HOLD })
+    .onConflictDoNothing()
+    .returning({ id: schema.optOutHeldMessages.providerMessageId });
+  if (inserted.length > 0) return 'held';
+  const [existing] = await database
+    .select({ phoneHash: schema.optOutHeldMessages.phoneHash })
+    .from(schema.optOutHeldMessages)
+    .where(eq(schema.optOutHeldMessages.providerMessageId, input.providerMessageId))
+    .limit(1);
+  if (existing?.phoneHash === input.phoneHash) return 'already_held';
+  const collision = await database
+    .insert(schema.optOutHeldMessages)
+    .values({
+      ...input,
+      providerMessageId: collisionKeyOf(input.providerMessageId, input.phoneHash),
+      kind: ID_COLLISION_HOLD,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.optOutHeldMessages.providerMessageId });
+  if (collision.length === 0) return 'already_held';
+  // A site of its own, so an unrelated failed hold this hour cannot use up its page.
+  await pageOps(database, { site: 'opt_out_hold_id_collision', facts: {} });
+  return 'held_id_collision';
+}
+
+/**
+ * The operator path, and the only one, that clears a hold that is not a message hold
+ * (scripts/clear-opt-out-collision-hold.ts). A message hold is never taken here: it goes
+ * when its text is read. The number's verified holders each get an audit row about them.
+ */
+export async function clearCollisionHold(
+  database: Database,
+  holdKey: string,
+): Promise<'cleared' | 'not_a_collision_hold'> {
+  return database.transaction(async (tx) => {
+    const [cleared] = await tx
+      .delete(schema.optOutHeldMessages)
+      .where(
+        and(
+          eq(schema.optOutHeldMessages.providerMessageId, holdKey),
+          ne(schema.optOutHeldMessages.kind, MESSAGE_HOLD),
+        ),
+      )
+      .returning({ phoneHash: schema.optOutHeldMessages.phoneHash });
+    if (!cleared) return 'not_a_collision_hold';
+    const holders = await tx
+      .select({ familyId: schema.parentChannels.familyId, userId: schema.parentChannels.userId })
+      .from(schema.parentChannels)
+      .where(
+        and(
+          eq(schema.parentChannels.phoneE164Hash, cleared.phoneHash),
+          isNull(schema.parentChannels.revokedAt),
+          isNotNull(schema.parentChannels.verifiedAt),
+        ),
+      );
+    if (holders.length > 0) {
+      await tx.insert(schema.auditLog).values(
+        holders.map((holder) => ({
+          familyId: holder.familyId,
+          actor: 'system',
+          actionTaken: 'opt_out_hold_cleared',
+          // About the one adult who holds the number, as opt_out_hold_read is.
+          targetTable: 'users',
+          targetId: holder.userId,
+        })),
+      );
+    } else {
+      // No family to write it to (audit_log.family_id is NOT NULL).
+      console.info(
+        { outcome: 'collision_hold_cleared', holders: 0 },
+        'opt-out hold: an operator cleared a collision hold on a number nobody holds',
+      );
+    }
+    return 'cleared';
+  });
+}
+
+/** This exact text has been read. Releases its own message hold and no other row. */
 export async function releaseHeldMessage(
   database: Database,
   providerMessageId: string,
 ): Promise<'released' | 'not_held'> {
   const deleted = await database
     .delete(schema.optOutHeldMessages)
-    .where(eq(schema.optOutHeldMessages.providerMessageId, providerMessageId))
+    .where(and(eq(schema.optOutHeldMessages.providerMessageId, providerMessageId), releasableHold))
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   return deleted.length > 0 ? 'released' : 'not_held';
 }
@@ -339,6 +448,8 @@ export async function releaseErasedHolds(
     (hash) => !stillHeld.has(hash),
   );
   if (released.length > 0) {
+    // Every kind, collision holds too: nobody holds the number, so no stop of theirs can be
+    // lost, and the erased family's phone hash is not kept for a number nobody has.
     await database
       .delete(schema.optOutHeldMessages)
       .where(inArray(schema.optOutHeldMessages.phoneHash, released));
