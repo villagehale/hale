@@ -23,6 +23,9 @@ import { CANARY_ANSWERED_ACTION, isCanaryTurn } from './config';
 export function inboundCanaryHandler(): DeterministicHandler {
   return {
     name: 'inbound_canary',
+    async detects(database, ctx) {
+      return isCanaryTurn(database, ctx.body, ctx.familyId);
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       if (!(await isCanaryTurn(database, ctx.body, ctx.familyId))) return { claimed: false };
 

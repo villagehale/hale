@@ -9,6 +9,7 @@ import { editLinqMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { assertTurnLive } from '../router/deadline';
+import { SIDE_TURN_TEMPLATE_KEY } from '../router/turn-ledger';
 import type { LinqMessageEdit } from './payload';
 import { LinqSendError } from './transport';
 
@@ -227,7 +228,8 @@ async function editsUsed(database: Database, channelMessageId: string): Promise<
 /**
  * Bubbles in this chat the model may still edit: one text part, sent within
  * Linq's window, under the edit cap, and tied to the transcript row that holds
- * the words. The receipt of an edit is not itself a bubble.
+ * the words. The receipt of an edit is not itself a bubble, and a reply another
+ * text got while this turn ran (router/side-turn.ts) is not this turn's to edit.
  */
 export async function listEditableLinqSends(
   database: Database,
@@ -275,6 +277,7 @@ export async function listEditableLinqSends(
       row.direction === 'out' &&
       row.providerChatId === input.chatId &&
       row.templateKey !== 'linq:edit' &&
+      row.templateKey !== SIDE_TURN_TEMPLATE_KEY &&
       typeof row.providerMessageId === 'string' &&
       row.providerMessageId.length > 0 &&
       sentAt !== null &&
