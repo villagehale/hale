@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "That's completely fine, no ZIP needed. Then let's keep going: what are your kids' first names?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1894,
+  "usage": {
+    "input_tokens": 682,
+    "output_tokens": 396,
+    "cache_read_input_tokens": 6476,
+    "cache_creation_input_tokens": 0
+  }
+}

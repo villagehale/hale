@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Great, Dana, good to meet you. What should I call you from now on?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": true,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "nameConfirmed": true,
+    "parentName": "Dana"
+  },
+  "latencyMs": 1807,
+  "usage": {
+    "input_tokens": 464,
+    "output_tokens": 387,
+    "cache_read_input_tokens": 6205,
+    "cache_creation_input_tokens": 0
+  }
+}

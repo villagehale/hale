@@ -1,0 +1,29 @@
+{
+  "value": {
+    "reply": "Totally fair, you don't have to share it. Could you just tell me the first three characters of your postal code instead?",
+    "asks": true,
+    "asksCount": 1,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "coarse",
+    "placeDeclined": false,
+    "nameDeclined": false,
+    "nameTakenBack": false,
+    "children": [],
+    "scheduleAdds": []
+  },
+  "latencyMs": 2090,
+  "usage": {
+    "input_tokens": 764,
+    "output_tokens": 503,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3162
+  }
+}

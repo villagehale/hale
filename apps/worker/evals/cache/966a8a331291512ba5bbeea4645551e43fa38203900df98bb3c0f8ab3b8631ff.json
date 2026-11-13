@@ -1,0 +1,32 @@
+{
+  "value": {
+    "reply": "Nice to meet you, Dana. Want me to pull your inbox for kid stuff, like school notes and class schedules?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": "Dana",
+    "parentName": "Dana",
+    "nameConfirmed": true,
+    "nameDeclined": false,
+    "nameTakenBack": false,
+    "kidsNamesDeclined": false,
+    "stopAsking": false,
+    "placeDeclined": false
+  },
+  "latencyMs": 2363,
+  "usage": {
+    "input_tokens": 530,
+    "output_tokens": 599,
+    "cache_read_input_tokens": 6205,
+    "cache_creation_input_tokens": 0
+  }
+}

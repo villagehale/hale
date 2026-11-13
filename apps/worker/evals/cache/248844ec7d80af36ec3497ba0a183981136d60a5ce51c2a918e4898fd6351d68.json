@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no warmly and asks once for just the five-digit ZIP, with the Canadian first-three-character option, which is allowed. 'That's enough for me to find things by area' only holds once they give the code, so it is not a promise while no place is known. It does not ask for a town or a street, and it does not press. Minor flaws: 'you don't have to share your exact address' wrongly implies Hale asked for an address, when it only asked for a ZIP. It also never says plainly that a ZIP shows only the area and not their street, and it is a bit wordy.",
+    "score": 4
+  }
+}

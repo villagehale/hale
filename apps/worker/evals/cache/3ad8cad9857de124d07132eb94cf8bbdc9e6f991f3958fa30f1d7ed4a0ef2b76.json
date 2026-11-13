@@ -1,0 +1,34 @@
+{
+  "value": {
+    "reply": "Done, Mia's Swim Kids 3 goes on your calendar every Saturday at 11 as a weekly reminder. Would a group chat with the other parent help, so you both see the same kid plans and reminders, and nothing private?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": true,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "scheduleAdds": [
+      {
+        "line": 1,
+        "child": "Mia",
+        "cadence": "weekly",
+        "date": "2026-11-07",
+        "time": "11:00",
+        "weeks": 8
+      }
+    ],
+    "scheduleDone": false
+  },
+  "latencyMs": 2303,
+  "usage": {
+    "input_tokens": 1222,
+    "output_tokens": 488,
+    "cache_read_input_tokens": 6167,
+    "cache_creation_input_tokens": 0
+  }
+}

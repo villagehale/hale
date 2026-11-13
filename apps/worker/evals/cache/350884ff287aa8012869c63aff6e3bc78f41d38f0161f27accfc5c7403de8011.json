@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "No worries, I'll leave the name for now. What should I call you when I text you later?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1745,
+  "usage": {
+    "input_tokens": 530,
+    "output_tokens": 391,
+    "cache_read_input_tokens": 6205,
+    "cache_creation_input_tokens": 0
+  }
+}

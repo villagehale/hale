@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Pas de souci, on n'a pas besoin du code postal alors. On passe aux enfants : quels sont leurs prénoms ?",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 2046,
+  "usage": {
+    "input_tokens": 712,
+    "output_tokens": 431,
+    "cache_read_input_tokens": 6476,
+    "cache_creation_input_tokens": 0
+  }
+}

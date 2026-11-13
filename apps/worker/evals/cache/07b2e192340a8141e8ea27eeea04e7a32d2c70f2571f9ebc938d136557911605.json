@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is in French and accepts the no. As its one ask, it requests only the first three characters of the postal code. The 'ça suffit pour trouver des activités près de chez toi' line depends on them giving those characters, so it is not an unconditional promise. It doesn't ask for a town or street and doesn't press. Minor flaws: 'on n'est pas obligés' reads a bit awkwardly, and the closing 'Tu préfères quoi ?' is confusing because no clear choice was offered. That keeps it from being fully plain and short.",
-    "score": 4
-  }
-}

@@ -1,0 +1,58 @@
+{
+  "value": {
+    "reply": "Got it, no calendar for now. I can't save Mia's carpool tomorrow from here since there's no matching line on your schedule map, so nothing is set yet. Would a group chat with the other parent help?",
+    "asks": true,
+    "messageIsQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "gmailLater": false,
+    "calendarLater": true,
+    "scheduleAdds": [],
+    "scheduleDone": false,
+    "coparentGroup": null,
+    "stopAsking": false,
+    "nameDeclined": false,
+    "nameTakenBack": false,
+    "placeDeclined": false,
+    "kidsNamesDeclined": false,
+    "nameConfirmed": true,
+    "parentName": "Dana",
+    "children": [
+      {
+        "name": "Mia",
+        "ageMonths": 48,
+        "agePrecision": "years",
+        "dateOfBirth": null
+      },
+      {
+        "name": "Leo",
+        "ageMonths": 24,
+        "agePrecision": "years",
+        "dateOfBirth": null
+      }
+    ],
+    "language": "en",
+    "ahaMention": null,
+    "city": null,
+    "postalCode": null,
+    "parentRole": null,
+    "parentRoleBasis": null,
+    "connectCalendar": false,
+    "connectGmail": null,
+    "groupLeads": null
+  },
+  "latencyMs": 5084,
+  "usage": {
+    "input_tokens": 873,
+    "output_tokens": 1632,
+    "cache_read_input_tokens": 2853,
+    "cache_creation_input_tokens": 0
+  }
+}

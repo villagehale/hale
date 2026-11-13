@@ -1,0 +1,24 @@
+{
+  "value": {
+    "reply": "That's fine, no need to share your exact code. Could you give me just the first three characters of your postal code, or the first five digits of your ZIP? That's enough for me to find things by area.",
+    "asks": true,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "placeAsk": "coarse"
+  },
+  "latencyMs": 2081,
+  "usage": {
+    "input_tokens": 600,
+    "output_tokens": 396,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6476
+  }
+}

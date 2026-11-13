@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reply": "Mostly swimming, music, art and story time, plus little sports classes, sized to each kid's age. I'd love to know: how old are Mia and Leo?",
+    "asks": true,
+    "messageIsQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null
+  },
+  "latencyMs": 1959,
+  "usage": {
+    "input_tokens": 581,
+    "output_tokens": 363,
+    "cache_read_input_tokens": 6167,
+    "cache_creation_input_tokens": 0
+  }
+}

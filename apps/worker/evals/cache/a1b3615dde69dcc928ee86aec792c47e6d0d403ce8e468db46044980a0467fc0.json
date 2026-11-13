@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Oui, Google partage toute la boîte avec moi, mais je garde et j'utilise seulement ce qui concerne les enfants, et je n'envoie jamais de courriel. Tu peux te déconnecter quand tu veux. Veux-tu que je regarde tes courriels? Le lien est ci-dessus.",
+    "asks": true,
+    "messageIsQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "language": "fr"
+  },
+  "latencyMs": 2004,
+  "usage": {
+    "input_tokens": 650,
+    "output_tokens": 446,
+    "cache_read_input_tokens": 6167,
+    "cache_creation_input_tokens": 0
+  }
+}

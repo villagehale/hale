@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "Here's what I found near Springfield for Mia and Leo. Swim lessons for Mia, and a couple of free options that suit Leo too.",
+    "asks": false,
+    "messageIsQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "groupLeads": [
+      "Swim lessons at the community pool for ages 3 to 5, on Saturdays at 10:00. Mia's age fits this one.",
+      "Free library storytime on Tuesdays at 10:30, open to all ages, so Leo can come too. There's also a free drop-in playgroup on weekday mornings for kids up to 6, which suits both of them."
+    ]
+  },
+  "latencyMs": 2411,
+  "usage": {
+    "input_tokens": 847,
+    "output_tokens": 520,
+    "cache_read_input_tokens": 6167,
+    "cache_creation_input_tokens": 0
+  }
+}
