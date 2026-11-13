@@ -877,6 +877,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
         text: message.text,
         providerMessageId: message.messageId,
         receivedAt: message.receivedAt,
+        sentAt: message.sentAt,
         now: deps.now?.() ?? new Date(),
         send: deps.sendGroupText,
         privateAside: {
@@ -1674,6 +1675,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
             text: option.text,
             mediaCount: 0,
             receivedAt: deps.now?.() ?? new Date(),
+            sentAt: null,
             otherHandles: [],
             mentions: [],
           },
@@ -1717,6 +1719,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
             text: option.text,
             mediaCount: 0,
             receivedAt: deps.now?.() ?? new Date(),
+            sentAt: null,
             otherHandles: [],
             mentions: [],
           },

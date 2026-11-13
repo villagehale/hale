@@ -1,0 +1,25 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": "Mia",
+      "keepFromKidFamily": true,
+      "kidFamily": [],
+      "items": [
+        "i1"
+      ]
+    },
+    "reply": "Got it, the Lego stays a surprise."
+  },
+  "latencyMs": 2147,
+  "usage": {
+    "input_tokens": 228,
+    "output_tokens": 98,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}

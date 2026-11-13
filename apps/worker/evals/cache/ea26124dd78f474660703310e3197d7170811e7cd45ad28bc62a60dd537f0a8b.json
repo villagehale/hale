@@ -1,0 +1,28 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": "Gifts",
+    "add": [],
+    "claim": [
+      {
+        "item": null,
+        "text": "Lego set for Zara"
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": "Zara's going to love that, Sam!"
+  },
+  "latencyMs": 3575,
+  "usage": {
+    "input_tokens": 115,
+    "output_tokens": 366,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}

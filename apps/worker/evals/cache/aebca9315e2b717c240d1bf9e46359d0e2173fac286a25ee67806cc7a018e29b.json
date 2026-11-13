@@ -1,0 +1,28 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": null
+  },
+  "latencyMs": 3462,
+  "usage": {
+    "input_tokens": 252,
+    "output_tokens": 90,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 2317
+  }
+}

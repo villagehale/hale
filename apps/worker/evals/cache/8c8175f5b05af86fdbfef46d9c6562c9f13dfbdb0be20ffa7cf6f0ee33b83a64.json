@@ -1,0 +1,15 @@
+{
+  "value": {
+    "intent": "who_i_am",
+    "role": "parent",
+    "familyLabel": null,
+    "kidNames": [
+      "Leo"
+    ],
+    "confidence": "high",
+    "ruledOut": [],
+    "picked": null,
+    "planTitle": null
+  },
+  "latencyMs": 2098
+}

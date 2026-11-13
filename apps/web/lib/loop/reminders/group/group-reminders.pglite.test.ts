@@ -246,6 +246,7 @@ function inbound(sender: string, text: string, messageId: string): LinqInboundTe
     text,
     mediaCount: 0,
     receivedAt: NOW,
+    sentAt: NOW,
     otherHandles: [],
     isGroup: true,
     mentions: [],

@@ -1,0 +1,32 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": "Class party",
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      },
+      {
+        "item": "i2",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": "Nice, thanks Sam! Plates are still open if anyone can grab them."
+  },
+  "latencyMs": 2555,
+  "usage": {
+    "input_tokens": 222,
+    "output_tokens": 130,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}

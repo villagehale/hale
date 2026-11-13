@@ -44,7 +44,7 @@ describe('shared group path has no keyword list', () => {
         intent: 'stop_me',
         role: 'unclear',
         familyLabel: null,
-        kidName: null,
+        kidNames: [],
         confidence: 'high',
       }).intent,
     ).toBe('stop_me');
