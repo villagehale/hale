@@ -1,9 +1,19 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import type { Asked } from '~/lib/channel/router/open-questions';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import {
+  type AskPlace,
+  SIGNUP_ASK_BACK_QUESTION,
+  loadLiveAsks,
+  stoppedTurn,
+  wordsNameAsk,
+} from './asks';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -47,13 +57,17 @@ import {
   createSignupOutcomeWriter,
 } from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
-import { type PlanTurnDeps, runPlanTurn } from './plan/conversation';
+import { namesFacts } from './parent-quote';
+import { type PlanTurnDeps, runPlanAsk } from './plan/conversation';
+import { untrustedActivityLabel } from './plan/reader';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import {
+  type PendingSignupOffer,
+  type SendStamp,
+  askStamp,
   loadBusy,
-  loadPendingOffer,
   loadSignupIdentity,
   markOffer,
   recordBrowserUseCost,
@@ -70,6 +84,14 @@ export interface SignupRunInput {
   /** True when this turn is already inside a thread the parent opened. */
   existingThread: boolean;
   now: Date;
+  /** The door's opt-out read could not read this text (`ChannelTurn.optOutUnread`). */
+  optOutUnread?: boolean;
+  /**
+   * The parent's open questions on the router's list (`HandlerContext.openQuestions`). One
+   * asked after Hale's last text about their sign-up asks takes a bare yes or no instead
+   * (VIL-302, `loadLiveAsks`). Absent: no list was read for this turn, and none is ranked.
+   */
+  openQuestions?: readonly Asked[];
 }
 
 export interface SignupRunDeps {
@@ -80,6 +102,8 @@ export interface SignupRunDeps {
   /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
   planReader?: PlanTurnDeps['planReader'];
   planWriter?: PlanTurnDeps['planWriter'];
+  mismatchReader?: PlanTurnDeps['mismatchReader'];
+  sendProviderEmail?: PlanTurnDeps['sendProviderEmail'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
@@ -111,7 +135,15 @@ export interface SignupRunResult {
   claimed: boolean;
   outcome: string;
   reply: string | null;
+  /** Separate Linq sends, one bubble each. When set, the handler sends these instead of `reply`. */
+  replies?: string[];
   deliverOnThread: boolean;
+  /**
+   * For the router to bracket the send of the reply on the thread (`askStamp`): the ask it
+   * speaks to becomes the one Hale asked this parent last, so their next bare yes or no
+   * answers it.
+   */
+  stamp?: SendStamp;
   /**
    * Set on the Browser Use path. Hale's AI writes the parent message from it;
    * this module has no fixed copy for it. `liveViewUrl` goes to the parent only.
@@ -171,29 +203,114 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
-  const planTurn = await runPlanTurn(database, input, {
+  const planDeps: PlanTurnDeps = {
     planReader: deps.planReader,
     planWriter: deps.planWriter,
+    mismatchReader: deps.mismatchReader,
     declineSeat: deps.declineSeat,
+    sendProviderEmail:
+      deps.sendProviderEmail ??
+      (async (payload) => {
+        const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
+        await createGmailEmailSender(database)(
+          { to: payload.to, subject: payload.subject, body: payload.body },
+          { familyId: payload.familyId, actorUserId: payload.actorUserId },
+        );
+      }),
+  };
+  // This parent's asks, newest first, plan and one-shot alike: each is read by its own lane,
+  // and a message one ask's reader finds unrelated goes on to the next. No ask left:
+  // someone else's.
+  const asks = await loadLiveAsks(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+    openQuestions: input.openQuestions ?? [],
   });
-  if (planTurn) return planTurn;
+  // A stop is the opt-out's, read at the door before any turn reaches here. A text of theirs
+  // the opt-out read could not read may be one, so until it is read it moves none of their
+  // asks: this text, as the turn carries it (the door's hold row may not have been written),
+  // or an earlier one still held (opt-out-hold.ts).
+  if (
+    asks.length > 0 &&
+    (input.optOutUnread === true || (await isParentHeld(database, input.parentUserId)))
+  ) {
+    console.warn(
+      {
+        outcome: 'signup_opt_out_unread',
+        asks: asks.length,
+        thisText: input.optOutUnread === true,
+      },
+      'signup asks: a text of theirs may be an unread stop - no ask moves',
+    );
+    return { ...UNCLAIMED, outcome: 'opt_out_unread' };
+  }
+  for (const ask of asks) {
+    const turn =
+      ask.lane === 'plan'
+        ? await runPlanAsk(database, input, planDeps, ask.plan, ask.place)
+        : await runOneShotAsk(
+            database,
+            input,
+            deps,
+            ask.offer,
+            ask.place,
+            asks.some((other) => other !== ask && wordsNameAsk(input.body, other)),
+          );
+    if (turn !== 'unrelated') return turn;
+  }
+  return UNCLAIMED;
+}
 
-  // No pending offer: nothing to consent to, and the message is someone else's. An offer
-  // made to the other parent is theirs to answer: this parent's yes would register with
-  // their own details on a sign-up the other parent was asked about.
-  const offer = await loadPendingOffer(database, input.familyId);
-  if (!offer || offer.parentUserId !== input.parentUserId) return UNCLAIMED;
+/**
+ * One pending ask Hale made this parent with no open ahead: the consent read, then the
+ * booking. `unrelated` hands the message to the next ask. A yes or a no moves this ask only
+ * when Hale asked the parent about it last. Words that carry its program's name or its site,
+ * in whole words, only make Hale ask about it; once that question went out it is the ask
+ * asked last, and the parent's next answer is its. A yes or no in no ask's words stops the
+ * turn, and so does one whose words name another of their asks (`namesAnother`) and not
+ * this one: it is not this ask's, and it is not handed on. A reading that failed stops the
+ * turn. A question back comes only from the ask Hale asked last or one their words name;
+ * any other passes the message on.
+ */
+async function runOneShotAsk(
+  database: Database,
+  input: SignupRunInput,
+  deps: SignupRunDeps,
+  offer: PendingSignupOffer,
+  place: AskPlace,
+  namesAnother: boolean,
+): Promise<SignupRunResult | 'unrelated'> {
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
   // Unreadable (no model, model failure) is not consent and does not claim the message.
-  if (!reading || reading.verdict === 'unrelated') return UNCLAIMED;
-  if (reading.verdict === 'consent' && deps.declineSeat && (await deps.declineSeat())) {
-    return {
-      claimed: true,
-      outcome: 'group_member_not_authorized',
-      reply: null,
-      deliverOnThread: false,
-    };
+  if (!reading) return stoppedTurn('signup_unread', { offerId: offer.id, status: 'pending' });
+  if (reading.verdict === 'unrelated') return 'unrelated';
+  const named = namesFacts(input.body, {
+    activity: untrustedActivityLabel(offer.activityLabel),
+    host: offer.providerHost,
+  });
+  if (namesAnother && !named) {
+    console.info(
+      { offerId: offer.id, verdict: reading.verdict },
+      'signup asks: words name another ask',
+    );
+    if (reading.verdict === 'unclear') return 'unrelated';
+    return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
+  }
+  if (reading.verdict === 'unclear' && !place.newest && !named) return 'unrelated';
+  if (reading.verdict === 'consent' || reading.verdict === 'decline') {
+    if (!place.newest && !named) {
+      return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
+    }
+    if (deps.declineSeat && (await deps.declineSeat())) {
+      return {
+        claimed: true,
+        outcome: 'group_member_not_authorized',
+        reply: null,
+        deliverOnThread: false,
+      };
+    }
   }
   const door = await reportDoor(database, input);
 
@@ -213,7 +330,7 @@ export async function runAuthorizedSignup(
     };
   }
 
-  if (reading.verdict === 'unclear') {
+  if (reading.verdict === 'unclear' || !place.newest) {
     return replyFor(database, input, deps, door, {
       offerId: offer.id,
       outcome: 'clarify',
@@ -221,7 +338,7 @@ export async function runAuthorizedSignup(
       link: '',
       prefilled: [],
       host,
-      question: reading.question,
+      question: reading.verdict === 'unclear' ? reading.question : SIGNUP_ASK_BACK_QUESTION,
     });
   }
   if (reading.verdict === 'decline') {
@@ -648,6 +765,14 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
+    if (handoff.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: input.familyId,
+        providerDomain: ctx.host ?? ctx.providerHost,
+        stage: handoff.detail ?? 'error',
+        source: 'signup',
+      });
+    }
     // No Browser Use session ever started (setup failed or the engine threw
     // before a run): release the held allowance. A started session keeps its
     // hold until its real cost replaces it.
@@ -907,6 +1032,9 @@ async function finish(
     status,
     now: input.now,
   });
+  if (status === 'completed') {
+    noteTaskCompleted({ familyId: input.familyId, type: 'registration', source: 'browser_use' });
+  }
 }
 
 function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {
@@ -914,7 +1042,7 @@ function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionI
 }
 
 interface ReplyFacts {
-  offerId: string | null;
+  offerId: string;
   outcome: string;
   reason: SignupStopReason | BrowserUseHandoff['detail'] | null;
   link: string;
@@ -1179,8 +1307,13 @@ async function replyFor(
       parentUserId: input.parentUserId,
       chatId: door.chatId,
       body: line,
-      dedupeKey: `authorized_signup:${facts.offerId ?? 'none'}:${facts.outcome}`,
+      dedupeKey: `authorized_signup:${facts.offerId}:${facts.outcome}`,
       now: input.now,
+      stamp: askStamp(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        offerIds: [facts.offerId],
+      }),
     });
     if (status === 'sent' || status === 'already_sent') {
       return {
@@ -1205,7 +1338,18 @@ async function replyFor(
       };
     }
   }
-  return { ...rush, claimed: true, outcome: facts.outcome, reply: line, deliverOnThread: true };
+  return {
+    ...rush,
+    claimed: true,
+    outcome: facts.outcome,
+    reply: line,
+    deliverOnThread: true,
+    stamp: askStamp(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      offerIds: [facts.offerId],
+    }),
+  };
 }
 
 async function writeAudit(

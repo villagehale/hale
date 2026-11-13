@@ -186,6 +186,12 @@ export interface DrainHandlers {
    * loop is testable without a transport, a model, or a db. */
   channelMessage: (job: ChannelMessageReceivedJob) => Promise<void>;
   /**
+   * The ids of the texts folded into an inbound turn (router/burst.ts), read when that
+   * turn dead-letters. Their own jobs already stopped at `folded`, so the dead letter's
+   * log line is the one place that can still name them. Ids only, never a body.
+   */
+  foldedInto: (input: { familyId: string; channelMessageId: string }) => Promise<readonly string[]>;
+  /**
    * Keep ONE activity promise, now — three concurrent research legs, an Opus merge and
    * an adversarial refutation, bound to a db by the caller.
    *
@@ -201,6 +207,12 @@ export interface DrainHandlers {
    * morning sweep still owes the text.
    */
   autonomyNotices: (familyId: string) => Promise<void>;
+  /**
+   * VIL-662 · after a calendar_move / calendar_cancel from a team-schedule
+   * email executes, re-anchor reminders and text the driver. Optional so a
+   * drain test that does not care can omit it.
+   */
+  teamScheduleEffects?: (actionId: string, familyId: string) => Promise<void>;
 }
 
 export interface DrainDeps {
@@ -286,6 +298,17 @@ async function processApprovedJob(
     approvedBy: parsed.data.approved_by,
     policyVersion: POLICY_VERSION,
   });
+  try {
+    await deps.handlers.teamScheduleEffects?.(parsed.data.action_id, parsed.data.family_id);
+  } catch (err) {
+    deps.log.error(
+      {
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+        familyId: parsed.data.family_id,
+      },
+      'drain: team schedule effects failed; reminders and the driver text are still owed',
+    );
+  }
   try {
     await deps.handlers.autonomyNotices(parsed.data.family_id);
   } catch (err) {
@@ -404,6 +427,31 @@ async function processDeepResearchJob(
   return 'processed';
 }
 
+/** The texts folded into a dead turn, or `lookup_failed` by name: the dead letter
+ * completes either way, and must not re-queue over a log line. */
+async function foldedIntoExpiredTurn(
+  deps: DrainDeps,
+  jobId: string,
+  data: { family_id: string; channel_message_id: string },
+): Promise<readonly string[] | 'lookup_failed'> {
+  try {
+    return await deps.handlers.foldedInto({
+      familyId: data.family_id,
+      channelMessageId: data.channel_message_id,
+    });
+  } catch (err) {
+    deps.log.error(
+      {
+        queue: CHANNEL_MESSAGE_RECEIVED_DLQ,
+        jobId,
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'drain: could not read the texts folded into an expired turn',
+    );
+    return 'lookup_failed';
+  }
+}
+
 /**
  * THE CEILING — a turn that spent every retry and was never answered.
  *
@@ -431,6 +479,9 @@ async function processExpiredTurnJob(
       // Ids and an outcome enum, never a body — the payload is pointers only (rule #1).
       channelMessageId: parsed.success ? parsed.data.channel_message_id : null,
       familyId: parsed.success ? parsed.data.family_id : null,
+      foldedMemberIds: parsed.success
+        ? await foldedIntoExpiredTurn(deps, job.id, parsed.data)
+        : null,
       outcome: TURN_EXPIRED_UNANSWERED,
     },
     'drain: inbound turn ran out of retries — the parent was never answered',
@@ -867,6 +918,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
   const { routeInboundChannelMessage } = await import('~/lib/channel/router/wiring');
   const { noteDeadLetteredTurn } = await import('~/lib/monitoring/failure-page');
+  const { foldedMemberIds } = await import('~/lib/channel/router/burst');
   const { keepPromiseNow } = await import('~/lib/channel/activity/deep-job');
   const { recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
@@ -944,6 +996,8 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
               buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
             ).then(() => undefined),
           channelMessage: (job) => routeInboundChannelMessage(db(), job),
+          foldedInto: ({ familyId, channelMessageId }) =>
+            foldedMemberIds(db(), { familyId, anchorId: channelMessageId }),
           deepResearch: (job) => keepPromiseNow(db(), job).then(() => undefined),
           autonomyNotices: (familyId) =>
             dispatchAutonomyNotices(
@@ -951,6 +1005,14 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
               { now: new Date(), familyId, slot: 'now' },
               autonomyNoticePorts(db()),
             ).then(() => undefined),
+          teamScheduleEffects: async (actionId, familyId) => {
+            const { applyTeamScheduleEffects, teamSchedulePortsFor } = await import(
+              '~/lib/integrations/team-schedule'
+            );
+            const { createOutboundTransport } = await import('~/lib/channel/outbound-transport');
+            const ports = teamSchedulePortsFor(db(), createOutboundTransport(), familyId, new Date());
+            await applyTeamScheduleEffects(db(), { actionId, familyId }, ports.driver);
+          },
         },
         log: console,
         now: () => Date.now(),

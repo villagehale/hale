@@ -1,14 +1,19 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSignupConsentReader, signupConsentUserMessage } from './consent-reader';
-import type { SignupOffer } from './types';
+import {
+  type ConsentReadOffer,
+  createSignupConsentReader,
+  signupConsentUserMessage,
+} from './consent-reader';
 
-const OFFER: SignupOffer = {
+const OFFER: ConsentReadOffer = {
   id: 'offer-1',
   familyId: 'family-1',
   childId: 'child-1',
   parentUserId: 'parent-1',
   activityKey: 'swim-parent-tot',
+  activityLabel: 'Parent and Tot Swim',
+  providerHost: 'example.test',
   registrationUrl: 'https://example.test/register',
   approvedPriceCents: null,
   sessions: [
@@ -64,6 +69,18 @@ describe('signup consent reader (mocked model)', () => {
     expect(body.offer.registrationUrl).toBe(OFFER.registrationUrl);
     expect(body.text).toBe('yes');
     expect(JSON.stringify(body)).not.toContain('child-1');
+  });
+
+  it('shows which program and site the offer is for, the program name marked untrusted and cleaned', () => {
+    const offer = {
+      ...OFFER,
+      activityLabel: 'Parent and Tot Swim\u200b https://elsewhere.example/yes',
+    };
+    const body = JSON.parse(signupConsentUserMessage({ text: 'yes', offer }));
+    expect(body.offer.untrusted_activity_label).toBe('Parent and Tot Swim');
+    expect(body.offer.host).toBe('example.test');
+    expect(body.offer).not.toHaveProperty('activityLabel');
+    expect(JSON.stringify(body)).not.toContain('elsewhere.example');
   });
 
   it.each([

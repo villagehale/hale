@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reasoning": "m1 is a pure lead-in ('two more coming') that asks nothing on its own, so it joins the question that follows. m2 asks whether swim is on Thursday, which is a different question from m3's about what is on Saturday for Milo, so they are separate asks and separate groups. m1 goes with m2 since it precedes it and has no ask of its own, but it is more naturally a lead-in to whichever question comes next; the closest attachment is to m2 as the first real ask.",
+    "groups": [
+      [
+        "m1",
+        "m2"
+      ],
+      [
+        "m3"
+      ]
+    ]
+  },
+  "latencyMs": 1721
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I got to checkout for the Sat 9:30 AM session. Paying is your step, so nothing is paid and nothing is confirmed yet. Here's the page I left open: https://live.browser-use.com/s/fixture-live-view-token. It holds no spot, and it stays open for about 12 minutes."
+  },
+  "latencyMs": 1584,
+  "usage": {
+    "input_tokens": 143,
+    "output_tokens": 106,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

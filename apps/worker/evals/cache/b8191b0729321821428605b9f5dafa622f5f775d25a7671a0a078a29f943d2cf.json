@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states registration isn't open, gives the opening time from rush.opensAt, carries the exact link, says the parent does the sign-up themselves, and does not claim the child is signed up or that a spot is held. It lists only pack values (names, parent first name, email) which are all in the pack. Language is en and tone is plain and warm. No promise of retry or follow-up. One minor issue: it lists the child's and parent's details as a bare comma-separated list, which is slightly awkward but factually fine.",
+    "score": 5
+  }
+}

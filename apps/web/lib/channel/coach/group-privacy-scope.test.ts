@@ -53,6 +53,33 @@ describe('VIL-439 group privacy scope', () => {
     expect(text).toContain('Maya');
   });
 
+  it('gives a group turn only the name off a contact card, never its numbers or email', () => {
+    const scoped = groupScopedContext({
+      ...PRIVATE_CONTEXT,
+      arrivedContacts: [
+        {
+          name: 'Jane Smith',
+          phones: [{ number: '+14165550100', e164: '+14165550100', label: 'cell' }],
+          emails: [{ address: 'jane@example.com', label: null }],
+          org: 'Riverside',
+          place: 'Toronto, ON',
+        },
+      ],
+    } as never) as Record<string, unknown>;
+    expect(scoped.arrivedContacts).toEqual([{ name: 'Jane Smith' }]);
+    expect((scoped.arrivedContacts as unknown[])[0]).not.toHaveProperty('phones');
+    expect(scoped.arrivedContactsGroupNameOnly).toBe(true);
+    const text = JSON.stringify(scoped);
+    expect(text).not.toContain('5550100');
+    expect(text).not.toContain('jane@example.com');
+    expect(text).not.toContain('Riverside');
+  });
+
+  it('leaves a 1:1-shaped context without contacts unchanged in shape', () => {
+    const scoped = groupScopedContext(PRIVATE_CONTEXT as never) as Record<string, unknown>;
+    expect(scoped).not.toHaveProperty('arrivedContacts');
+  });
+
   describe('in the runtime', () => {
     const SKILL: Skill = {
       meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },
@@ -76,10 +103,12 @@ describe('VIL-439 group privacy scope', () => {
         loadContext: async () => PRIVATE_CONTEXT as never,
         loadChildren: async () => [],
         loadRegistrationWindows: async () => [],
+        loadHealthPlace: async () => null,
         buildTools: () => [] as RegisteredTool[],
         nearbySaid: async () => null,
         guardDeps: { async writeAudit() {} },
         client: () => ({ messages: {} }) as never,
+        readFindTurn: async () => ({ findTurn: false, reason: 'not_find' }),
         judgeFindReply: findReplyNotJudged,
         runAgent: async (args) => {
           seen.push(JSON.stringify(args.context));
@@ -263,10 +292,12 @@ describe('VIL-439 review: group tools and group history', () => {
       loadContext: async () => PRIVATE_CONTEXT as never,
       loadChildren: async () => [],
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       buildTools: () => tools as never,
       nearbySaid: async () => null,
       guardDeps: { async writeAudit() {} },
       client: () => ({ messages: {} }) as never,
+      readFindTurn: async () => ({ findTurn: false, reason: 'not_find' }),
       judgeFindReply: findReplyNotJudged,
       runAgent: async (args) => {
         seenTools.push(args.tools.map((t) => t.name));

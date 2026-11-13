@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
+import { mediaKindOf } from '~/lib/analytics/product';
+import { noteMessage } from '~/lib/analytics/product-hooks';
 import { persistableMedia } from '~/lib/channel/inbound-media';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
@@ -56,6 +58,14 @@ export interface ChannelMessageReceivedJob {
    * unknown can never be run on the sender's 1:1 thread.
    */
   in_group: boolean | undefined;
+  /**
+   * The door's opt-out read could not read this text, so it may be a stop: the router
+   * moves no sign-up ask on this turn, whether or not the door's hold row was written.
+   * The door always says it, and the row keeps it for a re-drive and for a turn that
+   * reads several texts as one. Absent on a job queued before it existed, which runs as
+   * before (the hold row alone).
+   */
+  opt_out_unread?: boolean;
 }
 
 export interface InboundRouteDeps {
@@ -126,6 +136,9 @@ export type InboundRouteOutcome =
    * (or logged when no row carries that provider id). Counted on its own so a
    * receipt is not an ignored text. SMS never produces this. */
   | 'receipt'
+  /** VIL-479 · Linq `message.edited` was applied to the transcript or the inbound
+   * body, or logged when no row carries that provider id. Not an ignored text. */
+  | 'message_edited'
   /** A verified channel, but not a parent's — never handed to a household agent. */
   | 'not_a_parent'
   /** Linq year-find poll: the parent chose "None of these". Recorded, not routed,
@@ -191,9 +204,16 @@ export async function routeInboundText(
     if (outcome.status === 'rate_limited') return 'rate_limited';
     if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
       await typing.stop();
-      return handOffToConversation(deps, inbound);
+      return handOffToConversation(deps, inbound, outcome.optOutUnread === true);
     }
     if (outcome.status === 'ignored') return 'ignored';
+    if (outcome.status === 'secret_santa_draw' && outcome.delivered === 0) {
+      deps.log.error(
+        { providerMessageId: inbound.providerId },
+        "inbound: a guest's Secret Santa turn sent nothing",
+      );
+      return 'intake_unsent';
+    }
     if (outcome.status === 'first_touch_unsent') {
       deps.log.error(
         { providerMessageId: inbound.providerId, reason: outcome.reason },
@@ -268,9 +288,9 @@ function keywordOutcome(
  * parent is dropped, so a role we cannot vouch for is silence rather than disclosure.
  *
  * Idempotent on the provider's message id, and the INSERT is what makes it so. Linq
- * resends when we exceed its 15s budget, so the resend can arrive while this handler is
- * still running: a select-then-insert guard is a guard both deliveries walk straight
- * through. The unique index on `provider_message_id` where `direction = 'in'` decides it
+ * resends past its webhook timeout (LINQ_WEBHOOK_TIMEOUT_MS), so the resend can arrive
+ * while this handler is still running: a select-then-insert guard is a guard both
+ * deliveries walk straight through. The unique index on `provider_message_id` where `direction = 'in'` decides it
  * in the database instead — exactly one request wins the row, and winning the row is what
  * confers the right (and the duty) to enqueue.
  *
@@ -286,6 +306,7 @@ function keywordOutcome(
 async function handOffToConversation(
   deps: InboundRouteDeps,
   inbound: InboundMessage,
+  optOutUnread: boolean,
 ): Promise<InboundRouteOutcome> {
   const phoneE164 = normalizePhoneE164(inbound.from);
   if (!phoneE164) return 'invalid_number';
@@ -331,6 +352,10 @@ async function handOffToConversation(
       inboundMedia: persistableMedia(inbound.media),
       // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
       inGroup: inbound.isGroup ?? null,
+      // The service Linq said carried it: only a real iMessage chat takes several bubbles.
+      providerService: inbound.service ?? null,
+      // In the one write every hand-off needs, so a re-drive and a burst read it too.
+      optOutUnread,
       sentAt: inbound.receivedAt,
     })
     .onConflictDoNothing({
@@ -350,6 +375,15 @@ async function handOffToConversation(
     targetTable: 'channel_messages',
     targetId: channelMessageId,
   });
+  noteMessage({
+    direction: 'in',
+    familyId: owner.familyId,
+    channel: inbound.transport ?? 'sms',
+    isGroup: inbound.isGroup,
+    chatId: inbound.chatId,
+    mediaKind: mediaKindOf(inbound.media),
+    database: deps.database,
+  });
 
   try {
     await deps.enqueue({
@@ -361,6 +395,7 @@ async function handOffToConversation(
       // As the door said it, and absent when the door did not say: an unknown is not a
       // 1:1 thread (the router's `group_unknown`).
       in_group: inbound.isGroup,
+      opt_out_unread: optOutUnread,
     });
   } catch (err) {
     // The ids an operator can act on, and nothing the parent typed (rule #1).

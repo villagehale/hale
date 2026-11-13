@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the $98 charge is uncertain (run.charged is cents 9800, so the amount matches), says it cannot confirm registration, and avoids claiming a spot. However it says 'The card may have been charged $98', which is hedged but acceptable; it asks the parent to check email, a second action, and mentions the browser stays up, which is fine. Minor issue: it gives two asks (check email and implicitly check browser) and mentions the 15-minute window, which is in facts. Overall mostly compliant with small deductions for multiple asks and slightly long phrasing.",
+    "score": 4
+  }
+}

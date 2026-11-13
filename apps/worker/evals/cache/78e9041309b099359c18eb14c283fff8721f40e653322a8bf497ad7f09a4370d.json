@@ -1,0 +1,19 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": true,
+    "joinSelf": null,
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "fr",
+    "reply": "Bonne idée ! Qui est partant ? Dites-moi juste comment vous voulez qu'on vous appelle."
+  },
+  "latencyMs": 2123,
+  "usage": {
+    "input_tokens": 145,
+    "output_tokens": 101,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

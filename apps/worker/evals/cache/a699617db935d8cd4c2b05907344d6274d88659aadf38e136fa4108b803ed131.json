@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the child is already signed up for the Saturday swim class, which is a registration_done claim. The confirmed hale_signup row r1 is the Saturday swim class registration, so it backs the claim. The calendar row e1 only shows the class is planned, and the Chinese 上周六 may point to a different date than Nov 7, so I did not cite it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "r1"
+      }
+    ]
+  },
+  "latencyMs": 5023
+}

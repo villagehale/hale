@@ -150,6 +150,16 @@ describe('signup outcome reply (mocked model)', () => {
     expect(JSON.stringify(info.mock.calls)).not.toContain('bit.ly');
   });
 
+  it('refuses a draft whose accents came out garbled, and sends the same text written right', () => {
+    // From a recorded fr draw (apps/worker/evals/cache): é and ê read back in windows-1250.
+    const garbled = `Je suis arrivĂ© au paiement, c'est Ă  toi. La fenĂŞtre : ${BASE.link}`;
+    expect(signupOutcomeViolations(garbled, BASE)).toEqual([
+      'garbled characters: an accented letter came out as two or three other characters',
+    ]);
+    const written = `Je suis arrivé au paiement, c'est à toi. La fenêtre : ${BASE.link}`;
+    expect(signupOutcomeViolations(written, BASE)).toEqual([]);
+  });
+
   it('leaves length to the model: a long draft that carries the link can send', () => {
     const long = `${'Here is what to have ready for the form. '.repeat(14)}${BASE.link}`;
     expect(long.length).toBeGreaterThan(480);

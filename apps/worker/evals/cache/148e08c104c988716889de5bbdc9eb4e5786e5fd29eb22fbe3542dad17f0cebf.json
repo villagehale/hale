@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ops": [
+      {
+        "action": "drop",
+        "id": "9a8b7c6d-1e2f-4a3b-8c4d-5e6f7a8b9c01",
+        "declined": true
+      }
+    ]
+  },
+  "latencyMs": 1843
+}

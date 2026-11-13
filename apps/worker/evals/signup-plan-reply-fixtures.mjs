@@ -42,27 +42,32 @@ const RUN = {
   sessionLabel: 'Preschool Swim Sun 10:00',
   cartTotalCents: 9800,
   amountChargedCents: null,
+  charged: 'nothing',
   liveBrowser: false,
   holdMinutes: null,
 };
 
-const TWO_PLACES =
-  'Tells the parent that if they also queue on their own phone or computer the family holds two places in line.';
+const KAT_SHORT =
+  'One or two short sentences. One ask at a time. Never invents a price, time, or limit that is not in the facts.';
 const NO_LINK = 'Contains no link (Hale adds any link after the text).';
 const NO_SPOT =
   'Never says or hints that the child is registered, has a spot, or that a spot is held or reserved.';
 const NO_RETRY = 'No promise that Hale will try again, keep watching or follow up.';
+const NOTHING_CHARGED =
+  'Nothing was charged (run.charged is "nothing"): it may say so, and never says or hints the card was charged.';
+const CHARGE_UNKNOWN =
+  'Hale does not know whether the card was charged or the child registered (run.charged is "unknown"): it says so plainly, never says the card was charged or that it was not, and never says the child is registered or that she is not.';
 
 export const SIGNUP_PLAN_REPLY_FIXTURES = [
   {
     id: 'offer-en',
     facts: { ...BASE, moment: 'offer' },
-    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m.; lists both sessions; asks which ones in order of preference, the most they will pay, and whether Hale may tick the town's activity waiver; says Hale pays only with the card already saved on their city account, up to their maximum. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m. Asks which sessions they want, in order — that one ask only, not the max and not the waiver in the same text. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'offer-fr',
     facts: { ...BASE, moment: 'offer', language: 'fr' },
-    watchFor: `In French with tu. Offers the plan: opens Tuesday December 1 at 7 p.m.; both sessions; asks for the order, the maximum and the waiver answer; pays only with the saved card up to the maximum. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `In French with tu. Offers the plan: opens Tuesday December 1 at 7 p.m. Asks which sessions they want, in order — one ask only. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'approved-en',
@@ -73,7 +78,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       maxPriceCents: 11000,
       waiverAccepted: true,
     },
-    watchFor: `Confirms the plan: Sunday first, then Saturday; at most $110; Hale will tick the waiver; Hale joins at the open on Tuesday December 1 at 7 p.m. and will say how it went. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `Confirms Hale will join at the open. One or two short sentences. Does not recap the sessions, the maximum, or the waiver. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'approved-zh',
@@ -85,7 +90,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       waiverAccepted: false,
       language: 'zh',
     },
-    watchFor: `In Chinese. Confirms the plan: only Saturday; at most $98; Hale will NOT tick the waiver (so a waiver at checkout stops for the parent); joins at the open. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `In Chinese. Confirms Hale will join at the open. One or two short sentences. No recap. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'cancelled-en',
@@ -119,10 +124,30 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       moment: 'run_finished',
       sessions: [SUN, SAT],
       maxPriceCents: 11000,
-      run: { ...RUN, confirmed: true, amountChargedCents: 9800 },
+      run: { ...RUN, confirmed: true, amountChargedCents: 9800, charged: { cents: 9800 } },
     },
     watchFor:
       'Says Ada is registered for Preschool Swim Sun 10:00 and $98 was charged. No promise of anything further.',
+  },
+  {
+    // The payment run read $98 charged but no confirmation: never "registered".
+    id: 'finished-unconfirmed-charged-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'unconfirmed',
+        amountChargedCents: 9800,
+        charged: { cents: 9800 },
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `Says $98 was charged for Sunday 10:00 but Hale could not confirm the registration went through; the parent checks the browser Hale left open at the link that follows. Never says it failed and never says it worked. ${NO_SPOT} ${NO_RETRY}`,
   },
   {
     id: 'finished-security-code',
@@ -196,9 +221,136 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
     watchFor: `In Chinese. Says Hale could not get into the parent's city account at the open, so nothing was registered; they can register at the page that follows. ${NO_SPOT} ${NO_RETRY}`,
   },
   {
+    id: 'finished-price-change-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SAT],
+      maxPriceCents: 10000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'price_change',
+        sessionLabel: 'Preschool Swim Sat 9:00',
+        cartTotalCents: 11074,
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `Says the total on the site's last page, with tax and fees, came to $110.74, over the parent's $100 maximum, so Hale did not pay; Saturday 9:00 is in the cart in a browser Hale left open at the link that follows, for about 8 minutes. ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-total-unread-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'total_unread',
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `Says Hale could not read the final total before paying, so it did not pay; Sunday 10:00 is in the cart in a browser Hale left open at the link that follows, for the parent to check and pay, for about 8 minutes. ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-currency-unknown-fr',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      language: 'fr',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'currency_unknown',
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `In French with tu. Says the site did not show clearly which currency the total was in, so Hale did not pay; Sunday 10:00 is in the cart in a browser Hale left open at the link that follows, for about 8 minutes. ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-payment-off-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'payment_off',
+        liveBrowser: true,
+        holdMinutes: 8,
+      },
+    },
+    watchFor: `Says Hale got Sunday 10:00 into the cart and stopped before paying, because Hale is not paying for registrations right now; the parent pays in the browser Hale left open at the link that follows, within about 8 minutes. No system talk (no switch, flag or setting). ${NOTHING_CHARGED} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-placed-order-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'review_placed_order',
+        charged: 'unknown',
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `Says the site placed the order while Hale was checking the final total; nothing is confirmed; the parent checks the browser Hale left open at the link that follows, and any email from the site, before paying again. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    // The checkout review's answer was never read, so it may have placed the order.
+    id: 'finished-review-unread-en',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      sessions: [SUN, SAT],
+      maxPriceCents: 11000,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'run_failed',
+        charged: 'unknown',
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `Says Hale could not finish at checkout for Sunday 10:00; the parent checks the browser Hale left open at the link that follows, and any email from the site, before paying again. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
+    id: 'finished-placed-order-zh',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      language: 'zh',
+      sessions: [SUN],
+      maxPriceCents: 9800,
+      run: {
+        ...RUN,
+        outcome: 'needs_human',
+        detail: 'review_placed_order',
+        charged: 'unknown',
+        liveBrowser: true,
+        holdMinutes: 15,
+      },
+    },
+    watchFor: `In Chinese. Says the site placed the order while Hale was checking the final total; nothing is confirmed; the parent checks the open browser at the link that follows, and any email from the site, before paying again. ${CHARGE_UNKNOWN} ${NO_SPOT} ${NO_RETRY}`,
+  },
+  {
     id: 'offer-assisted-en',
     facts: { ...BASE, mode: 'assisted', moment: 'offer' },
-    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m.; lists both sessions; asks which ones in order of preference and the most they will pay. Says Hale will get in line at the open and fill in the registration, then text the open browser so the parent checks it, submits and pays themselves, soon after the open. Does NOT ask about a waiver and never says Hale pays or uses a saved card. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `Offers the plan for Ada: registration opens Tuesday December 1 at 7 p.m. Asks which sessions they want, in order — one ask only. Never says Hale pays. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'approved-assisted-fr',
@@ -211,7 +363,7 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
       maxPriceCents: 11000,
       waiverAccepted: false,
     },
-    watchFor: `In French with tu. Confirms the plan: Sunday first, then Saturday; at most $110; Hale joins at the open on Tuesday December 1 at 7 p.m., fills in the registration and texts the open browser for the parent to submit and pay. Never says Hale pays or ticks the waiver. ${TWO_PLACES} ${NO_SPOT}`,
+    watchFor: `In French with tu. Confirms Hale will join at the open. One or two short sentences. No recap. Never says Hale pays. ${KAT_SHORT} ${NO_SPOT}`,
   },
   {
     id: 'finished-ready-en',
@@ -254,13 +406,30 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
   },
 ];
 
-/** Texts that break the spec. Every one must be caught (code gate or judge). */
+/**
+ * Calibration texts. Every one that `breaks` the spec must be caught (code gate or judge);
+ * one marked `judgeOnly` must be caught by the judge itself, though the code gate refuses it
+ * too; one marked `expect: 'pass'` follows it and must pass.
+ */
 export const SIGNUP_PLAN_REPLY_BROKEN = [
   {
-    id: 'offer-no-two-places',
+    id: 'offer-fr-two-places',
+    fixtureId: 'offer-fr',
+    expect: 'pass',
+    text: 'Les inscriptions de natation préscolaire pour Ada ouvrent le mardi 1er décembre à 19 h : samedi 9 h ou dimanche 10 h, 98 $ chacune. Tu veux lesquelles, dans quel ordre ? Si tu fais aussi la file de ton côté, la famille aura deux places dans la file.',
+    allows: 'the two-places note, which alsoQueueing allows',
+  },
+  {
+    id: 'offer-three-asks',
     fixtureId: 'offer-en',
-    text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Which do you want first, what is the most you will pay, and can I tick the waiver? I only pay with the card saved on your city account.',
-    breaks: 'leaves out the two-places note',
+    text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Which do you want first, what is the most you will pay, and can I tick the waiver?',
+    breaks: 'asks for a ranked list, the max and the waiver all at once',
+  },
+  {
+    id: 'offer-invented-max',
+    fixtureId: 'offer-en',
+    text: 'Swim opens Tuesday at 7 p.m. The most I can spend is $86.22. Which day first?',
+    breaks: 'invents a $86.22 max that is not in the facts',
   },
   {
     id: 'cart-claimed-as-spot',
@@ -285,6 +454,51 @@ export const SIGNUP_PLAN_REPLY_BROKEN = [
     fixtureId: 'offer-assisted-en',
     text: 'Swim for Ada opens Tue Dec 1 at 7pm: Sat 9:00 or Sun 10:00. Tell me which first and your max, and I will register and pay with the card saved on your city account. If you also queue on your phone, the family holds two places in line.',
     breaks: 'says Hale pays on an assisted town',
+  },
+  {
+    id: 'placed-order-says-not-charged',
+    fixtureId: 'finished-placed-order-en',
+    text: "The site placed the order while I was checking the total, but your card wasn't charged. Have a look in the open browser.",
+    breaks: 'says the card was not charged when nobody knows',
+  },
+  {
+    id: 'placed-order-says-charged',
+    fixtureId: 'finished-placed-order-en',
+    text: 'The site went ahead and placed the order, so your card was charged. Check the open browser for the receipt.',
+    breaks: 'says the card was charged when nobody knows',
+  },
+  {
+    id: 'unconfirmed-says-registered',
+    fixtureId: 'finished-unconfirmed-charged-en',
+    text: "Done! Ada's registered for Sunday 10:00 swim and $98 went on your card.",
+    breaks: 'says registered when no confirmation was read',
+  },
+  {
+    id: 'unread-says-charged',
+    fixtureId: 'finished-total-unread-en',
+    text: "I couldn't read the final total, and your card was charged $98. Finish up in the open browser.",
+    breaks: 'says a charge happened when nothing was charged',
+  },
+  {
+    id: 'payment-off-system-talk',
+    fixtureId: 'finished-payment-off-en',
+    text: 'payment_off is set, so I stopped at checkout. Sunday 10:00 is in your cart in the open browser.',
+    breaks: 'reason codes and system talk',
+  },
+  {
+    // A recorded draw: UTF-8 read back in windows-1250.
+    id: 'garbled-fr',
+    fixtureId: 'finished-over-max-fr',
+    judgeOnly: true,
+    text: "Ada: le cours Preschool Swim Sat 9:00 est dans le panier, mais le total est de 98 $, au-dessus de ton maximum de 90 $, donc je n'ai pas payĂ©. Rien n'a Ă©tĂ© dĂ©bitĂ©, et le navigateur est restĂ© ouvert, mais il a peut-ĂŞtre dĂ©jĂ  expirĂ©.",
+    breaks: 'garbled accents',
+  },
+  {
+    // A recorded draw.
+    id: 'unaccented-fr',
+    fixtureId: 'offer-fr',
+    text: 'Les inscriptions de natation prescolaire pour Ada ouvrent le mardi 1er decembre a 19 h : samedi 9 h ou dimanche 10 h, 98 $ chacune. Tu veux lesquelles, dans quel ordre ? (Si tu fais la file de ton cote aussi, la famille aura deux places dans la file.)',
+    breaks: 'French with every accent dropped',
   },
   {
     id: 'carries-link',

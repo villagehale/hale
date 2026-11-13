@@ -21,6 +21,8 @@ const NOT_A_GATE: Readonly<Record<string, number>> = {
   'format/http-url.ts': 1,
   'signup/browser-use/outcome.ts': 1,
   'signup/browser-use/proxy.ts': 1,
+  // Parses an otpauth:// TOTP seed. Never a parent-text gate.
+  'signup/credentials/totp.ts': 1,
   'social/extract.ts': 2,
   'social/forward.ts': 1,
   // Sets the code-appended link aside before another check reads the prose.

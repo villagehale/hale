@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
+import { ageInMonths } from '@hale/types';
 import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
-import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { noteMessage } from '~/lib/analytics/product-hooks';
+import { captureServerEvent, captureWebEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
@@ -19,6 +21,7 @@ import {
   handleKnownNumberInbound,
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
@@ -38,6 +41,7 @@ import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { bubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
@@ -49,6 +53,12 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { liftPreviewLink, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
+import {
+  optOutSecretSantaOnStop,
+  sharedSecretSantaLineWriter,
+} from '~/lib/channel/linq/secret-santa';
+import { answerGuestDraws, owedGuestDraws } from '~/lib/channel/linq/secret-santa-send';
+import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
   plainTextWithoutLinks,
@@ -96,10 +106,12 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
+import { acceptCalendarDate } from './calendar-date';
 import {
   type PostalContext,
   crisisRegionForPlace,
   deriveDateOfBirth,
+  fillAgesFromDates,
   parseIntakePostal,
   summarizeChildren,
 } from './derive';
@@ -299,6 +311,12 @@ export type IntakeOutcome =
    */
   | { status: 'first_touch_unsent'; reason: FriendFallback }
   | { status: 'greeted' }
+  /**
+   * VIL-686 · a guest (no Hale channel of their own) whose Secret Santa draw waited on
+   * their first text got it as this turn's reply, in place of intake's greeting.
+   * `delivered` is how many draws landed; zero means nothing was sent this turn.
+   */
+  | { status: 'secret_santa_draw'; delivered: number }
   /** VIL-385 ladder beat that is not yet a provisioned family. */
   | { status: 'first_touch'; step: 'place_asked' | 'place_waiting' | 'find_sent' | 'ages_waiting' }
   | { status: 'follow_up_asked' }
@@ -375,6 +393,12 @@ export type IntakeOutcome =
       // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
       // nothing of it is answered into the group.
       reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake' | 'opted_out';
+      /**
+       * On the hand-off (`no_open_conversation`) only, set by {@link handleInboundSms}: this
+       * turn's opt-out read failed, so the text may be a stop. It rides to the router with
+       * the text, so no ask moves on it whether or not the hold row was written.
+       */
+      optOutUnread?: true;
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -403,6 +427,10 @@ export interface Inbound {
   chatId?: string;
   /** A Linq group turn. The Name and Photo card is 1:1 only and never shares here. */
   isGroup?: boolean;
+  /** See `InboundMessage.service` (intake/transport.ts): what says the chat is iMessage. */
+  service?: LinqChatService;
+  /** See `InboundMessage.answerBy` (intake/transport.ts). */
+  answerBy?: Date;
   /** See `InboundMessage.budget` (intake/transport.ts). Absent is the sender's. */
   budget?: 'sender' | 'chat';
   /** VIL-348 — the provider already answered this keyword itself; see
@@ -428,6 +456,26 @@ export async function handleInboundSms(
   database: Database,
   inbound: Inbound,
   deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const read = { optOutUnread: false };
+  const outcome = await runIntakeTurn(database, inbound, deps, read);
+  // The hand-off carries a failed opt-out read with the text itself, so the router's guard
+  // never rests on the hold row alone: settleOptOutHold may fail to write it.
+  if (
+    outcome.status === 'ignored' &&
+    outcome.reason === 'no_open_conversation' &&
+    read.optOutUnread
+  ) {
+    return { ...outcome, optOutUnread: true };
+  }
+  return outcome;
+}
+
+async function runIntakeTurn(
+  database: Database,
+  inbound: Inbound,
+  deps: IntakeDeps,
+  read: { optOutUnread: boolean },
 ): Promise<IntakeOutcome> {
   const now = deps.now ?? inbound.receivedAt;
 
@@ -495,12 +543,15 @@ export async function handleInboundSms(
   // UNCLAIMED: a stop is a legal instruction, its handling is idempotent, and a claim here
   // would refuse the resend that re-runs a stop whose first attempt crashed. The model
   // writes the one confirmation; an empty one sends nothing (the revocation still runs).
+  let turnIntent: string | null = null;
   if (inbound.body.trim().length > 0) {
     const reading = await readTurnOnce(reader, inbound, {
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
     });
+    turnIntent = reading?.intent ?? null;
+    read.optOutUnread = reading === null;
     await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
       return handleStop(
@@ -544,6 +595,32 @@ export async function handleInboundSms(
     linqGroupOnboardingV2Enabled()
   ) {
     return { status: 'ignored', reason: 'group_turn_during_intake' };
+  }
+
+  // 5c. VIL-686 · a guest whose Secret Santa draw waits on their first text to Hale. Only a
+  // 1:1 turn the opt-out read cleanly called ordinary (not a stop, a start, a crisis or an
+  // unread text) from a number that has not stopped intake: their draw is this turn's reply,
+  // and the kid-oriented greeting does not run on it. Intake can start on a later turn.
+  if (
+    inbound.isGroup !== true &&
+    turnIntent === 'none' &&
+    session?.state !== 'stopped'
+  ) {
+    const owed = await owedGuestDraws(database, phoneHash);
+    if (owed.length > 0) {
+      return claimedTurn(database, inbound, now, async () => {
+        const answered = await answerGuestDraws(
+          database,
+          {
+            participantIds: owed,
+            reply: (body) => deps.transport.send({ to: phoneE164, body }),
+            now,
+          },
+          { writer: sharedSecretSantaLineWriter() },
+        );
+        return { status: 'secret_santa_draw', delivered: answered.delivered };
+      });
+    }
   }
 
   // 6. A live join code outranks whatever conversation this number is already in.
@@ -781,8 +858,16 @@ interface SendContext {
   phoneE164: string;
   now: Date;
   /** The pipe this turn arrived on. Outbound rows and the transcript replay
-   * record it, so a later receipt can find the Linq chat. */
-  pipe: { channel: 'sms' | 'imessage'; chatId: string | null; isGroup: boolean };
+   * record it, so a later receipt can find the Linq chat. `service` is the one Linq said
+   * carried the text, null when it did not say. `answerBy` is when the webhook it came on
+   * stops waiting, null when none waits. */
+  pipe: {
+    channel: 'sms' | 'imessage';
+    chatId: string | null;
+    isGroup: boolean;
+    service: LinqChatService | null;
+    answerBy: Date | null;
+  };
 }
 
 function messagingPipe(inbound: Inbound): SendContext['pipe'] {
@@ -791,9 +876,11 @@ function messagingPipe(inbound: Inbound): SendContext['pipe'] {
       channel: 'imessage',
       chatId: inbound.chatId ?? null,
       isGroup: inbound.isGroup === true,
+      service: inbound.service ?? null,
+      answerBy: inbound.answerBy ?? null,
     };
   }
-  return { channel: 'sms', chatId: null, isGroup: false };
+  return { channel: 'sms', chatId: null, isGroup: false, service: null, answerBy: null };
 }
 
 /** One in-flight share per session object, so a second bubble in the same turn cannot double-post. */
@@ -856,12 +943,27 @@ async function sendMapBubbles(
   transcript: TranscriptEntry[],
 ): Promise<'delivered' | 'send_failed'> {
   const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  // VIL-682 K5 · lit, on a chat Linq said is iMessage each bubble after the first waits
+  // the bubble gap, none past the moment Linq stops waiting for this webhook.
+  const familyId = ctx.session.familyId;
+  const chatId = ctx.pipe.channel === 'imessage' ? ctx.pipe.chatId : null;
+  const gaps =
+    chatId && familyId && coachBubblesEnabled(familyId)
+      ? bubbleGaps({
+          chatId,
+          service: ctx.pipe.service,
+          answerBy: ctx.pipe.answerBy,
+          log: console,
+        })
+      : null;
   for (const [index, bubble] of toSend.entries()) {
     let landed = false;
     let err: string | null = null;
     try {
-      landed =
-        (await sendAndRecord(database, ctx, bubble, deps, transcript)).channelMessageId != null;
+      const send = () => sendAndRecord(database, ctx, bubble, deps, transcript);
+      const sent =
+        index > 0 && gaps ? await gaps(send, (out) => out.channelMessageId != null) : await send();
+      landed = sent.channelMessageId != null;
     } catch (caught) {
       err = caught instanceof Error ? caught.name : 'unknown';
     }
@@ -1030,6 +1132,14 @@ export async function writeChannelMessage(
     actionTaken: entry.direction === 'in' ? 'sms_intake_inbound' : 'sms_intake_outbound',
     targetTable: 'channel_messages',
     targetId: id,
+  });
+  noteMessage({
+    direction: entry.direction,
+    familyId,
+    channel,
+    isGroup: entry.inGroup,
+    chatId: entry.chatId,
+    database,
   });
   return id;
 }
@@ -1926,7 +2036,8 @@ async function friendOnboardingTurn(
       // reply, written next. This draft is read for its facts only.
       replyDiscardedWhen: (capture) => {
         const next = storedFromCapture(prior, capture);
-        const kids = withKnownAges(next.collectedChildren);
+        next.collectedChildren = fillAgesFromDates(next.collectedChildren, now);
+        const kids = withKnownAges(next.collectedChildren, now);
         const settled = settledLocation(next.place ? persistPlace(next.place) : null, {
           placeDeclined: priorGiven?.placeDeclined === true || capture.placeDeclined,
         });
@@ -1936,6 +2047,7 @@ async function friendOnboardingTurn(
   );
   language = spoken.capture.language ?? language;
   const stored = storedFromCapture(prior, spoken.capture);
+  stored.collectedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const nextPlace = stored.place ? persistPlace(stored.place) : null;
   const collected: IntakeCollected = {
     children: stored.collectedChildren,
@@ -1945,7 +2057,7 @@ async function friendOnboardingTurn(
   const given = givenFromStored(priorGiven, stored, spoken.capture, {
     coarseCodeAsked: friendOutbound(spoken) != null && spoken.placeAsk === 'coarse',
   });
-  const children = withKnownAges(collected.children);
+  const children = withKnownAges(collected.children, now);
   const settled = settledLocation(nextPlace, given);
   const baseTouch: FirstTouchPersisted = {
     language,
@@ -1992,7 +2104,7 @@ async function friendOnboardingTurn(
   const waitingAges = settled != null;
   const clarifyKey = waitingAges ? 'ages' : 'place';
   const priorCount = session.firstTouch?.clarify?.[clarifyKey] ?? 0;
-  const partial = knownAgeChildren(collected.children);
+  const partial = knownAgeChildren(collected.children, now);
   if (settled && priorCount >= REASK_CAP && partial.length > 0) {
     return provision(
       database,
@@ -2142,12 +2254,14 @@ async function retryFailedLinqContactCard(
 }
 
 function childAgesChanged(
-  prior: readonly { ageMonths: number | null }[],
-  next: readonly { ageMonths: number | null }[],
+  prior: readonly { ageMonths: number | null; dateOfBirth?: string | null }[],
+  next: readonly { ageMonths: number | null; dateOfBirth?: string | null }[],
 ): boolean {
-  return next.some(
-    (child, index) => child.ageMonths != null && child.ageMonths !== prior[index]?.ageMonths,
-  );
+  return next.some((child, index) => {
+    const before = prior[index];
+    if (child.dateOfBirth && child.dateOfBirth !== before?.dateOfBirth) return true;
+    return child.ageMonths != null && child.ageMonths !== before?.ageMonths;
+  });
 }
 
 function childNamesChanged(
@@ -2172,11 +2286,13 @@ async function syncOnboardingChildren(
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[],
   next: readonly {
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[],
   now: Date,
 ): Promise<void> {
@@ -2200,7 +2316,11 @@ async function syncOnboardingChildren(
     const patch: { name?: string; dateOfBirth?: string; dobPrecision?: string } = {};
     const first = kidFirstName(child.name);
     if (first && row.name !== first) patch.name = first;
-    if (child.ageMonths != null && child.ageMonths !== before?.ageMonths) {
+    const exact = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+    if (exact && exact !== before?.dateOfBirth) {
+      patch.dateOfBirth = exact;
+      patch.dobPrecision = 'exact';
+    } else if (child.ageMonths != null && child.ageMonths !== before?.ageMonths && !exact) {
       patch.dateOfBirth = deriveDateOfBirth(child.ageMonths, child.agePrecision ?? 'years', now);
       patch.dobPrecision = 'derived';
     }
@@ -2449,7 +2569,7 @@ async function friendColdTurn(
     },
     spoken.capture,
   );
-  const mergedChildren = stored.collectedChildren;
+  const mergedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const agesChanged = childAgesChanged(session.collected.children, mergedChildren);
   if (agesChanged || childNamesChanged(session.collected.children, mergedChildren)) {
     await syncOnboardingChildren(
@@ -2765,23 +2885,37 @@ async function handleDetails(
  * child we know only the name of cannot reach provisioning at all, and no branch
  * downstream has to decide what date to invent for them.
  */
-function withKnownAges(children: readonly ExtractedChild[]): ProvisionChild[] | null {
+function withKnownAges(children: readonly ExtractedChild[], now: Date): ProvisionChild[] | null {
   const known: ProvisionChild[] = [];
   for (const child of children) {
-    if (child.ageMonths === null || child.agePrecision === null) return null;
-    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+    const provisioned = provisionChildFromExtracted(child, now);
+    if (!provisioned) return null;
+    known.push(provisioned);
   }
   return known;
 }
 
 /** Children whose age was actually told. Siblings still missing an age are left out. */
-function knownAgeChildren(children: readonly ExtractedChild[]): ProvisionChild[] {
+function knownAgeChildren(children: readonly ExtractedChild[], now: Date): ProvisionChild[] {
   const known: ProvisionChild[] = [];
   for (const child of children) {
-    if (child.ageMonths === null || child.agePrecision === null) continue;
-    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+    const provisioned = provisionChildFromExtracted(child, now);
+    if (provisioned) known.push(provisioned);
   }
   return known;
+}
+
+function provisionChildFromExtracted(child: ExtractedChild, now: Date): ProvisionChild | null {
+  const dateOfBirth = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+  const ageMonths = child.ageMonths ?? (dateOfBirth ? ageInMonths(dateOfBirth, now) : null);
+  const agePrecision = child.agePrecision ?? (dateOfBirth ? 'months' : null);
+  if (ageMonths === null || agePrecision === null) return null;
+  return {
+    name: child.name,
+    ageMonths,
+    agePrecision,
+    ...(dateOfBirth ? { dateOfBirth } : {}),
+  };
 }
 
 /**
@@ -2985,18 +3119,41 @@ async function provision(
   const children = discoveryOn
     ? gathered.children.map((child) => ({ ...child, name: kidFirstName(child.name) }))
     : gathered.children;
-  const { familyId, userId } = await provisionFromIntake(database, {
-    phoneE164,
-    phoneHash: session.phoneHash,
-    children,
-    location,
-    sourceCode: session.sourceCode,
-    firstMessage: firstInbound?.body ?? inbound.body,
-    transcript: gathered.transcript,
-    now,
-    language,
-    linqContactCardClaim: session.linqContactCardClaim,
-  });
+  let familyId: string;
+  let userId: string;
+  if (session.familyId && session.userId) {
+    familyId = session.familyId;
+    userId = session.userId;
+  } else {
+    const provisioned = await provisionFromIntake(database, {
+      phoneE164,
+      phoneHash: session.phoneHash,
+      children,
+      location,
+      sourceCode: session.sourceCode,
+      firstMessage: firstInbound?.body ?? inbound.body,
+      transcript: gathered.transcript,
+      now,
+      language,
+      linqContactCardClaim: session.linqContactCardClaim,
+    });
+    familyId = provisioned.familyId;
+    userId = provisioned.userId;
+    // VIL-532: the channel row commits inside provisionFromIntake. Link the
+    // session before radar / voice, which can throw, so a retry does not insert
+    // a second SMS channel and does not leave the family unlinked.
+    await saveSession(
+      database,
+      session,
+      {
+        collected: gathered.collected,
+        familyId,
+        userId,
+        lastProviderId: inbound.providerId,
+      },
+      now,
+    );
+  }
 
   const locationRequest = session.firstTouch?.locationRequest;
   if (locationRequest) {
@@ -3325,6 +3482,18 @@ async function provision(
     source_code: session.sourceCode,
     ...intakeShape(gathered.transcript, now),
   });
+  // The web funnel's other end of signup_started (the "Text Hale to start" click).
+  // Distinct id is the hashed family — the same person IdentifyUser will use —
+  // never the phone, never the intake session. Dark until WEB_ENABLED. Not
+  // through deps.capture: tests stub that seam for intake_started/completed.
+  void captureWebEvent('signup_completed', hashFamilyId(familyId), { surface: 'sms' }).then(
+    () => undefined,
+    (err: unknown) => {
+      console.warn('analytics: signup_completed not recorded', {
+        err: err instanceof Error ? err.name : 'unknown',
+      });
+    },
+  );
   return { status: 'provisioned', familyId, ...(mapOwed ? { mapOwed } : {}) };
 }
 
@@ -3874,6 +4043,10 @@ export async function handleStop(
   // STOP has to reach that row directly, and it erases the stored number along with the
   // opt-in: the consent was the only basis for holding a non-user's number at all.
   await optOutGuestRemindersOnStop(database, phoneE164, now);
+
+  // VIL-686 · the same for a Secret Santa draw still waiting on this number: a guest has no
+  // channel to revoke, so the STOP reaches the draw row directly.
+  await optOutSecretSantaOnStop(database, phoneE164);
 
   // A STOP after provisioning must revoke the real channel + append the consent
   // withdrawal + audit — the enrolment engine already owns that transaction, so this

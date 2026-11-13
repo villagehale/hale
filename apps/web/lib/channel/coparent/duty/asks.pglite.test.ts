@@ -21,7 +21,7 @@ import {
   renderDutyLines,
   sweepDutyAsks,
 } from './asks';
-import { COPARENT_DUTY_SENDS_ENABLED_ENV } from './flag';
+import { COPARENT_DUTY_SENDS_ENABLED_ENV, COPARENT_SPLIT_DUTY_ENABLED_ENV } from './flag';
 import { commitDutyUpdate, loadReadableDuties } from './model';
 
 let db: TestDb;
@@ -732,6 +732,68 @@ describe('duty ask sweep', () => {
       replyClient: scriptedReply(MODEL_NIGHT),
     });
     expect(answer).toMatchObject({ delivery: { status: 'sent' } });
+  });
+
+  it('asks one split-duty question for two overlapping kids (VIL-661)', async () => {
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await seedDutyFamily('Split Saturday');
+    await secondParent(family.familyId, 'Sam');
+    await claimGroup(family.familyId, 'chat-split');
+    const maya = await seedChild(
+      db.database,
+      family.familyId,
+      'Maya',
+      36,
+      undefined,
+      SUNDAY_AFTERNOON,
+    );
+    const leo = await seedChild(
+      db.database,
+      family.familyId,
+      'Leo',
+      48,
+      undefined,
+      SUNDAY_AFTERNOON,
+    );
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-hockey',
+      title: 'Maya hockey',
+      start: MONDAY,
+      childId: maya,
+    });
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: 'evt-dance',
+      title: 'Leo dance',
+      start: MONDAY,
+      childId: leo,
+    });
+    const view = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: SUNDAY_AFTERNOON,
+      bubbleLeaving: false,
+    });
+    expect('plan' in view).toBe(true);
+    if (!('plan' in view)) return;
+    expect(view.plan.sendLines).toEqual([
+      expect.objectContaining({
+        mode: 'split_duty',
+        eventKey: 'evt-hockey',
+        peerEventKey: 'evt-dance',
+        opensQuestion: true,
+      }),
+    ]);
+    const send = vi.fn(async () => ({ providerMessageId: 'linq-split' }));
+    const result = await sweepDutyAsks(db.database, {
+      now: SUNDAY_AFTERNOON,
+      ports: sendPorts(send),
+      replyClient: scriptedReply('Who drives Maya to hockey and who drives Leo to dance?'),
+    });
+    expect(result.sent).toBeGreaterThanOrEqual(1);
+    expect(send).toHaveBeenCalled();
   });
 
   it('does not enable a single-parent household', async () => {

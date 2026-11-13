@@ -30,10 +30,10 @@ describe('activity client stage labels', () => {
     expect(built.maxRetries).toBe(client.ACTIVITY_CLIENT_OPTIONS.maxRetries);
   });
 
-  it('leaves the SMS activity lane client unlabeled and separate', () => {
+  it("labels the SMS activity lane client 'activity' and keeps it separate", () => {
     traced.length = 0;
     const lane = client.activityClient();
-    expect(traced).toEqual([{}]);
+    expect(traced).toEqual([{ stage: 'activity' }]);
     expect(lane).not.toBe(client.discoveryActivityClient());
   });
 });

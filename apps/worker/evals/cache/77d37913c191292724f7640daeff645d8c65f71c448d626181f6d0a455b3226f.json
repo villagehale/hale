@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says login failed, child not signed up, gives the live browser link and ~8 minutes, no personal details, no retry promise, in zh. It says 没有占位 which clearly states no spot is held, and is short and plain. Minor: it does not state the child is not signed up in explicit words, but it is implied by login failure.",
+    "score": 4
+  }
+}

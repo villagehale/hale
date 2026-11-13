@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgwVMDUxUvquugQXTwEwn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/goKEAgTGAI4AUIIdGhpbmtpbmcSDBldseQBbnPgnVQqoBoMXmAHo8QrwkzPm+V7IjCfzJzSlrkvVlnwN9/9iKdc+wcvy8N4TfhJrJx707t80c+F7x/4gW2M091nYtCfJD0qmwoQycLmQTpIVc94uknb3MiEqkl552MMEGo0xGDEz1LBfqcIgdsl7DZ3iafq4EWAJBG8etxqEH3dewUZA2xRA4KgtkdMxqR6nLKprT3NETC+HmXcn19XdQbGv3rHngr2j0F7MiI1mrZtOO6xhQtgN7a4WhbpviX2k2L0RNtc69SPHqM51XH/nj5oCAhGpiS0vNJ4UgphPVkzH9OPM2Hu/Eh89JnJ63WxnWOIrLdvkDEu8OeIv8R0drIdd9BreRMayG0gimxJdl3aIXFxGbi8IVq7Y+wJBdGuR5ydUXVNyDIXPBOBX4WHEd9yR6RF44h6WKCZ1zWAr5VGirjIk9smLmHbSLAfvsLLuIqree/w/j9T/PcSLnE+BOnLog6PGhJrMhdlMf4bLMON4bE5nqQyGmeBE7uxpLSRdOM4EtMN3R466PHsEsqWmsdvViFfhDafjl5nQkqgo4B2lBf7EHEJPEQIL1G7NWD+kHjDzKtVzffH0aWo112UH7i7H+efa6DktbiQDrTmhrp0RYt/Qig42EAQvA1sMdN7ipbGt+iTt8TEFMIasWitJfc6wZxh+ImTd8Kw/lnunqNq9HEYoEC5bpx7z5k2lSs5oULDXV/OstFZyyQSm5HIUTULqTVTByUBhfDWH/0+z9kdqNskPNyZM83oqEaIaRum902yBOFDd1CD+XVb8zXA54PhtlrH1MAEemrf5wHFYwn+PNtWwZC42g9z+wGjegk4Wsr7PXa87Tbrv3Dki7vL/1DOTeFZ+O7hYaFKCf4D2dlGx+bocss8VWn7gPdvBxUfNyyH2xtkO0f/6enS7q/zZ6ZIoCvGOD2SOQft/bIhCpUbLE4cvzJd0OJo/HRYaULeYb+SLBzxNZ07utg+wOnxFc+my9UmdsNwmeqJg3bW+7mUVUl/ATDkPPh+e6nog6SIpAhHdVy5/FaDXIi5U02f4AkilelpdzikbKDyU5cAnp9eVKQTFR39otPDlPdktMhhBPppfQW71UT7NQHQJucw3ehOjWCP0oztuZr/l6BQ588bg2Qnm/6etsaaPLpxfsUT+X3oE2U1Gd/CxcU2zMq86y/wyCUad/Wb4BUwpyIdhTgDIQc5nXg8ODB5Ucg390SPOYk5Zhc+u+nu2VSox2VOw/dz6XZp2PkFvYKGbS8TZ/6NTLpGOmeYj1t0tlbPyyVSWjTIn/mYFSAoGqbSH8wMYDljw94hEg78seMzJ2e7ng1xkXl1lGXHzDWu7+Vf9gZnErl6gY6t8zpdRnBqPK40caUAkkpOfgxITBru7mVQO/A89YRqeEtHilPb0K5ToSftKcDOCb9nLy8RzV5t+XJ6lucIwLA9f3shbxUhwcgihxw4YPWnmalavnM39gwh2O4qbzrOc1PE3JF/mIcskOYL2NDL6BRqS+nbzaCmlHWGMxcxc5Awx022ebxwmD8srk25KEa4RvVRMvKdA634pdEIFVuGgnUg5VyTgODNWlga5WoVc66hQwih14WCjTIgvWBtdvxak0x3Cg8msken/xX8WC/1HHmO5iWY1oJ3KquhBb19BfQ9zGR/6JsX1q4kd5OoRb/F1zJtYoDXrF8qs151aOTnp46/q1VzxfrN5O8R8Fc3N8MYVeMsdcDkYN6ukZCdzkwVdahzjV0nzP6KahutdC5HJP2daN6THxjZdq139g1BaMzrGQNlyPUQt/qxPM9FVobqaEMV8MaMtw3uKBP2DypLlSZtLPqCOhaPsDlPZsIuTyMOyRgB"
+      },
+      {
+        "type": "text",
+        "text": "That's one I'll sort out with you in a private text. Want me to message you there?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18829,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 282,
+      "output_tokens_details": {
+        "thinking_tokens": 256
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

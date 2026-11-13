@@ -1,0 +1,21 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": {
+      "called": null
+    },
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "zh",
+    "reply": "欢迎加入!想让大家怎么称呼你呢?"
+  },
+  "latencyMs": 1977,
+  "usage": {
+    "input_tokens": 154,
+    "output_tokens": 86,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

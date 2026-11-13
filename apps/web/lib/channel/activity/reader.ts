@@ -1,9 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
-import { type FactReader, factsForContext } from '@hale/worker/memory-context';
+import {
+  type FactReader,
+  type FactSource,
+  correctedAgeMonths,
+  factsForContext,
+  recordCorrections,
+} from '@hale/worker/memory-context';
 import { eq } from 'drizzle-orm';
 import { familyLocalNow } from '~/lib/channel/coach/local-now';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { recordFieldOf } from '~/lib/memory/record-field';
 import { type ActivityPlace, readActivityPlace } from './place';
 
 /**
@@ -58,13 +65,31 @@ export interface FamilyFitPreference {
   childId: string | null;
   key: string;
   value: unknown;
+  /** VIL-519. Where Hale learned it: the parent said it, a calendar or receipt showed
+   * it, or Hale inferred it. `legacy` is a row from before sources were kept. */
+  source: FactSource;
+  /** VIL-519. The day (UTC, YYYY-MM-DD) the source was seen — how fresh it is. */
+  seenOn: string;
+}
+
+/** Kept on the result so a caller can see there is nothing to re-ask. Always empty:
+ * a stale guess's key would name the interest (`loves_swimming`), so it is omitted
+ * rather than handed to the finder. */
+export interface FamilyFitRecheck {
+  childId: string | null;
+  key: string;
+  seenOn: string;
 }
 
 export interface FamilyFit {
   children: FamilyFitChild[];
   /** The town the search looked around, or null when the family has none. */
   homeArea: string | null;
+  /** Fresh, at or above the confidence floor, and not a remembered copy of the age or
+   * home record: the shared prompt read (`factsForContext`) leaves the rest out. */
   preferences: FamilyFitPreference[];
+  /** Always empty. Stale guesses are left out of the result so their key cannot name an interest. */
+  recheck: FamilyFitRecheck[];
 }
 
 /** Durable facts that steer a pick: tastes (indoor, not scary, swim) and logistics
@@ -100,27 +125,33 @@ export function bindActivityReader(
   };
 }
 
+/**
+ * Today on the family's own clock (VIL-435), `YYYY-MM-DD (Weekday)`, so a find for "today"
+ * is checked against the day it is where they live. Null when the zone is unknown. A failed
+ * read is logged by fault class and leaves the day out; the find still runs.
+ */
+export async function readFamilyToday(
+  database: Database,
+  familyId: string,
+  now = new Date(),
+): Promise<string | null> {
+  try {
+    const zone = await knownHouseholdTimezone(database, familyId);
+    if (!zone) return null;
+    const local = familyLocalNow(now, zone);
+    return `${local.date} (${local.weekday})`;
+  } catch (err) {
+    console.error(
+      { fault: err instanceof Error ? err.name : typeof err },
+      'activity reader: family day unavailable',
+    );
+    return null;
+  }
+}
+
 export function productionActivityFamilyReader(): ActivityFamilyReader {
   return {
-    /**
-     * Today on the family's own clock (VIL-435), so a find for "today" is checked against
-     * the day it is where they live. A failed read is logged by fault class and leaves
-     * the day out; the find still runs.
-     */
-    today: async (database, familyId) => {
-      try {
-        const zone = await knownHouseholdTimezone(database, familyId);
-        if (!zone) return null;
-        const local = familyLocalNow(new Date(), zone);
-        return `${local.date} (${local.weekday})`;
-      } catch (err) {
-        console.error(
-          { fault: err instanceof Error ? err.name : typeof err },
-          'activity reader: family day unavailable',
-        );
-        return null;
-      }
-    },
+    today: (database, familyId) => readFamilyToday(database, familyId),
     /**
      * Where the family is now, as a search may be told it (place.ts), or why it cannot
      * be. A postal area that covers two towns is not guessed: the find does not run.
@@ -176,8 +207,9 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
 
     familyFit: async (database, familyId, factReader, now = new Date()) => {
       const self = productionActivityFamilyReader();
-      const [place, childRows] = await Promise.all([
+      const [place, corrections, childRows] = await Promise.all([
         self.place(database, familyId),
+        recordCorrections(database, familyId, now),
         database
           .select({
             id: schema.children.id,
@@ -187,7 +219,15 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
           .from(schema.children)
           .where(eq(schema.children.familyId, familyId)),
       ]);
-      const children = childRows.map((row) => toFitChild(row, now));
+      // The parent's age correction stands in for the date of birth's age, as in the coach
+      // (VIL-519). The stage stays the date of birth's: the teen gate reads nothing else.
+      const children = childRows.map((row) => {
+        const child = toFitChild(row, now);
+        const fact = corrections.age.get(row.id);
+        if (!fact || child.ageYears === null) return child;
+        const months = correctedAgeMonths(fact, now);
+        return { ...child, ageYears: months === null ? null : Math.floor(months / 12) };
+      });
       const teenIds = new Set(
         children.filter((child) => child.stage === 'teenager').map((child) => child.childId),
       );
@@ -200,11 +240,18 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
           factTypes: FIT_FACT_TYPES,
           excludeKinds: ['one_off'],
         })
-      ).map((row) => ({ childId: row.childId, key: row.factKey, value: row.factValue }));
+      ).map((row) => ({
+        childId: row.childId,
+        key: row.factKey,
+        value: row.factValue,
+        source: row.memorySource as FactSource,
+        sourcedAt: row.sourcedAt,
+      }));
       return {
         children,
         homeArea: place.status === 'known' ? place.town : null,
         preferences: selectFitPreferences(factRows, teenIds),
+        recheck: [],
       };
     },
   };
@@ -224,13 +271,40 @@ export function toFitChild(
   };
 }
 
-/** A teen's preferences never ride (rule #1/#5); the rest are capped to the slice. */
+export interface FitFactRow {
+  childId: string | null;
+  key: string;
+  value: unknown;
+  source: FactSource;
+  sourcedAt: Date;
+}
+
+/**
+ * A teen's preferences never ride (rule #1/#5); the rest are capped to the slice, in the
+ * order the shared read ranked them (what the parent said ahead of Hale's guess).
+ * One per (child, key): `writeFact` keeps one live row per identity, and should two
+ * types share a key the later-seen one wins.
+ */
 export function selectFitPreferences(
-  rows: readonly { childId: string | null; key: string; value: unknown }[],
+  rows: readonly FitFactRow[],
   teenIds: ReadonlySet<string>,
 ): FamilyFitPreference[] {
-  return rows
-    .filter((row) => row.childId === null || !teenIds.has(row.childId))
-    .slice(0, FAMILY_FIT_PREFERENCE_LIMIT)
-    .map((row) => ({ childId: row.childId, key: row.key, value: row.value }));
+  const newest = new Map<string, FitFactRow>();
+  for (const row of rows) {
+    if (row.childId !== null && teenIds.has(row.childId)) continue;
+    // Age and place belong on the record. A marked row that is a correction is read
+    // there (`recordCorrections`); keeping it here would hide an unmarked preference
+    // that shares the key (Devin #981).
+    if (recordFieldOf(row.value)) continue;
+    const id = `${row.childId ?? ''}\u0000${row.key}`;
+    const seen = newest.get(id);
+    if (!seen || row.sourcedAt.getTime() > seen.sourcedAt.getTime()) newest.set(id, row);
+  }
+  return [...newest.values()].slice(0, FAMILY_FIT_PREFERENCE_LIMIT).map((row) => ({
+    childId: row.childId,
+    key: row.key,
+    value: row.value,
+    source: row.source,
+    seenOn: row.sourcedAt.toISOString().slice(0, 10),
+  }));
 }

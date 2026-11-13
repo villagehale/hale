@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale already emailed the swim coach, which is a send_done claim. No rows exist, so no row backs it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_done",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1506
+}

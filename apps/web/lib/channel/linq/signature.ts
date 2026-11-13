@@ -17,6 +17,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 /** Linq's documented replay window. */
 export const LINQ_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 
+/**
+ * How long Linq waits for this door to answer one delivery attempt, counted from the
+ * attempt's `webhook-timestamp`. Past it the attempt has failed and Linq retries with the
+ * same event (docs: "Response timeout: 10 seconds").
+ */
+export const LINQ_WEBHOOK_TIMEOUT_MS = 10_000;
+
 /** The payload version this door accepts. Pinned on the subscription URL. */
 export const LINQ_WEBHOOK_VERSION = '2026-02-03';
 

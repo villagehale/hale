@@ -38,7 +38,10 @@ import {
   evalSubjectRequest,
   installEvalSpendCap,
   priceRates,
+  reportEvalGeneration,
+  withoutCacheTtl,
   withoutMessageCacheMarkers,
+  wrapEvalAnthropic,
 } from './lib/harness.mjs';
 import { SMS_CALENDAR_REVIEWER_FIXTURES } from './sms-calendar-reviewer-fixtures.mjs';
 
@@ -62,7 +65,9 @@ const REVIEWER_TOOLS = contracts.REVIEWER_TOOLS;
 
 // --- content-addressed cache (never calls live in --cached-only) ------------
 function cacheKey(tag, payload) {
-  return createHash('sha256').update(`${tag}\n${payload}`).digest('hex');
+  return createHash('sha256')
+    .update(`${tag}\n${withoutCacheTtl(payload)}`)
+    .digest('hex');
 }
 async function cacheGet(key) {
   const path = join(CACHE_DIR, `${key}.json`);
@@ -84,7 +89,10 @@ const cost = {
 };
 let lazyClient;
 function getClient() {
-  lazyClient ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  lazyClient ??= wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+    suite: 'reviewer',
+    stage: 'reviewer',
+  });
   return capSdkClient(lazyClient, { rates: priceRates, tag: 'reviewer' });
 }
 
@@ -116,6 +124,13 @@ function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
         const cached = await cacheGet(key);
         if (cached) {
           if (Number.isFinite(cached.latencyMs)) cost.latencies.push(cached.latencyMs);
+          reportEvalGeneration({
+            suite: 'reviewer',
+            caseName: tag,
+            model: params.model,
+            latencyMs: cached.latencyMs,
+            cached: true,
+          });
           return cached.response;
         }
         if (cachedOnly) {

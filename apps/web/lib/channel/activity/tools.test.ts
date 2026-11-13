@@ -163,6 +163,26 @@ describe('find_activities', () => {
       expect(seen).toMatchObject([{ town: 'Halton Hills' }]);
     });
 
+    it('takes a blank area as no place named, and searches home instead of refusing', async () => {
+      const seen: unknown[] = [];
+      const read: string[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader(TERRACE, read),
+        onPromise: () => {},
+      });
+
+      await call(tool, { subject: 'story time', area: '' });
+      await call(tool, { subject: 'swim lessons', area: ' \t ' });
+
+      expect(read).toEqual([]);
+      expect(seen).toMatchObject([
+        { subject: 'story time', town: 'Halton Hills' },
+        { subject: 'swim lessons', town: 'Halton Hills' },
+      ]);
+    });
+
     it('searches a named place even when the family has no home town on file', async () => {
       const seen: unknown[] = [];
       const tool = findActivitiesTool({
@@ -470,7 +490,16 @@ describe('find_activities family slice (VIL-518)', () => {
   const FIT = {
     children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
     homeArea: 'halton_hills' as const,
-    preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
+    preferences: [
+      {
+        childId: CHILD,
+        key: 'indoor',
+        value: { prefers: 'indoor' },
+        source: 'parent_message' as const,
+        seenOn: '2026-10-01',
+      },
+    ],
+    recheck: [],
   };
 
   it('hands the family slice back beside the picks, and never sends it to the search', async () => {
@@ -500,5 +529,31 @@ describe('find_activities family slice (VIL-518)', () => {
       expect(result).toContain('Halton Hills Gymnastics');
       expect(result).not.toContain('"family"');
     }
+  });
+});
+
+describe('find_activities description: record over thread history (VIL-519, Design lock)', () => {
+  const description = findActivitiesTool({
+    reader: reader({}),
+    finder: fakeFinder([]),
+    onPromise: () => {},
+  }).description;
+
+  it('makes the family record win over older thread mentions of place and age', () => {
+    expect(description).toContain('the record wins');
+    expect(description).toContain('not from the old mention');
+  });
+
+  it('forbids profile / memory meta to the parent', () => {
+    expect(description).toContain(
+      'Never tell the parent about a record, profile, memory or mismatch',
+    );
+  });
+
+  it('keeps recheck to one question the model writes, and never a reason to pick', () => {
+    expect(description).toContain('must not choose the subject you search');
+    expect(description).toContain('no set sentence');
+    expect(description).not.toContain('if it would change this pick');
+    expect(description).not.toContain('loves_swimming');
   });
 });

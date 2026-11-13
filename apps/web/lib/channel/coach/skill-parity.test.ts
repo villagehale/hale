@@ -38,6 +38,8 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
         reader: {} as never,
         watchConsentGranted: {} as never,
         readClassAvailability: {} as never,
+        parentWords: '',
+        linksThisTurn: () => [],
       },
       onOffer: () => {},
       onShare: () => {},
@@ -113,7 +115,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain("who's around this weekend");
     expect(skill.instructions).toContain('The live web only when');
     expect(skill.instructions).toContain('Their own day comes first');
-    expect(skill.instructions).toContain('Do not mention the week');
+    expect(skill.instructions).toContain('it does not open on the week');
+    // coach-find-day owns the day of a bare find; the base skill does not say it has none.
+    expect(skill.instructions).not.toContain('No day and no kind of place');
     expect(skill.instructions).toContain('Then what checked out');
     // A missing course-page link is asked with a question mark, and a statement
     // that you need the link is not an ask. The skill and the watch-tool prompt
@@ -128,6 +132,8 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       reader: {} as never,
       readClassAvailability: {} as never,
       watchConsentGranted: {} as never,
+      parentWords: '',
+      linksThisTurn: () => [],
       onWatch: () => {},
     });
     expect(watch.description).toContain(
@@ -148,6 +154,16 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(find.description).toContain('do not call this beside a checked find');
     expect(find.description).toContain('their own week comes first');
     expect(find.description).not.toContain('even when the radar already has a find');
+  });
+
+  /** VIL-589. The runtime fills `helpLines` for where the family is; 811 is a dig line in the US. */
+  it('gives the help lines from the context key the runtime fills, never a number of its own', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('give BOTH lines in `helpLines`');
+    expect(prose).toContain('Never a number it does not carry');
+    expect(prose).not.toContain('Call 811');
+    expect(prose).not.toContain('811 any time');
   });
 
   it('tells the coach the reply is the class plus the marker, without a phrase ban list (VIL-501)', async () => {
