@@ -168,9 +168,6 @@ export const FLAGS = [
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED', { upcoming: true }),
-  exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
-    upcoming: true,
-  }),
   exact('prompt-cache-layout', 'PROMPT_CACHE_LAYOUT_ENABLED', { upcoming: true }),
 
   trimmed('linq-group-carpool', 'LINQ_GROUP_CARPOOL_ENABLED'),

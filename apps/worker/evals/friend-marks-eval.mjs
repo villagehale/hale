@@ -2,8 +2,10 @@
 //
 // SUBJECT: packages/agent/skills/onboarding-friend.md, called with the same
 // tool, schema and lane as createFriendVoiceComposer. friend-voice.ts reads
-// `asks`, `parentQuestion`, `connectorsOffered` and `joinPointer` instead of
-// matching '?' or English/French words. This checks the model returns them on
+// `asks`, `parentQuestion`, `connectorsOffered`, `joinPointer` and, on every
+// reply, `asksCount`, `asksName`, `speaksAsParent`, `joinInProse`,
+// `parentPlainYes` and `parentLoneName` instead of matching '?' or
+// English/French words. This checks the model returns them on
 // the turns where the send depends on them, with the right value: a Chinese
 // question is `parentQuestion` and no question is kept as a yes, a calendar
 // reply that offers Gmail lists it, a co-parent yes points `below`, a receipt
@@ -242,9 +244,17 @@ async function record() {
           ) ?? []
         ).filter((bubble) => bubble.length > 0).length
       : 0;
-    // A reply code would send: the same judge speakFriend runs, for this step.
-    const judged = fixture.sendable
-      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+    // A reply code would send: the same judge speakFriend runs, for this step, on
+    // the same model fields speakFriend hands it.
+    const marks = fixture.sendable ? voice.parseReplyTool(result.value) : null;
+    const judged = marks
+      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input, {
+          asksCount: marks.asksCount,
+          asksName: marks.asksName === true,
+          speaksAsParent: marks.speaksAsParent === true,
+          offered: marks.connectorsOffered ?? [],
+          parentQuestion: marks.parentQuestion === true,
+        })
       : null;
     const context = voice.friendVoiceContext(input);
     const meaning = fixture.watchFor

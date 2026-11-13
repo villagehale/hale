@@ -20,7 +20,6 @@ import {
   lastInboundFact,
   nameAskVoiceInput,
   onboardingReplyToolSchema,
-  parentReading,
   readGroupLeads,
   speakFriend,
   tidyProse,
@@ -46,6 +45,27 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
     parentName: null,
     ...over,
   };
+}
+
+/** The model's own question count, as speakFriend hands it to the judge. */
+const ONE_ASK = { asksCount: 1 } as const;
+const NO_ASK = { asksCount: 0 } as const;
+const ZERO_ASK_STEPS = new Set(['stop_asking', 'connected', 'ack', 'find_show']);
+
+/**
+ * For judge checks that are not about questions or connectors: the model's own
+ * fields say the reply asks what its step wants and offers only that step's connector.
+ */
+function judgeAsStepWants(
+  body: string,
+  input: FriendVoiceInput,
+  options: Parameters<typeof judgeFriendReply>[2] = {},
+) {
+  return judgeFriendReply(body, input, {
+    asksCount: ZERO_ASK_STEPS.has(input.step) ? 0 : 1,
+    offered: input.step === 'email' ? ['gmail'] : input.step === 'calendar' ? ['calendar'] : [],
+    ...options,
+  });
 }
 
 describe('friend voice brief', () => {
@@ -174,6 +194,9 @@ describe('the open name ask, as the name-capture reader hands it to the model', 
             return {
               reply: 'No problem, see you at swim on Thursday. What should I call you instead?',
               capture: { nameTakenBack: true },
+              asks: true,
+              asksCount: 1,
+              asksName: true,
             };
           },
         },
@@ -228,17 +251,6 @@ describe('a delayed undo during name capture', () => {
     },
   });
 
-  it('does not decide a take-back from the words; a lone name is still a name', () => {
-    expect(parentReading(asked)).toBeNull();
-    expect(parentReading({ ...asked, parentWords: 'Dana' })).toEqual({
-      kind: 'name',
-      name: 'Dana',
-    });
-    expect(friendVoiceContext(asked)).not.toMatchObject({
-      reading: { kind: 'undo' },
-    });
-  });
-
   // Code-side filter only. The stub is not the model: the skill tells the model
   // a take-back is not a name. This checks that a copied message is dropped
   // when the model already marked the take-back.
@@ -249,6 +261,9 @@ describe('a delayed undo during name capture', () => {
           return {
             reply: 'Want me to watch school and camp email for the dates?',
             capture: { parentName: null, nameDeclined: true },
+            asks: true,
+            asksCount: 1,
+            connectorsOffered: ['gmail'],
           };
         },
       },
@@ -266,6 +281,9 @@ describe('a delayed undo during name capture', () => {
           return {
             reply: 'Want me to watch school and camp email for the dates?',
             capture: { parentName: 'Undo', nameDeclined: true, nameTakenBack: true },
+            asks: true,
+            asksCount: 1,
+            connectorsOffered: ['gmail'],
           };
         },
       },
@@ -282,8 +300,11 @@ describe('a delayed undo during name capture', () => {
       {
         async compose() {
           return {
-            reply: 'Want me to watch school and camp email for the dates?',
+            reply: 'No problem, that is undone. What would you like me to call you?',
             capture: { parentName: 'Undo', nameTakenBack: true, nameDeclined: false },
+            asks: true,
+            asksCount: 1,
+            asksName: true,
           };
         },
       },
@@ -302,6 +323,9 @@ describe('a delayed undo during name capture', () => {
           return {
             reply: 'Want me to watch school and camp email for the dates?',
             capture: { parentName: 'undo', nameDeclined: true },
+            asks: true,
+            asksCount: 1,
+            connectorsOffered: ['gmail'],
           };
         },
       },
@@ -319,7 +343,7 @@ describe('a delayed undo during name capture', () => {
     "D'accord. Je t'appelle undo. Qu'est-ce que je surveille ensuite ?",
     'Je t’appelle « undo ». Comment je continue ?',
   ])('refuses a reply that addresses them by the take-back: %s', (reply) => {
-    expect(judgeFriendReply(reply, { ...asked, nameTakenBack: true })).toEqual({
+    expect(judgeFriendReply(reply, { ...asked, nameTakenBack: true }, ONE_ASK)).toEqual({
       ok: false,
       reason: 'identity',
       detail: 'unknown_name',
@@ -329,10 +353,13 @@ describe('a delayed undo during name capture', () => {
 
   it('does not read an ordinary short answer as a name when a name is already known', () => {
     const named = blank({ ...asked, step: 'email', parentWords: 'sure', parentName: 'Dana' });
+    const gmailAsk = { ...ONE_ASK, offered: ['gmail'] as const };
     expect(
-      judgeFriendReply('Sure thing. Want me to watch school email for the dates?', named),
+      judgeFriendReply('Sure thing. Want me to watch school email for the dates?', named, gmailAsk),
     ).toEqual({ ok: true });
-    expect(judgeFriendReply('Got it. Want me to watch school email, sure?', named)).toEqual({
+    expect(
+      judgeFriendReply('Got it. Want me to watch school email, sure?', named, gmailAsk),
+    ).toEqual({
       ok: true,
     });
   });
@@ -340,7 +367,7 @@ describe('a delayed undo during name capture', () => {
   it('checks the draft against any take-back the model marked, whatever its length', () => {
     const long = { ...asked, parentWords: 'actually scratch that for now', nameTakenBack: true };
     expect(
-      judgeFriendReply('Okay, "actually scratch that for now" it is. What next?', long),
+      judgeFriendReply('Okay, "actually scratch that for now" it is. What next?', long, ONE_ASK),
     ).toEqual({
       ok: false,
       reason: 'identity',
@@ -350,7 +377,7 @@ describe('a delayed undo during name capture', () => {
   });
 
   it('does not treat the message as a foreign name until the model marks a take-back', () => {
-    expect(judgeFriendReply("I'll undo that. What should I call you?", asked)).toEqual({
+    expect(judgeFriendReply("I'll undo that. What should I call you?", asked, ONE_ASK)).toEqual({
       ok: true,
     });
   });
@@ -369,7 +396,13 @@ describe('a delayed undo during name capture', () => {
         async compose() {
           const reply = drafts[seen.length] ?? '';
           seen.push(reply);
-          return { reply, capture: { parentName: null, nameConfirmed: false } };
+          return {
+            reply,
+            capture: { parentName: null, nameConfirmed: false },
+            asks: true,
+            asksCount: 1,
+            asksName: true,
+          };
         },
       },
       blank({ ...asked, step: 'name_confirm', parentWords: 'non', parentName: 'Bea' }),
@@ -388,7 +421,12 @@ describe('a delayed undo during name capture', () => {
         async compose() {
           const reply = 'Got it, Robin. What city are you in?';
           seen.push(reply);
-          return { reply, capture: { parentName: 'Robin', nameConfirmed: false } };
+          return {
+            reply,
+            capture: { parentName: 'Robin', nameConfirmed: false },
+            asks: true,
+            asksCount: 1,
+          };
         },
       },
       blank({ step: 'name_reply', parentWords: 'Robin', parentName: 'Bea' }),
@@ -409,9 +447,9 @@ describe('a delayed undo during name capture', () => {
       parentName: 'Bea',
       nameTakenBack: true,
     });
-    expect(judgeFriendReply('What should I call you?', confirm)).toEqual({ ok: true });
+    expect(judgeFriendReply('What should I call you?', confirm, ONE_ASK)).toEqual({ ok: true });
     expect(
-      judgeFriendReply('Got it, I\'ll call you "non". What should I call you?', confirm),
+      judgeFriendReply('Got it, I\'ll call you "non". What should I call you?', confirm, ONE_ASK),
     ).toEqual({
       ok: false,
       reason: 'identity',
@@ -490,7 +528,11 @@ describe('onboarding friend fixtures', () => {
     for (const conversation of FRIEND_CONVERSATIONS) {
       for (const turn of conversation.turns) {
         const body = fixtureBody(turn);
-        const judged = judgeFriendReply(body, turn.input, { link: turn.link ?? null });
+        const judged = judgeFriendReply(body, turn.input, {
+          link: turn.link ?? null,
+          asksCount: turn.asksCount,
+          offered: turn.connectorsOffered,
+        });
         expect(judged, `${conversation.id} / ${turn.title} / ${body}`).toEqual({ ok: true });
         expect(body).not.toMatch(/reply with the number you want/i);
         expect(body).not.toMatch(/i'll note it/i);
@@ -537,7 +579,7 @@ describe('friend-voice judge', () => {
   it('does not refuse a long reply: length is not a reason', () => {
     const prose = `${'Got it, I can look near you for what fits the kids. '.repeat(30)}What's your postal code?`;
     expect(prose.length).toBeGreaterThan(1200);
-    expect(judgeFriendReply(prose, blank({ step: 'place', parentWords: 'hi' }))).toEqual({
+    expect(judgeAsStepWants(prose, blank({ step: 'place', parentWords: 'hi' }), ONE_ASK)).toEqual({
       ok: true,
     });
   });
@@ -554,20 +596,28 @@ describe('friend-voice judge', () => {
 
   it('rejects a second question, the stock lines, and an invented price', () => {
     const prose = 'Maya is 4, near M5V. Which of these feels right?';
-    expect(judgeFriendReply(assembleFriendBody(prose, swim), swim)).toEqual({ ok: true });
-    expect(judgeFriendReply(assembleFriendBody(`${prose} How old is she?`, swim), swim).ok).toBe(
-      false,
-    );
+    expect(judgeAsStepWants(assembleFriendBody(prose, swim), swim, ONE_ASK)).toEqual({ ok: true });
     expect(
-      judgeFriendReply(assembleFriendBody('Which one? Reply with the number you want.', swim), swim)
-        .ok,
+      judgeAsStepWants(assembleFriendBody(`${prose} How old is she?`, swim), swim, {
+        asksCount: 2,
+      }).ok,
     ).toBe(false);
     expect(
-      judgeFriendReply(assembleFriendBody("I'll note it. Which of these?", swim), swim).ok,
+      judgeAsStepWants(
+        assembleFriendBody('Which one? Reply with the number you want.', swim),
+        swim,
+        ONE_ASK,
+      ).ok,
     ).toBe(false);
     expect(
-      judgeFriendReply(assembleFriendBody('Swim is $40 on Saturday. Which of these?', swim), swim)
-        .ok,
+      judgeAsStepWants(assembleFriendBody("I'll note it. Which of these?", swim), swim, ONE_ASK).ok,
+    ).toBe(false);
+    expect(
+      judgeAsStepWants(
+        assembleFriendBody('Swim is $40 on Saturday. Which of these?', swim),
+        swim,
+        ONE_ASK,
+      ).ok,
     ).toBe(false);
   });
 
@@ -579,9 +629,15 @@ describe('friend-voice judge', () => {
       placeLabel: 'M5V',
     });
     expect(
-      judgeFriendReply('Nothing age-fit nearby yet. Reply with the number you want.', empty).ok,
+      judgeAsStepWants('Nothing age-fit nearby yet. Reply with the number you want.', empty, NO_ASK)
+        .ok,
     ).toBe(false);
-    expect(judgeFriendReply('Nothing age-fit nearby yet. What should I call you?', empty)).toEqual({
+    expect(
+      judgeAsStepWants('Nothing age-fit nearby yet. What should I call you?', empty, {
+        ...ONE_ASK,
+        asksName: true,
+      }),
+    ).toEqual({
       ok: true,
     });
   });
@@ -594,30 +650,30 @@ describe('friend-voice judge', () => {
       activity: 'Swim',
     });
     const prose = 'This link is just for you. Want me to check that swim against your calendar?';
-    expect(judgeFriendReply(prose, calendar).ok).toBe(false);
+    expect(judgeAsStepWants(prose, calendar).ok).toBe(false);
     const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
-    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+    expect(judgeAsStepWants(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
   });
 
   it('lets the aside follow the question: one ask, wherever it sits', () => {
     const place = blank({ step: 'place', parentWords: 'what is this?', listKind: 'none' });
     expect(
-      judgeFriendReply("It's a text for your kids' year. What's your postal code?", place),
+      judgeAsStepWants("It's a text for your kids' year. What's your postal code?", place),
     ).toEqual({ ok: true });
     expect(
-      judgeFriendReply("What's your postal code? It's a text for your kids' year.", place),
+      judgeAsStepWants("What's your postal code? It's a text for your kids' year.", place),
     ).toEqual({ ok: true });
   });
 
   it('lets a host through only as a whole word the parent wrote, never a piece of one', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes, we use kidsclub.ca' });
-    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
-    expect(judgeFriendReply('Done. club.ca it is.', yes)).toMatchObject({
+    expect(judgeAsStepWants('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+    expect(judgeAsStepWants('Done. club.ca it is.', yes)).toMatchObject({
       ok: false,
       reason: 'invented',
       kinds: ['domain'],
     });
-    expect(judgeFriendReply('Done. kidsclub.ca.evil.app it is.', yes)).toMatchObject({
+    expect(judgeAsStepWants('Done. kidsclub.ca.evil.app it is.', yes)).toMatchObject({
       ok: false,
       reason: 'invented',
       kinds: ['domain'],
@@ -632,16 +688,16 @@ describe('friend-voice judge', () => {
       'Done. https:／／evil.app it is.',
       'Done. https：／／evil.app/x it is.',
     ]) {
-      expect(judgeFriendReply(reply, yes), reply).toMatchObject({ ok: false, reason: 'invented' });
+      expect(judgeAsStepWants(reply, yes), reply).toMatchObject({ ok: false, reason: 'invented' });
     }
-    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+    expect(judgeAsStepWants('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
 
     const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
     const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
     const prose = 'This link is just for you. Want me to check your calendar?';
-    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+    expect(judgeAsStepWants(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
     expect(
-      judgeFriendReply(`${prose}\n${link}\nhttps：//evil.app/x`, calendar, { link }),
+      judgeAsStepWants(`${prose}\n${link}\nhttps：//evil.app/x`, calendar, { link }),
     ).toMatchObject({ ok: false, reason: 'invented' });
   });
 
@@ -657,7 +713,7 @@ describe('friend-voice judge', () => {
       'Done. Art Fridays, sign up at https：//evil.app/y it is.',
       'Done. Swim Tuesdays, sign up at https：//evil.app/x it is.',
     ]) {
-      expect(judgeFriendReply(reply, listed), reply).toMatchObject({
+      expect(judgeAsStepWants(reply, listed), reply).toMatchObject({
         ok: false,
         reason: 'invented',
         kinds: ['domain'],
@@ -668,20 +724,20 @@ describe('friend-voice judge', () => {
       granted: true,
       parentWords: 'yes, sign up at https://evil.app/x',
     });
-    expect(judgeFriendReply('Done. https://evil.app/x it is.', echoed)).toMatchObject({
+    expect(judgeAsStepWants('Done. https://evil.app/x it is.', echoed)).toMatchObject({
       ok: false,
       reason: 'invented',
       kinds: ['domain'],
     });
 
-    expect(judgeFriendReply('Done. kidsclub.ca it is.', listed)).toEqual({ ok: true });
-    expect(judgeFriendReply('Done. See https://villagehale.com for more.', listed)).toEqual({
+    expect(judgeAsStepWants('Done. kidsclub.ca it is.', listed)).toEqual({ ok: true });
+    expect(judgeAsStepWants('Done. See https://villagehale.com for more.', listed)).toEqual({
       ok: true,
     });
     const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
     const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
     const prose = 'This link is just for you. Want me to check your calendar?';
-    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+    expect(judgeAsStepWants(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
   });
 
   describe('a link may be only the handed link, Hale’s site or the parent’s own words (VIL-632)', () => {
@@ -727,7 +783,7 @@ describe('friend-voice judge', () => {
         'Your calendar is in. Saturday: https://evil.app/login',
         'Your calendar is in. Saturday: evil.app/login',
       ]) {
-        expect(judgeFriendReply(reply, input), reply).toMatchObject({
+        expect(judgeAsStepWants(reply, input), reply).toMatchObject({
           ok: false,
           reason: 'invented',
           kinds: expect.arrayContaining(['domain']),
@@ -735,7 +791,7 @@ describe('friend-voice judge', () => {
       }
       const bareTitle = synced({ title: 'Verify at evil.app/login' });
       expect(
-        judgeFriendReply('Your calendar is in. Saturday: evil.app/login', bareTitle),
+        judgeAsStepWants('Your calendar is in. Saturday: evil.app/login', bareTitle),
       ).toMatchObject({
         ok: false,
         reason: 'invented',
@@ -750,7 +806,7 @@ describe('friend-voice judge', () => {
           'Your inbox is in. Picture day: https://evil.app/pay',
           'Your inbox is in. Picture day: evil.app/pay',
         ]) {
-          expect(judgeFriendReply(reply, input), `${snippet} / ${reply}`).toMatchObject({
+          expect(judgeAsStepWants(reply, input), `${snippet} / ${reply}`).toMatchObject({
             ok: false,
             reason: 'invented',
             kinds: expect.arrayContaining(['domain']),
@@ -766,7 +822,7 @@ describe('friend-voice judge', () => {
           'Done. Swim Tuesdays, sign up at https://evil.app/x it is.',
           'Done. Swim Tuesdays, sign up at evil.app/x it is.',
         ]) {
-          expect(judgeFriendReply(reply, listed), `${line} / ${reply}`).toMatchObject({
+          expect(judgeAsStepWants(reply, listed), `${line} / ${reply}`).toMatchObject({
             ok: false,
             reason: 'invented',
             kinds: expect.arrayContaining(['domain']),
@@ -782,7 +838,7 @@ describe('friend-voice judge', () => {
         parentWords: 'yes',
         recentTurns: [{ role: 'hale', body: 'Swim Tuesdays at evil.app/x' }],
       });
-      expect(judgeFriendReply('Done. evil.app/x it is.', input)).toMatchObject({
+      expect(judgeAsStepWants('Done. evil.app/x it is.', input)).toMatchObject({
         ok: false,
         reason: 'invented',
         kinds: expect.arrayContaining(['domain']),
@@ -792,47 +848,49 @@ describe('friend-voice judge', () => {
     it('passes the handed link, Hale’s site, and a link the parent typed', () => {
       const calendar = synced({ title: 'Verify at evil.app/login' });
       const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
-      expect(judgeFriendReply(`Your calendar is in.\n${link}`, calendar, { link })).toEqual({
+      expect(judgeAsStepWants(`Your calendar is in.\n${link}`, calendar, { link })).toEqual({
         ok: true,
       });
-      expect(judgeFriendReply('Your calendar is in. More at villagehale.com', calendar)).toEqual({
+      expect(judgeAsStepWants('Your calendar is in. More at villagehale.com', calendar)).toEqual({
         ok: true,
       });
 
       const typedNow = blank({ step: 'ack', granted: true, parentWords: 'we use kidsclub.ca' });
-      expect(judgeFriendReply('Done. kidsclub.ca it is.', typedNow)).toEqual({ ok: true });
+      expect(judgeAsStepWants('Done. kidsclub.ca it is.', typedNow)).toEqual({ ok: true });
       const typedEarlier = blank({
         step: 'ack',
         granted: true,
         parentWords: 'yes',
         recentTurns: [{ role: 'parent', body: 'we use kidsclub.ca' }],
       });
-      expect(judgeFriendReply('Done. kidsclub.ca it is.', typedEarlier)).toEqual({ ok: true });
+      expect(judgeAsStepWants('Done. kidsclub.ca it is.', typedEarlier)).toEqual({ ok: true });
     });
 
     it('still grounds a place from a synced slot that holds no link', () => {
       const input = synced({ title: 'Mia swim', location: 'Riverside Pool' });
       expect(
-        judgeFriendReply('Your calendar is in. Saturday: Mia swim at Riverside Pool.', input),
+        judgeAsStepWants('Your calendar is in. Saturday: Mia swim at Riverside Pool.', input),
       ).toEqual({ ok: true });
     });
   });
 
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
-    expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({
+    expect(judgeAsStepWants('Done. STOP always works.', yes)).toEqual({
       ok: false,
       reason: 'compliance',
     });
-    expect(judgeFriendReply("Done. You're covered.", yes)).toEqual({ ok: true });
+    expect(judgeAsStepWants("Done. You're covered.", yes)).toEqual({ ok: true });
 
     const calendar = blank({ step: 'connected', connector: 'gcal', parentWords: '' });
     const gmail = blank({ step: 'connected', connector: 'gmail', language: 'fr', parentWords: '' });
-    expect(judgeFriendReply('Your Gmail is connected.', calendar)).toMatchObject({
+    expect(
+      judgeAsStepWants('Your Gmail is connected.', calendar, { offered: ['gmail'] }),
+    ).toMatchObject({
       ok: false,
       reason: 'invented',
     });
-    expect(judgeFriendReply('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
+    expect(judgeAsStepWants('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
   });
 
   it('refuses every way of claiming a registration Hale did not make, and keeps the reminder wording', () => {
@@ -850,13 +908,13 @@ describe('friend-voice judge', () => {
       "She's signed-up for swim. Anything else?",
       "You're booked for swim Saturday. Anything else?",
     ]) {
-      expect(judgeFriendReply(claim, schedule)).toEqual({
+      expect(judgeAsStepWants(claim, schedule)).toEqual({
         ok: false,
         reason: 'registration_claim',
       });
     }
     expect(
-      judgeFriendReply(
+      judgeAsStepWants(
         "Swim is on your calendar as a reminder for Saturdays at 11:00; I'll flag it when registration opens. Anything else?",
         schedule,
       ),
@@ -871,24 +929,24 @@ describe('friend-voice judge', () => {
       identityAsked: true,
     });
     expect(
-      judgeFriendReply(
+      judgeAsStepWants(
         "Fair question. I'm Hale, from Village Hale Technologies (villagehale.com) - I find kids' activities near you and keep the dates straight. Pricing isn't mine to quote; the site has it. Who are the kids?",
         asked,
       ),
     ).toEqual({ ok: true });
     expect(
-      judgeFriendReply("I'm Hale, a text helper for parents. Who are the kids?", asked),
+      judgeAsStepWants("I'm Hale, a text helper for parents. Who are the kids?", asked),
     ).toEqual({ ok: false, reason: 'identity' });
     // A fixed-copy shape, with STOP in it, is not what the model writes.
     expect(
-      judgeFriendReply(
+      judgeAsStepWants(
         'This is Hale from Village Hale Technologies Inc. Reply STOP anytime and we stop. Who are the kids?',
         asked,
       ),
     ).toEqual({ ok: false, reason: 'compliance' });
     // A parent who is not challenging Hale is not made to hear the company name.
     const plain = blank({ step: 'kids_names', placeLabel: 'Burlington', parentWords: 'L7G 4S8' });
-    expect(judgeFriendReply('Burlington, got it. Who are the kids?', plain)).toEqual({ ok: true });
+    expect(judgeAsStepWants('Burlington, got it. Who are the kids?', plain)).toEqual({ ok: true });
   });
 
   it('lets a connected reply name one synced title, and nothing the snapshot does not have', () => {
@@ -916,18 +974,18 @@ describe('friend-voice judge', () => {
       timeZone: EASTERN,
     });
     expect(
-      judgeFriendReply('Swim at the rec centre is on your calendar.', input, {
+      judgeAsStepWants('Swim at the rec centre is on your calendar.', input, {
         ahaMention: 'Swim at the rec centre',
       }),
     ).toEqual({ ok: true });
     expect(
-      judgeFriendReply('Swim at the rec centre is on your calendar.', input, { ahaMention: null }),
+      judgeAsStepWants('Swim at the rec centre is on your calendar.', input, { ahaMention: null }),
     ).toEqual({ ok: true });
-    expect(judgeFriendReply('Your calendar is connected.', input, { ahaMention: null })).toEqual({
+    expect(judgeAsStepWants('Your calendar is connected.', input, { ahaMention: null })).toEqual({
       ok: true,
     });
     expect(
-      judgeFriendReply('Hockey is on Thursday at 4:00.', input, { ahaMention: 'Hockey' }),
+      judgeAsStepWants('Hockey is on Thursday at 4:00.', input, { ahaMention: 'Hockey' }),
     ).toMatchObject({ ok: false, reason: 'invented' });
   });
 
@@ -963,12 +1021,12 @@ describe('friend-voice judge', () => {
       facts: { today: { date: '2026-11-09' }, synced: { calendar: [{ clock: '9:00' }] } },
     });
     expect(
-      judgeFriendReply('Swim at the rec centre is Thursday at 9:00.', input, {
+      judgeAsStepWants('Swim at the rec centre is Thursday at 9:00.', input, {
         ahaMention: 'Swim at the rec centre',
       }),
     ).toEqual({ ok: true });
     expect(
-      judgeFriendReply('Swim at the rec centre is Thursday at 10:00.', input, {
+      judgeAsStepWants('Swim at the rec centre is Thursday at 10:00.', input, {
         ahaMention: 'Swim at the rec centre',
       }),
     ).toMatchObject({ ok: false, reason: 'invented' });
@@ -995,7 +1053,7 @@ describe('speakFriend', () => {
     const good = await speakFriend(
       {
         async compose() {
-          return { reply: 'How old are your kids?' };
+          return { reply: 'How old are your kids?', asks: true, asksCount: 1 };
         },
       },
       input,
@@ -1007,8 +1065,8 @@ describe('speakFriend', () => {
       {
         async compose(_input, options) {
           prompts.push(options?.prompt ?? 'full');
-          if (options?.prompt === 'short') return { reply: 'How old are your kids?' };
-          return { reply: "How old are the kids? I'll note it." };
+          if (options?.prompt === 'short') return { reply: 'How old are your kids?', ...ONE_ASK };
+          return { reply: "How old are the kids? I'll note it.", ...ONE_ASK };
         },
       },
       input,
@@ -1027,8 +1085,8 @@ describe('speakFriend', () => {
       const spoken = await speakFriend(
         {
           async compose(_input, options) {
-            if (options?.prompt === 'short') return { reply: 'How old are your kids?' };
-            return { reply: "How old are the kids? I'll note it." };
+            if (options?.prompt === 'short') return { reply: 'How old are your kids?', ...ONE_ASK };
+            return { reply: "How old are the kids? I'll note it.", ...ONE_ASK };
           },
         },
         blank({ step: 'ages', parentWords: 'Maya is 4', placeLabel: 'M5V' }),
@@ -1069,7 +1127,7 @@ describe('speakFriend', () => {
     const spoken = await speakFriend(
       {
         async compose() {
-          return { reply: opener, groupLeads: [lead] };
+          return { reply: opener, groupLeads: [lead], asksCount: 0 };
         },
       },
       blank({
@@ -1119,7 +1177,7 @@ describe('speakFriend', () => {
             const prompt = options?.prompt ?? 'full';
             prompts.push(prompt);
             retries.push(given.retry?.problem);
-            return drafts(prompt) as never;
+            return { asksCount: 0, ...drafts(prompt) } as never;
           },
         },
         map,
@@ -1204,7 +1262,10 @@ describe('speakFriend', () => {
     const later = blank({ step: 'calendar', parentWords: 'later' });
     const CLOSE = 'No worries, I will leave it there.';
 
-    async function speakStop(first: string, second: string, asks?: boolean) {
+    type Marks = { asks: boolean; asksCount: number };
+    const ASKS_NOTHING_MARKS: Marks = { asks: false, asksCount: 0 };
+
+    async function speakStop(first: string, firstMarks: Marks, second: string, secondMarks: Marks) {
       const retries: (string | undefined)[] = [];
       const spoken = await speakFriend(
         {
@@ -1213,7 +1274,7 @@ describe('speakFriend', () => {
             const retry = options?.prompt === 'short';
             return {
               reply: retry ? second : first,
-              ...(asks === undefined || retry ? {} : { asks }),
+              ...(retry ? secondMarks : firstMarks),
               capture: { stopAsking: true },
             } as never;
           },
@@ -1225,17 +1286,20 @@ describe('speakFriend', () => {
     }
 
     it.each([
-      ['a question mark', 'No worries. Want it on your calendar as a weekly reminder?', undefined],
       [
-        'a full-width question mark',
-        'No worries. Want it on your calendar as a weekly reminder\uFF1F',
-        undefined,
+        'the asks mark',
+        'No worries. Want it on your calendar as a weekly reminder?',
+        { asks: true, asksCount: 1 },
       ],
-      ['only the asks mark', 'No worries, tell me when you want the calendar.', true],
+      [
+        'only the question count, with no mark',
+        'No worries, tell me when you want the calendar.',
+        { asks: false, asksCount: 1 },
+      ],
     ])(
       'asks again when the stop holds %s, and sends the close that asks nothing',
-      async (_, draft, asks) => {
-        const { spoken, retries } = await speakStop(draft, CLOSE, asks);
+      async (_, draft, marks) => {
+        const { spoken, retries } = await speakStop(draft, marks, CLOSE, ASKS_NOTHING_MARKS);
         expect(retries[1]).toMatch(/set stopAsking and still asked a question/);
         expect(spoken.source).toBe('retry');
         expect(spoken.body).toBe(CLOSE);
@@ -1243,9 +1307,16 @@ describe('speakFriend', () => {
       },
     );
 
+    it('sends a stop with a question mark the model says asks nothing', async () => {
+      const draft = 'No worries? I will leave it there.';
+      const { spoken } = await speakStop(draft, ASKS_NOTHING_MARKS, CLOSE, ASKS_NOTHING_MARKS);
+      expect(spoken).toMatchObject({ source: 'composed', body: draft });
+    });
+
     it('sends nothing and keeps the session open when the retry still asks', async () => {
       const draft = 'No worries. Want it on your calendar as a weekly reminder?';
-      const { spoken } = await speakStop(draft, draft);
+      const asking = { asks: true, asksCount: 1 };
+      const { spoken } = await speakStop(draft, asking, draft, asking);
       expect(spoken).toMatchObject({ source: 'unsent', body: '' });
       expect(spoken.capture.stopAsking).toBe(false);
     });
@@ -1282,6 +1353,7 @@ describe('speakFriend', () => {
                 "Both are on as reminders: Mia's Swim Kids Saturdays at 11:00 weekly, Seb's storytime Thursday at 10:30. Anything else from the list?",
               // Positive control for the save gate: a save this turn really records goes out.
               claimsSaved: true,
+              ...ONE_ASK,
               capture: {
                 scheduleAdds: [
                   { line: 2, cadence: 'weekly', date: '2026-10-10', time: '11:00' },
@@ -1293,6 +1365,7 @@ describe('speakFriend', () => {
           // The full draft confirmed a swim with no settled date and a line off the map.
           return {
             reply: "Done: Mia's swim weekly and Seb's drop-in Thursday, as reminders.",
+            ...NO_ASK,
             capture: {
               scheduleAdds: [
                 { line: 2, cadence: 'weekly' },
@@ -1334,6 +1407,7 @@ describe('speakFriend', () => {
       reply: `Saved Mia's carpool for tomorrow, Saturday at 8. ${ASK}`,
       capture: { scheduleAdds: [{ line: 1, cadence: 'once', date: '2026-11-07', time: '08:00' }] },
       claimsSaved: true,
+      ...ONE_ASK,
     };
 
     it('sends nothing when the retry after a refused add still says it was saved', async () => {
@@ -1345,7 +1419,11 @@ describe('speakFriend', () => {
           {
             async compose(_input, options) {
               if (options?.prompt === 'short') {
-                return { reply: `Your carpool request is saved. ${ASK}`, claimsSaved: true };
+                return {
+                  reply: `Your carpool request is saved. ${ASK}`,
+                  claimsSaved: true,
+                  ...ONE_ASK,
+                };
               }
               return refusedDraft;
             },
@@ -1377,6 +1455,7 @@ describe('speakFriend', () => {
                 return {
                   reply: `I can't put the carpool on from here, so it isn't saved. ${ASK}`,
                   claimsSaved: false,
+                  ...ONE_ASK,
                 };
               }
               return refusedDraft;
@@ -1403,11 +1482,16 @@ describe('speakFriend', () => {
             async compose(_input, options) {
               prompts.push(options?.prompt ?? 'full');
               if (options?.prompt === 'short') {
-                return { reply: `That one isn't on your calendar yet. ${ASK}`, claimsSaved: false };
+                return {
+                  reply: `That one isn't on your calendar yet. ${ASK}`,
+                  claimsSaved: false,
+                  ...ONE_ASK,
+                };
               }
               return {
                 reply: `Bien noté, c'est enregistré pour samedi. ${ASK}`,
                 claimsSaved: true,
+                ...ONE_ASK,
               };
             },
           },
@@ -1434,8 +1518,8 @@ describe('speakFriend', () => {
           {
             async compose(_input, options) {
               prompts.push(options?.prompt ?? 'full');
-              if (options?.prompt === 'short') return { reply: ASK };
-              return { reply: `I'll send an invite to the other parent. ${ASK}` };
+              if (options?.prompt === 'short') return { reply: ASK, ...ONE_ASK };
+              return { reply: `I'll send an invite to the other parent. ${ASK}`, ...ONE_ASK };
             },
           },
           { ...coparent, parentWords: 'maybe' },
@@ -1459,7 +1543,7 @@ describe('speakFriend', () => {
     const spoken = await speakFriend(
       {
         async compose() {
-          return { reply: "How old are the kids? I'll note it." };
+          return { reply: "How old are the kids? I'll note it.", ...ONE_ASK };
         },
       },
       input,
@@ -1498,6 +1582,7 @@ describe('speakFriend', () => {
           return {
             reply: "Great, the link is right there. Tap it and I'll text you what I see.",
             capture: { connectCalendar: true },
+            ...NO_ASK,
           };
         },
       },
@@ -1517,6 +1602,7 @@ describe('speakFriend', () => {
             reply: 'Want me to watch Gmail for the dates too?',
             capture: { connectCalendar: true },
             connectorsOffered: ['gmail'],
+            ...ONE_ASK,
           };
         },
       },
@@ -1614,14 +1700,14 @@ describe('speakFriend', () => {
       judgeFriendReply(
         'Saw the picture day at Park Public School on Thursday in your inbox. Want a reminder the evening before?',
         input,
-        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8', ...ONE_ASK },
       ),
     ).toEqual({ ok: false, reason: 'question' });
     expect(
       judgeFriendReply(
         'Saw the picture day at Park Public School on Thursday in your inbox. I can remind you the evening before.',
         input,
-        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8', ...NO_ASK },
       ),
     ).toEqual({ ok: true });
     // A weekday the subject does not carry is still invented.
@@ -1629,7 +1715,7 @@ describe('speakFriend', () => {
       judgeFriendReply(
         'Saw the picture day at Park Public School on Friday in your inbox. I can remind you the evening before.',
         input,
-        { ahaMention: 'Picture Day at Park Public School Thu Oct 8' },
+        { ahaMention: 'Picture Day at Park Public School Thu Oct 8', ...NO_ASK },
       ),
     ).toMatchObject({ ok: false, reason: 'invented' });
 
@@ -1666,7 +1752,7 @@ describe('speakFriend', () => {
       judgeFriendReply(
         "Mia's swim and the Mia birthday party both start around 10:00 on Saturday the 17th, so they clash. I can flag it the evening before.",
         clash,
-        { ahaMention: 'Mia swim' },
+        { ahaMention: 'Mia swim', ...NO_ASK },
       ),
     ).toEqual({ ok: true });
   });
@@ -1711,6 +1797,7 @@ describe('the co-parent step: their group, or a new one', () => {
             reply: 'Great, the number is below for whenever you want.',
             capture,
             joinPointer: 'below' as const,
+            ...NO_ASK,
           };
         },
       },
@@ -1777,25 +1864,37 @@ describe('model fields, not text matches', () => {
     coparent: false,
   } as const;
 
-  it('reads a yes only when the previous reply said it asked, in any script', () => {
-    const gmail = blank({
-      step: 'email',
-      parentWords: 'oui',
-      checklist: { ...checklist, gmail: false },
-      recentTurns: [{ role: 'hale', body: '想连接邮箱吗？', asked: true }],
-    });
-    expect(parentReading(gmail)).toEqual({ kind: 'yes', item: 'gmail' });
-    const punctuation = blank({
-      ...gmail,
-      recentTurns: [{ role: 'hale', body: 'Want me to watch email?' }],
-    });
-    expect(parentReading(punctuation)).toBeNull();
-    const statement = blank({
-      ...gmail,
-      parentWords: "d'accord",
-      recentTurns: [{ role: 'hale', body: 'The number is ready whenever you are.', asked: true }],
-    });
-    expect(parentReading(statement)).toEqual({ kind: 'yes', item: 'gmail' });
+  it('holds the model yes only when the previous reply said it asked, in any script', async () => {
+    const yes = (recentTurns: FriendVoiceInput['recentTurns']) =>
+      speakFriend(
+        {
+          async compose() {
+            return {
+              reply:
+                'Google shares the whole inbox, and I keep what is about the kids. The link is above.',
+              capture: {},
+              parentPlainYes: true,
+              asks: false,
+              asksCount: 0,
+              connectorsOffered: ['gmail'],
+            };
+          },
+        },
+        blank({
+          step: 'email',
+          parentWords: 'oui',
+          checklist: { ...checklist, gmail: false },
+          recentTurns,
+        }),
+        { page: async () => undefined, linkAbove: true },
+      );
+    expect(
+      (await yes([{ role: 'hale', body: 'The number is ready whenever you are.', asked: true }]))
+        .capture.connectGmail,
+    ).toBe(true);
+    expect(
+      (await yes([{ role: 'hale', body: 'Want me to watch email?' }])).capture.connectGmail,
+    ).toBeNull();
   });
 
   it('a question is not a yes when the model says so, including with no Latin question mark', async () => {
@@ -1813,6 +1912,7 @@ describe('model fields, not text matches', () => {
             capture: { connectCalendar: true },
             parentQuestion: true,
             asks: true,
+            ...ONE_ASK,
           };
         },
       },
@@ -1830,6 +1930,7 @@ describe('model fields, not text matches', () => {
             reply: "Great, the link is right there. Tap it and I'll text you what I see.",
             capture: { connectCalendar: true },
             parentQuestion: false,
+            ...NO_ASK,
           };
         },
       },
@@ -1850,7 +1951,7 @@ describe('model fields, not text matches', () => {
     const english = await speakFriend(
       {
         async compose() {
-          return { reply: ask, connectorsOffered: ['calendar'] };
+          return { reply: ask, connectorsOffered: ['calendar'], ...ONE_ASK };
         },
       },
       input,
@@ -1862,7 +1963,7 @@ describe('model fields, not text matches', () => {
     const chinese = await speakFriend(
       {
         async compose() {
-          return { reply: '也要连邮箱吗？', connectorsOffered: ['calendar', 'gmail'] };
+          return { reply: '也要连邮箱吗？', connectorsOffered: ['calendar', 'gmail'], ...ONE_ASK };
         },
       },
       input,
@@ -1874,7 +1975,7 @@ describe('model fields, not text matches', () => {
     const chineseOk = await speakFriend(
       {
         async compose() {
-          return { reply: '也要连邮箱吗？', connectorsOffered: [] };
+          return { reply: '也要连邮箱吗？', connectorsOffered: ['calendar'], ...ONE_ASK };
         },
       },
       input,
@@ -1890,7 +1991,7 @@ describe('model fields, not text matches', () => {
     const offersBoth = await speakFriend(
       {
         async compose() {
-          return { reply, connectorsOffered: ['gmail', 'calendar'] };
+          return { reply, connectorsOffered: ['gmail', 'calendar'], ...ONE_ASK };
         },
       },
       input,
@@ -1902,7 +2003,7 @@ describe('model fields, not text matches', () => {
     const ownOnly = await speakFriend(
       {
         async compose() {
-          return { reply, connectorsOffered: ['gmail'] };
+          return { reply, connectorsOffered: ['gmail'], ...ONE_ASK };
         },
       },
       input,
@@ -1926,6 +2027,7 @@ describe('model fields, not text matches', () => {
             reply: 'Le numéro est juste en dessous, pour quand tu veux.',
             capture: { coparentGroup: true },
             joinPointer: 'below',
+            ...NO_ASK,
           };
         },
       },
@@ -1941,6 +2043,7 @@ describe('model fields, not text matches', () => {
           return {
             reply: 'Add the number below whenever you want.',
             capture: { coparentGroup: true },
+            ...NO_ASK,
           };
         },
       },
@@ -1957,6 +2060,7 @@ describe('model fields, not text matches', () => {
             reply: '好，按你方便的时候用就行。',
             capture: { coparentGroup: true },
             joinPointer: 'below',
+            ...NO_ASK,
           };
         },
       },
@@ -1980,6 +2084,7 @@ describe('model fields, not text matches', () => {
           return {
             reply:
               'Which of these would help? Baby and Me storytime on Thursdays, or Swim Kids on Saturdays?',
+            asksCount: 2,
           };
         },
       },
@@ -1993,7 +2098,7 @@ describe('model fields, not text matches', () => {
     const chinese = await speakFriend(
       {
         async compose() {
-          return { reply: '哪个适合？周六的游泳怎么样？' };
+          return { reply: '哪个适合？周六的游泳怎么样？', asksCount: 2 };
         },
       },
       schedule,
@@ -2005,7 +2110,7 @@ describe('model fields, not text matches', () => {
 });
 
 describe('#868 question marks in any script', () => {
-  it('counts the CJK and Arabic question marks as the one ask', () => {
+  it('sends a CJK or Arabic ask the model counts as the one question', () => {
     const base = {
       step: 'place',
       language: 'en',
@@ -2022,11 +2127,19 @@ describe('#868 question marks in any script', () => {
       parentName: null,
     } as const;
     expect(
-      judgeFriendReply('你好！我是Hale，你住在哪个邮编？', { ...base, parentWords: '你好' }),
+      judgeFriendReply(
+        '你好！我是Hale，你住在哪个邮编？',
+        { ...base, parentWords: '你好' },
+        ONE_ASK,
+      ),
     ).toEqual({ ok: true });
     // 'Hale。你…' reads as the host 'hale.你…' (fails closed), so the full stop is not used here.
     expect(
-      judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
+      judgeFriendReply(
+        'مرحبا! أنا Hale. ما هو رمزك البريدي؟',
+        { ...base, parentWords: 'مرحبا' },
+        ONE_ASK,
+      ),
     ).toEqual({ ok: true });
   });
 });
@@ -2117,8 +2230,16 @@ describe('a declined postal code', () => {
       };
       const { sent, composer } = replaying([
         // Two questions: the judge refuses it, so the short retry runs.
-        toolReply({ ...fields, reply: 'Totally fair. Just the first part of it? Or your ZIP?' }),
-        toolReply({ ...fields, reply: 'Totally fair. How many kids are we looking for?' }),
+        toolReply({
+          ...fields,
+          asksCount: 2,
+          reply: 'Totally fair. Just the first part of it? Or your ZIP?',
+        }),
+        toolReply({
+          ...fields,
+          asksCount: 1,
+          reply: 'Totally fair. How many kids are we looking for?',
+        }),
       ]);
       const spoken = await speakFriend(composer, declined, { page: async () => {} });
       expect(spoken.source).toBe('retry');
@@ -2154,7 +2275,8 @@ describe('a garbled parentQuestion', () => {
   const fields = {
     reply: 'I only keep what is about the kids. Want me to watch for school email?',
     asks: true,
-    connectorsOffered: [],
+    asksCount: 1,
+    connectorsOffered: ['gmail'],
     joinPointer: null,
     claimsSaved: false,
   };
@@ -2370,6 +2492,7 @@ describe('a declined place, closed in code', () => {
       reply: 'No problem at all. What are your kids called?',
       capture: { placeDeclined },
       asks: true,
+      asksCount: 1,
       parentQuestion: false,
       connectorsOffered: [],
       joinPointer: null,
@@ -2516,6 +2639,7 @@ describe('a declined place, closed in code', () => {
       const twoQuestions = draft({
         reply: 'Totally fair. Could you tell me the city? Or the first three characters?',
         placeAsk: 'coarse',
+        asksCount: 2,
       });
       const rewriteBrief = async (input: FriendVoiceInput) => {
         const { composer, seen } = sequenced([twoQuestions, draft({ placeAsk: 'coarse' })]);
@@ -2565,11 +2689,7 @@ describe('a declined place, closed in code', () => {
   });
 });
 
-describe('leftover marks: model fields, not ? or word lists', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
+describe('model fields, not ? or word lists (VIL-541)', () => {
   const checklist = {
     postal: true,
     kids: true,
@@ -2581,44 +2701,30 @@ describe('leftover marks: model fields, not ? or word lists', () => {
     coparent: false,
   } as const;
 
-  it("stays on today's regex path while the flag is off", () => {
-    const gmail = blank({
-      step: 'email',
-      parentWords: 'oui',
-      checklist: { ...checklist },
-      recentTurns: [{ role: 'hale', body: 'Want me to watch email?', asked: true }],
-    });
-    expect(parentReading(gmail)).toEqual({ kind: 'yes', item: 'gmail' });
-    expect(onboardingReplyToolSchema(gmail).required).not.toContain('asksCount');
+  it('reads no yes and no lone name from the words: a missing field holds nothing', async () => {
+    const asked = [{ role: 'hale' as const, body: 'Want me to watch email?', asked: true }];
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Google shares the whole inbox, and I keep what is about the kids. Want that?',
+            capture: {},
+            asks: true,
+            asksCount: 1,
+            connectorsOffered: ['gmail'],
+          };
+        },
+      },
+      blank({ step: 'email', parentWords: 'oui', checklist: { ...checklist }, recentTurns: asked }),
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(spoken.capture.connectGmail).toBeNull();
+    expect(
+      friendVoiceContext(blank({ step: 'names', parentWords: 'Dana', recentTurns: asked })),
+    ).not.toHaveProperty('reading');
   });
 
-  it('does not match a yes or a lone name from the words when the flag is on', () => {
-    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
-    const asked = [{ role: 'hale' as const, body: 'What should I call you?', asked: true }];
-    expect(
-      parentReading(
-        blank({
-          step: 'email',
-          parentWords: 'oui',
-          checklist: { ...checklist },
-          recentTurns: asked,
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      parentReading(
-        blank({
-          step: 'names',
-          parentWords: 'Dana',
-          checklist: { ...checklist, name: false },
-          recentTurns: asked,
-        }),
-      ),
-    ).toBeNull();
-  });
-
-  it('holds a yes or a lone name from the model fields when the flag is on', async () => {
-    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+  it('holds a yes or a lone name from the model fields', async () => {
     const yes = await speakFriend(
       {
         async compose() {
@@ -2629,6 +2735,7 @@ describe('leftover marks: model fields, not ? or word lists', () => {
             parentPlainYes: true,
             asksCount: 0,
             asks: false,
+            connectorsOffered: ['gmail'],
           };
         },
       },
@@ -2638,32 +2745,10 @@ describe('leftover marks: model fields, not ? or word lists', () => {
         checklist: { ...checklist },
         recentTurns: [{ role: 'hale', body: '想连接邮箱吗？', asked: true }],
       }),
-      { page: async () => undefined, linkAbove: true, yesToLink: true },
+      { page: async () => undefined, linkAbove: true },
     );
     expect(yes.source).toBe('composed');
     expect(yes.capture.connectGmail).toBe(true);
-
-    const skipped = await speakFriend(
-      {
-        async compose() {
-          return {
-            reply:
-              'Google shares the whole inbox, and I keep what is about the kids. Want to connect it?',
-            capture: {},
-            asksCount: 1,
-            asks: true,
-          };
-        },
-      },
-      blank({
-        step: 'email',
-        parentWords: 'oui',
-        checklist: { ...checklist },
-        recentTurns: [{ role: 'hale', body: 'Want me to watch email?', asked: true }],
-      }),
-      { page: async () => undefined, linkFollows: true },
-    );
-    expect(skipped.capture.connectGmail).toBeNull();
 
     const named = await speakFriend(
       {
@@ -2689,7 +2774,6 @@ describe('leftover marks: model fields, not ? or word lists', () => {
   });
 
   it('the judge counts questions from asksCount, not from a mark', () => {
-    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
     const place = blank({ step: 'place', parentWords: 'hi' });
     expect(judgeFriendReply("What's your postal code?", place)).toEqual({
       ok: false,
@@ -2698,12 +2782,15 @@ describe('leftover marks: model fields, not ? or word lists', () => {
     expect(
       judgeFriendReply("What's your postal code? Which one fits?", place, { asksCount: 1 }),
     ).toEqual({ ok: true });
+    expect(judgeFriendReply('Tell me your postal code', place, { asksCount: 1 })).toEqual({
+      ok: true,
+    });
     expect(judgeFriendReply("What's your postal code?", place, { asksCount: 2 })).toMatchObject({
       ok: false,
       reason: 'question',
     });
     expect(
-      judgeFriendReply('What should I call you?', blank({ step: 'email', parentWords: 'hi' }), {
+      judgeFriendReply('Tell me what to call you', blank({ step: 'email', parentWords: 'hi' }), {
         asksCount: 1,
         asksName: true,
       }),
@@ -2711,21 +2798,92 @@ describe('leftover marks: model fields, not ? or word lists', () => {
     expect(
       judgeFriendReply("I'm Barton. What's your postal code?", place, {
         asksCount: 1,
+        speaksAsParent: false,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Je suis là. Ton code postal ?', place, {
+        asksCount: 1,
         speaksAsParent: true,
       }),
     ).toEqual({ ok: false, reason: 'identity' });
   });
 
-  it('does not rewrite a question out of a receipt when the flag is on', () => {
-    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
+  it('the connector ask is on topic by connectorsOffered, not by naming it', () => {
+    const email = blank({ step: 'email', parentWords: 'sure' });
+    expect(
+      judgeFriendReply('电子邮件 — 要我帮你看着吗？', email, {
+        asksCount: 1,
+        offered: ['gmail'],
+        linkFollows: true,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Want me to look at your Gmail inbox?', email, {
+        asksCount: 1,
+        offered: [],
+        linkFollows: true,
+      }),
+    ).toEqual({ ok: false, reason: 'topic' });
+    expect(
+      judgeFriendReply('Google shares the whole inbox with me. Want to try?', email, {
+        asksCount: 1,
+        offered: [],
+        parentQuestion: true,
+        linkFollows: true,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('a wow line is refused for offering the other connector, not for naming it', () => {
+    const wow = blank({ step: 'connected', parentWords: 'ok', connector: 'gcal' });
+    expect(
+      judgeFriendReply('Your calendar is in, and Gmail can wait.', wow, {
+        asksCount: 0,
+        offered: ['calendar'],
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Your calendar is in. Le courriel aussi, plus tard.', wow, {
+        asksCount: 0,
+        offered: ['gmail'],
+      }),
+    ).toMatchObject({ ok: false, reason: 'invented', kinds: ['other_connector'] });
+  });
+
+  it('tidyProse takes out no sentence by a mark or a connector word', () => {
     const connected = blank({ step: 'connected', parentWords: 'ok', connector: 'gmail' });
-    expect(tidyProse('Your Gmail is in. What next?', connected, 'connected')).toBe(
-      'Your Gmail is in. What next?',
+    expect(tidyProse('Your Gmail is in. Your calendar next?', connected, 'connected')).toBe(
+      'Your Gmail is in. Your calendar next?',
     );
   });
 
+  it('a stop is refused for asking only by the model fields', async () => {
+    const stop = (asks: boolean, asksCount: number) =>
+      speakFriend(
+        {
+          async compose() {
+            return {
+              reply: 'Got it, I will stop asking. Text me anytime?',
+              capture: { stopAsking: true },
+              asks,
+              asksCount,
+            };
+          },
+        },
+        blank({
+          step: 'email',
+          parentWords: 'stop asking',
+          checklist: { ...checklist },
+          recentTurns: [{ role: 'hale', body: 'Want me to watch email?', asked: true }],
+        }),
+        { page: async () => undefined },
+      );
+    expect((await stop(false, 0)).source).toBe('composed');
+    expect((await stop(false, 1)).source).toBe('unsent');
+  });
+
   it('a join number in the prose is refused only when the model says so', async () => {
-    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
     const input = blank({
       step: 'coparent',
       parentWords: 'oui',
@@ -2734,50 +2892,30 @@ describe('leftover marks: model fields, not ? or word lists', () => {
       recentTurns: [{ role: 'hale', body: 'On fait un groupe ?', asked: true }],
     });
     const reply = 'Le numéro est juste en dessous, pour quand tu veux.';
-    const kept = await speakFriend(
-      {
-        async compose() {
-          return {
-            reply,
-            capture: { coparentGroup: true },
-            joinPointer: 'below',
-            joinInProse: false,
-            asksCount: 0,
-            asks: false,
-          };
+    const spoken = (joinInProse: boolean) =>
+      speakFriend(
+        {
+          async compose() {
+            return {
+              reply,
+              capture: { coparentGroup: true },
+              joinPointer: 'below',
+              joinInProse,
+              asksCount: 0,
+              asks: false,
+            };
+          },
         },
-      },
-      input,
-      { page: async () => undefined },
-    );
-    expect(kept.source).toBe('composed');
-    const refused = await speakFriend(
-      {
-        async compose() {
-          return {
-            reply,
-            capture: { coparentGroup: true },
-            joinPointer: 'below',
-            joinInProse: true,
-            asksCount: 0,
-            asks: false,
-          };
-        },
-      },
-      input,
-      { page: async () => undefined },
-    );
-    expect(refused.source).toBe('unsent');
+        input,
+        { page: async () => undefined },
+      );
+    expect((await spoken(false)).source).toBe('composed');
+    expect((await spoken(true)).source).toBe('unsent');
   });
 
-  it('appends the leftover skill and the extra fields only when the flag is on', async () => {
+  it('the reply tool requires every decision field, and no addendum skill rides', async () => {
     const base = (await loadOnboardingFriendSkill()).instructions;
-    const leftover = (await loadCronSkill('onboarding-friend-leftover-marks')).instructions;
     expect((await friendVoiceSystem({ step: 'email' }, false)).system).toBe(base);
-    vi.stubEnv('FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', 'true');
-    expect((await friendVoiceSystem({ step: 'email' }, false)).system).toBe(
-      `${base}\n\n${leftover}`,
-    );
     const schema = onboardingReplyToolSchema(blank({ step: 'email' }));
     expect(schema.required).toEqual(
       expect.arrayContaining([

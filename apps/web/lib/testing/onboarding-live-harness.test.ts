@@ -4,6 +4,7 @@ import type {
   FriendComposed,
   FriendVoiceComposer,
   FriendVoiceInput,
+  OfferedConnector,
 } from '~/lib/channel/intake/friend-voice';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -82,26 +83,30 @@ function scripted(input: FriendVoiceInput): FriendComposed {
       reply: 'Here is what is on near you for their ages.',
       capture,
       groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
+      asksCount: 0,
     };
   }
   if (input.step === 'connected') {
     const synced = input.synced;
     if (input.connector === 'gmail') {
       const item = synced?.email[0];
-      if (!item) return { reply: 'Gmail is connected.', capture, ahaMention: null };
+      if (!item) return { reply: 'Gmail is connected.', capture, ahaMention: null, asksCount: 0 };
       return {
         reply: `Gmail is connected. One thing for the kids: "${item.subject}" from ${item.fromName ?? 'the school'}. I will flag the date when it gets close.`,
         capture,
         ahaMention: item.subject,
+        asksCount: 0,
       };
     }
     const swim = synced?.calendar.find((item) => item.title === 'Mia swim');
     const party = synced?.calendar.find((item) => item.title === 'Mia birthday party');
-    if (!swim || !party) return { reply: 'Your calendar is connected.', capture, ahaMention: null };
+    if (!swim || !party)
+      return { reply: 'Your calendar is connected.', capture, ahaMention: null, asksCount: 0 };
     return {
       reply: `Your calendar is connected. Heads up: ${swim.title} runs right into ${party.title} the same morning.`,
       capture,
       ahaMention: swim.title,
+      asksCount: 0,
     };
   }
   if (input.step === 'email' && capture.connectGmail === true) {
@@ -109,6 +114,7 @@ function scripted(input: FriendVoiceInput): FriendComposed {
       reply:
         "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
       capture,
+      asksCount: 0,
     };
   }
   if (input.step === 'email' && /read all my emails/i.test(words)) {
@@ -116,6 +122,8 @@ function scripted(input: FriendVoiceInput): FriendComposed {
       reply:
         'I only keep what is about the kids, like school dates, and I never send anything from your account. You can disconnect anytime. Want me to go ahead?',
       capture,
+      asksCount: 1,
+      connectorsOffered: ['gmail'],
     };
   }
   if (input.step === 'schedule' && (capture.scheduleAdds as unknown[]).length > 0) {
@@ -123,17 +131,22 @@ function scripted(input: FriendVoiceInput): FriendComposed {
       reply:
         'Both are on as reminders: Swim Kids 3 on Saturdays and the storytime this Thursday. Anything else from the list?',
       capture,
+      asksCount: 1,
     };
   }
 
   let ask: string;
+  let offered: OfferedConnector[] = [];
   if (!postalKnown) ask = "Hey, it's Hale. What's your postal code?";
   else if (!kidsKnown) ask = "What are your kids' names?";
   else if (!nameKnown) ask = 'What should I call you?';
   else if (!gmailKnown) {
     ask = `${who ?? 'So'}, want me to watch school email for the kids' dates?`;
-  } else if (!calendarKnown) ask = `Want me to check your calendar too, ${who ?? 'friend'}?`;
-  else if (!scheduleKnown && input.findLines.length > 0) {
+    offered = ['gmail'];
+  } else if (!calendarKnown) {
+    ask = `Want me to check your calendar too, ${who ?? 'friend'}?`;
+    offered = ['calendar'];
+  } else if (!scheduleKnown && input.findLines.length > 0) {
     ask = 'Want any of those on your calendar as reminders?';
   } else if (!coparentKnown) ask = 'Want me to set up a group chat with the other parent?';
   else if (capture.coparentGroup === true) {
@@ -142,13 +155,20 @@ function scripted(input: FriendVoiceInput): FriendComposed {
         'Great. She can text the line below with the phrase and I will loop her in. She sees the kids plans, not your email.',
       capture,
       joinPointer: 'below',
+      asksCount: 0,
     };
-  } else return { reply: 'Anytime. I am here when you need me.', capture };
+  } else return { reply: 'Anytime. I am here when you need me.', capture, asksCount: 0 };
 
   const aside = input.identityAsked
     ? 'This is Hale, from Village Hale Technologies Inc. (villagehale.com); the plan details are on the site. '
     : '';
-  return { reply: `${aside}${ask}`, capture };
+  return {
+    reply: `${aside}${ask}`,
+    capture,
+    asksCount: 1,
+    asksName: postalKnown && kidsKnown && !nameKnown,
+    connectorsOffered: offered,
+  };
 }
 
 const composer: FriendVoiceComposer = { compose: async (input) => scripted(input) };

@@ -1,4 +1,9 @@
-import { type FriendVoiceInput, assembleFindShowBubbles, assembleFriendBody } from './friend-voice';
+import {
+  type FriendVoiceInput,
+  type OfferedConnector,
+  assembleFindShowBubbles,
+  assembleFriendBody,
+} from './friend-voice';
 
 /**
  * VIL-413 / VIL-417. Three onboarding conversations the friend-voice judge
@@ -26,6 +31,10 @@ export interface FriendFixtureTurn {
   prose: string;
   /** find_show only: the bubble the model wrote for each group, in group order. */
   groupLeads?: readonly string[];
+  /** The model's own count of the questions `prose` asks. */
+  asksCount: number;
+  /** The connectors `prose` offers, as the model lists them. */
+  connectorsOffered?: readonly OfferedConnector[];
 }
 
 export interface FriendFixtureConversation {
@@ -62,6 +71,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'postal code',
         prose: "Hey, it's Hale. What's your postal code?",
+        asksCount: 1,
         input: input({
           step: 'place',
           introduce: true,
@@ -71,6 +81,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'kids names, one ask',
         prose: "M5V, got it. What are your kids' names?",
+        asksCount: 1,
         input: input({
           step: 'kids_names',
           parentWords: 'M5V 2T6',
@@ -84,6 +95,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'ages, no empty week list',
         prose: 'Maya and Leo. How old are they?',
+        asksCount: 1,
         input: input({
           step: 'ages',
           parentWords: 'Maya and Leo',
@@ -94,6 +106,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         title: 'the map, grouped for their ages, no question',
         prose: 'Here is what is on near M5V for a 4-year-old and a 1-year-old.',
         groupLeads: [`Weekends\n${SWIM}`, `Free drop-ins\n${STORY}\n${EARLYON}`],
+        asksCount: 0,
         input: input({
           step: 'find_show',
           parentWords: 'Maya is 4 and Leo is 1',
@@ -111,6 +124,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'the name, its own later message',
         prose: 'And what should I call you?',
+        asksCount: 1,
         input: input({
           step: 'names',
           parentWords: 'Maya is 4 and Leo is 1',
@@ -123,6 +137,8 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         prose:
           'Dana, Google shares the whole inbox and I keep only kid-activity mail, never send anything for you, and you can disconnect any time. Google may show an unverified app screen; Advanced, then continue. Want me to watch for the registration dates?',
         link: GMAIL_LINK,
+        asksCount: 1,
+        connectorsOffered: ['gmail'],
         input: input({
           step: 'email',
           parentWords: 'Dana',
@@ -136,6 +152,8 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         prose:
           'Same deal for the calendar: I read it, I never write to it without a yes, and you can disconnect any time. Want me to check the swim against it?',
         link: CALENDAR_LINK,
+        asksCount: 1,
+        connectorsOffered: ['calendar'],
         input: input({
           step: 'calendar',
           parentWords: 'done',
@@ -149,6 +167,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         title: 'schedule, one activity, a sensible default, a reminder not a registration',
         prose:
           'Want the swim on your calendar as a weekly reminder, Saturdays 10am from this week?',
+        asksCount: 1,
         input: input({
           step: 'schedule',
           parentWords: 'connected',
@@ -164,6 +183,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         title: 'co-parent, asked once, softly',
         prose:
           'Last one. The other parent would see the same finds and reminders, nothing else. Want me to set up a group chat with them?',
+        asksCount: 1,
         input: input({
           step: 'coparent',
           parentWords: 'yes weekly',
@@ -181,6 +201,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         title: 'code postal',
         prose:
           "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants près de chez toi. Quel est ton code postal?",
+        asksCount: 1,
         input: input({
           step: 'place',
           language: 'fr',
@@ -191,6 +212,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'prénoms des enfants',
         prose: "C'est noté, près de H2X. Comment s'appellent tes enfants?",
+        asksCount: 1,
         input: input({
           step: 'kids_names',
           language: 'fr',
@@ -201,6 +223,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'âges',
         prose: 'Léa, joli. Quel âge a-t-elle?',
+        asksCount: 1,
         input: input({
           step: 'ages',
           language: 'fr',
@@ -212,6 +235,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         title: 'la carte, sans question',
         prose: 'Voici ce qui se passe près de H2X pour une enfant de 4 ans.',
         groupLeads: [`La fin de semaine\n${NATATION}`, `Gratuit\n${CONTE}`],
+        asksCount: 0,
         input: input({
           step: 'find_show',
           language: 'fr',
@@ -230,6 +254,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'prénom',
         prose: "Et toi, comment je t'appelle?",
+        asksCount: 1,
         input: input({
           step: 'names',
           language: 'fr',
@@ -242,6 +267,8 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         prose:
           "Camille, je lis seulement les courriels d'activités pour enfants, je n'envoie rien à ta place, et tu peux déconnecter quand tu veux. Tu veux que je surveille les dates d'inscription?",
         link: GMAIL_LINK,
+        asksCount: 1,
+        connectorsOffered: ['gmail'],
         input: input({
           step: 'email',
           language: 'fr',
@@ -255,6 +282,8 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         prose:
           "Même chose pour le calendrier: je le lis, je n'écris rien sans ton oui, et tu peux déconnecter quand tu veux. Tu veux que je compare la natation à ton calendrier?",
         link: CALENDAR_LINK,
+        asksCount: 1,
+        connectorsOffered: ['calendar'],
         input: input({
           step: 'calendar',
           language: 'fr',
@@ -274,6 +303,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         title: 'straight to the map, no question',
         prose: 'Maya is 4 and Leo is 1, near M6J. Here is what is on.',
         groupLeads: [`Weekends\n${SWIM}`],
+        asksCount: 0,
         input: input({
           step: 'find_show',
           introduce: true,
@@ -289,6 +319,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'the name, in the second message',
         prose: "I'm Hale, by the way. What should I call you?",
+        asksCount: 1,
         input: input({
           step: 'names',
           parentWords: "Hey, Maya is 4, Leo is 1, we're in M6J 1A1",
@@ -301,6 +332,8 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
         prose:
           'Dana, this link is just for you. I read kid-activity mail only, never send for you, and you can disconnect any time. Want me to watch school and camp email for the dates?',
         link: GMAIL_LINK,
+        asksCount: 1,
+        connectorsOffered: ['gmail'],
         input: input({
           step: 'email',
           parentWords: 'Dana',

@@ -563,6 +563,7 @@ describe('friend voice onboarding', () => {
       async compose() {
         return {
           reply: 'Near the lake, got it. How old are your kids?',
+          asksCount: 1,
           capture: {
             ...EMPTY_ONBOARDING_CAPTURE,
             postalCode: 'M5V 2T6',
@@ -1024,6 +1025,7 @@ describe('friend voice onboarding', () => {
       async compose() {
         return {
           reply: 'Leo still needs an age. How old is Leo?',
+          asksCount: 1,
           capture: {
             ...EMPTY_ONBOARDING_CAPTURE,
             children: [
@@ -1356,7 +1358,7 @@ describe('friend voice onboarding', () => {
       friendVoice: {
         async compose(input) {
           if (!modelUp) throw new Error('model down');
-          return { reply: scriptedTurn(input).reply };
+          return { reply: scriptedTurn(input).reply, asksCount: scriptedTurn(input).asksCount };
         },
       },
     };
@@ -1499,7 +1501,7 @@ describe('friend voice onboarding', () => {
       friendVoice: {
         async compose(input) {
           if (!modelUp) throw new Error('model down');
-          return { reply: scriptedTurn(input).reply };
+          return { reply: scriptedTurn(input).reply, asksCount: scriptedTurn(input).asksCount };
         },
       },
     };
@@ -1538,7 +1540,7 @@ describe('friend voice onboarding', () => {
     const voice: FriendVoiceComposer = {
       async compose(input) {
         if (!modelUp) throw new Error('model down');
-        return { reply: scriptedTurn(input).reply };
+        return { reply: scriptedTurn(input).reply, asksCount: scriptedTurn(input).asksCount };
       },
     };
     await handleInboundSms(fake.db, inbound(transport, 'hi'), { ...deps, friendVoice: voice });
@@ -1616,7 +1618,10 @@ describe('friend voice onboarding', () => {
     const nudgeVoice: FriendVoiceComposer = {
       async compose(input) {
         if (input.step !== 'nudge_find') throw new Error(`unexpected step ${input.step}`);
-        return { reply: 'Still here if one of those looks good. Which of these looks good?' };
+        return {
+          reply: 'Still here if one of those looks good. Which of these looks good?',
+          asksCount: 1,
+        };
       },
     };
 

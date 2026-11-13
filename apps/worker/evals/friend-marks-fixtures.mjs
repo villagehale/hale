@@ -1,7 +1,9 @@
 /**
  * The model fields friend-voice.ts reads instead of a text match:
- * `asks`, `parentQuestion`, `connectorsOffered`, `joinPointer`, `claimsSaved`. These strings are
- * the cases, not a matcher: code does not decide intent from them.
+ * `asks`, `parentQuestion`, `connectorsOffered`, `joinPointer`, `claimsSaved`, and on every
+ * reply `asksCount`, `asksName`, `speaksAsParent`, `joinInProse`, `parentPlainYes` and
+ * `parentLoneName` (VIL-541). These strings are the cases, not a matcher: code does not
+ * decide intent from them.
  *
  * `emits` lists the fields the model must return on that turn, with a value of
  * the right type, because the send depends on them there. `expect` is what the
@@ -173,7 +175,7 @@ export const FRIEND_MARKS_FIXTURES = [
     id: 'name-ask',
     over: { step: 'names', parentWords: 'ok' },
     emits: ['asks'],
-    expect: { asks: true },
+    expect: { asks: true, asksName: true },
   },
   {
     id: 'ack-no-ask',
@@ -528,7 +530,23 @@ const FIELD_TYPE = {
   joinPointer: (v) =>
     v === null || ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'].includes(v),
   placeAsk: (v) => ['full', 'coarse', 'none'].includes(v),
+  asksCount: (v) => Number.isInteger(v) && v >= 0,
+  asksName: (v) => typeof v === 'boolean',
+  speaksAsParent: (v) => typeof v === 'boolean',
+  joinInProse: (v) => typeof v === 'boolean',
+  parentPlainYes: (v) => typeof v === 'boolean',
+  parentLoneName: (v) => v === null || typeof v === 'string',
 };
+
+/** Code reads these on every reply: an omitted one means nothing is sent. */
+const EVERY_REPLY_EMITS = [
+  'asksCount',
+  'asksName',
+  'speaksAsParent',
+  'joinInProse',
+  'parentPlainYes',
+  'parentLoneName',
+];
 
 /**
  * The fields this fixture needed and the model left out or mistyped. Empty is a pass.
@@ -564,9 +582,15 @@ export function friendMarksMisses(
   if (fixture.groupBubbles != null && keptGroupBubbles < fixture.groupBubbles) {
     misses.push(`groupBubbles:${keptGroupBubbles}`);
   }
-  for (const field of fixture.emits) {
+  for (const field of [...fixture.emits, ...EVERY_REPLY_EMITS]) {
     if (!value || !(field in value) || !FIELD_TYPE[field](value[field])) {
       misses.push(`${field}:omitted`);
+    }
+  }
+  // The two question fields are one fact: a reply that asks has a count above zero.
+  if (typeof value?.asks === 'boolean' && Number.isInteger(value?.asksCount)) {
+    if (value.asks !== value.asksCount > 0) {
+      misses.push(`asksCount:${value.asksCount}_vs_asks:${value.asks}`);
     }
   }
   if ('offersOther' in fixture) {

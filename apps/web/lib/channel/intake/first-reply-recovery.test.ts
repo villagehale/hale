@@ -415,7 +415,7 @@ describe('runFirstReplyRecoveryCron', () => {
     const voice: FriendVoiceComposer = {
       async compose(input) {
         inputs.push(input);
-        return { reply: "Hey, it's Hale. What's your postal code?" };
+        return { reply: "Hey, it's Hale. What's your postal code?", asksCount: 1 };
       },
     };
     const fake = makeFakeDb();

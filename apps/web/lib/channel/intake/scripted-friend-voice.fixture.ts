@@ -4,7 +4,7 @@
  * uses. The replies are fixtures, not product copy: tests assert structure
  * (what was sent, what was stored), never these words.
  */
-import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
+import type { FriendVoiceComposer, FriendVoiceInput, OfferedConnector } from './friend-voice';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 function offScriptAside(words: string): string | null {
   if (/who is this/i.test(words)) {
@@ -32,6 +32,9 @@ export function scriptedTurn(input: FriendVoiceInput): {
   capture: OnboardingCapture;
   groupLeads?: string[];
   asks?: boolean;
+  asksCount: number;
+  asksName?: boolean;
+  connectorsOffered?: OfferedConnector[];
   joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 } {
   const words = input.parentWords.trim();
@@ -158,11 +161,12 @@ export function scriptedTurn(input: FriendVoiceInput): {
       reply: 'Here is what is on near you for their ages.',
       capture,
       groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
+      asksCount: 0,
     };
   }
   // Reminders just recorded: confirm them, ask nothing.
   if (capture.scheduleAdds.length > 0) {
-    return { reply: 'Done, a weekly reminder for the first one.', capture };
+    return { reply: 'Done, a weekly reminder for the first one.', capture, asksCount: 0 };
   }
   if (input.step === 'help') {
     const missing =
@@ -170,10 +174,16 @@ export function scriptedTurn(input: FriendVoiceInput): {
     return {
       reply: `I find what's on for your kids. You're on the ${missing}. Want to keep going?`,
       capture,
+      asksCount: 1,
     };
   }
   if (input.step === 'nudge_find') {
-    return { reply: 'Still here if one of those looks good. What should I call you?', capture };
+    return {
+      reply: 'Still here if one of those looks good. What should I call you?',
+      capture,
+      asksCount: 1,
+      asksName: true,
+    };
   }
   // A yes to the connector just asked: the receipt for the yes, nothing more.
   // The next ask rides the connect receipt (connected-notice.ts) or the next text.
@@ -185,10 +195,12 @@ export function scriptedTurn(input: FriendVoiceInput): {
       reply:
         "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
       capture,
+      asksCount: 0,
     };
   }
 
   let ask: string;
+  let offered: OfferedConnector[] = [];
   if (speakingFrench && !postalKnown) {
     ask = "Salut, c'est Hale. Quel est ton code postal?";
   } else if (speakingFrench && !kidsKnown) {
@@ -207,18 +219,27 @@ export function scriptedTurn(input: FriendVoiceInput): {
     ask = name
       ? `${name}, want me to watch school and camp email for the dates?`
       : 'Want me to watch school and camp email for the dates?';
+    offered = ['gmail'];
   } else if (!calendarKnown) {
     ask = name ? `${name}, want me to check your calendar?` : 'Want me to check your calendar?';
+    offered = ['calendar'];
   } else if (!scheduleKnown && input.findLines.length > 0) {
     ask = 'Want the first one on your calendar as a weekly reminder?';
   } else if (!coparentKnown) {
     ask = 'Want me to set up a group chat with the other parent?';
   } else {
-    return { reply: offScriptAside(words) ?? 'All set.', capture };
+    return { reply: offScriptAside(words) ?? 'All set.', capture, asksCount: 0 };
   }
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture, asks: true };
+  return {
+    reply,
+    capture,
+    asks: true,
+    asksCount: 1,
+    asksName: !nameKnown && postalKnown && kidsKnown && agesKnown && !speakingFrench,
+    connectorsOffered: offered,
+  };
 }
 
 /** The scripted turn on the composer's wire shape (role as two flat strings). */
