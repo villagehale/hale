@@ -179,6 +179,10 @@
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
   },
+  "coach-reaction.md": {
+    "file": "coach-reaction.md",
+    "sha256": "d930e28031ffdf2c495d61eeff1384d24e9f05984d5b5e7e8aaf462944a2fdcf"
+  },
   "coach-signup-offer.md": {
     "file": "coach-signup-offer.md",
     "sha256": "0ff9df0dfc13a6f5c19c3f346d7aecbc4c39df6ed78c6e570b278ed9af199dd4"
