@@ -559,6 +559,10 @@
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
   },
+  "rec-morning-topic.md": {
+    "file": "rec-morning-topic.md",
+    "sha256": "563b373fec0c047fbdba10f8eab1f025dcb94545bc0e2956d05747c6aa221bcf"
+  },
   "registration-date-moved.md": {
     "file": "registration-date-moved.md",
     "sha256": "a342dc7a85379a9a0718ddef6f08f27286281a4c8093d359e41b2a47a5f62510"
