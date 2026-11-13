@@ -102,7 +102,7 @@ export const CALENDAR_OFFER_FIXTURES = [
     timeZone: 'America/New_York',
     questions: [SEARCH_OFFER],
     expect: { status: 'unresolved', reason: 'no_target' },
-    why: 'VIL-302. The same narrowed read, but the parent named the older intro ask. Not about this offer, so it must be none, and the router then reads it against everything open.',
+    why: 'VIL-302. The narrowed read, but the parent named the older intro ask. Not about this offer, so it must be none. The router reads a reply against everything open first, so in production a reply naming an older ask is placed there before any narrowed read.',
   },
   {
     id: 'vil-302-declines-an-older-ask',

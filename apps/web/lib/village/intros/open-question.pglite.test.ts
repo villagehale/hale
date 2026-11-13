@@ -136,4 +136,22 @@ describe('the intro asks, through the production reader', () => {
 
     expect(await introAsks(asked)).toEqual([]);
   });
+
+  // The opt-in is asked once per household but texted to one parent. A co-parent who never
+  // saw it does not hold it open, or a yes of theirs would write a consent row in their name.
+  it('holds the opt-in open only for the parent it was texted to', async () => {
+    const asked = await seedFamily('a');
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:intro-reader-co', name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    const coParentUserId = coParent?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: asked.familyId, userId: coParentUserId, role: 'co_parent' });
+    await seedAsk(asked, introAskDedupeKey(asked.familyId), 'sent', OPT_IN_ASKED);
+
+    expect(await introAsks({ familyId: asked.familyId, parentUserId: coParentUserId })).toEqual([]);
+    expect(await introAsks(asked)).toEqual([{ kind: 'intro_optin', askedAt: OPT_IN_ASKED }]);
+  });
 });
