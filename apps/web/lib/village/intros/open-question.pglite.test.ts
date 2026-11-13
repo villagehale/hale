@@ -52,11 +52,13 @@ async function seedFamily(label: string): Promise<{ familyId: string; parentUser
 
 type SendStatus = 'queued' | 'sent' | 'delivered' | 'failed';
 
+/** `recordedAt` is when the row recorded the send (`send_recorded_at`); the caller's own
+ * `sent_at` is set seconds earlier, as a send that began before its carrier call. */
 async function seedAsk(
   family: { familyId: string; parentUserId: string },
   dedupeKey: string,
   status: SendStatus,
-  sentAt: Date,
+  recordedAt: Date,
 ): Promise<void> {
   await db.database.insert(schema.channelMessages).values({
     familyId: family.familyId,
@@ -66,7 +68,8 @@ async function seedAsk(
     category: 'village_intro',
     status,
     dedupeKey,
-    sentAt,
+    sentAt: new Date(recordedAt.getTime() - 3_000),
+    sendRecordedAt: recordedAt,
     createdAt: ROW_WRITTEN,
   });
 }
@@ -107,7 +110,7 @@ async function introAsks(family: { familyId: string; parentUserId: string }) {
 }
 
 describe('the intro asks, through the production reader', () => {
-  it('dates both asks by when the delivered message was sent, on this family side', async () => {
+  it('dates both asks by when the delivered message recorded its send, on this family side', async () => {
     const asked = await seedFamily('a');
     const other = await seedFamily('b');
     await seedAsk(asked, introAskDedupeKey(asked.familyId), 'sent', OPT_IN_ASKED);

@@ -81,7 +81,7 @@ function harness(overrides: Overrides = {}) {
     }),
     readinessStanding: async () =>
       overrides.registrationStanding === true
-        ? { id: 'seq-1', summary: 'setup on the portal', askedAt: EVENING }
+        ? { id: 'seq-1', summary: 'setup on the portal', askedAt: EVENING, askedVia: 'msg-1' }
         : null,
     dedupeActive: async () => overrides.alreadySent === true,
     queueCandidate: async (_db, draft) => {

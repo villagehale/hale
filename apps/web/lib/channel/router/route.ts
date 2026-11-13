@@ -205,6 +205,7 @@ import {
   type OpenQuestionKind,
   type OpenQuestionReader,
   latestAsked,
+  offListOutranks,
 } from './open-questions';
 import {
   REACTED_ALONE,
@@ -2318,16 +2319,26 @@ async function resolveNaturalReply(
   // this list (the sign-up lane's) that Hale texted last means nothing is narrowed and the
   // answer reaches that lane unplaced. A narrowed read that cannot place the reply for
   // another reason says nothing the whole read did not, so the whole read stands.
+  const offList = await offListAsks(deps, turn);
   const whole = await readOpenQuestions(deps, turn, questions);
   const latest =
     whole.status === 'unresolved' && whole.reason === 'ambiguous'
-      ? latestAsked(questions, await offListAsks(deps, turn))
+      ? latestAsked(questions, offList)
       : null;
   const narrowed = latest ? await readOpenQuestions(deps, turn, latest) : null;
   const read =
     narrowed && (narrowed.status === 'resolved' || warrantsClarifying(narrowed.reason))
       ? narrowed
       : whole;
+  // A reply placed on an open question while an ask off this list is the newest, ties it,
+  // or is of unknown time: the reader never saw that ask, so a bare yes it placed may have
+  // been meant for it. It binds nothing here. The lane that owns the other ask takes it
+  // only by the newest-ask rule or its own words naming it, and otherwise the coach asks
+  // which; the menu it leaves (VIL-304) carries the reader's polarity, so naming an open
+  // question next places the answer on it.
+  if (read.status === 'resolved' && offListOutranks(questions, offList)) {
+    return { status: 'unplaced', questions, answer: { polarity: read.polarity } };
+  }
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
   const reading = approvalForCalendarYes(questions, read);
@@ -3990,7 +4001,11 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
     // throw away the claim either.
     if (!effected) assertTurnLive();
   }
-  const sent = voiced ?? effected ?? (await sendStamped(deps, args));
+  const { sent, keep } = voiced
+    ? { sent: voiced, keep: null }
+    : effected
+      ? { sent: effected, keep: null }
+      : await sendStamped(deps, args);
   await claimAnswerQuietly(deps, args);
   if (args.onSent) await args.onSent();
   await mirrorActivityDecision(deps, args);
@@ -4002,27 +4017,36 @@ async function sendReply(deps: ChannelRouterDeps, args: SendReplyArgs): Promise<
     dedupeKey: null,
     firstOfAnswer: true,
   });
+  if (keep) await keep(channelMessageId);
 
   await settleOpenAsks(channelMessageId);
   return { channelMessageId, carried: 'words' };
 }
 
+/** A plain send, and the keep its sign-up stamp owes once its ledger row is written. */
+interface StampedSend {
+  sent: ReplySent;
+  keep: Awaited<ReturnType<SendStamp>> | null;
+}
+
 /**
  * The plain transport call, bracketed by the text's sign-up stamp when it has one: a stamp
- * that cannot mark the send throws before the call, so nothing goes.
+ * that cannot mark the send throws before the call, so nothing goes. The caller runs `keep`
+ * with the row that recorded the send, once it is written: that row's recorded send time is
+ * the sign-up text's time on the one clock (VIL-302). Until then the mark holds every bare
+ * answer, so a receipt write that fails leaves them held.
  */
 async function sendStamped(
   deps: ChannelRouterDeps,
   args: { route: ReplyRoute; body: string; sendKey?: string; stamp?: SendStamp },
-): Promise<ReplySent> {
+): Promise<StampedSend> {
   const keep = args.stamp ? await args.stamp() : null;
   const sent = await deps.transport.send({
     route: args.route,
     body: args.body,
     ...(args.sendKey ? { sendKey: args.sendKey } : {}),
   });
-  if (keep) await keep();
-  return sent;
+  return { sent, keep };
 }
 
 /**
@@ -4374,6 +4398,7 @@ async function sendReplySet(
         })
       : null;
   let claimed = false;
+  const keeps: Array<StampedSend['keep']> = keys.map(() => null);
   const outcome = await sendTexts<{
     providerMessageId: string | null;
     channel: ReplySent['channel'];
@@ -4392,14 +4417,15 @@ async function sendReplySet(
       // Only the first bubble quotes the parent's message; the rest follow it.
       const to: ReplyRoute =
         index === 0 || route.channel !== 'imessage' ? route : { ...route, replyToMessageId: null };
-      const sent = await sendStamped(deps, {
+      const stamped = await sendStamped(deps, {
         route: to,
         body: text,
         sendKey: keys[index] as string,
         stamp: args.stamps?.[index],
       });
+      keeps[index] = stamped.keep;
       bubblesSent = index + 1;
-      return sent;
+      return stamped.sent;
     },
     record: async ({ index, key, text, result }) => {
       if (!claimed) {
@@ -4408,13 +4434,16 @@ async function sendReplySet(
         if (args.onSent) await args.onSent();
         await mirrorActivityDecision(deps, args);
       }
-      ids[index] = await writeReplyReceipts(deps, { ...args, body: text }, result, {
+      const id = await writeReplyReceipts(deps, { ...args, body: text }, result, {
         body: text,
         voiced: false,
         effected: index === 0 ? effected : null,
         dedupeKey: key,
         firstOfAnswer: index === 0,
       });
+      ids[index] = id;
+      const keep = keeps[index];
+      if (keep) await keep(id);
     },
   }).catch((error: unknown) => ({ status: 'failed' as const, error }));
 

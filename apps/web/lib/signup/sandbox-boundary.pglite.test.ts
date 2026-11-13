@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sentSignupText } from '~/lib/signup/sent-text.fixture';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { runAuthorizedSignup } from './run';
 import { askStamp, recordSignupOffer } from './store';
@@ -170,7 +171,7 @@ describe('sandbox boundary — browser input is consented slots only', () => {
       parentUserId: seeded.parentUserId,
       offerIds: [stored.id],
     })();
-    await keep();
+    await keep(await sentSignupText(db.database, seeded));
     const [child] = await db.database
       .select({ dob: schema.children.dateOfBirth })
       .from(schema.children)
