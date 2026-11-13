@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence says the child is registered for swim lessons on Thursday at 4pm. The only swim row is confirmed for Sat, Nov 7 at 10:00 AM, a different day and time, so it does not back the claim. No row matches Thursday 4pm.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2557
+}

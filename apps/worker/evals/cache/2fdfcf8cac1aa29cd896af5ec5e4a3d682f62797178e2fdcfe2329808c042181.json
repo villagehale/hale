@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence promises to tell the parent when Maple Bend swim registration opens, which matches the registration watch row q1. It also says Hale will keep looking for art classes, a follow-up with no matching row.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1788
+}

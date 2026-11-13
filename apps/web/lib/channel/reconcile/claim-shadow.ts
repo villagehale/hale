@@ -54,8 +54,9 @@ export type ClaimShadowLane =
   | 'activity_followup'
   | 'followup_ask'
   | 'spot_open'
+  | 'registration_sequence'
   | 'dispatch'
-  /** A gated sweep that names no lane: today only the registration leg. */
+  /** A gated sweep that names no lane. */
   | 'sweep_unlabelled';
 
 export type ClaimShadowStart = 'off' | 'busy' | 'started';
@@ -187,6 +188,10 @@ const REFUSAL_REASONS = Object.keys({
   no_activity_promise: true,
   no_scheduled_row: true,
   no_coparent_invite: true,
+  no_registration_record: true,
+  no_send_record: true,
+  no_delivery_record: true,
+  no_cancel_record: true,
 } satisfies Record<RefusalReason, true>) as RefusalReason[];
 
 export interface ShadowComparison {

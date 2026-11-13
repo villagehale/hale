@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Saturday's swimming is booked, a scheduled placement. The only row is a dentist appointment on Thursday, which is a different event, so the claim is uncited.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1618
+}
