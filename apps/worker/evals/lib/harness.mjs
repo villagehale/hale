@@ -634,7 +634,12 @@ export async function cachedToolCall(opts) {
       latencyMs: cached.latencyMs,
       cached: true,
     });
-    return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
+    return {
+      value: cached.value,
+      latencyMs: cached.latencyMs,
+      cached: true,
+      usage: cached.usage ?? null,
+    };
   }
 
   if (cachedOnly) failCachedMiss(tag, key);
@@ -710,10 +715,20 @@ export async function cachedToolCall(opts) {
   }
   const latencyMs = Date.now() - startedAt;
   noteUsage(cost, model, usage, tag);
-  await cachePut(key, { value, latencyMs });
+  // Token counts ride with the recording so a cost or latency budget can be checked on
+  // replay (VIL-686). Not part of the key: older recordings simply have none.
+  const recordedUsage = usage
+    ? {
+        input_tokens: usage.input_tokens ?? 0,
+        output_tokens: usage.output_tokens ?? 0,
+        cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+      }
+    : null;
+  await cachePut(key, { value, latencyMs, ...(recordedUsage ? { usage: recordedUsage } : {}) });
   noteLatency(model, latencyMs);
   if (Array.isArray(cost.latencies)) cost.latencies.push(latencyMs);
-  return { value, latencyMs, cached: false };
+  return { value, latencyMs, cached: false, usage: recordedUsage };
 }
 
 /** A stand-in reply of the most bytes `maxTokens` of output could be (offline estimate). */

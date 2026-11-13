@@ -1,0 +1,19 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": null,
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "zh",
+    "reply": "哈哈，这个可不能说～抽到的名字只会私下发给每个人，群里谁也不剧透，保持神秘感吧！"
+  },
+  "latencyMs": 2415,
+  "usage": {
+    "input_tokens": 211,
+    "output_tokens": 108,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

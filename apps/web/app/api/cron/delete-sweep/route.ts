@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { purgeExpiredCheckInNotes } from '~/lib/channel/checkin/notes';
 import { sweepRosterRetention } from '~/lib/channel/linq/roster-retention';
+import { sweepSecretSantaRetention } from '~/lib/channel/linq/secret-santa';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { erasureGoogleLogLine, runDeletionSweep, sweepMessageRetention } from '~/lib/rights/delete';
@@ -33,6 +34,10 @@ export const runtime = 'nodejs';
  * privacy promise is a year, and a promise that stops when a flag flips is not
  * a promise. The step logs counts only.
  *
+ * NOR IS A SECRET SANTA (VIL-686): a draw left collecting for 14 days, or whose organizer is
+ * gone or stopped, is cancelled, and every draw is deleted 45 days after it was drawn or
+ * cancelled, whatever SECRET_SANTA says.
+ *
  * NOR ARE THE RECORDS WITH NO CLOCK OF THEIR OWN (`sweepRecordRetention`): the words of
  * an episode a parent removed go thirty days after the removal, and a proactive candidate
  * row goes after a year. Counts only.
@@ -56,6 +61,8 @@ export const GET = cronRoute('delete-sweep', async () => {
   const recordRetention = await sweepRecordRetention(db());
   const groupRosterRetention = await sweepRosterRetention(db());
   const now = new Date();
+  // VIL-686: Secret Santa draws stuck collecting, and every draw 45 days on. Not flag-gated.
+  const secretSantaRetention = await sweepSecretSantaRetention(db(), now);
   const providerSessions = await sweepExpiredProviderSessions(
     db(),
     now,
@@ -108,6 +115,10 @@ export const GET = cronRoute('delete-sweep', async () => {
     // Counts only (rule #1): never a host, a family, or a profile id.
     console.info(providerSessions, 'cron/delete-sweep: deleted provider sessions past 48 hours');
   }
+  if (secretSantaRetention.cancelled > 0 || secretSantaRetention.deleted > 0) {
+    // Counts only (rule #1): never a chat, a person or a name.
+    console.info(secretSantaRetention, 'cron/delete-sweep: secret santa draws cancelled or purged');
+  }
   if (providerCredentials.deleted > 0) {
     // Counts only (rule #1): never a host or a family.
     console.info(
@@ -127,6 +138,7 @@ export const GET = cronRoute('delete-sweep', async () => {
       messageRetention,
       recordRetention,
       groupRosterRetention,
+      secretSantaRetention,
       providerSessions,
       providerCredentials,
     },
