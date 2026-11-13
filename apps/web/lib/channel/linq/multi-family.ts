@@ -13,6 +13,7 @@ import {
   readSharedListTurn,
   sharedListAudience,
   sharedListTurnModel,
+  unclearKidFamily,
 } from '~/lib/channel/lists/shared-group-lists';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
@@ -1832,6 +1833,13 @@ export async function takeMultiFamilyTurn(
         updatedAt: input.now,
       })
       .where(eq(schema.linqSharedGroupPeople.id, me.id));
+    if (reading.kidName) {
+      await unclearKidFamily(database, {
+        chatId: input.chatId,
+        phoneE164Hash: me.phoneE164Hash,
+        kidName: reading.kidName,
+      });
+    }
     // A household joins only on its own parent's words here; nothing joins it for them.
     if (intent === 'join' && channel) {
       const joined = await joinFamilyToSharedGroup(database, {

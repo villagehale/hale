@@ -1131,7 +1131,8 @@ describe('in a multi-family group turn', () => {
       expect(wire.texts.join(' ')).not.toContain('Lego');
     });
 
-    it('stays hidden from someone who was here at the hide, then said she is the mom, left and rejoined', async () => {
+    /** Ada is in the chat, and cleared, when Mei hides the Lego; then she says she is Mia's mom. */
+    async function clearedAdaSaysShesMom() {
       vi.stubEnv('GROUP_BRING_LIST_ENABLED', 'true');
       const mei = await parent(MEI, 'Mei');
       await parent(PRIYA, 'Priya');
@@ -1159,10 +1160,32 @@ describe('in a multi-family group turn', () => {
       expect(await adaKid()).toBe('Mia');
       const known = await say(PRIYA, "what's left?", 'in-known', here, whatsLeft, wire);
       expect(shown(known.seen)).toEqual([]);
-      await forgetAda();
       wire.texts.length = 0;
+      return { wire, here };
+    }
+
+    it('stays hidden from someone who was here at the hide, then said she is the mom, left and rejoined', async () => {
+      const { wire, here } = await clearedAdaSaysShesMom();
+      await forgetAda();
       const back = await say(ADA, "what's left?", 'in-ada-back', here, whatsLeft, wire);
       expect(shown(back.seen)).toEqual([]);
+      expect(wire.texts.join(' ')).not.toContain('Lego');
+    });
+
+    it("stays hidden from someone who said she is the child's mom and later names another child", async () => {
+      const { wire, here } = await clearedAdaSaysShesMom();
+      await say(
+        ADA,
+        "and Leo's too",
+        'in-ada-leo',
+        here,
+        () => decision({ listTurn: false }),
+        wire,
+        { reader: reading('who_i_am', { role: 'parent', kidName: 'Leo' }) },
+      );
+      expect(await adaKid()).toBe('Leo');
+      const later = await say(PRIYA, "what's left?", 'in-later', here, whatsLeft, wire);
+      expect(shown(later.seen)).toEqual([]);
       expect(wire.texts.join(' ')).not.toContain('Lego');
     });
 
