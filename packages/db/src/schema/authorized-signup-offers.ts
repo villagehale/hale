@@ -134,7 +134,11 @@ export const authorizedSignupOffers = pgTable(
      * and it never takes a bare answer.
      */
     lastAskedSeq: bigint('last_asked_seq', { mode: 'number' }),
-    /** When `lastAskedSeq` was last drawn, for reading only. Never an order. */
+    /**
+     * When a text about the ask was last kept (the database clock at the keep). Never an
+     * order among sign-up asks: `lastAskedSeq` is. It ranks Hale's last sign-up text against
+     * the asks of other lanes, which share no sequence with it (VIL-302, `newestAsks`).
+     */
     lastAskedAt: timestamp('last_asked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

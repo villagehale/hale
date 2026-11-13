@@ -7,7 +7,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { lookupLoginLink } from '../login-link/store';
-import { loadLastAskedOfferId, recordSignupOffer } from '../store';
+import { loadLastAsked, recordSignupOffer } from '../store';
 import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
 import {
   PLAN_NOTICE_TEMPLATE,
@@ -146,8 +146,9 @@ function rig(text: string | null = 'Sunday is in your cart, finish in the open b
 }
 
 /** The ask whose text reached the parent last, as the walk reads it. */
-function lastAsked(f: { familyId: string; parentUserId: string }) {
-  return loadLastAskedOfferId(db.database, f);
+async function lastAsked(f: { familyId: string; parentUserId: string }) {
+  const last = await loadLastAsked(db.database, f);
+  return last.status === 'asked' ? last.offerId : null;
 }
 
 /** Where the offer's last delivered text stands in the order texts reached the parent. */

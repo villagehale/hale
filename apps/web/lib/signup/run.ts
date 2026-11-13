@@ -5,6 +5,7 @@ import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import type { Asked } from '~/lib/channel/router/open-questions';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import {
   type AskPlace,
@@ -85,6 +86,12 @@ export interface SignupRunInput {
   now: Date;
   /** The door's opt-out read could not read this text (`ChannelTurn.optOutUnread`). */
   optOutUnread?: boolean;
+  /**
+   * The parent's open questions on the router's list (`HandlerContext.openQuestions`). One
+   * asked after Hale's last text about their sign-up asks takes a bare yes or no instead
+   * (VIL-302, `loadLiveAsks`). Absent: no list was read for this turn, and none is ranked.
+   */
+  openQuestions?: readonly Asked[];
 }
 
 export interface SignupRunDeps {
@@ -218,6 +225,7 @@ export async function runAuthorizedSignup(
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     now: input.now,
+    openQuestions: input.openQuestions ?? [],
   });
   // A stop is the opt-out's, read at the door before any turn reaches here. A text of theirs
   // the opt-out read could not read may be one, so until it is read it moves none of their
