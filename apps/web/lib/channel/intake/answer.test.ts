@@ -29,7 +29,7 @@ const INPUT: IntakeAnswerInput = {
 const RETURN = 'Still want me watching the registration dates?';
 
 /** No own-city reading for the parent's town (VIL-684): the rec-morning lane may answer. */
-const noOwnTown = async () => false;
+const noOwnTown = async () => null;
 
 const LONG_ANSWER = [
   ...Array(6).fill('Most kids get a vision check at their regular visit, and it is free.'),
@@ -241,7 +241,7 @@ describe('intake answer · the emergency tripwire', () => {
     const asked: string[] = [];
     const markhamRead = async (postal: string) => {
       asked.push(postal);
-      return true;
+      return ['Winter registration for residents: December 1, 2026, at 6:30 AM'];
     };
     atRecMorningNow();
     const outcome = await createIntakeAnswerComposer(exploding, markhamRead).compose({
@@ -274,7 +274,7 @@ describe('intake answer · the emergency tripwire', () => {
     atRecMorningNow();
     const outcome = await createIntakeAnswerComposer(exploding, async (postal) => {
       asked.push(postal);
-      return true;
+      return ['Winter registration for residents: December 1, 2026, at 6:30 AM'];
     }).compose({
       ...INPUT,
       parentWords: 'When does Toronto swim registration open?',
