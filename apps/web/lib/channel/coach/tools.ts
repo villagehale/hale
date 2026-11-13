@@ -1,7 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
-import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gt, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
@@ -23,7 +23,7 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
-import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import { dayKeyIn, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { teenNameIn } from '~/lib/privacy/teen-name';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
@@ -315,12 +315,15 @@ const weekday = z.enum(WEEKDAYS);
 
 /**
  * How far ahead a text may reach. Zero is the week the parent is standing in, one is
- * the next — the two weeks "move swim to Tuesday" can possibly mean. A bounded offset
- * rather than the ticket's `week_start` string on purpose: a model-authored date that
- * lands on an empty week is exactly the moment a model starts inventing, and there is
- * no date it can write here that resolves to nothing.
+ * the next — the two weeks "move swim to Tuesday" can possibly mean — and the reach runs
+ * to eight, about two months, so "who has the kids over the break" asked in November
+ * reads the break (VIL-688). A bounded offset rather than the ticket's `week_start`
+ * string on purpose: a model-authored date that lands on an empty week is exactly the
+ * moment a model starts inventing, and there is no date it can write here that resolves
+ * to nothing. The `days` it returns are how the model checks it read the right week.
  */
-const weekOffset = z.number().int().min(0).max(1).optional();
+const LOOKUP_WEEK_MAX_OFFSET = 8;
+const weekOffset = z.number().int().min(0).max(LOOKUP_WEEK_MAX_OFFSET).optional();
 
 /**
  * The parent-facing label for an instant, in their own week: "Thu 5:15pm".
@@ -500,7 +503,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and the week's items merged from Hale's calendar and the connected Google Calendar, de-duplicated and sorted. A family event has an `eventId` — the ONLY handle the propose_* tools accept. A kid-related Google block has a title and no `eventId` (you cannot move or cancel it). Any other Google block is `kind: \"busy\"` with no title: never invent a name, and never mention attendees or notes. `calendarSync` and `mail.sync` are `connected`, `paused`, or `not_connected`. When one is `connected`, you HAVE that access — an empty list is an empty week, not a missing connection, and you must not say you cannot see the calendar or email. When `mail.sync` is `paused`, say that mail sync is currently paused (`mail.note`). `mail.items` are activities and trips already extracted from mail; `mail.processedCount` and `mail.since` are how many Gmail messages have been processed. Name only what this result contains. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and the week's items merged from Hale's calendar and the connected Google Calendar, de-duplicated and sorted. A family event has an `eventId` — the ONLY handle the propose_* tools accept. A kid-related Google block has a title and no `eventId` (you cannot move or cancel it). Any other Google block is `kind: \"busy\"` with no title: never invent a name, and never mention attendees or notes. `calendarSync` and `mail.sync` are `connected`, `paused`, or `not_connected`. When one is `connected`, you HAVE that access — an empty list is an empty week, not a missing connection, and you must not say you cannot see the calendar or email. When `mail.sync` is `paused`, say that mail sync is currently paused (`mail.note`). `mail.items` are activities and trips already extracted from mail; `mail.processedCount` and `mail.since` are how many Gmail messages have been processed. Name only what this result contains. weekOffset 0 is the current week, 1 is next week, and so on up to 8: for a date further out than next week, read the week that holds it, and check `days` to see you have.",
     inputSchema: z.object({ weekOffset }),
     inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,
@@ -874,8 +877,8 @@ export function channelScheduleReader(database: Database, now: Date): ChannelSch
           and(
             eq(schema.familyEvents.familyId, familyId),
             householdFamilyEvent(),
-            gte(schema.familyEvents.startsAt, start),
             lte(schema.familyEvents.startsAt, end),
+            or(gte(schema.familyEvents.startsAt, start), gt(schema.familyEvents.endsAt, start)),
           ),
         )
         .orderBy(asc(schema.familyEvents.startsAt));
@@ -1086,22 +1089,51 @@ function dayLabel(at: Date, timeZone: string): string {
   }).format(at);
 }
 
+/**
+ * An item that runs past the day it starts can begin before the week read, or end after
+ * it (VIL-688: "who has the kids Dec 21 to Jan 1" when the stay began the weekend before),
+ * so its labels carry the date. A same-day item keeps the short label and no `until`
+ * key, so the bytes of an ordinary week are what they were.
+ */
+function spansDays(startsAt: Date, endsAt: Date | null, timeZone: string): endsAt is Date {
+  return endsAt !== null && dayKeyIn(endsAt, timeZone) !== dayKeyIn(startsAt, timeZone);
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Google stores an all-day item at UTC midnight with an exclusive end date. */
+function allDayLabels(block: CalendarBlockView): { when: string; until: string | null } {
+  const lastDay = block.endsAt ? new Date(block.endsAt.getTime() - DAY_MS) : null;
+  return {
+    when: dayLabel(block.startsAt, 'UTC'),
+    until:
+      lastDay && lastDay.getTime() > block.startsAt.getTime() ? dayLabel(lastDay, 'UTC') : null,
+  };
+}
+
 function renderScheduleEntry(entry: WeekScheduleEntry, timeZone: string) {
   if (entry.kind === 'event') {
+    const { startsAt, endsAt } = entry.event;
+    const spans = spansDays(startsAt, endsAt, timeZone);
     return {
       kind: 'event' as const,
       eventId: entry.event.eventId,
       what: entry.event.title,
-      when: localWhen(entry.event.startsAt, timeZone),
+      when: spans ? longWhen(startsAt, timeZone) : localWhen(startsAt, timeZone),
+      ...(spans ? { until: longWhen(endsAt, timeZone) } : {}),
       where: entry.event.location,
       source: entry.event.source,
     };
   }
-  const when = entry.block.allDay
-    ? dayLabel(entry.block.startsAt, timeZone)
-    : localWhen(entry.block.startsAt, timeZone);
-  const until =
-    !entry.block.allDay && entry.block.endsAt ? localWhen(entry.block.endsAt, timeZone) : null;
+  const label = spansDays(entry.block.startsAt, entry.block.endsAt, timeZone)
+    ? longWhen
+    : localWhen;
+  const { when, until } = entry.block.allDay
+    ? allDayLabels(entry.block)
+    : {
+        when: label(entry.block.startsAt, timeZone),
+        until: entry.block.endsAt ? label(entry.block.endsAt, timeZone) : null,
+      };
   if (entry.block.title === null) {
     return { kind: 'busy' as const, when, until, allDay: entry.block.allDay };
   }
@@ -1150,8 +1182,11 @@ async function readConnectedWeek(
         and(
           eq(schema.parentCalendarBlocks.familyId, familyId),
           eq(schema.parentCalendarBlocks.status, 'confirmed'),
-          gte(schema.parentCalendarBlocks.startAt, start),
           lte(schema.parentCalendarBlocks.startAt, end),
+          or(
+            gte(schema.parentCalendarBlocks.startAt, start),
+            gt(schema.parentCalendarBlocks.endAt, start),
+          ),
         ),
       )
       .orderBy(asc(schema.parentCalendarBlocks.startAt)),

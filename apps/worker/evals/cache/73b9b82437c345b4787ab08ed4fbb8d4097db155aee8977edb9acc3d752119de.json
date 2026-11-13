@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "guidance question about normal feeding milestone, not a reported symptom",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1093
+}

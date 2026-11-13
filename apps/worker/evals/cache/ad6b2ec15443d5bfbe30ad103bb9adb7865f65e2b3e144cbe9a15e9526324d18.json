@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent wants to get a pediatric dentist, a named specialty",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1024
+}

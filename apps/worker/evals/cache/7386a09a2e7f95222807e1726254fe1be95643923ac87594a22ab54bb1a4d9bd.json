@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks for a park nearby to take the kids, which is Hale's family-activity search",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1851
+}

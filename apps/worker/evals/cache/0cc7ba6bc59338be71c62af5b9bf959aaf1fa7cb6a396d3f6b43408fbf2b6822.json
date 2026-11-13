@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the one text, is in English, and places its single question in the last bubble, matching the rubric. Each bubble is a complete thought in a warm register. However, the third bubble combines a safety referral (call Health811/911) with the sleep-plan offer, which are two separate thoughts, so it is under-split. The referral is also not required by the rubric or facts, but it is not invented. The first two bubbles are clean. Overall a small structural flaw rather than a broken point.",
+    "score": 4
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgyHpsxqqU4mWBVnMV3HH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSiAYKEAgTGAI4AUIIdGhpbmtpbmcSDJ6QKHa4SItsS2wTsxoMIXylazridIKFKaJtIjA5NH8Dbn50yZaJRt6TDiAMxYbwTFJxdCeZpCG1ESTvKyRULxb0dL5EgPq0XhlIyyEqpQWKCKwZUhEbDwvHPLZKccMOdwFaZDFR8rd+D6CA/Syt34GJm8FJeC39AN1dC1E5hSSF8M9QKhlotTF4MrnjByimzxOW+RmU29tlk+X/nJwsjgvoLrG3nvXJG4rqPbdtsovay/SI9rErbyQKml4/pqjqOFF7uqSXbqqfbEnuDOWP6z2+fr0egjZSSwDMp0/mNaH1PfF4CmWb+crL6aEvUwYUKhPlUIO41ZEnNB7SllrOEBlhIlRL/kAsdZxIGInFt0U5KSQwJyEFBqsiO43laqAf7VCXNAnF35syPS6WJYYnYTI2LY5tiEtzhyGyxDeEDCAJcpVEeCZnEOsBFhG8ltoooxP6B9Bx1y770oMZEbAEgrSnqciUFa9UCeGlyM+y16O16MApxuiEkURvxjjHy5GWv2tzNxiJJVtCtLlRB0vDCq7yxS+nrzBYvKzDm2XqSpQwE2elWKBYYS3IbHJN42unVyf/uFES4xACg02648RVuqjqNkPD+RgksIDQu9/lxaw9NWLOFqrd9Ul6Bk2cs04/BBZxjtFeOAE79ULQQ2YrDMvOhyKffEM/sP11aLIHrFPFK3MnwdT31QU49UH3LgS2HNM9IdI4JgrunROXbuxx8YE4ZDWmbBEb/9CUiRhsGd/eqZqBzIckp8NeTjHbyUMPn9rN7OYdqJUz75rxT4z3qAutoxeGVPyfvVxcGEJGxZC5mJdDelpMkLTQKcQukfGWRow0SwtEUk7fbIrSeYVzPRCoHHylIm70PCrFHdRJlzO71SudiQd5o6eBrCGiTyqhrPzQD/97cVB4QEKxpADQWlRViL/oRLY5gtu7eYChV9ez0P5bTVXbjqtbR5R1+OaZLulMEAfW+YNBWtD6qZ3qcti8JNTB/aLWSab45y7iBa8hoDDQuxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0125EX4PhvSvUCkouReCvD6R",
+        "name": "find_activities",
+        "input": {
+          "subject": "kids fall program ages 7-9 swim, art, sports, music",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 236,
+      "cache_read_input_tokens": 24720,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 236,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 117,
+      "output_tokens_details": {
+        "thinking_tokens": 21
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1562
+}

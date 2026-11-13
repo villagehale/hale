@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CgyDDhZ5jByDK4HQxqx7Y",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+wYKEAgTGAI4AUIIdGhpbmtpbmcSDLu4ek0my7Alaqx/KxoM5voVDhZJ7HXtIppzIjDc6kX99NA8GT7fHNH+z8J7JDWmbkFD3+ZQZb9f/REHRKUansPPHAOJB1xaMF9mGxUqmAbfyMVGZXJXlJ0jB3e9riTdVz3hBK+fKaMSHyRGA/WWVB+ddkcNm3tK8SVylaPSLZzRauzBdbKtyledWgkaEL8c8/zcnZAw21tlz37nD7oD5ql8cokgGFgNOkiaIYujA7UIwYQhdG2QvLmsNjDbn4fUdhT+bXa0GRF/Qb6nCdnklRPJ3PWJjpTb2vhvcoFJeC8dY/xtugLWMrTRLCXxUxpsTjPyt9QMQZj4OAop+RN8SV/2UMRD/aqogGJBbqTx665QKv5jw2auSRRXETKBcZHvsNwTrpiEfcXiHsgakHrZtLweEMp191ixW+7T2Qg2mkkXH9wczcIVRgE+NfIvVLBUMaa5d3BJe+Y8MucHtrpJPzg9WYBF1h4e2LicPLa7rAg937Z8x4BC4T2G2zi79SXtPjaYlEIyKUX/OjOCByAheZ9CEcWGRqGZOiGUPDcoBohyh24sJmEUQaBaBdnRSfey1TG+wJHFSMze42fRBxVYnNIirovXr60H2i/CrFqtfoGiNXVje2/innU1+/oqrljx1UrYF4L6EM+QfVRntFzGk3QN9YDP0EkbJ3PEwt3OroB7CAkyPc1kcFXT31iIpLFX/b/RI+sHSQABIt4y3rN3EJ6GQ8r1QoMBbaTbxRcgq47UX+bOtxzKC4QaAcozz6zawA1UqmNNAE05d+Iy6oRJhUzi+JkhEz/WjrYtsADYvo2Gheuev5TIZUtUEpVUPKPGCcFPf/On+Y12IAypXlAXD4EpM2gsEy1XuJlPsWM1dZ8kMBUWdi2tmT5MaravEr0jDijEoLu5u1qjeuBgfhjSV+VRaZA/3zcWL+XlgGhBkEkcoS1BcTda7b+hCjo/Vj1FXP/I/Jpy7+JL3T0WIdu1uC/+EQbHHtRBkXTC1IgRMDGZyPawlExaqTd/ErDxwStuDm9SZN22/V9tTvwr+VmZ2I8+BvkjqERIRkXSHQs+ixJIqPIRQpd8NJxVPdrVxf3LwSyHp6idhWBGps8OT3FldLJOaGsA/XdicKGDvXYECiBl7CpYag27VTagqu0+j611hbEMKgsUj7EYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01HjRPiWydCZeYmGWYeqcWX2",
+        "name": "search_village",
+        "input": {
+          "query": "fall program"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 831,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23552,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 143,
+      "output_tokens_details": {
+        "thinking_tokens": 93
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2993
+}

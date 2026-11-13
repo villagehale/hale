@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzFWWJNSLjYZ4DNjSwwr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShwoKEAgTGAI4AUIIdGhpbmtpbmcSDPZRtUO1Q+Jx/5euxxoMqbCkNmciubVcyg2vIjD5Pz6d7HSCf7q7RkOdpPIoNWNahzbO7k9dBIEoZ+aORYbTbX2jdfeGFZY29neVQWcqpAnon8WUTMQHA1lShrduAwxHPChE7KW4MKaFqx3lx6uvUpKoSnGSK2aU7QELcZ979NEQEea97oljlhDDOfBLwbl9hmSk5JFU4tkRdTu/Ze00V5EPa8+pdGzIc2oz2yZmGhmZyj7Sgs6+J3dQ5BHldycEe1hvRt7wbG8MFUodlUQcJSy0RrU5pbh8d1/xV90jK9JpRMPbmyKJUKqvk/7Wjz28Odm3z9sE4QggCn0h4Xpcs8W/ajhc7OfLs5xobooTix0ddGLDevDNjeBaLnxq7wmznYkuZmtFzJfaVa9oWppW7Wnwh1CZ/I9wNuZfeKkIMaQ3LnJJlRKbYxb48tPsn/Hs42j6o81NatNlTEa357pjSkDKkllwYF8GbFKE+gemrSIL/+M2aa91Vpq/wZC6M7GVHoM11Q9wmSxj1tjnEeX6HPh1ylKnT6LwdEVZaoeYTzvuIFXlzNC8tHz3cOtQXSOvQ2Gz0Y3FMMG/PUopDzijIM1Tfjyb0zu4O/FXHjiHDdz7VnyWxoa+O8MKdMCWTTwtY2/dbY/1eSpN6hmgUJ49O8bg/RbeKJUedeorO30AsJuZ7P9P91p0Eggzq3p9GH/2xZUl5L8irVMjMRUnV5K4jUBSBDwhqFY/YRYqBVHzPQRy9BrRiZrI3SpeBVvLQWilieJBAuTa8/+iBfuUP1UkX1GmaxKIqURDu6ZsnkTWxUFvvWcDrege0ztQ331auugndwKsJQR4xWRBo7fOYHhCh/GFBYRVIrNnbCRcVA+vuTYvJcpM55iQtTOQr0SYVeQA7YTKz00qXdk58Ae5eW0Gs9hp1XlKGI7/9KBiRWG1L4hpqM75DUKqi9bNafv/16r+89yqwWPE5TyRZuUWtF+ImGnjzhysSDWFEW28AbHPBv0IYyFgXqjPrJwLJ4tvOrMsrmmWCwTK7rOw7JL4q5KCde8wjWzg+FF7CFqSMr+7TsEVmWRZnnrl6KSCgs5Lv8f8DROGBOR+aR03lQ06qvbtYNOEgDTxD8RFxt1XBS4SjKp5HgvgfMswS8AA0sdtSEi09V2FB36IeiN3jhjzewgp2avMcTe5d2XQRnoeEhhN/cPXWeE+FLtFvlWPl1eurFSEsyIKvUnBA7BHv9PH2yipxAzDBGYfdrt+XE9b1JiNs8NlTI3AOPzIHAtjlW7Q0chkO8Kp64p6KWt9KR4YD5iTj3sKVNfAJv6WC+AdwKsgzHGxI0WtvhowhHFixY6+eauOhLfDqgE8irBggJe+3wcxABYg1+nCPXYZmx/SW0jTK1KOKfOAwEAoIBy7n56wMV3qFdvnHpFmRTKIarFq1Qdrb099uygOkhuJJRCnixT63+zkBTg+Otil8OfnFMNLAAgq3fZBKoeRE/TQ9JKbji83Yl2qmIf1XwFpWOndsCKiEm10mfDwGiavQNUzfA0ekAd9Fm8lA07xPCvFcO4pmfEbj3akM8hIgODu5r5spAcuUIB5oc5Y6fQkE35KmwINb1Vle3OHTCbR9647zGFow0ZWMXJ6INOpJxGzuYN19CNofGEOM+vkW1le9ShYnnJom9RMonJFn35rQdvF4FxDB1gmOguHFaQYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "I'll sort that one out in a private text."
+      }
+    ],
+    "usage": {
+      "input_tokens": 434,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19125,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 240,
+      "output_tokens_details": {
+        "thinking_tokens": 225
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

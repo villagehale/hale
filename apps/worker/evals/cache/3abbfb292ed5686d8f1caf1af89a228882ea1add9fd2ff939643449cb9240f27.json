@@ -1,0 +1,58 @@
+{
+  "response": {
+    "id": "msg_011CgyH5zcFWbZJLYnzHJxTE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01PfHD8Jby9aB1HfVY8bvTRW",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_013vunrz3P5CrLViXmLvzx1U",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "offer": "Want me to send the full plan for moving him to his own bed?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 780,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23580,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 546,
+      "output_tokens_details": {
+        "thinking_tokens": 376
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 5605
+}

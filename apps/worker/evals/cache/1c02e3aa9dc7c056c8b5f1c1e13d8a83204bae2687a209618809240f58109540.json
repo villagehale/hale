@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly reads the yes as agreement to the last message and confirms the Cartwheels Tiny Gym fall-dates follow-up, which `knows.promises` backs. However, it changes the promise from texting when the dates post to texting 'tomorrow' regardless. Nothing in state holds that specific timeline, so it is an unbacked detail. The opening 'Done.' is also a slightly off fit for a follow-up that is still pending.",
+    "score": 3
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine developmental/health question about whether a screening is due, guidance not a reported symptom",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 3526
+}

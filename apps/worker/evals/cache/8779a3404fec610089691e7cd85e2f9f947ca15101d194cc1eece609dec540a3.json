@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "sleep coaching guidance question about night wakings, not a reported symptom",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 988
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two swim lessons on the calendar, so the reply correctly asks which one and drafts nothing. Both times are taken from the week. It asks a single question, with no greeting or padding.",
+    "score": 5
+  }
+}
