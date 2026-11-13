@@ -1,7 +1,6 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, hasGarbledText, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasGarbledText } from '~/lib/format/garbled-text';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { LoginCardText } from '../login-link/store';

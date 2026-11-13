@@ -8,3 +8,4 @@ export * from './prompt-cache.js';
 export * from './structured.js';
 export * from './llm-analytics.js';
 export * from './credit-alert.js';
+export * from './garbled-text.js';

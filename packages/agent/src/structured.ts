@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { z } from 'zod';
 import type { AgentClient } from './agent.js';
+import { holdsGarbledText } from './garbled-text.js';
 import type { JsonSchemaNode } from './json-schema.js';
 import {
   type Effort,
@@ -372,6 +373,7 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   // of them thinking; the medical answer, 1,024, mostly thinking). The room belongs to the
   // turn that proved it needed it, so the lane keeps its budget. A turn that spent none of
   // it thinking is not re-asked: the same answer would be cut again.
+  let answered = request;
   const lessThinking = withoutThinking(args.lane);
   if (lessThinking && spentBudgetThinking(response)) {
     console.warn(
@@ -381,19 +383,41 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
         model: request.model,
       }),
     );
-    const retry = structuredRequest({ ...args, lane: lessThinking });
-    response = await send(retry);
+    answered = structuredRequest({ ...args, lane: lessThinking });
+    response = await send(answered);
     usage = sumUsage(usage, response.usage);
-    return {
-      value: args.schema.parse(readCounted(retry, response, args.toolName)),
-      usage,
-    };
   }
 
-  return {
-    value: args.schema.parse(readCounted(request, response, args.toolName)),
-    usage,
-  };
+  let value = args.schema.parse(readCounted(answered, response, args.toolName));
+
+  // A GARBLED ANSWER IS A MISSED DRAW (VIL-683): text read back in the wrong code page, a
+  // replacement character, half an emoji. The same request is sent once more, because a
+  // fresh draw usually spells it right. A second garbled draw is returned as drawn and
+  // logged by name: the writer's own check, and the send seam after it (linq/transport.ts),
+  // refuse it, so nothing reaches a parent and nothing stands in for it.
+  if (holdsGarbledText(value)) {
+    console.warn(
+      JSON.stringify({
+        event: 'structured_reask_garbled',
+        stage: args.toolName,
+        model: answered.model,
+      }),
+    );
+    response = await send(answered);
+    usage = sumUsage(usage, response.usage);
+    value = args.schema.parse(readCounted(answered, response, args.toolName));
+    if (holdsGarbledText(value)) {
+      console.warn(
+        JSON.stringify({
+          event: 'structured_garbled_again',
+          stage: args.toolName,
+          model: answered.model,
+        }),
+      );
+    }
+  }
+
+  return { value, usage };
 }
 
 /** Markup refusals so far in this process, per stage. */
