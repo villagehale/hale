@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Offers one verified find whole, with its exact title, its own date, time and venue, and the runtime URL. It fits the children's ages, and there is no greeting, sign-off or question. Calling it 'today' matches knows.today (Sun Aug 9), though localNow shows Aug 3, a small risk. The age-fit clause is useful rather than padding.",
+    "score": 5
+  }
+}

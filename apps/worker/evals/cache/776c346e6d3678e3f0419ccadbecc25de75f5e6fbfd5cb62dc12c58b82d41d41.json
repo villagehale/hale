@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgyHcgJ2XRkxSwReRWRQH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3wgKEAgTGAI4AUIIdGhpbmtpbmcSDAJ3qFIDP1FXdWjhrRoMkUSzY8JphBCWubzxIjC0EIK6WEmwNpInqa+V5mYXBXRYGWBL0+9ED7u4lCKvKPSwWHG3Uio8z2xa2rbuEPUq/Ae3pT01vVQB5KvrcnYB+qw2DklAvI8pRQU1WG9/AwUPD4gmIN/3WIyC16HKwYJc8s/l4G+yan8Q+fxAtrbgV6bUVx9uOAH2NKVXu9rTY9ODyCjmcDLTVnVVXHNEThIDCHBze+KMoJJeAuHYpPGa7io0tjPS9wKGrshKSgEDDuKQPYrYdBHFEBvK0UZma2eO9r8pSPIVKed0OCA2lObXT4+3G31RfyTjv6GiKLiK8woUCPFetUSw/0DdRAttxy4VkH6CCtGBl0BnHvPYmEOp4COKpnzl7+GTqZoINR3yG2Jv1VTUxsiVnmhKQmqpoAXZr8tjilCiMUrk5YNOppCV6VNNa8Q1aqSe4xJuZ6zSN+HBrgFVivHmUgySbQMUCyfMHQ2BgoaPDQjt3NpaxPLYQWDtIgghoiqV7JytGCa0tMZsxPK5oMS+raSy7ArJcisVvgKMYVD9GkSvPB3T2ucittP1sIvFdX8+WESQ+RhawE2HESisa9U6L5QaPrXUJGWJ/H/X2oN7GI7I1HYPHTyAUJC7H2t99x/BVm9jFVp5DjGS1ypi53+ZP4A0eBGmGiQTy6VxDvd/dZZmgZqQ87norwpbDdbXwln31II/PSLxSkM8EML6d7giqLx0/kvPNs1HXJaUVNlkV7FFuqr4sy1tVOEqY2FgoLeriWQgBFXqePN24adDpv/QyoZIeWBfkCKxfg7PAmFUpuimKDMaCyWzPb+r4UE4nKMzqnVGZgEhvXMr0y6lA8B40RC+Iv+4t8MrpB5jCIIe9Jxw3C2HrlDgivzpszyJzSb+xdjyqG1TitbE1/XiSRZm/lDeXePu7+pOfxr1IPNLPVp5REWiNmRd5GwmyMr4OkL2Cz/ST0TCbHonyoW2V0uFQxf6U4+t6SZF30Y6HOd//9AL13BQaEst2jXn3yx+Jwvvt/GW9iLVcXSnfT/ZJc9VKjJKfhVRwJlsPOad0g1cuLxHv3Jc4Sf7abd4N3ayW0m+qukQxuDTT98nEoHO8XyK2Z85CevSRDYf6JMOR8l/NMVIuUkfBY+Q2uCy+tgVudEG2mQJqv0utUcIZ7O0rxi0PlmkK+AUcigXAbI9jpV1fJNV2Qc50b7y8hH4wL91NThAj2eSSmiWkDCncPE6cbJX95Ok51pBM9KaikXixzGu7kEsYpiqQIf987rVoZ5ptG6Wl4f9cZTxDC2PGD6mhCg6dfl58HclnK+IuYjoP6Nsvw8LYJQkeMRlpS2lTmkhQ6crtbIFVuViFu4B0DzlkDY1/+PJUe1uQsRMXS25wIRvcBN/xzC0l8m0Wr+UyCKYNT+RS+uWX2VQGDE8JeGOVOJAx1yWDOJg2Ev/8bKJrCm1Tod3+dYWmOMYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RYquVqSwcMSjgfnxJNYriA",
+        "name": "find_activities",
+        "input": {
+          "subject": "activities for 5 year olds weekend",
+          "window": "this weekend"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 196,
+      "cache_read_input_tokens": 25011,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 196,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 255,
+      "output_tokens_details": {
+        "thinking_tokens": 170
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3209
+}

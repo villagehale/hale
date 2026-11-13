@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking. Hale turned off send_email and reply_to_email this turn, so 'c'est fait' is true. The reply confirms it plainly, in the parent's French, with no greeting or padding. The informal 'tu' matches the parent's own register.",
+    "score": 5
+  }
+}

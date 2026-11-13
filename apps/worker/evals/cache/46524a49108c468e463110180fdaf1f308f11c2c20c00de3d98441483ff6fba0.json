@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzDq85CfqHafVrtc4DJs",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjgoKEAgTGAI4AUIIdGhpbmtpbmcSDLULJn/+B/+dXbnH1hoMXoO2K3+gkFoQC7RvIjB1znUAvCN3bqTyOCR/xGqha1XUX9jP6qKIoUmqEHyQFJke0a27Vfy9XLuOITNvG18qqwnGWhVRP7Fl4X2TIwSROjpeRqzIPP5BGbqz/Jh5HRTtdEDeSV8LvMqYynuI6Xhln1jKbf5SPHuTxevLRGBOM9pGrYp4EE3ZwQecp1GpFGp+MDNmpx/RneVg9o/LrGZwbaKe8dJxWZwdElCf5KscB57dahAu0PASBgcDiF0p1z567Ki4yT2OBQnPvb/Tq0IJIoOsnTi3SsBjN1UbnOM+F/Vl+X+GcVZOc7JcnwzqTuEsLgSDZDzvmjW/9E7gzasgBBgNEdgNdcS4fHeks+aKB49VQqf0GuR0T0O/pNYMrurHf8ycOy3vpfm4O/BRZFCe/BFWXqiTUxTPHo9y+xim262LALAkScajIx0r4sSk9B+B7Uvi28O/LtAbFY+AwLPHrnSU4TpgG6fDiVbzxRSkf6UarsZVnLqU7onG84bB0pKLl5yiBAIxen54XoJucQiJw29fAl3FL6W7SO7qFMR99iv5xM8vq5XSwF2WbgKGENzZ+eFuTNuiQrD7PmIzn4JJdGacLxom+6YqZD4B8ogZKqxXaf09cLydShAovwzR8jhzufkPSeQ7l55/Fnl+JSzvay0tCbHFcJL3nwParnj/LuNWdDvwWhpHVe6TVFVgbI+dR3+OhTo2wVThk2VvyRiqXMZFCjDuoiFNd8AfU8B+itGGH5rBzAw+ijVvtFWENyzrnBr9UJdX8Jc/QtH/+2QUlcm3kFPHKKiwIbroffKs9esLhD/p6qtFawRr5bTeTnWgBPXKr4Y7ib8iB1TkZs3a+AL5Q1bPGyk4RwMiWyos21NR4635TigbhlkeQfgqRyIccdSbjXpGVDtC0au5ww4LJiPHT7E7y8I5ogvLMaPSAoAQgucntl+rLpw+UAYpbUQEh0BXFNW/9K+uF2T8G3TJUyUsccRv8kpVey4VbhqS6feisohyUEc4caLQ5BiF8GxKUVRisDzfupEEYJ/ZlP6bJUvoqZpnDn4lXhL6vFqWgxLJmfgbQSwqS0gKrDUaz0oVYFoZL+VHtaMtE6wFDbRFP41McohaAD4PGofwWGqo2oJsJXAX6ePs3BkzFrQZPubdOcJ4uHiKkpZLBhEfkY6MyZc5B/RZIukHZMY287PcCGqY1FEqzm4zgmkj/XqO7JdBagMMyfhk26GqtHvQkopcqm0ENd2gGJeFsUQqvXBXdKMWO1VWS8wcmzUhe5qiTn3Z8TB2lqgAFMGA9MLElQNfyDhSfw4riiYLu7x8xyCUW5oIzUX6gHBATN+sK2tZe6sARaHxY+IEIv7pfiGfs0Cjg7dUH5JPGw0yYIyPyW1Xze76YanxABi/lqlggzB2tj4ff97ssNbEzVY4Cv2ezumkcONye3vXmkKM7FC5SwecUVODQZ6yP5MRTMXp1qlzMuKwYpgaLYSVgzaM/5l7rPc/uuc8DUA40+iuBdymaOqE+aJ4mbutmKN9dTfblBCoiLf4oVD25qhbCPGTysr24KHP9M9b8pRqiHn5tPh2qulGoooQaczCimNRUXQ0CuT4VP9YO+/QdSngXcmDw3Az47P9AQy/zcm9HvcLhAV8fdySNhUr80GVfpiYEETBEQtVcfI/9uxRc8aThL6t+rpGGAE="
+      },
+      {
+        "type": "text",
+        "text": "I only know an appointment email came in for one of the kids. I can't open the message itself from here, so I can't tell you what it said. Is the appointment something you're trying to add to the week?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 480,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19202,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 289,
+      "output_tokens_details": {
+        "thinking_tokens": 231
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

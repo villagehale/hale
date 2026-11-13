@@ -41,6 +41,7 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -59,7 +60,7 @@ const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-local-day');
 
-function contextFor(fixture, localDay) {
+function contextFor(fixture, localDay, helpLines) {
   return {
     parentName: null,
     location: fixture.location,
@@ -78,6 +79,7 @@ function contextFor(fixture, localDay) {
     ...localDay,
     standingQuestions: [],
     registrationWindows: [],
+    helpLines,
   };
 }
 
@@ -255,7 +257,7 @@ async function main() {
       const run = await agent.runAgent({
         skill,
         ...(extraText ? { systemExtras: [extraText] } : {}),
-        context: contextFor(fixture, localDay),
+        context: contextFor(fixture, localDay, await coachHelpLines(fixture.location)),
         tools: toolsFor(
           agent,
           findActivitiesTool,

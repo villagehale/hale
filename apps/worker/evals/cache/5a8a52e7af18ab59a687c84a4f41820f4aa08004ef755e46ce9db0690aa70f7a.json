@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "shopping-or-deals",
+    "reason": "asks for a shopping deal on a TV, nothing about the family's week",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1007
+}

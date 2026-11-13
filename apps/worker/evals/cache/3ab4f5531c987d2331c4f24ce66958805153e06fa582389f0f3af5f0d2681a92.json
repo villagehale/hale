@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyBR9aaae7nwxsLDqyLU",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrwcKEAgTGAI4AUIIdGhpbmtpbmcSDNnVIUqYIZ+E5C+oVhoMkodZJeZKUnAHOV1ZIjCPZx6ralQ6YItwQ2ozJ33tzwDI8NR59YTJeOo7uAQIG6G0yxtbiKC/Bg6p2wAMEEoqzAZd4tZyOahBqrPRuOjLJt7jJRdQCE90GJ4tGXmeeZUNsyjzGIeql7+OycSGp1Tc1eoSghHsXiw7OrkHoSd3OQTf+ZYGb9QKeKc9MOgzeqk3daTMTVmX4bVzBnlchrFqSC86hIIwnuJkFtY6jrl2Q8FPLWjJOcVhR0mr4YrZo0l+B6OIs4H8pYFUonV8esks9ZRvGsytiDzIiaDTebbWGjslA35Nk/Xde3MB3d9r3+LfeK/nmbBBiqA0RFPdv9wUbcSvq0jh9FTYxiN5l5yi7FHTrOpSYEVjq3UQLzLj6HVPES5OBe0NrIJL6CexnaWrDtq1/M9PpgU8JTFiNnhup6jvmJDd0KhChc5Ev9uyrWFnYhKHW8jvV28MqT6ReWafNn9bw7GEehAohRM7X16usLIDcUAXDLQ643ZMoHkLPNL6O2Fbq/p1Fpq0mB0mDKTlHu6D13DcxL65ufcjVloBKKmoN2eaXwcVtzMQoBNfiJvGdXM0NFEXLfh2GjURrPfW+cgR6SnVSd3NNpy5hbnqG3X8Rxt4C4wuvnW/kwZ/7mdsXWbl/IPmse7BeHPhSh764NWZ1mjWFAd0jbHROYRlx9s1x9Uf33t3DkBpZ2SHvJYoLCLhChiyeaPIFPJQc1j6MPiigtI33eLSj5kZPaZpNqz2WoeSxSrLF1lrf97btanST6A5mEFIXvLTqoKNnTeIA/8SV5hSn/B2JEIl322V6IIb8qOpOHtKZ+UxGKLRLcpHyHOxAGNtfi8k3Zm4JpVjrU/bvPZpj6HbrjXcoBWp/vvDWPaD12sEtdF0LD5ulN0BE+Ekvwwg0HwOeYAkbfunVuz9Bz/9RXhHvfpxFRhHJ5i7hZy4yH4uMWQ3YZeQCDEA3EeBuDXWmvY8lBgrUAcmPjD6jmYb95dThCS8l/skq2tXtyoMuexA7EnbFCScW6sbLDeG/WXZZxv6cx1RZTV4eOvRRX9nim4mdpYjX1t2coddi4j3KPeqNfvakf8cJU4a6KlAPESeeSCcgYOqJnRpwYBJRMwJBCxzVSeeC/iPJrXfAP9JjlKRnq/8Ft7vg4nii5EjpQSSQWhSz6ufoj5rWi8Y9/JqOlNqwVRyK3FQuerCVRESBJNEzbMY/ooDGAE="
+      },
+      {
+        "type": "text",
+        "text": "Wellesley Community Centre pool 有\"Parent and tot swim\"，适合6到36个月，家长要一起下水，每周六9:30，1月9日到3月13日。[link-fd81ce]\n\nRegent Park Aquatic Centre 有\"Little splashers\"，适合12到36个月，家长也要下水，每周日10:15，1月10日到3月14日。[link-bf3175]\n\n两个班都是12月1日早上7:00开始报名，宝宝20个月，两个都合适。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 2139,
+      "cache_read_input_tokens": 20605,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2139,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 284,
+      "output_tokens_details": {
+        "thinking_tokens": 117
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

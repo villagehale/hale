@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent is signalling that more texts are coming, so it needed one short acknowledgment such as 'Ready when you go.' Instead the reply misreads it as a request. It asks two questions, guesses that kids might be joining an activity, and pads with examples. That makes Sam answer questions about a message that needed nothing done.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "turnedOffThisTurn lists send_email and reply_to_email, so saying 'Done' is true. The reply states the new behaviour plainly and stops. No greeting, no machinery, no invented detail.",
+    "score": 5
+  }
+}

@@ -121,6 +121,7 @@ import {
   FIXTURE_COURSE_ID,
   FIXTURE_DAY_TRUTH,
   FIXTURE_EVENTS,
+  FIXTURE_FAR_EVENTS,
   FIXTURE_FORECAST,
   FIXTURE_NOW,
   FIXTURE_TIMEZONE,
@@ -165,6 +166,8 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
+import { fixtureEventWhen, fixtureWeek } from './lib/fixture-week.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
@@ -700,6 +703,12 @@ function isPrivate(event) {
 
 /** The week exactly as `lookup_week` renders it — what the agent saw, and therefore the
  * only thing the judge may hold it to. */
+/** The later weeks lookup_week returned rows for this turn; absent (and key-neutral) when none. */
+function laterWeeksSeen(toolOutputs) {
+  const laterWeeks = toolOutputs.filter((output) => output?.laterWeek).map((o) => o.laterWeek);
+  return laterWeeks.length > 0 ? { laterWeeks } : {};
+}
+
 function redactedWeek() {
   return FIXTURE_EVENTS.map((event) => ({
     what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
@@ -719,6 +728,12 @@ function redactedWeek() {
  * REPLICATED from apps/web/lib/channel/coach/tools.ts — the seven dates of the week with
  * the weekday each one is, so the model READS a date instead of computing one (VIL-295).
  */
+function addDaysToKey(key, days) {
+  const at = new Date(`${key}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}
+
 function weekDaysFrom(startKey, timeZone) {
   return Array.from({ length: 7 }, (_, i) => {
     const at = new Date(`${startKey}T12:00:00Z`);
@@ -857,27 +872,45 @@ function buildFixtureTools(
   const lookupWeek = agent.defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week, and so on up to 8: for a date further out than next week, read the week that holds it, and check `days` to see you have.",
     inputSchema: passthrough(),
     handler: async (input) => {
       record('lookup_week');
-      // The fixture week is week 0; a next-week lookup is honestly empty rather than a
-      // second copy of the same events, which is what production would return.
-      const empty = (input.weekOffset ?? 0) !== 0;
-      return {
-        weekStart: FIXTURE_WEEK_START,
+      const offset = input.weekOffset ?? 0;
+      // REPLICATED bound: tools.ts LOOKUP_WEEK_MAX_OFFSET (VIL-688).
+      if (!Number.isInteger(offset) || offset < 0 || offset > 8) {
+        throw new Error('weekOffset must be a whole number from 0 to 8');
+      }
+      // The fixture week is week 0. FIXTURE_FAR_EVENTS sit further out and are read the way
+      // production's reader reads them, so a stay that began before a week is in it; any
+      // other week is honestly empty, which is what production would return.
+      const weekStart = addDaysToKey(FIXTURE_WEEK_START, offset * 7);
+      const rows =
+        offset === 0
+          ? FIXTURE_EVENTS
+          : (
+              await fixtureWeek(
+                FIXTURE_FAR_EVENTS,
+                { weekOffset: offset },
+                { now: FIXTURE_NOW, timeZone: FIXTURE_TIMEZONE },
+              )
+            ).events;
+      const result = {
+        weekStart,
         timeZone: FIXTURE_TIMEZONE,
-        days: weekDaysFrom(FIXTURE_WEEK_START, FIXTURE_TIMEZONE),
-        summary: empty ? null : FIXTURE_WEEK_SUMMARY,
-        events: empty
-          ? []
-          : FIXTURE_EVENTS.map((event) => ({
-              eventId: event.eventId,
-              what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
-              when: localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE),
-              where: isPrivate(event) ? null : event.location,
-            })),
+        days: weekDaysFrom(weekStart, FIXTURE_TIMEZONE),
+        summary: offset === 0 ? FIXTURE_WEEK_SUMMARY : null,
+        events: rows.map((event) => ({
+          eventId: event.eventId,
+          what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
+          ...fixtureEventWhen(event, FIXTURE_TIMEZONE),
+          where: isPrivate(event) ? null : event.location,
+        })),
       };
+      // A later week that held rows is what the model saw beyond the fixture week, so it
+      // grounds the reply and goes to the judge with the week (VIL-688).
+      if (offset !== 0 && rows.length > 0) toolOutputs.push({ laterWeek: result });
+      return result;
     },
   });
 
@@ -1181,9 +1214,9 @@ function buildFixtureTools(
  * months" would otherwise read as two invented numbers. What the model was HANDED is
  * what grounds it.
  */
-function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
-  // Canada, as every fixture's context says (channelContext `location.country`).
-  const real = frameworkGuidanceTool('CA');
+function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding, country) {
+  // The fixture's own country, as its context says (channelContext `location.country`).
+  const real = frameworkGuidanceTool(country);
   return {
     ...real,
     handler: async (input) => {
@@ -1213,8 +1246,9 @@ function recordingSwitchOffTool(turnOffAutonomyTool, calls, parentWords) {
 /**
  * @param compact  the REAL `compactTranscript` (see CONTEXT_SRC)
  * @param severed  drop the thread entirely — the continuity fixtures' positive control
+ * @param helpLines  the fixture row's help lines, as the runtime hands them (VIL-589)
  */
-function channelContext(fixture, compact, severed = false) {
+function channelContext(fixture, compact, severed, helpLines) {
   const children = childrenFor(fixture);
   // Each child's REAL age and REAL stage, not a stand-in. The corpus used to hand every
   // non-teen `stage: 'child', ageMonths: 60`, which cost nothing while every fixture was
@@ -1245,7 +1279,7 @@ function channelContext(fixture, compact, severed = false) {
     compacted.transcriptSummary === null ? { transcript: compacted.transcript } : compacted;
   return {
     parentName: CONTEXT_PARENT_NAME,
-    location: { city: cityFor(fixture), province: 'ON', country: 'CA' },
+    location: locationFor(fixture),
     planTier: 'free',
     children: injected,
     focusedChild: null,
@@ -1283,6 +1317,8 @@ function channelContext(fixture, compact, severed = false) {
     // them over. Empty for every fixture that is not about one, which is also the
     // production shape for a family outside the covered set.
     registrationWindows: fixture.registrationWindows ?? [],
+    // The only help lines a reply may name, chosen for where the family is (VIL-589).
+    helpLines,
     // VIL-679: texts the parent sent back to back, answered as one turn — the runtime adds
     // this only on a burst, so every other fixture keeps the context it was recorded with.
     ...(fixture.arrivedTogether ? { arrivedTogether: fixture.arrivedTogether } : {}),
@@ -1523,7 +1559,13 @@ function returnedVillage(fixture, calls) {
  * the corpus itself.
  */
 function cityFor(fixture) {
-  return fixture.city ?? CONTEXT_CITY;
+  return fixture.location?.city ?? fixture.city ?? CONTEXT_CITY;
+}
+
+/** The family row's place: Ontario for the standing corpus, a fixture's own `location`
+ * where the answer turns on the country (VIL-589: 811 is a dig line in the US). */
+function locationFor(fixture) {
+  return fixture.location ?? { city: cityFor(fixture), province: 'ON', country: 'CA' };
 }
 
 /**
@@ -1587,8 +1629,15 @@ function groundedHay(fixture, toolResults) {
   }
   // Both forms of every day the schedule actually touches: the tools emit "Thu", the
   // model may write "Thursday", and neither is a fabrication.
-  for (const event of FIXTURE_EVENTS) {
-    const label = localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE);
+  // A later week counts only on a turn that read it (VIL-688).
+  const laterLabels = toolResults
+    .flat()
+    .flatMap((output) => output?.laterWeek?.events ?? [])
+    .flatMap((event) => [event.when, event.until ?? '']);
+  for (const label of [
+    ...FIXTURE_EVENTS.map((event) => localWhen(new Date(event.startsAt), FIXTURE_TIMEZONE)),
+    ...laterLabels,
+  ]) {
     const short = label.slice(0, 3).toLowerCase();
     const full = DAY_NAMES.find(([, abbr]) => abbr === short)?.[0];
     parts.push(label, full ?? '');
@@ -1795,6 +1844,9 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
 
   if (expect.mustAsk && !reply.includes('?')) {
     failures.push('never asks the clarifying question the ambiguity requires');
+  }
+  if (expect.mustNotAsk && reply.includes('?')) {
+    failures.push('asks a question where the text asked nothing yet');
   }
 
   // A drafted change is confirmed in an ordinary sentence. The parent answers in
@@ -2183,7 +2235,12 @@ async function main() {
     // Built ONCE per turn, and read by both the run and the judge — a judge handed a
     // different thread from the model's is the half-blind grading this harness has
     // already paid for once (see the `knows` comment below).
-    const turnContext = channelContext(fixture, compact, severed);
+    const turnContext = channelContext(
+      fixture,
+      compact,
+      severed,
+      await coachHelpLines(locationFor(fixture)),
+    );
 
     if (broken) {
       // PER FIXTURE where one declares its own stand-in, for the reason the finder
@@ -2209,7 +2266,12 @@ async function main() {
             ? { deidentify, namedArea, family: searchFamilyFor(fixture) }
             : undefined,
         ),
-        recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
+        recordingFrameworkTool(
+          frameworkGuidanceTool,
+          calls,
+          guidance,
+          locationFor(fixture).country,
+        ),
         ...(fixture.autonomy
           ? [recordingSwitchOffTool(turnOffAutonomyTool, calls, fixture.text)]
           : []),
@@ -2324,6 +2386,8 @@ async function main() {
       // out of the hay, which is what keeps "a URL Hale was not handed is a URL it
       // invented" a real gate rather than a blanket exemption for one domain.
       calls.some((call) => call.tool === 'share_referral_link') ? FIXTURE_REFERRAL_LINK : null,
+      // The help lines the context handed this turn (VIL-589): "Health811" is quoted, not made up.
+      turnContext.helpLines,
       // The web pick, on the same terms: only a turn that actually called
       // find_activities was handed it, and on every other turn naming it is invention.
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
@@ -2442,6 +2506,8 @@ async function main() {
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
               registrationWindows: fixture.registrationWindows ?? [],
+              // The help lines the model was handed for where this family is (VIL-589).
+              helpLines: turnContext.helpLines,
               // The family facts the model was handed, `seenIn` included. `undefined`
               // off the fixtures that hold none, so every committed verdict's key stays.
               memoryFacts: fixture.memoryFacts,
@@ -2474,7 +2540,11 @@ async function main() {
                   }
                 : undefined,
             },
-            week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
+            week: {
+              summary: FIXTURE_WEEK_SUMMARY,
+              events: redactedWeek(),
+              ...laterWeeksSeen(toolOutputs),
+            },
             // The thread the model was handed, on the same terms as everything else in
             // `knows`: a judge that cannot see the message a "Yes, please" is answering
             // is scoring the reply half-blind, and this harness has already paid for

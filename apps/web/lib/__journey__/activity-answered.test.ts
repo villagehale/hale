@@ -130,6 +130,9 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('F14_ENABLED', 'true');
+    // The burst settle waits in real time on every lone text; burst-drain.pglite.test.ts
+    // covers it. This journey is about the answer, so it keeps the path it had before.
+    vi.stubEnv('INBOUND_BURST_ENABLED', 'false');
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
 
     const [family] = await database
@@ -435,6 +438,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         },
       }),
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       loadTranscript: async () => [],
       // The context assembly is the app coach's own, tested where it lives; what this
       // journey is about is the verbs, so it is the minimum shape the runtime reads.

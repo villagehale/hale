@@ -46,6 +46,7 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
+import { coachHelpLines } from './lib/coach-help-lines.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -66,7 +67,7 @@ const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-capability-correction');
 
-function contextFor(fixture) {
+function contextFor(fixture, helpLines) {
   const child = fixture.signup
     ? { ...TODDLER_CONTEXT, name: fixture.signup.child }
     : TODDLER_CONTEXT;
@@ -91,6 +92,7 @@ function contextFor(fixture) {
     nowIso: '2026-11-09T15:00:00.000Z',
     standingQuestions: [],
     registrationWindows: [],
+    helpLines,
     ...(fixture.owed.length > 0 ? { capabilityCorrections: fixture.owed } : {}),
   };
 }
@@ -441,7 +443,7 @@ async function main() {
       const run = await agent.runAgent({
         skill,
         ...(extraText ? { systemExtras: [extraText] } : {}),
-        context: contextFor(fixture),
+        context: contextFor(fixture, await coachHelpLines(fixture.location)),
         tools: toolsFor(real, fixture, calls, skill.meta.tools, offers, extraTools),
         client: cachedAgentClient(
           `coach-capability-correction:${fixture.id}`,

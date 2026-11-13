@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgyH1UqzKgNqnEhmjjrMo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1ggKEAgTGAI4AUIIdGhpbmtpbmcSDALx+r1ikSfseMvjcRoMMvNtbCx+e9s6H/brIjD65ttMAyBxpkegyWPo9hn6so+eoLjus9r6GctyvmsEzP0iwAMmOp23BbvRmG/jbP0q8wfesNMndPMtTYILy1Oo5q0l3JdK1jw8bDN8GljAeOrnTlP3jjiESxVrVZP8CNsg8ZE0iaww4ZdaNGoCHh2kgOoYSC7WBuFTJjKB79wufdgOk7BYmOyIMpEZLKh3qS/5i75LYOofbaxvQIO1lKotvF4ZXsnfwZm08/uXtFmKXUTyDIfJ14cZo6YiC6t119WP9cbYo2CC3GiroZOSuyCHDLZB/gFF7wc8RpYorzELDQFvs8oNPVaYDrhoV2ypvjd1VGPurIX/TZmifGawl7+aQNRkCH8P7Yhr1DQ9I/nDg+pkQ4WzYv4YyzhKlWtADa0zLsr2ci3HJQqKRnkCPODDUuygTdO3vfk7Cfpv/yfet8l+IlCbgE+Iy5eLTETMO6jgcTeQdAJVWgO6XQxjRjCnkmTIB4eRjx3N4asqNuPRLcPb9hcnxA5AYQ3mXLfJVk1Tu++fnYj8Xt3WpWEKRbCJfHqMjXe2dBxDKa9TMDtSVafunVNJIXejtU5JSxIIUYQ5zS6ScpTkUMROTmK0uxRlwp58O8r3Hs+nxnhwr2XTj+CTe0LUh6jplySXeOdjOWK5z7tf62iBjisEp+TvyaP3hnRccG1iINyAFjxwNTYWJTO6Y32daoWSuER3JonTdGtXtRMFk251wJUTJa0lw0TOBzNvvYuqlvzq7OaMfuVLeX34h0eW9zf3Vn8/BcGylWxuzB82AQDBj3SIag7fodKm7xqjKLnM6UGDlGU//cFVy3Jx8Zc8YKcQhjp4WVwsL9L//peg5D311dhhFsezE6mLYEwfRbmAScWwBeSsVSa+BGiO49lvDuF+qcAUXIkmLEC5w+pDxC57e1kJq51CxsPHcKA1xbjizW4AV44mfRW+ucP4BNhTieZnZRInE6OkupeJGe3ARTca+NlDGLGz7Sgwtyv7MUym9EjvW+F5MEZ4QFx/sEso0siyWCXpMsS7/7GVI3OWjiAadY5WWBaXH+RWNoi6trcmniIJLtcbMS2XX6MBkOGR1rBc8l1dRqlEk0qfY1COOmuLazxtpGVIIbi4HTuZstmPu6kw3yqLc4TumhPM61rGdUJZG6zKN7iIrNSByDYtHJfr5DfN6Ww125NezFwHDQD+NbQXGsDtVyVkoVvnZoytSLJoMQdgsyOGV1t47vBW57SwoksEwhA6RY65rO5KbgyJfzJm5ooUUlsR+qBDBLr5t4/ryXqJ6jzyOTpnLnQvTBU2Mz1d7/q/bolVcpWqZouJs2R3t2CCjGURiepiWOxUef7ZcN5oJHgrAPFPAGzyUV+rZx1gisCMtnwSGjXmjgT3j9sVuH/RwqsxEpwHUm+HUicgKRy4+8ZfCsR8zhR721MYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Saturday, Aug 8: Swim Kids 3 at the West pool at 11:00 a.m. [link-0aed70]. Central Library story time at the Bloor/Gladstone branch is a free indoor drop-in for all ages [link-c9bfa2]. The High Park playground is the Jamie Bell Adventure Playground, also free [link-b7e8a1]. Saturday looks dry and warm, so outdoors works.\n\nSunday, Aug 9: Riverdale Farm is a free outdoor farm that's open daily [link-b8b9f6].\n\nWant me to put one on the calendar?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1393,
+      "cache_read_input_tokens": 23580,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1393,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 377,
+      "output_tokens_details": {
+        "thinking_tokens": 174
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3509
+}

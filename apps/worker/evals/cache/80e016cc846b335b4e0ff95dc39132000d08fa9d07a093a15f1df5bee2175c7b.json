@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "registration open date for a program, family-week admin",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1100
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks about registration/openings for a family activity (playgroup sign-up for fall)",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1150
+}

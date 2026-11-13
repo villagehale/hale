@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "thanks, a greeting-level acknowledgement to Hale",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1217
+}

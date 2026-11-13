@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "nearby-places",
+    "reason": "asks for a coffee shop nearby, not family week or activities",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2360
+}

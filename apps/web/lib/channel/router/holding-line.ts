@@ -37,9 +37,8 @@ export const HOLDING_LINE_AFTER_MS = 8_000;
 export const HOLDING_LINE_ENABLED_ENV = 'HOLDING_LINE_ENABLED';
 
 /**
- * The holding line is a parent-visible send, so it is dark until lit, globally or for the
- * families on `HOLDING_LINE_FAMILY_ALLOWLIST`. STRICT equality on the literal 'true': a
- * piped `vercel env add` stores 'true\n', which must stay off.
+ * A kill switch: on unless HOLDING_LINE_ENABLED is `false` (trimmed), with no family
+ * allowlist (`holding-line` in packages/flags/src/catalog.ts).
  */
 export function holdingLineEnabled(familyId: string): boolean {
   return isEnabled('holding-line', familyId);

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is a single bubble in French, answering the parent's one request. It states the move to Sunday at the same time and asks for confirmation as the only question, placed in the last (only) bubble. The facts show the lesson at 15:00 UTC on Nov 14, which is 10:00 Toronto time, so 10h is the correct local time, and the drafted Sunday Nov 15 at 10:00 matches. No invented facts and no lead-in bubble.",
+    "score": 5
+  }
+}

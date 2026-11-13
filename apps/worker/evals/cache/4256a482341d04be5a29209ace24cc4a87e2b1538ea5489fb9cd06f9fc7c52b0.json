@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "news-or-politics",
+    "reason": "asks who holds a national political office, a fact about the world",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2721
+}
