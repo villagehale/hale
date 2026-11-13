@@ -328,6 +328,7 @@ async function runOnePlan(
       choiceIndex: result.choiceIndex,
       cartTotalCents: result.cartTotalCents,
       amountChargedCents: result.amountChargedCents,
+      charged: result.charged,
       confirmed: result.confirmationNumber !== null,
       holdExpiresAt: result.holdExpiresAt?.toISOString() ?? null,
       costUsd: costUsd ?? null,
