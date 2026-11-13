@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { type Asked, newestAsks } from '~/lib/channel/router/open-questions';
 import { namesFacts } from './parent-quote';
 import { registrationPlanRunEnabled } from './plan/flag';
 import { untrustedActivityLabel } from './plan/reader';
@@ -6,9 +7,10 @@ import { type ConversablePlan, loadConversablePlans } from './plan/store';
 import type { SignupRunResult } from './run';
 import {
   type AskOrder,
+  type LastAsked,
   type PendingSignupOffer,
   byAskedLast,
-  loadLastAskedOfferId,
+  loadLastAsked,
   loadPendingOffers,
 } from './store';
 
@@ -16,7 +18,8 @@ import {
 export interface AskPlace {
   /**
    * Hale's text about it reached this parent last, of all their asks in any status (the
-   * offer, or a question back, notice or receipt about it since). Only this ask is approved,
+   * offer, or a question back, notice or receipt about it since), and no open question on
+   * the router's list was asked after it (`newestSignupAsk`). Only this ask is approved,
    * taken back or picked for. An ask none of whose texts is known to have reached them is
    * never it. Words that name another of the parent's asks only make Hale ask about that one;
    * once that question went out, it is the newest, and their next answer is its.
@@ -58,14 +61,14 @@ export type LiveAsk = { offerId: string; place: AskPlace } & (
  */
 export async function loadLiveAsks(
   database: Database,
-  input: { familyId: string; parentUserId: string; now: Date },
+  input: { familyId: string; parentUserId: string; now: Date; openQuestions: readonly Asked[] },
 ): Promise<LiveAsk[]> {
   const plans = registrationPlanRunEnabled() ? await loadConversablePlans(database, input) : [];
   const planIds = new Set(plans.map((plan) => plan.offerId));
   const oneShots = (await loadPendingOffers(database, input.familyId)).filter(
     (offer) => !planIds.has(offer.id),
   );
-  const lastAsked = await loadLastAskedOfferId(database, input);
+  const lastAsked = newestSignupAsk(await loadLastAsked(database, input), input.openQuestions);
   const asks: LiveAsk[] = [
     ...plans
       .filter((plan) => plan.parentUserId === input.parentUserId)
@@ -89,6 +92,22 @@ export async function loadLiveAsks(
       ),
   ];
   return asks.sort((a, b) => byAskedLast(askOrder(a), askOrder(b)));
+}
+
+/**
+ * The sign-up ask a bare yes or no may answer: the one Hale texted this parent about last,
+ * while that text is also the newest of all their asks by the one newest-ask rule
+ * (`newestAsks`, VIL-302). An open question asked after it, or at the same time, takes the
+ * answer instead, and no sign-up ask is the newest. When recency across the two cannot be
+ * established (an undated open question, or a text whose time is not known), this lane's
+ * own order stands: the router does not narrow to an open question then either.
+ */
+function newestSignupAsk(last: LastAsked, openQuestions: readonly Asked[]): string | null {
+  if (last.status !== 'asked') return null;
+  const signup: Asked = { askedAt: last.askedAt };
+  const newest = newestAsks([...openQuestions, signup]);
+  if (newest === null) return last.offerId;
+  return newest.length === 1 && newest[0] === signup ? last.offerId : null;
 }
 
 function askOrder(ask: LiveAsk): AskOrder {
