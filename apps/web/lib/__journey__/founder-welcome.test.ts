@@ -36,6 +36,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
@@ -100,7 +101,11 @@ describe("the founder's welcome note", () => {
 
     const [family] = await database
       .insert(schema.families)
-      .values({ displayName: 'Dong family', onboardingStage: 'sms_active', areaCoarse: 'L7G' })
+      .values({
+        displayName: 'Dong family',
+        onboardingStage: 'sms_active',
+        areaCoarse: FIXTURE_FSA,
+      })
       .returning({ id: schema.families.id });
     founderFamilyId = (family as { id: string }).id;
 

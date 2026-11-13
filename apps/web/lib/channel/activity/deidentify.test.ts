@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FIXTURE_CITY, FIXTURE_POSTAL } from '~/lib/testing/fixture-postal';
 import {
   MAX_QUERY_FIELD_CHARS,
   deidentifyActivityQuery,
@@ -19,7 +20,7 @@ import { groundUserMessage } from './lane';
 const HOUSEHOLD = ['Noah', 'Chloé', 'Sam'];
 
 const base = {
-  town: 'Halton Hills',
+  town: FIXTURE_CITY,
   stage: 'toddler' as const,
   householdNames: HOUSEHOLD,
 };
@@ -47,7 +48,7 @@ describe('a name never crosses the border', () => {
       query: {
         subject: 'toddler gymnastics',
         window: null,
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
       },
     });
@@ -68,11 +69,11 @@ describe('what is stripped rather than refused', () => {
   it('strips an exact age, a postal code and a phone number', () => {
     const result = deidentifyActivityQuery({
       ...base,
-      subject: 'gymnastics for 18 months, L7G 4S6, call 416-555-0100',
+      subject: `gymnastics for 18 months, ${FIXTURE_POSTAL}, call 416-555-0100`,
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.query.subject).not.toMatch(/18 months|L7G|416/);
+    expect(result.query.subject).not.toMatch(/18 months|K7L|416/);
     // POSITIVE CONTROL on the same string: the useful part survives the scrub.
     expect(result.query.subject).toContain('gymnastics');
   });
@@ -92,12 +93,12 @@ describe('what is stripped rather than refused', () => {
  */
 describe('a street-level location never crosses the border', () => {
   it.each([
-    ['the audit probe', 'toddler gym near 42 Wallace St Georgetown', ['42', 'Wallace']],
+    ['the audit probe', `toddler gym near 42 Wallace St ${FIXTURE_CITY}`, ['42', 'Wallace']],
     ['an avenue', 'swim lessons at 121 Maple Ave', ['121', 'Maple']],
     [
       'a street and the postal code beside it',
-      'drop-in at 12 Guelph Street L7G 4A1',
-      ['12 Guelph', 'L7G'],
+      `drop-in at 12 Guelph Street ${FIXTURE_POSTAL}`,
+      ['12 Guelph', 'K7L'],
     ],
     ['a named school', 'after school care at St. Brigid Catholic School', ['Brigid', 'Catholic']],
     // The forms below crossed intact while the four formal suffixes were the whole rule,
@@ -145,7 +146,7 @@ describe('a street-level location never crosses the border', () => {
       query: {
         subject: 'Cartwheel Gym parent and tot classes',
         window: 'fall term',
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
       },
     });

@@ -1454,7 +1454,7 @@ const ALLOWED_NAMES = new Set([
 /**
  * A proper name the model wrote mid-sentence (a town, a school, a venue) that
  * is not in the facts or the parent's words. "That's the Dundas area" for an
- * L7G postal code is a guess, and a guess said as fact.
+ * postal code is a guess, and a guess said as fact.
  */
 function namesOutsideSlots(text: string, slots: readonly string[]): string[] {
   const haystack = slots.join(' ').toLowerCase();
